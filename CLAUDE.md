@@ -170,25 +170,28 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    no `TAL-*` code catalogue and no `docs/DIAGNOSTICS.md` any more, and a
                    reworded message can no longer silently reclassify a family
   src/lsp*.rs      `taliesin lsp`: the offline, kernel-free LSP server (lsp.rs dispatch +
-                   capabilities; lsp_complete/lsp_nav/lsp_links/lsp_outline/lsp_pos/
-                   lsp_memo/lsp_hints/lsp_fold/lsp_refs/lsp_select/lsp_lens/lsp_diag).
-                   ALL editor intelligence lives here — completion, hover, definition,
-                   documentLink, symbols, diagnostics, quick fixes, rename, inlay hints,
-                   folding, document highlight, references, selection ranges, code lens.
+                   capabilities; lsp_complete/lsp_nav/lsp_outline/lsp_pos/lsp_memo/
+                   lsp_fold/lsp_lens/lsp_cells/lsp_diag/lsp_project).
+                   ALL editor intelligence lives here, and after wave 10 it is **SEVEN
+                   read-only providers**: completion, hover, definition, documentSymbol,
+                   codeAction, foldingRange, codeLens, plus pushed `publishDiagnostics`
+                   and three namespaced extensions (`taliesin/cellRegions`, `siteMap`,
+                   `mathCommands`). **Nothing here writes to a buffer.** The nine that went
+                   on 2026-08-08 are named in `the_initialize_handshake_advertises_…`,
+                   which fails if one is advertised again: five of them (formatting,
+                   rename, `sectionEdit`, `insertEdit`, `renameFileEdits`) were the only
+                   paths besides the author's own keystrokes that rewrote a `.tmd`, and the
+                   single-editing-surface rule is one owner, not two. The whole-book answer
+                   the `diagnostic` pull model gave is `build <dir> --check-only`.
                    stdout is the JSON-RPC wire, so never print to it (use `crate::log`,
                    stderr). `didChange` is COALESCED (a 120 ms window in lsp.rs) because
                    publishing diagnostics re-walks every page in the project; `lsp_memo`
                    caches the buffer render keyed on `(uri, text)`, which is why it needs
-                   no invalidation logic.
-                   **Diagnostics are push OR pull, never both** (`Transport` in lsp.rs): a
-                   client declaring `textDocument.diagnostic` gets the 3.17 pull model
-                   (`lsp_diag.rs`) and no `publishDiagnostics`, because a pull client keeps
-                   those in a collection of its own and a server doing both shows every
-                   finding twice. **`$/cancelRequest` is batch-scoped** — the loop drains
-                   the channel before dispatching, so a superseded `workspace/symbol` walk
-                   is abandoned rather than run; a cancel is matched only against requests
-                   in the same batch, and `read_batch` must not read past `shutdown` (the
-                   `exit` that follows belongs to `handle_shutdown`)
+                   no invalidation logic. **`$/cancelRequest` is batch-scoped**: the loop
+                   drains the channel before dispatching, so a request the client withdrew
+                   while it was queued is abandoned rather than run; a cancel is matched
+                   only against requests in the same batch, and `read_batch` must not read
+                   past `shutdown` (the `exit` that follows belongs to `handle_shutdown`)
 editor/vscode/   the VS Code companion. It implements NO language features of its own:
                  `src/client.ts` is a `vscode-languageclient` over `taliesin lsp`. What is
                  left in TS is what LSP has no concept of — the preview webview +

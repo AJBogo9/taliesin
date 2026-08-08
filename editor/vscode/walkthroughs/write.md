@@ -9,6 +9,5 @@ something `check` will reject:
 - `#| ` — cell options, and their values
 - `[text](`, `bibliography:` — real files on disk
 
-Two more worth knowing: **Insert Math Symbol** (`Ctrl+Alt+M`) searches by name, glyph or
-category, for the symbols you cannot spell. And **Format Document** tidies pipe tables —
-only tables; every other line comes back byte-identical.
+One more worth knowing: **Insert Math Symbol** (`Ctrl+Alt+M`) searches by name, glyph or
+category, for the symbols you cannot spell.

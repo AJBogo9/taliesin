@@ -110,7 +110,7 @@ design.
 
 `taliesin lsp` is a synchronous, offline, **kernel-free** LSP server over stdio
 (`crates/server/src/lsp.rs` plus
-`lsp_complete`/`lsp_nav`/`lsp_links`/`lsp_outline`/`lsp_pos`/`lsp_memo`/`lsp_hints`/`lsp_fold`).
+`lsp_complete`/`lsp_nav`/`lsp_outline`/`lsp_pos`/`lsp_memo`/`lsp_fold`/`lsp_lens`).
 It holds open `.tmd` buffers warm and answers:
 
 | capability | what it gives the author |
@@ -119,46 +119,35 @@ It holds open `.tmd` buffers warm and answers:
 | `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
 | `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
-| `documentLink` | `{{< include >}}` / `{{< embed >}}` paths, so they *look* navigable |
 | `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
 | `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
-| `rename` (with `prepareRename`) | a cross-reference anchor and every reference to it, as one edit |
-| `formatting` | pipe tables, aligned to their widest cell, alignment markers kept — and **nothing else in the file** |
-| `inlayHint` | the resolved number beside a cross-reference, author-year beside a citation, line count beside an include. Range-scoped, so only the visible lines are scanned. A reference to an anchor on *another* page is valid but has no number here, and the hint is **omitted** rather than filled with a placeholder: a missing hint reads as "no information", a placeholder reads as a claim |
 | `foldingRange` | front matter, each heading down to the next of equal or shallower level, `:::` divs, code fences. Without this an editor folds `.tmd` by *indentation*, which is meaningless in a format where nesting is heading level and fences |
-| `documentHighlight` | the anchor under the cursor, its definition marked as a write and every reference as a read |
 | `codeLens` | **▶ Run Cell · Run Above · ⚡ cached** above every executable fence, so the execution loop reaches every LSP client rather than only VS Code. The buttons name the `taliesin.runCell` command with `[uri, line]` — a lens names a command and running it is the client's job, so an editor wires that command to `taliesin run <file> --line <L>` once and gets the whole loop. The ⚡ label is `_freeze/` answering "this cell restores instead of executing", computed from `exec::cell_cache_keys` — the executor's own key function, so the lens cannot claim a hit the executor would miss on. One `<interpreter> --version` per language per session (the key is seeded with it); still no kernel |
-| `diagnostic` (document + workspace) | the LSP 3.17 **pull** model, so the Problems panel can list the whole book rather than only the chapters you have open. `publishDiagnostics` above is the push half and only ever speaks about open buffers; a client that declares pull support gets pull *instead*, never both, because each finding would otherwise appear twice. A `workspace/diagnostic` poll is answered `unchanged` from a `resultId` folded out of the project's stat stamps plus the buffer text, so re-polling an untouched book costs one `stat` per page and no render |
-| `references` | the same question across the **whole project**: every `@fig-scree` in every chapter, not just this one. That is the boundary the question is asked at in a book, and it is the boundary `documentHighlight` above cannot cross. The open buffer wins for its own file, so an unsaved reference is in the list and a just-deleted one is not |
-| `selectionRange` | expand-selection by document structure: word → sentence → paragraph → the enclosing `:::` div / code fence / section → the whole document. The structural rungs are the same extents `foldingRange` folds by, so the block the key lands on is the one with a fold arrow beside it. Without this an editor expands by *brackets*, which in prose selects `](target)` and `{#sec-id}` |
-| `workspaceSymbol` | Ctrl+T to any heading or cross-reference anchor **anywhere in the project**, not just the open file. Answered by a stat-validated walk of every page rather than a live index: the request fires on a gesture, so re-validating with one `stat` per page costs less than the file watching an index would need |
 
 Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
 in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the
 `taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
 other editor's filetype produces), so the server is never silently inert.
 
-Eight requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
+Three requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
 method. Each exists because the protocol has no way to express what it does, and each is
 answered by the same server:
 
 | method | what it is for |
 |---|---|
 | `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
-| `taliesin/sectionEdit` | the four structural transforms — move a section up or down, promote or demote a heading — as `TextEdit`s over the buffer (`lsp_edits.rs`). It takes a **cursor**, which is why it is not a code action (that would put a lightbulb on every section, for an operation the author asks for by keystroke) and not `workspace/executeCommand` (whose client-side forwarder is invoked by a keybinding with no arguments at all). rust-analyzer's "move item up/down" is a custom request for the same reason |
-| `taliesin/insertEdit` | the text a paste or drop gesture inserts: a figure block for a pasted image, a pipe table for a pasted spreadsheet, `[@key]` plus a `.bib` append for a pasted BibTeX entry, a shippable reference for a dragged file. The split is forced, not chosen: only the client has the clipboard, and only the server knows what a figure looks like (`lsp_insert.rs`), so the gesture goes in and the text comes out |
-| `taliesin/renameFileEdits` | the edits that keep a renamed or moved file's references correct: every `{{< include >}}`, `{{< embed >}}`, relative link and `_site.yml` entry pointing at it, plus the file's own outgoing relative references when it changed directory. A rename is a one-shot event, so this walks the project instead of maintaining an index, which is why it needs none of the parked project-index work. Both link spellings are handled, because a cross-page link is authored as `.html` while an include names the `.tmd` (`lsp_rename_file.rs`) |
-| `taliesin/projectOutline` | the whole book as a tree, grouped by page and in reading order — `chapters:` resolved from the same `Book` the drawer and prev/next use, with a page absent from that list sorted last and flagged `listed: false` so the client can name it rather than drop it — plus the numbered-float index. Not `workspace/symbol`: that method deliberately answers a *flat, queried* list, which is the wrong shape for a view the author browses rather than searches |
-| `taliesin/projectRefs` | every cross-reference target with the uses pointing at it, **dangling ones included**. The dangling half is why the server grew a full-document `xref_occurrences` scan beside the targeted `anchor_occurrences`: a reference whose target exists nowhere has an id no caller could have thought to ask for |
 | `taliesin/siteMap` | where each publishable page of a project is served: `rel` (the source path) paired with `url`. It is what makes "Preview" open at chapter 7 instead of the book's cover, and it has to be answered here because `.tmd`→`.html`, book chapter numbering, `index` handling and the draft exclusion all live in Rust — a client deriving the URL itself is the second implementation this whole rewrite existed to delete |
 | `taliesin/mathCommands` | every KaTeX command the renderer supports, with the category and rendered glyph the Insert Math Symbol picker searches on. A symbol you cannot spell is not reachable by completion — you have to already know that ⊗ is `\otimes` — so the picker needs the whole table at once, which is the one shape completion cannot serve |
 
-`taliesin/sectionEdit` refuses rather than guesses. Moving past a shallower heading would
-re-parent the section, so it answers a JSON-RPC `RequestFailed` whose message names both
-sections; the companion shows that message and leaves the buffer alone. The segmentation is
-`lsp_outline::sections`, shared with `documentSymbol` — a transform that cut sections even
-slightly differently from the outline the author is looking at would cut where they cannot
-see.
+**Every one of these answers a question; none of them writes.** Nine capabilities went on
+2026-08-08 (`documentLink`, `rename`, `formatting`, `inlayHint`, `documentHighlight`,
+`references`, `selectionRange`, `workspaceSymbol` and the `diagnostic` pull model), along with
+the `sectionEdit`, `insertEdit`, `renameFileEdits`, `projectOutline` and `projectRefs`
+extensions. The five write paths among them (formatting, rename, and the three edit-producing
+extensions) were the only places in the tool where something other than the author's own
+keystrokes rewrote a `.tmd`, and a preview that never writes beside a language server that
+sometimes does is one editing surface with two owners. The whole-book answer the pull model
+gave is `build <dir> --check-only`, from a terminal.
 
 Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
 completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
@@ -205,9 +194,9 @@ What is left in the extension is what the protocol has no concept of:
   a draft) falls back to a single-file preview rather than to no preview. Because one preview now spans many documents, forward sync anchors on the page the
   client last reported via `tali-page`, and a cursor in another chapter sends `tali-navigate`
   first, then the cursor.
-- **Editor commands:** *Open Preview*, *Check This Document*, *Diagnose Setup*, *Insert Math
-  Symbol* (a picker over the same math vocabulary the completion uses, searchable by glyph),
-  *Restart Language Server*, *Show Language Server Log*.
+- **Editor commands:** *Open Preview*, *Reveal Cursor in Preview*, *Diagnose Setup*,
+  *Insert Math Symbol* (a picker over the same math vocabulary the completion uses,
+  searchable by glyph), *Restart Language Server*, *Show Language Server Log*.
 - **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
   The last of those carries the `onEnterRules` that continue a list or blockquote on Enter,
   keeping the marker the author chose. Ordered lists are deliberately *not* continued:

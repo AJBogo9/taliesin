@@ -97,7 +97,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 7 | Vocabulary contraction | **done** 2026-08-08 | `cut/wave-7-vocabulary` | **−5,703** (+788 / −6,491, 127 files) | 14 registered retirements in one commit; `DIV_FEATURE_CLASSES` 7 → **3**, `RETIRED_XREF_PREFIXES` 3 → **7**, shortcodes 3 → **2**; **−5,866 B of CSS off every page** |
 | 8 | CLI ergonomics + scaffolding | **done** 2026-08-08 | `cut/wave-8-cli-scaffolding` | **−2,349** (+397 / −2,746, 40 files, 16 deleted) | 10 verbs → **9, the ruling's target**; `doctor.rs` + `packages.rs` untouched as ruled; `dialoguer` gone; `init` templates 3 → **1**, `new` kinds 3 → **1** |
 | 9 | Diagnostics catalogue (keep lint front door) | **done** 2026-08-08 | `cut/wave-9-diagnostics` | **−4,957** (+1,288 / −6,245, 93 files, 13 deleted) | verbs stay **9**: `check` retired into `build --check-only`; `check.rs` → `lint.rs`, 1,189 → **620** impl lines; severity is a FIELD, the `TAL-*` catalogue is gone |
-| 10 | LSP long tail | not started | | | |
+| 10 | LSP long tail | **done** 2026-08-09 | `cut/wave-10-lsp` | **−9,838** (+180 / −10,018, 38 files, 17 deleted) | 16 advertised providers → **7**, custom methods 8 → **3**; every LSP **write path** is gone; binary **−415,712 B**; verbs stay **9** |
 | 11 | Serve layer, opened once | not started | | | only wave that opens `exec_pool.rs` |
 | 12 | Justification layer (corpus, docs, tests) | not started | | | genuinely last |
 | 13 | **`taliesin run`** (unadjudicated, 2,406 lines) | not started | | | needs an adjudication pass first |
@@ -1529,3 +1529,184 @@ the refused-theme message, `duplicate cross-reference label`, and the listing's
 `has no title:`. None fires anywhere in the corpus, so none was observable in the diff above,
 and all five are left at `Error` deliberately: preserving the old fall-through is a
 translation, and re-tuning severities is not a cut wave's job.
+
+### Wave 10, 2026-08-09, `cut/wave-10-lsp`
+
+**Measured reclaim: −9,838 lines** (`+180 / −10,018` over 38 files, **17 deleted outright**)
+against the ~9,105 estimate. By area: `crates/server/src` −7,606, `editor/vscode` −1,701,
+`crates/server/tests` −387, `docs/guide` −127, `docs/internals` −11, `crates/core/src` −9,
+root +3. `notes/` is excluded, as in every figure above.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **86 suites / 1,507
+passed / 0 failed / 0 ignored**, exit 0. Measure wave 11 against **1,507, two canaries and
+eight gates**; a bare `cargo test --workspace` gives the same figure. The 159-test drop from
+wave 9's 1,666 is the nine deleted modules' own suites plus the lsp.rs and lsp_stdio.rs
+blocks for the cut surfaces.
+
+**NINE CLI VERBS ARE STILL NINE, and no register entry was owed.** This wave retires
+protocol methods, not author vocabulary: a client that asks for `textDocument/rename` gets
+JSON-RPC `MethodNotFound`, which is the protocol's own answer and reaches the client with
+the method named in it. There is no `.tmd` file anywhere containing the string
+`textDocument/rename`, so there is no silence to prevent. That is the same reasoning wave 3
+recorded for `TAL-DEBUG-TRACE`.
+
+**SIXTEEN ADVERTISED PROVIDERS ARE NOW SEVEN, and every one of them answers a question.**
+Surviving: `completion`, `hover`, `definition`, `documentSymbol`, `codeAction`,
+`foldingRange`, `codeLens`, plus pushed `publishDiagnostics` and three namespaced
+extensions (`taliesin/cellRegions`, `siteMap`, `mathCommands`). Gone: `documentLink`,
+`rename` (with `prepareRename`), `formatting`, `inlayHint`, `documentHighlight`,
+`references`, `selectionRange`, `workspaceSymbol`, the 3.17 `diagnostic` pull model, and the
+five custom methods `sectionEdit` / `insertEdit` / `renameFileEdits` / `projectOutline` /
+`projectRefs`. **Five of those were write paths** (formatting, rename and the three
+edit-producing extensions), which is the real shape of this wave: the `.tmd` file is the
+single editing surface, the preview is forbidden from writing to it, and a language server
+that sometimes rewrote it was the same rule with a second owner.
+
+**BEHAVIOURAL VERIFICATION, over real stdio with the release binary, because a compile
+proves nothing here.** Driven against a scratch project with a broken `@fig-nope`, a
+`{python}` fence and a `:::` div, from a client that **declares pull support**:
+
+```
+providers: 7 ['codeActionProvider', 'codeLensProvider', 'completionProvider',
+              'definitionProvider', 'documentSymbolProvider', 'foldingRangeProvider',
+              'hoverProvider']
+diagnosticProvider present: False
+publishDiagnostics count: 1
+   diag: line 6 col 0  'broken cross-reference: @fig-nope (no such figure/section/…)'
+codeLens: err=None n=1        foldingRange: err=None n=4      cellRegions: err=None n=1
+rename / formatting / textDocument/diagnostic: error -32601 'unhandled request: …'
+```
+
+So the client that used to be answered by pull is answered by push instead, rather than
+falling silent, which was the risk of deleting `Transport` rather than keeping its Push
+arm. `cargo test -p taliesin-core` is unchanged pass-for-pass (576), as required.
+
+**Measured, not asserted.** Two `cargo build --release -p taliesin-server` runs into
+separate target dirs, same toolchain, `main` in a throwaway worktree against this branch:
+**30,791,664 → 30,375,952 bytes, −415,712 (−1.35%)**. Four times wave 9's binary win, from
+roughly twice the lines. **THE MOAT IS BYTE-IDENTICAL TO MAIN**, checked as an explicit
+`git diff --stat` over the path list: `crates/core/assets/`, `web-client/`,
+`serve_site/exec_pool.rs`, `freeze.rs`, `exec.rs`, `kernel.rs`, `diff.rs`. So this wave ships
+**no asset change at all** and there is no per-page byte win to report, the same shape as
+waves 8 and 9. The `data-*` census in `token_contract.rs` is likewise untouched, as expected
+for a wave that removes no emitter.
+
+**Seven things that were not true, or that the playbook did not know.** Same genus as waves
+1 to 9:
+
+1. **The compiler found four dead helpers in `lsp_nav.rs` and a whole struct pair in
+   `lsp_project.rs` that the plan never mentions.** `anchor_at`, `anchor_occurrences`,
+   `xref_occurrences`, `anchor_highlights` and `is_anchor_site` were rename's and document
+   highlight's alone; `ProjectHeading` and `ProjectUse` existed only for `workspace/symbol`
+   and `projectRefs`, so `ProjectScan` collapses from five fields to **one** (`anchors`) and
+   `walk` stops calling `lsp_outline::sections` and `xref_occurrences` per page. That is
+   ~400 lines the estimate did not carry, and none of it would have been flagged if these
+   had been `pub` in a lib rather than `pub(crate)` in a bin.
+2. **`Bibliography::contains` was `pub` in `taliesin-core` for `lsp_insert` alone, and
+   `pub` in a lib crate is invisible to dead-code analysis.** Its doc comment said so in
+   as many words ("Public because `taliesin lsp` needs it when the author pastes a BibTeX
+   entry"), which is the only reason it was findable. Deleted. `build.rs`'s `inside_repo`
+   was the same shape one crate over, and `pub(crate)` in a **bin** *is* checked, so that
+   one would have been caught anyway; it is now private. **The lesson for wave 11 and 12:
+   grep `crates/core/src` for doc comments justifying a `pub` by naming the consumer, before
+   trusting clippy to find the orphan.**
+3. **THE PLAYBOOK CONTRADICTS ITSELF ABOUT `lsp_trace.rs`, and one of the two is a wave-3
+   note.** Its line 344 says "NOT part of this bundle … Do not delete it: it is the only
+   method that can measure the LSP bundle", while wave 10's step 1 deletes it. Both are
+   right in their own place: line 344 sits under **wave 3's** "Must survive" list and exists
+   because phase-1 matched the file on the word *trace* and nearly swept it into the debug
+   cut. Once wave 10 executes, the instrument has nothing left to decide. It also never
+   measured anything: the 2026-08-07 audit records that `TALIESIN_LSP_TRACE` was **never
+   armed** and no trace file exists on this machine, so deleting it costs a capability that
+   produced zero observations in the four days it existed. Deleted, per the standing
+   directive.
+4. **A WIRE TEST WHOSE SUCCESS CONDITION IS "no error came back" DOES NOT PASS VACUOUSLY
+   HERE. IT FAILS, WHICH IS BETTER, AND THE FIX IS STILL NOT TO WEAKEN IT.** Wave 9's
+   lesson predicted the analogue and it landed on `a_cancelled_request_is_answered_rather_
+   than_run`, which drove `workspace/symbol` twice and asserted the *live* one came back
+   with `error: None`. After the cut that is `-32601`, so it failed loudly. Both cancellation
+   tests are re-pointed at `documentSymbol` (a request the server still handles) rather than
+   relaxed, and `read_batch`'s doc comment (which justified the whole feature on
+   `workspace/symbol`'s measured 167 ms walk) now says the measurement belonged to a method
+   that is gone and states the loop property on its own terms.
+5. **`server_capabilities()` has a mutation history and the obvious edit would have re-opened
+   it.** Its own gate records that **all twelve mutants survived the 2026-07-27 run, including
+   replacing the whole body with `Default::default()`**: a server advertising *nothing*
+   passed the entire suite. Deleting nine `assert_eq!`s from
+   `the_initialize_handshake_advertises_every_feature_the_editor_needs` would have shrunk the
+   only thing standing between that and a silent regression. The nine are **inverted instead**:
+   the test now asserts each retired provider key `is_null()`, so re-advertising one is a
+   decision that fails a test rather than a detail that arrives unnoticed.
+6. **`the_internals_capability_table` carried a wire-name-to-prose-name special case that
+   died with its capability.** `documentFormatting` → `formatting` was the one place the
+   advertised key and the book's row differed, and its comment explained that renaming the
+   row to satisfy the test would be "the test writing the documentation". With formatting
+   gone the mapping is the identity, so the special case is deleted rather than left as a
+   branch nothing takes. `advertised.len() >= 12` → `>= 7` per the plan; the sibling gate
+   `the_internals_book_documents_every_taliesin_namespaced_method` self-corrected to a floor
+   of 3, which is exactly the truth.
+7. **`RETIRED_COMMANDS`' `map` note had gone stale, and this is the second wave to catch that
+   class.** It read "nothing on the CLI; `taliesin lsp` answers the project outline in your
+   editor", and `taliesin/projectOutline` is one of the five methods this wave deletes.
+   `map`'s actual successor is `taliesin/siteMap`, which survives, so the note now names it.
+   Wave 8 recorded that a retirement note can go stale with every gate green; that is now a
+   measured recurrence, not a hypothesis. **Grep the registers for every name you remove,
+   including protocol names that no register mentions directly.**
+
+**The judgement call, and how it went.** `taliesin/mathCommands` and `taliesin/siteMap`
+survive alongside `cellRegions`, which is what the playbook's "five retired method consts,
+keeping only `CELL_REGIONS_METHOD`" arithmetic actually specifies (five of the eight, and the
+two survivors sit after the range). Both earn it on the doctrine rather than on affection:
+`siteMap` is what makes "Preview" open at the chapter you are editing instead of the book's
+cover, and deriving the URL in TypeScript is the second implementation the whole LSP rewrite
+existed to delete; `mathCommands` is the one shape completion cannot serve, because a symbol
+you cannot spell is unreachable by typing a prefix of it. `lsp_lens` survives on the recorded
+ground the plan names: `runcell.ts:9-14` records that a TypeScript `CodeLensProvider` already
+existed here and was deleted for the Rust one, so cutting the server lens regrows demonstrated
+pressure for the duplication CLAUDE.md forbids.
+
+**What was given up, stated plainly.**
+
+**Anchor maintenance in a long book is now entirely manual.** `references` and
+`renameFileEdits` were the only two capabilities in the tool that answered a question at the
+*book* boundary rather than the file boundary, which is the boundary a 25-chapter project is
+actually authored at, and `rename` went with them, so renaming a cross-reference anchor is
+now find-and-replace across the project, by hand, with nothing checking that the fragment on
+an external URL was left alone. That last rule was a real bug fixed once: accepting every `#`
+meant renaming a section also rewrote `[x](https://example.com/p.html#id)`, silently
+retargeting a fragment on someone else's page.
+
+**`lsp_format`'s whitespace-equivalence proof and `lsp_rename_file`'s two-link-spelling rules
+were investigations, not code.** The defence graded the irreversibility correctly:
+`inlayHint`, `documentLink`, `selectionRange` and `documentHighlight` are thin projections of
+surviving machinery and cost a weekend each to rebuild, but re-deriving the other two means
+re-running the investigation. Everything is recoverable in full from the `pre-cut` tag.
+
+**The Problems panel now shows the chapters you have open, and nothing else.**
+`workspace/diagnostic` was the only way to list the whole book from inside the editor. The
+replacement is `build <dir> --check-only` from a terminal, which is the same findings and is
+where the author already runs them before publishing. But it is a command you remember to
+type, not a panel that is already correct. `docs/guide/reference/cli.tmd` now says that
+plainly rather than promising the panel.
+
+**The companion loses five author-facing gestures**, all of which were genuinely useful and
+none of which was language intelligence: paste an image (figure block + caption cursor), paste
+a spreadsheet (aligned pipe table), paste a BibTeX entry (`[@key]` + a `.bib` append as one
+undo), drop a file (a reference the build can ship, with the containment verdict `build`
+itself applies), and rename a `.tmd` (every inbound reference repaired inside VS Code's rename
+transaction). The four structural commands (move section up/down, promote/demote heading) go
+with them: they were the sanctioned replacement for the drag-to-reorder gesture removed for
+breaking the single-editing-surface rule, and the honest reading is that the rule takes them
+too. The **Project** sidebar (outline in reading order, cross-references with their uses and
+the dangling ones grouped, the numbered-float index) is gone as a read-only view that cost two
+custom methods, a `TreeView` and 694 lines of TypeScript to project answers the server was
+already computing.
+
+**Two gates got weaker in a way worth naming.** `crates/server/tests/lsp_stdio.rs` drops from
+13 wire tests to 8, and the e2e suite loses the paste/drop and rename-repair suites entirely.
+Those were the tests only a real Extension Host could write, and the capabilities they covered
+are gone, so nothing is left unguarded. But `missing_input_suggests.rs`-style arithmetic
+applies here too: the *surviving* wire tests are now a larger fraction of a smaller surface,
+and each survivor's success condition was re-read rather than trusted by name.

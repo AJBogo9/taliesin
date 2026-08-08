@@ -41,15 +41,15 @@ grammar is **AGPL-3.0** and is not used.
 ## Language intelligence: a client over `taliesin lsp`
 
 **The extension implements no language features of its own.** Completion, hover,
-go-to-definition, document links, the outline, diagnostics, quick fixes and rename all come
-from `taliesin lsp` — the offline, kernel-free LSP server built into the binary
+go-to-definition, the outline, folding, the Run-Cell lens, diagnostics and quick fixes all
+come from `taliesin lsp`, the offline, kernel-free LSP server built into the binary
 (`crates/server/src/lsp*.rs`) — over stdio. `src/client.ts` is the whole client.
 
 It used to be otherwise: every one of those was re-implemented here in TypeScript, shelling
 out to `taliesin`'s own CLI verbs, while the Rust server that already did all of it
 went unused. `lsp_complete.rs` still describes itself as "a Rust port of the companion's
 `complete.ts`". Nothing gated the two against each other and they had already drifted — the
-server had a `:` completion trigger and rename that the companion never gained. One
+server had a `:` completion trigger the companion never gained. One
 implementation, in the language that owns the vocabulary, is the only version of this that
 stays true, and every other LSP editor (Neovim, Helix, Zed: `cmd = { "taliesin", "lsp" }`)
 gets each feature at the same moment VS Code does.
@@ -82,8 +82,8 @@ Two things the LSP has no concept of:
 - **The live preview + bidirectional source sync** (`server.ts`, `webview.ts`, the
   `openPreview` half of `extension.ts`). It owns a webview, spawns `taliesin preview`, and
   bridges click-to-source.
-- **Editor commands** (`commands.ts`): *Check This Document*, *Diagnose Setup (doctor)*,
-  *Insert Math Symbol*, *Restart Language Server*, *Show Language Server Log*.
+- **Editor commands** (`commands.ts`): *Diagnose Setup (doctor)*, *Insert Math Symbol*,
+  *Restart Language Server*, *Show Language Server Log*.
 
 Plus the parts that are pure manifest: the grammar, the snippets, and
 `language-configuration.json`.

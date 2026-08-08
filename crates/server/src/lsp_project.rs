@@ -25,43 +25,13 @@ pub(crate) struct ProjectAnchor {
     pub path: PathBuf,
     /// 0-based line of the defining site.
     pub line: u32,
-    /// The heading's text when the anchor sits on one; empty otherwise.
-    pub title: String,
     /// The rendered section number for a numbered chapter heading; empty otherwise.
     pub number: String,
 }
 
-/// One heading on one page, for workspace symbols and the whole-book outline.
-pub(crate) struct ProjectHeading {
-    pub path: PathBuf,
-    /// 0-based line of the heading.
-    pub line: u32,
-    pub level: u8,
-    pub text: String,
-}
-
-/// One `@`-sigil reference, resolved or not. A use whose `id` matches no [`ProjectAnchor`] is
-/// dangling, which is exactly what the References view groups.
-pub(crate) struct ProjectUse {
-    pub id: String,
-    pub path: PathBuf,
-    /// 0-based line and scalar column.
-    pub line: u32,
-    pub col: u32,
-}
-
 /// One walk's result.
 pub(crate) struct ProjectScan {
-    pub root: PathBuf,
     pub anchors: Vec<ProjectAnchor>,
-    pub headings: Vec<ProjectHeading>,
-    pub uses: Vec<ProjectUse>,
-    /// The project's declared reading order — `_site.yml`'s top-level `chapters:` (the native
-    /// schema is flat; `book: chapters:` is how it is written ABOUT, not in) resolved into page
-    /// paths, parts flattened away. **Empty for a website**, which declares no order at all;
-    /// that is the difference between "not in the list" and "there is no list", and the
-    /// outline needs both. Drafts are included: you are editing them.
-    pub reading_order: Vec<PathBuf>,
 }
 
 /// What a page looked like when it was last walked: enough to notice an edit without
@@ -71,9 +41,9 @@ type Stamp = (PathBuf, Option<std::time::SystemTime>, u64);
 /// The stat-validated memo described in the module docs, keyed by project root.
 ///
 /// Keyed rather than single-entry because an editor routinely has files from more than one
-/// project open at once (a chapter of the guide beside a corpus document), and workspace
-/// symbols searches **every** open project. A single entry would re-walk both on every
-/// keystroke of a Ctrl+T query, turning the memo into pure overhead exactly when it matters.
+/// project open at once (a chapter of the guide beside a corpus document). A single entry
+/// would re-walk both whenever the author moved between them, turning the memo into pure
+/// overhead exactly when it matters.
 pub(crate) struct ProjectCache {
     entries: HashMap<PathBuf, (ProjectScan, Vec<Stamp>)>,
     /// How many real walks have happened. Test-visible so the memo cannot be decoration.
@@ -112,24 +82,6 @@ impl ProjectCache {
             self.walks += 1;
         }
         self.entries.get(&root).map(|(scan, _)| scan)
-    }
-
-    /// The distinct project roots among `pages`, in a stable order.
-    ///
-    /// Workspace symbols needs this because the `workspace/symbol` request names **no file**:
-    /// picking one open document to stand for "the project" silently searches whichever
-    /// document happened to be first, which with two projects open is a coin flip. Answering
-    /// for every open project is the only behaviour an author can predict.
-    pub(crate) fn roots_of<'a>(pages: impl Iterator<Item = &'a Path>) -> Vec<PathBuf> {
-        let mut roots: Vec<PathBuf> = pages
-            .filter_map(|p| {
-                p.parent()
-                    .and_then(taliesin_core::site::enclosing_site_root_across_git)
-            })
-            .collect();
-        roots.sort();
-        roots.dedup();
-        roots
     }
 }
 
@@ -224,40 +176,10 @@ pub(crate) fn site_map(sites: &mut SiteCache, root: &Path) -> Option<serde_json:
     Some(serde_json::json!({ "pages": pages }))
 }
 
-/// Every page of the project rooted at `root`, plus one number standing for the state of
-/// every input its diagnostics depend on.
-///
-/// The caller is `workspace/diagnostic`, which has to name the pages **nobody has opened** —
-/// that is the whole point of the pull model — and so cannot get them from the open-buffer
-/// store. It is answered on a client poll (`vscode-languageclient` re-asks every 2 s), so the
-/// two halves come back from **one** walk: asking for the pages and the stamp separately read
-/// the directory tree twice per poll for no gain.
-///
-/// The stamp is deliberately **project-wide** rather than per-page. A cross-page `@sec-` makes
-/// every page's answer depend on every other page and on `_site.yml`, so a per-page stamp would
-/// answer `Unchanged` for chapter 12 after chapter 3 renamed the heading it links to. It is the
-/// same `(path, mtime, len)` data [`stamps_for`] validates the memos with, so the report and
-/// the caches cannot disagree about what counts as a change.
-pub(crate) fn pages_and_stamp(root: &Path) -> (Vec<PathBuf>, u64) {
-    let stamps = stamps_for(root);
-    let mut acc = String::new();
-    for (path, mtime, len) in &stamps {
-        let nanos = mtime
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        acc.push_str(&format!("{}:{len}:{nanos}\n", path.display()));
-    }
-    // `stamps_for` puts `_site.yml` first and the pages after it; only the pages are pages.
-    let pages = stamps.into_iter().skip(1).map(|(p, _, _)| p).collect();
-    (pages, taliesin_core::hash::fnv1a(&acc))
-}
-
 /// `(path, mtime, len)` for every page, in `collect_pages` order so two runs compare equal.
 ///
-/// `_site.yml` is stamped alongside the pages because the scan now carries the book's reading
-/// order, which lives in that file and in no page. Without it, moving a chapter in `chapters:`
-/// would leave the outline showing the old order until some unrelated page happened to change.
+/// `_site.yml` is stamped alongside the pages because every rule that reads the project config
+/// changes what a page's diagnostics should say without the page itself changing.
 fn stamps_for(root: &Path) -> Vec<Stamp> {
     let mut inputs = vec![root.join("_site.yml")];
     taliesin_core::site::collect_pages(root, &mut inputs);
@@ -272,30 +194,13 @@ fn stamps_for(root: &Path) -> Vec<Stamp> {
         .collect()
 }
 
-/// Read every page once and collect all three views of it. Includes are resolved first, so
-/// an anchor authored in an `_includes/` partial belongs to whichever page includes it,
-/// exactly as the render pipeline and `anchors_defined_elsewhere_in_project` both do.
+/// Read every page once and collect the project's cross-reference anchors. Includes are
+/// resolved first, so an anchor authored in an `_includes/` partial belongs to whichever page
+/// includes it, exactly as the render pipeline and `anchors_defined_elsewhere_in_project` do.
 fn walk(root: &Path) -> ProjectScan {
     let mut inputs = Vec::new();
     taliesin_core::site::collect_pages(root, &mut inputs);
-    // The reading order comes from the one place that already resolves it — the same `Book`
-    // the drawer and prev/next are built from — rather than a second reading of `chapters:`
-    // that could disagree about nested parts or label overrides. `Include` because a draft
-    // chapter is one you are in the middle of writing, and dropping it from the outline hides
-    // exactly the page you have open.
-    let reading_order = taliesin_core::Site::discover_with(root, taliesin_core::DraftMode::Include)
-        .book
-        .map(|b| {
-            b.entries
-                .iter()
-                .filter(|e| e.part.is_none() && !e.url.is_empty())
-                .map(|e| root.join(&e.rel))
-                .collect()
-        })
-        .unwrap_or_default();
     let mut anchors = Vec::new();
-    let mut headings = Vec::new();
-    let mut uses = Vec::new();
     let mut seen: HashMap<String, ()> = HashMap::new();
 
     for input in inputs {
@@ -316,35 +221,12 @@ fn walk(root: &Path) -> ProjectScan {
                     // `scan_page_anchors` reports a 1-based line; everything on the LSP wire
                     // is 0-based.
                     line: a.line.saturating_sub(1) as u32,
-                    title: a.title,
                     number: a.number,
                 });
             }
         }
-        for s in crate::lsp_outline::sections(&src) {
-            headings.push(ProjectHeading {
-                path: input.clone(),
-                line: s.start_line as u32,
-                level: s.level,
-                text: s.title,
-            });
-        }
-        for (id, line, col) in crate::lsp_nav::xref_occurrences(&src) {
-            uses.push(ProjectUse {
-                id,
-                path: input.clone(),
-                line,
-                col,
-            });
-        }
     }
-    ProjectScan {
-        root: root.to_path_buf(),
-        anchors,
-        headings,
-        uses,
-        reading_order,
-    }
+    ProjectScan { anchors }
 }
 
 #[cfg(test)]
@@ -421,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn the_walk_collects_anchors_headings_and_uses_across_every_page() {
+    fn the_walk_collects_anchors_across_every_page() {
         let root = fixture("collect");
         let mut cache = ProjectCache::new();
         let scan = cache.get(&root.join("index.tmd")).unwrap();
@@ -429,21 +311,6 @@ mod tests {
         let mut ids: Vec<&str> = scan.anchors.iter().map(|a| a.id.as_str()).collect();
         ids.sort_unstable();
         assert_eq!(ids, vec!["fig-one", "sec-two"], "anchors from BOTH pages");
-
-        assert!(
-            scan.headings
-                .iter()
-                .any(|h| h.text == "Deeper" && h.level == 2),
-            "headings come from every page, not just the one asked about"
-        );
-
-        let mut used: Vec<&str> = scan.uses.iter().map(|u| u.id.as_str()).collect();
-        used.sort_unstable();
-        assert_eq!(used, vec!["fig-gone", "fig-one", "sec-two"]);
-        assert!(
-            scan.uses.iter().any(|u| u.id == "fig-gone"),
-            "a dangling use is collected, not dropped: the References view groups them"
-        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -455,7 +322,6 @@ mod tests {
         let a = scan.anchors.iter().find(|a| a.id == "sec-two").unwrap();
         assert!(a.path.ends_with("ch/two.tmd"));
         assert_eq!(a.line, 0, "0-based line of the defining heading");
-        assert_eq!(a.title, "Two");
 
         // A definition that is NOT on line 1, so an off-by-one cannot pass by coincidence.
         let f = scan.anchors.iter().find(|a| a.id == "fig-one").unwrap();

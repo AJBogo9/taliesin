@@ -19,22 +19,13 @@ mod lsp;
 mod lsp_cells;
 mod lsp_complete;
 mod lsp_diag;
-mod lsp_edits;
 mod lsp_fold;
-mod lsp_format;
-mod lsp_hints;
-mod lsp_insert;
 mod lsp_lens;
-mod lsp_links;
 mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
 mod lsp_project;
-mod lsp_refs;
-mod lsp_rename_file;
-mod lsp_select;
-mod lsp_trace;
 mod minify;
 mod packages;
 mod preview_diag;
@@ -152,7 +143,7 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
     ("read", "nothing; read the `.tmd` source"),
     (
         "map",
-        "nothing on the CLI; `taliesin lsp` answers the project outline in your editor",
+        "nothing on the CLI; `taliesin lsp` answers `taliesin/siteMap` for your editor",
     ),
     (
         "features",

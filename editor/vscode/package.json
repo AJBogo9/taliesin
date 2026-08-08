@@ -171,26 +171,6 @@
         "command": "taliesin.insertMathSymbol",
         "title": "Insert Math Symbol",
         "category": "Taliesin"
-      },
-      {
-        "command": "taliesin.moveSectionUp",
-        "title": "Move Section Up",
-        "category": "Taliesin"
-      },
-      {
-        "command": "taliesin.moveSectionDown",
-        "title": "Move Section Down",
-        "category": "Taliesin"
-      },
-      {
-        "command": "taliesin.promoteHeading",
-        "title": "Promote Heading (fewer #)",
-        "category": "Taliesin"
-      },
-      {
-        "command": "taliesin.demoteHeading",
-        "title": "Demote Heading (more #)",
-        "category": "Taliesin"
       }
     ],
     "menus": {
@@ -229,30 +209,6 @@
         "command": "taliesin.revealInPreview",
         "key": "ctrl+alt+j",
         "mac": "cmd+alt+j",
-        "when": "editorLangId == taliesin && editorTextFocus"
-      },
-      {
-        "command": "taliesin.moveSectionUp",
-        "key": "ctrl+alt+u",
-        "mac": "cmd+alt+u",
-        "when": "editorLangId == taliesin && editorTextFocus"
-      },
-      {
-        "command": "taliesin.moveSectionDown",
-        "key": "ctrl+alt+d",
-        "mac": "cmd+alt+d",
-        "when": "editorLangId == taliesin && editorTextFocus"
-      },
-      {
-        "command": "taliesin.promoteHeading",
-        "key": "ctrl+alt+[",
-        "mac": "cmd+alt+[",
-        "when": "editorLangId == taliesin && editorTextFocus"
-      },
-      {
-        "command": "taliesin.demoteHeading",
-        "key": "ctrl+alt+]",
-        "mac": "cmd+alt+]",
         "when": "editorLangId == taliesin && editorTextFocus"
       }
     ],
@@ -299,24 +255,6 @@
           "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
         }
       }
-    },
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "taliesin",
-          "title": "Taliesin",
-          "icon": "icons/sidebar.svg"
-        }
-      ]
-    },
-    "views": {
-      "taliesin": [
-        {
-          "id": "taliesin.project",
-          "name": "Project",
-          "contextualTitle": "Taliesin: outline, cross-references and floats"
-        }
-      ]
     },
     "taskDefinitions": [
       {

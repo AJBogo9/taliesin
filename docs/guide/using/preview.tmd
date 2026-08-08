@@ -76,15 +76,6 @@ completion cannot suggest something the validator would reject.
   `title=`, `collapse=`, `icon=` and `appearance=`; a plain div offers `layout-ncol=`.
   A `.lemma` is *not* offered `collapse=`, because only `proof` has a collapse branch and
   suggesting it elsewhere would be recommending something that renders no differently.
-- **Format Document** tidies pipe tables (columns padded to their widest cell, alignment
-  markers preserved) and removes whitespace that renders as nothing: trailing spaces that
-  are not a hard line break, runs of three or more blank lines, a missing or doubled final
-  newline. **Your prose is never re-wrapped**, no line is re-indented, no emphasis marker is
-  normalized: the rule is that formatting cannot change one byte of the rendered page, which
-  is checked against every document in this repository on every build. A table with a row
-  longer than its header is left exactly as written, because tidying it would mean deleting
-  your text, and anything inside a code fence or an indented code block is left alone
-  because there a trailing space may be yours on purpose.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
 - **Insert Math Symbol** (`Ctrl+Alt+M`) searches the math vocabulary by name, glyph or
@@ -93,89 +84,21 @@ completion cannot suggest something the validator would reject.
   extension installed. Outside VS Code, wire the same schema up with one comment line
   (see [Configuration](../reference/configuration.tmd)).
 
-### Restructuring without retyping
+### What the document's structure gets you
 
-Four commands move whole sections around, as edits to the `.tmd` **buffer**. Put the cursor
-anywhere in a section and:
+Neither of these needs a preview window open, and neither is specific to VS Code: they
+are the protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or Zed too.
 
-| Command | Key | What it does |
-|---|---|---|
-| Move Section Up | `Ctrl+Alt+U` | swaps the section with the one before it |
-| Move Section Down | `Ctrl+Alt+D` | swaps it with the one after it |
-| Promote Heading | `Ctrl+Alt+[` | `###` becomes `##`, and everything nested under it rises too |
-| Demote Heading | `Ctrl+Alt+]` | `##` becomes `###`, with its subtree |
-
-A "section" is the heading your cursor is in plus everything down to the next heading of the
-same or shallower level, so a move takes the subsections with it. The cursor rides along, on
-the same line of the same section, which is what lets you press the key twice to move
-something two places.
-
-They move **siblings only**. A `###` that is the last subsection of its `##` will not step
-down past that boundary, because doing so would quietly change which chapter it belongs to;
-you get a message naming the two sections instead. Promote refuses at `#` and demote refuses
-at `######` for the same reason: those are Markdown's ends, not ours.
-
-That is deliberate: the drag-to-reorder
-gesture the preview once had was removed for making the preview a second editing surface,
-and this is the same operation done in the place that owns the file.
-
-### What a reference resolves to, without leaving the line
-
-Four of these answer a question you would otherwise have to scroll to answer. None of
-them needs a preview window open, and none is specific to VS Code — they are the
-protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or Zed too.
-
-- **Inlay hints** put the *resolved* value in dim text just past the thing that resolves,
-  so `@fig-scree` reads `@fig-scree ⟨1⟩`, `[@bishop2006]` reads `[@bishop2006] ⟨Bishop
-  2006⟩`, and an `{{< include >}}` reads `⟨42 lines⟩`. This is the answer to "which figure
-  *is* that, and did I mean the other one" without jumping. A reference whose anchor lives
-  in **another chapter** is perfectly valid but has no number on this page, and it gets
-  **no hint at all** rather than a placeholder: a missing hint reads as "no information",
-  where `⟨elsewhere⟩` would read as a claim.
 - **Folding** follows the document's own structure instead of indentation. Front matter,
   each heading down to the next of equal or shallower level, `:::` divs and code fences
   each fold as a unit. Without it an editor folds `.tmd` by *indentation*, which means
   nothing in a format whose nesting is heading level and fences: collapsing a chapter to
   its headings is the point.
-- **Highlight** marks the anchor under your cursor everywhere it occurs, its definition as
-  a write and every reference as a read, so putting the caret on `fig-scree` shows you
-  every place that figure is cited.
-- **Expand selection** (`Alt+Shift+→` in VS Code) grows by structure rather than by the
-  editor's word heuristics: word, then the enclosing inline construct, then the paragraph,
-  then the `:::` div, then the whole section. Shrink with `Alt+Shift+←`.
-
-::: {.callout-note}
-## Inlay hints are on unless you turn them off
-
-`editor.inlayHints.enabled` defaults to `on` in VS Code, so the `⟨…⟩` annotations appear
-without opting in. If you want them only when you ask, set it to `offUnlessPressed`, which
-shows them while `Ctrl+Alt` is held.
-:::
-
-### The rest of the book, from inside one chapter
-
-A book is one project, but an editor shows you one file. These four close that gap. Like
-the ones above, the first two are the protocol rather than the extension, so any LSP editor
-gets them.
-
 - **Go to definition crosses files.** `F12` on `@sec-priors` jumps to the chapter that
   defines it, not just to a definition in the file you are in. Your **open buffer still
   wins**: an anchor you just typed and have not saved resolves to where you typed it, never
   to the older copy on disk. Hovering a cross-chapter reference names the page that defines
   it, since the *number* belongs to that page and is not known here.
-- **Go to symbol in workspace** (`Ctrl+T`) reaches every heading and every anchor in the
-  project, so you can jump to a section six chapters away without first remembering which
-  file it lives in.
-- **The Taliesin sidebar** is one read-only view, **Project**, with three groups.
-  **Outline** leads and opens: the whole book as one tree in *reading* order (your
-  `chapters:` list, not alphabetical), with the chapter you are editing open and the rest
-  one row each, and any page the book never named gathered under **Unlisted** rather than
-  quietly dropped. **References** holds every cross-reference target with what points at
-  it, dangling ones grouped separately and open, so a broken link is visible without
-  running anything. **Figures & Tables** is the numbered-float index. Each group states
-  its size on its own row, so the two that start collapsed still answer at a glance, and
-  the view carries VS Code's **Collapse All** button. Clicking a row navigates. Nothing in
-  the sidebar edits, and nothing reorders: the `.tmd` is the only editing surface.
 
 ### Build and check without leaving the editor
 
@@ -229,10 +152,9 @@ Amplitudes: Turning the Constraint Into a Free Lunch        148w
 ```
 
 A section is the heading **plus everything down to the next heading of the same or
-shallower level**, which is the same definition the outline and Move Section Down
-use, so the three never disagree about where a section ends. That does mean a chapter
-counts its own subsections: the numbers are for judging one section's weight, not for
-adding up.
+shallower level**, which is the same definition the editor's outline and folding use,
+so the three never disagree about where a section ends. That does mean a chapter counts
+its own subsections: the numbers are for judging one section's weight, not for adding up.
 
 The badges are the same findings the diagnostics list shows, placed where they
 happened: `✗` errors and `⚠` warnings whose source line falls inside that section, so

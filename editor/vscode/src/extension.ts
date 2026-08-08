@@ -14,10 +14,7 @@ import {
 import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
-import { registerInsertProviders } from "./insert";
-import { registerRenameRepair } from "./rename";
 import { registerTerminalLinks } from "./termlinks";
-import { registerSidebar } from "./sidebar";
 import { registerTasks } from "./tasks";
 import { registerRunCell } from "./runcell";
 import { registerDoctorHint } from "./doctorhint";
@@ -29,8 +26,8 @@ const previews = new PreviewRegistry();
 
 // The companion is two halves that do not overlap:
 //
-//   1. Language intelligence — completion, hover, go-to-definition, document links,
-//      symbols, diagnostics, quick fixes, rename. All of it lives in `taliesin lsp`
+//   1. Language intelligence: completion, hover, go-to-definition, symbols, folding,
+//      code lenses, diagnostics and quick fixes. All of it lives in `taliesin lsp`
 //      (Rust), and `client.ts` is the whole client. Adding a feature means adding it in
 //      the engine, where the vocabulary already is, and every other editor gets it too.
 //
@@ -78,19 +75,8 @@ export function activate(context: vscode.ExtensionContext) {
   registerLanguageClient(context);
   registerCommands(context);
   registerRunCell(context);
-  // The third half, and it is neither of the two above: paste and drop are edits the AUTHOR makes
-  // in the editing surface, so they are not preview write-back, and they are not language features
-  // either. The gesture is VS Code's; every string they insert comes from the server.
-  registerInsertProviders(context);
-  // Renaming a .tmd is the same kind of thing: an author-initiated edit whose knowledge lives in
-  // the server. The repair rides VS Code's rename transaction, so it is one undo.
-  registerRenameRepair(context);
-  // And the smallest of the three: a diagnostic location in the terminal becomes clickable.
+  // The smallest surface here: a diagnostic location in the terminal becomes clickable.
   registerTerminalLinks(context);
-  // One read-only view over the whole project: outline, cross-references, floats. A `TreeView`
-  // is one of the few surfaces LSP has no concept of, but every row in it is a projection of
-  // what the server replied, and every row navigates: nothing here writes to a document.
-  registerSidebar(context);
   // The project lint and `build` as tasks, so project-wide findings reach the Problems panel
   // for files that are not open. The language server only ever diagnoses buffers it has been
   // sent. (Explorer badges showing each file's worst severity went on 2026-08-08: they re-lint

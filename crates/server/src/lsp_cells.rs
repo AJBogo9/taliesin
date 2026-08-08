@@ -67,33 +67,6 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
     out
 }
 
-/// One `true` per line of `text`: is this line part of a fenced code block (the fence lines
-/// themselves included)?
-///
-/// Shared with the table formatter so "what is code" has one implementation here rather than
-/// a second regex somewhere else — the same reason `cell_regions` reuses core's
-/// `option_directive`. A pipe table shown *inside* a fence is an example of one, and
-/// reformatting it would rewrite documentation about tables into a table.
-pub(crate) fn code_line_mask(text: &str) -> Vec<bool> {
-    let lines: Vec<&str> = text.split('\n').collect();
-    let mut mask = vec![false; lines.len()];
-    let mut i = 0;
-    while i < lines.len() {
-        let Some((marker, width, _)) = fence_open(lines[i]) else {
-            i += 1;
-            continue;
-        };
-        // An unclosed fence runs to the end of the document, which is also how the renderer
-        // treats it — so an author mid-edit does not get their prose reformatted.
-        let close = close_line(&lines, i + 1, marker, width).unwrap_or(lines.len() - 1);
-        for m in mask.iter_mut().take(close + 1).skip(i) {
-            *m = true;
-        }
-        i = close + 1;
-    }
-    mask
-}
-
 /// `(marker char, run width, info string)` for a line that opens a fence, else `None`.
 fn fence_open(line: &str) -> Option<(char, usize, &str)> {
     let t = line.trim_start();

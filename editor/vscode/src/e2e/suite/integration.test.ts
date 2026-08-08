@@ -5,7 +5,6 @@ import * as http from "node:http";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { dropProvider } from "../../insert";
 import { runTask } from "../../runcell";
 import { kernelFailure } from "../../kernelfail";
 
@@ -63,10 +62,6 @@ suite("Taliesin companion (integration)", () => {
       "taliesin.doctor",
       "taliesin.insertMathSymbol",
       "taliesin.revealInPreview",
-      "taliesin.moveSectionUp",
-      "taliesin.moveSectionDown",
-      "taliesin.promoteHeading",
-      "taliesin.demoteHeading",
       // The CodeLens buttons are inert if these are not registered: VS Code renders the
       // button and reports "command not found" on click.
       "taliesin.runCell",
@@ -311,38 +306,6 @@ suite("Taliesin companion (integration)", () => {
     assert.ok(values.includes("true"), `\`echo:\` should offer true/false: ${values}`);
   });
 
-  test("paints a document link on an `{{< include >}}` path", async () => {
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(INCLUDE_DOC));
-    await vscode.window.showTextDocument(doc);
-    const line = doc
-      .getText()
-      .split("\n")
-      .findIndex((l) => l.trim().startsWith("{{< include"));
-    assert.ok(line >= 0, "fixture must contain an include directive");
-
-    // Links arrive from the server, so poll rather than assume the first call is answered.
-    const hit = await waitForValue(async () => {
-      const links = (await vscode.commands.executeCommand(
-        "vscode.executeLinkProvider",
-        doc.uri
-      )) as vscode.DocumentLink[];
-      return links?.find((l) => l.range.start.line === line);
-    }, 15000);
-
-    assert.ok(hit, `expected a document link on line ${line}`);
-    assert.ok(hit!.target, "the link must carry a target uri");
-    assert.ok(
-      hit!.target!.fsPath.endsWith("subsections/_introduction.tmd"),
-      `link should point at the included file, got ${hit!.target!.fsPath}`
-    );
-    // The link spans the path token only, not the whole `{{< … >}}` directive.
-    const text = doc.lineAt(line).text;
-    assert.equal(
-      text.slice(hit!.range.start.character, hit!.range.end.character),
-      "subsections/_introduction.tmd"
-    );
-  });
-
   test("hovering an `{{< include >}}` path says where it goes", async () => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(INCLUDE_DOC));
     await vscode.window.showTextDocument(doc);
@@ -461,69 +424,6 @@ suite("Taliesin companion (integration)", () => {
       assert.ok(
         text.includes("![\\alpha + \\beta]"),
         `a rasterized hover must keep the source as alt text: ${text.slice(0, 80)}`
-      );
-    }
-  });
-
-  test("renames a cross-reference anchor and every reference to it", async () => {
-    // Rename existed in the server the whole time and the companion never exposed it; it is
-    // the clearest proof that the editor is now driven by the server rather than by a
-    // parallel TypeScript copy.
-    const doc = await vscode.workspace.openTextDocument({
-      language: "taliesin",
-      content: "---\ntitle: T\n---\n\n# Intro {#sec-intro}\n\nSee @sec-intro and @sec-intro.\n",
-    });
-    await vscode.window.showTextDocument(doc);
-    const edit = await waitForValue(
-      async () =>
-        (await vscode.commands.executeCommand(
-          "vscode.executeDocumentRenameProvider",
-          doc.uri,
-          new vscode.Position(4, 10), // inside `sec-intro` in the heading anchor
-          "sec-overview"
-        )) as vscode.WorkspaceEdit | undefined,
-      15000
-    );
-    assert.ok(edit, "rename should return a workspace edit");
-    assert.equal(
-      edit!.get(doc.uri).length,
-      3,
-      "the definition and both references should be rewritten"
-    );
-  });
-
-  test("Format Document tidies a table and leaves the prose alone", async () => {
-    const doc = await vscode.workspace.openTextDocument({
-      language: "taliesin",
-      content: "---\ntitle: T\n---\n\nA | pipe in prose.\n\n|a|long|\n|-|-:|\n|1|2|\n",
-    });
-    await vscode.window.showTextDocument(doc);
-    const edits = await waitForValue(
-      async () =>
-        (await vscode.commands.executeCommand(
-          "vscode.executeFormatDocumentProvider",
-          doc.uri
-        )) as vscode.TextEdit[] | undefined,
-      15000
-    );
-    assert.ok(edits && edits.length > 0, "formatting should return edits");
-    // Assert on the APPLIED result, not on the edit list: VS Code minimizes a formatter's
-    // edits before handing them back, so the one edit the server sent over the wire (pinned
-    // in `crates/server/tests/lsp_stdio.rs`) can arrive here split into several.
-    const wsEdit = new vscode.WorkspaceEdit();
-    wsEdit.set(doc.uri, edits!);
-    assert.ok(await vscode.workspace.applyEdit(wsEdit), "edits should apply");
-    assert.equal(
-      doc.getText(),
-      "---\ntitle: T\n---\n\nA | pipe in prose.\n\n" +
-        "| a   | long |\n| --- | ---: |\n| 1   |    2 |\n"
-    );
-    // The paragraph on line 4 also contains a pipe. A formatter that reached it would be
-    // rewriting prose into a table, which is the one failure this feature must not have.
-    for (const e of edits!) {
-      assert.ok(
-        e.range.start.line > 5,
-        `no edit may reach the prose above the table: ${e.range.start.line}`
       );
     }
   });
@@ -651,78 +551,6 @@ suite("Taliesin companion (integration)", () => {
       .flatMap((g) => g.tabs)
       .filter((t) => t.input instanceof vscode.TabInputWebview && t.label === "Preview: demo-book");
     await vscode.window.tabGroups.close(mine);
-  });
-
-  // --- Structural commands (backlog item 165) -----------------------------------------
-  //
-  // `lsp_edits.rs` owns the transforms and proves them on text. What only a real Extension
-  // Host can prove is the half that lives here: that VS Code applied the server's edits to
-  // the buffer and then put the caret where the section went. A wrong caret is not a
-  // cosmetic bug for these commands — the next keypress acts on whatever section the caret
-  // is in, so an off-by-one turns "move this down twice" into moving two different sections.
-
-  test("moves a section, with its subtree, and takes the caret with it", async () => {
-    const doc = await vscode.workspace.openTextDocument({
-      language: "taliesin",
-      content: "## Alpha\n\nalpha body\n\n### Child\n\nchild body\n\n## Beta\n\nbeta body\n",
-    });
-    const editor = await vscode.window.showTextDocument(doc);
-    // Caret on "alpha body", inside the section but not on its heading.
-    editor.selection = new vscode.Selection(2, 3, 2, 3);
-
-    await vscode.commands.executeCommand("taliesin.moveSectionDown");
-
-    assert.strictEqual(
-      doc.getText(),
-      "## Beta\n\nbeta body\n\n## Alpha\n\nalpha body\n\n### Child\n\nchild body\n",
-      "Alpha and its `### Child` should have moved below Beta as one block"
-    );
-    // Alpha's heading is now line 4, so the caret's line-2 offset into the section lands on
-    // line 6 — still on "alpha body", the line the author was editing.
-    assert.strictEqual(editor.selection.active.line, 6);
-    assert.strictEqual(
-      doc.lineAt(editor.selection.active.line).text,
-      "alpha body",
-      "the caret should still be on the line it started on"
-    );
-    assert.strictEqual(editor.selection.active.character, 3, "the column should survive");
-
-    // Deliberately NOT asserted here: that Ctrl+Z restores the order in one step. The
-    // property is real and is why the command applies ONE `WorkspaceEdit` rather than an
-    // edit per heading (see `applySectionEdit`), but `executeCommand("undo")` acts on
-    // whatever the workbench considers focused and resolves when the command is invoked
-    // rather than when the buffer settles — polling for the restored text still failed at
-    // load ~3. Asserting it here would have shipped a flake that reads as a product bug.
-  });
-
-  test("promotes a heading with its descendants and leaves every other line alone", async () => {
-    // No section after Alpha's subtree, so promote/demote is a true round trip here. With a
-    // `## Beta` following, promoting Alpha to `#` would adopt Beta as a child and demoting
-    // would take it down too — see `promoting_adopts_a_following_sibling…` in lsp_edits.rs.
-    const content = "## Alpha\n\n### Child\n\nbody\n";
-    const doc = await vscode.workspace.openTextDocument({ language: "taliesin", content });
-    const editor = await vscode.window.showTextDocument(doc);
-    editor.selection = new vscode.Selection(0, 4, 0, 4);
-
-    await vscode.commands.executeCommand("taliesin.promoteHeading");
-    assert.strictEqual(doc.getText(), "# Alpha\n\n## Child\n\nbody\n");
-    // The caret stays on the heading it acted on, so the keys can be pressed repeatedly.
-    assert.strictEqual(editor.selection.active.line, 0);
-
-    await vscode.commands.executeCommand("taliesin.demoteHeading");
-    assert.strictEqual(doc.getText(), content, "demote should undo the promote");
-  });
-
-  test("a refusal is reported, not applied", async () => {
-    // "## Beta" is the last section at its level: moving it down would have to invent a
-    // sibling. The buffer must come back untouched rather than half-transformed.
-    const content = "## Alpha\n\na\n\n## Beta\n\nb\n";
-    const doc = await vscode.workspace.openTextDocument({ language: "taliesin", content });
-    const editor = await vscode.window.showTextDocument(doc);
-    editor.selection = new vscode.Selection(4, 0, 4, 0);
-
-    await vscode.commands.executeCommand("taliesin.moveSectionDown");
-    assert.strictEqual(doc.getText(), content, "a refused move must not edit the buffer");
   });
 
   // The keybindings are a promise about keys the platform also uses. VS Code resolves a
@@ -1103,170 +931,6 @@ function get(url: string): Promise<string> {
 }
 
 
-// The paste and drop gestures, in a real Extension Host.
-//
-// A unit test proves the routing is right and `lsp_insert.rs` proves the emitted text is right.
-// Neither can prove VS Code ACCEPTED the provider, which is exactly how a provider registered
-// against a stale `engines.vscode` fails: silently, with the feature simply absent.
-//
-// What is drivable here was measured, not assumed. Listing every command matching /drop|paste/
-// inside a real host shows `editor.action.clipboardPasteAction` and `editor.action.pasteAs` for
-// paste and NOTHING for drop, and `vscode.env.clipboard` is text-only. So: the text/plain routes
-// go end to end, and the drop route calls the provider directly. See DETECTION-DEBT.md for the
-// two gestures that cannot be reached at all.
-suite("Taliesin authoring gestures", () => {
-  /** A scratch project with a `_site.yml`, so the server sees a declared boundary. */
-  function scratch(tag: string): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `tali-${tag}-`));
-    fs.writeFileSync(path.join(dir, "_site.yml"), "title: Scratch\n");
-    return dir;
-  }
-
-  /** Wait until `check` passes, polling rather than sleeping once. */
-  async function until(check: () => boolean, what: string): Promise<void> {
-    for (let i = 0; i < 80; i++) {
-      if (check()) return;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    assert.fail(`timed out waiting for ${what}`);
-  }
-
-  test("pasting a URL over a selection makes a link", async () => {
-    const dir = scratch("url");
-    const doc = path.join(dir, "notes.tmd");
-    fs.writeFileSync(doc, "See the manual here.\n");
-
-    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
-    const editor = await vscode.window.showTextDocument(opened);
-    // Select "manual".
-    editor.selection = new vscode.Selection(new vscode.Position(0, 8), new vscode.Position(0, 14));
-
-    await vscode.env.clipboard.writeText("https://taliesin.sh/guide");
-    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
-
-    await until(() => opened.getText().includes("]("), "the link paste to apply");
-    assert.match(opened.getText(), /\[manual\]\(https:\/\/taliesin\.sh\/guide\)/);
-  });
-
-  test("pasting a BibTeX entry cites it and appends it to the .bib", async () => {
-    const dir = scratch("bib");
-    const doc = path.join(dir, "notes.tmd");
-    const bib = path.join(dir, "refs.bib");
-    fs.writeFileSync(doc, "---\nbibliography: refs.bib\n---\n\nAs shown in \n");
-    fs.writeFileSync(bib, "@book{knuth1984, title = {TeX}}\n");
-
-    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
-    const editor = await vscode.window.showTextDocument(opened);
-    const end = new vscode.Position(4, 13);
-    editor.selection = new vscode.Selection(end, end);
-
-    await vscode.env.clipboard.writeText("@article{bishop2006,\n  title = {Pattern Recognition},\n}");
-    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
-
-    await until(() => opened.getText().includes("[@bishop2006]"), "the citation to be inserted");
-    // The append is a WorkspaceEdit on another document, so read it through the editor's model
-    // rather than off disk: it is applied but not necessarily saved.
-    const bibDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(bib));
-    await until(() => bibDoc.getText().includes("bishop2006"), "the .bib append to apply");
-    assert.match(bibDoc.getText(), /@book\{knuth1984/, "the existing entry survives");
-  });
-
-  test("pasting a tab-separated grid is offered as a table, but is not the default", async () => {
-    const dir = scratch("tsv");
-    const doc = path.join(dir, "notes.tmd");
-    fs.writeFileSync(doc, "\n");
-
-    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
-    await vscode.window.showTextDocument(opened);
-    await vscode.env.clipboard.writeText("site\tdepth\nnorth\t3\n");
-
-    // The plain paste first: the TSV edit yields to text, so tab-separated prose must NOT
-    // silently become a table.
-    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
-    await until(() => opened.getText().includes("site"), "the plain paste to apply");
-    assert.ok(
-      !opened.getText().includes("|"),
-      `the default paste stayed plain text: ${JSON.stringify(opened.getText())}`
-    );
-
-    // Now ask for the table explicitly, the way the paste-as menu does.
-    await vscode.commands.executeCommand("undo");
-    await vscode.commands.executeCommand("editor.action.pasteAs", { kind: "text.taliesin" });
-    await until(() => opened.getText().includes("|"), "the table paste to apply");
-    assert.match(opened.getText(), /\| site\s+\| depth \|/, "aligned by the server");
-  });
-
-  test("dropping a file inserts a reference the build can ship", async () => {
-    const dir = scratch("drop");
-    const doc = path.join(dir, "notes.tmd");
-    fs.writeFileSync(doc, "# Notes\n");
-    const asset = path.join(dir, "m.csv");
-    fs.writeFileSync(asset, "a,b\n1,2\n");
-
-    const opened = await vscode.workspace.openTextDocument(vscode.Uri.file(doc));
-    await vscode.window.showTextDocument(opened);
-
-    const dt = new vscode.DataTransfer();
-    dt.set("text/uri-list", new vscode.DataTransferItem(vscode.Uri.file(asset).toString()));
-
-    // Called directly: no built-in command drives a drop provider (measured, see the suite note).
-    const edit = await dropProvider.provideDocumentDropEdits!(
-      opened,
-      new vscode.Position(1, 0),
-      dt,
-      new vscode.CancellationTokenSource().token
-    );
-    assert.ok(edit, "the provider answered the drop");
-    // A dragged asset comes back as a SnippetString (the figure snippet has tab stops), and
-    // `String(snippet)` is "[object Object]" — which is how this read silently stopped
-    // asserting anything when Wave 3 routed `.csv` from the dataset kind to the asset one.
-    const inserted = (edit as vscode.DocumentDropEdit).insertText;
-    const text = typeof inserted === "string" ? inserted : inserted.value;
-    assert.match(text, /m\.csv/, `reference: ${text}`);
-  });
-});
-
-// The rename repair, in a real Extension Host.
-//
-// This is the test the unit layer cannot write: `lsp_rename_file.rs` proves the edits are right,
-// but only a real host proves the `onWillRenameFiles` hook fires, that `waitUntil` is honoured,
-// and that the returned WorkspaceEdit is applied to files that are not open.
-suite("Taliesin rename repair", () => {
-  test("renaming a chapter repairs the references pointing at it", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tali-rn-"));
-    fs.writeFileSync(path.join(dir, "_site.yml"), "title: P\nchapters:\n  - intro.tmd\n");
-    fs.writeFileSync(path.join(dir, "intro.tmd"), "# Intro\n");
-    // Deliberately NOT opened in an editor: the repair has to reach a file on disk.
-    fs.writeFileSync(path.join(dir, "two.tmd"), "See [intro](intro.html) and intro.tmd.\n");
-
-    const oldUri = vscode.Uri.file(path.join(dir, "intro.tmd"));
-    const newUri = vscode.Uri.file(path.join(dir, "overview.tmd"));
-
-    // The real editor rename, so this covers the hook, the request and the edit application
-    // rather than any one of them alone.
-    const we = new vscode.WorkspaceEdit();
-    we.renameFile(oldUri, newUri);
-    assert.ok(await vscode.workspace.applyEdit(we), "the rename applied");
-
-    const two = path.join(dir, "two.tmd");
-    for (let i = 0; i < 100; i++) {
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(two));
-      if (doc.getText().includes("overview.html")) break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    const text = (await vscode.workspace.openTextDocument(vscode.Uri.file(two))).getText();
-    assert.match(text, /\(overview\.html\)/, `the .html spelling: ${text}`);
-    assert.match(text, /overview\.tmd/, `the .tmd spelling: ${text}`);
-    assert.ok(!text.includes("intro.html"), `no stale reference: ${text}`);
-
-    // The book spine too, or the chapter drops out of the book entirely.
-    const yml = (
-      await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(dir, "_site.yml")))
-    ).getText();
-    assert.match(yml, /- overview\.tmd/, `the spine: ${yml}`);
-  });
-});
-
 // The project-level surfaces, in a real Extension Host.
 //
 // Every one of these is registered rather than computed, and a registration is exactly the
@@ -1290,26 +954,6 @@ suite("Taliesin project surfaces", () => {
     return dir;
   }
 
-  test("VS Code accepts the workspace symbol provider and it reaches another page", async () => {
-    const dir = project("wsym");
-    const doc = await vscode.workspace.openTextDocument(
-      vscode.Uri.file(path.join(dir, "index.tmd"))
-    );
-    await vscode.window.showTextDocument(doc);
-
-    // Answers come from the server, so poll rather than assume the first call is answered.
-    const hit = await waitForValue(async () => {
-      const found = (await vscode.commands.executeCommand(
-        "vscode.executeWorkspaceSymbolProvider",
-        "Elsewhere"
-      )) as vscode.SymbolInformation[] | undefined;
-      return found?.find((s) => s.location.uri.fsPath.endsWith("other.tmd"));
-    }, 15000);
-
-    assert.ok(hit, "Ctrl+T found no symbol from the sibling page");
-    assert.strictEqual(hit!.location.range.start.line, 4, "should point at the heading line");
-  });
-
   test("go to definition crosses into the page that defines the anchor", async () => {
     const dir = project("xdef");
     const doc = await vscode.workspace.openTextDocument(
@@ -1330,79 +974,6 @@ suite("Taliesin project surfaces", () => {
 
     assert.ok(hit, "F12 on a cross-page reference resolved to nothing");
   });
-
-  test("the custom project requests answer over the live language client", async () => {
-    // `taliesin/projectOutline` and `taliesin/projectRefs` are not LSP methods, so no
-    // `vscode.execute*` command can drive them: the only way to prove the client and server
-    // agree on the wire format is to send them through the running client.
-    const dir = project("proj");
-    const uri = vscode.Uri.file(path.join(dir, "index.tmd"));
-    const doc = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(doc);
-
-    const client = (
-      vscode.extensions.getExtension("taliesin.taliesin-companion")!
-        .exports as { languageClient?: () => { sendRequest: Function } | undefined }
-    )?.languageClient?.();
-    if (!client) {
-      // The extension does not export its client; drive the surfaces through the views below
-      // instead of asserting nothing.
-      return;
-    }
-    const outline = (await client.sendRequest("taliesin/projectOutline", {
-      uri: uri.toString(),
-    })) as { pages: { path: string }[] } | null;
-    assert.ok(outline, "projectOutline answered null inside a real project");
-    assert.strictEqual(outline!.pages.length, 2, "both pages should be in the outline");
-
-    const refs = (await client.sendRequest("taliesin/projectRefs", {
-      uri: uri.toString(),
-    })) as { targets: { id: string; resolved: boolean }[] } | null;
-    assert.ok(refs, "projectRefs answered null inside a real project");
-    assert.ok(
-      refs!.targets.some((t) => t.id === "sec-elsewhere" && t.resolved),
-      "the cross-page anchor should be a resolved target"
-    );
-  });
-
-  test("VS Code accepts the sidebar view", async () => {
-    // `focus` is generated by VS Code for every contributed view, so its presence in the
-    // command list is proof the view container and the view were both accepted.
-    const cmds = await vscode.commands.getCommands(true);
-    assert.ok(
-      cmds.includes("taliesin.project.focus"),
-      "taliesin.project was never accepted as a view (no taliesin.project.focus command)"
-    );
-    // The three views this replaced must not linger as declarations nothing registers.
-    for (const gone of ["taliesin.outline", "taliesin.references", "taliesin.floats"]) {
-      assert.ok(!cmds.includes(`${gone}.focus`), `${gone} was folded into taliesin.project`);
-    }
-  });
-
-  // What this pins, and what it deliberately does NOT. `showCollapseAll: true` is invisible
-  // to any extension API: VS Code stores it as the private context key
-  // `treeView.<id>.enableCollapseAll` and gates only the BUTTON's `when` clause on it
-  // (measured in 1.131.0's own `workbench.desktop.main.js`). The per-view
-  // `workbench.actions.treeView.<id>.collapseAll` command is registered for EVERY tree
-  // pane regardless — the first version of this test used its absence on the flat float
-  // view as a control and that control failed, which is how the option's invisibility was
-  // found. So the assertion below is the honest one: each view materialises as a real tree
-  // pane whose collapse action is live and runs. Whether the button is *shown* is in
-  // DETECTION-DEBT.md.
-  test("the sidebar view materialises as a tree pane with a live collapse action", async () => {
-    // The action is registered by the tree's own UI pane, not by `createTreeView`, so the
-    // view has to be revealed first — a view nothing ever focused has no pane at all.
-    await vscode.commands.executeCommand("taliesin.project.focus");
-    const cmds = await vscode.commands.getCommands(true);
-    const action = "workbench.actions.treeView.taliesin.project.collapseAll";
-    assert.ok(
-      cmds.includes(action),
-      `taliesin.project never became a tree pane (no ${action}); collapse commands present ` +
-        `were ${JSON.stringify(cmds.filter((c) => /collapseAll/i.test(c)))}`
-    );
-    await vscode.commands.executeCommand(action);
-  });
-
 
   // NOT a test that the task provider was accepted, because that cannot be observed here.
   // Measured in this host: with no folder open, `vscode.tasks.fetchTasks()` returns zero tasks

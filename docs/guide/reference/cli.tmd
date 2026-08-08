@@ -447,9 +447,10 @@ works from anywhere.
 
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
 editor gets live `.tmd` diagnostics as you type, the same validators the gate runs, on
-the unsaved buffer — plus completion, hover, go-to-definition, symbols, rename, inlay
-hints, folding and the Run-Cell code lens. It is parse-only: no kernel, no code
-execution, and it never edits your source.
+the unsaved buffer, plus completion, hover, go-to-definition, symbols, quick fixes,
+folding and the Run-Cell code lens. Seven capabilities, and every one of them answers a
+question: it is parse-only (no kernel, no code execution) and it never edits your source.
+The `.tmd` file is the single editing surface, and your editor is what edits it.
 
 ```lua
 -- Neovim (nvim-lspconfig or vim.lsp.start)
@@ -494,16 +495,18 @@ language server it already knows about; registering a new one is a published ext
 not a config block. You can still get highlighting today with
 `"file_types": { "Markdown": ["tmd"] }` in `settings.json`.
 
-Two of its capabilities need a word here, because they are the ones an editor has to
-meet halfway.
+One of its capabilities needs a word here, because it is the one an editor has to meet
+halfway.
 
-**Diagnostics come in whichever way your editor asks for.** A client that supports the
-LSP 3.17 *pull* model gets `textDocument/diagnostic` and `workspace/diagnostic` — which
-is what lets the Problems panel list **every page of the book**, not only the two
-chapters you have open — and one that does not keeps the classic pushed
-`publishDiagnostics`. You get one or the other, never both: a client that supports pull
-keeps those results in a collection of its own, so a server doing both would show every
-finding twice.
+**Diagnostics are pushed, and they speak about the buffers you have open.** The server
+publishes a document's findings as you type. For the whole book at once, including the
+chapters no editor has opened, run the gate:
+
+```sh
+taliesin build . --check-only
+```
+
+which is where the same findings are already checked before publishing.
 
 **The Run buttons are a code lens, and a lens names a command.** Above every
 `{python}`/`{js}` fence the server offers **▶ Run Cell**, **Run Above**, and a

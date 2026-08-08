@@ -9,15 +9,16 @@
 use lsp_server::{Connection, Message};
 use lsp_types::{
     CodeActionProviderCapability, CompletionOptions, HoverProviderCapability, OneOf,
-    PositionEncodingKind, RenameOptions, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions,
+    PositionEncodingKind, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions,
 };
 use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which maps
-/// 1:1 onto `check`'s whole-buffer linting), go-to-definition, document symbols (the heading
-/// outline), hover, completion, quick-fix code actions, and rename (with prepare) of a
-/// cross-reference anchor + its references. This is the full E7 intelligence surface.
+/// 1:1 onto the buffer lint), go-to-definition, document symbols (the heading outline), hover,
+/// completion, quick-fix code actions, folding and code lenses. Seven providers, every one of
+/// them read-only: the `.tmd` file is the single editing surface and the editor is where it is
+/// edited, so nothing here rewrites a buffer on the author's behalf.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
     ServerCapabilities {
         // Columns on the wire are UTF-16 code units (the LSP default, and what the VS Code
@@ -33,38 +34,9 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         )),
         definition_provider: Some(OneOf::Left(true)),
         document_symbol_provider: Some(OneOf::Left(true)),
-        // Ctrl+T across the whole book. `documentSymbol` is per-file, which for a 25-chapter
-        // project means the author has to already know which file holds the heading they
-        // want. Answered by a project walk, not an index: the request fires on a gesture, not
-        // on every keystroke, so re-validating with one `stat` per page is cheaper than the
-        // file watching an index would need.
-        workspace_symbol_provider: Some(OneOf::Left(true)),
-        // Range-scoped, so only the visible lines are scanned and there is no full-document
-        // tokenizer behind this.
-        inlay_hint_provider: Some(OneOf::Left(true)),
-        // The anchor under the cursor and its other occurrences: a targeted single-id scan,
-        // not a full-document tokenizer.
-        document_highlight_provider: Some(OneOf::Left(true)),
-        // The same question across the whole project, which is the boundary it is actually
-        // asked at in a 25-chapter book. `documentHighlight` above stops at the file.
-        references_provider: Some(OneOf::Left(true)),
-        // Expand-selection by document structure. Without it an editor expands by *brackets*,
-        // which in prose selects `](target)` and `{#sec-id}` and nothing an author reached
-        // for — the same category of mistake as indentation folding.
-        selection_range_provider: Some(lsp_types::SelectionRangeProviderCapability::Simple(true)),
         // Replaces indentation-based folding, which is what `.tmd` gets without this and is
         // meaningless in a format where nesting is heading level and fences.
         folding_range_provider: Some(lsp_types::FoldingRangeProviderCapability::Simple(true)),
-        // `{{< include >}}` / `{{< embed >}}` paths. Go-to-definition already resolved
-        // these, but a definition is invisible: nothing on screen says the path is
-        // navigable, so it is only found by an author who already guessed. A document link
-        // is the affordance editors paint for exactly this.
-        document_link_provider: Some(lsp_types::DocumentLinkOptions {
-            // Every link is resolved in one pass (the target is a plain file path), so
-            // there is nothing for a second `documentLink/resolve` round trip to add.
-            resolve_provider: Some(false),
-            work_done_progress_options: Default::default(),
-        }),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         completion_provider: Some(CompletionOptions {
             // The chars that open a completable context: `@` (xref/cite), `.` (div class),
@@ -78,10 +50,6 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ),
             ..Default::default()
         }),
-        // Pipe tables only — see `lsp_format`. Advertising this claims "Format Document" for
-        // `.tmd`, which is a promise worth being narrow about: a formatter that re-wrapped
-        // prose would fight every deliberate line break in the file.
-        document_formatting_provider: Some(OneOf::Left(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         // Run · Run above · ⚡ cached, above every executable fence — the execution loop, in
         // every LSP client, from Rust. Everything is resolved in one pass (the freeze lookup
@@ -89,30 +57,6 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
         code_lens_provider: Some(lsp_types::CodeLensOptions {
             resolve_provider: Some(false),
         }),
-        // The 3.17 pull model. `publishDiagnostics` can only ever speak about buffers the
-        // editor has opened, so a 25-chapter book shows problems for the two chapters on
-        // screen and silence for the other 23 — while `check <dir>` answers the whole
-        // question in 0.36 s. `interFileDependencies` is true and is not a formality: a
-        // cross-page `@sec-` means editing chapter 3 changes chapter 12's answer.
-        diagnostic_provider: Some(lsp_types::DiagnosticServerCapabilities::Options(
-            lsp_types::DiagnosticOptions {
-                identifier: Some(crate::lint::LSP_SOURCE.to_string()),
-                inter_file_dependencies: true,
-                workspace_diagnostics: true,
-                // The one operation here long enough to have a middle: linting every page of
-                // a book. Declaring it is what makes the client send a `workDoneToken`, which
-                // is the only channel we are allowed to report into.
-                work_done_progress_options: lsp_types::WorkDoneProgressOptions {
-                    work_done_progress: Some(true),
-                },
-            },
-        )),
-        rename_provider: Some(OneOf::Right(RenameOptions {
-            // `prepareRename` gates renaming to a cross-reference anchor, so the editor shows
-            // "cannot rename here" on anything else.
-            prepare_provider: Some(true),
-            work_done_progress_options: Default::default(),
-        })),
         ..Default::default()
     }
 }
@@ -157,48 +101,8 @@ fn run_with_debounce(
     let caps = serde_json::to_value(server_capabilities())?;
     let init = connection.initialize(caps)?;
     register_file_watchers(&connection, &init)?;
-    main_loop(&connection, debounce, Transport::of(&init))?;
+    main_loop(&connection, debounce)?;
     Ok(())
-}
-
-/// How this client wants its diagnostics: pushed at it, or pulled from it.
-///
-/// **Both at once would double every squiggle.** A client that supports the 3.17 pull model
-/// keeps pull results in a diagnostic collection of its own, separate from the one
-/// `publishDiagnostics` fills, so a server doing both puts every finding in the Problems panel
-/// twice. The client's own `textDocument.diagnostic` capability is the only honest signal of
-/// which it will use, so it decides.
-///
-/// Push stays the default and is not deprecated: it is what an editor that predates 3.17 (or
-/// one whose LSP layer never adopted the feature) has, and going silent on those would be a
-/// regression dressed as a feature.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Transport {
-    Push,
-    /// `refresh` is the client's `workspace.diagnostics.refreshSupport`: whether it will
-    /// re-pull when we say something changed. Without it, a pull client only refreshes on its
-    /// own schedule — still correct, just less prompt — so this is not a reason to fall back
-    /// to push.
-    Pull {
-        refresh: bool,
-    },
-}
-
-impl Transport {
-    fn of(init: &serde_json::Value) -> Self {
-        let pulls = init
-            .pointer("/capabilities/textDocument/diagnostic")
-            .is_some();
-        match pulls {
-            false => Transport::Push,
-            true => Transport::Pull {
-                refresh: init
-                    .pointer("/capabilities/workspace/diagnostics/refreshSupport")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false),
-            },
-        }
-    }
 }
 
 /// Ask the client to watch the files that can invalidate an open buffer's diagnostics.
@@ -301,7 +205,6 @@ impl PendingPublishes {
 fn main_loop(
     connection: &Connection,
     debounce: std::time::Duration,
-    transport: Transport,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Open taliesin documents, by URI → current buffer text. `didChange` carries no
     // languageId, so we only track what `didOpen` admitted; a request between edits reads
@@ -322,23 +225,9 @@ fn main_loop(
     // Separate from `project` above because it is the one memo on the per-keystroke path:
     // see `lsp_project::SiteCache` for the measurement that makes it mandatory.
     let mut sites = crate::lsp_project::SiteCache::new();
-    // Off unless `TALIESIN_LSP_TRACE` names a file. See `lsp_trace`: this is the FV-5
-    // instrument, and the one line below is how you can tell it is actually armed rather
-    // than finding out after a week that the editor never inherited the variable.
-    let mut trace = crate::lsp_trace::Trace::from_env();
-    if let Some(p) = trace.armed() {
-        crate::log::info(&format!("lsp: capability trace armed → {}", p.display()));
-    }
     // The last diagnostics published for each open buffer — what the editor is showing right
-    // now. Read by hover (to put the `--explain` body under the squiggle) and by the pull
-    // arms (so the Problems panel cannot contradict the squiggles above it).
+    // now. Read by hover, so a hover over a squiggle answers with the finding under it.
     let mut published: std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>> =
-        std::collections::HashMap::new();
-    // The `resultId` last handed to the client for each page, so a repeated
-    // `workspace/diagnostic` poll can be answered `Unchanged` at the cost of one `stat` per
-    // page instead of a whole-project lint. Ours as well as theirs: a client is free to send
-    // back nothing, and then this is what stops the poll from being a walk every time.
-    let mut pulled: std::collections::HashMap<lsp_types::Url, String> =
         std::collections::HashMap::new();
     // Messages the client has sent that we have not dispatched yet, and the ids among them a
     // `$/cancelRequest` in the same batch superseded. See [`read_batch`].
@@ -357,22 +246,9 @@ fn main_loop(
                 // The window closed with no further edit: publish the latest text of every
                 // buffer that is owed.
                 Batch::Timeout => {
-                    let owed = pending.take();
-                    match transport {
-                        Transport::Push => {
-                            for uri in owed {
-                                if let Some(text) = docs.get(&uri) {
-                                    publish(connection, &mut sites, &mut published, &uri, text)?;
-                                }
-                            }
-                        }
-                        // A pull client owns the question; all we owe it is the news that
-                        // the answer moved. One refresh for the whole batch, not one per
-                        // buffer: the request is project-wide on the client's side.
-                        Transport::Pull { refresh } => {
-                            if refresh && !owed.is_empty() {
-                                request_diagnostic_refresh(connection)?;
-                            }
+                    for uri in pending.take() {
+                        if let Some(text) = docs.get(&uri) {
+                            publish(connection, &mut sites, &mut published, &uri, text)?;
                         }
                     }
                     continue;
@@ -390,7 +266,6 @@ fn main_loop(
         if let Message::Request(req) = &msg
             && cancelled.remove(&req.id)
         {
-            trace.record(&req.method);
             connection
                 .sender
                 .send(Message::Response(lsp_server::Response {
@@ -406,9 +281,6 @@ fn main_loop(
         }
         match msg {
             Message::Request(req) => {
-                // Before the shutdown branch below, so the tally sees every dispatched
-                // method including the one that ends the session.
-                trace.record(&req.method);
                 // Once `shutdown` arrives the session is over, and the exit code is a
                 // statement about how it ended. `handle_shutdown` replies, then waits up to
                 // 30s for the `exit` notification, and returns `Err` if anything *else*
@@ -454,7 +326,6 @@ fn main_loop(
                         &mut project,
                         &mut sites,
                         &mut published,
-                        &mut pulled,
                         req,
                     )
                 }) {
@@ -491,7 +362,6 @@ fn main_loop(
             // is then gone, and `connection.receiver` ends this loop on its own.
             Message::Notification(notif) => {
                 let method = notif.method.clone();
-                trace.record(&method);
                 match crate::serve::guarded(|| {
                     handle_notification(
                         connection,
@@ -500,7 +370,6 @@ fn main_loop(
                         &mut published,
                         &mut pending,
                         debounce,
-                        transport,
                         notif,
                     )
                 }) {
@@ -536,17 +405,14 @@ enum Batch {
 /// withdrawn.
 ///
 /// **This is the whole of `$/cancelRequest` in a synchronous server, and it is the right
-/// shape for one.** A request already being executed cannot be abandoned here — there is one
-/// thread and it is inside the handler — but that was never the expensive case. The expensive
-/// case is the *queue*: `workspace/symbol` is a whole-project walk with a `stat` per page
-/// (measured at **167 ms** on the largest project in the tree) and it is the one request a
-/// user types into character by character, so a five-letter Ctrl+T query used to queue five
-/// walks and run all five, four of them for a query nobody was waiting on any more. Draining
+/// shape for one.** A request already being executed cannot be abandoned here (there is one
+/// thread and it is inside the handler), but that was never the case worth catching. The case
+/// worth catching is the *queue*: a client that fires a request per keystroke and withdraws
+/// each one as the next arrives leaves this loop running work nobody is waiting on. Draining
 /// the channel before dispatching lets the cancel that arrived *behind* the superseded request
-/// be seen *before* it.
-///
-/// This is why the 2026-08-07 audit's advice was "do not optimise the walk before cancellation
-/// exists": the walk is 167 ms once, and the queue is 167 ms times however fast you type.
+/// be seen *before* it. (The measured example was `workspace/symbol`, a whole-project walk at
+/// **167 ms** on the largest project here; that method went on 2026-08-08, and the loop
+/// property it motivated is the client's to rely on regardless of which request is slow.)
 ///
 /// Cancellations are matched only against messages **in this batch**. A cancel for a request
 /// already answered is dropped rather than remembered, so a client that reuses request ids
@@ -641,7 +507,6 @@ fn handle_notification(
     published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
     pending: &mut PendingPublishes,
     debounce: std::time::Duration,
-    transport: Transport,
     notif: lsp_server::Notification,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::notification::{
@@ -661,16 +526,12 @@ fn handle_notification(
         // `cmd = { "taliesin", "lsp" }`, Neovim sends the *filetype* as `languageId`,
         // and nothing in this repo registers a filetype for `.tmd` — so the id arrives
         // as "" or "markdown" and every document was dropped. The server still
-        // advertised hover/completion/symbols/rename/diagnostics and then answered
+        // advertised hover/completion/symbols and diagnostics and then answered
         // null to all of them, with nothing on stderr to say why.
         if p.text_document.language_id == "taliesin" || is_tmd_uri(&p.text_document.uri) {
             let uri = p.text_document.uri;
             docs.insert(uri.clone(), p.text_document.text);
-            // A pull client asks for this itself the moment it opens the document, so
-            // publishing here would put every finding in its Problems panel twice.
-            if transport == Transport::Push {
-                publish(connection, sites, published, &uri, &docs[&uri])?;
-            }
+            publish(connection, sites, published, &uri, &docs[&uri])?;
         } else {
             crate::log::warn(&format!(
                 "lsp: ignoring {} (languageId {:?} is not `taliesin` and the path is not .tmd)",
@@ -717,11 +578,9 @@ fn handle_notification(
         // Before the clear below, or a window that closes after this would re-publish
         // diagnostics for a buffer that is gone.
         pending.forget(&p.text_document.uri);
-        // Only the push transport owns a collection we have to empty. A pull client drops
-        // its own on close, and an empty push here would be a second, contradictory answer.
-        if transport == Transport::Push {
-            publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
-        }
+        // We own the collection the editor is showing, so closing the buffer has to empty
+        // it: nothing else ever will.
+        publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
     }
     Ok(())
 }
@@ -736,50 +595,15 @@ fn handle_request(
     project: &mut crate::lsp_project::ProjectCache,
     sites: &mut crate::lsp_project::SiteCache,
     published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
-    pulled: &mut std::collections::HashMap<lsp_types::Url, String>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, CodeLensRequest, Completion, DocumentDiagnosticRequest,
-        DocumentHighlightRequest, DocumentLinkRequest, DocumentSymbolRequest, FoldingRangeRequest,
-        Formatting, GotoDefinition, HoverRequest, InlayHintRequest, PrepareRenameRequest,
-        References, Rename, Request as _, SelectionRangeRequest, WorkspaceDiagnosticRequest,
-        WorkspaceSymbolRequest,
+        CodeActionRequest, CodeLensRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest,
+        GotoDefinition, HoverRequest, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
-    let response = if req.method == InlayHintRequest::METHOD {
-        let params: lsp_types::InlayHintParams = serde_json::from_value(req.params)?;
-        let uri = &params.text_document.uri;
-        // An unopened document, or one that cannot be rendered, is an empty result rather
-        // than an error: a half-typed buffer is the normal case for a provider that fires on
-        // every scroll.
-        // Citations and includes resolve against files beside the document, so the hints
-        // need its directory. An unsaved buffer has no path and simply gets fewer hints.
-        let file = uri.to_file_path().ok();
-        let dir = file.as_deref().and_then(std::path::Path::parent);
-        let hints = docs
-            .get(uri)
-            .and_then(|text| {
-                memo.get(uri, text)
-                    .map(|doc| crate::lsp_hints::inlay_hints(text, &doc, params.range, dir))
-            })
-            .unwrap_or_default();
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(hints)?),
-            error: None,
-        }
-    } else if req.method == DocumentHighlightRequest::METHOD {
-        let params: lsp_types::DocumentHighlightParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(resolve_document_highlight(
-                docs, &params,
-            ))?),
-            error: None,
-        }
-    } else if req.method == CodeLensRequest::METHOD {
+    let response = if req.method == CodeLensRequest::METHOD {
         let params: lsp_types::CodeLensParams = serde_json::from_value(req.params)?;
         let uri = params.text_document.uri;
         // The rendered block model, from the same memo hover and inlay hints use: the lens
@@ -800,147 +624,6 @@ fn handle_request(
         lsp_server::Response {
             id: req.id,
             result: Some(serde_json::to_value(lenses)?),
-            error: None,
-        }
-    } else if req.method == DocumentDiagnosticRequest::METHOD {
-        let params: lsp_types::DocumentDiagnosticParams = serde_json::from_value(req.params)?;
-        let uri = params.text_document.uri;
-        let path = uri
-            .to_file_path()
-            .unwrap_or_else(|_| std::path::PathBuf::from("untitled.tmd"));
-        // The buffer when the editor has one, the file otherwise. A pull can name a document
-        // that was never opened — that is the point of the model — so "not open" is a normal
-        // input here rather than the empty answer it is on every other request.
-        let text = match docs.get(&uri) {
-            Some(t) => Some(t.clone()),
-            None => std::fs::read_to_string(&path).ok(),
-        };
-        let items = text
-            .map(|t| crate::lsp_diag::diagnose_file(sites, &path, &t))
-            .unwrap_or_default();
-        // Recorded so hover can put the `--explain` body under the squiggle the client is
-        // now showing, exactly as the push path does.
-        published.insert(uri, items.clone());
-        let report = lsp_types::DocumentDiagnosticReportResult::Report(
-            lsp_types::DocumentDiagnosticReport::Full(
-                lsp_types::RelatedFullDocumentDiagnosticReport {
-                    // Reporting other pages here would fight `workspace/diagnostic`, which
-                    // owns the whole-project answer and is where those belong.
-                    related_documents: None,
-                    full_document_diagnostic_report: lsp_types::FullDocumentDiagnosticReport {
-                        result_id: None,
-                        items,
-                    },
-                },
-            ),
-        );
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(report)?),
-            error: None,
-        }
-    } else if req.method == WorkspaceDiagnosticRequest::METHOD {
-        let params: lsp_types::WorkspaceDiagnosticParams = serde_json::from_value(req.params)?;
-        // The client's own record wins over ours where it has one: it is the authority on
-        // what it is still holding, and after a restart on its side ours is stale.
-        for p in &params.previous_result_ids {
-            pulled.insert(p.uri.clone(), p.value.clone());
-        }
-        // `$/progress` for the one operation here that is long enough to have a middle:
-        // linting every page of a book. Only when the client asked for it by supplying a
-        // token — a server that invented one would be reporting into a channel nobody
-        // opened.
-        let token = params.work_done_progress_params.work_done_token.clone();
-        let mut started = false;
-        let mut report = |done: usize, total: usize| {
-            let Some(token) = token.clone() else { return };
-            // A one-page project has no middle worth drawing; the notification would appear
-            // and vanish in the same frame, which reads as a glitch rather than as progress.
-            if total < 2 {
-                return;
-            }
-            let value = match (started, done >= total) {
-                (false, _) => serde_json::json!({
-                    "kind": "begin",
-                    "title": "Taliesin: checking the project",
-                    "percentage": 0,
-                    "cancellable": false,
-                }),
-                (true, false) => serde_json::json!({
-                    "kind": "report",
-                    "message": format!("{done}/{total} pages"),
-                    "percentage": (done * 100 / total.max(1)) as u32,
-                }),
-                (true, true) => serde_json::json!({ "kind": "end" }),
-            };
-            started = true;
-            let _ = progress(connection, &token, value);
-        };
-        let mut items = Vec::new();
-        for row in crate::lsp_diag::workspace_report(docs, sites, pulled, &mut report) {
-            items.push(match row {
-                crate::lsp_diag::PageReport::Full {
-                    uri,
-                    result_id,
-                    items,
-                } => {
-                    pulled.insert(uri.clone(), result_id.clone());
-                    published.insert(uri.clone(), items.clone());
-                    lsp_types::WorkspaceDocumentDiagnosticReport::Full(
-                        lsp_types::WorkspaceFullDocumentDiagnosticReport {
-                            uri,
-                            // We do not track the client's document versions, and the spec
-                            // makes this optional for exactly that case.
-                            version: None,
-                            full_document_diagnostic_report:
-                                lsp_types::FullDocumentDiagnosticReport {
-                                    result_id: Some(result_id),
-                                    items,
-                                },
-                        },
-                    )
-                }
-                crate::lsp_diag::PageReport::Unchanged { uri, result_id } => {
-                    lsp_types::WorkspaceDocumentDiagnosticReport::Unchanged(
-                        lsp_types::WorkspaceUnchangedDocumentDiagnosticReport {
-                            uri,
-                            version: None,
-                            unchanged_document_diagnostic_report:
-                                lsp_types::UnchangedDocumentDiagnosticReport { result_id },
-                        },
-                    )
-                }
-            });
-        }
-        let report = lsp_types::WorkspaceDiagnosticReportResult::Report(
-            lsp_types::WorkspaceDiagnosticReport { items },
-        );
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(report)?),
-            error: None,
-        }
-    } else if req.method == References::METHOD {
-        let params: lsp_types::ReferenceParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            // `null` rather than `[]` when the cursor is on nothing referenceable: an empty
-            // array is a claim that this anchor has no uses, which is a different answer
-            // from "that is not an anchor".
-            result: Some(serde_json::to_value(crate::lsp_refs::references(
-                docs, project, &params,
-            ))?),
-            error: None,
-        }
-    } else if req.method == SelectionRangeRequest::METHOD {
-        let params: lsp_types::SelectionRangeParams = serde_json::from_value(req.params)?;
-        let ranges = docs
-            .get(&params.text_document.uri)
-            .map(|text| crate::lsp_select::selection_ranges(text, &params.positions))
-            .unwrap_or_default();
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(ranges)?),
             error: None,
         }
     } else if req.method == FoldingRangeRequest::METHOD {
@@ -986,26 +669,6 @@ fn handle_request(
             ))?),
             error: None,
         }
-    } else if req.method == DocumentLinkRequest::METHOD {
-        let params: lsp_types::DocumentLinkParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(document_links(
-                docs,
-                &params.text_document.uri,
-            ))?),
-            error: None,
-        }
-    } else if req.method == Formatting::METHOD {
-        let params: lsp_types::DocumentFormattingParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(format_document(
-                docs,
-                &params.text_document.uri,
-            ))?),
-            error: None,
-        }
     } else if req.method == DocumentSymbolRequest::METHOD {
         let params: lsp_types::DocumentSymbolParams = serde_json::from_value(req.params)?;
         lsp_server::Response {
@@ -1014,52 +677,6 @@ fn handle_request(
                 docs,
                 &params.text_document.uri,
             ))?),
-            error: None,
-        }
-    } else if req.method == WorkspaceSymbolRequest::METHOD {
-        let params: lsp_types::WorkspaceSymbolParams = serde_json::from_value(req.params)?;
-        // The request names no file, so the projects are discovered from the open documents.
-        // **Every** distinct project, not one of them: an editor routinely holds files from
-        // two projects at once, and picking whichever document came first out of a hash map
-        // makes Ctrl+T search an arbitrary one of them. An empty editor answers an empty
-        // list, which is correct rather than an error.
-        let open: Vec<std::path::PathBuf> =
-            docs.keys().filter_map(|u| u.to_file_path().ok()).collect();
-        let mut found = Vec::new();
-        for root in crate::lsp_project::ProjectCache::roots_of(open.iter().map(|p| p.as_path())) {
-            // Any page under the root locates it; the scan is keyed on the root itself.
-            found.extend(workspace_symbols(
-                project,
-                &root.join("_site.yml"),
-                &params.query,
-            ));
-        }
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(found)?),
-            error: None,
-        }
-    } else if req.method == PROJECT_OUTLINE_METHOD || req.method == PROJECT_REFS_METHOD {
-        // The sidebar's two views. Both take a document uri and answer about its enclosing
-        // project, so they share one arm rather than duplicating the parse and the fallback.
-        #[derive(serde::Deserialize)]
-        struct ProjectParams {
-            uri: lsp_types::Url,
-        }
-        let outline = req.method == PROJECT_OUTLINE_METHOD;
-        let params: ProjectParams = serde_json::from_value(req.params)?;
-        let answer = params.uri.to_file_path().ok().and_then(|p| {
-            if outline {
-                project_outline(project, &p)
-            } else {
-                project_refs(project, &p)
-            }
-        });
-        lsp_server::Response {
-            id: req.id,
-            // `null` rather than an error for a document outside any project: the sidebar
-            // renders an empty view, which is the honest answer for a standalone document.
-            result: Some(answer.unwrap_or(serde_json::Value::Null)),
             error: None,
         }
     } else if req.method == SITE_MAP_METHOD {
@@ -1106,122 +723,6 @@ fn handle_request(
             result: Some(serde_json::to_value(regions)?),
             error: None,
         }
-    } else if req.method == SECTION_EDIT_METHOD {
-        // Also a Taliesin extension rather than an LSP method, for the same reason
-        // rust-analyzer's "move item up/down" is one: the operation needs the *cursor*, and
-        // the two standard homes for an editor-triggered edit cannot carry it. A code action
-        // would put a lightbulb on every section (the author asks for this by keystroke, not
-        // by browsing a menu), and `workspace/executeCommand`'s client-side forwarder is
-        // invoked by a keybinding with no arguments at all.
-        let params: crate::lsp_edits::SectionEditParams = serde_json::from_value(req.params)?;
-        match docs.get(&params.text_document.uri) {
-            Some(text) => match crate::lsp_edits::section_edit(text, params.position, params.op) {
-                Ok(edit) => lsp_server::Response {
-                    id: req.id,
-                    result: Some(serde_json::to_value(edit)?),
-                    error: None,
-                },
-                // A refusal is a first-class answer here — "this is the last section under
-                // its parent" is information, not a failure — and the companion shows
-                // `message` to the author. `null` would read as "nothing happened".
-                Err(message) => lsp_server::Response {
-                    id: req.id,
-                    result: None,
-                    error: Some(lsp_server::ResponseError {
-                        code: -32803, // JSON-RPC RequestFailed
-                        message,
-                        data: None,
-                    }),
-                },
-            },
-            None => lsp_server::Response {
-                id: req.id,
-                result: None,
-                error: Some(lsp_server::ResponseError {
-                    code: -32803,
-                    message: format!("{} is not open on the server", params.text_document.uri),
-                    data: None,
-                }),
-            },
-        }
-    } else if req.method == INSERT_EDIT_METHOD {
-        // Also a Taliesin extension rather than an LSP method. The protocol has no concept of
-        // "the author pasted an image, what should the document say", and it could not: the
-        // gesture is the client's (only it has the clipboard) while the answer is this crate's
-        // vocabulary. Splitting it any other way puts a figure shape, a pipe table or a
-        // citation key in TypeScript, free to disagree with the renderer.
-        let params: crate::lsp_insert::InsertEditParams = serde_json::from_value(req.params)?;
-        let text = docs
-            .get(&params.text_document.uri)
-            .cloned()
-            .unwrap_or_default();
-        let result = params
-            .text_document
-            .uri
-            .to_file_path()
-            .map_err(|()| format!("{} is not a file", params.text_document.uri))
-            .and_then(|path| {
-                crate::lsp_insert::insert_edit(&path, &text, params.kind, &params.payload)
-            });
-        match result {
-            Ok(edit) => lsp_server::Response {
-                id: req.id,
-                result: Some(serde_json::to_value(edit)?),
-                error: None,
-            },
-            // A refusal is a first-class answer here, exactly as for `sectionEdit`: "that is
-            // not a table" and "unsupported image type" are information the author should see,
-            // and the client shows `message`. A null result would read as "nothing happened".
-            Err(message) => lsp_server::Response {
-                id: req.id,
-                result: None,
-                error: Some(lsp_server::ResponseError {
-                    code: -32803, // JSON-RPC RequestFailed
-                    message,
-                    data: None,
-                }),
-            },
-        }
-    } else if req.method == RENAME_FILE_EDITS_METHOD {
-        // No refusal path: an empty list is the correct answer for "nothing to repair", and a
-        // rename must never fail because the repair found nothing to do.
-        let params: crate::lsp_rename_file::RenameFileEditsParams =
-            serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(
-                crate::lsp_rename_file::rename_file_edits(&params),
-            )?),
-            error: None,
-        }
-    } else if req.method == PrepareRenameRequest::METHOD {
-        let params: lsp_types::TextDocumentPositionParams = serde_json::from_value(req.params)?;
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(resolve_prepare_rename(docs, &params))?),
-            error: None,
-        }
-    } else if req.method == Rename::METHOD {
-        let params: lsp_types::RenameParams = serde_json::from_value(req.params)?;
-        match resolve_rename(docs, &params) {
-            Ok(edit) => lsp_server::Response {
-                id: req.id,
-                result: Some(serde_json::to_value(edit)?),
-                error: None,
-            },
-            // JSON-RPC RequestFailed: the request was well-formed, the server refused it.
-            // The editor surfaces `message` in the rename box, which is where the author is
-            // already looking — a null result would read as "nothing to rename here".
-            Err(message) => lsp_server::Response {
-                id: req.id,
-                result: None,
-                error: Some(lsp_server::ResponseError {
-                    code: -32803,
-                    message,
-                    data: None,
-                }),
-            },
-        }
     } else {
         lsp_server::Response {
             id: req.id,
@@ -1236,47 +737,6 @@ fn handle_request(
     };
     connection.sender.send(Message::Response(response))?;
     Ok(())
-}
-
-/// Every occurrence of the cross-reference anchor under the cursor, the definition marked
-/// `WRITE` and the references `READ`. Empty when the cursor is not on an anchor.
-///
-/// Scalar columns from `lsp_nav` are converted back to UTF-16 here, at the boundary, exactly
-/// as `resolve_definition` does.
-fn resolve_document_highlight(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    params: &lsp_types::DocumentHighlightParams,
-) -> Vec<lsp_types::DocumentHighlight> {
-    use lsp_types::{DocumentHighlight, DocumentHighlightKind, Position, Range};
-
-    let uri = &params.text_document_position_params.text_document.uri;
-    let pos = params.text_document_position_params.position;
-    let Some(text) = docs.get(uri) else {
-        return Vec::new();
-    };
-    let cursor_char = crate::lsp_pos::utf16_to_char(
-        crate::lsp_pos::nth_line(text, pos.line as usize),
-        pos.character as usize,
-    );
-    crate::lsp_nav::anchor_highlights(text, pos.line as usize, cursor_char)
-        .into_iter()
-        .map(|(line, start, end, is_def)| {
-            let l = crate::lsp_pos::nth_line(text, line as usize);
-            DocumentHighlight {
-                range: Range::new(
-                    Position::new(
-                        line,
-                        crate::lsp_pos::char_to_utf16(l, start as usize) as u32,
-                    ),
-                    Position::new(line, crate::lsp_pos::char_to_utf16(l, end as usize) as u32),
-                ),
-                kind: Some(match is_def {
-                    true => DocumentHighlightKind::WRITE,
-                    false => DocumentHighlightKind::READ,
-                }),
-            }
-        })
-        .collect()
 }
 
 /// Resolve go-to-definition for the token under the cursor, or `None` when it points
@@ -1360,109 +820,10 @@ fn resolve_definition(
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
 
-/// Every heading and cross-reference anchor in `page`'s project whose name contains `query`,
-/// case-insensitively. An empty query returns everything, because that is the state Ctrl+T
-/// opens in and an empty list there reads as "this project has no symbols".
-///
-/// Ranking is deliberately absent: VS Code applies its own fuzzy sort to whatever comes back,
-/// and a second ranking here would fight it. Outside a project the answer is an empty list,
-/// not an error, which is the honest answer for a standalone document.
-fn workspace_symbols(
-    project: &mut crate::lsp_project::ProjectCache,
-    page: &std::path::Path,
-    query: &str,
-) -> Vec<lsp_types::SymbolInformation> {
-    use lsp_types::{Location, Position, Range, SymbolKind, Url};
-    let needle = query.to_lowercase();
-    let Some(scan) = project.get(page) else {
-        return Vec::new();
-    };
-    // No empty-query special case is needed: `contains("")` is true for every string, so an
-    // empty Ctrl+T query already returns everything. An explicit `needle.is_empty() ||` here
-    // was redundant, and a mutation run proved it by surviving its own deletion.
-    let matches = |name: &str| name.to_lowercase().contains(&needle);
-    let at = |path: &std::path::Path, line: u32| {
-        Url::from_file_path(path).ok().map(|uri| {
-            Location::new(
-                uri,
-                Range::new(Position::new(line, 0), Position::new(line, 0)),
-            )
-        })
-    };
-
-    let mut out = Vec::new();
-    for h in &scan.headings {
-        if matches(&h.text)
-            && let Some(location) = at(&h.path, h.line)
-        {
-            out.push(symbol(h.text.clone(), SymbolKind::MODULE, location, None));
-        }
-    }
-    for a in &scan.anchors {
-        if matches(&a.id)
-            && let Some(location) = at(&a.path, a.line)
-        {
-            // The heading an anchor sits on, when it has one: `fig-scree` alone says nothing
-            // about which section it belongs to.
-            let container = (!a.title.is_empty()).then(|| a.title.clone());
-            out.push(symbol(a.id.clone(), SymbolKind::KEY, location, container));
-        }
-    }
-    out
-}
-
-/// `SymbolInformation` is deprecated in `lsp-types` in favour of `WorkspaceSymbol`, but the
-/// struct literal still has to be spelled out and its deprecated field set. Kept in one helper
-/// so the `#[allow]` sits in exactly one place instead of at every construction site.
-#[allow(deprecated)]
-fn symbol(
-    name: String,
-    kind: lsp_types::SymbolKind,
-    location: lsp_types::Location,
-    container_name: Option<String>,
-) -> lsp_types::SymbolInformation {
-    lsp_types::SymbolInformation {
-        name,
-        kind,
-        tags: None,
-        deprecated: None,
-        location,
-        container_name,
-    }
-}
-
 /// The custom request a client calls to learn where a document's code cells are, so it can
 /// route completion inside one to whoever owns that language. Namespaced, because it is not
 /// an LSP method and must never collide with one.
 pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
-
-/// The custom request behind the companion's four structural commands (move a section up or
-/// down, promote or demote a heading). Namespaced for the same reason as
-/// [`CELL_REGIONS_METHOD`]: it is not an LSP method.
-pub(crate) const SECTION_EDIT_METHOD: &str = "taliesin/sectionEdit";
-
-/// The custom request behind the companion's paste and drop gestures. Namespaced for the same
-/// reason as [`SECTION_EDIT_METHOD`]: it is not an LSP method, and it cannot be one. A paste is
-/// a client event (only the client has the clipboard) whose *answer* is this crate's vocabulary,
-/// so the request carries the gesture in and the text out.
-pub(crate) const INSERT_EDIT_METHOD: &str = "taliesin/insertEdit";
-
-/// The custom request behind the companion's rename repair. Namespaced for the same reason as
-/// [`SECTION_EDIT_METHOD`]. LSP's `workspace/willRenameFiles` is close, but the companion needs
-/// this on its own `onWillRenameFiles` hook so the edits land inside VS Code's rename
-/// transaction, and the *knowledge* (which reference spellings exist, where a `_site.yml` scalar
-/// sits) is this crate's either way.
-pub(crate) const RENAME_FILE_EDITS_METHOD: &str = "taliesin/renameFileEdits";
-
-/// The custom request behind the sidebar's whole-book Outline and Figures views. Namespaced
-/// for the same reason as [`CELL_REGIONS_METHOD`]: it is not an LSP method. `workspace/symbol`
-/// is the closest standard method and deliberately answers a *flat, queried* list, which is
-/// the wrong shape for a tree the author browses.
-pub(crate) const PROJECT_OUTLINE_METHOD: &str = "taliesin/projectOutline";
-
-/// The custom request behind the sidebar's References view: every cross-reference target with
-/// the uses pointing at it, dangling ones included. Namespaced for the same reason.
-pub(crate) const PROJECT_REFS_METHOD: &str = "taliesin/projectRefs";
 
 /// Where each of a project's pages is served, so the companion can open the preview webview
 /// at the document the author is editing. Namespaced for the same reason as the two above.
@@ -1479,113 +840,6 @@ pub(crate) const SITE_MAP_METHOD: &str = "taliesin/siteMap";
 /// Also a Wave 2 re-homing — the companion used to spawn `taliesin vocab` and read one key
 /// out of the JSON dump. The dump is gone; the table it was generated from is not.
 pub(crate) const MATH_COMMANDS_METHOD: &str = "taliesin/mathCommands";
-
-/// The whole-book outline plus the numbered-float index, as the sidebar's TreeViews want it:
-/// grouped by page and in **reading order** — `book: chapters:` as the drawer and prev/next
-/// resolve it — not the alphabetical path order the walk produces. `None` outside a project,
-/// which the client renders as an empty view.
-///
-/// A page the project walked but `chapters:` never named is **kept**, sorted after the
-/// chapters and flagged `listed: false`: ordering by a list a page is not in must not be a
-/// way to disappear it, and an orphan chapter is an authoring mistake worth seeing. A website
-/// declares no order at all, so it reports `book: false`, keeps path order, and marks every
-/// page listed — "not in the list" and "there is no list" are different answers.
-fn project_outline(
-    project: &mut crate::lsp_project::ProjectCache,
-    page: &std::path::Path,
-) -> Option<serde_json::Value> {
-    let scan = project.get(page)?;
-    let is_book = !scan.reading_order.is_empty();
-    let rank = |p: &std::path::Path| {
-        scan.reading_order
-            .iter()
-            .position(|c| c == p)
-            // Unlisted sorts after every chapter, keeping the walk's alphabetical order
-            // among themselves (the sort below is stable).
-            .unwrap_or(usize::MAX)
-    };
-    let mut pages: Vec<serde_json::Value> = Vec::new();
-    for h in &scan.headings {
-        let path = h.path.to_string_lossy().into_owned();
-        let row = serde_json::json!({ "line": h.line, "level": h.level, "text": h.text });
-        match pages
-            .iter_mut()
-            .find(|p| p["path"].as_str() == Some(path.as_str()))
-        {
-            Some(p) => p["headings"].as_array_mut()?.push(row),
-            None => pages.push(serde_json::json!({
-                "path": path,
-                "listed": !is_book || rank(&h.path) != usize::MAX,
-                "headings": [row],
-            })),
-        }
-    }
-    pages.sort_by_key(|p| rank(std::path::Path::new(p["path"].as_str().unwrap_or(""))));
-    let floats: Vec<serde_json::Value> = scan
-        .anchors
-        .iter()
-        .map(|a| {
-            serde_json::json!({
-                "id": a.id,
-                "path": a.path.to_string_lossy(),
-                "line": a.line,
-                "title": a.title,
-                "number": a.number,
-            })
-        })
-        .collect();
-    Some(serde_json::json!({
-        "root": scan.root.to_string_lossy(),
-        "book": is_book,
-        "pages": pages,
-        "floats": floats,
-    }))
-}
-
-/// Every cross-reference target with the uses pointing at it. A target with no definition is
-/// reported with `resolved: false` rather than omitted: grouping dangling references is the
-/// reason [`crate::lsp_nav::xref_occurrences`] exists at all. A target that is defined and
-/// never referenced is `resolved: true` with an empty `uses`, which is normal rather than a
-/// problem and must not be filed as dangling.
-fn project_refs(
-    project: &mut crate::lsp_project::ProjectCache,
-    page: &std::path::Path,
-) -> Option<serde_json::Value> {
-    let scan = project.get(page)?;
-    let mut ids: Vec<&str> = scan.anchors.iter().map(|a| a.id.as_str()).collect();
-    for u in &scan.uses {
-        ids.push(&u.id);
-    }
-    ids.sort_unstable();
-    ids.dedup();
-
-    let targets: Vec<serde_json::Value> = ids
-        .iter()
-        .map(|id| {
-            let defined = scan.anchors.iter().find(|a| a.id == *id);
-            let uses: Vec<serde_json::Value> = scan
-                .uses
-                .iter()
-                .filter(|u| u.id == *id)
-                .map(|u| {
-                    serde_json::json!({
-                        "path": u.path.to_string_lossy(),
-                        "line": u.line,
-                        "col": u.col,
-                    })
-                })
-                .collect();
-            serde_json::json!({
-                "id": id,
-                "resolved": defined.is_some(),
-                "definedIn": defined.map(|d| d.path.to_string_lossy().into_owned()),
-                "definedLine": defined.map(|d| d.line),
-                "uses": uses,
-            })
-        })
-        .collect();
-    Some(serde_json::json!({ "root": scan.root.to_string_lossy(), "targets": targets }))
-}
 
 /// Hover: the token under the cursor, plus the message of any diagnostic that covers it.
 ///
@@ -1889,94 +1143,6 @@ fn resolve_code_actions(
         }));
     }
     Some(actions)
-}
-
-/// `textDocument/prepareRename`: if the cursor is on a cross-reference anchor (an `@id`
-/// reference, or a `{#id}` / `#| label: id` definition), return the id's range so the editor
-/// opens its rename box pre-filled with the id. `None` — which the client surfaces as "cannot
-/// rename here" — for anything else. Read-only w.r.t. the preview.
-fn resolve_prepare_rename(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    params: &lsp_types::TextDocumentPositionParams,
-) -> Option<lsp_types::PrepareRenameResponse> {
-    use lsp_types::{Position, PrepareRenameResponse, Range};
-    let text = docs.get(&params.text_document.uri)?;
-    let pos = params.position;
-    let cur_line = crate::lsp_pos::nth_line(text, pos.line as usize);
-    let cursor_char = crate::lsp_pos::utf16_to_char(cur_line, pos.character as usize);
-    let (_, start, end) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char)?;
-    Some(PrepareRenameResponse::Range(Range::new(
-        Position::new(
-            pos.line,
-            crate::lsp_pos::char_to_utf16(cur_line, start) as u32,
-        ),
-        Position::new(
-            pos.line,
-            crate::lsp_pos::char_to_utf16(cur_line, end) as u32,
-        ),
-    )))
-}
-
-/// `textDocument/rename`: rename the cross-reference anchor under the cursor — its definition
-/// (`{#id}` / `#| label: id`) and every `@id` reference in this document — to `new_name`, as one
-/// `WorkspaceEdit`. `Ok(None)` when the cursor is on no anchor. The edit flows through the
-/// editor (the legitimate editing surface), never the preview.
-///
-/// `Err(reason)` when `new_name` is not a usable anchor — see
-/// [`crate::lsp_nav::anchor_name_error`] for why an unvalidated name is worse here than
-/// almost anywhere else. The caller turns it into a `ResponseError` so the editor shows the
-/// reason in its rename box; a silent `None` would read as "nothing to rename".
-fn resolve_rename(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    params: &lsp_types::RenameParams,
-) -> Result<Option<lsp_types::WorkspaceEdit>, String> {
-    use lsp_types::{Position, Range, TextEdit, WorkspaceEdit};
-    let uri = &params.text_document_position.text_document.uri;
-    let pos = params.text_document_position.position;
-    let Some(text) = docs.get(uri) else {
-        return Ok(None);
-    };
-    let cursor_char = crate::lsp_pos::utf16_to_char(
-        crate::lsp_pos::nth_line(text, pos.line as usize),
-        pos.character as usize,
-    );
-    let Some((id, _, _)) = crate::lsp_nav::anchor_at(text, pos.line as usize, cursor_char) else {
-        return Ok(None);
-    };
-    // Validate BEFORE building any edit, and against the id being replaced: a name that
-    // leaves the anchor grammar does not fail loudly, it rewrites every site into something
-    // the scanners no longer find.
-    let new_name = params.new_name.trim();
-    if let Some(why) = crate::lsp_nav::anchor_name_error(&id, new_name) {
-        return Err(why);
-    }
-    // Occurrences span many lines; each edit range converts its own line's scalar columns to
-    // UTF-16 so the editor overwrites exactly the id, never a byte off, on any line.
-    let edits: Vec<TextEdit> = crate::lsp_nav::anchor_occurrences(text, &id)
-        .into_iter()
-        .map(|(line, start, end)| {
-            let l = crate::lsp_pos::nth_line(text, line as usize);
-            TextEdit {
-                range: Range::new(
-                    Position::new(
-                        line,
-                        crate::lsp_pos::char_to_utf16(l, start as usize) as u32,
-                    ),
-                    Position::new(line, crate::lsp_pos::char_to_utf16(l, end as usize) as u32),
-                ),
-                new_text: new_name.to_string(),
-            }
-        })
-        .collect();
-    if edits.is_empty() {
-        return Ok(None);
-    }
-    let mut changes = std::collections::HashMap::new();
-    changes.insert(uri.clone(), edits);
-    Ok(Some(WorkspaceEdit {
-        changes: Some(changes),
-        ..Default::default()
-    }))
 }
 
 /// Resolve completion at the cursor: route to the vocabulary that applies (front-matter key /
@@ -2525,91 +1691,6 @@ fn frontmatter_key_doc(parent: Option<&str>, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// `textDocument/documentLink`: the `{{< include >}}` / `{{< embed >}}` paths in `uri`, each
-/// pointing at the file it resolves to.
-///
-/// Only a target that EXISTS on disk becomes a link. A missing path is `check`'s finding to
-/// report (`TAL-INCLUDE-*`), and painting it as a link would promise a jump that lands on
-/// nothing, which reads as a broken editor rather than a broken path.
-fn document_links(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    uri: &lsp_types::Url,
-) -> Option<Vec<lsp_types::DocumentLink>> {
-    use lsp_types::{DocumentLink, Position, Range};
-    let text = docs.get(uri)?;
-    // Paths resolve against the including file's own directory, the same base
-    // `includes::resolve` recurses with. An untitled buffer has no directory, so nothing
-    // can be resolved against it.
-    let dir = uri.to_file_path().ok()?.parent()?.to_path_buf();
-    let lines: Vec<&str> = text.split('\n').collect();
-    let links = crate::lsp_links::path_links(text)
-        .into_iter()
-        .filter_map(|l| {
-            let target = dir.join(&l.path);
-            if !target.exists() {
-                return None;
-            }
-            // Scalar columns in, UTF-16 on the wire (`lsp_pos`), converted against the
-            // link's own line so an astral char earlier in it cannot shift the span.
-            let line_text = lines.get(l.line as usize).copied().unwrap_or("");
-            Some(DocumentLink {
-                range: Range::new(
-                    Position::new(
-                        l.line,
-                        crate::lsp_pos::char_to_utf16(line_text, l.start) as u32,
-                    ),
-                    Position::new(
-                        l.line,
-                        crate::lsp_pos::char_to_utf16(line_text, l.end) as u32,
-                    ),
-                ),
-                target: lsp_types::Url::from_file_path(&target).ok(),
-                tooltip: Some(format!("Open {}", l.path)),
-                data: None,
-            })
-        })
-        .collect();
-    Some(links)
-}
-
-/// The heading outline for `uri` as nested LSP document symbols, or `None` when the buffer
-/// is unknown.
-/// `textDocument/formatting`: one edit per table whose formatting changes, and nothing else.
-///
-/// Each edit spans whole lines and ends at the start of the line AFTER the table, so the
-/// trailing newline is never part of the replacement — an off-by-one there would eat the
-/// blank line under every table it touched.
-fn format_document(
-    docs: &std::collections::HashMap<lsp_types::Url, String>,
-    uri: &lsp_types::Url,
-) -> Option<Vec<lsp_types::TextEdit>> {
-    use lsp_types::{Position, Range, TextEdit};
-    let text = docs.get(uri)?;
-    Some(
-        crate::lsp_format::format_edits(text)
-            .into_iter()
-            .map(|e| TextEdit {
-                range: Range {
-                    start: Position {
-                        line: e.start_line as u32,
-                        character: 0,
-                    },
-                    end: Position {
-                        line: e.end_line as u32,
-                        character: line_len_utf16(text, e.end_line),
-                    },
-                },
-                new_text: e.new_text,
-            })
-            .collect(),
-    )
-}
-
-/// The length of a line in UTF-16 code units, which is what LSP positions count.
-fn line_len_utf16(text: &str, line: usize) -> u32 {
-    crate::lsp_pos::line_end_utf16(crate::lsp_pos::nth_line(text, line)) as u32
-}
-
 fn document_symbols(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     uri: &lsp_types::Url,
@@ -2724,52 +1805,6 @@ fn publish(
     publish_diagnostics(connection, uri, diagnostics)
 }
 
-/// Send one `$/progress` notification against a token the client supplied.
-///
-/// Server-*initiated* progress would need `window/workDoneProgress/create` first; this is the
-/// other kind — the client handed us a token with its request and is already listening on it,
-/// so there is nothing to negotiate and nothing to tear down if it stops.
-fn progress(
-    connection: &Connection,
-    token: &lsp_types::ProgressToken,
-    value: serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use lsp_types::notification::Notification as _;
-    connection
-        .sender
-        .send(Message::Notification(lsp_server::Notification {
-            method: lsp_types::notification::Progress::METHOD.to_owned(),
-            params: serde_json::json!({ "token": token, "value": value }),
-        }))?;
-    Ok(())
-}
-
-/// Tell a pull client that the project's diagnostics moved, so it re-pulls.
-///
-/// This is the pull model's answer to the invalidation problem the push model could only ever
-/// guess at: under push, nothing refreshes a document the author is not currently typing in,
-/// so editing chapter 3 left chapter 12's open buffer showing an anchor error that had just
-/// been fixed. Here ownership is inverted — we say "something changed", the client decides
-/// what to ask about.
-///
-/// The reply is ignored on purpose, exactly as `register_file_watchers`' is: a client that
-/// declines leaves us where we started, and the main loop drops responses it did not ask
-/// about. The id is fixed rather than sequential because nothing here awaits a specific one.
-fn request_diagnostic_refresh(
-    connection: &Connection,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    connection
-        .sender
-        .send(Message::Request(lsp_server::Request {
-        id: lsp_server::RequestId::from("taliesin-diagnostic-refresh".to_owned()),
-        method:
-            <lsp_types::request::WorkspaceDiagnosticRefresh as lsp_types::request::Request>::METHOD
-                .to_owned(),
-        params: serde_json::Value::Null,
-    }))?;
-    Ok(())
-}
-
 /// Send a `textDocument/publishDiagnostics` notification (an empty vec clears squiggles).
 fn publish_diagnostics(
     connection: &Connection,
@@ -2847,15 +1882,6 @@ mod tests {
                 params: serde_json::json!({}),
             }))
             .unwrap();
-    }
-
-    /// The capability block a 3.17 pull client sends: it manages diagnostics itself and will
-    /// re-pull when told to.
-    fn pull_capabilities() -> serde_json::Value {
-        serde_json::json!({
-            "textDocument": { "diagnostic": { "dynamicRegistration": false } },
-            "workspace": { "diagnostics": { "refreshSupport": true } },
-        })
     }
 
     // Block (bounded) until the next publishDiagnostics notification; panics on any other
@@ -2975,20 +2001,13 @@ mod tests {
         (root, uri, docs)
     }
 
-    /// A project root with the given `(relative path, source)` pages, for the workspace-symbol
-    /// tests. Returns the root.
+    /// A project root with the given `(relative path, source)` pages. Returns the root.
     fn symbol_fixture(name: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
-        site_fixture(name, "title: t\n", pages)
-    }
-
-    /// Like [`symbol_fixture`] but with the project's own `_site.yml`, so a test can make it
-    /// a book (`book: chapters:`) rather than a flat website.
-    fn site_fixture(name: &str, config: &str, pages: &[(&str, &str)]) -> std::path::PathBuf {
         let root =
-            std::env::temp_dir().join(format!("tali-lsp-wsym-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("tali-lsp-proj-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("_site.yml"), config).unwrap();
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
         for (rel, src) in pages {
             let p = root.join(rel);
             if let Some(parent) = p.parent() {
@@ -2997,324 +2016,6 @@ mod tests {
             std::fs::write(p, src).unwrap();
         }
         root
-    }
-
-    #[test]
-    fn project_outline_lists_every_page_with_its_headings_and_floats() {
-        let root = symbol_fixture(
-            "outline",
-            &[("index.tmd", "# One\n\n## Deeper\n\n![p](i.png){#fig-a}\n")],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let out = project_outline(&mut project, &root.join("index.tmd")).unwrap();
-
-        assert_eq!(out["pages"].as_array().unwrap().len(), 1);
-        let headings = out["pages"][0]["headings"].as_array().unwrap();
-        assert_eq!(headings.len(), 2);
-        assert_eq!(headings[1]["text"], "Deeper");
-        assert_eq!(headings[1]["level"], 2);
-        assert_eq!(out["floats"][0]["id"], "fig-a");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn project_outline_keeps_each_pages_headings_under_that_page() {
-        // Two pages, so a flattening bug (every heading landing under the first page) cannot
-        // pass. A single-page fixture would not notice.
-        let root = symbol_fixture(
-            "outline2",
-            &[("a.tmd", "# A\n"), ("b.tmd", "# B\n\n## B2\n")],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let out = project_outline(&mut project, &root.join("a.tmd")).unwrap();
-        let pages = out["pages"].as_array().unwrap();
-        assert_eq!(pages.len(), 2, "one row per page: {pages:?}");
-        for p in pages {
-            let n = p["headings"].as_array().unwrap().len();
-            let expected = if p["path"].as_str().unwrap().ends_with("a.tmd") {
-                1
-            } else {
-                2
-            };
-            assert_eq!(n, expected, "wrong heading count for {}", p["path"]);
-        }
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_books_outline_is_in_reading_order_not_path_order() {
-        // The chapter list deliberately runs backwards through the alphabet, so path order
-        // (`collect_pages` sorts) and reading order disagree on every row. Without that a
-        // "reading order" assertion passes on an implementation that never left path order.
-        let root = site_fixture(
-            "bookorder",
-            "title: t\nchapters:\n  - zeta.tmd\n  - mid.tmd\n  - alpha.tmd\n",
-            &[
-                ("alpha.tmd", "# Alpha\n"),
-                ("mid.tmd", "# Mid\n"),
-                ("zeta.tmd", "# Zeta\n"),
-            ],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let out = project_outline(&mut project, &root.join("alpha.tmd")).unwrap();
-
-        assert_eq!(out["book"], true, "a project with `chapters:` is a book");
-        let names: Vec<&str> = out["pages"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|p| {
-                let full = p["path"].as_str().unwrap();
-                full.rsplit('/').next().unwrap()
-            })
-            .collect();
-        assert_eq!(
-            names,
-            vec!["zeta.tmd", "mid.tmd", "alpha.tmd"],
-            "the outline follows `chapters:`; path order would be alpha, mid, zeta"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_page_missing_from_chapters_is_kept_and_marked_unlisted() {
-        // Ordering by a list a page is not in must not drop it: an orphan chapter is an
-        // authoring mistake worth SEEING, and a tree that silently omits it hides the one
-        // thing the author needs to know.
-        let root = site_fixture(
-            "bookorphan",
-            "title: t\nchapters:\n  - zeta.tmd\n",
-            &[("orphan.tmd", "# Orphan\n"), ("zeta.tmd", "# Zeta\n")],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let out = project_outline(&mut project, &root.join("zeta.tmd")).unwrap();
-
-        let pages = out["pages"].as_array().unwrap();
-        let listed: Vec<(&str, bool)> = pages
-            .iter()
-            .map(|p| {
-                (
-                    p["path"].as_str().unwrap().rsplit('/').next().unwrap(),
-                    p["listed"].as_bool().unwrap(),
-                )
-            })
-            .collect();
-        assert_eq!(
-            listed,
-            vec![("zeta.tmd", true), ("orphan.tmd", false)],
-            "the chapters come first in their own order, then whatever is not in the list"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_website_declares_no_reading_order_and_keeps_path_order() {
-        // The defined fallback: no `chapters:` means no list to be missing from, so nothing
-        // is unlisted and the alphabetical walk order stands.
-        let root = symbol_fixture(
-            "siteorder",
-            &[("zeta.tmd", "# Zeta\n"), ("alpha.tmd", "# Alpha\n")],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let out = project_outline(&mut project, &root.join("alpha.tmd")).unwrap();
-
-        assert_eq!(out["book"], false);
-        let pages = out["pages"].as_array().unwrap();
-        let names: Vec<&str> = pages
-            .iter()
-            .map(|p| p["path"].as_str().unwrap().rsplit('/').next().unwrap())
-            .collect();
-        assert_eq!(names, vec!["alpha.tmd", "zeta.tmd"]);
-        assert!(
-            pages.iter().all(|p| p["listed"] == true),
-            "with no list declared, no page is out of it"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn project_refs_groups_uses_by_target_and_flags_the_dangling_one() {
-        let root = symbol_fixture(
-            "refs",
-            &[
-                ("a.tmd", "# A {#sec-a}\n"),
-                ("b.tmd", "See @sec-a and @sec-gone.\n"),
-            ],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let refs = project_refs(&mut project, &root.join("b.tmd")).unwrap();
-
-        let targets = refs["targets"].as_array().unwrap();
-        let resolved = targets.iter().find(|t| t["id"] == "sec-a").unwrap();
-        assert_eq!(resolved["resolved"], true);
-        assert_eq!(resolved["uses"].as_array().unwrap().len(), 1);
-
-        let dangling = targets.iter().find(|t| t["id"] == "sec-gone").unwrap();
-        assert_eq!(dangling["resolved"], false);
-        assert!(dangling["definedIn"].is_null());
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn project_refs_lists_a_defined_but_unreferenced_anchor_as_resolved_with_no_uses() {
-        // Defined and never used is normal, not an error, and must not be filed as dangling.
-        let root = symbol_fixture("refs2", &[("a.tmd", "# A {#sec-unused}\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let refs = project_refs(&mut project, &root.join("a.tmd")).unwrap();
-        let t = &refs["targets"][0];
-        assert_eq!(t["id"], "sec-unused");
-        assert_eq!(t["resolved"], true);
-        assert_eq!(t["uses"].as_array().unwrap().len(), 0);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn both_project_requests_answer_none_outside_a_project() {
-        let dir = std::env::temp_dir().join(format!("tali-lsp-proj-solo-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let solo = dir.join("solo.tmd");
-        std::fs::write(&solo, "# Solo\n\nSee @sec-x.\n").unwrap();
-        let mut project = crate::lsp_project::ProjectCache::new();
-        assert!(project_outline(&mut project, &solo).is_none());
-        assert!(project_refs(&mut project, &solo).is_none());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_two_new_project_methods_are_namespaced() {
-        // The `"taliesin/…"` census below enforces the shape across the whole file; these two
-        // are pinned by name so a rename cannot quietly drop the prefix.
-        assert!(PROJECT_OUTLINE_METHOD.starts_with("taliesin/"));
-        assert!(PROJECT_REFS_METHOD.starts_with("taliesin/"));
-    }
-
-    #[test]
-    fn workspace_symbols_reach_headings_and_anchors_on_every_page() {
-        let root = symbol_fixture(
-            "reach",
-            &[
-                ("index.tmd", "# Introduction\n"),
-                ("two.tmd", "# Scree Plots\n\n![p](i.png){#fig-scree}\n"),
-            ],
-        );
-        let mut project = crate::lsp_project::ProjectCache::new();
-
-        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "scree");
-        let names: Vec<&str> = hits.iter().map(|s| s.name.as_str()).collect();
-        assert!(
-            names.contains(&"Scree Plots"),
-            "heading on another page: {names:?}"
-        );
-        assert!(
-            names.contains(&"fig-scree"),
-            "anchor on another page: {names:?}"
-        );
-        assert!(
-            !names.contains(&"Introduction"),
-            "non-matching symbol leaked in: {names:?}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn workspace_symbols_search_every_open_project_not_an_arbitrary_one() {
-        // Found by the e2e suite, which runs with documents from earlier tests still open: the
-        // handler picked `docs.keys().find_map(...)`, the FIRST key of a hash map, to stand for
-        // "the project". With two projects open that is a coin flip, and Ctrl+T searched
-        // whichever one the hasher happened to yield. An author cannot predict that.
-        let a = symbol_fixture("multi-a", &[("index.tmd", "# Alpha Heading\n")]);
-        let b = symbol_fixture("multi-b", &[("index.tmd", "# Alpha Sibling\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-
-        let roots = crate::lsp_project::ProjectCache::roots_of(
-            [a.join("index.tmd"), b.join("index.tmd")]
-                .iter()
-                .map(|p| p.as_path()),
-        );
-        assert_eq!(roots.len(), 2, "two distinct projects: {roots:?}");
-
-        let mut names: Vec<String> = Vec::new();
-        for root in roots {
-            names.extend(
-                workspace_symbols(&mut project, &root.join("_site.yml"), "Alpha")
-                    .into_iter()
-                    .map(|s| s.name),
-            );
-        }
-        names.sort();
-        assert_eq!(
-            names,
-            vec!["Alpha Heading".to_string(), "Alpha Sibling".to_string()],
-            "both projects must be searched"
-        );
-        let _ = std::fs::remove_dir_all(&a);
-        let _ = std::fs::remove_dir_all(&b);
-    }
-
-    #[test]
-    fn a_root_locates_its_own_project_so_the_handler_need_not_pick_a_page() {
-        // The handler passes `<root>/_site.yml` as the probe path. That file need not be a
-        // page, but it must resolve to the project, or workspace symbols answers nothing.
-        let root = symbol_fixture("byroot", &[("index.tmd", "# Findable\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-        assert_eq!(
-            workspace_symbols(&mut project, &root.join("_site.yml"), "Findable").len(),
-            1
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn workspace_symbol_matching_ignores_case() {
-        let root = symbol_fixture("case", &[("index.tmd", "# Introduction\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-        assert_eq!(
-            workspace_symbols(&mut project, &root.join("index.tmd"), "INTRO").len(),
-            1
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn an_empty_query_returns_every_symbol_rather_than_none() {
-        // VS Code opens Ctrl+T with an empty query and expects a browsable list, not silence.
-        let root = symbol_fixture("empty", &[("index.tmd", "# A\n\n## B\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-        assert_eq!(
-            workspace_symbols(&mut project, &root.join("index.tmd"), "").len(),
-            2
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_workspace_symbol_points_at_the_line_that_defines_it() {
-        // A location every row shares would make the list navigable-looking and useless.
-        let root = symbol_fixture("locate", &[("index.tmd", "# A\n\n## Target\n")]);
-        let mut project = crate::lsp_project::ProjectCache::new();
-        let hits = workspace_symbols(&mut project, &root.join("index.tmd"), "Target");
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].location.range.start.line, 2);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn workspace_symbols_outside_a_project_are_empty_rather_than_an_error() {
-        let dir = std::env::temp_dir().join(format!("tali-lsp-wsym-solo-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let solo = dir.join("solo.tmd");
-        std::fs::write(&solo, "# Solo\n").unwrap();
-        let mut project = crate::lsp_project::ProjectCache::new();
-        assert!(workspace_symbols(&mut project, &solo, "solo").is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_capabilities_advertise_workspace_symbols() {
-        let caps = serde_json::to_value(server_capabilities()).unwrap();
-        assert_eq!(caps["workspaceSymbolProvider"], true);
     }
 
     #[test]
@@ -3480,89 +2181,6 @@ mod tests {
         character: u32,
     ) -> Vec<lsp_types::CompletionItem> {
         complete_raw_at(client, uri, id, line, character).expect("a completion list (got null)")
-    }
-
-    // Send a prepareRename request and return its response (None when the server answered null).
-    fn prepare_rename_at(
-        client: &Connection,
-        uri: &Url,
-        id: i32,
-        line: u32,
-        character: u32,
-    ) -> Option<lsp_types::PrepareRenameResponse> {
-        let params = lsp_types::TextDocumentPositionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            position: lsp_types::Position::new(line, character),
-        };
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: lsp_types::request::PrepareRenameRequest::METHOD.to_owned(),
-                params: serde_json::to_value(params).unwrap(),
-            }))
-            .unwrap();
-        let resp = recv_response(client, RequestId::from(id));
-        serde_json::from_value(resp.result.expect("a prepareRename result")).unwrap()
-    }
-
-    // Send a rename request and return its WorkspaceEdit (None when the server answered null).
-    fn rename_at(
-        client: &Connection,
-        uri: &Url,
-        id: i32,
-        line: u32,
-        character: u32,
-        new_name: &str,
-    ) -> Option<lsp_types::WorkspaceEdit> {
-        let params = lsp_types::RenameParams {
-            text_document_position: lsp_types::TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: uri.clone() },
-                position: lsp_types::Position::new(line, character),
-            },
-            new_name: new_name.to_owned(),
-            work_done_progress_params: Default::default(),
-        };
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: lsp_types::request::Rename::METHOD.to_owned(),
-                params: serde_json::to_value(params).unwrap(),
-            }))
-            .unwrap();
-        let resp = recv_response(client, RequestId::from(id));
-        serde_json::from_value(resp.result.expect("a rename result")).unwrap()
-    }
-
-    // Send a rename request and return the RAW response, so a test can assert the server
-    // answered with a ResponseError rather than an edit. `rename_at` unwraps `result` and
-    // would panic on exactly the case a rejection test exists to check.
-    fn rename_raw_at(
-        client: &Connection,
-        uri: &Url,
-        id: i32,
-        line: u32,
-        character: u32,
-        new_name: &str,
-    ) -> lsp_server::Response {
-        let params = lsp_types::RenameParams {
-            text_document_position: lsp_types::TextDocumentPositionParams {
-                text_document: TextDocumentIdentifier { uri: uri.clone() },
-                position: lsp_types::Position::new(line, character),
-            },
-            new_name: new_name.to_owned(),
-            work_done_progress_params: Default::default(),
-        };
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: lsp_types::request::Rename::METHOD.to_owned(),
-                params: serde_json::to_value(params).unwrap(),
-            }))
-            .unwrap();
-        recv_response(client, RequestId::from(id))
     }
 
     // Pull the Markdown string out of a hover's contents.
@@ -3738,11 +2356,12 @@ mod tests {
             "the section range must not depend on the line terminator either"
         );
 
-        // The same measurement, on the path folding ranges and formatting edits use.
+        // The same measurement, on the shared boundary helper the outline above and every
+        // whole-line squiggle both go through.
         assert_eq!(
-            line_len_utf16(&crlf, 0),
+            crate::lsp_pos::line_end_utf16(crate::lsp_pos::nth_line(&crlf, 0)) as u32,
             heading.chars().count() as u32,
-            "line_len_utf16 must not count the CR"
+            "line_end_utf16 must not count the CR"
         );
 
         // And a whole-line diagnostic squiggle, which shares the defect through `to_lsp`.
@@ -4129,11 +2748,10 @@ mod tests {
     // code is the whole contract here: a client reads it to decide between "this server
     // can't do that" and a real failure, and no test looked at it.
     //
-    // The probe is RANGE formatting, which is deliberately not implemented: the formatter
-    // rewrites whole tables and nothing else, so a request scoped to an arbitrary range has
-    // no honest answer. (It used to probe `textDocument/formatting`, which stopped being an
-    // unimplemented method the day the table formatter landed — a probe naming a real feature
-    // tests the wrong thing, so this one has to keep naming a method the server declines.)
+    // The probe is RANGE formatting, and it must keep naming a method this server declines:
+    // a probe that names a real feature tests the wrong thing. That has already happened once
+    // here: it used to probe `textDocument/formatting`, which stopped being unimplemented the
+    // day a table formatter landed (and became unimplemented again when that formatter went).
     #[test]
     fn an_unhandled_request_is_answered_with_method_not_found() {
         let (server, client) = Connection::memory();
@@ -4955,231 +3573,16 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
-    #[test]
-    fn rename_rewrites_an_anchor_definition_and_all_its_references() {
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-rename.tmd").unwrap();
-        // Definition `{#fig-scree}` on line 0; two `@fig-scree` references on line 2.
-        let text = "![p](i.png){#fig-scree}\n\nSee @fig-scree and @fig-scree.\n".to_string();
-        did_open(&client, &uri, text);
-        let _ = recv_publish(&client);
-
-        // prepareRename on the first reference (line 2, char 6) → the id-only range [5, 14).
-        match prepare_rename_at(&client, &uri, 40, 2, 6).expect("an anchor is renameable here") {
-            lsp_types::PrepareRenameResponse::Range(r) => {
-                assert_eq!(r.start, lsp_types::Position::new(2, 5));
-                assert_eq!(r.end, lsp_types::Position::new(2, 14));
-            }
-            other => panic!("expected a plain Range, got {other:?}"),
-        }
-        // A position on prose is not renameable.
-        assert!(
-            prepare_rename_at(&client, &uri, 41, 2, 0).is_none(),
-            "prose should not be renameable"
-        );
-
-        // rename to `fig-plot` → the definition + both references, all rewritten.
-        let edit = rename_at(&client, &uri, 42, 2, 6, "fig-plot").expect("a rename edit");
-        let edits = edit
-            .changes
-            .as_ref()
-            .and_then(|c| c.get(&uri))
-            .expect("edits for this document");
-        assert_eq!(edits.len(), 3, "definition + two references, got {edits:?}");
-        assert!(
-            edits.iter().all(|e| e.new_text == "fig-plot"),
-            "every edit inserts the new id"
-        );
-        let ranges: Vec<(u32, u32, u32)> = edits
-            .iter()
-            .map(|e| {
-                (
-                    e.range.start.line,
-                    e.range.start.character,
-                    e.range.end.character,
-                )
-            })
-            .collect();
-        assert_eq!(
-            ranges,
-            vec![(0, 13, 22), (2, 5, 14), (2, 20, 29)],
-            "the definition span then both reference spans"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn rename_refuses_a_new_name_that_is_not_an_anchor() {
-        // `rename` is the ONE sanctioned write path back into source (the preview never
-        // writes), so an unvalidated name corrupts the file the author is editing. Accepting
-        // any non-blank string meant `F2` -> `my section` emitted `{#my section}` — not an
-        // anchor at all, since `is_xref_id_char` stops at the space — and rewrote every
-        // reference to match; a newline split the heading line in two. Refuse with a
-        // ResponseError so the editor shows the reason in its rename box, and change nothing.
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-rename-invalid.tmd").unwrap();
-        did_open(
-            &client,
-            &uri,
-            "## Scree {#sec-scree}\n\nSee @sec-scree.\n".to_string(),
-        );
-        let _ = recv_publish(&client);
-
-        // Each of these is a distinct way to leave the anchor grammar.
-        for (n, bad) in ["my section", "sec scree", "sec\nscree", "sec#scree", "sé"]
-            .iter()
-            .enumerate()
-        {
-            let resp = rename_raw_at(&client, &uri, 60 + n as i32, 0, 12, bad);
-            assert!(
-                resp.result.is_none() || resp.result.as_ref() == Some(&serde_json::Value::Null),
-                "rename to {bad:?} must not produce an edit, got {:?}",
-                resp.result
-            );
-            let err = resp
-                .error
-                .unwrap_or_else(|| panic!("rename to {bad:?} must answer a ResponseError"));
-            assert_eq!(err.code, -32803, "expected LSP RequestFailed for {bad:?}");
-            assert!(
-                err.message.contains("letters, digits"),
-                "the message must state the grammar so the editor can show it: {}",
-                err.message
-            );
-        }
-
-        // A name that is grammatically fine but drops the kind prefix is refused too, and for
-        // a different reason: `@intro` is not a cross-reference, so every reference would
-        // silently degrade to prose rather than break visibly.
-        let dropped = rename_raw_at(&client, &uri, 68, 0, 12, "intro");
-        let err = dropped
-            .error
-            .expect("dropping the xref kind prefix must be refused");
-        assert_eq!(err.code, -32803);
-        assert!(
-            err.message.contains("`sec-` prefix"),
-            "the message should name the prefix read off the id being renamed: {}",
-            err.message
-        );
-
-        // The valid neighbours still work, so the guard rejects only what it should.
-        let ok = rename_at(&client, &uri, 70, 0, 12, "sec-scree-2").expect("a rename edit");
-        assert_eq!(
-            ok.changes.as_ref().and_then(|c| c.get(&uri)).unwrap().len(),
-            2,
-            "definition + reference"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn rename_leaves_the_fragment_of_an_external_url_alone() {
-        // `is_anchor_site` treated ANY `#` before the id as a definition sigil, so renaming a
-        // section silently retargeted outbound links: `[x](https://example.com/p.html#sec-a)`
-        // became `…#sec-b`, a fragment on someone else's page. The mutation campaign measured
-        // 29 mutants / 0 survivors here, which proved the implemented rule was faithfully
-        // pinned — not that the rule was right. This is the fixture it never had.
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-rename-external.tmd").unwrap();
-        let text = "## A {#sec-a}\n\
-                    \n\
-                    See @sec-a and [ours](#sec-a).\n\
-                    \n\
-                    [theirs](https://example.com/p.html#sec-a)\n"
-            .to_string();
-        did_open(&client, &uri, text);
-        let _ = recv_publish(&client);
-
-        let edit = rename_at(&client, &uri, 80, 0, 9, "sec-b").expect("a rename edit");
-        let edits = edit
-            .changes
-            .as_ref()
-            .and_then(|c| c.get(&uri))
-            .expect("edits for this document");
-        let lines: Vec<u32> = edits.iter().map(|e| e.range.start.line).collect();
-        assert!(
-            !lines.contains(&4),
-            "line 4 is an EXTERNAL url; its fragment is not ours to rewrite: {edits:?}"
-        );
-        // The definition, the `@` reference and the same-document `](#…)` link all move.
-        assert_eq!(
-            lines,
-            vec![0, 2, 2],
-            "definition + @ref + in-document link, and nothing else: {edits:?}"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn rename_speaks_utf16_columns_across_an_astral_char() {
-        // The write path is the sharpest edge of the encoding boundary: an astral char (😀,
-        // two UTF-16 units) before a reference shifts every column. The editor sends UTF-16
-        // and expects UTF-16 back; a scalar-vs-UTF-16 mismatch would make the server miss the
-        // anchor (wrong incoming column) or overwrite the wrong span (wrong outgoing range).
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-rename-astral.tmd").unwrap();
-        // Def `{#fig-1}` on line 0 (ASCII, id chars/UTF-16 [13,18)); ref `@fig-1` on line 2
-        // after two emojis, so the id sits at char [3,8) but UTF-16 [5,10).
-        let text = "![p](i.png){#fig-1}\n\n😀😀@fig-1\n".to_string();
-        did_open(&client, &uri, text);
-        let _ = recv_publish(&client);
-
-        // Cursor at UTF-16 col 9 (the `1`). Read as a scalar column that is past the 8-scalar
-        // line end, so without incoming conversion the server finds no anchor and returns null.
-        let edit = rename_at(&client, &uri, 50, 2, 9, "fig-2")
-            .expect("the anchor is found when the incoming UTF-16 column is converted");
-        let edits = edit
-            .changes
-            .as_ref()
-            .and_then(|c| c.get(&uri))
-            .expect("edits for this document");
-        let ranges: Vec<(u32, u32, u32)> = edits
-            .iter()
-            .map(|e| {
-                (
-                    e.range.start.line,
-                    e.range.start.character,
-                    e.range.end.character,
-                )
-            })
-            .collect();
-        assert_eq!(
-            ranges,
-            vec![(0, 13, 18), (2, 5, 10)],
-            "the ASCII def span, then the ref span shifted by the two emojis' extra UTF-16 units"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
     /// The initialize handshake is the *only* thing that tells an editor which features exist:
     /// an unadvertised capability is one the editor never asks for, so it silently does not
     /// exist. Every other test here throws the `InitializeResult` away (`handshake` does
     /// `let _ = recv()`), which is why all twelve mutants in `server_capabilities` survived the
-    /// 2026-07-27 mutation run — including replacing its whole body with `Default::default()`.
+    /// 2026-07-27 mutation run, including replacing its whole body with `Default::default()`.
     /// A server advertising *nothing* passed the entire suite.
     ///
     /// So assert the value that actually goes over the wire, field by field, since each deleted
-    /// field is its own silent feature loss. `renameProvider` and `definitionProvider` are the
-    /// load-bearing pair: they are click-to-source and its rename counterpart.
+    /// field is its own silent feature loss. `definitionProvider` is the load-bearing one: it
+    /// is click-to-source, from the editor's side.
     #[test]
     fn the_initialize_handshake_advertises_every_feature_the_editor_needs() {
         let (server, client) = Connection::memory();
@@ -5213,53 +3616,16 @@ mod tests {
         );
         assert_eq!(caps["definitionProvider"], true);
         assert_eq!(caps["documentSymbolProvider"], true);
-        assert_eq!(
-            caps["documentLinkProvider"]["resolveProvider"], false,
-            "include/embed paths are the only visible cue that they are navigable"
-        );
         assert_eq!(caps["hoverProvider"], true);
         assert_eq!(caps["codeActionProvider"], true);
         assert_eq!(
-            caps["inlayHintProvider"], true,
-            "the resolved number beside a cross-reference"
-        );
-        assert_eq!(
-            caps["documentHighlightProvider"], true,
-            "the anchor under the cursor and its other occurrences"
-        );
-        assert_eq!(
             caps["codeLensProvider"]["resolveProvider"], false,
             "the Run buttons: the whole lens is resolved in one pass"
-        );
-        assert!(
-            caps["diagnosticProvider"]["workspaceDiagnostics"]
-                .as_bool()
-                .unwrap_or(false),
-            "without the workspace half, the Problems panel still cannot see an unopened page"
-        );
-        assert!(
-            caps["diagnosticProvider"]["interFileDependencies"]
-                .as_bool()
-                .unwrap_or(false),
-            "a cross-page `@sec-` means editing chapter 3 changes chapter 12's answer"
-        );
-        assert_eq!(
-            caps["referencesProvider"], true,
-            "the same question across the project, which is where it is actually asked"
-        );
-        assert_eq!(
-            caps["selectionRangeProvider"], true,
-            "without this the editor expands the selection by brackets, which in prose \
-             selects `](target)` and nothing an author reached for"
         );
         assert_eq!(
             caps["foldingRangeProvider"], true,
             "without this the editor falls back to indentation folding, which is \
              meaningless for a Markdown-derived format"
-        );
-        assert_eq!(
-            caps["renameProvider"]["prepareProvider"], true,
-            "without prepareRename the editor offers rename on anything, not just an anchor"
         );
         // `@` xref/cite, `.` div class, `|` cell option, `-` xref prefix, `/` path,
         // `:` front-matter value. A dropped trigger character is a completion that never opens.
@@ -5267,6 +3633,25 @@ mod tests {
             caps["completionProvider"]["triggerCharacters"],
             serde_json::json!(["@", ".", "|", "-", "/", ":", "\\"])
         );
+        // The write paths went on 2026-08-08: the `.tmd` file is the single editing surface
+        // and the editor is what edits it. Advertising one again is a decision, not a detail,
+        // so it fails here rather than arriving unnoticed.
+        for gone in [
+            "renameProvider",
+            "documentFormattingProvider",
+            "documentLinkProvider",
+            "inlayHintProvider",
+            "documentHighlightProvider",
+            "referencesProvider",
+            "selectionRangeProvider",
+            "workspaceSymbolProvider",
+            "diagnosticProvider",
+        ] {
+            assert!(
+                caps[gone].is_null(),
+                "{gone} is advertised again; it was retired with the LSP long tail"
+            );
+        }
 
         client
             .sender
@@ -5307,25 +3692,17 @@ mod tests {
             .filter_map(|k| k.strip_suffix("Provider").map(str::to_owned))
             .collect();
         assert!(
-            advertised.len() >= 12,
+            advertised.len() >= 7,
             "only {} providers found — the filter stopped matching, so this test would pass \
              vacuously however stale the table got",
             advertised.len()
         );
 
         for name in &advertised {
-            // The one place the wire name and the prose name differ. The table says
-            // `formatting` because that is what the editor command is called, and calling
-            // it `documentFormatting` in the book to satisfy a test would be the test
-            // writing the documentation.
-            let row = match name.as_str() {
-                "documentFormatting" => "formatting",
-                other => other,
-            };
             assert!(
-                text.contains(&format!("| `{row}`")),
+                text.contains(&format!("| `{name}`")),
                 "`{name}Provider` is advertised by `server_capabilities()` but \
-                 docs/internals/extending.tmd has no `| `{row}`` row for it. An \
+                 docs/internals/extending.tmd has no `| `{name}`` row for it. An \
                  undocumented capability is one no author knows to use — add the row in \
                  the same change that adds the capability."
             );
@@ -5372,85 +3749,6 @@ mod tests {
                 "`{method}` is served but docs/internals/extending.tmd never mentions it"
             );
         }
-    }
-
-    // ---------------------------------------------------------------------------
-    // `taliesin/sectionEdit` (backlog item 165): the wire half of the companion's four
-    // structural commands. `lsp_edits`'s own tests own the transforms; these own the three
-    // things only the dispatch can get wrong — that the method is answered at all, that a
-    // refusal arrives as an error the companion can show rather than as a null, and that an
-    // unopened buffer is not silently treated as an empty one.
-    // ---------------------------------------------------------------------------
-
-    fn section_edit_request(
-        client: &Connection,
-        uri: &Url,
-        id: i32,
-        line: u32,
-        op: &str,
-    ) -> Response {
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: SECTION_EDIT_METHOD.to_owned(),
-                params: serde_json::json!({
-                    "textDocument": { "uri": uri },
-                    "position": { "line": line, "character": 0 },
-                    "op": op,
-                }),
-            }))
-            .unwrap();
-        recv_response(client, RequestId::from(id))
-    }
-
-    #[test]
-    fn section_edit_answers_with_an_edit_and_the_cursor_to_follow_it() {
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-        let uri = Url::parse("file:///tmp/sections.tmd").unwrap();
-        did_open(&client, &uri, "## Alpha\n\na\n\n## Beta\n\nb\n".to_owned());
-
-        let resp = section_edit_request(&client, &uri, 5, 0, "moveDown");
-        assert!(resp.error.is_none(), "{:?}", resp.error);
-        let result = resp.result.expect("an edit");
-        assert_eq!(result["edits"].as_array().map(Vec::len), Some(1));
-        assert!(
-            result["edits"][0]["newText"]
-                .as_str()
-                .unwrap()
-                .starts_with("## Beta"),
-            "{result}"
-        );
-        // The camelCase spelling is the wire contract the companion reads; a Rust-side
-        // rename to `snake_case` would leave it reading `undefined` and silently skip the
-        // cursor fix-up.
-        assert_eq!(result["cursor"]["line"], 4, "{result}");
-
-        // A refusal is an error with a message, not a null result: the companion shows it.
-        let refused = section_edit_request(&client, &uri, 6, 4, "moveDown");
-        assert!(refused.result.is_none());
-        let error = refused.error.expect("a refusal");
-        assert_eq!(error.code, -32803);
-        assert!(error.message.contains("Beta"), "{}", error.message);
-
-        // An unopened buffer: an error too. Answering "no edits" would look like a document
-        // the transform declined to change.
-        let unopened = Url::parse("file:///tmp/never-opened.tmd").unwrap();
-        let missing = section_edit_request(&client, &unopened, 7, 0, "promote");
-        assert!(missing.result.is_none());
-        assert!(
-            missing
-                .error
-                .expect("an error")
-                .message
-                .contains("not open"),
-            "an unopened document should say so"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
     }
 
     // ---------------------------------------------------------------------------
@@ -5564,8 +3862,8 @@ mod tests {
     }
 
     // The window must close on a deadline set by the EDIT, not be reset by every message that
-    // arrives. A client that polls (inlay hints on scroll, hovers as the pointer moves) sends a
-    // steady stream of requests; if each one pushed the deadline out, the pending diagnostics
+    // arrives. A client that polls (hovers as the pointer moves, lenses on every scroll) sends
+    // a steady stream of requests; if each one pushed the deadline out, the pending diagnostics
     // would be starved for as long as the pointer kept moving.
     #[test]
     fn a_stream_of_requests_does_not_starve_a_pending_publish() {
@@ -5801,318 +4099,6 @@ mod tests {
     // list a book rather than only the chapters that happen to be open.
     // -----------------------------------------------------------------------------------
 
-    /// A project on disk, with a page nobody opens. That page is the whole point: under push
-    /// it can never appear in the Problems panel, because push only speaks about buffers.
-    fn pull_fixture(name: &str) -> std::path::PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("tali-lsp-pull-{}-{name}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
-        std::fs::write(root.join("a.tmd"), "---\ntitle: A\n---\n\nBody.\n").unwrap();
-        // Never opened, and carrying a diagnostic of its own.
-        std::fs::write(root.join("b.tmd"), "---\nfrobnicate: B\n---\n\nBody.\n").unwrap();
-        root
-    }
-
-    /// Send `req` and return the response body, panicking on an error reply so a
-    /// `MethodNotFound` fails here rather than as a confusing `None` downstream.
-    fn ask(
-        client: &Connection,
-        id: i32,
-        method: &str,
-        params: serde_json::Value,
-    ) -> serde_json::Value {
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(id),
-                method: method.to_owned(),
-                params,
-            }))
-            .unwrap();
-        loop {
-            match client
-                .receiver
-                .recv_timeout(Duration::from_secs(10))
-                .unwrap()
-            {
-                Message::Response(Response {
-                    result: Some(v),
-                    error: None,
-                    ..
-                }) => return v,
-                Message::Response(r) => panic!("{method} failed: {r:?}"),
-                // A refresh request or a publish can overtake the reply; neither is the
-                // answer being waited on.
-                _ => continue,
-            }
-        }
-    }
-
-    /// The reason the transport is a choice rather than "do both": a pull client keeps pull
-    /// results in a collection of its own, so a server that also pushed would put every
-    /// finding in the Problems panel twice.
-    #[test]
-    fn a_pull_client_is_not_also_pushed_at() {
-        let root = pull_fixture("nopush");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-
-        let uri = Url::from_file_path(root.join("b.tmd")).unwrap();
-        did_open(
-            &client,
-            &uri,
-            std::fs::read_to_string(root.join("b.tmd")).unwrap(),
-        );
-        // The document has a real diagnostic, so a push transport would send one here.
-        let report = ask(
-            &client,
-            2,
-            "textDocument/diagnostic",
-            serde_json::json!({ "textDocument": { "uri": uri } }),
-        );
-        assert_eq!(report["kind"], "full", "a full report: {report}");
-        let messages: Vec<String> = report["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|d| d["message"].as_str().unwrap_or("").to_string())
-            .collect();
-        assert!(
-            messages
-                .iter()
-                .any(|m| m.contains("unknown front-matter key")),
-            "the pull answer must carry the finding: {report}"
-        );
-        // Nothing else was sent: no publishDiagnostics reached this client at any point.
-        assert!(
-            client.receiver.try_recv().is_err(),
-            "a pull client must not also be pushed at, or every finding appears twice"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// The finding this item exists for: a page nobody opened is in the report.
-    #[test]
-    fn workspace_diagnostic_reaches_a_page_no_editor_has_opened() {
-        let root = pull_fixture("unopened");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-
-        // Only `a.tmd` is open. `b.tmd` is the one carrying a diagnostic.
-        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
-        did_open(
-            &client,
-            &a,
-            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
-        );
-
-        let report = ask(
-            &client,
-            2,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
-        );
-        let items = report["items"].as_array().expect("items");
-        let b = Url::from_file_path(root.join("b.tmd")).unwrap();
-        let row = items
-            .iter()
-            .find(|r| r["uri"] == serde_json::json!(b))
-            .unwrap_or_else(|| panic!("b.tmd must be reported though nobody opened it: {report}"));
-        assert_eq!(row["kind"], "full");
-        assert!(
-            row["items"][0]["message"]
-                .as_str()
-                .is_some_and(|m| m.contains("unknown front-matter key")),
-            "with its own finding: {row}"
-        );
-        assert!(
-            row["resultId"].is_string(),
-            "a resultId is what makes the next poll cheap: {row}"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// A client polls this method. Re-linting a 25-chapter book per poll would be a walk
-    /// every time, so an unchanged project must answer `unchanged` from the result ids it
-    /// handed out — which is a `stat` per page and no render at all.
-    #[test]
-    fn a_repeat_workspace_poll_is_answered_unchanged() {
-        let root = pull_fixture("repeat");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
-        did_open(
-            &client,
-            &a,
-            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
-        );
-
-        let first = ask(
-            &client,
-            2,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
-        );
-        let previous: Vec<serde_json::Value> = first["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| serde_json::json!({ "uri": r["uri"], "value": r["resultId"] }))
-            .collect();
-        assert!(!previous.is_empty(), "the first poll must report something");
-
-        let second = ask(
-            &client,
-            3,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": previous }),
-        );
-        let kinds: Vec<&str> = second["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r["kind"].as_str().unwrap_or(""))
-            .collect();
-        assert!(
-            kinds.iter().all(|k| *k == "unchanged"),
-            "nothing changed, so nothing should be re-linted: {second}"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// And the direction that must NOT be sticky: once the buffer changes, the same result id
-    /// must not still be served. Without this, `unchanged` would be a permanent answer and the
-    /// panel would freeze at whatever the first poll said.
-    #[test]
-    fn an_edit_invalidates_the_result_id() {
-        let root = pull_fixture("invalidate");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
-        did_open(
-            &client,
-            &a,
-            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
-        );
-
-        let first = ask(
-            &client,
-            2,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
-        );
-        let previous: Vec<serde_json::Value> = first["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| serde_json::json!({ "uri": r["uri"], "value": r["resultId"] }))
-            .collect();
-
-        // Type an unknown key into the open buffer.
-        client
-            .sender
-            .send(Message::Notification(Notification {
-                method: DidChangeTextDocument::METHOD.to_owned(),
-                params: serde_json::to_value(DidChangeTextDocumentParams {
-                    text_document: VersionedTextDocumentIdentifier {
-                        uri: a.clone(),
-                        version: 2,
-                    },
-                    content_changes: vec![TextDocumentContentChangeEvent {
-                        range: None,
-                        range_length: None,
-                        text: "---\ntitle: A\nfrobnicate: x\n---\n\nBody.\n".to_owned(),
-                    }],
-                })
-                .unwrap(),
-            }))
-            .unwrap();
-
-        let second = ask(
-            &client,
-            3,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": previous }),
-        );
-        let row = second["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|r| r["uri"] == serde_json::json!(a))
-            .unwrap_or_else(|| panic!("a.tmd must be reported: {second}"));
-        assert_eq!(
-            row["kind"], "full",
-            "the edited buffer must be re-linted, not answered `unchanged`: {second}"
-        );
-        assert!(
-            row["items"][0]["message"]
-                .as_str()
-                .is_some_and(|m| m.contains("unknown front-matter key")),
-            "{row}"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// Under push, the coalescing window ends in a publish. Under pull the server owns no
-    /// collection to update, so what it owes the client is the *news* — a
-    /// `workspace/diagnostic/refresh` — and without it a pull client only re-asks on its own
-    /// schedule, which is how a fixed cross-page anchor stays squiggled.
-    #[test]
-    fn an_edit_asks_a_pull_client_to_refresh_instead_of_publishing() {
-        let (server, client) = Connection::memory();
-        let thread =
-            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(10)));
-        handshake_with(&client, pull_capabilities());
-        let uri = Url::from_file_path(corpus("links.tmd")).unwrap();
-        did_open(&client, &uri, "---\ntitle: T\n---\n\nBody.\n".to_owned());
-        client
-            .sender
-            .send(Message::Notification(Notification {
-                method: DidChangeTextDocument::METHOD.to_owned(),
-                params: serde_json::to_value(DidChangeTextDocumentParams {
-                    text_document: VersionedTextDocumentIdentifier {
-                        uri: uri.clone(),
-                        version: 2,
-                    },
-                    content_changes: vec![TextDocumentContentChangeEvent {
-                        range: None,
-                        range_length: None,
-                        text: "---\ntitle: T\n---\n\nEdited.\n".to_owned(),
-                    }],
-                })
-                .unwrap(),
-            }))
-            .unwrap();
-
-        match client
-            .receiver
-            .recv_timeout(Duration::from_secs(10))
-            .unwrap()
-        {
-            Message::Request(r) => assert_eq!(
-                r.method, "workspace/diagnostic/refresh",
-                "a pull client is told to re-ask, not pushed at"
-            ),
-            other => panic!("expected a refresh request, got {other:?}"),
-        }
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
     // -----------------------------------------------------------------------------------
     // `$/cancelRequest` + `$/progress` (backlog item 223).
     // -----------------------------------------------------------------------------------
@@ -6134,11 +4120,11 @@ mod tests {
         let root = symbol_fixture("cancel", &[("a.tmd", "# Alpha\n"), ("b.tmd", "# Beta\n")]);
         let (server, client) = Connection::memory();
         let uri = Url::from_file_path(root.join("a.tmd")).unwrap();
-        let query = |id: i32, q: &str| {
+        let query = |id: i32, uri: &Url| {
             Message::Request(Request {
                 id: RequestId::from(id),
-                method: lsp_types::request::WorkspaceSymbolRequest::METHOD.to_owned(),
-                params: serde_json::json!({ "query": q }),
+                method: lsp_types::request::DocumentSymbolRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": uri } }),
             })
         };
         for msg in [
@@ -6163,8 +4149,8 @@ mod tests {
                 })
                 .unwrap(),
             }),
-            query(10, "al"),
-            query(11, "alp"),
+            query(10, &uri),
+            query(11, &uri),
             Message::Notification(Notification {
                 method: "$/cancelRequest".to_owned(),
                 params: serde_json::json!({ "id": 10 }),
@@ -6218,8 +4204,8 @@ mod tests {
         let query = |id: i32| {
             Message::Request(Request {
                 id: RequestId::from(id),
-                method: lsp_types::request::WorkspaceSymbolRequest::METHOD.to_owned(),
-                params: serde_json::json!({ "query": "x" }),
+                method: lsp_types::request::DocumentSymbolRequest::METHOD.to_owned(),
+                params: serde_json::json!({ "textDocument": { "uri": "file:///x.tmd" } }),
             })
         };
         let cancel = |id: i32| {
@@ -6267,93 +4253,5 @@ mod tests {
             cancelled.is_empty(),
             "a cancel for an id this batch does not carry must be dropped, not remembered"
         );
-    }
-
-    /// A whole-project lint is the one operation here long enough to have a middle, and a
-    /// client that supplied a `workDoneToken` is told where it has got to. Reported per page
-    /// rather than once at the end: progress that all arrives with the answer is a flicker.
-    #[test]
-    fn a_workspace_lint_reports_progress_against_the_clients_token() {
-        let root = pull_fixture("progress");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
-        did_open(
-            &client,
-            &a,
-            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
-        );
-
-        client
-            .sender
-            .send(Message::Request(Request {
-                id: RequestId::from(2),
-                method: "workspace/diagnostic".to_owned(),
-                params: serde_json::json!({
-                    "identifier": "taliesin",
-                    "previousResultIds": [],
-                    "workDoneToken": "tok-1",
-                }),
-            }))
-            .unwrap();
-
-        let mut kinds: Vec<String> = Vec::new();
-        loop {
-            match client
-                .receiver
-                .recv_timeout(Duration::from_secs(10))
-                .unwrap()
-            {
-                Message::Notification(n) if n.method == "$/progress" => {
-                    assert_eq!(n.params["token"], "tok-1", "our token, not an invented one");
-                    kinds.push(n.params["value"]["kind"].as_str().unwrap_or("").to_string());
-                }
-                Message::Response(_) => break,
-                _ => continue,
-            }
-        }
-        assert_eq!(
-            kinds.first().map(String::as_str),
-            Some("begin"),
-            "a progress run opens with `begin`: {kinds:?}"
-        );
-        assert_eq!(
-            kinds.last().map(String::as_str),
-            Some("end"),
-            "and must close, or the client's indicator never goes away: {kinds:?}"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// And the reject axis: no token, no notifications. Reporting into a channel the client
-    /// never opened is at best ignored and at worst an unmatched token it has to reason about.
-    #[test]
-    fn no_token_means_no_progress_notifications() {
-        let root = pull_fixture("notoken");
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake_with(&client, pull_capabilities());
-        let a = Url::from_file_path(root.join("a.tmd")).unwrap();
-        did_open(
-            &client,
-            &a,
-            std::fs::read_to_string(root.join("a.tmd")).unwrap(),
-        );
-        let _ = ask(
-            &client,
-            2,
-            "workspace/diagnostic",
-            serde_json::json!({ "identifier": "taliesin", "previousResultIds": [] }),
-        );
-        assert!(
-            client.receiver.try_recv().is_err(),
-            "nothing else should have been sent"
-        );
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-        let _ = std::fs::remove_dir_all(&root);
     }
 }
