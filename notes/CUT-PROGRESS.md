@@ -43,7 +43,23 @@ Everything else in §9 is decided: **deck cut entirely** (not reduced), **theore
 | Start commit | `f6dee87d` |
 | Safety tag | `pre-cut` (create with `git tag pre-cut f6dee87d`) |
 | `cargo test --workspace` | 123 suites, 2,318 passed, 0 failed, 0 ignored, exit 0 |
-| `./tools/gates.sh` | **NOT YET RUN.** Establish before wave 1. |
+| `./tools/gates.sh` | **GREEN, measured 2026-08-08 at `3ccfa595`.** All 9 gates ran, all 7 canaries `ok`, **127 suites / 2,339 passed / 0 failed / 0 ignored**, exit 0. |
+
+**How to run the gate here (wave 0's one real finding).** `./tools/gates.sh` on its own
+**exits 2 at preflight and certifies nothing**: it defaults `PY` to `python3`, and this
+machine's system `python3` has no `ipykernel` (the repo's `.venv` is what does). The
+honest invocation is
+
+```sh
+TALIESIN_PYTHON="$PWD/.venv/bin/python" ./tools/gates.sh
+```
+
+Everything else was already present: R+IRkernel, node/npx/npm, google-chrome,
+cargo-audit, cargo-deny. Wall clock ≈ 25 min (`--test-threads=1`, three Chrome-backed
+canaries, a full `npm ci` for the companion). The 2,339 figure is 21 higher than the
+`cargo test --workspace` baseline above because `--features taliesin-server/headless-js`
+builds four browser test binaries that a default-feature run silently skips — which is
+the whole reason this script exists.
 | Rust LOC | 130,500 |
 | Bundled JS+CSS | 16,535 |
 | `.tmd` (corpus + docs + site + samples) | 22,562 |
@@ -58,7 +74,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 
 | # | Wave | Status | Branch | Measured reclaim | Notes |
 |---|---|---|---|---|---|
-| 0 | Establish `gates.sh` baseline + `pre-cut` tag | not started | | | prerequisite |
+| 0 | Establish `gates.sh` baseline + `pre-cut` tag | **done** 2026-08-08 | `main` | n/a | green at `3ccfa595`; needs `TALIESIN_PYTHON` (see Baseline) |
 | 1 | Anti-drift simplification + doctrine + dead code | not started | | | do FIRST: takes each later retirement from ~39 lines to ~1 |
 | 2 | Machine-facing verbs (keep one JSON surface) | not started | | | |
 | 3 | Debug mode | not started | | | also fixes unconditional `DEBUG_CSS` |
@@ -108,3 +124,20 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 
 _Append one entry per wave: date, branch, commit, measured `git diff --stat`, gates
 result, and anything that surprised you._
+
+### Wave 0 — 2026-08-08, `main`, commit `3ccfa595` (docs) + this entry
+
+`./tools/gates.sh` had never been run in this repo. It is **green**: 9/9 gates ran,
+7/7 canaries `ok`, 127 suites, 2,339 passed, 0 failed, 0 ignored, exit 0.
+
+Surprises, all recorded above:
+
+1. **The script refuses to start without `TALIESIN_PYTHON`.** System `python3` has no
+   `ipykernel`; preflight is a hard failure by design, so the "bare `cargo test` is
+   green and means little" trap the script was written against had a sibling nobody had
+   met: `gates.sh` itself is inert here unless you point it at `.venv/bin/python`.
+2. **The real suite is 21 tests larger than the ruling's baseline** (2,339 vs 2,318).
+   `cargo test --workspace` without `--features taliesin-server/headless-js` never
+   builds `read_run_js`, `print_pdf`, `deck_browser` or `reactive_browser`. Every
+   later wave must be measured against 2,339, not 2,318.
+3. Nothing failed, so wave 1 is unblocked.
