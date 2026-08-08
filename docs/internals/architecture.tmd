@@ -264,7 +264,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting (the `closest()` did-you-mean). |
 | `render/validate.rs` | Closed-vocabulary linting of cell `#|` options + callout kinds, each a located (click-to-source) `Warning`. |
-| `schema.rs` | The bundled Draft-2020-12 JSON Schema for `_site.yml`, written into `.taliesin/` by `init`. Front matter needs none: no YAML language server reads inside a `.tmd`, so `taliesin lsp` owns it. |
+| `schema.rs` | The bundled Draft-2020-12 JSON Schema for `_site.yml`, shipped in a copy by the VS Code companion. Front matter needs none: no YAML language server reads inside a `.tmd`, so `taliesin lsp` owns it. |
 
 `crates/server/src`, the binary (`taliesin`):
 

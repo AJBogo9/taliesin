@@ -3,7 +3,7 @@ title: "Configuration reference"
 description: "Which knob lives where, what each one defaults to, and the names a project may not use for itself."
 ---
 
-*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
@@ -174,12 +174,12 @@ hovers, and flag unknown keys as you type, before you render. The schema describ
 same key set Taliesin validates against at render time, so the editor and the renderer
 always agree.
 
-`taliesin init` writes it into `.taliesin/` and points the scaffolded `_site.yml` at it,
-so a project made that way needs nothing. To wire an existing one by hand, copy the
-schema out of a scaffolded project and add the modeline at the very top:
+The VS Code companion ships a copy of that schema and wires it up for you, so with the
+companion installed there is nothing to do. In any other editor, save the schema somewhere
+your YAML language server can reach and add the modeline at the very top:
 
 ```yaml
-# yaml-language-server: $schema=.taliesin/tali-site.schema.json
+# yaml-language-server: $schema=tali-site.schema.json
 title: My site
 ```
 

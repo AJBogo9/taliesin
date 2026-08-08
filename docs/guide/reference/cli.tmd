@@ -3,7 +3,7 @@ title: "CLI reference"
 description: "Every subcommand and flag: preview and build, the check gate, and the lsp editor server."
 ---
 
-*Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 | Command | Effect |
 |---|---|
@@ -16,10 +16,9 @@ description: "Every subcommand and flag: preview and build, the check gate, and 
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
-| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, and a `.taliesin/` holding the `_site.yml` JSON schema. `--template site\|book` adds that starter's pages; refuses to overwrite |
-| `new <post\|page\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
+| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml` and an `index.tmd`, and nothing else; refuses to overwrite |
+| `new post <slug>` | Scaffold one dated post, correct on its first save; refuses to overwrite |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
-| `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
 A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
 directory a project (see [Configuration](configuration.tmd)). Point `preview` or
@@ -403,22 +402,25 @@ other publish-blocking mistakes ship to your readers.
 
 ## Starting from something: `init` and `new`
 
-`init` scaffolds a whole project: `_site.yml`, a hello-world `index.tmd`, and a
-`.taliesin/` directory holding the JSON schema your editor completes `_site.yml` from.
-`--template site` adds an `about.tmd`;
-`--template book` adds the chapter files. `new` scaffolds a single document inside one:
+`init` scaffolds a whole project, which is two files: a `_site.yml` holding the title and a
+hello-world `index.tmd`. `new` scaffolds a single dated post inside one:
 
 ```sh
+taliesin init my-site             # my-site/_site.yml + my-site/index.tmd
 taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
-taliesin new page about           # about.tmd
 ```
 
+Everything else is an edit to those two files rather than a starter you pick up front: add a
+page by dropping another `.tmd` beside `index.tmd`, add a top nav with a `nav:` block, and
+turn the project into a book by listing the pages under `chapters:`. See
+[Configuration](configuration.tmd).
+
 The scaffold is correct on its first save: it renders, and `taliesin check` passes on it
-with no diagnostics. That is not a promise, it is a test. What each `new` writes is pinned
-byte-for-byte by `corpus/scaffold/`, which the corpus regression net renders and lints like
-any other document, so a front-matter key the validator would reject cannot survive in the
-scaffold. A slug must be lowercase letters, digits and hyphens (it becomes the page's URL),
-and like `init`, `new` refuses to overwrite an existing file.
+with no diagnostics. That is not a promise, it is a test: `crates/server/tests/new_cli.rs`
+runs the real binary and then the real `check` over what it wrote, so a front-matter key the
+validator would reject cannot survive in the scaffold. A slug must be lowercase letters,
+digits and hyphens (it becomes the page's URL), and like `init`, `new` refuses to overwrite
+an existing file.
 
 ## Inspecting a document: `build --stdout`
 
@@ -530,17 +532,6 @@ taliesin run <file.tmd> --line <L>
 ```
 
 and has the whole execution loop. The VS Code companion does this for you.
-
-## Shell completions
-
-`taliesin completions <bash|zsh|fish|powershell>` prints a completion script to stdout.
-The script is a thin shim that asks the running binary for candidates, so Tab completes
-subcommands, per-command flags (with descriptions), and, for a path argument, only
-`.tmd` files plus directories that contain one (site and book roots first). It registers
-both `taliesin` and the `tali` alias, and all the logic lives in one place in the binary,
-so no per-shell list can drift.
-
-See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 
 ## Environment
 

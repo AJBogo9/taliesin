@@ -76,11 +76,11 @@ taliesin init my-site        # see below for what lands in it
 taliesin preview my-site     # live, immediately
 ```
 
-You get three things: a minimal `_site.yml`, a hello-world `index.tmd`, and a
-`.taliesin/` directory holding the JSON schema your editor uses to complete `_site.yml`.
-`--template site` adds an `about.tmd`; `--template book` adds the chapter files.
+You get two things and nothing else: a minimal `_site.yml`, and a hello-world `index.tmd`.
+Every larger shape is an edit to those: another `.tmd` beside `index.tmd` is another page,
+a `nav:` block is a top nav, and a `chapters:` list makes it a book.
 
-`init` refuses to overwrite: if any of them already exists it stops without touching
+`init` refuses to overwrite: if either already exists it stops without touching
 anything, so re-running it never clobbers your work. When you'd rather start from a
 single document, skip straight to the next section.
 

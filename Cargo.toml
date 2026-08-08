@@ -71,11 +71,3 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "webp",
 ] }
-
-# The interactive `new`/`init` wizard: an arrow-key kind/template picker + slug/dir
-# input, when a human runs an under-specified command at a TTY. `default-features =
-# false` drops editor/password/tempfile/zeroize/fuzzy-*, leaving just `Select` + `Input`
-# over the `console` backend (libc termios, already a direct dep). Offline; no network at
-# runtime. Every call is gated behind a stdin-is-a-terminal check, so CI, pipes, and agents
-# never touch it and stay on the flag-driven path.
-dialoguer = { version = "0.12", default-features = false }

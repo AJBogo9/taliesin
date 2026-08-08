@@ -142,8 +142,8 @@ flowchart LR
   consts --> val["render-time validator<br/>(located warnings)"]
   consts --> bless["bless test<br/>(TALIESIN_BLESS=1)"]
   bless --> schema["bundled Draft-2020-12 schema<br/>SITE_SCHEMA"]
-  schema --> init["taliesin init → .taliesin/"]
-  init --> lsp["editor YAML language server"]
+  schema --> copy["VS Code companion<br/>schema/tali-site.schema.json"]
+  copy --> lsp["editor YAML language server"]
   consts --> tlsp["taliesin lsp<br/>(front matter, in-buffer)"]
 ```
 
@@ -154,13 +154,19 @@ hand-edited, so it **cannot drift** from what the renderer enforces: the editor 
 renderer always agree on the vocabulary. A second test asserts its structural shape, so a
 malformed bless can't slip through.
 
-`taliesin init` writes it into `.taliesin/` and adds the one-line modeline that points the
-language server at it:
+The VS Code companion bundles a copy and wires it through `yamlValidation`, so a writer
+using the companion gets it with nothing to set up. Anywhere else, point the language server
+at a copy with the one-line modeline:
 
 ```yaml
-# yaml-language-server: $schema=.taliesin/tali-site.schema.json
+# yaml-language-server: $schema=tali-site.schema.json
 title: My site
 ```
+
+(`taliesin init` wrote that copy into a `.taliesin/` dot-directory of its own, and prepended
+the modeline, until Wave 8. It was cut because no project in this repository ever kept the
+directory: the companion already covers the editor this tool is built alongside, and every
+other editor's user is wiring a YAML language server by hand regardless.)
 
 **Front matter is deliberately not covered here.** It lives inside a `.tmd` file, where no
 YAML language server looks, so a generated schema for it was an on-ramp that never reached

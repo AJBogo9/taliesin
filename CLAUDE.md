@@ -10,7 +10,7 @@ track would render *from* the built HTML, never as a parallel format).
 > ## ⚠ THE PROJECT IS IN SCOPE REDUCTION. READ THIS BEFORE PLANNING ANY WORK.
 >
 > **Ruled 2026-08-08: the tool is being cut by roughly 40%** (~69,000 lines), from 18
-> CLI verbs to 9 (**10 as of Wave 4**) and 115 document features to ~55, to reach a surface
+> CLI verbs to 9 (**reached in Wave 8**) and 115 document features to ~55, to reach a surface
 > small enough to polish before release. **This supersedes the growth framing below.** Do not add
 > features, do not "restore parity", and do not defend a feature on the grounds that a
 > corpus document pins it (that pinning is circular and is the very thing the audit
@@ -317,8 +317,9 @@ dependency change. Never call one of these verified without its output.
   `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`,
   which DERIVES the tombstone from the register. **Add the register entry and you are
   done — do not write a test for it.**
-  A new *subcommand* still has four registration sites in `main.rs` plus three tables in
-  `complete.rs`, each drift-gated.
+  A new *subcommand* has four registration sites in `main.rs`, each drift-gated. It cost
+  three more until Wave 8 deleted the shell-completion generator, which carried a
+  hand-maintained second copy of every verb's flag set.
 - **`RETIRED_KEYS` is SCOPED — `(scope, key, note)` — and nothing may flatten it.** The same
   word is retired in one vocabulary and live in another: `toc:`/`theorems:` are gone from
   `_site.yml` but live in front matter, `image:` is gone from `hero:` but live at top level,

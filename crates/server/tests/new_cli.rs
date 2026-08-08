@@ -1,14 +1,14 @@
-//! `taliesin new <post|page|paper> <slug>` scaffolds a document that is correct on the
-//! first save: it renders, and `taliesin check` passes on it with no diagnostics.
+//! `taliesin new post <slug>` scaffolds a document that is correct on the first save: it
+//! renders, and `taliesin check` passes on it with no diagnostics.
 //!
 //! The blank-page tax was previously paid *outside* the tool, by a hand-written scaffolder
 //! skill under `corpus/tech-blog/.claude/skills/new-post/` (since retired), which had rotted:
 //! it emitted `.qmd` and said `quarto preview`. A scaffolder that lives outside the binary
 //! cannot be checked against the binary's own vocabulary.
 //!
-//! What each `new` writes is pinned byte-for-byte by `corpus/scaffold/`, which the corpus
-//! regression net renders and lints like any other document. So the scaffold cannot emit a
-//! front-matter key the validator would reject: `cargo test -p taliesin-core` would fail.
+//! What `new` writes was also pinned byte-for-byte by `corpus/scaffold/` until Wave 8. This
+//! file is what remains, and it is the stronger half: it runs the real binary and then the
+//! real `check`, so the scaffold cannot emit a front-matter key the validator would reject.
 
 use std::path::Path;
 use std::process::Command;
@@ -52,64 +52,56 @@ fn check_is_clean(path: &Path) -> (bool, String) {
 /// The whole point: what `new` writes must survive the tool's own preflight.
 #[test]
 fn every_scaffold_passes_check_with_no_diagnostics() {
-    for (kind, slug, rel) in [
-        ("post", "my-first-post", "posts/my-first-post/index.tmd"),
-        ("page", "about", "about.tmd"),
-        ("paper", "my-paper", "posts/my-paper/index.tmd"),
-    ] {
-        let dir = tmp(kind);
-        let (ok, stdout, stderr) = run(&["new", kind, slug, "--dir", dir.to_str().unwrap()]);
-        assert!(ok, "`new {kind}` should succeed; stderr: {stderr}");
-        let written = dir.join(rel);
-        assert!(
-            written.exists(),
-            "`new {kind}` writes {rel}; stdout: {stdout}"
-        );
+    let dir = tmp("post");
+    let (ok, stdout, stderr) = run(&[
+        "new",
+        "post",
+        "my-first-post",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(ok, "`new post` should succeed; stderr: {stderr}");
+    let written = dir.join("posts/my-first-post/index.tmd");
+    assert!(
+        written.exists(),
+        "`new post` writes posts/<slug>/index.tmd; stdout: {stdout}"
+    );
 
-        let (clean, diagnostics) = check_is_clean(&written);
-        assert!(
-            clean,
-            "`taliesin check` must pass on a fresh `new {kind}`, got:\n{diagnostics}"
-        );
-        // And it tells the author what to do next.
-        assert!(
-            stdout.contains("taliesin preview"),
-            "`new {kind}` should print the preview hint; got: {stdout}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
+    let (clean, diagnostics) = check_is_clean(&written);
+    assert!(
+        clean,
+        "`taliesin check` must pass on a fresh `new post`, got:\n{diagnostics}"
+    );
+    // And it tells the author what to do next.
+    assert!(
+        stdout.contains("taliesin preview"),
+        "`new post` should print the preview hint; got: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// A `paper` scaffolds a citation-wired doc AND the `.bib` its `[@key]` resolves against,
-/// so a research paper is check-clean on the first save (not just a blank page).
+/// A kind this verb used to scaffold says what to do instead, rather than falling through to
+/// "unknown kind": every one of them is edit-distance 3 or more from `post`, so the
+/// did-you-mean rule cannot see them and would have answered a removal with silence.
 #[test]
-fn a_paper_ships_its_bibliography_so_citations_resolve() {
-    let dir = tmp("paper");
-    let (ok, _, stderr) = run(&["new", "paper", "my-paper", "--dir", dir.to_str().unwrap()]);
-    assert!(ok, "stderr: {stderr}");
-    let index = dir.join("posts/my-paper/index.tmd");
-    let bib = dir.join("posts/my-paper/references.bib");
-    assert!(index.exists() && bib.exists(), "paper writes both files");
-    let src = std::fs::read_to_string(&index).unwrap();
-    assert!(
-        src.contains("bibliography: [references.bib]"),
-        "declares its bib"
-    );
-    assert!(src.contains("[@knuth1984literate]"), "cites a real key");
-    // A worked example, not a blank page: a runnable figure cell whose Quarto-style cell options
-    // (`#| label:`/`#| fig-cap:`) cross-reference automatically, plus display math.
-    assert!(
-        src.contains("```{python}"),
-        "paper shows a runnable code cell"
-    );
-    assert!(
-        src.contains("#| label: fig-"),
-        "paper labels a figure the Quarto way"
-    );
-    assert!(src.contains("@fig-"), "paper cross-references its figure");
-    assert!(src.contains("$$"), "paper shows display math");
-    let (clean, diagnostics) = check_is_clean(&index);
-    assert!(clean, "a fresh paper must check clean, got:\n{diagnostics}");
+fn a_retired_kind_says_what_to_do_instead() {
+    let dir = tmp("retired-kind");
+    for (kind, needle) in [
+        ("page", "front matter"),
+        ("paper", "bibliography:"),
+        ("deck", "slide-deck engine"),
+    ] {
+        let (ok, _, stderr) = run(&["new", kind, "x", "--dir", dir.to_str().unwrap()]);
+        assert!(!ok, "`new {kind}` must fail");
+        assert!(
+            stderr.contains(needle),
+            "`new {kind}` should say what replaces it; got: {stderr}"
+        );
+        assert!(
+            !stderr.contains("did you mean"),
+            "a removal is not a misspelling; got: {stderr}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -120,8 +112,8 @@ fn new_json_reports_what_it_made() {
     let dir = tmp("json");
     let (ok, stdout, stderr) = run(&[
         "new",
-        "paper",
-        "my-paper",
+        "post",
+        "my-post",
         "--dir",
         dir.to_str().unwrap(),
         "--json",
@@ -129,10 +121,14 @@ fn new_json_reports_what_it_made() {
     assert!(ok, "stderr: {stderr}");
     let parsed: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("stdout is pure JSON");
-    assert_eq!(parsed["kind"], "paper");
-    assert_eq!(parsed["slug"], "my-paper");
+    assert_eq!(parsed["kind"], "post");
+    assert_eq!(parsed["slug"], "my-post");
     let created = parsed["created"].as_array().expect("created array");
-    assert_eq!(created.len(), 2, "paper creates index.tmd + references.bib");
+    assert_eq!(created.len(), 1, "a post creates one index.tmd");
+    assert!(
+        created[0].as_str().unwrap().ends_with("index.tmd"),
+        "created names the file: {stdout}"
+    );
     assert!(
         parsed["preview"]
             .as_str()
@@ -203,15 +199,16 @@ fn a_new_post_is_dated_today() {
 #[test]
 fn an_existing_file_is_never_overwritten() {
     let dir = tmp("clobber");
-    let (ok, ..) = run(&["new", "page", "about", "--dir", dir.to_str().unwrap()]);
+    let (ok, ..) = run(&["new", "post", "about", "--dir", dir.to_str().unwrap()]);
     assert!(ok);
-    std::fs::write(dir.join("about.tmd"), "MY WORK").unwrap();
+    let page = dir.join("posts/about/index.tmd");
+    std::fs::write(&page, "MY WORK").unwrap();
 
-    let (ok2, _, stderr) = run(&["new", "page", "about", "--dir", dir.to_str().unwrap()]);
-    assert!(!ok2, "a second `new page about` must fail");
+    let (ok2, _, stderr) = run(&["new", "post", "about", "--dir", dir.to_str().unwrap()]);
+    assert!(!ok2, "a second `new post about` must fail");
     assert!(stderr.contains("already exists"), "got: {stderr}");
     assert_eq!(
-        std::fs::read_to_string(dir.join("about.tmd")).unwrap(),
+        std::fs::read_to_string(&page).unwrap(),
         "MY WORK",
         "the author's file must be untouched"
     );
@@ -234,7 +231,7 @@ fn an_unknown_kind_is_rejected_with_a_did_you_mean() {
 fn a_slug_that_escapes_the_project_is_rejected() {
     let dir = tmp("escape");
     for slug in ["../evil", "a/b", ""] {
-        let (ok, _, stderr) = run(&["new", "page", slug, "--dir", dir.to_str().unwrap()]);
+        let (ok, _, stderr) = run(&["new", "post", slug, "--dir", dir.to_str().unwrap()]);
         assert!(!ok, "slug `{slug}` must be rejected");
         assert!(!stderr.is_empty(), "slug `{slug}` should explain itself");
     }
@@ -252,22 +249,22 @@ fn a_missing_argument_prints_usage() {
     assert!(stderr2.contains("usage: taliesin new"), "got: {stderr2}");
 }
 
-/// Every kind, inside a site or out of one, gets the same plain "Preview it:" line. The
+/// A scaffold, inside a site or out of one, gets the same plain "Preview it:" line. The
 /// deck kind was the one exception (a deck was a component of a page, not a page), and it
 /// went with the slide-deck engine on 2026-08-08 — so "one kind of advice" is now the whole
 /// rule, and this is what notices if a second exception creeps back in.
 #[test]
-fn other_scaffolds_keep_the_plain_preview_advice() {
-    let loose = tmp("page-loose");
-    let (ok, stdout, stderr) = run(&["new", "page", "solo", "--dir", loose.to_str().unwrap()]);
+fn a_scaffold_keeps_the_plain_preview_advice() {
+    let loose = tmp("post-loose");
+    let (ok, stdout, stderr) = run(&["new", "post", "solo", "--dir", loose.to_str().unwrap()]);
     assert!(ok, "{stderr}");
     assert!(
         stdout.contains("Preview it:") && !stdout.contains("embed"),
-        "a page outside a site previews directly, with no embed advice:\n{stdout}"
+        "a post outside a site previews directly, with no embed advice:\n{stdout}"
     );
 
     let site = tmp("post-in-site");
-    let (ok_init, ..) = run(&["init", site.to_str().unwrap(), "--template", "basic"]);
+    let (ok_init, ..) = run(&["init", site.to_str().unwrap()]);
     assert!(ok_init);
     let (ok2, stdout2, stderr2) = run(&["new", "post", "hello", "--dir", site.to_str().unwrap()]);
     assert!(ok2, "{stderr2}");

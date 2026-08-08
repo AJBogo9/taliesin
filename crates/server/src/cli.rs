@@ -1,9 +1,9 @@
 //! Front-door subcommands: `init` (scaffold a starter site), `new` (scaffold one document)
 //! and `preview` (launch the live preview server).
 //!
-//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd` +
-//! the `.taliesin/` editor onramp); `cmd_serve` parses the preview flags
-//! (`--open`/`--host`/`--no-exec`/port) and starts the dev server.
+//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd`);
+//! `cmd_serve` parses the preview flags (`--open`/`--host`/`--no-exec`/port) and starts the
+//! dev server.
 //!
 //! **How to use:** `main()` dispatches `init`, `new` and `preview` to `cmd_init` /
 //! `cmd_new` / `cmd_serve` here. The `serve`/`dev` spellings of `preview` were retired in
@@ -12,15 +12,18 @@
 //! **Depends on:** [`crate::serve_site`] (the dev server), [`crate::serve`] (its shared
 //! plumbing + CLI error helpers) and [`crate::log`].
 
-use crate::{interactive, log, serve, serve_site};
+use crate::{log, serve, serve_site};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// `_site.yml` for the scaffold: the schema modeline (so an editor's YAML language server
-/// validates + autocompletes config keys with zero manual step — the schema is emitted into
-/// `.taliesin/` beside it) followed by the minimal flat-native config (just a title).
-const INIT_SITE_YML: &str =
-    "# yaml-language-server: $schema=.taliesin/tali-site.schema.json\ntitle: My site\n";
+/// `_site.yml` for the scaffold: the minimal flat-native config, just a title.
+///
+/// It carried a `# yaml-language-server: $schema=` modeline until Wave 8, pointing at a
+/// copy of the bundled schema that `init` wrote into a `.taliesin/` dot-directory. Both are
+/// gone: the VS Code companion already ships that schema and wires it through
+/// `yamlValidation`, and a project acquiring an unexplained dot-directory to serve every
+/// *other* editor was the wrong trade for the one config file `taliesin lsp` does not serve.
+const INIT_SITE_YML: &str = "title: My site\n";
 
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
 /// points the new user at the next steps. `.tmd` is the native extension.
@@ -28,166 +31,34 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
-    - Scaffold a post, page, or paper with `taliesin new` (e.g. `taliesin new post my-first-post`; add `--draft` to hold it back).\n\
+    - Scaffold a dated post with `taliesin new post my-first-post` (add `--draft` to hold it back).\n\
     - Add more `.tmd` pages beside this one: each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
-    - Drop in a `{python}` or `{r}` code cell to run live output.\n";
+    - Drop in a `{python}` code cell to run live output.\n";
 
-/// `_site.yml` for the `site` template: the schema modeline + a title and a two-item
-/// top nav wiring the two starter pages. Byte-pinned by `corpus/scaffold-site/`.
-const SITE_SITE_YML: &str = r#"# yaml-language-server: $schema=.taliesin/tali-site.schema.json
-title: My site
-nav:
-  left:
-  - text: Home
-    href: index.tmd
-  - text: About
-    href: about.tmd
-"#;
-
-/// The `site` template's home page: explains the multi-page/nav model and points at the
-/// next moves. Byte-pinned by `corpus/scaffold-site/index.tmd`.
-const SITE_INDEX_TMD: &str = r#"---
-title: Home
----
-
-Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site. This is a
-multi-page site: each `.tmd` file beside this one becomes its own page, and the `nav:`
-in `_site.yml` links them across the top.
-
-Edit `index.tmd` and the preview reloads as you save.
-
-## Next steps
-
-- Add a page beside this one and link it from `nav:` in `_site.yml`.
-- Scaffold a blog post with `taliesin new post my-first-post` (add `--draft` to hold it back).
-- Drop in a `{python}` or `{r}` code cell to run live output.
-"#;
-
-/// The `site` template's About stub. Byte-pinned by `corpus/scaffold-site/about.tmd`.
-const SITE_ABOUT_TMD: &str = r#"---
-title: About
----
-
-Say who you are and what this site is about. Edit `about.tmd`, or delete it and remove
-its link from `nav:` in `_site.yml`.
-"#;
-
-/// `_site.yml` for the `book` template: `chapters:` (which makes it a book) plus title and
-/// author. No `toc:` — it is inert in a book (item 76), and scaffolding a key the tool then
-/// warns about is the worst of both. Byte-pinned by `corpus/scaffold-book/`.
-const BOOK_SITE_YML: &str = r#"# yaml-language-server: $schema=.taliesin/tali-site.schema.json
-title: My book
-author: Your Name
-chapters:
-  - index.tmd
-  - intro.tmd
-  - methods.tmd
-"#;
-
-/// The `book` template's landing page: a preface whose auto-generated table of contents
-/// (the book-landing TOC) lists the chapters. Byte-pinned by `corpus/scaffold-book/index.tmd`.
-const BOOK_INDEX_TMD: &str = r#"# Preface {.unnumbered}
-
-This is your book's landing page. Write a short preface here; Taliesin generates the
-table of contents below from the chapters listed in `_site.yml`.
-"#;
-
-/// The `book` template's first chapter. Byte-pinned by `corpus/scaffold-book/intro.tmd`.
-const BOOK_INTRO_TMD: &str = r#"# Introduction
-
-Open your book here. Each chapter is a `.tmd` file listed under `chapters:` in
-`_site.yml`; Taliesin numbers them and builds the sidebar and previous/next
-navigation for you.
-"#;
-
-/// The `book` template's second chapter, showing a cross-referenceable section anchor.
-/// Byte-pinned by `corpus/scaffold-book/methods.tmd`.
-const BOOK_METHODS_TMD: &str = r#"# Methods {#sec-methods}
-
-Write one chapter per `.tmd` file. This heading has an id, so you can cross-reference
-it as @sec-methods from any chapter. Drop in a `{python}` or `{r}` cell to compute a
-result inline.
-"#;
-
-/// Which starter `init` scaffolds. `Basic` is the frozen one-page site (the historical
-/// default); `Site` and `Book` add the two multi-page project shapes.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum InitTemplate {
-    Basic,
-    Site,
-    Book,
-}
-
-/// The template names, for the unknown-template did-you-mean and `--template` help.
-const INIT_TEMPLATES: &[&str] = &["basic", "site", "book"];
-
-/// The `init` wizard's template picker: a friendly one-line label per template, index-aligned
-/// with the value it selects.
-const INIT_TEMPLATE_MENU: [(&str, InitTemplate); 3] = [
-    ("basic  — a one-page site", InitTemplate::Basic),
-    (
-        "site   — a multi-page site with a top nav",
-        InitTemplate::Site,
-    ),
-    (
-        "book   — chapters with a sidebar and TOC",
-        InitTemplate::Book,
-    ),
-];
-
-impl InitTemplate {
-    fn parse(raw: &str) -> Result<Self, String> {
-        match raw {
-            "basic" => Ok(Self::Basic),
-            "site" => Ok(Self::Site),
-            "book" => Ok(Self::Book),
-            other => Err(match taliesin_core::closest(other, INIT_TEMPLATES) {
-                Some(t) => format!("unknown template `{other}` (did you mean `{t}`?)"),
-                None => format!("unknown template `{other}` (expected basic, site, or book)"),
-            }),
-        }
-    }
-}
-
-/// The authored files a `taliesin init --template <t>` writes (config + pages), as
-/// `(project-relative path, contents)`. Pure, so the corpus pins can compare the bytes
-/// exactly (`corpus/scaffold-{site,book}/`) and the CLI stays a thin wrapper. The shared
-/// onramp (the `.taliesin/` schema) is appended by [`scaffold_init`], not
-/// here, since it is a generated constant already golden-locked in core.
-pub(crate) fn init_files(template: InitTemplate) -> Vec<(PathBuf, String)> {
-    let files: &[(&str, &str)] = match template {
-        InitTemplate::Basic => &[("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)],
-        InitTemplate::Site => &[
-            ("_site.yml", SITE_SITE_YML),
-            ("index.tmd", SITE_INDEX_TMD),
-            ("about.tmd", SITE_ABOUT_TMD),
-        ],
-        InitTemplate::Book => &[
-            ("_site.yml", BOOK_SITE_YML),
-            ("index.tmd", BOOK_INDEX_TMD),
-            ("intro.tmd", BOOK_INTRO_TMD),
-            ("methods.tmd", BOOK_METHODS_TMD),
-        ],
-    };
-    files
-        .iter()
+/// The authored files `taliesin init` writes, as `(project-relative path, contents)`. Pure,
+/// so the CLI stays a thin wrapper over two constants.
+///
+/// It took a `template` argument until Wave 8, selecting between this one-page starter and a
+/// `site` (nav + an About stub) and a `book` (three chapters). Both were shapes a writer
+/// reaches by adding a `nav:` block or a `chapters:` list to the config they already have:
+/// a menu in front of the first command anyone types, pinned by three corpus projects.
+fn init_files() -> Vec<(PathBuf, String)> {
+    [("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)]
+        .into_iter()
         .map(|(name, contents)| (PathBuf::from(name), contents.to_string()))
         .collect()
 }
 
 /// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
-const INIT_FLAGS: &[&str] = &["--json", "--format", "--template", "--yes"];
+const INIT_FLAGS: &[&str] = &["--json", "--format"];
 
 /// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
-/// the current directory). Writes `_site.yml` + `index.tmd` + `.taliesin/` (the editor
-/// onramp), then prints the preview hint (or, with `--json`, a `{created, preview}` receipt).
+/// the current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint
+/// (or, with `--json`, a `{created, preview}` receipt).
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
     let mut json = false;
-    let mut yes = false;
-    // `None` = no `--template` given, so a human at a TTY is asked which starter to scaffold.
-    let mut template: Option<InitTemplate> = None;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -202,24 +73,10 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
-            // `--template basic|site|book`: which starter to scaffold. An unknown value gets a
-            // did-you-mean; omitted, a human at a TTY is prompted (else it defaults to basic).
-            "--template" => match it.next() {
-                Some(v) => match InitTemplate::parse(v) {
-                    Ok(t) => template = Some(t),
-                    Err(e) => {
-                        log::error(&e);
-                        return ExitCode::FAILURE;
-                    }
-                },
-                None => {
-                    log::error("--template needs a value (basic, site, or book)");
-                    return ExitCode::FAILURE;
-                }
-            },
-            // `-y`/`--yes` skips the interactive wizard (basic into the given/current dir).
-            "-y" | "--yes" => yes = true,
-            s if s.starts_with("--") => {
+            // Any leading dash is a flag, not a directory name. `--` alone would be enough
+            // if `-y` had never existed; it did until Wave 8, and a leftover `taliesin init
+            // -y` must not scaffold a project into a directory called `-y`.
+            s if s.starts_with('-') => {
                 log::error(&serve::unknown_flag_error(s, INIT_FLAGS));
                 return ExitCode::FAILURE;
             }
@@ -228,34 +85,7 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
         }
     }
 
-    // With a piece missing, a human at a TTY is prompted; a pipe/CI/agent (or `-y`/`--json`)
-    // takes the historical defaults (basic, into the given or current dir) with no prompt.
-    let interactive = interactive::is_interactive(yes, json);
-    let template = match template {
-        Some(t) => t,
-        None if interactive => {
-            let labels: Vec<&str> = INIT_TEMPLATE_MENU.iter().map(|(l, _)| *l).collect();
-            match interactive::select("What kind of project?", &labels, 0) {
-                Ok(i) => INIT_TEMPLATE_MENU[i].1,
-                Err(e) => {
-                    log::error(&e.to_string());
-                    return ExitCode::FAILURE;
-                }
-            }
-        }
-        None => InitTemplate::Basic,
-    };
-    let dir_owned: String = match dir_arg {
-        Some(d) => d.to_string(),
-        None if interactive => match interactive::input("Directory", Some("."), |_| Ok(())) {
-            Ok(d) => d,
-            Err(e) => {
-                log::error(&e.to_string());
-                return ExitCode::FAILURE;
-            }
-        },
-        None => ".".to_string(),
-    };
+    let dir_owned: String = dir_arg.unwrap_or(".").to_string();
 
     let dir = Path::new(&dir_owned);
     let where_ = if dir == Path::new(".") {
@@ -263,7 +93,7 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     } else {
         dir.display().to_string()
     };
-    match scaffold_init(dir, template) {
+    match scaffold_init(dir) {
         Ok(written) => {
             if json {
                 let created: Vec<String> =
@@ -281,11 +111,6 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     log::built(&f.display().to_string());
                 }
                 println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
-                // The onramp file is the one nobody asked for. It was listed above as a
-                // bare path like the rest, which is how a dot-directory arrives in a new
-                // project with nothing anywhere saying what it is or that it can go.
-                // Naming it is the whole fix — it is a good file, just unexplained.
-                println!("\n{ONRAMP_NOTE}");
             }
             ExitCode::SUCCESS
         }
@@ -296,48 +121,13 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     }
 }
 
-/// The editor onramp every scaffolded project gets regardless of template: the bundled
-/// `_site.yml` schema, wired via the config's own modeline. Kept out of [`init_files`] (and
-/// the corpus pins) because it is a generated constant already locked in core, not authored
-/// template bytes.
-/// The one line that names the file `init` writes which the user did not ask for.
-///
-/// Item 123: it was listed as a bare path beside `_site.yml` and `index.tmd`, so a
-/// scaffolded project acquired a dot-directory with nothing stating what it was for, or
-/// that deleting it costs nothing. It is genuinely useful, which is exactly why the fix is
-/// a sentence rather than a flag: an `--onramp` knob would be a configuration answer to a
-/// documentation problem.
-const ONRAMP_NOTE: &str = "\
-.taliesin/ holds the schema your editor reads for `_site.yml` completion. It is not
-required — delete it and everything still builds.";
-
-fn onramp_files() -> [(&'static str, &'static str); 1] {
-    [
-        // The bundled config schema, wired into `_site.yml` via the modeline. In a walker-
-        // skipped dot-dir so it never becomes a page or ships into `_site/`. `_site.yml` is
-        // the one YAML surface `taliesin lsp` does not serve, so this is the only editor
-        // intelligence an author gets while editing it.
-        (
-            ".taliesin/tali-site.schema.json",
-            taliesin_core::schema::SITE_SCHEMA,
-        ),
-    ]
-}
-
-/// Scaffold the `template` starter into `dir`, creating it if needed: the template's authored
-/// files (config + pages) plus the shared onramp. Refuses to overwrite an existing file (so
-/// re-running `init` never clobbers the user's work) and returns the paths written.
-fn scaffold_init(dir: &Path, template: InitTemplate) -> Result<Vec<PathBuf>, String> {
+/// Scaffold the starter into `dir`, creating it if needed. Refuses to overwrite an existing
+/// file (so re-running `init` never clobbers the user's work) and returns the paths written.
+fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         return Err(format!("cannot create {}: {e}", dir.display()));
     }
-    let mut files = init_files(template);
-    files.extend(
-        onramp_files()
-            .into_iter()
-            .map(|(name, contents)| (PathBuf::from(name), contents.to_string())),
-    );
-    write_scaffold(dir, &files)
+    write_scaffold(dir, &init_files())
 }
 
 /// Write `files` (project-relative path → contents) under `root`, refusing to overwrite any
@@ -358,7 +148,7 @@ fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBu
     let mut written = Vec::new();
     for (rel, contents) in files {
         let path = root.join(rel);
-        // Nested targets (`.taliesin/…`, `posts/<slug>/…`) need their parent created first.
+        // A nested target (`posts/<slug>/index.tmd`) needs its parent created first.
         if let Some(parent) = path.parent()
             && let Err(e) = std::fs::create_dir_all(parent)
         {
@@ -372,46 +162,51 @@ fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBu
     Ok(written)
 }
 
-/// What `taliesin new` can scaffold. Each maps to a front-matter shape; most write one
-/// file, `Paper` writes two (its `index.tmd` + a matching `references.bib`).
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum NewKind {
-    Post,
-    Page,
-    Paper,
-}
+/// What `taliesin new` can scaffold: a dated blog post, which is the document shape this
+/// tool is for. The `deck` kind went with the slide-deck engine in Wave 5; `page` and
+/// `paper` went in Wave 8, leaving one, so there is no `NewKind` enum any more, on the
+/// precedent Wave 5 set when it deleted a one-variant `DocFormat` rather than keeping it.
+/// The positional survives (`taliesin new post <slug>`), because it is what a retired kind
+/// is typed into and what a second kind would be added to.
+const NEW_KINDS: &[&str] = &["post"];
 
-/// The kind names, for the unknown-kind did-you-mean.
-pub(crate) const NEW_KINDS: &[&str] = &["post", "page", "paper"];
+/// Kinds this verb used to scaffold, and the one line that says what to do instead.
+///
+/// The same job [`crate::RETIRED_COMMANDS`] does for a verb, and for the same reason: every
+/// one of these is edit-distance 3 or more from `post`, so a removed kind would otherwise
+/// fall through to "unknown kind `paper` (expected post)", which is technically true and
+/// silent about the fact that the tool used to do exactly what was asked.
+const RETIRED_NEW_KINDS: &[(&str, &str)] = &[
+    (
+        "deck",
+        "removed on 2026-08-08 with the slide-deck engine: write the talk as a page of prose",
+    ),
+    (
+        "page",
+        "removed on 2026-08-08: a page is a `.tmd` file with a `title:` in its front matter, \
+         so write it directly beside `index.tmd`",
+    ),
+    (
+        "paper",
+        "removed on 2026-08-08: scaffold a `post` and add `bibliography: [references.bib]` \
+         to its front matter",
+    ),
+];
 
-impl NewKind {
-    fn parse(raw: &str) -> Result<Self, String> {
-        match raw {
-            "post" => Ok(Self::Post),
-            "page" => Ok(Self::Page),
-            "paper" => Ok(Self::Paper),
-            // A removal, not a misspelling: answering `deck` with a did-you-mean would
-            // send the author to a kind that scaffolds something else entirely.
-            "deck" => Err(
-                "`new deck` was removed on 2026-08-08 with the slide-deck engine: \
-                 scaffold a `page` and write the talk as prose"
-                    .to_string(),
-            ),
-            other => Err(match taliesin_core::closest(other, NEW_KINDS) {
-                Some(k) => format!("unknown kind `{other}` (did you mean `{k}`?)"),
-                None => format!("unknown kind `{other}` (expected post, page, or paper)"),
-            }),
-        }
+/// Accept the one live kind, or explain what happened to the one that was typed.
+fn parse_new_kind(raw: &str) -> Result<(), String> {
+    if NEW_KINDS.contains(&raw) {
+        return Ok(());
     }
-
-    /// The canonical kind name (for `--json` output).
-    fn name(self) -> &'static str {
-        match self {
-            Self::Post => "post",
-            Self::Page => "page",
-            Self::Paper => "paper",
-        }
+    // A removal, not a misspelling: answering one of these with a did-you-mean would
+    // send the author to a kind that scaffolds something else entirely.
+    if let Some((_, note)) = RETIRED_NEW_KINDS.iter().find(|(name, _)| *name == raw) {
+        return Err(format!("`new {raw}` was {note}"));
     }
+    Err(match taliesin_core::closest(raw, NEW_KINDS) {
+        Some(k) => format!("unknown kind `{raw}` (did you mean `{k}`?)"),
+        None => format!("unknown kind `{raw}` (expected post)"),
+    })
 }
 
 /// A slug names a file inside the project, so it may not climb out of it or reach into a
@@ -476,133 +271,47 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-/// Per-invocation options for `taliesin new` (beyond kind + slug). `Default` is today's
-/// behavior, so an unflagged scaffold is byte-identical to before (the corpus pin holds).
+/// Per-invocation options for `taliesin new` (beyond the slug). `Default` is today's
+/// behavior, so an unflagged scaffold is byte-identical to before.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct NewOpts {
+struct NewOpts {
     /// `--draft`: mark the scaffold `draft: true`, holding it out of the published build.
-    pub(crate) draft: bool,
+    draft: bool,
 }
 
-/// The files a `taliesin new <kind> <slug>` writes, as `(project-relative path, contents)`.
+/// The files a `taliesin new post <slug>` writes, as `(project-relative path, contents)`.
 ///
-/// Pure, so the corpus pin can compare the bytes exactly (`corpus/scaffold/`) and the CLI
-/// can stay a thin wrapper. Every front-matter key here is one the validator knows; a
-/// `check`-clean scaffold is asserted by `crates/server/tests/new_cli.rs`, and the emitted
-/// documents are rendered and linted by the corpus regression net like any other document.
-pub(crate) fn new_files(
-    kind: NewKind,
-    slug: &str,
-    today: &str,
-    opts: NewOpts,
-) -> Vec<(PathBuf, String)> {
+/// Pure, so the CLI can stay a thin wrapper. Every front-matter key here is one the
+/// validator knows; a `check`-clean scaffold is asserted end-to-end (through the real
+/// binary, then the real `check`) by `crates/server/tests/new_cli.rs`.
+fn new_files(slug: &str, today: &str, opts: NewOpts) -> Vec<(PathBuf, String)> {
     let title = title_from_slug(slug);
     // `--draft` splices a `draft: true` line into the front matter (right after `title:`);
     // default off emits nothing, keeping the unflagged scaffold byte-identical.
     let draft = if opts.draft { "draft: true\n" } else { "" };
-    // A research paper scaffolds TWO files: a citation-wired doc plus the `.bib` its one
-    // `[@key]` resolves against, so `check` is clean on the first save (a declared-but-
-    // missing bibliography, or a citation with no bibliography, would both warn).
-    if kind == NewKind::Paper {
-        let index = format!(
-            "---\n\
-             title: \"{title}\"\n{draft}\
-             date: {today}\n\
-             description: \"One sentence: the claim this paper makes.\"\n\
-             categories: [research]\n\
-             bibliography: [references.bib]\n\
-             ---\n\
-             \n\
-             State your claim in the first paragraph, then support it. Cite prior work with\n\
-             `[@key]` syntax, which resolves against `references.bib` — for example the\n\
-             literate-programming idea [@knuth1984literate]. @sec-methods works a figure end\n\
-             to end.\n\
-             \n\
-             ## Methods {{#sec-methods}}\n\
-             \n\
-             A `{{python}}` cell runs when you preview (with a kernel) and renders its figure\n\
-             inline. Quarto's cell options work verbatim: `#| label:` names it — a `fig-` prefix\n\
-             makes it a figure — and `#| fig-cap:` is its caption, so `@fig-demo` cross-references\n\
-             resolve automatically.\n\
-             \n\
-             ```{{python}}\n\
-             #| label: fig-demo\n\
-             #| fig-cap: \"A worked figure — replace it with your result.\"\n\
-             import matplotlib.pyplot as plt\n\
-             \n\
-             fig, ax = plt.subplots()\n\
-             ax.plot([0, 1, 2, 3], [0, 1, 4, 9])\n\
-             ax.set_xlabel(\"x\")\n\
-             ax.set_ylabel(\"y\")\n\
-             ```\n\
-             \n\
-             @fig-demo shows the result. Display math uses `$$`:\n\
-             \n\
-             $$\n\
-             y = x^2\n\
-             $$\n\
-             \n\
-             ## References\n"
-        );
-        let bib = "@article{knuth1984literate,\n\
-             \x20 author  = {Knuth, Donald E.},\n\
-             \x20 title   = {Literate Programming},\n\
-             \x20 journal = {The Computer Journal},\n\
-             \x20 volume  = {27},\n\
-             \x20 number  = {2},\n\
-             \x20 pages   = {97--111},\n\
-             \x20 year    = {1984}\n\
-             }\n"
-        .to_string();
-        return vec![
-            (PathBuf::from("posts").join(slug).join("index.tmd"), index),
-            (
-                PathBuf::from("posts").join(slug).join("references.bib"),
-                bib,
-            ),
-        ];
-    }
-    let (path, body) = match kind {
-        NewKind::Post => (
-            PathBuf::from("posts").join(slug).join("index.tmd"),
-            format!(
-                "---\n\
-                 title: \"{title}\"\n{draft}\
-                 date: {today}\n\
-                 description: \"One sentence: what a reader will understand by the end.\"\n\
-                 categories: [writing]\n\
-                 ---\n\
-                 \n\
-                 Open with the question this post answers.\n\
-                 \n\
-                 ## The first idea\n\
-                 \n\
-                 Save the file and the preview re-renders only the block you changed.\n"
-            ),
-        ),
-        NewKind::Page => (
-            PathBuf::from(format!("{slug}.tmd")),
-            format!(
-                "---\n\
-                 title: \"{title}\"\n{draft}\
-                 ---\n\
-                 \n\
-                 Save the file and the preview re-renders only the block you changed.\n"
-            ),
-        ),
-        // Paper is handled by the early return above (it writes two files).
-        NewKind::Paper => unreachable!("Paper scaffold is built before this match"),
-    };
-    vec![(path, body)]
+    let body = format!(
+        "---\n\
+         title: \"{title}\"\n{draft}\
+         date: {today}\n\
+         description: \"One sentence: what a reader will understand by the end.\"\n\
+         categories: [writing]\n\
+         ---\n\
+         \n\
+         Open with the question this post answers.\n\
+         \n\
+         ## The first idea\n\
+         \n\
+         Save the file and the preview re-renders only the block you changed.\n"
+    );
+    vec![(PathBuf::from("posts").join(slug).join("index.tmd"), body)]
 }
 
-/// `taliesin new <post|page|paper> <slug> [--dir <root>]`: scaffold one document, correct
-/// on its first save. Refuses to overwrite, exactly as `init` does.
+/// `taliesin new post <slug> [--dir <root>]`: scaffold one document, correct on its first
+/// save. Refuses to overwrite, exactly as `init` does.
 pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
     let mut root = ".".to_string();
     let mut json = false;
-    let mut yes = false;
     let mut opts = NewOpts::default();
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -629,9 +338,10 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             },
             // `--draft` marks the scaffold `draft: true` (held out of the published build).
             "--draft" => opts.draft = true,
-            // `-y`/`--yes` skips the interactive wizard (use it for scripts at a TTY).
-            "-y" | "--yes" => yes = true,
-            s if s.starts_with("--") => {
+            // Any leading dash is a flag, not a kind or a slug. `--` alone would be enough
+            // if `-y` had never existed; it did until Wave 8, and a leftover `taliesin new
+            // -y post x` must not be read as a request to scaffold a kind called `-y`.
+            s if s.starts_with('-') => {
                 log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
                 return ExitCode::FAILURE;
             }
@@ -639,43 +349,18 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         }
     }
 
-    // Missing kind/slug prompts a human at a TTY (the wizard); a pipe/CI/agent (or `-y`/`--json`)
-    // gets the historical usage error instead of ever blocking on a prompt.
-    let interactive = interactive::is_interactive(yes, json);
-
-    let kind = match positional.first() {
-        Some(k) => match NewKind::parse(k) {
-            Ok(k) => k,
-            Err(e) => {
+    match positional.first() {
+        Some(k) => {
+            if let Err(e) = parse_new_kind(k) {
                 log::error(&e);
                 return ExitCode::FAILURE;
             }
-        },
-        None if interactive => {
-            const KINDS: [NewKind; 3] = [NewKind::Post, NewKind::Page, NewKind::Paper];
-            match interactive::select("What do you want to create?", NEW_KINDS, 0) {
-                Ok(i) => KINDS[i],
-                Err(e) => {
-                    log::error(&e.to_string());
-                    return ExitCode::FAILURE;
-                }
-            }
         }
         None => return new_usage(),
-    };
+    }
 
     let slug: String = match positional.get(1) {
         Some(s) => (*s).to_string(),
-        // The prompt's validator re-asks on a bad slug rather than aborting.
-        None if interactive => {
-            match interactive::input("Slug (lowercase, used in the URL)", None, validate_slug) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error(&e.to_string());
-                    return ExitCode::FAILURE;
-                }
-            }
-        }
         None => return new_usage(),
     };
     if let Err(e) = validate_slug(&slug) {
@@ -683,10 +368,10 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let root = Path::new(&root);
-    match write_new(root, kind, &slug, opts) {
+    match write_new(root, &slug, opts) {
         Ok(written) => {
             if json {
-                println!("{}", new_json(kind.name(), &slug, &written));
+                println!("{}", new_json(&slug, &written));
             } else {
                 for f in &written {
                     log::built(&f.display().to_string());
@@ -713,16 +398,17 @@ fn new_usage() -> ExitCode {
     crate::usage_error("new")
 }
 
-/// The `--json` receipt for a scaffold: `{kind?, slug?, created:[...], preview}` as pretty
-/// JSON. `kind`/`slug` are `None` for `init` (which scaffolds a whole site, not a document).
-fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
+/// The `--json` receipt for a scaffold: `{kind, slug, created:[...], preview}` as pretty
+/// JSON. `kind` stays in the payload with one kind left, because a receipt an agent already
+/// parses should not change shape for a reason the agent cannot see.
+fn new_json(slug: &str, written: &[PathBuf]) -> String {
     let created: Vec<String> = written.iter().map(|p| p.display().to_string()).collect();
     let preview = written
         .first()
         .map(|p| format!("taliesin preview {}", p.display()))
         .unwrap_or_default();
     let payload = serde_json::json!({
-        "kind": kind,
+        "kind": NEW_KINDS[0],
         "slug": slug,
         "created": created,
         "preview": preview,
@@ -731,17 +417,12 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--yes"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).
-fn write_new(
-    root: &Path,
-    kind: NewKind,
-    slug: &str,
-    opts: NewOpts,
-) -> Result<Vec<PathBuf>, String> {
-    write_scaffold(root, &new_files(kind, slug, &today_utc(), opts))
+fn write_new(root: &Path, slug: &str, opts: NewOpts) -> Result<Vec<PathBuf>, String> {
+    write_scaffold(root, &new_files(slug, &today_utc(), opts))
 }
 
 /// Parse the optional `[port]` positional: absent -> the 4321 default; a present but
@@ -956,74 +637,34 @@ mod tests {
     }
 
     #[test]
-    fn the_onramp_note_names_every_file_init_writes_unasked() {
-        // Item 123. `.taliesin/` is written by every template regardless of what the user
-        // asked for, so the note is the only place that says what it is. Derived from
-        // `onramp_files()` rather than hand-listed: add a second onramp file and this fails
-        // until the note mentions it, which is the drift that made the item worth filing in
-        // the first place.
-        for (name, _) in onramp_files() {
-            // `.taliesin/x.schema.json` is named by its directory, which is what a reader
-            // sees in the file list and what the note can meaningfully talk about.
-            let named = name.split('/').next().unwrap_or(name);
-            assert!(
-                ONRAMP_NOTE.contains(named),
-                "the onramp note must name `{named}`, or it arrives unexplained: \
-                 {ONRAMP_NOTE}"
-            );
-        }
-        // And it must say the files are optional — "what is this?" and "can I delete it?"
-        // are the two questions an unasked-for file raises, and the second is the one a
-        // bare filename can never answer.
-        assert!(
-            ONRAMP_NOTE.contains("delete"),
-            "the note must say they can be removed: {ONRAMP_NOTE}"
-        );
-    }
-
-    #[test]
     fn init_scaffolds_a_previewable_site() {
         let dir = tmp("scaffold");
         // The dir doesn't exist yet — `scaffold_init` must create it.
-        let written =
-            scaffold_init(&dir, InitTemplate::Basic).expect("scaffold succeeds into a fresh dir");
+        let written = scaffold_init(&dir).expect("scaffold succeeds into a fresh dir");
 
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
-        let site_schema = dir.join(".taliesin").join("tali-site.schema.json");
         assert!(site_yml.exists(), "_site.yml written");
         assert!(index.exists(), "index.tmd written");
-        assert!(
-            site_schema.exists(),
-            ".taliesin/tali-site.schema.json written"
-        );
-        assert_eq!(
-            written,
-            vec![site_yml.clone(), index.clone(), site_schema.clone()]
-        );
+        assert_eq!(written, vec![site_yml.clone(), index.clone()]);
 
         // The scaffold is a real, parseable site whose one page previews.
         let cfg = fs::read_to_string(&site_yml).unwrap();
         assert!(cfg.contains("title:"), "config has a title: {cfg}");
 
-        // Load-bearing: the modeline points at a real schema whose body is the bundled one, so
-        // the referenced path and the emitted file can never silently drift.
-        let first = cfg.lines().next().unwrap_or("");
+        // And nothing the author did not ask for. `init` wrote a `.taliesin/` dot-directory
+        // holding a copy of the bundled `_site.yml` schema until Wave 8, wired through a
+        // modeline on the config's first line; zero such directories existed anywhere in
+        // this repository, including in the author's own projects.
         assert!(
-            first.starts_with("# yaml-language-server: $schema="),
-            "first line is the schema modeline: {first}"
+            !dir.join(".taliesin").exists(),
+            "init scaffolds no dot-directory"
         );
-        let rel = first.trim_end().rsplit('=').next().unwrap();
-        let pointed = dir.join(rel);
         assert!(
-            pointed.exists(),
-            "modeline path resolves to a real file: {rel}"
+            !cfg.contains("yaml-language-server"),
+            "no schema modeline: {cfg}"
         );
-        assert_eq!(
-            fs::read_to_string(&pointed).unwrap(),
-            taliesin_core::schema::SITE_SCHEMA,
-            "the wired schema is the bundled SITE_SCHEMA"
-        );
+
         let page = fs::read_to_string(&index).unwrap();
         assert!(
             page.starts_with("---") && page.contains("title:"),
@@ -1031,63 +672,10 @@ mod tests {
         );
 
         // Re-running refuses to overwrite (never clobbers existing work).
-        let err =
-            scaffold_init(&dir, InitTemplate::Basic).expect_err("second init refuses to overwrite");
+        let err = scaffold_init(&dir).expect_err("second init refuses to overwrite");
         assert!(err.contains("already exists"), "overwrite refused: {err}");
 
         let _ = fs::remove_dir_all(&dir);
-    }
-}
-
-#[cfg(test)]
-mod init_template_tests {
-    use super::*;
-
-    #[test]
-    fn an_unknown_template_suggests_the_nearest() {
-        assert_eq!(InitTemplate::parse("basic").unwrap(), InitTemplate::Basic);
-        assert_eq!(InitTemplate::parse("site").unwrap(), InitTemplate::Site);
-        assert_eq!(InitTemplate::parse("book").unwrap(), InitTemplate::Book);
-        let e = InitTemplate::parse("sit").unwrap_err();
-        assert!(e.contains("did you mean `site`?"), "got: {e}");
-        let e = InitTemplate::parse("zzzzzz").unwrap_err();
-        assert!(e.contains("expected basic, site, or book"), "got: {e}");
-    }
-
-    /// The default `init` must not drift: its two authored files are exactly the constants
-    /// that shipped before templates existed, so an existing `taliesin init` is byte-identical.
-    #[test]
-    fn basic_template_is_byte_identical_to_the_frozen_scaffold() {
-        assert_eq!(
-            init_files(InitTemplate::Basic),
-            vec![
-                (PathBuf::from("_site.yml"), INIT_SITE_YML.to_string()),
-                (PathBuf::from("index.tmd"), INIT_INDEX_TMD.to_string()),
-            ]
-        );
-    }
-
-    /// The `site` and `book` templates are pinned byte-for-byte by real, buildable projects
-    /// under `corpus/`, which the corpus regression net renders and lints like any other
-    /// document — so a scaffold that stops being `check`-clean fails the suite.
-    #[test]
-    fn site_and_book_templates_match_their_corpus_pins() {
-        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
-        for (template, dir) in [
-            (InitTemplate::Site, "scaffold-site"),
-            (InitTemplate::Book, "scaffold-book"),
-        ] {
-            for (rel, contents) in init_files(template) {
-                let pinned = std::fs::read_to_string(corpus.join(dir).join(&rel))
-                    .unwrap_or_else(|e| panic!("corpus pin for {template:?} at {rel:?}: {e}"));
-                assert_eq!(
-                    contents,
-                    pinned,
-                    "`init --template {template:?}` drifted from corpus/{dir}/{}",
-                    rel.display()
-                );
-            }
-        }
     }
 }
 
@@ -1131,36 +719,36 @@ mod new_tests {
 
     #[test]
     fn an_unknown_kind_suggests_the_nearest() {
-        assert!(NewKind::parse("post").is_ok());
-        let e = NewKind::parse("pots").unwrap_err();
+        assert!(parse_new_kind("post").is_ok());
+        let e = parse_new_kind("pots").unwrap_err();
         assert!(e.contains("did you mean `post`?"), "got: {e}");
-        let e = NewKind::parse("zzzzzz").unwrap_err();
-        assert!(e.contains("expected post, page, or paper"), "got: {e}");
+        let e = parse_new_kind("zzzzzz").unwrap_err();
+        assert!(e.contains("expected post"), "got: {e}");
     }
 
-    /// The scaffold's bytes are pinned by `corpus/scaffold/`, which the corpus regression
-    /// net renders and lints like any other document. If `new` ever emits a front-matter
-    /// key the validator rejects, `cargo test -p taliesin-core` fails; if it emits
-    /// something else entirely, this fails.
+    /// A kind this verb used to scaffold answers with what to do instead, never with a
+    /// did-you-mean. Every retired name is far enough from `post` that the distance rule
+    /// declines, which is the silence this register replaces, not a wrong suggestion it
+    /// overrides.
     #[test]
-    fn every_scaffold_matches_its_corpus_pin() {
-        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/scaffold");
-        for kind in [NewKind::Post, NewKind::Page, NewKind::Paper] {
-            let slug = match kind {
-                NewKind::Post => "my-first-post",
-                NewKind::Page => "about",
-                NewKind::Paper => "my-paper",
-            };
-            for (rel, contents) in new_files(kind, slug, "2026-07-10", NewOpts::default()) {
-                let pinned = std::fs::read_to_string(corpus.join(&rel))
-                    .unwrap_or_else(|e| panic!("corpus pin for {kind:?} at {rel:?}: {e}"));
-                assert_eq!(
-                    contents,
-                    pinned,
-                    "`taliesin new {slug}` drifted from corpus/scaffold/{}",
-                    rel.display()
-                );
-            }
+    fn a_retired_kind_names_what_to_do_instead() {
+        for (name, note) in RETIRED_NEW_KINDS {
+            assert_eq!(
+                taliesin_core::closest(name, NEW_KINDS),
+                None,
+                "`{name}` is supposed to be out of distance-2 reach of `post`"
+            );
+            assert!(!note.is_empty(), "`{name}` retired with no note");
+            let e = parse_new_kind(name).unwrap_err();
+            assert!(e.contains(name), "the error names the kind typed: {e}");
+            assert!(
+                !e.contains("did you mean"),
+                "the retired note replaces the did-you-mean, it does not follow it: {e}"
+            );
+            assert!(
+                !NEW_KINDS.contains(name),
+                "`{name}` is retired but still offered"
+            );
         }
     }
 }

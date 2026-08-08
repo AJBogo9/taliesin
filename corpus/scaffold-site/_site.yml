@@ -1,8 +1,0 @@
-# yaml-language-server: $schema=.taliesin/tali-site.schema.json
-title: My site
-nav:
-  left:
-  - text: Home
-    href: index.tmd
-  - text: About
-    href: about.tmd

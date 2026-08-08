@@ -104,7 +104,7 @@ warm kernel reused across edits:
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-taliesin init my-site        # _site.yml, index.tmd + .taliesin/ editor schema
+taliesin init my-site        # _site.yml + index.tmd, and nothing else
 taliesin preview my-site     # live preview at http://localhost:4321
 ```
 

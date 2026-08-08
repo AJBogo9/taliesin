@@ -3,7 +3,7 @@ title: "Shortcode reference"
 description: "The two shortcodes: include for a partial, and input for a reactive control."
 ---
 
-*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 A shortcode is a `{{< name args >}}` tag in the body of a document. Taliesin
 expands the built-in shortcodes in a single pass **before** the Markdown is parsed, so

@@ -102,7 +102,7 @@ autocomplete and the runtime validator can never drift apart.
 :::
 
 Taliesin generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
-closed set the config validator uses), written into `.taliesin/` by `init`. See the
+closed set the config validator uses), and the VS Code companion ships a copy of it. See the
 Configuration reference (`../guide/reference/configuration.html`) for the editor
 autocomplete on-ramp.
 

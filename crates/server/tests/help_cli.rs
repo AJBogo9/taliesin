@@ -41,15 +41,7 @@ fn help_groups_commands_by_purpose() {
     assert!(h.contains("Editor") && under("  lsp", "Editor") > 0);
     // No command was dropped in the reorder.
     for cmd in [
-        "init",
-        "new ",
-        "preview",
-        "build ",
-        "check",
-        "doctor",
-        "lsp",
-        "completions",
-        "help,",
+        "init", "new ", "preview", "build ", "check", "doctor", "lsp", "help,",
     ] {
         assert!(h.contains(cmd), "help dropped `{cmd}`:\n{h}");
     }

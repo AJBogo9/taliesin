@@ -8,12 +8,10 @@ mod build;
 mod build_budget;
 mod check;
 mod cli;
-mod complete;
 mod doctor;
 mod exec;
 mod freeze;
 mod http1;
-mod interactive;
 mod interpreter;
 mod kernel;
 mod log;
@@ -88,10 +86,6 @@ fn main() -> ExitCode {
             runtime_dirs::sweep_stale_runtime_dirs();
             cli::cmd_serve(&args)
         }
-        Some("completions") => complete::cmd_completions(&args),
-        // Hidden: the shell-completion shims call this at runtime. Not in COMMANDS
-        // (underscore-prefixed => excluded from did-you-mean + the dispatch guard).
-        Some("__complete") => complete::cmd_complete(&args),
         Some("--version" | "-V") => {
             println!(
                 "taliesin {} ({})",
@@ -124,16 +118,7 @@ fn main() -> ExitCode {
 
 /// Every subcommand name, for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "build",
-    "run",
-    "check",
-    "doctor",
-    "lsp",
-    "init",
-    "new",
-    "preview",
-    "help",
-    "completions",
+    "build", "run", "check", "doctor", "lsp", "init", "new", "preview", "help",
 ];
 
 /// Subcommands that used to exist, and the one line that says what replaced them.
@@ -177,7 +162,7 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "schema",
-        "`init` writes `.taliesin/tali-site.schema.json` for you",
+        "nothing on the CLI; the VS Code companion bundles the `_site.yml` schema",
     ),
     ("mcp", "`check --format json`, run from your agent"),
     (
@@ -188,6 +173,10 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
     (
         "pdf",
         "nothing; print the built HTML to PDF from your browser",
+    ),
+    (
+        "completions",
+        "nothing; type the subcommand out, or bind your own shell alias",
     ),
 ];
 
@@ -212,8 +201,9 @@ fn unknown_command_message(other: &str) -> String {
 /// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
 /// answer here either (`serve-site` must not resolve to the `serve` that was cut).
 ///
-/// Ambiguity yields nothing rather than a coin flip: `c` opens both `check` and
-/// `completions`, and picking one would teach a rule that is not real.
+/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `c`
+/// opened both `check` and the since-retired `completions`, and picking one would have taught
+/// a rule that is not real.
 fn extended_command(other: &str) -> Option<&'static str> {
     if other.len() < 2 {
         return None;
@@ -255,8 +245,8 @@ COMMANDS:
 Author
   init   [dir]               scaffold a starter site you can preview right away
                              (writes _site.yml + index.tmd; default: current dir)
-  new <post|page|paper> <slug> [--dir <root>] [--draft] [--json]
-                             scaffold one document, correct on its first save
+  new post <slug> [--dir <root>] [--draft] [--json]
+                             scaffold one dated post, correct on its first save
 
 Preview & build
   run <file.tmd> [--cell N | --line L | --all] [--quiet] [--interrupt]
@@ -294,8 +284,6 @@ Inspect
 
 Editor
   lsp                        stdio LSP server: live .tmd diagnostics in any editor
-  completions <shell> [--install]  print (or --install) a shell completion script
-                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)
 
   help, --version            show this help / the version
 
@@ -448,73 +436,37 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
         "new" => {
-            "taliesin new [post|page|paper] [slug] [--dir <root>] [--draft] [--json] [-y]\n\
+            "taliesin new post <slug> [--dir <root>] [--draft] [--json]\n\
              \n\
-             Scaffold one document that is correct on its first save: it renders, and\n\
-             `taliesin check` passes on it with no diagnostics. A post lands in\n\
-             posts/<slug>/index.tmd and is dated today; a page lands in\n\
-             <slug>.tmd; a paper lands in posts/<slug>/ with a ready-to-cite\n\
-             references.bib beside it. Refuses to overwrite an existing file.\n\
-             \n\
-             Run at a terminal with the kind or slug omitted and it prompts for them\n\
-             (arrow keys to pick the kind); pass -y to never prompt.\n\
+             Scaffold one dated blog post that is correct on its first save: it renders, and\n\
+             `taliesin check` passes on it with no diagnostics. It lands in\n\
+             posts/<slug>/index.tmd, dated today. Refuses to overwrite an existing file.\n\
              \n\
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
              \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
              \x20 --format human|json  the long spelling of --json\n\
-             \x20 -y, --yes      skip the interactive prompt (for scripts run at a terminal)\n\
              \n\
              Example:\n\
              \x20 taliesin new post my-first-post --draft\n"
         }
         "init" => {
-            "taliesin init [dir] [--template basic|site|book] [--json] [-y]\n\
+            "taliesin init [dir] [--json]\n\
              \n\
              Scaffold a starter project into dir (default the current directory) and print\n\
-             the preview hint. Refuses to overwrite existing files.\n\
-             \n\
-             Templates:\n\
-             \x20 basic   a one-page site (the default): _site.yml + index.tmd\n\
-             \x20 site    a multi-page site: a nav linking a Home and an About page\n\
-             \x20 book    a chapters: project: a landing page + two starter chapters\n\
+             the preview hint: a `_site.yml` holding the title and an `index.tmd` you can\n\
+             preview immediately, and nothing else. Refuses to overwrite existing files.\n\
              \n\
              Flags:\n\
-             \x20 --template basic|site|book  which starter to scaffold (prompted without it)\n\
              \x20 --json         print a {created, preview} receipt instead of the hint\n\
              \x20 --format human|json  the long spelling of --json\n\
-             \x20 -y, --yes      take the basic default without prompting\n\
              \n\
-             Every template also writes AGENTS.md (the agent onramp) and the .taliesin/\n\
-             config schemas that drive editor autocomplete.\n\
-             \n\
-             Run at a terminal with no --template and it prompts for one (arrow keys);\n\
-             pass -y to take the basic default without prompting.\n\
+             Add pages by dropping more .tmd files beside index.tmd; make it a book by\n\
+             listing them under chapters: in _site.yml.\n\
              \n\
              Example:\n\
-             \x20 taliesin init my-book --template book\n"
-        }
-        "completions" => {
-            "taliesin completions <bash|zsh|fish|powershell> [--install]\n\
-             \n\
-             Print a shell completion script to stdout. The script is a thin shim that\n\
-             asks the running binary for candidates, so Tab offers subcommands, flags, and\n\
-             only .tmd files plus directories that contain one (site/book roots first).\n\
-             \n\
-             --install writes the script into your shell's completion dir instead (the\n\
-             shell is detected from $SHELL when omitted); completion works after a restart:\n\
-             \x20 taliesin completions --install         # detect $SHELL and install\n\
-             \x20 taliesin completions zsh --install     # install for a named shell\n\
-             \n\
-             Or install by hand:\n\
-             \x20 bash        taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin\n\
-             \x20 zsh         taliesin completions zsh  > \"${fpath[1]}/_taliesin\"   # then: compinit\n\
-             \x20 fish        taliesin completions fish > ~/.config/fish/completions/taliesin.fish\n\
-             \x20 powershell  taliesin completions powershell >> $PROFILE\n\
-             \n\
-             Example:\n\
-             \x20 taliesin completions zsh\n"
+             \x20 taliesin init my-site\n"
         }
         "doctor" => {
             "taliesin doctor [dir] [--format human|json]\n\
@@ -636,7 +588,7 @@ mod dispatch_tests {
             ("preview-site", "preview"),
             ("build-site", "build"),
             ("prev", "preview"),
-            ("com", "completions"),
+            ("doc", "doctor"),
         ] {
             // The premise, measured rather than assumed: edit distance cannot see any of
             // these, so the prefix rule only ever fills silence and never overrides a

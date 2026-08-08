@@ -1,10 +1,11 @@
-//! `taliesin init [--template basic|site|book]` scaffolds a project that is correct on the
-//! first save: it renders and `taliesin check` passes on it with no diagnostics.
+//! `taliesin init` scaffolds a project that is correct on the first save: it renders and
+//! `taliesin check` passes on it with no diagnostics.
 //!
-//! The template bytes are pinned unit-side against `corpus/scaffold-{site,book}/`
-//! (`cli::init_template_tests`); this file exercises the CLI end-to-end — the `--template`
-//! flag path, the shared onramp, refuse-to-overwrite, and a real `check` over the whole
-//! project (so nav links and book chapters resolve, not just per-page front matter).
+//! This is the behavioral pin for the whole scaffolder. It used to sit beside a byte pin
+//! (`corpus/scaffold-{site,book}/`, compared const-for-const in `cli::init_template_tests`)
+//! covering three templates; Wave 8 cut `init` to the one starter, so what is left is the
+//! property that actually matters: the real binary writes it, the real `check` reads it
+//! back over the whole project, and nothing arrives that nobody asked for.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -44,107 +45,107 @@ fn check_is_clean(path: &Path) -> (bool, String) {
     )
 }
 
-/// The whole point: every template must survive the tool's own preflight as a project.
+/// The whole point: the starter must survive the tool's own preflight as a project.
 #[test]
-fn every_template_scaffolds_a_check_clean_project() {
-    for (template, pages) in [
-        ("basic", &["index.tmd"][..]),
-        ("site", &["index.tmd", "about.tmd"][..]),
-        ("book", &["index.tmd", "intro.tmd", "methods.tmd"][..]),
-    ] {
-        let dir = tmp(template);
-        let (ok, _out, err) = run(&["init", dir.to_str().unwrap(), "--template", template]);
-        assert!(
-            ok,
-            "`init --template {template}` should succeed; stderr: {err}"
-        );
-
-        // Config + the shared onramp are always written.
-        assert!(
-            dir.join("_site.yml").exists(),
-            "{template}: _site.yml written"
-        );
-        assert!(
-            dir.join(".taliesin/tali-site.schema.json").exists(),
-            "{template}: schema wired"
-        );
-        for p in pages {
-            assert!(dir.join(p).exists(), "{template}: {p} written");
-        }
-
-        let (clean, diagnostics) = check_is_clean(&dir);
-        assert!(
-            clean,
-            "`taliesin check` must pass on a fresh `init --template {template}`, got:\n{diagnostics}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
-/// The `site` template is genuinely multi-page: it links a second page from the nav, which
-/// only resolves when `check` sees the whole project (not per-page). The `book` template lists
-/// its chapters. These are the properties a single-doc scaffold cannot have.
-#[test]
-fn site_links_a_second_page_and_book_lists_chapters() {
-    let site = tmp("site-shape");
-    run(&["init", site.to_str().unwrap(), "--template", "site"]);
-    let cfg = std::fs::read_to_string(site.join("_site.yml")).unwrap();
-    assert!(
-        cfg.contains("nav:") && cfg.contains("about.tmd"),
-        "site nav links about: {cfg}"
-    );
-    assert!(
-        site.join("about.tmd").exists(),
-        "site ships the linked page"
-    );
-    let _ = std::fs::remove_dir_all(&site);
-
-    let book = tmp("book-shape");
-    run(&["init", book.to_str().unwrap(), "--template", "book"]);
-    let cfg = std::fs::read_to_string(book.join("_site.yml")).unwrap();
-    assert!(
-        cfg.contains("chapters:"),
-        "book config declares chapters: {cfg}"
-    );
-    assert!(
-        book.join("intro.tmd").exists() && book.join("methods.tmd").exists(),
-        "book ships the listed chapters"
-    );
-    let _ = std::fs::remove_dir_all(&book);
-}
-
-/// `init` with no `--template` (non-interactive) keeps its historical default: the basic
-/// one-page site, and nothing more.
-#[test]
-fn init_without_a_template_scaffolds_the_basic_site() {
-    let dir = tmp("default");
+fn init_scaffolds_a_check_clean_project() {
+    let dir = tmp("basic");
     let (ok, _out, err) = run(&["init", dir.to_str().unwrap()]);
-    assert!(ok, "bare `init` succeeds; stderr: {err}");
+    assert!(ok, "`init` should succeed; stderr: {err}");
+
+    assert!(dir.join("_site.yml").exists(), "_site.yml written");
+    assert!(dir.join("index.tmd").exists(), "index.tmd written");
+
+    let (clean, diagnostics) = check_is_clean(&dir);
     assert!(
-        dir.join("_site.yml").exists() && dir.join("index.tmd").exists(),
-        "basic writes _site.yml + index.tmd"
+        clean,
+        "`taliesin check` must pass on a fresh `init`, got:\n{diagnostics}"
     );
-    assert!(!dir.join("about.tmd").exists(), "basic has no extra pages");
-    let (clean, d) = check_is_clean(&dir);
-    assert!(clean, "basic init must check clean:\n{d}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// An unknown `--template` value is a hard error that names the nearest match (never a silent
-/// fall-back to basic).
+/// `init` writes those two files and nothing else. It shipped a `.taliesin/` dot-directory
+/// (a copy of the bundled `_site.yml` schema, wired by a modeline on the config's first
+/// line) into every project it created until Wave 8, and zero such directories existed
+/// anywhere in this repository, including in the author's own projects.
 #[test]
-fn an_unknown_template_is_rejected_with_a_hint() {
-    let dir = tmp("bad");
-    let (ok, _out, err) = run(&["init", dir.to_str().unwrap(), "--template", "sit"]);
-    assert!(!ok, "an unknown template fails");
-    assert!(
-        err.contains("did you mean `site`?"),
-        "hints the nearest: {err}"
+fn init_writes_nothing_the_author_did_not_ask_for() {
+    let dir = tmp("no-extras");
+    let (ok, _out, err) = run(&["init", dir.to_str().unwrap()]);
+    assert!(ok, "stderr: {err}");
+
+    let mut entries: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    entries.sort();
+    assert_eq!(
+        entries,
+        vec!["_site.yml".to_string(), "index.tmd".to_string()],
+        "init wrote something unasked for"
     );
-    // And it wrote nothing (a rejected template never half-scaffolds).
+    let cfg = std::fs::read_to_string(dir.join("_site.yml")).unwrap();
+    assert!(
+        !cfg.contains("yaml-language-server"),
+        "no schema modeline: {cfg}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The template menu is gone: `--template` is an unknown flag, and a rejected run never
+/// half-scaffolds.
+#[test]
+fn the_template_flag_is_rejected_and_writes_nothing() {
+    let dir = tmp("template");
+    let (ok, _out, err) = run(&["init", dir.to_str().unwrap(), "--template", "site"]);
+    assert!(!ok, "`--template` no longer exists, so it must fail");
+    assert!(err.contains("--template"), "names the flag typed: {err}");
     assert!(
         !dir.join("_site.yml").exists(),
-        "no partial scaffold on a bad template"
+        "no partial scaffold on a rejected flag"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The wizard is gone, so a bare `init` scaffolds rather than prompting, which is the
+/// behavior CI, a pipe and an agent always got. Driven with stdin on `/dev/null` so a
+/// regression that reintroduced a prompt would hang or fail here, not at a terminal.
+#[test]
+fn a_bare_init_scaffolds_without_prompting() {
+    use std::process::Stdio;
+    let dir = tmp("bare");
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["init", dir.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .expect("run taliesin init");
+    assert!(
+        out.status.success(),
+        "bare `init` scaffolds; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(dir.join("_site.yml").exists() && dir.join("index.tmd").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `-y`/`--yes` opted out of that wizard. Both are gone, and neither may be mistaken for the
+/// directory to scaffold into, which is what a bare `-y` would have become, since a
+/// leading-dash token is otherwise just a positional.
+#[test]
+fn the_retired_yes_flag_is_not_read_as_a_directory() {
+    let cwd = tmp("yes");
+    std::fs::create_dir_all(&cwd).unwrap();
+    for flag in ["-y", "--yes"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+            .args(["init", flag])
+            .current_dir(&cwd)
+            .output()
+            .expect("run taliesin init");
+        assert!(!out.status.success(), "`init {flag}` must fail");
+        assert!(
+            !cwd.join(flag).exists(),
+            "`init {flag}` must not scaffold into a directory called `{flag}`"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&cwd);
 }

@@ -89,7 +89,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 5 | The deck engine | **done** 2026-08-08 | `cut/wave-5-deck` | **−11,553** (+657 / −12,210, 161 files) | the biggest wave so far; `DocFormat` deleted outright, not collapsed; `code-line-numbers` went with it |
 | 6 | Reactive tail, R, Chrome kill | **done** 2026-08-08 | `cut/wave-6-reactive-r-chrome` | **−4,146** (+960 / −5,106, 100 files) | gate runtimes 4 → **2**, canaries 4 → **2**, gates 8 → 8; `chromiumoxide` and the `headless-js` feature are gone |
 | 7 | Vocabulary contraction | **done** 2026-08-08 | `cut/wave-7-vocabulary` | **−5,703** (+788 / −6,491, 127 files) | 14 registered retirements in one commit; `DIV_FEATURE_CLASSES` 7 → **3**, `RETIRED_XREF_PREFIXES` 3 → **7**, shortcodes 3 → **2**; **−5,866 B of CSS off every page** |
-| 8 | CLI ergonomics + scaffolding | not started | | | keep `doctor.rs` |
+| 8 | CLI ergonomics + scaffolding | **done** 2026-08-08 | `cut/wave-8-cli-scaffolding` | **−2,349** (+397 / −2,746, 40 files, 16 deleted) | 10 verbs → **9, the ruling's target**; `doctor.rs` + `packages.rs` untouched as ruled; `dialoguer` gone; `init` templates 3 → **1**, `new` kinds 3 → **1** |
 | 9 | Diagnostics catalogue (keep lint front door) | not started | | | save `codes.rs` prose first |
 | 10 | LSP long tail | not started | | | |
 | 11 | Serve layer, opened once | not started | | | only wave that opens `exec_pool.rs` |
@@ -136,6 +136,24 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 - **Decide whether `Site::nav_ordered` still belongs where it is.** It lived in `llms.rs`
   and moved to `feed.rs` in wave 4 because `feed_hosts` was its other caller. If wave 11's
   site-layer reduction touches feeds, that is the moment to look at it again.
+- **A RETIREMENT NOTE CAN GO STALE, AND NO GATE SEES IT. New in wave 8, applies to every
+  wave after it.** `RETIRED_COMMANDS`' `schema` entry named `.taliesin/tali-site.schema.json`
+  as its replacement; wave 8 deleted that file's writer, so the note would have shipped a
+  pointer to something the tool no longer does, with all eight gates green.
+  `a_retired_command_names_its_replacement_instead_of_guessing` checks that a note is
+  non-empty and that the name is not live, never that its *claim* is true, and the same
+  holds for `RETIRED_KEYS` and `RETIRED_DIV_CLASSES`. **Before cutting anything, grep the
+  three registers for it.**
+- **`--help` PROSE is ungated in the same way.** `init --help` promised "Every template also
+  writes AGENTS.md (the agent onramp)" for six days after wave 2 deleted `agents.rs`.
+  `every_parsed_flag_is_documented_in_its_subcommand_help` ties a FLAGS const to the help
+  text and would pass on any claim at all; `commands_help_lists_every_subcommand` ties names
+  to `COMMANDS`. Nothing ties a sentence to a behavior. Two known holes now (this and the
+  one above), both cheap to walk into and neither worth new machinery. Grep instead.
+- **Removing a SHORT flag from a parser that takes bare positionals is a reclassification.**
+  Wave 8's `-y`/`--yes`: with the flag merely deleted, `taliesin init -y` would have created
+  a directory named `-y`. Both scaffolders now reject any leading-dash token. A later wave
+  dropping a short flag from `build`, `check` or `run` owes the same check.
 
 ## Hedges to take before wave 1
 
@@ -1028,3 +1046,205 @@ leaving `core_enhance_js`, plus search.js's reveal path). The output tree is **5
 before and 54 after**, differing only in the two content-hashed asset names, and an
 **in-place** rebuild over the existing tree produced a byte-identical file list — so no
 surviving keep-contributor lost its writer.
+
+### Wave 8, 2026-08-08, `cut/wave-8-cli-scaffolding`
+
+**Measured reclaim: −2,349 lines** (`+397 / −2,746` over 40 files, **16 deleted outright**)
+against the ~2,540 estimate. By area: `crates/server/src` −1,882 (complete.rs 1,344 +
+interactive.rs 78 + the cli.rs collapse), `crates/server/tests` −272, `corpus` −114,
+`docs/guide` −45, `Cargo.lock` −35, `Cargo.toml` −8, `crates/server/Cargo.toml` −1,
+`docs/internals` **+6**, `crates/core/src` **+1**, `CLAUDE.md` **+1**, `README.md` 0.
+`notes/` is excluded, as in every figure above.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **88 suites / 1,771
+passed / 0 failed / 0 ignored**, exit 0. Measure wave 9 against **1,771, two canaries and
+eight gates**; a bare `cargo test --workspace` gives the same figure.
+
+**TEN CLI VERBS ARE NOW NINE, WHICH IS THE RULING'S TARGET NUMBER** (§4: `preview`, `build`,
+`new`, `init`, `lsp`, `doctor`, `run`, `check`, `help`). `completions` went with one
+`RETIRED_COMMANDS` line naming no replacement, as ruled. The hidden `__complete` went with
+it and gets an ordinary "unknown command", correctly: it was underscore-prefixed and never
+user-facing, so there is no author to answer.
+
+**`doctor.rs`, `doctor_cli.rs`, `packages.rs`, `interpreter.rs`, the whole VS Code doctor
+chain, `exec_pool.rs`, `freeze.rs`, `exec.rs`, `kernel.rs`, `diff.rs`, `render/`,
+`diagnostics/`, `docs/DIAGNOSTICS.md`, `crates/core/assets/` and `web-client/` are all
+BYTE-IDENTICAL to main**, checked as an explicit `git diff --stat` over that path list,
+not asserted. `MAX_WARM_PAGES` is still 6. This wave ships **no asset change at all**, so
+unlike waves 3/5/7 there is no per-page byte win to report; the shipped-bytes win is in the
+binary instead (see the measurement below).
+
+**Seven things that were not true, or that the playbook did not know.** Same genus as waves
+1 to 7:
+
+1. **The playbook's sharpest fact was half spent, and the surviving half was one file.**
+   "`init` currently writes a 5 KB AGENTS.md and a `.taliesin/` dot-directory". The
+   AGENTS.md half went with `crates/core/src/agents.rs` in wave 2, taking `agents_md_cli.rs`
+   with it, so `onramp_files()` was already down to `.taliesin/tali-site.schema.json` alone.
+   **The measured claim held exactly, and is worth restating because it is the whole case:**
+   `find . -name .taliesin` returns nothing, and the only two `# yaml-language-server:`
+   modelines anywhere in the tree were in `corpus/scaffold-site/_site.yml` and
+   `corpus/scaffold-book/_site.yml`, the byte pins for the very templates this wave
+   deletes. The feature's entire footprint in the author's own work was the fixtures that
+   existed to pin it. `mcp.rs` is gone too (wave 2), so TIER 3's "fix mcp.rs:123" and TIER
+   5's "shrink mcp.rs's PROMPTS so `every_scaffold_kind_has_a_prompt` stays green" are both
+   spent steps.
+2. **`new` was at THREE kinds, not one.** The playbook's "Why here" says wave 5 left `new`
+   "down to one kind"; `NEW_KINDS` was `["post", "page", "paper"]` and wave 5 removed only
+   `deck`. So TIER 5's `NEW_KINDS = &["post", "deck"]` was stale in both directions, and the
+   wave removes two kinds rather than reducing to two.
+3. **A retirement note can name a live feature, and cutting that feature makes the note lie
+   with every gate green.** `RETIRED_COMMANDS`' entry for the wave-2 `schema` verb read
+   "`init` writes `.taliesin/tali-site.schema.json` for you": true when written, false the
+   moment TIER 3 landed. Nothing checks a note's *claim*:
+   `a_retired_command_names_its_replacement_instead_of_guessing` asserts only that the note
+   is non-empty and that the name is not in `COMMANDS`. It now points at the companion.
+   **Rule for waves 9 to 13: when you cut a feature, grep the three registers for it.** A note
+   is prose about the surviving surface, and it rots exactly like a doc page.
+4. **Deleting a SHORT flag from a parser that accepts bare positionals is a
+   reclassification, not a subtraction.** Both scaffolders treat any non-`--` token as a
+   positional, so with `-y`/`--yes` merely removed, `taliesin init -y` would have scaffolded
+   a project into a directory literally named `-y`, and `taliesin new -y post x` would have
+   read `-y` as the kind. The fix is one character per parser (`starts_with("--")` →
+   `starts_with('-')`) and both directions are pinned in
+   `the_retired_yes_flag_is_not_read_as_a_directory`. The playbook does not mention it.
+5. **`init --help` still promised a file the tool stopped writing six days earlier.** "Every
+   template also writes AGENTS.md (the agent onramp) and the `.taliesin/` config schemas"
+   survived wave 2 untouched, because no gate ties `--help` *prose* to behavior:
+   `every_parsed_flag_is_documented_in_its_subcommand_help` compares a FLAGS const to the
+   help text and would pass on any claim at all. Deleted with the block; the gap is real and
+   is now the second known one (finding 3 is the first).
+6. **`complete.rs` was the only consumer of the scaffolder's `pub(crate)` surface.**
+   `NewKind`, `NEW_KINDS`, `new_files`, `init_files` and `NewOpts` were crate-visible for the
+   completion generator's kind and template tables. With it gone, nothing outside `cli.rs`
+   names any of them, so all five are private, the same demotion wave 2 made to
+   `text.rs::project_block`. Only a grep finds this; `-D warnings` does not, because
+   `pub(crate)` items used *anywhere* in the crate are live.
+7. **`every_parsed_flag_is_documented_in_its_subcommand_help` did NOT inherit a bigger
+   burden, contrary to the playbook's verification note.** `complete.rs` declared no
+   `<PREFIX>_FLAGS` const of its own (it read the parsers'), so the scan's population is
+   unchanged at six (`BUILD`, `CHECK`, `DOCTOR`, `INIT`, `NEW`, `SERVE`) and its `>= 6` floor
+   is now exact rather than slack. What the deletion really retires is the *other* copy: the
+   `flags_for()` / `describe()` / positional tables that every earlier wave's verb removal
+   had to edit by hand.
+
+**Four judgement calls, and how they went.**
+
+- **The onramp was cut; the schema was NOT.** `crates/core/src/schema.rs` and
+  `assets/schema/tali-site.schema.json` are untouched, and so is the bless test that
+  regenerates the file from `site::NATIVE_KEYS`. What went is only the *delivery mechanism
+  into a stranger's project*. A VS Code writer loses nothing measurable: the companion
+  bundles its own copy and wires it through `yamlValidation` at `package.json:104`, which is
+  the surface this tool is built alongside. Everyone else now saves the file and writes one
+  comment line, documented in `docs/guide/reference/configuration.tmd`,
+  `docs/internals/validation.tmd` and `docs/guide/using/preview.tmd`.
+- **`page`, `paper` and `deck` get hand arms in a LOCAL table, not a scope on
+  `RETIRED_KEYS`.** Wave 7's precedent is "prefer a scope on the existing register to a
+  fourth register, every time", and this is the one place in the cut where it does not
+  apply: `RETIRED_KEYS` lives in `taliesin-core` and is the *document* vocabulary, consulted
+  by `unknown_key_message` inside the renderer. A CLI positional is not a document key, and
+  putting one there would make the renderer's register answer for the argv parser.
+  `RETIRED_NEW_KINDS` is eleven lines in `cli.rs`, beside the thing it retires and beside
+  `main.rs`'s `RETIRED_COMMANDS`, which is the register it is actually the sibling of.
+  Proven the wave-7 way, by running the commands rather than grepping for absence: all three
+  answer with a dated note and never a did-you-mean, while `new pots x` still resolves to
+  `post`.
+- **`NewKind` was collapsed rather than kept at one variant**, on wave 5's `DocFormat`
+  precedent, and it forced one decision the playbook does not raise: the `--json` receipt's
+  `"kind"` field. It **stays**, reading `NEW_KINDS[0]`, because an agent already parsing that
+  receipt should not see its shape change for a reason invisible to it. `new_files` is now
+  `(slug, today, opts)` with no match at all.
+- **The three corpus byte pins were deleted and NOT replaced with an in-crate assertion.**
+  The playbook asks for one; comparing `init_files()` to the consts it is built from asserts
+  nothing, and a vacuous gate is worse than an absent one (wave 1's finding 1, in the other
+  direction). The behavioral pins are stronger and both survive: `init_cli.rs` and
+  `new_cli.rs` run the **real binary** and then the **real `check`** over what it wrote.
+  What is genuinely given up is drift detection on the scaffold *prose*, which is not a bug
+  class.
+
+**Proven by running the commands, not by grepping.** From a clean temp dir with the release
+binary: `init smoke` writes exactly `_site.yml` + `index.tmd` (no `.taliesin/`, no
+AGENTS.md, no modeline; `find` and `grep` both empty), `new post hello` writes
+`posts/hello/index.tmd`, and `build smoke --strict --no-exec` exits 0 on 2 pages. Then every
+retirement, each answering rather than falling silent:
+
+```
+taliesin completions zsh   → `completions` was removed: nothing; type the subcommand out…  (exit 1)
+taliesin schema site       → `schema` was removed: nothing on the CLI; the VS Code companion…
+taliesin new page x        → `new page` was removed on 2026-08-08: a page is a `.tmd` file…
+taliesin new paper x       → `new paper` was removed on 2026-08-08: scaffold a `post` and add…
+taliesin new deck x        → `new deck` was removed on 2026-08-08 with the slide-deck engine…
+taliesin init --template site → unknown flag `--template`   (and t1/ was never created)
+taliesin init -y           → unknown flag `-y`              (and ./-y was never created)
+taliesin new pots x        → unknown kind `pots` (did you mean `post`?)   ← still works
+taliesin doc               → unknown command: `doc` (did you mean `doctor`?)
+```
+
+That last line is the re-pointed prefix rule: `("com", "completions")` died with the verb, so
+`a_name_that_extends_or_abbreviates_a_command_suggests_it` now carries `("doc", "doctor")`,
+with the premise re-verified (`closest("doc", COMMANDS)` is `None`, so the prefix rule fills
+silence and never overrides a did-you-mean).
+
+**Measured, not asserted.** No asset changed, so there is no per-page byte delta this time.
+The shipped **binary** is what shrank: two cold `cargo build --release` runs into separate
+target dirs, same toolchain, `main` (in a throwaway worktree) against this branch:
+**31,075,656 → 30,897,064 bytes, −178,592 (−0.57%)**. That is `complete.rs`'s four
+shell-script templates and its
+per-subcommand description/flag tables leaving the executable. `cargo tree -p taliesin-server
+-i dialoguer` now errors, and `Cargo.lock` lost `dialoguer`, `console`, `encode_unicode` and
+`unicode-width`.
+
+**The cargo-deny log was checked, per wave 4's lesson, and dropping `dialoguer` orphaned
+nothing.** `advisories ok, bans ok, licenses ok, sources ok`. The one
+`license-exception-not-encountered` warning is still `libfuzzer-sys`, still **pre-existing
+and unrelated** (not in `Cargo.lock`, no fuzz target in the tree). `deny.toml` was not
+edited this wave, so the stale row is carried forward exactly as wave 6 left it.
+
+**Swept and clean:** `tools/ui-audit/` names nothing this wave removed (wave 7's sweep found
+it empty too); `editor/vscode/` is byte-identical, correctly, because the companion never
+shelled out to `completions` and its schema copy is unaffected; and the `data-*` census in
+`token_contract.rs` is unchanged, as it must be, because this wave removed no emitter.
+
+**What was given up, stated plainly.**
+
+**Tab completion, and nothing replaces it.** 1,344 lines, of which the interesting half was
+the `__complete` runtime rather than the four shell shims: it offered only `.tmd` files plus
+directories that contain one, with site and book roots sorted first; per-command flags with
+one-line descriptions; enumerated positionals; and it registered both `taliesin` and the
+`tali` alias, so no per-shell list could drift from the binary. `--install` detected the
+shell from `$SHELL` and wrote the script into the right directory. That is a genuine
+ergonomic loss for a daily driver, and the register note says there is no replacement rather
+than pretending otherwise. What it cost, and what every earlier wave paid by hand, was a
+second copy of every verb's flag set inside it.
+
+**`new paper`, which is the real loss in this wave.** It was the one scaffold that was more
+than a front-matter block: a citation-wired document (`bibliography: [references.bib]`, a
+real `[@knuth1984literate]`, and the `.bib` shipped beside it so `check` was clean on the
+first save), a labelled matplotlib cell with `#| label: fig-demo` and `#| fig-cap:`, an
+`@fig-demo` cross-reference resolving off that label, a `{#sec-methods}` anchor and display
+math. It taught five features at once, by example, in a file the author could immediately
+run, which is a different thing from documenting them. A reader now meets those features
+one reference page at a time.
+
+**`init --template site|book`.** The `site` starter was a nav plus an About stub; the `book`
+starter was three chapters and the `chapters:` key. The first is five minutes of typing, but
+the second is the one that changes what the project *is*: `chapters:` turns a website into
+a book with a sidebar, numbering and prev/next, and discovering it now means reading
+`docs/guide/reference/configuration.tmd` rather than typing `--template book`. Both
+`getting-started.tmd` and `cli.tmd` were rewritten to name that path explicitly rather than
+leaving the reader to find it.
+
+**The wizard.** 78 lines of `dialoguer` behind a stdin-is-a-TTY gate, so a human who typed
+`taliesin new` with nothing after it got an arrow-key picker and a re-prompting slug
+validator instead of a usage line. It was purely additive at a terminal and invisible to CI,
+a pipe or an agent by construction, which is also why nothing is lost outside a terminal.
+`wizard_gate.rs`'s three tests went with it; the behavior they guarded (never prompt when
+stdin is not a TTY) is now unconditional, and `a_bare_init_scaffolds_without_prompting` in
+`init_cli.rs` keeps driving `/dev/null` at it so a reintroduced prompt would fail rather than
+hang.
+
+**Nine corpus documents (104 lines) across `corpus/scaffold/`, `corpus/scaffold-site/` and
+`corpus/scaffold-book/`**, and `docs/guide/reference/shell-completion.tmd`. The guide is down
+one chapter and the reference nav on the other seven pages lost the link.
