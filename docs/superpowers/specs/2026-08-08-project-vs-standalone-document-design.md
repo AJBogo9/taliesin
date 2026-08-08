@@ -160,10 +160,19 @@ twice where `build <file>` emits it zero times. A site footer on a document that
 belongs to no site is the same category of error as the "Home" link, so the standalone
 gate covers `navbar_html` **and** `footer_html`.
 
-A standalone document keeps the reader affordances (theme toggle, table of contents) and
-drops every navigational element. The theme toggle staying is consistent with the
-`CLAUDE.md` rule that reader-local a11y preferences are personal, not document config.
-Cmd-K search is dropped, since `build` drops it.
+A standalone document keeps the theme toggle and drops every navigational element. The
+theme toggle staying is consistent with the `CLAUDE.md` rule that reader-local a11y
+preferences are personal, not document config. Cmd-K search is dropped, since `build`
+drops it.
+
+The table of contents is deliberately **not** part of this contract, and the row above
+says so: `build <file>` emits none, because `toc_explicit.unwrap_or(false)` in
+`render/mod.rs` leaves it off when there is no site, while `preview <file>` reaches
+`page_toc`'s auto-detection through `Site::discover_single` and emits one. So the two
+verbs still differ on the TOC after this change. That is left alone here on purpose:
+`build <dir>` already honours the automatic TOC, which makes `build <file>` the outlier
+against the tool's own documented default, so the fix belongs on the build side in its
+own change rather than by stripping the TOC from preview.
 
 The contract becomes: **`preview <file>` and `build <file>` produce the same chrome.**
 

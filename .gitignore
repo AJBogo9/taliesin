@@ -69,3 +69,8 @@ Thumbs.db
 
 # ad-hoc Python kernel venv for local audits
 .venv-audit/
+
+# the kernel venv the interpreter resolver finds on its own: step 2 (<project>/.venv)
+# and step 4 (ancestor .venv, which walks up to this repo root and stops at .git), so
+# one venv here serves every corpus document with no TALIESIN_PYTHON to remember.
+.venv/
