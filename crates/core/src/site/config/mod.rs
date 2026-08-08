@@ -708,8 +708,8 @@ mod config_tests {
             ("body-end", "title: X\nbody-end: a.html\n", "no successor"),
             (
                 "theorems",
-                "title: X\ntheorems:\n  numbered: false\n",
-                "its own front matter",
+                "title: X\ntheorems:\n  shared: [theorem]\n",
+                "delete the key",
             ),
         ] {
             let mut w = Vec::new();
@@ -862,18 +862,6 @@ mod config_tests {
                 .bibliography
                 .is_empty(),
             "an absent bibliography: is an empty list"
-        );
-    }
-
-    #[test]
-    fn a_bad_book_level_theorems_numbered_value_warns() {
-        let mut w = Vec::new();
-        let v: serde_yaml::Value =
-            serde_yaml::from_str("title: X\ntheorems:\n  numbered: banana\n").unwrap();
-        let _ = parse_native(&v, &mut w, ConfigSource(None));
-        assert!(
-            w.iter().any(|m| m.contains("numbered")),
-            "a bad book-level numbered value is diagnosed: {w:?}"
         );
     }
 

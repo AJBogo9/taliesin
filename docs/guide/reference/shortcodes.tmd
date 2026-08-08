@@ -1,30 +1,31 @@
 ---
 title: "Shortcode reference"
-description: "The three shortcodes: include for a partial, video for a framed screencast, and input for a reactive control."
+description: "The two shortcodes: include for a partial, and input for a reactive control."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 A shortcode is a `{{< name args >}}` tag in the body of a document. Taliesin
-expands the built-in shortcodes (and any an extension declares) in a single pass
-**before** the Markdown is parsed, so the result is just HTML or Markdown by the
-time comrak sees it. Two rules keep that pass from surprising you:
+expands the built-in shortcodes in a single pass **before** the Markdown is parsed, so
+the result is just HTML or Markdown by the time comrak sees it. Two rules keep that
+pass from surprising you:
 
 - **Code is sacred.** A `{{< … >}}` inside a fenced block (```` ``` ````) or an
   inline code span (`` `…` ``) is left exactly as written, so every example on this
   page is a real, unexpanded shortcode rather than a thing that quietly ran. That is
   also why you can document a shortcode in prose without arming it.
-- **Unknown is loud, not silent.** A `{{< … >}}` whose name no built-in and no
-  active extension declares is left in the page verbatim **and** reported as a
-  located diagnostic, so a typo shows up in the dev menu, the
-  build log, and `taliesin check` rather than shipping as literal text. The one
+- **Unknown is loud, not silent.** A `{{< … >}}` naming no built-in is left in the
+  page verbatim **and** reported as a located diagnostic, so a typo shows up in the dev
+  menu, the build log, and `taliesin check` rather than shipping as literal text. A name
+  Taliesin *used* to expand answers with its removal note instead of a bare "unknown", so
+  a leftover `{{< video >}}` tells you to write the `<video>` tag yourself. The one
   exception is `{{< include >}}`, which an earlier pass resolves and reports on its
   own (see below), so it is never double-warned.
 
 Expansion is line-preserving: each shortcode opens and closes on one line and
 expands inline, so click-to-source still points at the right line.
 
-There are three built-in shortcodes, documented below.
+There are two built-in shortcodes, documented below.
 
 ## `{{< include >}}`: inline a partial
 
@@ -61,112 +62,17 @@ as the corpus does:
 ```
 :::
 
-### Pulling one section instead of the whole file
-
-Add a `#anchor` to include a **single section** of the target rather than all of it:
-
-```markdown
-{{< include _includes/shared-derivation.tmd#sec-bias-variance >}}
-```
-
-The anchor is an ordinary heading id, the same `{#sec-…}` a cross-reference points
-at, so nothing new has to be declared to make a section transcludable. The section
-runs from its heading to the next heading of **equal or shallower level** — exactly
-where the editor folds it — which means a subsection nested inside it comes along
-and the sibling section after it does not.
-
-This is what keeps one statement of a shared argument across a post series. Instead
-of a partial per fragment, one `derivations.tmd` holds the whole family and each
-post pulls the section it needs:
-
-```markdown
-{{< include derivations.tmd#sec-normal-equations >}}
-{{< include derivations.tmd#sec-bias-variance >}}
-```
-
-Two sections of the same file are not a cycle, so a page may pull several. Each
-transcluded block still carries its own position **in the shared file**, so
-click-to-source opens `derivations.tmd` at the line the block really occupies
-there, and the editor's line-count hint (`⟨14 lines⟩`) counts the section rather
-than the file. Go-to-definition on the path jumps to the section's heading.
-
-A fragment naming a heading the file does not have is left literal and reported,
-like any other include that cannot be expanded — it never falls back to splicing
-the whole file.
-
 An include that cannot be expanded is **left visible and reported**, never dropped
-silently. Four things stop an expansion, each with its own located warning:
+silently. Three things stop an expansion, each with its own located warning:
 
 | Situation | What happens |
 |---|---|
 | **Unsafe path** | An absolute path, or one that climbs above the project root (`.git`/`_site.yml` marks the root), is refused: it could read `/etc/passwd` or escape the repo. The directive stays literal and warns "path escapes the project root". |
 | **Include cycle** | A file that (directly or transitively) includes itself is refused before it loops. The directive stays literal and warns "include cycle". |
 | **Unreadable file** | A missing or unreadable target leaves the directive literal and warns "file not found or unreadable". |
-| **No such section** | A `#anchor` that no heading in the target carries leaves the directive literal and warns "no section anchored `{#…}`". |
 
 A `{{< include >}}` inside a fenced code block is treated as documentation (this
 page relies on that) and is neither expanded nor watched.
-
-## `{{< video >}}`: a framed screencast or a narrated clip
-
-```markdown
-{{< video tour.mp4 >}}
-{{< video tour.mp4 controls=false >}}
-{{< video talk.mp4 audio captions=talk.vtt >}}
-{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption="A quick tour" >}}
-```
-
-Emits a framed `<video>`, authored in Markdown so a page never needs raw `<video>`
-HTML. It renders as a `<figure class="tali-video">`. It **never autoplays**: an
-auto-starting loop beside body text is a WCAG 2.2.2 ("Pause, Stop, Hide") failure —
-which is why native `controls` ship **by default**: with no hover-play and no
-lightbox, the browser's own control bar is the reader's only way to start a clip at
-all.
-
-*How* the reader starts it is one ladder, chosen so the incoherent combinations
-cannot be written at all:
-
-| Written | What the reader gets |
-|---|---|
-| (nothing) | **The browser's own player.** A scrubber, play/pause, speed, keyboard, native fullscreen, and picture-in-picture, for one attribute Taliesin adds automatically. Still muted and looping until the reader presses play. |
-| `controls=false` | **No control bar, and no way to start the clip.** An explicit, rare opt-out for a purely decorative frame — nothing autoplays, so a clip written this way never plays at all. |
-| `audio` | **A narrated explainer.** Drops `muted` (you cannot hear a muted narration) and `loop` (a lecture that silently restarts itself is hostile). Controls are already on by default, and `audio` forces them back on even over an explicit `controls=false` — sound with no way to pause or lower it is a failure of its own. |
-
-Those controls are the browser's, not Taliesin's: no player library is bundled, and
-none is restyled. That is also why there is no size, position, speed or autoplay
-knob — the ones worth having, the browser already ships.
-
-| Argument | Required | Default | Effect |
-|---|---|---|---|
-| *src* (positional) | yes | (none) | The video file, relative to the page. A query string is fine: `clip.mp4?v=2` is treated as a path, not a named argument. Order is free: the bare flags below are never mistaken for the path, so `{{< video controls tour.mp4 >}}` works. |
-| `controls` (flag) | no | **on** | Native player controls (see the ladder above). Redundant now that it is the default; still accepted so content written before the default flipped is unaffected. |
-| `controls=false` | no | off | Opts a clip out of the control bar entirely — see the ladder above. |
-| `audio` (flag) | no | off | The clip is narrated: unmuted, non-looping, and `controls` is forced on (even over `controls=false`). |
-| `captions=…` | no | (none) | A WebVTT caption track for the narration, shown by default. Forces `controls` on (even over `controls=false`), so the reader can switch it off. |
-| `dark=…` | no | (none) | A second clip for dark theme. Both clips are emitted; CSS shows the one matching `html[data-theme]`, so the screencast matches the surrounding theme. |
-| `poster=…` | no | (none) | A poster image shown before the video paints. |
-| `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). It also becomes the clip's accessible name; without it the clip is announced as "Screencast", or "Video" under `audio`. |
-
-Every path argument above is exactly that: **a file relative to the page**, never a
-URL. A `src`, `dark=`, `poster=` or `captions=` carrying a scheme (`https:`,
-`data:`, `javascript:`) or a protocol-relative `//host/…` is refused with a warning
-naming it — a URL source would be a network fetch on a page that promises to work
-offline, and `check`'s missing-media diagnostic below cannot see one. A refused
-`src` leaves the shortcode unexpanded; a refused named argument is dropped and the
-clip still plays without it. A `C:/…` drive path and a `clip.mp4?v=2` query string
-are paths, not URLs, and are unaffected.
-
-A `{{< video >}}` (and any raw `<video src>`) whose local file is missing is flagged
-by `taliesin check` as a broken local asset, so a renamed clip does not slip
-through.
-
-::: {.callout-note}
-## Captions are yours to write
-
-`captions=` points at a WebVTT file you supply; nothing transcribes the audio for
-you. A narrated clip without one fails WCAG 1.2.2, so treat the `.vtt` as part of
-shipping the video rather than as a later polish pass.
-:::
 
 ## `{{< input >}}`: a reactive control
 

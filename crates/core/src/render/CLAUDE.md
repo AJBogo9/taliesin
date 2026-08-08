@@ -9,10 +9,10 @@ Module map:
 - `cell_numbered.rs` numbered `{js}`/figure/listing emitters + `numbered_caption` (interpolate the orchestrator's `attrs`; never build data-attrs)
 - `page.rs`   full HTML-page assembly (the `PAGE_TEMPLATE` shell, `SiteCtx` wiring, favicon)
 - `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
-- `divs.rs`   `:::` fenced divs (callouts, the `layout-ncol` grid, code walkthroughs)
+- `divs.rs`   `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)
 - `figure.rs` numbered figures + captions
 - `theme.rs`  `--tali-*` themes (light/dark), `theme_head`
-- `extension/` shortcode expansion (`{{< video >}}`, `{{< input >}}`)
+- `extension/` shortcode expansion (`{{< input >}}`)
 
 Conventions:
 - Submodules use `use super::*` and **can see mod.rs's private items** (a child sees its

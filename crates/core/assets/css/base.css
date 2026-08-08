@@ -160,20 +160,6 @@
   a.btn-outline-secondary { border-color: var(--tali-border-strong); color: var(--tali-muted); }
   a.btn-outline-secondary:hover { background: var(--tali-fg); color: var(--tali-bg); border-color: var(--tali-fg); }
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
-  /* `{{< video >}}` — a framed screencast (muted/loop by default) + optional caption.
-     Never autoplays (WCAG 2.2.2); native `controls` (the default, see extension/mod.rs)
-     is the reader's play affordance, so this frame carries no decorative overlay of its
-     own — a custom badge would either stack on the browser's own control bar, or (with
-     the explicit `controls=false` opt-out) promise an interaction nothing wires up. */
-  .tali-video { position: relative; margin: 1.6rem 0; }
-  .tali-video video { display: block; width: 100%; height: auto; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); box-shadow: var(--tali-shadow-md); }
-  .tali-video figcaption { text-align: center; color: var(--tali-muted); font-size: .9rem; margin-top: .6rem; }
-  /* `dark=` variant: show the clip that matches the page theme (selectors carry the
-     element so they beat the `.tali-video video` base rule). */
-  .tali-video video.tali-video-dark { display: none; }
-  html[data-theme="dark"] .tali-video video.tali-video-light { display: none; }
-  html[data-theme="dark"] .tali-video video.tali-video-dark { display: block; }
   /* Filled + large button variants, layered on `.btn` (a landing-page primary CTA
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
   a.btn-primary { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
@@ -439,30 +425,11 @@
   .callout-minimal .callout-icon { color: var(--tali-muted); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
-  /* theorem environments (definition/theorem/lemma/proof/…); light + dark from one
-     token set via color-mix, matching the callout aesthetic but lighter. */
-  .tali-theorem { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: var(--tali-radius-sm); margin: 1.1rem 0; }
-  .tali-theorem-head { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600; margin: 0; padding: .3rem .9rem; }
-  .tali-theorem-title { font-weight: 600; }
-  .tali-theorem-body { padding: .3rem .9rem .6rem; }
-  .tali-theorem-body > :first-child { margin-top: .4rem; }
-  .tali-thm-style-plain { border-left-color: var(--tali-thm-plain); }
-  .tali-thm-style-definition { border-left-color: var(--tali-thm-definition); }
-  .tali-thm-style-plain .tali-theorem-head { background: color-mix(in srgb, var(--tali-thm-plain) 12%, transparent); }
-  .tali-thm-style-definition .tali-theorem-head { background: color-mix(in srgb, var(--tali-thm-definition) 12%, transparent); }
-  /* amsthm convention: plain-style bodies are italic; definition stays upright. */
-  .tali-thm-style-plain .tali-theorem-body { font-style: italic; }
-  /* proof: italic lead, right-floated QED. */
-  .tali-proof { margin: 1.1rem 0; }
-  .tali-proof-head { font-style: italic; font-weight: 600; margin: 0 0 .2rem; }
-  .tali-qed { display: block; text-align: right; }
-  .tali-proof-collapse > details > summary.tali-proof-head { cursor: pointer; margin: 0; }
-  .tali-proof-collapse > details[open] > summary.tali-proof-head { margin-bottom: .2rem; }
   details.tali-code-fold > summary { cursor: pointer; color: var(--tali-muted);
     font: 600 .85em var(--tali-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.tali-code-fold > summary:hover { color: var(--tali-fg); }
-  /* Themed disclosure chevron for folded code (`tali-code-fold`), collapsible proofs, and
-     collapsible callouts: the browser-default triangle is small, inconsistent, and easy to
+  /* Themed disclosure chevron for folded code (`tali-code-fold`) and collapsible
+     callouts: the browser-default triangle is small, inconsistent, and easy to
      read as plain text, so hide it and draw a `currentColor` caret that rotates from a
      right-pointing to a down-pointing chevron when the details opens.
      Callouts were once excluded here on the theory that the kind icon was already an
@@ -470,22 +437,18 @@
      `.callout-title` is `display: flex` the native marker is not rendered either (a
      `<summary>` only draws one at `display: list-item`) — so a collapsed callout had no
      indicator at all, and an open collapsible one was indistinguishable from a plain one.
-     The callout caret TRAILS while these two lead, because the callout's left slot is
-     already the kind icon. That is why it is `::after` and not `::before`: `::before` is
-     the first flex item, so pushing it right with `margin-left: auto` would drag the icon
+     The callout caret TRAILS while the code-fold caret leads, because the callout's left
+     slot is already the kind icon. That is why it is `::after` and not `::before`: `::before`
+     is the first flex item, so pushing it right with `margin-left: auto` would drag the icon
      and title right along with it. */
-  details.tali-code-fold > summary,
-  .tali-proof-collapse > details > summary.tali-proof-head {
+  details.tali-code-fold > summary {
     display: flex; align-items: center; gap: .45em; list-style: none; }
-  details.tali-code-fold > summary::-webkit-details-marker,
-  .tali-proof-collapse > details > summary.tali-proof-head::-webkit-details-marker { display: none; }
-  details.tali-code-fold > summary::before,
-  .tali-proof-collapse > details > summary.tali-proof-head::before {
+  details.tali-code-fold > summary::-webkit-details-marker { display: none; }
+  details.tali-code-fold > summary::before {
     content: ""; flex: 0 0 auto; width: .42em; height: .42em; margin-bottom: .12em;
     border-top: 2px solid currentColor; border-right: 2px solid currentColor;
     transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
-  details.tali-code-fold[open] > summary::before,
-  .tali-proof-collapse > details[open] > summary.tali-proof-head::before { transform: rotate(135deg); }
+  details.tali-code-fold[open] > summary::before { transform: rotate(135deg); }
   /* The callout's own caret. Deliberately NOT appended to the selector lists above: that rule
      also sets `gap: .45em`, which would override `.callout-title`'s `gap: .45rem` and shift
      icon-to-text spacing on every collapsible callout. */
@@ -496,100 +459,6 @@
     margin-bottom: .12em; border-top: 2px solid currentColor; border-right: 2px solid currentColor;
     transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
   .callout-collapse > details[open] > summary.callout-title::after { transform: rotate(135deg); }
-  /* Narrated code walkthrough (`::: {.code-walkthrough}`): the code panel is pinned
-     full-width at the TOP of the viewport and the prose steps scroll beneath it — the
-     same shape at every width (a wide 2-column split left the code column too narrow and
-     scrolled long lines out of view). Scrolling focuses line ranges (`.tali-hl-ln-hl`, driven
-     by walkthrough.js). Steps come first in the DOM; `order:-1` lifts the code above them. */
-  .code-walkthrough { display: flex; flex-direction: column; gap: 0; margin: 1.6rem 0; }
-  /* `min-width: 0` + `max-width: 100%` let a long, unwrapped `<pre>` scroll INSIDE
-     `.cw-code` (overflow:auto) instead of forcing page-level horizontal scroll. */
-  .code-walkthrough .cw-steps, .code-walkthrough .cw-stage { min-width: 0; max-width: 100%; }
-  .cw-stage { order: -1; position: sticky; top: 0; z-index: 5; background: var(--tali-bg);
-    padding: .5rem 0 .7rem; box-shadow: var(--tali-shadow-md); }
-  .cw-code { max-height: 52vh; overflow: auto; }
-  .cw-code pre { margin: 0; }
-  /* Recede an inactive step with `--tali-muted`, not `opacity`. An opacity multiplier composites
-     the text toward the page and silently drops it below AA (.62 rendered 3.03:1 on the warm
-     reading theme this was measured against); the muted token is contrast-checked in every theme. The active step takes full `--tali-fg` plus
-     the accent rail, so emphasis still tracks the scroll. */
-  .cw-steps .step { min-height: 48vh; display: flex; flex-direction: column; justify-content: center;
-    padding: 1.3rem 0 1.3rem 1rem; border-left: 2px solid transparent; color: var(--tali-muted); }
-  .cw-steps .step.cw-step-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
-  .cw-steps .step > :first-child { margin-top: 0; }
-  .cw-steps .step > :last-child { margin-bottom: 0; }
-  /* The line-focus contract `emit::wrap_pre_lines` emits (block lines, accent the
-     focused range), scoped to the walkthrough, its only consumer. */
-  .code-walkthrough pre .tali-hl-ln { display: block; }
-  /* The focused range is marked POSITIVELY (accent wash + inset rail); every other line keeps its
-     full syntax contrast. Dimming them to `opacity: .32` rendered code at 1.68-2.58:1, a WCAG
-     1.4.3 failure on text, and the wash already carries the focus on its own. */
-  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln-hl {
-    background: color-mix(in srgb, var(--tali-accent) 14%, transparent);
-    box-shadow: inset .18em 0 0 var(--tali-accent); }
-  @media (prefers-reduced-motion: no-preference) {
-    .code-walkthrough .cw-steps .step { transition: color var(--tali-dur-slow) ease, border-color var(--tali-dur-slow) ease; }
-    .code-walkthrough pre .tali-hl-ln { transition: background var(--tali-dur-slow) ease, box-shadow var(--tali-dur-slow) ease; }
-  }
-  @media (max-width: 60rem) {
-    /* Same code-on-top shape; just a shorter code strip + roomier step dwell on phones. */
-    .cw-code { max-height: 42vh; }
-    .cw-steps .step { min-height: 55vh; padding: 1.4rem .9rem; }
-  }
-  /* Scrollytelling (`::: {.scrolly}`): prose steps scroll past a sticky visual stage.
-     Generalizes the code-walkthrough layout; the active step drives data-scrolly-state +
-     (with name=) a hidden reactive input the sticky {js} cell reads. */
-  .tali-scrolly { display: grid; grid-template-columns: 1fr minmax(18rem, .9fr);
-    gap: clamp(1rem, 4vw, 3rem); align-items: start; margin: 1.5rem 0; }
-  .tali-scrolly .scrolly-steps, .tali-scrolly .scrolly-stage { min-width: 0; }
-  /* Same as the walkthrough: recede with `--tali-muted`, emphasise with `--tali-fg` + the rail.
-     `opacity: .4` rendered inactive prose at 1.94-3.28:1. */
-  .scrolly-steps .step { min-height: 60vh; display: flex; flex-direction: column;
-    justify-content: center; color: var(--tali-muted); border-left: 3px solid transparent;
-    padding: .4rem 0 .4rem 1rem; }
-  .scrolly-steps .step.scrolly-step-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
-  .scrolly-steps .step > :first-child { margin-top: 0; }
-  .scrolly-steps .step > :last-child { margin-bottom: 0; }
-  .scrolly-stage { position: sticky; top: 0; align-self: start; height: 100vh;
-    display: flex; flex-direction: column; justify-content: center; overflow: auto; }
-  .tali-scrolly-input { display: none; }
-  @media (prefers-reduced-motion: no-preference) {
-    .scrolly-steps .step { transition: color var(--tali-dur-slow) ease, border-color var(--tali-dur-slow) ease; }
-  }
-  @media (max-width: 73rem) {
-    /* single column: lift the stage to a sticky strip on top, prose flows beneath */
-    .tali-scrolly { display: flex; flex-direction: column; gap: 0; }
-    .scrolly-stage { order: -1; position: sticky; top: 0; height: auto; max-height: 48vh;
-      z-index: 5; background: var(--tali-bg); }
-    /* Real dwell height so each step owns enough scroll to drive the stage in turn (the
-       activation is the scroll trigger line in scrolly.js, not a fixed band). */
-    .scrolly-steps .step { min-height: 70vh; padding: 1.4rem .9rem; }
-  }
-  /* Tabbed panels (`::: {.panel-tabset}`): a tablist of underline-on-active tab buttons
-     over the active panel; switching (tabset.js) toggles aria-selected + [hidden]. */
-  .panel-tabset { margin: 1.4rem 0; }
-  .tabset-tablist { display: flex; flex-wrap: wrap; gap: .2rem;
-    border-bottom: 1px solid var(--tali-border); margin-bottom: 1rem; }
-  .tabset-tab { appearance: none; background: none; border: 0; cursor: pointer;
-    padding: .45rem .9rem; margin-bottom: -1px; font: 600 .9rem var(--tali-font-head);
-    color: var(--tali-muted); border-bottom: 2px solid transparent; }
-  .tabset-tab:hover { color: var(--tali-fg); }
-  .tabset-tab[aria-selected="true"] { color: var(--tali-link); border-bottom-color: var(--tali-accent); }
-  /* The tab sits on the tablist's bottom border, so the shared ring is inset (-2px). */
-  .tabset-tab:focus-visible { outline: var(--tali-focus); outline-offset: -2px; border-radius: var(--tali-radius-sm); }
-  /* `display: none` would defeat `hidden="until-found"` (the browser cannot reveal a
-     display:none subtree), so hide the inactive panel with `content-visibility` instead and
-     scope the `display:none` to the bare-`hidden` case only. A zero `contain-intrinsic-size`
-     keeps the hidden panel from reserving layout space, so switching tabs does not jump. */
-  .tabset-panel[hidden="until-found"] { content-visibility: hidden; contain-intrinsic-size: 0 0; }
-  .tabset-panel[hidden]:not([hidden="until-found"]) { display: none; }
-  /* The visible panel's first child must not add a top margin under the tablist. Written
-     without `> :first-child` alone because a revealed until-found panel is still the same
-     element and needs the same rule. */
-  .tabset-panel > :first-child { margin-top: 0; }
-  @media (prefers-reduced-motion: no-preference) {
-    .tabset-tab { transition: color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
-  }
   /* Citations and cross-references were the only links on the page with no underline, so colour
      alone said "clickable". Against BODY text (the 1.4.1 comparison) the link tone is 1.93:1 in
      dark, the default theme. An underline discharges 1.4.1 in every theme
@@ -803,9 +672,15 @@
   .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
   figure.tali-figure { margin: 1.5rem 0; }
   figure.tali-figure img { max-width: 100%; height: auto; }
-  /* A `dark=` figure ships a light + dark <img> pair; show the one matching the theme
-     (mirrors the `{{< video dark= >}}` swap). Figure images render inline (centred by
-     `text-align`), so the shown variant reverts to inline, not block. */
+  /* A hand-written `<video>` in a figure. The `{{< video >}}` shortcode that used to
+     emit its own frame was retired on 2026-08-08, so this is what a screencast is now:
+     the element itself, in the same figure a picture would use. */
+  figure.tali-figure video { display: block; width: 100%; height: auto;
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg);
+    background: var(--tali-code-bg); box-shadow: var(--tali-shadow-md); }
+  /* A `dark=` figure ships a light + dark <img> pair; show the one matching the theme.
+     Figure images render inline (centred by `text-align`), so the shown variant reverts
+     to inline, not block. */
   figure.tali-figure img.tali-img-dark { display: none; }
   html[data-theme="dark"] figure.tali-figure img.tali-img-light { display: none; }
   html[data-theme="dark"] figure.tali-figure img.tali-img-dark { display: inline; }
@@ -995,16 +870,15 @@
     /* The shared focus ring maps to the system Highlight color (the token's accent is
        ignored in forced-colors, so name a system color explicitly). */
     a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
-    [role="tab"]:focus-visible, input:focus-visible, select:focus-visible,
+    input:focus-visible, select:focus-visible,
     textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible,
-    .tali-skip:focus-visible, .tabset-tab:focus-visible {
+    .tali-skip:focus-visible {
       outline: 2px solid Highlight; outline-offset: 2px;
     }
     /* Callout/border edges that leaned on a tinted border get a visible system border. */
-    .callout, .panel-tabset, blockquote, table, .tali-figure figure, pre {
+    .callout, blockquote, table, .tali-figure figure, pre {
       border: 1px solid CanvasText;
     }
-    .tabset-tab[aria-selected="true"] { border-bottom-color: Highlight; }
     /* Only the pressed seg button opts out: it pins a bg+fg PAIR, so forced colors would
        otherwise drop the pressed state entirely. The nav markers must NOT opt out: they pin a
        fg with no bg, which under an opposite-polarity theme paints "you are here" invisible.

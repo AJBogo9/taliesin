@@ -5,8 +5,6 @@
 
 use std::path::{Component, Path, PathBuf};
 
-use crate::render::parse_heading_attr;
-
 /// Where a line of the expanded buffer originally came from.
 #[derive(Debug, Clone)]
 pub struct LineOrigin {
@@ -71,7 +69,6 @@ pub fn resolve_warned_in(
         base_dir,
         base_dir,
         None,
-        0,
         root,
         &mut stack,
         &mut lines,
@@ -92,13 +89,7 @@ fn expand(
     base_dir: &Path,            // directory of the file currently being expanded
     primary_base: &Path,        // directory of the primary document (for nice labels)
     file_label: Option<String>, // label of the current file (None = primary)
-    // How many lines of the current file sit ABOVE `src`. Non-zero only for a
-    // `#fragment` include, where `src` is a slice of the file rather than all of it.
-    // Every `LineOrigin` adds it, so a transcluded section maps to the line it really
-    // occupies in its own file and click-to-source lands on the source heading rather
-    // than N lines above it. This is the source-map gate item 160 was filed under.
-    line_offset: usize,
-    root: Option<&Path>, // explicit containment root (constant across recursion)
+    root: Option<&Path>,        // explicit containment root (constant across recursion)
     stack: &mut Vec<PathBuf>,
     out_lines: &mut Vec<String>,
     out_origins: &mut Vec<LineOrigin>,
@@ -112,7 +103,7 @@ fn expand(
             out_lines.push(line.to_string());
             out_origins.push(LineOrigin {
                 file: file_label.clone(),
-                line: line_offset + idx + 1,
+                line: idx + 1,
             });
         };
         // Record a located warning for an include that couldn't be expanded, so the
@@ -124,7 +115,7 @@ fn expand(
                 target: target.to_string(),
                 reason: reason.to_string(),
                 file: file_label.clone(),
-                line: line_offset + idx + 1,
+                line: idx + 1,
             });
         };
         let was_in_code = in_code.is_some();
@@ -140,47 +131,27 @@ fn expand(
             keep_line();
             continue;
         };
-        // `part.tmd#sec-proof` names a section of a file, not a file (item 160).
-        let (rel, fragment) = split_target(raw);
+        let rel = raw;
         // Unsafe path (absolute or escaping the project root), or an include cycle:
         // leave the directive visible rather than reading outside the project / looping.
         let Some(target) = safe_join_in(base_dir, rel, root) else {
             drop_with_warning(raw, "path escapes the project root (or is absolute)");
             continue;
         };
-        // The cycle guard keys on the FILE, not the file-plus-fragment: two different
-        // sections of one file are not a cycle, but a section that transitively pulls its
-        // own file back in is, and keying on the pair would walk straight into it.
         if stack.contains(&target) {
             drop_with_warning(raw, "include cycle");
             continue;
         }
         match std::fs::read_to_string(&target) {
             Ok(content) => {
-                // A whole file starts at its first line; a fragment starts wherever its
-                // anchored heading sits, and carries that offset into the source map.
-                let (body, offset) = match fragment {
-                    None => (content.as_str(), 0),
-                    Some(id) => match section_lines(&content, id) {
-                        Some((start, end)) => (slice_lines(&content, start, end), start),
-                        None => {
-                            drop_with_warning(
-                                raw,
-                                &format!("no section anchored {{#{id}}} in {rel}"),
-                            );
-                            continue;
-                        }
-                    },
-                };
                 let label = label_for(&target, primary_base);
                 let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
                 stack.push(target.clone());
                 expand(
-                    body,
+                    content.as_str(),
                     &child_base,
                     primary_base,
                     Some(label),
-                    offset,
                     root,
                     stack,
                     out_lines,
@@ -273,12 +244,7 @@ fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut 
         let Some(raw) = parse_include(line) else {
             continue;
         };
-        // The watch list is a list of FILES. A `#fragment` include still depends on the
-        // whole file (editing any part of it can move the anchored section), and leaving
-        // the fragment on would make the path unresolvable — so the dev server would
-        // watch nothing and a fragment include would never hot-reload.
-        let (rel, _fragment) = split_target(raw);
-        let Some(target) = safe_join(base_dir, rel) else {
+        let Some(target) = safe_join(base_dir, raw) else {
             continue;
         };
         if stack.contains(&target) || out.contains(&target) {
@@ -326,116 +292,6 @@ fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, us
         },
         None => code_fence(line),
     }
-}
-
-/// Split an include target into its path and its optional `#fragment`
-/// (`part.tmd#sec-proof` → `("part.tmd", Some("sec-proof"))`).
-///
-/// The **first** `#` separates, as it does in a URL. A path is free to contain a later
-/// one; a path that begins with `#`, or a target with an empty fragment, is not a
-/// fragment reference at all and is returned whole so the usual "file not found"
-/// diagnostic reports what the author actually wrote.
-///
-/// Every consumer of an include path has to route through this or it resolves
-/// `part.tmd#sec-proof` as a filename: the expander, the dev server's watch list, and on
-/// the editor side the document link, go-to-definition and the line-count inlay hint.
-pub fn split_target(target: &str) -> (&str, Option<&str>) {
-    match target.split_once('#') {
-        Some((path, frag)) if !path.is_empty() && !frag.is_empty() => (path, Some(frag)),
-        _ => (target, None),
-    }
-}
-
-/// The half-open line range (0-based) of the section anchored `{#id}` in `text`: the
-/// heading line that carries the id, through to the next heading of **equal or shallower**
-/// level. `None` when no heading carries it.
-///
-/// The heading line is part of the range. A transcluded section keeps its own heading, so
-/// what lands in the parent is the section as written rather than a decapitated body.
-///
-/// Three things it deliberately shares with the rest of the tree rather than re-deriving:
-/// the anchor is whatever [`crate::render::parse_heading_attr`] calls an explicit `{#id}`
-/// (a second parser could disagree with cross-references about what an anchor *is*), the
-/// "equal or shallower closes it" rule is the one `lsp_fold` folds by, and fenced code is
-/// skipped with this module's own [`next_code_state`] — a `# comment` on a `{python}`
-/// cell's first line is not an h1.
-pub fn section_lines(text: &str, id: &str) -> Option<(usize, usize)> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut in_code: Option<(char, usize)> = None;
-    let mut found: Option<(usize, u8)> = None;
-
-    for (i, line) in lines.iter().enumerate().skip(front_matter_end(&lines)) {
-        let was_in_code = in_code.is_some();
-        in_code = next_code_state(in_code, line);
-        if was_in_code || in_code.is_some() {
-            continue;
-        }
-        let Some((level, _)) = atx_heading(line) else {
-            continue;
-        };
-        match found {
-            // Still looking: does this heading carry the id we were asked for?
-            None => {
-                if parse_heading_attr(line).and_then(|(_, id)| id).as_deref() == Some(id) {
-                    found = Some((i, level));
-                }
-            }
-            // Inside the section: the first heading at or above its level ends it.
-            Some((start, start_level)) if level <= start_level => return Some((start, i)),
-            _ => {}
-        }
-    }
-    found.map(|(start, _)| (start, lines.len()))
-}
-
-/// The line index just past a leading `---` front-matter block, or 0 when there is none.
-/// YAML comments (`# note:`) inside front matter would otherwise scan as h1 headings.
-fn front_matter_end(lines: &[&str]) -> usize {
-    if lines.first().map(|l| l.trim_end()) != Some("---") {
-        return 0;
-    }
-    lines
-        .iter()
-        .skip(1)
-        .position(|l| l.trim_end() == "---")
-        // +1 for the skipped opening fence, +1 to land past the closing one.
-        .map(|i| i + 2)
-        .unwrap_or(0)
-}
-
-/// The text of lines `[start, end)` of `text`, borrowed rather than copied. `end` past the
-/// last line means "to the end", which is what a section running to EOF asks for.
-fn slice_lines(text: &str, start: usize, end: usize) -> &str {
-    let (mut line, mut pos) = (0usize, 0usize);
-    let (mut begin, mut finish) = (None, text.len());
-    for l in text.split_inclusive('\n') {
-        if line == start {
-            begin = Some(pos);
-        }
-        if line == end {
-            finish = pos;
-            break;
-        }
-        pos += l.len();
-        line += 1;
-    }
-    let b = begin.unwrap_or(text.len());
-    &text[b..finish.max(b)]
-}
-
-/// `^(#{1,6})\s+(.*)$` → `(level, title)`. The same shape `lsp_outline::atx_heading` has;
-/// duplicated across the crate boundary rather than made public, because core cannot
-/// depend on the server crate.
-fn atx_heading(line: &str) -> Option<(u8, &str)> {
-    let hashes = line.chars().take_while(|&c| c == '#').count();
-    if !(1..=6).contains(&hashes) {
-        return None;
-    }
-    let rest = &line[hashes..];
-    if !rest.starts_with(char::is_whitespace) {
-        return None;
-    }
-    Some((hashes as u8, rest.trim()))
 }
 
 /// If `line` is solely a `{{< include PATH >}}` shortcode, return PATH.
@@ -735,239 +591,7 @@ mod tests {
             Some("a/b.tmd")
         );
         assert_eq!(parse_include("text {{< include x >}}"), None); // not alone on the line
-        assert_eq!(parse_include("{{< video x >}}"), None); // different shortcode
-    }
-
-    /// Item 160. A scratch project holding one shared fragment file with three anchored
-    /// sections, so a test can assert both what is pulled and what is left behind.
-    fn fragment_project(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "tali-frag-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("_site.yml"), b"title: t\n").unwrap();
-        // Line numbers matter to every assertion below, so they are written out here:
-        //  1 `# Shared parts {#sec-all}`      5 `## Setup {#sec-setup}`
-        //  3 (blank) 4 `Intro prose.`         7 `Setup body.`
-        //  9 `## Derivation {#sec-deriv}`    11 `Derivation body.`
-        // 13 `### A detail {#sec-detail}`    15 `Detail body.`
-        // 17 `## After {#sec-after}`         19 `After body.`
-        std::fs::write(
-            root.join("parts.tmd"),
-            "# Shared parts {#sec-all}\n\nIntro prose.\n\n## Setup {#sec-setup}\n\n\
-             Setup body.\n\n## Derivation {#sec-deriv}\n\nDerivation body.\n\n\
-             ### A detail {#sec-detail}\n\nDetail body.\n\n## After {#sec-after}\n\n\
-             After body.\n",
-        )
-        .unwrap();
-        root
-    }
-
-    #[test]
-    fn a_fragment_include_pulls_only_the_anchored_section() {
-        let root = fragment_project("only");
-        let (text, _origins, warnings) = resolve_warned(
-            "before\n{{< include parts.tmd#sec-deriv >}}\nafter\n",
-            &root,
-        );
-
-        assert!(
-            warnings.is_empty(),
-            "expected a clean expansion: {warnings:?}"
-        );
-        assert!(text.contains("## Derivation {#sec-deriv}"), "got:\n{text}");
-        assert!(text.contains("Derivation body."), "got:\n{text}");
-        // The section runs to the next heading of EQUAL OR SHALLOWER level, so its own
-        // deeper subsection comes with it...
-        assert!(
-            text.contains("### A detail {#sec-detail}") && text.contains("Detail body."),
-            "a subsection of the named section belongs to it:\n{text}"
-        );
-        // ...and everything outside it stays behind. Each of these is a separate way the
-        // slice could be wrong: too early a start, too late an end, or no slicing at all.
-        for absent in ["Intro prose.", "Setup body.", "After body."] {
-            assert!(
-                !text.contains(absent),
-                "{absent:?} is outside the named section but was pulled in:\n{text}"
-            );
-        }
-        // The parent's own lines survive on both sides of the transclusion.
-        assert!(text.starts_with("before\n") && text.trim_end().ends_with("after"));
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// **The merge gate item 160 was filed under: the source map must not perturb.**
-    ///
-    /// A transcluded section is a *slice* of its file, so the naive implementation maps
-    /// its first line to line 1 and every line after it is off by however far down the
-    /// file the section sits. Click-to-source would then land near the top of the shared
-    /// file instead of on the heading, which is the one thing this feature must not cost.
-    #[test]
-    fn a_fragment_maps_back_to_its_real_lines_in_the_source_file() {
-        let root = fragment_project("map");
-        let (text, origins, _w) =
-            resolve_warned("intro\n{{< include parts.tmd#sec-deriv >}}\n", &root);
-
-        assert_eq!(origins.len(), text.lines().count(), "one origin per line");
-        // The parent's own first line is the parent's line 1, with no file label.
-        assert_eq!(origins[0].file, None);
-        assert_eq!(origins[0].line, 1);
-
-        // Every transcluded line must name the shared file AND its true line there.
-        let heading = text
-            .lines()
-            .position(|l| l.contains("{#sec-deriv}"))
-            .expect("the section heading was transcluded");
-        assert_eq!(origins[heading].file.as_deref(), Some("parts.tmd"));
-        assert_eq!(
-            origins[heading].line, 9,
-            "`## Derivation` is line 9 of parts.tmd; mapping it to 1 is the off-by-offset \
-             bug this test exists for"
-        );
-        let body = text
-            .lines()
-            .position(|l| l == "Derivation body.")
-            .expect("the section body was transcluded");
-        assert_eq!(origins[body].line, 11, "the body is line 11 of parts.tmd");
-        let detail = text
-            .lines()
-            .position(|l| l == "Detail body.")
-            .expect("the nested subsection was transcluded");
-        assert_eq!(origins[detail].line, 15, "the detail body is line 15");
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_whole_file_include_is_untouched_by_the_fragment_work() {
-        // The regression guard on the `line_offset` parameter: with no fragment the
-        // offset is 0 and every origin is exactly what it was before item 160.
-        let root = fragment_project("whole");
-        let (text, origins, warnings) = resolve_warned("{{< include parts.tmd >}}\n", &root);
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert!(text.contains("Intro prose.") && text.contains("After body."));
-        assert_eq!(origins[0].file.as_deref(), Some("parts.tmd"));
-        assert_eq!(
-            origins[0].line, 1,
-            "a whole-file include still starts at line 1"
-        );
-        let last = text.lines().position(|l| l == "After body.").unwrap();
-        assert_eq!(origins[last].line, 19);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_fragment_that_names_no_section_warns_and_stays_literal() {
-        let root = fragment_project("missing");
-        let (text, _origins, warnings) =
-            resolve_warned("{{< include parts.tmd#sec-nope >}}\n", &root);
-        assert!(
-            text.contains("{{< include parts.tmd#sec-nope >}}"),
-            "an unresolvable fragment stays literal, like every other bad include:\n{text}"
-        );
-        let w = warnings.first().expect("a located warning");
-        assert_eq!(w.line, 1);
-        assert_eq!(
-            w.target, "parts.tmd#sec-nope",
-            "the warning quotes what was written"
-        );
-        assert!(
-            w.reason.contains("sec-nope") && w.reason.contains("parts.tmd"),
-            "the reason must name both halves so the author can see which is wrong: {}",
-            w.reason
-        );
-        // Nothing from the file leaked in on the way to failing.
-        assert!(!text.contains("Derivation body."));
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn a_fragment_include_is_a_dependency_of_the_whole_file() {
-        // If `dependencies` kept the `#fragment` on the path, `safe_join` would resolve
-        // nothing and the dev server would watch NO file — a fragment include would
-        // silently stop hot-reloading.
-        let root = fragment_project("deps");
-        let deps = dependencies("{{< include parts.tmd#sec-deriv >}}\n", &root);
-        assert_eq!(deps.len(), 1, "the fragment's file is watched: {deps:?}");
-        assert!(deps[0].ends_with("parts.tmd"), "{:?}", deps[0]);
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn two_fragments_of_one_file_are_not_a_cycle() {
-        // The cycle guard keys on the file. Keying on file+fragment would let a real
-        // cycle through; keying too eagerly would refuse this, which is the normal case
-        // the feature exists for.
-        let root = fragment_project("twice");
-        let (text, _o, warnings) = resolve_warned(
-            "{{< include parts.tmd#sec-setup >}}\n\n{{< include parts.tmd#sec-after >}}\n",
-            &root,
-        );
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert!(
-            text.contains("Setup body.") && text.contains("After body."),
-            "both sections expand:\n{text}"
-        );
-        assert!(
-            !text.contains("Derivation body."),
-            "and nothing between them:\n{text}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn split_target_separates_a_path_from_its_fragment() {
-        assert_eq!(split_target("a.tmd#sec-x"), ("a.tmd", Some("sec-x")));
-        assert_eq!(split_target("d/a.tmd"), ("d/a.tmd", None));
-        // Degenerate forms are NOT fragment references: returning them whole makes the
-        // ordinary "file not found" diagnostic quote what the author actually typed.
-        assert_eq!(split_target("a.tmd#"), ("a.tmd#", None));
-        assert_eq!(split_target("#sec-x"), ("#sec-x", None));
-    }
-
-    #[test]
-    fn section_lines_bounds_a_section_by_heading_level() {
-        let text = "# A {#sec-a}\n\nx\n\n## B {#sec-b}\n\ny\n\n### C {#sec-c}\n\nz\n\n## D {#sec-d}\n\nw\n";
-        // `## B` runs through its own `### C` and stops at the next `##`.
-        assert_eq!(section_lines(text, "sec-b"), Some((4, 12)));
-        // A deeper section stops at the next heading of any shallower level.
-        assert_eq!(section_lines(text, "sec-c"), Some((8, 12)));
-        // The last section runs to the end of the file.
-        assert_eq!(section_lines(text, "sec-d"), Some((12, 15)));
-        // The top-level heading owns everything under it.
-        assert_eq!(section_lines(text, "sec-a"), Some((0, 15)));
-        assert_eq!(section_lines(text, "sec-missing"), None);
-    }
-
-    #[test]
-    fn section_lines_ignores_headings_that_are_not_headings() {
-        // A `# comment` on a code cell's first line is the exact shape that broke
-        // folding in the LSP batch, and it would end a section early here too.
-        let fenced =
-            "## S {#sec-s}\n\n```{python}\n# not a heading {#sec-fake}\nx = 1\n```\n\nafter\n";
-        assert_eq!(
-            section_lines(fenced, "sec-s"),
-            Some((0, 8)),
-            "a fenced `#` line must not close the section"
-        );
-        assert_eq!(
-            section_lines(fenced, "sec-fake"),
-            None,
-            "and it defines no anchor either"
-        );
-        // A YAML comment in front matter is the same trap one layer up.
-        let fm = "---\ntitle: t\n# note {#sec-yaml}\n---\n\n## S {#sec-s}\n\nbody\n";
-        assert_eq!(section_lines(fm, "sec-yaml"), None);
-        assert_eq!(section_lines(fm, "sec-s"), Some((5, 8)));
-        // `#nospace` is not an ATX heading.
-        assert_eq!(section_lines("#x {#sec-x}\n", "sec-x"), None);
+        assert_eq!(parse_include("{{< input x >}}"), None); // different shortcode
     }
 
     #[test]

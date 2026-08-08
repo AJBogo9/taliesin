@@ -11,8 +11,7 @@ and the preview stays read-only: a reader interacts with the output, never the
 source.
 
 The examples below are shown as source listings. Each feature has a runnable
-counterpart in the corpus (`corpus/reactive/`, `corpus/explorable/`,
-`corpus/narrate/`, `corpus/layout/`).
+counterpart in the corpus (`corpus/reactive/`, `corpus/descent/`, `corpus/layout/`).
 
 ## Reactive `{js}` cells
 
@@ -96,91 +95,6 @@ then reacts to it:
 const name = tali.value("palette");          // "viridis" | "magma" | "cividis"
 return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
 ```
-
-## Scrollytelling: `::: {.scrolly}`
-
-A `.scrolly` container pins a visual stage while a column of `.step` scenes scrolls
-past it. As each step crosses the middle of the viewport it becomes active: its
-`state=` value is written to `data-scrolly-state` on the container (for pure-CSS
-effects) and, when the container has a `name=`, into a reactive input of that name.
-So a sticky `{js}` cell reacts with `//| input:`, the same graph as everything else.
-Scrollytelling, then, is a reactive input driven by scroll position instead of a
-slider.
-
-```markdown
-::: {.scrolly name="scene"}
-[ a {js} cell with //| input: scene that draws the stage ]
-::: {.step state="trend"}
-First, the steady linear trend.
-:::
-::: {.step state="spike"}
-Now the quadratic spike.
-:::
-:::
-```
-
-The stage is every non-`.step` block in the container; the narration is the `.step`
-divs. The first step is active on load, and the input's initial value matches it, so
-the cell has a sane value before any scroll. Omit `name=` for pure-CSS scenes.
-
-## Narrated code walkthroughs: `::: {.code-walkthrough}`
-
-A `.code-walkthrough` pins one code block as a sticky panel and scrolls `.step`
-prose beside it. Each step's `lines=` focuses a line range in the panel, washing it in
-the accent, so the reader's eye tracks the narration through the code.
-
-```markdown
-::: {.code-walkthrough}
-[ one code block: the sticky panel ]
-::: {.step lines="1"}
-First we import NumPy.
-:::
-::: {.step lines="3-5"}
-Then one EM iteration: an E-step, then an M-step.
-:::
-:::
-```
-
-The line spec is a comma-separated list of single lines and ranges, so one step can
-focus several non-contiguous regions at once: a leading block plus a later call site,
-say.
-
-```markdown
-::: {.step lines="1-5,8"}
-The setup (lines 1 through 5) plus the one call site on line 8.
-:::
-```
-
-Here `"1-5,8"` lights lines 1 through 5 and line 8 together and dims everything else.
-Line numbers are 1-based and count the panel's own lines. Other valid specs are a
-single line (`"3"`), a single range (`"3-5"`), or a longer mix (`"1,4,6-8"`). To show
-the whole block with nothing dimmed, use `"all"` or leave `lines` off entirely; that is
-the right choice for an opening "here is the finished code" step before you start
-walking through it.
-
-## Tabbed panels: `::: {.panel-tabset}`
-
-A `.panel-tabset` turns its headings into tabs. Each heading at the shallowest level
-present becomes a tab button (emitted as an ARIA `role="tab"`, not a real heading,
-so it never pollutes the table of contents); the blocks under it become that tab's
-panel. Here is one live:
-
-::: {.panel-tabset}
-
-## Python
-
-Content for the Python tab.
-
-## R
-
-Content for the R tab.
-
-:::
-
-The first tab is selected on load. Readers switch with a click or the keyboard
-(arrow keys move between tabs, Home and End jump to the first and last). Panel
-content keeps its own ids and source positions, so click-to-source still works
-inside a tab, and a `@fig-` reference resolves through it.
 
 ## Interactive 3-D with a `{js}` cell
 

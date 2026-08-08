@@ -17,26 +17,15 @@ use std::path::{Path, PathBuf};
 /// Every `data-*` attribute name the corpus renders. Sorted. Update deliberately.
 const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-block-id",
-    "data-cw-lines",
     "data-inputs",
     "data-name",
-    "data-scrolly-name",
     "data-section-end",
     "data-source-file",
     "data-sourcepos",
-    // A theme-adaptive `{{< video … dark= >}}` pair ships BOTH clips as `data-src` so the
-    // hidden variant is never fetched; the page shell promotes the visible one to `src`.
-    // Deliberately un-namespaced: it is the conventional lazy-media spelling, and
-    // `data-tali-src` is already taken by click-to-source (a page's `.tmd` path), which
-    // `build`'s asset harvest must never publish. Reached the corpus on 2026-08-07 with
-    // `corpus/media/screencast.tmd`'s poster/dark pair; the attribute itself is older.
-    "data-src",
-    "data-state",
     "data-tali-cell",
     "data-tali-input",
     "data-tali-out",
     "data-tali-out-for",
-    "data-tali-theorem-kind",
     "data-tali-xref",
     "data-target",
     "data-viewof",
@@ -57,8 +46,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-attribute",
     "data-attrs",
     "data-block-id",
-    "data-cw-init",
-    "data-cw-lines",
     "data-drawer-wired",
     "data-inputs",
     "data-label",
@@ -67,16 +54,11 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-nav-wired",
     "data-processed",
     "data-scroll-a11y",
-    "data-scrolly-init",
-    "data-scrolly-name",
-    "data-scrolly-state",
     "data-section-end",
     "data-source-file",
     "data-sourcepos",
     "data-src",
-    "data-src-",
     "data-state",
-    "data-tabset-init",
     "data-tali-bound",
     "data-tali-cell",
     "data-tali-cell-source",
@@ -92,7 +74,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-settings",
     "data-tali-src",
     "data-tali-theme-toggle",
-    "data-tali-theorem-kind",
     "data-tali-xref",
     "data-target",
     "data-theme",

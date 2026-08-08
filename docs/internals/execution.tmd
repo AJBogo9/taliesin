@@ -395,7 +395,7 @@ emits them together as `<img class="tali-fig tali-fig-light">` + `<img class="ta
 tali-fig-dark">`. The standalone `image/png` representation is suppressed so only the
 dual-theme HTML survives. The page then swaps which image shows on a `data-theme`
 change, so a plot's axes and text always match the surrounding page with no
-re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data colours are left untouched. The recolouring is applied to the *inline*
+re-execution. Only data colours are left untouched. The recolouring is applied to the *inline*
 representation alone and never to global `rcParams`, so a cell's own `savefig` still
 writes a clean print-ready figure (black on white).
 

@@ -39,33 +39,17 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 /// document that still writes one gets a located removal note instead of silence.
 pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 
-/// Theorem-environment kinds taliesin recognizes (`::: {.theorem}`, `::: {.proof}`, …).
-/// Unlike callouts there is no namespace prefix, so this set IS the dispatch vocabulary:
-/// a div whose class is one of these enters the theorem arm. `proof` is included but is
-/// unnumbered + unreferenceable. A misspelled kind has no prefix to anchor a did-you-mean,
-/// so it falls through to a plain div (see the design doc).
-///
-/// Eight kinds shrank to five on 2026-08-03 (visual minimalism pass, task 14): `example`,
-/// `proposition` and `remark` were never cross-referenced by any document in the tree. All
-/// three are registered in [`RETIRED_DIV_CLASSES`] below — the same silent-fallthrough risk
-/// the doc comment above already names, so without that entry a leftover
-/// `.example`/`.proposition`/`.remark` gets no diagnostic at all.
-pub(crate) const THEOREM_KINDS: &[&str] = &["theorem", "lemma", "corollary", "definition", "proof"];
-
 /// Structural feature classes a `:::` fenced div can carry. This is **not** a closed
 /// vocabulary — a div may carry any custom class (styled by the author's own CSS) — so this list
 /// only anchors the *did-you-mean* (`validate_div_class`); it never rejects. Keep in sync with the
 /// `.class` dispatch in `render/divs.rs`; a `vocab.rs` test pins `vocab::div_classes()`'s names
 /// as a subset.
-pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
-    "panel-tabset",
-    "code-walkthrough",
-    "scrolly",
-    "step",
-    "column-margin",
-    "column-page",
-    "column-screen",
-];
+///
+/// Three width escapes, and that is the whole set. The narrative widgets
+/// (`panel-tabset`/`code-walkthrough`/`scrolly`/`step`) and the five theorem kinds were
+/// withdrawn on 2026-08-08 and are registered in [`RETIRED_DIV_CLASSES`] below, which is
+/// what a leftover fence hits now.
+pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &["column-margin", "column-page", "column-screen"];
 
 /// Input control types `.input type=` recognizes.
 ///
@@ -125,9 +109,9 @@ pub(crate) fn validate_callout_kind(
     })
 }
 
-/// A misspelled feature/theorem `:::` class → a located "did you mean". Fired from the generic-div
+/// A misspelled feature `:::` class → a located "did you mean". Fired from the generic-div
 /// fall-through in `build_container` (the classes that matched no feature arm). Only a *near-miss*
-/// of a known feature class ([`DIV_FEATURE_CLASSES`] ∪ [`THEOREM_KINDS`], edit distance ≤ 2) warns:
+/// of a known feature class ([`DIV_FEATURE_CLASSES`], edit distance ≤ 2) warns:
 /// an exactly-known class (a legit generic like `.column-page`) and a genuine custom class
 /// (far from every known name) both stay silent, since div classes are an *open* vocabulary. At
 /// most one warning per div (the first offending class), and purely diagnostic — the div still
@@ -137,11 +121,7 @@ pub(crate) fn validate_div_class(
     line: usize,
     file: Option<String>,
 ) -> Option<Warning> {
-    let known: Vec<&'static str> = DIV_FEATURE_CLASSES
-        .iter()
-        .copied()
-        .chain(THEOREM_KINDS.iter().copied())
-        .collect();
+    let known = DIV_FEATURE_CLASSES;
     classes.iter().find_map(|c| {
         if known.contains(&c.as_str()) {
             return None;
@@ -157,7 +137,7 @@ pub(crate) fn validate_div_class(
                     .at(file.clone(), line as u32),
             );
         }
-        closest(c, &known).map(|s| {
+        closest(c, known).map(|s| {
             Warning::new(format!("unknown div class `{c}` (did you mean `{s}`?)"))
                 .at(file.clone(), line as u32)
         })
@@ -183,6 +163,62 @@ pub(crate) fn validate_div_class(
 /// file's `mod tests` derives the rest (gone from the live vocabulary, warns with this note
 /// and no did-you-mean, CSS rule gone), so no hand-written test is owed.
 pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
+    // --- Theorem environments, retired 2026-08-08. Callouts are the surviving prose
+    // container; they take a `title=` and an `#sec-` id, but no number and no xref target,
+    // and that gap is the accepted cost of the removal.
+    (
+        "theorem",
+        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
+         a `::: {.callout-note title=\"Theorem\"}`, which carries no number and no `@thm-` \
+         cross-reference",
+    ),
+    (
+        "lemma",
+        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
+         a `::: {.callout-note title=\"Lemma\"}`, which carries no number and no `@lem-` \
+         cross-reference",
+    ),
+    (
+        "corollary",
+        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
+         a `::: {.callout-note title=\"Corollary\"}`, which carries no number and no `@cor-` \
+         cross-reference",
+    ),
+    (
+        "definition",
+        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
+         a `::: {.callout-note title=\"Definition\"}`, which carries no number and no `@def-` \
+         cross-reference",
+    ),
+    (
+        "proof",
+        "it was removed on 2026-08-08 with the theorem environments and it was never \
+         numbered anyway, so write the proof as ordinary prose, or fold it behind a \
+         `::: {.callout-note collapse=\"true\"}`",
+    ),
+    // --- The narrative + layout widgets, retired 2026-08-08. `.step` and `.scrolly` went
+    // in one commit on purpose: the scrolly arm partitioned its children by the raw string
+    // `<div class="step"`, so cutting either alone left the other matching a generic div.
+    (
+        "panel-tabset",
+        "it was removed on 2026-08-08: nothing folds alternatives into tabs now, so give \
+         each tab's content its own `###` heading",
+    ),
+    (
+        "code-walkthrough",
+        "it was removed on 2026-08-08 with `.step`, which drove its line highlighting: show \
+         the code block once and write the narration as ordinary prose around it",
+    ),
+    (
+        "scrolly",
+        "it was removed on 2026-08-08 with `.step` and its sticky stage: the stage graphics \
+         become ordinary numbered figures with the step prose between them",
+    ),
+    (
+        "step",
+        "it was removed on 2026-08-08 with `.scrolly` and `.code-walkthrough`, its only \
+         containers, and nothing replaces it, so the contents become ordinary blocks",
+    ),
     (
         "fragment",
         "it was removed on 2026-08-08 with the slide-deck engine: a page reveals nothing \
@@ -243,13 +279,13 @@ pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
     ),
     (
         "example",
-        "it was removed on 2026-08-03: rewrite it as `.definition` or a plain \
-         `::: {.callout-note}`, whichever fits the content",
+        "it was removed on 2026-08-03, ahead of the rest of the theorem environments: a \
+         plain `::: {.callout-note}` is the closest surviving spelling",
     ),
     (
         "proposition",
-        "it was removed on 2026-08-03: `.theorem` is the closest surviving numbered kind, \
-         and both render in the same `plain` style",
+        "it was removed on 2026-08-03, ahead of the rest of the theorem environments: a \
+         plain `::: {.callout-note}` is the closest surviving spelling",
     ),
     (
         "remark",
@@ -260,7 +296,7 @@ pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
 
 /// Validate a fenced div that turned out EMPTY (no blocks between its `:::` fences). An empty
 /// GENERIC div is harmless (it's dropped), but an empty div that names a real feature — a
-/// `.input` reactive control, a `.callout-*`, a `.panel-tabset`, a theorem, … — is almost
+/// `.input` reactive control, a `.callout-*`, a `.column-page` escape — is almost
 /// always a mistake: the feature renders nothing, silently. Warn (located, click-to-source),
 /// with a pointed hint for `.input` (whose real form is the `{{< input >}}` shortcode, not a
 /// div — the exact confusion this closes). `None` when the empty div carries no known feature
@@ -273,10 +309,7 @@ pub(crate) fn validate_empty_feature_div(
 ) -> Option<Warning> {
     let feature = classes.iter().find(|c| {
         let c = c.as_str();
-        c == "input"
-            || c.starts_with("callout-")
-            || DIV_FEATURE_CLASSES.contains(&c)
-            || THEOREM_KINDS.contains(&c)
+        c == "input" || c.starts_with("callout-") || DIV_FEATURE_CLASSES.contains(&c)
     })?;
     let hint = if feature == "input" {
         " — the reactive input control is the `{{< input name=\"…\" >}}` shortcode, not a `:::` div"
@@ -289,61 +322,6 @@ pub(crate) fn validate_empty_feature_div(
         ))
         .at(file, line as u32),
     )
-}
-
-/// Validate a `.step lines=` value (located, click-to-source). The `|` is the STEP separator
-/// of a `code-line-numbers="1|2-3"` spec, but a `.step` is already one step, so
-/// its own `lines=` is parsed as comma-separated ranges only (`walkthrough.js`/`scrolly.js`).
-/// A `|` therefore matches neither a range nor a number and silently focuses zero lines — a
-/// author's muscle-memory trap. Purely diagnostic — the step still renders. `line` is the
-/// 1-based source line of the div's opening fence.
-pub(crate) fn validate_step_lines(
-    spec: &str,
-    line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    spec.contains('|').then(|| {
-        Warning::new(format!(
-            "`.step lines=\"{spec}\"` uses `|` (the step separator in a cell's \
-             `code-line-numbers=`), but a `.step`'s own `lines=` focuses one step and takes \
-             comma-separated ranges only (e.g. `3-5,8`), so the `|` groups highlight nothing. \
-             Split the pipe groups into separate `.step` blocks."
-        ))
-        .at(file, line as u32)
-    })
-}
-
-/// Validate a `.code-walkthrough` container: warn (click-to-source) when it holds no
-/// code block, since the sticky panel would render empty. `line` is the 1-based source
-/// line of the div's opening fence. Purely diagnostic — the div still renders.
-pub(crate) fn validate_walkthrough(
-    has_code: bool,
-    line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    (!has_code).then(|| {
-        Warning::new(
-            "`.code-walkthrough` has no code block to show in the sticky panel".to_string(),
-        )
-        .at(file, line as u32)
-    })
-}
-
-/// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
-/// so it would render no tabs. `line` is the 1-based source line of the opening fence.
-/// Purely diagnostic — the div still renders its content.
-pub(crate) fn validate_tabset(
-    has_tabs: bool,
-    line: usize,
-    file: Option<String>,
-) -> Option<Warning> {
-    (!has_tabs).then(|| {
-        Warning::new(
-            "`.panel-tabset` has no headings, so it renders no tabs (add `##` headings)"
-                .to_string(),
-        )
-        .at(file, line as u32)
-    })
 }
 
 /// Validate a `.input` reactive-control container (located, click-to-source). Warns when
@@ -375,33 +353,6 @@ pub(crate) fn validate_input(
     if kind == Some("select") && options.unwrap_or("").trim().is_empty() {
         out.push(
             Warning::new("`.input type=select` needs `options=\"a,b,c\"`".to_string())
-                .at(file, line as u32),
-        );
-    }
-    out
-}
-
-/// Validate a `.scrolly` container (located, click-to-source). Warns when there is no
-/// sticky stage block or no `.step` divs to scroll through. Purely diagnostic — it still
-/// renders. Mirrors `validate_walkthrough`.
-pub(crate) fn validate_scrolly(
-    has_stage: bool,
-    has_steps: bool,
-    line: usize,
-    file: Option<String>,
-) -> Vec<Warning> {
-    let mut out = Vec::new();
-    if !has_stage {
-        out.push(
-            Warning::new(
-                "`.scrolly` has no sticky stage (add a figure or `{js}` cell)".to_string(),
-            )
-            .at(file.clone(), line as u32),
-        );
-    }
-    if !has_steps {
-        out.push(
-            Warning::new("`.scrolly` has no `.step` divs to scroll through".to_string())
                 .at(file, line as u32),
         );
     }
@@ -446,17 +397,12 @@ mod tests {
     fn validate_div_class_suggests_near_miss_only() {
         let s = |c: &str| vec![c.to_string()];
         // A near-miss of a feature class → located "did you mean".
-        let w = validate_div_class(&s("scrolley"), 3, None).expect("a near-miss warning");
+        let w = validate_div_class(&s("column-margn"), 3, None).expect("a near-miss warning");
         assert_eq!(
             w.message,
-            "unknown div class `scrolley` (did you mean `scrolly`?)"
+            "unknown div class `column-margn` (did you mean `column-margin`?)"
         );
         assert_eq!(w.line, Some(3));
-        // A near-miss of a THEOREM kind (the case validate.rs's own comment calls out).
-        assert!(
-            validate_div_class(&s("theorm"), 3, None).is_some(),
-            "a misspelled theorem kind should be caught"
-        );
         // An exactly-known class is legit → silent.
         assert!(
             validate_div_class(&s("column-margin"), 3, None).is_none(),
@@ -469,9 +415,13 @@ mod tests {
         );
         // Only the first offending class warns (no pile-up).
         assert_eq!(
-            validate_div_class(&["scrolley".to_string(), "theorm".to_string()], 3, None)
-                .into_iter()
-                .count(),
+            validate_div_class(
+                &["column-margn".to_string(), "column-pag".to_string()],
+                3,
+                None
+            )
+            .into_iter()
+            .count(),
             1
         );
     }
@@ -546,9 +496,9 @@ mod tests {
              register goes back to earning silence"
         );
         assert_eq!(
-            THEOREM_KINDS,
-            &["theorem", "lemma", "corollary", "definition", "proof"],
-            "theorem vocabulary should be exactly 5"
+            DIV_FEATURE_CLASSES,
+            &["column-margin", "column-page", "column-screen"],
+            "the live div-class vocabulary should be exactly the three width escapes"
         );
         assert_eq!(
             CALLOUT_KINDS,
@@ -559,7 +509,7 @@ mod tests {
         // --- Retired `:::` feature/theorem classes. `.{name}` is the selector.
         for (name, note) in RETIRED_DIV_CLASSES {
             assert!(
-                !DIV_FEATURE_CLASSES.contains(name) && !THEOREM_KINDS.contains(name),
+                !DIV_FEATURE_CLASSES.contains(name),
                 "`.{name}` is in RETIRED_DIV_CLASSES and still live — the retirement is a no-op"
             );
             let w = validate_div_class(&[name.to_string()], 3, None).unwrap_or_else(|| {
@@ -637,8 +587,13 @@ mod tests {
             w.message
         );
         assert_eq!(w.line, Some(4));
-        // Other feature classes warn generically (callout/tabset/theorem), no shortcode hint.
-        for c in ["callout-note", "panel-tabset", "theorem", "scrolly"] {
+        // Other feature classes warn generically (callout/width escape), no shortcode hint.
+        for c in [
+            "callout-note",
+            "column-page",
+            "column-margin",
+            "column-screen",
+        ] {
             let w = validate_empty_feature_div(&div(&[c]), 1, None)
                 .unwrap_or_else(|| panic!("empty .{c} should warn"));
             assert!(
@@ -648,23 +603,6 @@ mod tests {
         // A plain/custom empty div (no known feature class) stays silent — open vocabulary.
         assert!(validate_empty_feature_div(&div(&["my-widget"]), 1, None).is_none());
         assert!(validate_empty_feature_div(&div(&[]), 1, None).is_none());
-    }
-
-    #[test]
-    fn validate_step_lines_warns_only_on_the_pipe_step_separator() {
-        // PL7: a `|` in a `.step lines=` is a `code-line-numbers=` habit that the step's
-        // comma-only parser focuses to zero lines — warn, located.
-        let w = validate_step_lines("1|2-3", 7, Some("d.tmd".into())).expect("`|` warns");
-        assert!(
-            w.message.contains("step separator") && w.message.contains("lines=\"1|2-3\""),
-            "names the separator + echoes the spec: {}",
-            w.message
-        );
-        assert_eq!(w.line, Some(7), "located at the fence line");
-        // The valid grammars — comma-separated ranges/numbers, a plain range, `all` — are silent.
-        assert!(validate_step_lines("3-5,8", 7, None).is_none(), "commas ok");
-        assert!(validate_step_lines("6-8", 7, None).is_none(), "a range ok");
-        assert!(validate_step_lines("all", 7, None).is_none(), "`all` ok");
     }
 
     #[test]
@@ -678,30 +616,6 @@ mod tests {
         assert!(
             validate_callout_kind("note", 7, None).is_none(),
             "note is recognized"
-        );
-    }
-
-    #[test]
-    fn walkthrough_without_code_block_is_flagged_and_located() {
-        let w = validate_walkthrough(false, 12, Some("w.tmd".into())).expect("a no-code warning");
-        assert!(w.message.contains("no code block"), "got: {}", w.message);
-        assert_eq!(w.line, Some(12));
-        assert_eq!(w.file.as_deref(), Some("w.tmd"));
-        assert!(
-            validate_walkthrough(true, 12, None).is_none(),
-            "silent when a code block is present"
-        );
-    }
-
-    #[test]
-    fn tabset_without_headings_is_flagged_and_located() {
-        let w = validate_tabset(false, 4, Some("p.tmd".into())).expect("a no-tabs warning");
-        assert!(w.message.contains("no headings"), "got: {}", w.message);
-        assert_eq!(w.line, Some(4));
-        assert_eq!(w.file.as_deref(), Some("p.tmd"));
-        assert!(
-            validate_tabset(true, 4, None).is_none(),
-            "silent when headings are present"
         );
     }
 
@@ -740,29 +654,5 @@ mod tests {
     fn input_valid_slider_is_clean() {
         assert!(validate_input(Some("k"), Some("slider"), None, 1, None).is_empty());
         assert!(validate_input(Some("c"), Some("select"), Some("a,b"), 1, None).is_empty());
-    }
-
-    #[test]
-    fn scrolly_without_stage_is_flagged() {
-        let w = validate_scrolly(false, true, 3, Some("s.tmd".into()));
-        assert_eq!(w.len(), 1);
-        assert!(
-            w[0].message.contains("no sticky stage"),
-            "got: {}",
-            w[0].message
-        );
-        assert_eq!(w[0].line, Some(3));
-    }
-
-    #[test]
-    fn scrolly_without_steps_is_flagged() {
-        let w = validate_scrolly(true, false, 5, None);
-        assert_eq!(w.len(), 1);
-        assert!(w[0].message.contains("no `.step`"), "got: {}", w[0].message);
-    }
-
-    #[test]
-    fn scrolly_complete_is_clean() {
-        assert!(validate_scrolly(true, true, 1, None).is_empty());
     }
 }

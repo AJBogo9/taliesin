@@ -73,7 +73,7 @@ completion cannot suggest something the validator would reject.
   languages, div classes, cross-references, citations, shortcode names, anchor ids, math
   commands, and file paths anywhere a path is legal.
 - **Div attributes, narrowed to the class you wrote.** `::: {.callout-note ` offers
-  `title=`, `collapse=`, `icon=` and `appearance=`; a `.step` offers `lines=` and `state=`.
+  `title=`, `collapse=`, `icon=` and `appearance=`; a plain div offers `layout-ncol=`.
   A `.lemma` is *not* offered `collapse=`, because only `proof` has a collapse branch and
   suggesting it elsewhere would be recommending something that renders no differently.
 - **Format Document** tidies pipe tables (columns padded to their widest cell, alignment

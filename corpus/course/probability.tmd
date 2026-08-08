@@ -12,13 +12,13 @@ asking where its mass sits and how tightly it concentrates.
 
 ![Three densities that recur throughout the course: a broad prior, a sharp likelihood, and the posterior between them.](distributions.svg){#fig-distributions}
 
-The single number that summarizes where a density sits is its expectation.
+## Expectation {#sec-expectation}
 
-::: {.definition #def-expectation}
-The **expectation** of a random variable $X$ with density $p$ is
-$$ \mathbb{E}[X] = \int x\,p(x)\,\mathrm{d}x, $$
-the weighted average of its values, each value weighted by how probable it is.
-:::
+The single number that summarizes where a density sits is its expectation. The
+**expectation** of a random variable $X$ with density $p$ is the weighted average of its
+values, each value weighted by how probable it is:
 
-By @def-expectation the expectation is linear, and that one property, applied to a
+$$ \mathbb{E}[X] = \int x\,p(x)\,\mathrm{d}x $$ {#eq-expectation}
+
+By @eq-expectation the expectation is linear, and that one property, applied to a
 likelihood, is what the next chapter turns into an estimator.

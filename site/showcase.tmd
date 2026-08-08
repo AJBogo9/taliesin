@@ -5,9 +5,9 @@ page-layout: full
 ---
 
 Everything below runs in your browser, right here on this page, which is itself a
-Taliesin document. Each demo shows its **Result** and the real **Source** that
-produced it: open the Source tab and you are reading the exact `.tmd` cell. No
-screenshots, no video.
+Taliesin document. Each demo shows its **Result** and then the real **Source** that
+produced it, so what you scroll past is the exact `.tmd` cell. No screenshots, no
+video.
 
 {{< include _includes/three-scene.tmd >}}
 
@@ -15,12 +15,10 @@ screenshots, no video.
 
 A parametric wave-interference mesh, rendered with WebGL. Drag to orbit, scroll to
 zoom, and move the sliders to reshape it in real time. The renderer is transparent,
-so it follows the page theme, and the whole thing is the `{js}` cell in the
-**Source** tab, around forty lines of plain text.
+so it follows the page theme, and the whole thing is the `{js}` cell under
+**Source** below, around forty lines of plain text.
 
-::: {.panel-tabset}
-
-### Result
+### The surface
 
 {{< input name="detail" type="slider" min="16" max="80" step="4" value="48" label="detail" >}}
 {{< input name="twist" type="slider" min="0" max="6" step="0.2" value="2" label="twist" >}}
@@ -91,7 +89,7 @@ else {
 return host;
 ```
 
-### Source
+### The surface, in source
 
 ```js
 //| echo: false
@@ -158,96 +156,6 @@ else {
 return host;
 ```
 
-:::
-
-## One source, watched as you scroll
-
-Scroll the narration; the stage tracks the step in view. The active step sets a
-reactive value (`stage`), so the sticky `{js}` cell re-runs as you scroll. The whole
-`.scrolly` skeleton is in the **Source** tab.
-
-::: {.panel-tabset}
-
-### Result
-
-::: {.scrolly name="stage"}
-```{js}
-//| input: stage
-//| echo: false
-const stage = tali.value("stage") || "one-source";
-const wrap = document.createElement("div");
-wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center";
-const tile = (t, hi) => {
-  const d = document.createElement("div");
-  d.textContent = t;
-  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--tali-font-head);text-align:center;min-width:170px;"
-    + (hi ? "border:1px solid var(--tali-accent);background:var(--tali-accent);color:#fff"
-          : "border:1px solid var(--tali-border);background:var(--tali-code-bg);color:var(--tali-fg)");
-  return d;
-};
-const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
-const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--tali-muted)"; return p; };
-const views = {
-  "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
-  "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
-  "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
-  "many-outputs": () => [group("row", tile("blog post"), tile("website"), tile("book")), note("The same blocks become a post, a site page, or a book.")],
-};
-(views[stage] || views["one-source"])().forEach(n => wrap.append(n));
-return wrap;
-```
-::: {.step state="one-source"}
-**One `.tmd` file.** Plain text: prose, math, and executable code cells, together in one place.
-:::
-::: {.step state="blocks"}
-**Parsed into blocks.** Each top-level element becomes a block with a content-hash id and a source position, so the system can follow it across edits.
-:::
-::: {.step state="diff"}
-**A save diffs only what changed.** Edit one cell and only that block, plus its output, crosses the wire. Your scroll, your live canvas, and your warm kernel all survive.
-:::
-::: {.step state="many-outputs"}
-**One source, many outputs.** The same blocks render as a blog post, a page of a website, or a chapter of a multi-chapter book.
-:::
-:::
-
-### Source
-
-````markdown
-::: {.scrolly name="stage"}
-```{js}
-//| input: stage
-//| echo: false
-const stage = tali.value("stage") || "one-source";
-const wrap = document.createElement("div");
-wrap.style.cssText = "min-height:300px;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center";
-const tile = (t, hi) => {
-  const d = document.createElement("div");
-  d.textContent = t;
-  d.style.cssText = "padding:12px 18px;border-radius:8px;font:600 14px/1.2 var(--tali-font-head);text-align:center;min-width:170px;"
-    + (hi ? "border:1px solid var(--tali-accent);background:var(--tali-accent);color:#fff"
-          : "border:1px solid var(--tali-border);background:var(--tali-code-bg);color:var(--tali-fg)");
-  return d;
-};
-const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
-const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--tali-muted)"; return p; };
-const views = {
-  "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
-  "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
-  "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
-  "many-outputs": () => [group("row", tile("blog post"), tile("website"), tile("book")), note("The same blocks become a post, a site page, or a book.")],
-};
-(views[stage] || views["one-source"])().forEach(n => wrap.append(n));
-return wrap;
-```
-::: {.step state="one-source"} ... :::
-::: {.step state="blocks"} ... :::
-::: {.step state="diff"} ... :::
-::: {.step state="many-outputs"} ... :::
-:::
-````
-
-:::
-
 ## A live equation and its plot
 
 The square wave is a sum of odd harmonics. Drag $N$ and watch the partial sum
@@ -256,9 +164,7 @@ the vendored Observable Plot, and both react to the same slider:
 
 $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 
-::: {.panel-tabset}
-
-### Result
+### The chart
 
 {{< input name="harmonics" type="slider" min="1" max="24" step="1" value="5" label="N (harmonics)" >}}
 
@@ -272,7 +178,7 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
   .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
-### Source
+### The chart, in source
 
 ```js
 //| input: harmonics
@@ -284,71 +190,14 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
   .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
-:::
-
-## Code that explains itself as you read
-
-The reactive chart above is six lines. Scroll this walkthrough and the focus moves
-down the code as each line is explained. The scroll-synced highlight is the
-framework's `.code-walkthrough` feature, a sticky code panel beside scrolling steps.
-
-::: {.code-walkthrough}
-
-```js
-//| input: harmonics
-const N = tali.value("harmonics");
-const ys = Array.from({ length: 500 }, (_, t) =>
-  d3.range(1, N + 1).reduce(
-    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
-return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
-```
-
-::: {.step lines="1"}
-The `//| input: harmonics` directive subscribes this cell to the `harmonics` control. Taliesin re-runs the cell, and only this cell, whenever that value changes.
-:::
-::: {.step lines="2"}
-`tali.value("harmonics")` reads the slider's current number out of the reactive scope.
-:::
-::: {.step lines="3-5"}
-Build the partial sum: for each of 500 sample points, add up the first `N` odd harmonics.
-:::
-::: {.step lines="6"}
-Return an Observable Plot chart. A `{js}` cell mounts whatever DOM node it returns, so there is no glue code between the data and the page.
-:::
-
-:::
-
-::: {.callout-note collapse="true"}
-## The markdown behind this walkthrough
-
-````markdown
-::: {.code-walkthrough}
-```js
-//| input: harmonics
-const N = tali.value("harmonics");
-const ys = Array.from({ length: 500 }, (_, t) =>
-  d3.range(1, N + 1).reduce(
-    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
-return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
-```
-::: {.step lines="1"} ... :::
-::: {.step lines="2"} ... :::
-::: {.step lines="3-5"} ... :::
-::: {.step lines="6"} ... :::
-:::
-````
-:::
-
 ## Chaos you can hold in your hand
 
 The Lorenz attractor, integrated live in the browser and drawn as it grows. Drag to
 orbit, and move the σ / ρ / β sliders to watch a deterministic system fold into a
 two-winged strange attractor, and then collapse. The whole thing is the `{js}` cell
-in the **Source** tab.
+under **Source** below.
 
-::: {.panel-tabset}
-
-### Result
+### The attractor
 
 ```{js}
 //| echo: false
@@ -414,7 +263,7 @@ makeScene3D((scene, THREE, ctx) => {
 return el;
 ```
 
-### Source
+### The attractor, in source
 
 ```js
 //| echo: false
@@ -479,8 +328,6 @@ makeScene3D((scene, THREE, ctx) => {
 
 return el;
 ```
-
-:::
 
 ## It is all just Taliesin
 

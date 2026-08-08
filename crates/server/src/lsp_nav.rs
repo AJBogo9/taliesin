@@ -13,14 +13,7 @@
 
 /// Front-matter parents whose immediate children have their own vocabulary (mirrors
 /// `lsp_complete`).
-const NESTED_PARENTS: &[&str] = &[
-    "execute",
-    "listing",
-    "about",
-    "hero",
-    "prose-lint",
-    "theorems",
-];
+const NESTED_PARENTS: &[&str] = &["execute", "listing", "about", "hero", "prose-lint"];
 
 /// The token under the cursor, with its 0-based `[start, end)` char span on the line.
 #[derive(Debug, PartialEq, Eq)]

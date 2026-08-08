@@ -23,7 +23,7 @@ fn tarn() -> Site {
     Site::discover(&corpus_dir().join("tarn"))
 }
 
-/// `corpus/tarn` sets a site-wide `toc: true` and `install.tmd` carries 8 `##` headings,
+/// `corpus/tarn` sets a site-wide `toc: true` and `errors.tmd` carries 4 `##` headings,
 /// far above `MIN_TOC_HEADINGS` — before item 76 this was the two-column chapter. It must
 /// now render as one reading column.
 #[test]
@@ -82,15 +82,15 @@ fn a_book_chapter_ships_no_scrollspy_or_toc_skip_link() {
 #[test]
 fn an_explicit_page_level_toc_true_does_not_reinstate_the_rail_in_a_book() {
     let site = tarn();
-    let page = site.page("install.tmd").expect("install is a page");
-    let src = std::fs::read_to_string(&page.input).expect("install.tmd reads");
+    let page = site.page("errors.tmd").expect("errors is a page");
+    let src = std::fs::read_to_string(&page.input).expect("errors.tmd reads");
     let doc = render::render_document(&src);
-    // Guard the guard: `install.tmd` must actually clear the heading gate, or both
+    // Guard the guard: `errors.tmd` must actually clear the heading gate, or both
     // assertions below would hold for the boring reason. (`MIN_TOC_HEADINGS` is 3 and
     // private; count the `##` sections the gate counts.)
     assert!(
         src.lines().filter(|l| l.starts_with("## ")).count() >= 3,
-        "install.tmd is supposed to be a long chapter, above MIN_TOC_HEADINGS"
+        "errors.tmd is supposed to be a long chapter, above MIN_TOC_HEADINGS"
     );
     assert!(
         !site.page_toc(page, Some(true), &doc.blocks),

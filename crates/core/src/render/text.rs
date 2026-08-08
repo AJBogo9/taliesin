@@ -131,14 +131,6 @@ fn project_block(b: &Block) -> String {
         return project_list(html, 0);
     }
 
-    // A scrolly / code-walkthrough: project each `.step`'s narration as its own paragraph
-    // so adjacent steps don't merge across the boundary (`…in the middle.Which way…`). The
-    // `scrolly-steps` container carries the token `scrolly-steps`, not `step`, so matching
-    // the exact opening `<div class="step"` never mistakes the container for a step.
-    if html.contains("<div class=\"step\"") {
-        return project_steps(html);
-    }
-
     // Input control(s): `[input] label = value`, one line per control, so a control's
     // label and value don't fuse (`step size (η)0.12`). `class="tali-input"` (closing
     // quote included) matches only the control wrapper, not `tali-input-label`/`-out`.
@@ -282,18 +274,12 @@ pub(crate) fn indexable_text(html: &str) -> String {
 /// Decode a `<pre><code>` block's text: strip the highlight spans, decode entities. Keeps
 /// interior newlines (unlike [`visible`], which trims) so code lines survive.
 ///
-/// **Line-wrapped code has no interior newlines to keep.** `wrap_code_lines` puts each
-/// source line in its own block-displayed `<span class="tali-hl-ln">` and drops the `\n`
-/// (the element *is* the break) — so a code-walkthrough or magic-move block stripped
-/// naively welds into one line: `def m_step(x, resp):    w = resp.sum(axis=0)    …`. Where
-/// that wrapper is present it is turned back into the newline it replaced.
+/// Stripped in ONE pass, not line by line: `strip_tags` trims its result, so per-line
+/// stripping eats the leading indentation that is the whole point of reading code back
+/// (`w = resp.sum(...)` losing its four spaces). One pass leaves interior whitespace alone
+/// and trims only the block's ends.
 fn decode_code(html: &str) -> String {
-    const LN: &str = "<span class=\"tali-hl-ln\">";
-    // Substituted into the HTML and stripped in ONE pass, not stripped line by line:
-    // `strip_tags` trims its result, so per-line stripping eats the leading indentation
-    // that is the whole point of reading code back (`w = resp.sum(...)` losing its four
-    // spaces). One pass leaves interior whitespace alone and trims only the block's ends.
-    unescape_html(&strip_tags(&html.replace(LN, "\n")))
+    unescape_html(&strip_tags(html))
 }
 
 /// The kind of a callout div (`class="callout callout-{kind}…"`), e.g. `note`.
@@ -417,84 +403,6 @@ fn split_nested_list(item: &str) -> (&str, Option<&str>) {
         Some(at) => (&item[..at], Some(&item[at..])),
         None => (item, None),
     }
-}
-
-/// Project a stepped block (a `.scrolly`'s `scrolly-steps`, or a `.code-walkthrough`) so
-/// each `.step`'s visible text is its own paragraph, blank-line separated.
-///
-/// A **code walkthrough** also carries the code the steps narrate, in a `.cw-code` `<pre>`
-/// that sits *after* the steps in the DOM (the layout stacks them side by side). Reading
-/// only the steps drops the subject of every sentence: "Sum the responsibilities down the
-/// columns" with no columns in sight. So the code is fenced first, in reading order, and
-/// each step is prefixed with the line(s) it points at (`data-cw-lines`) — the association
-/// the visual walkthrough draws with a highlight, which plain text otherwise loses.
-/// A `.scrolly` has neither, so it projects exactly as before.
-fn project_steps(html: &str) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if let Some((lt, _)) = class_tag_span(html, "cw-code")
-        && let Some(pre) = html[lt..].find("<pre").map(|r| &html[lt + r..])
-    {
-        parts.push(fenced_code(
-            &code_lang(pre).unwrap_or_default(),
-            &decode_code(pre),
-        ));
-    }
-    for (lines, inner) in step_inners(html) {
-        let text = visible(inner);
-        if text.is_empty() {
-            continue;
-        }
-        parts.push(match lines {
-            Some(l) => format!("[lines {l}] {text}"),
-            None => text,
-        });
-    }
-    parts.join("\n\n")
-}
-
-/// The inner HTML of each `<div class="step"…>` in a stepped block, with its
-/// `data-cw-lines` value when it has one, matched depth-aware over `<div`/`</div>` so a
-/// nested `<div>` inside a step does not close it early.
-fn step_inners(html: &str) -> Vec<(Option<String>, &str)> {
-    let open = "<div class=\"step\"";
-    let mut steps = Vec::new();
-    let mut pos = 0;
-    while let Some(rel) = html[pos..].find(open) {
-        let tag_start = pos + rel;
-        let Some(gt) = html[tag_start..].find('>') else {
-            break;
-        };
-        let lines = first_attr(&html[tag_start..tag_start + gt + 1], "data-cw-lines");
-        let start = tag_start + gt + 1;
-        let mut depth = 1usize;
-        let mut i = start;
-        loop {
-            let next_open = html[i..].find("<div");
-            let next_close = html[i..].find("</div>");
-            match (next_open, next_close) {
-                (Some(o), Some(c)) if o < c => {
-                    depth += 1;
-                    i += o + "<div".len();
-                }
-                (_, Some(c)) => {
-                    depth -= 1;
-                    if depth == 0 {
-                        steps.push((lines.clone(), &html[start..i + c]));
-                        i += c + "</div>".len();
-                        break;
-                    }
-                    i += c + "</div>".len();
-                }
-                _ => {
-                    steps.push((lines.clone(), &html[start..]));
-                    i = html.len();
-                    break;
-                }
-            }
-        }
-        pos = i;
-    }
-    steps
 }
 
 /// Project a `{{< input >}}` block's control(s) as `[input] <label> = <value>`, one line
@@ -883,64 +791,6 @@ mod tests {
         assert!(
             out.contains("  - nested b"),
             "nested item indented two spaces:\n{out}"
-        );
-    }
-
-    #[test]
-    fn projects_scrolly_steps_as_separate_paragraphs() {
-        let src = "::: {.scrolly}\n::: {.step}\nThe landscape. High on the wall.\n:::\n\n\
-                   ::: {.step}\nWhich way is downhill. The gradient points across.\n:::\n:::\n";
-        let out = project_src(src);
-        assert!(
-            out.contains("The landscape. High on the wall."),
-            "step 1 text:\n{out}"
-        );
-        assert!(
-            out.contains("Which way is downhill."),
-            "step 2 text:\n{out}"
-        );
-        assert!(
-            !out.contains("wall.Which"),
-            "steps must not merge across their boundary:\n{out}"
-        );
-    }
-
-    #[test]
-    fn projects_a_code_walkthrough_as_its_code_then_line_keyed_narration() {
-        // Item 16 F-03. The steps narrate a code block that sits AFTER them in the DOM, so
-        // projecting only the steps drops the subject of every sentence. The code comes
-        // first (reading order) and each step names the line it points at.
-        let src = "::: {.code-walkthrough}\n```python\ndef m_step(x, resp):\n    \
-                   w = resp.sum(axis=0)\n    return w\n```\n\n\
-                   ::: {.step lines=\"2\"}\nSum the responsibilities down the columns.\n:::\n\n\
-                   ::: {.step lines=\"3\"}\nHand back the effective counts.\n:::\n:::\n";
-        let out = project_src(src);
-        assert!(
-            out.contains("```python\ndef m_step(x, resp):"),
-            "the walkthrough's code must be projected, fenced with its language:\n{out}"
-        );
-        // Indentation is the point of reading code back, and it is exactly what a naive
-        // per-line strip eats.
-        assert!(
-            out.contains("\n    w = resp.sum(axis=0)\n"),
-            "each line keeps its own indentation:\n{out}"
-        );
-        assert!(
-            !out.contains("resp):    w ="),
-            "line-wrapped code must not weld into one line:\n{out}"
-        );
-        assert!(
-            out.contains("[lines 2] Sum the responsibilities down the columns."),
-            "each step names the line it narrates:\n{out}"
-        );
-        assert!(
-            out.contains("[lines 3] Hand back the effective counts."),
-            "{out}"
-        );
-        // The code precedes the narration that refers to it.
-        assert!(
-            out.find("def m_step").unwrap() < out.find("[lines 2]").unwrap(),
-            "code before narration:\n{out}"
         );
     }
 

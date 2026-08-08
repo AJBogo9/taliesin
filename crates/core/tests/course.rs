@@ -1,8 +1,10 @@
 //! Interaction pin for the "course author" demand-probe pilot (corpus/course/).
 //! Locks the feature *combinations* the single-feature corpus docs never exercise
-//! together: shared theorem counters × chapter scoping, cross-PAGE crossrefs, a code
-//! walkthrough in a book chapter, and the hover index over definitional blocks. See
-//! notes/2026-07-22-corpus-demand-probe-course-author.md for the findings this produced.
+//! together: chapter-scoped numbering across THREE float kinds in one book, and
+//! cross-PAGE cross-references in both directions (a later chapter citing an earlier
+//! one's equation and figure, and a still-later chapter citing that chapter's section).
+//! See notes/2026-07-22-corpus-demand-probe-course-author.md for the findings this
+//! produced.
 
 mod common;
 use common::corpus_dir;
@@ -13,32 +15,23 @@ fn course() -> Site {
 }
 
 #[test]
-fn ch2_shares_theorem_counter_and_scopes_to_chapter() {
+fn ch2_scopes_equation_numbers_to_its_chapter() {
     let mle = course().render_page("mle.tmd").expect("mle renders");
-    // Shared counter (theorem+lemma one sequence) AND chapter scoping (2.x): a
-    // combination pinned nowhere else — theorems-shared.tmd is flat, demo-book scopes
-    // an un-shared counter.
+    // Chapter scoping on an EQUATION, which numbers through the same `float_number`
+    // helper as figures and tables but is the one float kind demo-book does not carry.
     assert!(
-        mle.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
-        ),
-        "consistency theorem is 2.1: {mle}"
-    );
-    assert!(
-        mle.contains(
-            "<span class=\"tali-theorem-label\">Lemma<span class=\"tali-theorem-number\">&nbsp;2.2</span></span>"
-        ),
-        "score lemma shares the counter as 2.2: {mle}"
+        mle.contains("Equation&nbsp;2.1") || mle.contains("(2.1)"),
+        "the score equation is numbered 2.1 in chapter 2: {mle}"
     );
 }
 
 #[test]
 fn cross_page_refs_resolve_to_scoped_numbers() {
     let mle = course().render_page("mle.tmd").expect("mle renders");
-    // ch2 references ch1's definition and figure across pages.
+    // ch2 references ch1's equation and figure across pages.
     assert!(
-        mle.contains("#def-expectation") && mle.contains("Definition&nbsp;1.1"),
-        "cross-page ref to the ch1 definition resolves to 1.1: {mle}"
+        mle.contains("#eq-expectation") && mle.contains("1.1"),
+        "cross-page ref to the ch1 equation resolves to 1.1: {mle}"
     );
     assert!(
         mle.contains("#fig-distributions") && mle.contains("Figure&nbsp;1.1"),
@@ -46,15 +39,18 @@ fn cross_page_refs_resolve_to_scoped_numbers() {
     );
 
     let em = course().render_page("em.tmd").expect("em renders");
-    // ch3 references ch2's theorem across pages, and its own theorem is 3.1.
+    // ch3 references ch2's section and ch1's equation across pages, and numbers its own
+    // equation in its own chapter.
     assert!(
-        em.contains("#thm-consistency") && em.contains("Theorem&nbsp;2.1"),
-        "cross-page ref to the ch2 theorem resolves to 2.1: {em}"
+        em.contains("#sec-consistency") && em.contains("Section&nbsp;2."),
+        "cross-page ref to the ch2 section resolves into chapter 2: {em}"
     );
     assert!(
-        em.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;3.1</span></span>"
-        ),
-        "the ELBO theorem is 3.1 in chapter 3: {em}"
+        em.contains("#eq-expectation") && em.contains("1.1"),
+        "cross-page ref to the ch1 equation resolves to 1.1: {em}"
+    );
+    assert!(
+        em.contains("#eq-elbo") && em.contains("3.1"),
+        "the ELBO equation is 3.1 in chapter 3: {em}"
     );
 }

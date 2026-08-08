@@ -8,7 +8,7 @@ title: "Grouping and aggregation"
 turns back into one. The result has one row per distinct key combination, and one
 column per aggregate you asked for.
 
-::: {.definition}
+::: {.callout-note title="Definition"}
 A **grouping key** is the tuple of column values that defines one output row. Rows
 sharing a key are aggregated together; the key columns are carried through to the
 result unchanged.
@@ -31,7 +31,7 @@ to name here. `n_unique` counts distinct values within the group, and `first` ta
 the value from the group's first row in the frame's current order — which is only
 meaningful after an explicit `sort`.
 
-::: {.definition}
+::: {.callout-note title="Definition"}
 An aggregate is **order-dependent** when its result can change under a permutation of
 the input rows that does not change the grouping key. `first` and `last` are
 order-dependent; `sum` and `n_unique` are not.

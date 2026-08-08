@@ -11,7 +11,11 @@ hero:
     - { text: "Read the docs", href: "docs/guide/" }
 ---
 
-{{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="One save. Only the changed block re-renders, in place." >}}
+<figure class="tali-figure">
+<video src="assets/live-edit-dark.mp4" controls muted loop playsinline preload="metadata"
+       aria-label="Screencast"></video>
+<figcaption>One save. Only the changed block re-renders, in place.</figcaption>
+</figure>
 
 ## The edit loop
 

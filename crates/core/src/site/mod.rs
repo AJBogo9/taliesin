@@ -2814,41 +2814,4 @@ pub(crate) mod tests {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
-
-    #[test]
-    fn discover_numbers_cross_page_theorem_refs() {
-        // A theorem is always a literal `::: {.theorem}` div in source, but its NUMBER is
-        // assigned only during render. A cross-page `@thm-` ref must therefore show the
-        // harvested number ("Theorem 2.1"), not a bare "Theorem" label — in the live
-        // preview (plain `discover`, no explicit `harvest_xref_numbers`), not only in the
-        // static build.
-        // b.tmd is chapter 2, so its first theorem is "2.1" with no `theorems:` config —
-        // the same rule, and the same argument, as the figure case directly above: a flat
-        // "Theorem 1" would collide with chapter 1's own first theorem.
-        let root = write_site(
-            "xrefthm",
-            &[
-                (
-                    "_site.yml",
-                    "title: Book\nchapters:\n  - a.tmd\n  - b.tmd\n",
-                ),
-                (
-                    "a.tmd",
-                    "---\ntitle: Alpha\n---\n\nThe result rests on @thm-key.\n",
-                ),
-                (
-                    "b.tmd",
-                    "---\ntitle: Beta\n---\n\n::: {.theorem #thm-key}\nThe statement holds.\n:::\n",
-                ),
-            ],
-        );
-        // `discover` alone (what the live preview uses) must number the cross-page ref.
-        let site = Site::discover(&root);
-        let html = site.render_page("a.tmd").unwrap();
-        assert!(
-            html.contains("<a href=\"b.html#thm-key\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
-            "cross-page theorem ref numbered after discover: {html}"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
 }

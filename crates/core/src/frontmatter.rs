@@ -49,8 +49,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Listings / project pages
     "listing",
     "hero",
-    // Theorem environments (per-document shared-counter config; see render::TheoremConfig).
-    "theorems",
 ];
 
 /// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
@@ -104,6 +102,19 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "r",
         "it was removed on 2026-08-08 with the `{r}` cell language: only `{python}` runs \
          against a kernel now, so set `python:` (or `TALIESIN_PYTHON`) instead",
+    ),
+    (
+        "front-matter key",
+        "theorems",
+        "it was removed on 2026-08-08 with the theorem environments it configured: \
+         nothing counts theorems now, so delete the key and its `shared:` list",
+    ),
+    (
+        "shortcode",
+        "video",
+        "it was removed on 2026-08-08 and nothing replaces the wrapper: write the \
+         `<video controls muted loop playsinline preload=\"metadata\">` tag yourself, in a \
+         `<figure>` with a `<figcaption>` if it needs a caption",
     ),
     // --- The slide-deck engine, retired 2026-08-08. `_site.yml` keeps its own `footer:`
     // and `logo:`; only the per-document deck chrome goes.
@@ -195,12 +206,6 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "image-alt",
         "it was removed on 2026-08-02 with `hero.image`, whose alt text it carried",
     ),
-    (
-        "theorems key",
-        "numbered",
-        "it was removed on 2026-08-02: theorems are numbered and chapter-scoped \
-         automatically, and `shared:` is what survives the block",
-    ),
     // --- `_site.yml`. Scope `config key` is what `site::config`'s validator labels a
     // top-level key, so these are only recognized there.
     (
@@ -235,9 +240,9 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
     (
         "config key",
         "theorems",
-        "it was removed on 2026-08-02 with the `numbered:` policy it carried book-wide: a \
-         chapter that shares counters across kinds says so in its own front matter, \
-         `theorems: { shared: [...] }`",
+        "it was removed on 2026-08-02, and the per-document `theorems:` block that \
+         replaced it went on 2026-08-08 with the theorem environments themselves, so \
+         delete the key",
     ),
     (
         "author key",
@@ -321,12 +326,6 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
          different set of sub-keys (eyebrow / headline / lead / actions), so this is a \
          rewrite rather than a rename",
     ),
-    (
-        "theorems key",
-        "number-within",
-        "it was removed when theorem numbers started scoping to a book chapter \
-         automatically, and nothing replaces it, so delete the key",
-    ),
     // --- Visual minimalism pass, 2026-08-03.
     (
         "listing key",
@@ -371,14 +370,6 @@ pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"
 /// same failure shape the `chapters:` validator exists to prevent, so it warns.
 pub(crate) const HERO_ACTION_KEYS: &[&str] = &["text", "href", "primary"];
 
-/// `theorems:` sub-keys taliesin honors: `shared` (draw one counter across several kinds).
-///
-/// Numbering itself is deliberately not a key: a theorem is numbered, and it scopes to its
-/// numbered book chapter automatically, as every float does. `numbered:` carried the
-/// policies for opting out of that and was retired on 2026-08-02 with its book-wide
-/// `_site.yml` counterpart.
-pub(crate) const THEOREM_KEYS: &[&str] = &["shared"];
-
 /// Validate a document's front matter against taliesin's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
 /// `listing:`, and `hero:` blocks. Membership is decided by a real YAML
@@ -415,15 +406,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
     validate_hero_actions(map, block, &mut out);
-    validate_nested(
-        map,
-        "theorems",
-        "theorems key",
-        THEOREM_KEYS,
-        block,
-        &mut out,
-    );
-    validate_theorem_shared_kinds(map, block, &mut out);
     // `listing:` is one mapping or a sequence of mappings (cv.tmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
@@ -642,41 +624,6 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
                 ));
             }
         }
-    }
-}
-
-/// Validate the *values* of `theorems: shared:`, which name theorem kinds rather than keys.
-///
-/// Only the key was ever checked, so the list itself fell through in silence: `shared:
-/// [theorem, lemna]` drew two separate counters with a clean `check`, and
-/// `corpus/refs/theorems-shared.tmd` went on declaring `proposition` for four days after
-/// that kind was retired. This is the [`crate::render::RETIRED_DIV_CLASSES`]
-/// silent-fallthrough hazard one vocabulary over, and it is answered the same way: a
-/// retired kind gets its registered note (read through
-/// [`crate::render::retired_div_note`], so the two diagnostics cannot drift apart),
-/// anything else gets the usual did-you-mean.
-fn validate_theorem_shared_kinds(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    let Some(serde_yaml::Value::Mapping(theorems)) = map.get("theorems") else {
-        return;
-    };
-    let Some(serde_yaml::Value::Sequence(shared)) = theorems.get("shared") else {
-        return;
-    };
-    for kind in shared.iter().filter_map(|v| v.as_str()) {
-        if crate::render::THEOREM_KINDS.contains(&kind) {
-            continue;
-        }
-        let msg = match crate::render::retired_div_note(kind) {
-            Some(note) => format!("unknown theorem kind `{kind}`: {note}"),
-            None => match closest(kind, crate::render::THEOREM_KINDS) {
-                Some(near) => format!("unknown theorem kind `{kind}` (did you mean `{near}`?)"),
-                None => format!("unknown theorem kind `{kind}`"),
-            },
-        };
-        out.push(located_span(
-            msg,
-            block_key_span(block, "shared").or_else(|| block_key_span(block, "theorems")),
-        ));
     }
 }
 
@@ -929,106 +876,6 @@ mod tests {
         assert_eq!(w[0].line, Some(2), "`treme` is on file line 2");
     }
 
-    /// `number-within` was removed when theorem numbers started scoping to a book chapter
-    /// automatically. A doc that still carries it must be TOLD, not silently ignored: it
-    /// is now an unknown `theorems:` key, which is the whole point of validating sub-keys
-    /// (the same hazard `csl:` was fixed for — a key that reads as honored and does
-    /// nothing).
-    #[test]
-    fn theorems_number_within_is_gone_and_says_so() {
-        // Asserted against `validate_front_matter` directly, not `msgs`: `msgs` drops
-        // `w.line`, and the LINE is the migration story — a located warning is what lets
-        // the dev panel jump an author to the dead key. This is also the only pin on
-        // `nested_key_line` (the sibling test pins `block_key_line`, the top-level one).
-        let w = validate_front_matter("---\ntheorems:\n  number-within: chapter\n---\n\nbody\n");
-        assert_eq!(w.len(), 1, "got: {w:?}");
-        assert_eq!(
-            w[0].message,
-            "unknown theorems key `number-within`: it was removed when theorem numbers \
-             started scoping to a book chapter automatically, and nothing replaces it, so \
-             delete the key"
-        );
-        assert_eq!(w[0].line, Some(3), "`number-within` is on file line 3");
-    }
-
-    #[test]
-    fn theorems_shared_is_the_whole_block() {
-        assert!(
-            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n---\n").is_empty(),
-            "`shared:` is the one honored sub-key"
-        );
-    }
-
-    /// `numbered:` was retired on 2026-08-02 with the book-wide `_site.yml theorems:`
-    /// policy. A leftover one must explain itself rather than be answered with `shared`.
-    #[test]
-    fn theorems_numbered_is_retired_and_says_so() {
-        for value in ["false", "true", "unless-unique"] {
-            let m = msgs(&format!("---\ntheorems:\n  numbered: {value}\n---\n"));
-            let msg = m
-                .iter()
-                .find(|x| x.contains("`numbered`"))
-                .unwrap_or_else(|| panic!("`numbered: {value}` drew no diagnostic: {m:?}"));
-            assert!(
-                msg.contains("removed on 2026-08-02") && msg.contains("`shared:`"),
-                "must say it went and what survives: {msg}"
-            );
-            assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
-        }
-    }
-
-    /// `shared:` names theorem KINDS, and only its *key* was ever validated — the values
-    /// were not. `shared: [theorem, lemna]` silently drew two separate counters, and
-    /// `corpus/refs/theorems-shared.tmd` carried `proposition` for four days after that kind
-    /// was retired with `check` still reporting "no problems found". Same silent
-    /// fallthrough `RETIRED_DIV_CLASSES` exists to prevent, one vocabulary over.
-    #[test]
-    fn theorems_shared_validates_its_kind_values() {
-        let m = msgs("---\ntheorems:\n  shared: [theorem, lemna]\n---\n");
-        assert!(
-            m.iter()
-                .any(|w| w.contains("unknown theorem kind `lemna`") && w.contains("lemma")),
-            "a typo'd kind warns with did-you-mean: {m:?}"
-        );
-
-        // A kind retired on 2026-08-03 explains itself instead of being answered with a
-        // near-miss rename, exactly as the div-class register does.
-        for kind in ["proposition", "example", "remark"] {
-            let m = msgs(&format!(
-                "---\ntheorems:\n  shared: [theorem, {kind}]\n---\n"
-            ));
-            let msg = m
-                .iter()
-                .find(|w| w.contains(&format!("`{kind}`")))
-                .unwrap_or_else(|| panic!("`shared: [{kind}]` drew no diagnostic: {m:?}"));
-            assert!(
-                msg.contains("removed on 2026-08-03"),
-                "must say it went and what survives: {msg}"
-            );
-        }
-
-        // The live set stays clean, so this cannot pass by warning on everything.
-        assert!(
-            msgs("---\ntheorems:\n  shared: [theorem, lemma, corollary, definition, proof]\n---\n")
-                .is_empty(),
-            "every live kind must validate silently"
-        );
-    }
-
-    #[test]
-    fn theorems_block_is_validated() {
-        assert!(
-            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n---\n").is_empty(),
-            "a valid theorems block must not warn"
-        );
-        let m = msgs("---\ntheorems:\n  shard: [theorem]\n---\n");
-        assert!(
-            m.iter()
-                .any(|w| w.contains("unknown theorems key `shard`") && w.contains("shared")),
-            "a typo'd child key warns with did-you-mean: {m:?}"
-        );
-    }
-
     #[test]
     fn flags_unknown_execute_child() {
         // `cache` is the only `execute:` sub-key left, so a typo of IT is what still draws a
@@ -1133,12 +980,12 @@ mod tests {
                 .any(|m| m.contains("`about`") && m.contains("removed") && m.contains("hero")),
             "a removed key must name its successor: {a:?}"
         );
-        // Retirement is scoped to where the key lived: `number-within` was a `theorems:`
-        // sub-key, never a top-level one.
-        let n = msgs("---\ntheorems:\n  number-within: chapter\n---\n");
+        // Retirement is scoped to where the key lived: `echo:` was an `execute:` sub-key,
+        // never a top-level one (and `#| echo:` is still a live CELL option).
+        let n = msgs("---\nexecute:\n  echo: false\n---\n");
         assert!(
             n.iter()
-                .any(|m| m.contains("`number-within`") && m.contains("removed")),
+                .any(|m| m.contains("`echo`") && m.contains("removed")),
             "a retired sub-key must be recognized in its own scope: {n:?}"
         );
         // NEVER phrased as a did-you-mean, even though `about:` has a successor:

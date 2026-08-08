@@ -1,6 +1,6 @@
-//! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The
-//! built-ins are `{{< video clip.mp4 >}}` (a framed screencast) and `{{< input … >}}`
-//! (a reactive control).
+//! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The one
+//! built-in that expands here is `{{< input … >}}` (a reactive control); `{{< include >}}`
+//! is resolved a whole pass earlier (`crate::includes`).
 //! Line-preserving so the include source
 //! map stays valid; `use super::*` reaches the shared `Warning` and HTML-escape helpers.
 
@@ -42,14 +42,12 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     (out, warnings)
 }
 
-/// Every built-in shortcode name the tool implements.
-///
-/// [`SHORTCODE_SPECS`] is NOT this list and must not be used as one: it holds only the
-/// shortcodes whose *arguments* `render_shortcode` lints. `input` is dispatched ahead of
-/// it in [`expand_in_line`], and `include` is resolved a whole pass earlier
-/// (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would report two
-/// of the four as not existing.
-pub const SHORTCODE_NAMES: &[&str] = &["video", "input", "include"];
+/// Every built-in shortcode name the tool implements, and the whole CLOSED vocabulary —
+/// which is what lets a leftover `{{< video >}}` draw a located, named warning instead of
+/// shipping as literal text in silence. Neither is expanded by `expand_in_line`'s general
+/// path: `input` is dispatched ahead of it, and `include` is resolved a whole pass earlier
+/// (`crate::includes`).
+pub const SHORTCODE_NAMES: &[&str] = &["input", "include"];
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
@@ -98,62 +96,30 @@ fn expand_in_line(
                 i = end + 3;
                 continue;
             }
-            match render_shortcode(inner) {
-                Some(html) => {
-                    // Lint the ARGUMENTS of a shortcode that rendered. Until this landed,
-                    // `render_shortcode` had no warning sink at all, so a typo'd flag
-                    // (`control` for `controls`) or key (`postr=` for `poster=`) silently
-                    // did nothing — the only typo surface in the tool that said nothing.
-                    let toks = tokenize_args(inner);
-                    if let Some((name, args)) = toks.split_first() {
-                        validate_shortcode_args(name, args, line_no, warnings);
-                    }
-                    out.push_str(&html);
-                }
-                None => {
-                    // Not a built-in shortcode. Keep it verbatim (nothing is lost), but
-                    // warn: a typo'd shortcode name should be visible in the build log /
-                    // preview diagnostics, not shipped as literal text into the page.
-                    // `include` is handled in an earlier pass (`includes::resolve`); a
-                    // leftover one means that pass already reported it, so don't double-warn.
-                    let name = inner.split_whitespace().next().unwrap_or(inner);
-                    // A KNOWN built-in that returned `None` is not an unknown shortcode: it
-                    // is a built-in missing its positional path. Reporting it as unknown
-                    // sent the author hunting a spelling that was already right.
-                    if SHORTCODE_SPECS.iter().any(|(n, _, _)| *n == name) {
-                        // Two different mistakes reach this branch, and reporting the
-                        // second as the first is the failure this comment's neighbour
-                        // already warns about: a source that IS written but is a URL must
-                        // not be reported as a missing one, or the author goes hunting for
-                        // a path they can plainly see.
-                        let toks = tokenize_args(inner);
-                        let src = toks
-                            .split_first()
-                            .and_then(|(_, args)| source_path(name, args));
-                        warnings.push(
-                            match src.as_deref().and_then(|s| url_scheme(s).map(|k| (s, k))) {
-                                Some((s, scheme)) => {
-                                    refused_url(name, "source", s, scheme, line_no)
-                                }
-                                None => Warning::new(format!(
-                                    "`{{{{< {name} >}}}}` at line {line_no} has no source path \
-                                     (write `{{{{< {name} file >}}}}`)"
-                                ))
-                                .at(None, line_no as u32),
-                            },
-                        );
-                    } else if name != "include" {
-                        warnings.push(
-                            Warning::new(format!(
-                                "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
-                                 (left as literal text)"
-                            ))
-                            .at(None, line_no as u32),
-                        );
-                    }
-                    out.push_str(&line[i..end + 3]); // unknown: keep verbatim
-                }
+            // Nothing else expands here. Keep the invocation verbatim (nothing is lost),
+            // but warn: a typo'd — or RETIRED — shortcode name should be visible in the
+            // build log / preview diagnostics, not shipped as literal text into the page.
+            // `include` is handled in an earlier pass (`includes::resolve`); a leftover one
+            // means that pass already reported it, so don't double-warn.
+            let name = inner.split_whitespace().next().unwrap_or(inner);
+            if name != "include" {
+                // A name this tool USED to expand gets its removal note instead of the bare
+                // "unknown" — the same distinction `RETIRED_KEYS` draws everywhere else, and
+                // read from that same scoped register (scope `shortcode`) so there is no
+                // second list to keep. The `{{<` opener stays in the message either way:
+                // `codes::classify` keys `TAL-SHORTCODE` on it.
+                let tail = match crate::frontmatter::retired_note("shortcode", name) {
+                    Some(note) => format!(": {note}"),
+                    None => " (left as literal text)".to_string(),
+                };
+                warnings.push(
+                    Warning::new(format!(
+                        "unknown shortcode `{{{{< {name} >}}}}` at line {line_no}{tail}"
+                    ))
+                    .at(None, line_no as u32),
+                );
             }
+            out.push_str(&line[i..end + 3]); // unknown: keep verbatim
             i = end + 3;
         } else {
             let ch = line[i..].chars().next().unwrap();
@@ -162,79 +128,6 @@ fn expand_in_line(
         }
     }
     out
-}
-
-/// Render one built-in `name args` shortcode (`video`), or `None` for any
-/// other name (left verbatim by the caller). Args are `key=value` (named) or bare
-/// (positional path); quotes group values with spaces.
-fn render_shortcode(inner: &str) -> Option<String> {
-    let toks = tokenize_args(inner);
-    let (name, args) = toks.split_first()?;
-    // `{{< video clip.mp4 [controls=false] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
-    // [poster=…] [caption="…"] >}}` — a framed screencast (never autoplaying: playback is
-    // user-initiated, see `video_html`), authored in Markdown so a page needs no raw
-    // `<video>` HTML. With `dark=`, the light clip plays on a light page and the dark clip
-    // on a dark page (toggled by `html[data-theme]`), so the screencast matches the theme.
-    if name == "video" {
-        // A path-valued named argument carrying a URL is DROPPED rather than failing the
-        // whole shortcode: the clip still plays, it just plays without the poster (or the
-        // dark variant, or the captions). That is the same graceful degradation
-        // `validate_shortcode_args` already gives a typo'd option — "renders with what it
-        // understood" — and `validate_shortcode_args` is what says so out loud.
-        let path_arg = |key: &str| shortcode_named(args, key).filter(|v| url_scheme(v).is_none());
-        return source_path("video", args)
-            .filter(|src| url_scheme(src).is_none())
-            .map(|src| {
-                video_html(
-                    &src,
-                    path_arg("dark").as_deref(),
-                    path_arg("poster").as_deref(),
-                    shortcode_named(args, "caption").as_deref(), // prose, not a path
-                    path_arg("captions").as_deref(),
-                    playback_mode(args),
-                )
-            });
-    }
-    None
-}
-
-/// How a `{{< video >}}` plays back. Native controls are the DEFAULT (2026-08-03, visual
-/// minimalism pass): hover-play and the click-to-lightbox touch path were both deleted, so
-/// the browser's own control bar is the reader's only remaining way to start a clip at all.
-///
-/// * [`Playback::Controls`] (the default, or an explicit bare `controls`) — muted, looping,
-///   native controls (scrubber, keyboard, fullscreen, PiP).
-/// * [`Playback::Bare`] (`controls=false`) — muted, looping, no control bar at all: the
-///   author's explicit opt-out for a purely decorative clip with no reader-facing play
-///   affordance.
-/// * [`Playback::Sound`] (`audio`) — a narrated explainer: native controls, and neither
-///   `muted` nor `loop` (narration you cannot hear is pointless; narration that restarts
-///   itself is hostile).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Playback {
-    Controls,
-    Bare,
-    Sound,
-}
-
-/// Read the playback ladder off a `{{< video >}}`'s arguments.
-///
-/// `audio` forces `controls` (unmuted media with no pause/volume control is a WCAG 1.4.2
-/// failure), and so does `captions=` (a `<track default>` with no control bar shows captions
-/// the reader cannot turn off) — both win over an explicit `controls=false`, so neither
-/// incoherent combination can be authored at all. `controls=false` is otherwise the one way
-/// to opt out of the new default; a bare `controls` is still accepted (redundant now, but
-/// harmless) so content written before the default flipped is unaffected.
-fn playback_mode(args: &[String]) -> Playback {
-    if shortcode_flag(args, "audio") {
-        Playback::Sound
-    } else if shortcode_named(args, "controls").as_deref() == Some("false")
-        && shortcode_named(args, "captions").is_none()
-    {
-        Playback::Bare
-    } else {
-        Playback::Controls
-    }
 }
 
 /// Whitespace-split `inner`, keeping quoted values (`key="a b"`) as one token and
@@ -265,221 +158,6 @@ fn tokenize_args(inner: &str) -> Vec<String> {
         toks.push(cur);
     }
     toks
-}
-
-/// The first bare (non `key=value`) argument of a shortcode: the path to the media
-/// file, relative to the embedding page.
-///
-/// A token is a *named* argument only when it looks like `key=value` with a plain
-/// identifier key (`[A-Za-z][A-Za-z0-9_-]*` before the first `=`). Anything else is the
-/// positional path, so a path carrying a query string (`clip.mp4?token=abc`) is **not**
-/// mistaken for a named arg just because it contains an `=` after the `?`.
-/// Whether `tok` is a `key=value` named shortcode argument: an identifier key
-/// (`[A-Za-z][A-Za-z0-9_-]*`) immediately followed by `=`. A `?` (or any other
-/// non-identifier character) before the first `=` means the `=` belongs to a query
-/// string / value, not a key, so the token is positional (a path) instead.
-fn is_named_arg(tok: &str) -> bool {
-    let Some(key) = tok.split('=').next().filter(|_| tok.contains('=')) else {
-        return false;
-    };
-    let mut chars = key.chars();
-    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic())
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
-
-/// The URL scheme a shortcode's path argument carries, if any.
-///
-/// `{{< video tour.mp4 >}}` documents its positional argument as a path **relative to
-/// the embedding page**, so a URL there names nothing the builder can reach. A
-/// scheme-bearing token is therefore not a path at all, and passing it through put an
-/// author-controlled URL directly into a `<video src>` with nothing but attribute
-/// escaping in the way. It also slipped past `check`'s missing-local-media diagnostic,
-/// which only looks at local files.
-///
-/// Two boundaries worth stating, because both are shapes that *look* like a scheme:
-///
-/// - A **single-letter** scheme is not reported: that is a Windows drive (`C:/clips/x.mp4`).
-/// - A **query string** is not reported: `clip.mp4?token=a:b` splits at the first `:` into
-///   a would-be scheme containing `?` and `=`, which the grammar below rejects. That case
-///   is load-bearing — `is_named_arg` already goes out of its way to keep such a path
-///   positional, and re-breaking it here would undo that.
-///
-/// Protocol-relative `//host/x.mp4` is reported as `//`: it is a network fetch wearing a
-/// path's clothes, and it is the one shape that looks relative and is not.
-fn url_scheme(tok: &str) -> Option<&str> {
-    if tok.starts_with("//") {
-        return Some("//");
-    }
-    let (scheme, _) = tok.split_once(':')?;
-    let mut chars = scheme.chars();
-    let head_ok = matches!(chars.next(), Some(c) if c.is_ascii_alphabetic());
-    let tail_ok = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
-    (head_ok && tail_ok && scheme.len() > 1).then_some(scheme)
-}
-
-/// The positional source path of a built-in, by name — the one place the "which token is
-/// the path?" rule lives, so the renderer and the diagnostic that explains a refusal read
-/// the same token instead of re-deriving it from two copies of the rule.
-fn source_path(name: &str, args: &[String]) -> Option<String> {
-    match name {
-        "video" => video_path(args),
-        _ => None,
-    }
-}
-
-/// The `key=value` arguments whose value is a PATH (resolved relative to the page), as
-/// opposed to prose like `caption=` / `title=`. Kept beside [`SHORTCODE_SPECS`] because it
-/// is the same closed vocabulary viewed by type: these are the keys [`url_scheme`] guards,
-/// and a path-valued key added there but not here is silently unguarded.
-const PATH_KEYS: [(&str, &[&str]); 1] = [("video", &["dark", "poster", "captions"])];
-
-/// The path-valued keys declared for `name`.
-fn path_keys(name: &str) -> &'static [&'static str] {
-    PATH_KEYS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, keys)| *keys)
-        .unwrap_or(&[])
-}
-
-/// How a refused URL argument reads to the author: what they wrote, why it is not a path,
-/// and what the argument actually takes.
-fn refused_url(name: &str, what: &str, value: &str, scheme: &str, line_no: usize) -> Warning {
-    let scheme = if scheme == "//" {
-        "protocol-relative".to_string()
-    } else {
-        format!("`{scheme}:`")
-    };
-    Warning::new(format!(
-        "`{{{{< {name} >}}}}` at line {line_no}: {what} `{value}` is a {scheme} URL, not a \
-         path — this shortcode takes a file relative to the page"
-    ))
-    .at(None, line_no as u32)
-}
-
-/// The bare (valueless) flags `{{< video >}}` accepts. They are not paths, so
-/// [`video_path`] must skip them: the positional source is otherwise "the first token that
-/// is not `key=value`", and `{{< video controls clip.mp4 >}}` would take `controls` as the
-/// clip.
-const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
-
-/// The `key=value` arguments each built-in shortcode honors, as `(name, keys, flags)`.
-/// **The vocabulary is closed**, which is what lets [`validate_shortcode_args`] tell a typo
-/// from an argument it simply has not heard of — the same closed-vocabulary contract front
-/// matter, cell options and `_site.yml` are linted against.
-const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 1] = [(
-    // `controls` is both a bare flag (`VIDEO_FLAGS`, redundant now it is the default)
-    // AND a named key (`controls=false`, the opt-out) — the two spellings coexist
-    // deliberately so pre-existing `{{< video … controls >}}` content still validates.
-    "video",
-    &["dark", "poster", "caption", "captions", "controls"],
-    &VIDEO_FLAGS,
-)];
-
-/// Whether a bare token is more plausibly a **misspelled flag** than a source path. A path
-/// carries an extension or a directory separator; a flag is a bare word. Without this the
-/// positional-source rule ("the first token that is neither `key=value` nor a known flag")
-/// hands the `src` to the typo: `{{< video control tour.mp4 >}}` rendered
-/// `<video src="control">`, which is a broken player rather than a missing option.
-fn looks_like_flag_typo(tok: &str, flags: &[&'static str]) -> bool {
-    !tok.contains('.')
-        && !tok.contains('/')
-        && flags
-            .iter()
-            .any(|f| crate::frontmatter::closest(tok, &[f]).is_some())
-}
-
-/// The positional source path of a `{{< video >}}`: the first argument that is neither a
-/// `key=value` named argument, nor one of the bare [`VIDEO_FLAGS`], nor a near-miss
-/// spelling of one — so flag order is free and a typo'd flag does not become the clip.
-fn video_path(args: &[String]) -> Option<String> {
-    args.iter()
-        .find(|a| {
-            !is_named_arg(a)
-                && !VIDEO_FLAGS.contains(&a.as_str())
-                && !looks_like_flag_typo(a, &VIDEO_FLAGS)
-        })
-        .cloned()
-}
-
-/// Lint one built-in shortcode's arguments against its closed vocabulary, in the same
-/// "unknown X `y` (did you mean `z`?)" voice the front-matter and `_site.yml` linters use.
-///
-/// **Why this exists at all:** `render_shortcode` had no warning sink, so
-/// `{{< video x.mp4 control >}}` produced no controls and said nothing — the only typo
-/// surface in the tool that was silent. It is a *warning*, never a failure: the shortcode
-/// still renders with the options it did understand, exactly as before.
-///
-/// Everything is reported per token, so one line can name more than one mistake. The
-/// positional path is not validated here (a missing or misspelled file is the asset
-/// checker's job, and a path is not a vocabulary).
-fn validate_shortcode_args(
-    name: &str,
-    args: &[String],
-    line_no: usize,
-    warnings: &mut Vec<Warning>,
-) {
-    let Some((_, keys, flags)) = SHORTCODE_SPECS.iter().find(|(n, _, _)| *n == name) else {
-        return; // not a built-in with a declared vocabulary (`input` lints its own)
-    };
-    let mut saw_path = false;
-    for tok in args {
-        if is_named_arg(tok) {
-            let key = tok.split('=').next().unwrap_or(tok);
-            if !keys.contains(&key) {
-                warnings.push(
-                    Warning::new(format!(
-                        "unknown `{{{{< {name} >}}}}` argument `{key}=`{} at line {line_no}",
-                        suggestion(key, keys, flags)
-                    ))
-                    .at(None, line_no as u32),
-                );
-            } else if path_keys(name).contains(&key) {
-                // A KNOWN key whose value is a path: the renderer drops it when it carries
-                // a URL, so this is what tells the author it was dropped. `caption=` is
-                // prose and is deliberately not in `path_keys`, so a colon in a sentence
-                // never reaches here.
-                let value = tok.split_once('=').map(|(_, v)| v).unwrap_or("");
-                if let Some(scheme) = url_scheme(value) {
-                    warnings.push(refused_url(
-                        name,
-                        &format!("`{key}=`"),
-                        value,
-                        scheme,
-                        line_no,
-                    ));
-                }
-            }
-        } else if flags.contains(&tok.as_str()) {
-            // a valid bare flag
-        } else if !saw_path && !looks_like_flag_typo(tok, flags) {
-            saw_path = true; // the positional source path
-        } else {
-            warnings.push(
-                Warning::new(format!(
-                    "unknown `{{{{< {name} >}}}}` option `{tok}`{} at line {line_no}",
-                    suggestion(tok, keys, flags)
-                ))
-                .at(None, line_no as u32),
-            );
-        }
-    }
-}
-
-/// " (did you mean `x`?)" for the nearest name in either vocabulary, or "". Named keys are
-/// offered with their `=` so the suggestion is the literal text to type.
-fn suggestion(tok: &str, keys: &[&'static str], flags: &[&'static str]) -> String {
-    let all: Vec<&'static str> = keys.iter().chain(flags.iter()).copied().collect();
-    match crate::frontmatter::closest(tok, &all) {
-        Some(hit) if keys.contains(&hit) => format!(" (did you mean `{hit}=`?)"),
-        Some(hit) => format!(" (did you mean `{hit}`?)"),
-        None => String::new(),
-    }
-}
-
-/// Whether a bare (valueless) flag token is present, matched whole.
-fn shortcode_flag(args: &[String], flag: &str) -> bool {
-    args.iter().any(|a| a == flag)
 }
 
 /// A shortcode's `key=value` argument by name (quotes already stripped by the tokenizer).
@@ -600,94 +278,8 @@ fn input_shortcode(
     format!("<div class=\"tali-input\">{label_html}{control}{readout}</div>")
 }
 
-/// The HTML for a `{{< video >}}`: a framed `<video>` with an optional caption. Playback is
-/// **never** `autoplay` — an autoplaying loop beside body text is a WCAG 2.2.2 ("Pause,
-/// Stop, Hide") failure — and the [`Playback`] ladder decides how the reader starts it: by
-/// default the clip is muted + looping with native `controls` (the browser's own player —
-/// scrubber, keyboard, volume, fullscreen, PiP — no player library, and no restyling of
-/// controls the browser already ships), `controls=false` opts out of the control bar
-/// entirely, and `audio` unmutes/unloops and forces controls back on. `captions=` adds a
-/// caption `<track>`. With a `dark` source, both clips are emitted and CSS shows the one
-/// matching `html[data-theme]`. Raw-HTML, passed through.
-fn video_html(
-    src: &str,
-    dark: Option<&str>,
-    poster: Option<&str>,
-    caption: Option<&str>,
-    captions: Option<&str>,
-    playback: Playback,
-) -> String {
-    let poster_attr = poster
-        .map(|p| format!(" poster=\"{}\"", escape_attr(p)))
-        .unwrap_or_default();
-    // `muted loop` is the silent-screencast contract; a narrated clip drops both (you cannot
-    // hear a muted narration, and a lecture that silently restarts itself is hostile).
-    // `controls` hands playback to the browser's native player.
-    let (silent_attrs, controls_attr) = match playback {
-        Playback::Bare => (" muted loop", ""),
-        Playback::Controls => (" muted loop", " controls"),
-        Playback::Sound => ("", " controls"),
-    };
-    // A caption track for the narration (WCAG 1.2.2). `default` shows it without a click;
-    // the control bar `controls` guarantees (see `playback_mode`) is what lets it be turned
-    // back off. No `srclang`: it is optional for `kind="captions"`, and guessing a language
-    // would be worse than omitting it.
-    let track = captions
-        .map(|c| {
-            format!(
-                "<track kind=\"captions\" src=\"{}\" label=\"Captions\" default>",
-                escape_attr(c)
-            )
-        })
-        .unwrap_or_default();
-    // The caption names the video for assistive tech; a caption-less clip falls back to what
-    // it is — a silent "Screencast", or a narrated "Video". Escaped since it lands in a
-    // double-quoted attribute.
-    let label_attr = format!(
-        " aria-label=\"{}\"",
-        escape_attr(caption.unwrap_or(match playback {
-            Playback::Sound => "Video",
-            _ => "Screencast",
-        }))
-    );
-    // A light/dark PAIR ships both clips but only one is ever visible, so the theme-hidden
-    // one must not download. The pair carries `data-src` (no `src`); `syncThemeVideos`
-    // (theme.rs) promotes `data-src`→`src` on the visible variant only, on load + every
-    // theme change — so exactly one clip downloads. A single-source video keeps an eager
-    // `src` (works without JS; nothing to save). `preload="metadata"` renders the first
-    // frame as a still while paused (no autoplay forces the load anymore). `tabindex="0"`
-    // makes the clip keyboard-reachable: focus no longer starts playback itself (hover-play
-    // was deleted 2026-08-03, visual minimalism pass; native `controls` is the only way to
-    // play now), it just speeds keyboard reach to that control bar instead of requiring a
-    // Tab through everything ahead of it.
-    let video = |s: &str, class: &str, lazy: bool| {
-        let src_attr = if lazy { "data-src" } else { "src" };
-        format!(
-            "<video{cls} {src_attr}=\"{}\"{poster_attr}{silent_attrs}{controls_attr} playsinline preload=\"metadata\" tabindex=\"0\"{label_attr}>{track}</video>",
-            escape_attr(s),
-            cls = if class.is_empty() {
-                String::new()
-            } else {
-                format!(" class=\"{class}\"")
-            },
-        )
-    };
-    let videos = match dark {
-        Some(d) => format!(
-            "{}{}",
-            video(src, "tali-video-light", true),
-            video(d, "tali-video-dark", true)
-        ),
-        None => video(src, "", false),
-    };
-    let cap = caption
-        .map(|c| format!("<figcaption>{}</figcaption>", html_escape(c)))
-        .unwrap_or_default();
-    format!("<figure class=\"tali-video\">{videos}{cap}</figure>")
-}
-
 #[cfg(test)]
-mod arg_validation_tests {
+mod unknown_shortcode_tests {
     use super::*;
 
     /// Every warning `expand_shortcodes` produces for one line of source.
@@ -700,186 +292,52 @@ mod arg_validation_tests {
     }
 
     #[test]
-    fn a_url_source_is_refused_because_the_built_in_takes_a_page_relative_path() {
-        // Item 97. `{{< video >}}` documents its positional argument as a file relative to
-        // the page, so a scheme-bearing token is not a path — yet it went straight into a
-        // `<video src>` with only attribute escaping in the way, and slipped past `check`'s
-        // missing-local-media diagnostic (which only looks at local files).
-        for src in [
-            "{{< video javascript:alert(1) >}}\n",
-            "{{< video https://evil.example/x.mp4 >}}\n",
-            "{{< video data:text/html,x >}}\n",
-        ] {
-            let (html, warnings) = expand_shortcodes(src);
-            // The shortcode does not expand at all. What is left is the source text
-            // verbatim — the existing "nothing is lost" path an unrecognised shortcode
-            // already takes — so the URL survives as inert page text and never becomes an
-            // `<iframe src>` / `<video src>`. Assert the ATTRIBUTE, not the substring:
-            // the literal `{{< … >}}` still contains the URL, which is the point.
-            assert!(
-                !html.contains("<video"),
-                "no media element may be built from a URL source: {html}"
-            );
-            assert!(
-                !html.contains("src=\""),
-                "and nothing may carry it in a src attribute: {html}"
-            );
-            let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
-            assert_eq!(msgs.len(), 1, "exactly one warning for {src:?}: {msgs:?}");
-            assert!(
-                msgs[0].contains("not a path"),
-                "and it must say WHY, not report a missing source the author can see: \
-                 {msgs:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_url_in_a_path_valued_argument_is_dropped_but_the_clip_still_plays() {
-        // The named path arguments are the obvious bypass of the check above: `dark=` is
-        // literally a second video source. Dropping the argument (rather than failing the
-        // whole shortcode) matches how a typo'd option already degrades — "renders with
-        // what it understood".
-        let (html, warnings) = expand_shortcodes(
-            "{{< video tour.mp4 dark=javascript:alert(1) poster=//e.x/p.png >}}\n",
-        );
-        assert!(
-            html.contains("src=\"tour.mp4\"") || html.contains("data-src=\"tour.mp4\""),
-            "the clip itself still plays: {html}"
-        );
-        assert!(
-            !html.contains("javascript:alert(1)") && !html.contains("//e.x/p.png"),
-            "neither URL reaches the page: {html}"
-        );
-        let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
-        assert_eq!(msgs.len(), 2, "one per refused argument: {msgs:?}");
-        assert!(
-            msgs.iter().any(|m| m.contains("`dark=`"))
-                && msgs.iter().any(|m| m.contains("`poster=`")),
-            "each names the argument it dropped: {msgs:?}"
-        );
-    }
-
-    #[test]
-    fn the_scheme_check_leaves_real_paths_alone() {
-        // The controls that stop the check above from passing by refusing everything.
-        // Each of these is a shape that LOOKS scheme-ish and is a legitimate path.
-        for src in [
-            "{{< video clip.mp4 >}}\n",
-            // A query string: `is_named_arg` already goes out of its way to keep this
-            // positional, and splitting at the first `:` must not undo that.
-            "{{< video clip.mp4?token=a:b >}}\n",
-            // A Windows drive is a single-letter "scheme" and is not one.
-            "{{< video C:/clips/tour.mp4 >}}\n",
-            "{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption=\"A: a tour\" >}}\n",
-        ] {
-            let (_, warnings) = expand_shortcodes(src);
-            let msgs: Vec<String> = warnings.into_iter().map(|w| w.message).collect();
-            assert!(msgs.is_empty(), "{src:?} must not warn: {msgs:?}");
-        }
-        // And a caption is prose: a colon in a sentence is not a scheme.
-        let (html, _) = expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n");
-        assert!(html.contains("Fig 1: the tour"), "caption survives: {html}");
-    }
-
-    #[test]
-    fn a_typod_bare_flag_warns_with_a_did_you_mean() {
-        // Item 77 residual: `{{< video x.mp4 control >}}` (for `controls`) got no controls
-        // and no warning, because `render_shortcode` had no warning sink — while every
-        // other typo surface in the tool (front matter, cell options, `_site.yml`) warns.
-        let w = warn_msgs("{{< video tour.mp4 control >}}\n");
-        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
-        assert!(
-            w[0].contains("control") && w[0].contains("controls"),
-            "the typo must be named and its fix suggested: {w:?}"
-        );
-    }
-
-    #[test]
-    fn a_typod_named_argument_warns_too() {
-        // Equally silent today, and the same one-character mistake: `postr=` for `poster=`.
-        let w = warn_msgs("{{< video tour.mp4 postr=cover.png >}}\n");
-        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
-        assert!(
-            w[0].contains("postr") && w[0].contains("poster"),
-            "the typo'd key must be named and its fix suggested: {w:?}"
-        );
-    }
-
-    #[test]
-    fn a_typod_flag_before_the_path_does_not_steal_the_source() {
-        // Worse than ignored: the positional source is "the first token that is neither
-        // `key=value` nor a known flag", so a typo'd flag WRITTEN FIRST became the `src`
-        // and the real clip became a stray argument. A bare token with no `.` and no `/`
-        // that is within edit distance 2 of a known flag is read as the typo it is.
-        let (html, warnings) = expand_shortcodes("{{< video control tour.mp4 >}}\n");
-        assert!(
-            html.contains("src=\"tour.mp4\""),
-            "the real clip must still be the source: {html}"
-        );
-        let msgs: Vec<_> = warnings.into_iter().map(|w| w.message).collect();
-        assert_eq!(msgs.len(), 1, "exactly one warning: {msgs:?}");
-        assert!(msgs[0].contains("control"), "…naming the typo: {msgs:?}");
-    }
-
-    #[test]
-    fn every_valid_spelling_stays_silent() {
-        // The half that keeps this honest: a warning on correct authoring is worse than
-        // no warning at all. Each of these is a documented, working invocation.
-        for src in [
-            "{{< video tour.mp4 >}}\n",
-            "{{< video tour.mp4 controls >}}\n",
-            "{{< video tour.mp4 audio captions=tour.vtt >}}\n",
-            "{{< video tour.mp4 dark=tour-dark.mp4 poster=cover.png caption=\"A tour\" >}}\n",
-            // A path carrying a query string: the `=` belongs to the value, not a key.
-            "{{< video clip.mp4?token=abc >}}\n",
-        ] {
-            assert!(
-                warn_msgs(src).is_empty(),
-                "valid authoring must not warn ({src:?}): {:?}",
-                warn_msgs(src)
-            );
-        }
-    }
-
-    #[test]
-    fn a_builtin_with_no_source_path_says_so_instead_of_unknown_shortcode() {
-        // `render_shortcode` returns `None` when a known built-in has no positional path,
-        // which fell through to the unknown-name branch — so a real `video` was reported
-        // as an unknown shortcode, sending the author to hunt a spelling that was right.
-        let w = warn_msgs("{{< video >}}\n");
-        assert_eq!(w.len(), 1, "exactly one warning: {w:?}");
-        assert!(
-            !w[0].contains("unknown shortcode"),
-            "a known built-in must not be reported as unknown: {w:?}"
-        );
-        assert!(
-            w[0].contains("video") && w[0].contains("path"),
-            "it must say what is missing: {w:?}"
-        );
-        // A genuinely unknown name keeps its own message.
-        let u = warn_msgs("{{< vidoe tour.mp4 >}}\n");
-        assert!(
-            u.iter().any(|m| m.contains("unknown shortcode")),
-            "an unknown name still reports as unknown: {u:?}"
-        );
-    }
-
-    #[test]
-    fn an_argument_warning_is_located_on_its_own_line() {
-        // Located like every other render warning, so the preview can link to it.
-        let (_, warnings) = expand_shortcodes("intro\n\n{{< video tour.mp4 control >}}\n");
+    fn an_unknown_shortcode_stays_literal_and_warns_on_its_own_line() {
+        // Nothing is lost — the invocation is copied through verbatim — but it must be
+        // VISIBLE, located, in the build log and the preview diagnostics. This is the whole
+        // reason the shortcode vocabulary is closed.
+        let src = "intro\n\n{{< sidebar x >}}\n";
+        let (html, warnings) = expand_shortcodes(src);
+        assert!(html.contains("{{< sidebar x >}}"), "kept verbatim: {html}");
         assert_eq!(warnings.len(), 1);
+        assert_eq!(
+            warnings[0].message,
+            "unknown shortcode `{{< sidebar >}}` at line 3 (left as literal text)"
+        );
         assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
     }
 
     #[test]
-    fn a_shortcode_inside_a_code_fence_is_not_validated() {
-        // The documentation case: the guide shows `{{< video … >}}` spellings in fenced
-        // blocks and inline code. Those are examples, not invocations — expansion already
-        // skips them, and validation must not reach around that.
-        assert!(warn_msgs("```\n{{< video x.mp4 control >}}\n```\n").is_empty());
-        assert!(warn_msgs("see `{{< video x.mp4 control >}}` here\n").is_empty());
+    fn a_retired_shortcode_answers_with_its_removal_note_not_a_bare_unknown() {
+        // The register's whole job: a removal and a typo are different mistakes, and the
+        // author has to be told which one they made. Read out of the scoped `RETIRED_KEYS`
+        // under the `shortcode` scope, so there is no second list.
+        let w = warn_msgs("{{< video tour.mp4 caption=\"A tour\" >}}\n");
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(
+            w[0].starts_with("unknown shortcode `{{< video >}}` at line 1: it was removed on"),
+            "must carry the register's own note: {w:?}"
+        );
+        assert!(
+            !w[0].contains("did you mean"),
+            "a retirement is not a did-you-mean: {w:?}"
+        );
+    }
+
+    #[test]
+    fn a_shortcode_inside_a_code_fence_or_inline_code_is_an_example_not_an_invocation() {
+        // The documentation case: the guide shows shortcode spellings in fenced blocks and
+        // inline code. Those are examples — expansion already skips them, and the warning
+        // must not reach around that.
+        assert!(warn_msgs("```\n{{< sidebar x >}}\n```\n").is_empty());
+        assert!(warn_msgs("see `{{< sidebar x >}}` here\n").is_empty());
+    }
+
+    #[test]
+    fn a_leftover_include_does_not_double_warn() {
+        // `includes::resolve` runs a whole pass earlier and already reported anything it
+        // could not expand, so this pass must stay silent about it.
+        assert!(warn_msgs("{{< include nope.tmd >}}\n").is_empty());
     }
 }
 

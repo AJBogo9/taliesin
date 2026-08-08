@@ -1,8 +1,8 @@
 # Results
 
 What we found, building on the methods in @sec-methods (in particular the
-configuration described in @sec-setup). It also leans on @thm-kl from the
-methods chapter.
+configuration described in @sec-setup). It also leans on the three stages in
+@fig-pipeline from the methods chapter.
 
 ```{mermaid}
 %%| label: fig-stages

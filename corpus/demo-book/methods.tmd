@@ -8,11 +8,8 @@ The approach in one display equation:
 
 $$ D_{\mathrm{KL}}(P\,\|\,Q) = \sum_k p_k \log\frac{p_k}{q_k} $$
 
-::: {.theorem #thm-kl}
-The KL divergence is non-negative, with equality iff $P = Q$.
-:::
-
-By @thm-kl, the objective is bounded below.
+The divergence is non-negative, with equality exactly when $P = Q$, so the objective is
+bounded below.
 
 ## Setup {#sec-setup}
 

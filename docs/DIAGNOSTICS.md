@@ -134,17 +134,9 @@ To fix: Remove the `width=` (the columns are equal), or set an explicit column c
 
 **a misspelled or retired feature div class**
 
-A `:::` fenced div carries a class that is a near-miss of one Taliesin implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the feature never dispatches and the div renders as a plain container. Div classes are an OPEN vocabulary — a genuinely custom class you style yourself is silent — so a near-miss fires only within edit distance 2 of a known name. A class Taliesin used to implement and has since removed (`.columns`; `.sidenote`/`.marginnote`/`.aside`, retired 2026-08-03 in favor of the single `.column-margin` spelling; or `.proposition`/`.example`/`.remark`, retired 2026-08-03 along with their theorem kinds) fires unconditionally instead, with a removal note rather than a guessed rename.
+A `:::` fenced div carries a class that is a near-miss of one Taliesin implements (`.column-margn` for `.column-margin`), so the feature never dispatches and the div renders as a plain container. Div classes are an OPEN vocabulary — a genuinely custom class you style yourself is silent — so a near-miss fires only within edit distance 2 of a known name. A class Taliesin used to implement and has since removed (`.columns`; `.sidenote`/`.marginnote`/`.aside`, retired 2026-08-03 in favor of the single `.column-margin` spelling; the theorem environments and the narrative widgets `.panel-tabset`/`.code-walkthrough`/`.scrolly`/`.step`, retired 2026-08-08) fires unconditionally instead, with a removal note rather than a guessed rename.
 
 To fix: Correct the class to the one the message suggests, or — for a retired class — to the replacement its removal note names. If the class really is your own, rename it so it is not a near-miss of a built-in.
-
-## TAL-DIV-PARTS
-
-**a feature div is missing a part it needs**
-
-A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not the part that makes it work: a tabset builds its tabs from `##` headings, a walkthrough pins a code block in its sticky panel, and a scrolly needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to scroll past it. The container still renders, just half-formed: a tab strip with no tabs, an empty sticky panel, a scroller that drives nothing. Distinct from TAL-EMPTY-DIV, which is a feature div with no content at all.
-
-To fix: Add the missing part named in the message: `##` headings inside the tabset, a fenced code block inside the walkthrough, or a stage and `.step` blocks inside the scrolly.
 
 ## TAL-DUP-ID
 
@@ -158,15 +150,15 @@ To fix: Give one heading an explicit distinct id (`## Title {#unique-id}`), or r
 
 **an empty feature div renders nothing**
 
-A `:::` fenced div names a real feature (a `.input` reactive control, a `.callout-…`, a `.panel-tabset`, a theorem, …) but has no content between its fences, so it is dropped and renders nothing. The most common case is reaching for `::: {.input name="k"}` as a div — the reactive input control is a shortcode, not a fenced div.
+A `:::` fenced div names a real feature (a `.input` reactive control, a `.callout-…`, a `.column-page` width escape) but has no content between its fences, so it is dropped and renders nothing. The most common case is reaching for `::: {.input name="k"}` as a div — the reactive input control is a shortcode, not a fenced div.
 
-To fix: Put content between the `:::` fences (the callout body, the tabset's `##` headings, the theorem statement), or, for a reactive input, use the shortcode form `{{< input name="k" … >}}` instead of a div.
+To fix: Put content between the `:::` fences, or, for a reactive input, use the shortcode form `{{< input name="k" … >}}` instead of a div.
 
 ## TAL-FM-KEY
 
 **an unknown key in front matter**
 
-A key in the document's front matter (or a nested `execute:`/`listing:`/`hero:`/`theorems:`/`prose-lint:` block) is not in Taliesin's closed vocabulary. It is a typo, or a key from another tool that Taliesin does not implement, so it would be silently ignored.
+A key in the document's front matter (or a nested `execute:`/`listing:`/`hero:`/`prose-lint:` block) is not in Taliesin's closed vocabulary. It is a typo, or a key from another tool that Taliesin does not implement, so it would be silently ignored.
 
 To fix: Correct the key to the nearest valid name (`check --format json` carries a `suggestion.replacement` for a near-miss), or remove it. The front-matter reference lists every recognized key.
 
@@ -246,7 +238,7 @@ To fix: Fix the LaTeX at the reported location: balance braces and `\left`/`\rig
 
 **a local video was not found**
 
-A `{{< video clip.mp4 >}}` (or similar) names a local media file that does not exist relative to the document.
+A hand-written `<video src=…>` / `<source src=…>` / `poster=` names a local media file that does not exist relative to the document.
 
 To fix: Correct the path or add the file. Remote media URLs are not checked.
 
@@ -326,31 +318,15 @@ To fix: Write the section, or delete the heading. If it was meant to group other
 
 **a shortcode taliesin could not read as written**
 
-A `{{< … >}}` invocation names something the tool does not know: an unknown shortcode name, an unknown bare flag or `key=` argument, or a built-in with no source path. Nothing is lost — an unknown name stays on the page as literal text, and a known shortcode still renders with the options it did understand — which is exactly why this used to be silent: the page looked fine and the option you asked for simply never happened.
+A `{{< … >}}` invocation names something the tool does not know: a typo, or a shortcode Taliesin used to expand and has since removed. Nothing is lost — the invocation stays on the page as literal text — which is exactly why this used to be silent: the page looked fine and the thing you asked for simply never happened. A RETIRED name carries its removal note instead of a bare "unknown".
 
-To fix: Fix the spelling inside the braces; the message names the nearest known spelling when there is one. The built-ins are `{{< include file.tmd >}}`, `{{< video clip.mp4 [controls] [audio] [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A shortcode written as an *example* belongs in a code fence or backticks, which are never expanded and never linted.
-
-## TAL-STEP-LINES
-
-**a `.step lines=` uses a step separator**
-
-The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. The `|` is the STEP separator of a `code-line-numbers="1|2-3"` spec; a `.step` is already one step, so its own `lines=` is parsed as comma-separated ranges only. The `|` matches neither a range nor a number, so the step silently focuses zero lines.
-
-To fix: Use comma-separated ranges within the step (`lines="3-5,8"`), and express multiple reveal states as separate `.step` blocks — one per pipe group.
-
-## TAL-THM-KIND
-
-**an unknown theorem kind in `theorems: shared:`**
-
-The `shared:` list names theorem kinds that should draw ONE counter, and an entry here is not one of Taliesin's five (`theorem`, `lemma`, `corollary`, `definition`, `proof`). An unrecognized kind is simply skipped, so the counter you asked to share silently stays separate and the numbering is wrong in a way nothing on the page announces. `proposition`, `example` and `remark` were retired on 2026-08-03 with their div classes, so a list carried over from before then names kinds that no longer exist.
-
-To fix: Drop the entry, or replace it with the surviving kind the message names (`theorem` covers a proposition — both render in the same `plain` style). A typo draws the nearest match instead.
+To fix: Fix the spelling inside the braces, or — for a retired shortcode — write what its removal note names. The vocabulary is exactly two: `{{< include file.tmd >}}` and `{{< input … >}}`. A shortcode written as an *example* belongs in a code fence or backticks, which are never expanded and never linted.
 
 ## TAL-XREF-UNDEF
 
 **a cross-reference points at nothing**
 
-An @-reference (`@fig-…`, `@sec-…`, `@tbl-…`, `@thm-…`) names a label that no figure, section, table, or theorem in the document defines, so it cannot resolve to a number or a link.
+An @-reference (`@fig-…`, `@sec-…`, `@tbl-…`, `@eq-…`) names a label that no figure, section, table or equation in the document defines, so it cannot resolve to a number or a link. A `@thm-…`/`@lem-…`/`@cor-…`/`@def-…` always lands here now: the theorem environments were retired on 2026-08-08 and nothing can define one of those anchors any more.
 
 To fix: Fix the reference to match a real label (the message suggests the nearest), or add the label to the target you meant to point at.
 

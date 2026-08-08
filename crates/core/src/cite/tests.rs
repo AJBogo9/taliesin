@@ -194,13 +194,14 @@ fn validate_xrefs_flags_only_unresolved_markers() {
     assert!(validate_xrefs(&ok).is_empty());
 }
 
-/// The two halves of the 2026-08-03 theorem retirement, which must not drift apart.
-/// `proposition`/`example`/`remark` left [`crate::render::THEOREM_KINDS`], and nothing else
-/// mints a `prp-`/`exm-`/`rem-` anchor, so an author can no longer *define* one of these
-/// targets. The prefixes stay in [`XREF_LABELS`] on purpose, so a leftover `@prp-a` still
-/// resolves far enough to be reported broken rather than passing through as literal text
-/// (the silent fallthrough `RETIRED_DIV_CLASSES` exists to prevent). But they must not be
-/// *offered*: completing `@prp-` invites the author to write a reference guaranteed to break.
+/// The two halves of a cross-reference retirement, which must not drift apart. Seven of the
+/// twelve prefixes name a construct nothing can define any more: `prp`/`exm`/`rem` lost
+/// their theorem kinds on 2026-08-03, and `thm`/`lem`/`cor`/`def` lost theirs on 2026-08-08
+/// when the theorem environments went entirely. The prefixes stay in [`XREF_LABELS`] on
+/// purpose, so a leftover `@thm-a` still resolves far enough to be reported broken rather
+/// than passing through as literal text (the silent fallthrough `RETIRED_DIV_CLASSES` exists
+/// to prevent). But they must not be *offered*: completing `@thm-` invites the author to
+/// write a reference guaranteed to break.
 ///
 /// "Offered" reads the editor vocabulary, which is where the offer is actually made —
 /// `vocab::vocab()["xrefPrefixes"]`, served to the LSP's completion. It used to read
@@ -225,8 +226,8 @@ fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
         );
     }
     // Positive control, so this cannot pass by both lists being empty.
-    assert!(offered.iter().any(|o| o == "thm"), "offered: {offered:?}");
-    assert!(XREF_LABELS.iter().any(|(k, _)| *k == "thm"));
+    assert!(offered.iter().any(|o| o == "fig"), "offered: {offered:?}");
+    assert!(XREF_LABELS.iter().any(|(k, _)| *k == "fig"));
 
     // The anti-silence half is behaviour, not just table membership.
     let leftover = vec![Block {

@@ -6,8 +6,7 @@ one-line copyright header (and `mermaid.min.js` carries none at all), so the ful
 live in this file, which ships beside them.
 
 This covers the redistributed third-party bundles only. Taliesin's own scripts in this
-directory (`mermaid.js`, `tali-js.js`, `tabset.js`, `walkthrough.js`,
-`scrolly.js`, and the `code-enhance/` fragments) — and the
+directory (`mermaid.js`, `tali-js.js`, and the `code-enhance/` fragments) — and the
 stylesheets in `../css/` — are covered by the project's own `LICENSE` at the repository
 root.
 

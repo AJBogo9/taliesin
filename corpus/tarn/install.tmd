@@ -10,27 +10,23 @@ language, so what you learn in one carries over to the other.
 Install into whichever environment manager your project already uses. Tarn has no
 required dependencies beyond Arrow, which the wheels bundle.
 
-::: {.panel-tabset}
-
-## pip
+### pip
 
 ```bash
 pip install tarn
 ```
 
-## conda
+### conda
 
 ```bash
 conda install -c conda-forge tarn
 ```
 
-## uv
+### uv
 
 ```bash
 uv add tarn
 ```
-
-:::
 
 Verify the install from a Python prompt:
 
@@ -44,27 +40,23 @@ print(tarn.__version__)
 The `tarn` binary is self-contained: it bundles its own Python runtime, so it does not
 touch your project environment.
 
-::: {.panel-tabset}
-
-## macOS
+### macOS
 
 ```bash
 brew install tarn
 ```
 
-## Linux
+### Linux
 
 ```bash
 curl -LsSf https://tarn.dev/install.sh | sh
 ```
 
-## Windows
+### Windows
 
 ```bash
 scoop install tarn
 ```
-
-:::
 
 Confirm the CLI is on your path:
 

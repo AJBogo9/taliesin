@@ -34,10 +34,6 @@
        shape and the text title ("Tip" / "Important") carry: hue is never the sole cue. */
     --tali-callout-note: #6a7aa9; --tali-callout-tip: #288f70; --tali-callout-warning: #a2781b;
     --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
-    /* Theorem accents: the same vocabulary at lower chroma (plain -> the accent indigo,
-       definition -> tip's teal). Theorem boxes recur densely inside a proof, so they
-       must stay quieter than a callout. */
-    --tali-thm-plain: #4f5a80; --tali-thm-definition: #2f7a63;
     color-scheme: light;
     --tali-font-body: 1.125rem/1.7 "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
     --tali-font-head: ui-sans-serif, system-ui, sans-serif;

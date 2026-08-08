@@ -490,20 +490,10 @@ fn video_hover_play_is_gone_and_controls_default_on() {
         );
     }
 
-    let html = taliesin_core::render::render_document_with_includes(
-        "{{< video clip.mp4 >}}\n",
-        std::path::Path::new("."),
-    )
-    .body_html();
-    assert!(
-        html.contains(
-            "<video src=\"clip.mp4\" muted loop controls playsinline preload=\"metadata\" \
-             tabindex=\"0\" aria-label=\"Screencast\"></video>"
-        ),
-        "a bare {{{{< video >}}}} must emit the native `controls` attribute on the tag \
-         itself — with hover-play and the lightbox both deleted it is the only \
-         remaining play path: {html}"
-    );
+    // The shortcode that once wired the hover-play went with `{{< video >}}` on
+    // 2026-08-08, so the only surviving half of this retirement is the client bundle: a
+    // hand-written `<video>` carries whatever attributes the author wrote and nothing
+    // reaches in to add behaviour.
 }
 
 /// The reader show/hide-code toggle was deleted 2026-08-03. The author already
@@ -623,12 +613,13 @@ fn forward_xrefs_survive_the_backlink_deletion() {
             "{name} still carries a backref class"
         );
     }
-    // The forward cross-reference from results.tmd to methods.tmd's theorem still
+    // The forward cross-reference from results.tmd to methods.tmd's figure still
     // resolves, with its number — this is `xref.rs`, which this deletion does not touch.
     assert!(
-        results
-            .contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
-        "the forward cross-reference to thm-kl must still resolve: {results}"
+        results.contains(
+            "<a href=\"methods.html#fig-pipeline\" class=\"tali-xref\">Figure&nbsp;2.1</a>"
+        ),
+        "the forward cross-reference to fig-pipeline must still resolve: {results}"
     );
 }
 

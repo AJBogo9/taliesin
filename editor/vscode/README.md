@@ -55,7 +55,7 @@ stays true, and every other LSP editor (Neovim, Helix, Zed: `cmd = { "taliesin",
 gets each feature at the same moment VS Code does.
 
 Everything offered is Rust-authoritative, so it cannot drift from what `check` enforces.
-Front-matter keys, cell options, callout kinds, div classes, theorem kinds, cell languages
+Front-matter keys, cell options, callout kinds, div classes, cell languages
 and input types come from `taliesin_core::vocab`. Cross-reference targets come from the
 resolved xref registry merged with a live buffer scan, which is how `@`-completion finds a
 figure labelled from a cell (`#| label: fig-scree`) *and* an anchor you typed a moment ago.
@@ -70,7 +70,7 @@ span for the reader. Commands taking arguments insert a snippet (`\frac{$1}{$2}`
 category — because a symbol you cannot spell is not reachable by completion at all.
 
 `contributes.snippets` ships a small set of `.tmd` snippets (`fm`, `cell`, `figcell`, `jscell`,
-`foldcell`, `callout`, `fig`, `tabset`, `thm`, `include`, `video`, `input`). Their bodies are
+`foldcell`, `callout`, `fig`, `include`, `input`). Their bodies are
 gated against the same vocabulary by `src/test/manifest.test.ts`: a snippet that offers a callout
 kind or cell option Taliesin no longer knows fails the build, and the callout snippet's choice
 list must equal `vocab.calloutKinds` exactly, in order.

@@ -177,13 +177,13 @@ reference can point at a label defined on a page that has not been rendered yet:
    What this pass **cannot** see: it reads `{#fig-x}` brace ids and skips fenced code, so
    a float labelled by a *cell directive* (`#| label: fig-x`, `%%| label: fig-x`) is
    invisible to it twice over — the label lives inside a fence, and it is not a brace id.
-   Numbers are invisible too: a figure/equation/table/listing/theorem number is assigned
+   Numbers are invisible too: a figure/equation/table/listing number is assigned
    only during render, so the scan leaves it empty.
 
 2. **Render-harvest.** `Site::harvest_xref_numbers` renders every page once (scoped to its
    chapter, no code execution) and reads the renderer's own registry, `doc.xref_numbers`.
-   This fills in the numbers pass 1 left empty — so a cross-page `@fig-`/`@thm-` reads
-   "Figure&nbsp;2.3" / "Theorem&nbsp;2.1" rather than a bare label — and **inserts** the
+   This fills in the numbers pass 1 left empty — so a cross-page `@fig-`/`@tbl-` reads
+   "Figure&nbsp;2.3" / "Table&nbsp;2.1" rather than a bare label — and **inserts** the
    anchors pass 1 could not see at all, which is how a cell-labelled float becomes a
    cross-page target. Reusing the render's registry (rather than teaching the scan to
    parse cell options) keeps one source of truth for *which fences are cells*, so the two
@@ -236,7 +236,7 @@ section sits inside its chapter.
 
 The page's blocks are finished in the **same order the served page finishes them**
 (`Site::finish_blocks`: number the chapter, then resolve cross-refs). Scoping the render
-numbers floats and theorems but *not* headings — that is `number_chapter_headings` — so
+numbers floats but *not* headings — that is `number_chapter_headings` — so
 without that call every heading indexes unnumbered while the page it points at reads "5.2
 How nulls behave", and a reader cannot search the number they can see.
 

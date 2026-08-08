@@ -19,8 +19,8 @@ function taliInitKeyboard() {
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (modal) return;
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      // leave arrows to a focused interactive control (slider, tablist, link, button)
-      if (t && t.closest && t.closest('a,button,input,select,textarea,[role="tab"]')) return;
+      // leave arrows to a focused interactive control (slider, link, button)
+      if (t && t.closest && t.closest('a,button,input,select,textarea')) return;
       var nav = /** @type {HTMLAnchorElement | null} */ (document.querySelector(e.key === 'ArrowRight' ? '.tali-book-next' : '.tali-book-prev'));
       if (nav && nav.href) { e.preventDefault(); window.location.assign(nav.href); }
     }

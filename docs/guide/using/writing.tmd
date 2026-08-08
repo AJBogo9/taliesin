@@ -205,8 +205,8 @@ With a `bibliography:` in the front matter, `[@key]` citations become numbered
 links to an auto-generated References section, formatted from the BibTeX file.
 This page cites the *TeXbook* [@knuth1984] and the FFT paper [@cooley1965], and
 groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Cross-references
-resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-`, `@lst-`,
-`@thm-`, and `@def-`, carrying the resolved number when known (as `@eq-dft` and
+resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-` and `@lst-`,
+carrying the resolved number when known (as `@eq-dft` and
 `@fig-scree` above do): **across chapters**, so a `@fig-` in one chapter resolves
 to its figure in another.
 

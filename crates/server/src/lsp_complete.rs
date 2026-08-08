@@ -12,14 +12,7 @@
 //! `notes/2026-07-28-vscode-companion-audit.md`.
 
 /// Front-matter parents whose immediate children have their own vocabulary.
-const NESTED_PARENTS: &[&str] = &[
-    "execute",
-    "listing",
-    "about",
-    "hero",
-    "prose-lint",
-    "theorems",
-];
+const NESTED_PARENTS: &[&str] = &["execute", "listing", "about", "hero", "prose-lint"];
 
 /// Build/vcs dirs never worth offering as a `{{< include >}}` target.
 const IGNORE_DIRS: &[&str] = &[".git", "target", "node_modules", "_site", "_freeze"];
@@ -113,7 +106,6 @@ pub(crate) enum PathKind {
     Style,
     Image,
     Html,
-    Media,
     /// A markdown link target: another document, or anything else on disk.
     Link,
 }
@@ -126,7 +118,6 @@ impl PathKind {
             PathKind::Style => &["css"],
             PathKind::Image => &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"],
             PathKind::Html => &["html", "htm"],
-            PathKind::Media => &["mp4", "webm", "ogv", "mov", "m4v"],
             PathKind::Link => &[],
         }
     }
@@ -138,7 +129,6 @@ impl PathKind {
             PathKind::Style => "stylesheet",
             PathKind::Image => "image",
             PathKind::Html => "HTML partial",
-            PathKind::Media => "video",
             PathKind::Link => "file",
         }
     }
@@ -158,12 +148,10 @@ const PATH_KEYS: &[(&str, PathKind)] = &[
     ("include-after-body", PathKind::Html),
 ];
 
-/// The shortcodes offered by name, as `(name, description)`. Mirrors the built-ins
-/// `render::extension::render_shortcode` dispatches on plus `include`, which
-/// `includes.rs` resolves before expansion.
+/// The shortcodes offered by name, as `(name, description)`. Mirrors
+/// `render::extension::SHORTCODE_NAMES`, the closed vocabulary itself.
 const SHORTCODE_NAMES: &[(&str, &str)] = &[
     ("include", "Splice another .tmd file in at this point."),
-    ("video", "Embed a local or remote video."),
     ("input", "A reader-facing control that {js} cells can read."),
 ];
 
@@ -613,14 +601,9 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
         j += 1;
     }
     let keyword: String = chars[kw_start..j].iter().collect();
-    // `video`'s positional source is a path too, but it is a media file, not a `.tmd`, and
-    // it has no directory-descent behaviour to preserve — so it routes to the general
-    // `Path` context with the media extensions rather than to `ShortcodePath`.
-    let shortcode = match keyword.as_str() {
-        "include" => Some(Shortcode::Include),
-        "video" => None,
-        _ => return None,
-    };
+    if keyword != "include" {
+        return None; // `include` is the only shortcode whose first argument is a path
+    }
     let ws_start = j;
     while j < n && is_hspace(chars[j]) {
         j += 1;
@@ -632,17 +615,13 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     if typed.chars().any(|c| is_hspace(c) || c == '>') {
         return None; // past the path token (into named args / the closer)
     }
-    // A `key=value` named argument is not the positional source, so `{{< video poster=x`
-    // must not be completed as if `poster=x` were the clip.
+    // A `key=value` named argument is not the positional source.
     if typed.contains('=') {
         return None;
     }
-    Some(match shortcode {
-        Some(shortcode) => CompletionContext::ShortcodePath { shortcode, typed },
-        None => CompletionContext::Path {
-            typed,
-            kind: PathKind::Media,
-        },
+    Some(CompletionContext::ShortcodePath {
+        shortcode: Shortcode::Include,
+        typed,
     })
 }
 
@@ -1220,16 +1199,13 @@ mod tests {
     }
 
     #[test]
-    fn a_video_source_offers_media_files_and_a_named_arg_offers_nothing() {
+    fn only_the_include_shortcode_completes_a_path() {
+        // `include` is the whole path-taking vocabulary. Any other name — a typo, or a
+        // shortcode that was retired — must offer nothing rather than list every file in
+        // the directory beside a name the tool will not expand.
+        assert_eq!(ctx("{{< video cl", "{{< video cl"), CompletionContext::None);
         assert_eq!(
-            ctx("{{< video cl", "{{< video cl"),
-            CompletionContext::Path {
-                typed: "cl".to_string(),
-                kind: PathKind::Media
-            }
-        );
-        assert_eq!(
-            ctx("{{< video poster=x", "{{< video poster=x"),
+            ctx("{{< include poster=x", "{{< include poster=x"),
             CompletionContext::None
         );
     }
@@ -1298,7 +1274,7 @@ mod tests {
     #[test]
     fn shortcode_names_and_cell_option_values_are_non_empty_closed_sets() {
         assert!(shortcode_names().iter().any(|(n, _)| *n == "include"));
-        assert!(shortcode_names().iter().any(|(n, _)| *n == "video"));
+        assert!(shortcode_names().iter().any(|(n, _)| *n == "input"));
 
         // This list is a SECOND copy of a set core already owns, and until now nothing
         // tied the two together: a new built-in would have shipped uncompletable, and a

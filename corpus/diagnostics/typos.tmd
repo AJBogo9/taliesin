@@ -8,7 +8,7 @@ listing:
   contents: posts
   max-itemz: 3
 theorems:
-  shared: [theorem, lemna, proposition]
+  shared: [theorem, lemma]
 ---
 
 # Typo coverage
@@ -17,18 +17,19 @@ This document deliberately uses misspelled keys to pin Taliesin's schema validat
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
 
 The front matter covers three *different* mistakes on purpose, because they need three
-different messages: a **typo** gets a did-you-mean (`treme`, `cach`, `max-itemz`,
-`lemna`), a **retired** name gets a removal note instead of a guessed rename
-(`proposition`), and a **recognized but inert** key gets neither, because there is
-nothing to rename and nothing was removed (`csl:` parses, and has never had an effect).
-`theorems: shared:` is the list whose *values* went unchecked until 2026-08-07: a typo
-there silently drew separate counters.
+different messages: a **typo** gets a did-you-mean (`treme`, `cach`, `max-itemz`), a
+**retired** name gets a removal note instead of a guessed rename (`theorems:`, withdrawn
+2026-08-08 with the theorem environments, along with the whole nested block it took), and
+a **recognized but inert** key gets neither, because there is nothing to rename and
+nothing was removed (`csl:` parses, and has never had an effect). A retired PARENT key
+takes its children with it: nothing below `theorems:` is validated, because the block
+itself no longer names anything.
 
 ::: {.callout-warnign}
 This callout names a kind Taliesin does not define.
 :::
 
-::: {.scrolley}
+::: {.column-margn}
 This div names a feature class Taliesin does not define; it silently degraded before DX5.
 :::
 
@@ -39,9 +40,10 @@ hint. Div classes are an open vocabulary, so without the register entry this get
 and the page quietly loses its layout.
 :::
 
-::: {.step lines="1|2-3"}
-This scroll step's `lines=` uses the `code-line-numbers=` `|` step separator, which a
-step's comma-only parser silently focuses to zero lines.
+::: {.panel-tabset}
+This div names a class Taliesin RETIRED on 2026-08-08 with the narrative widgets. It is
+here beside `.fragment` because the two removals were a year apart in the register and a
+single shared code path answers both.
 :::
 
 ::: {.input name="k"}

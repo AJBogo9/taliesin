@@ -11,7 +11,7 @@
   ],
   "repository": {
     "div": {
-      "comment": "::: fenced div (Pandoc): scope the colons + any { .class #id key=val } attribute block or bare `::: classname`. Content between fences is normal markdown (handled by the include). GENERIC — the callout/theorem/layout vocab is NOT enumerated (would drift from validate.rs). divs.rs:101,162.",
+      "comment": "::: fenced div (Pandoc): scope the colons + any { .class #id key=val } attribute block or bare `::: classname`. Content between fences is normal markdown (handled by the include). GENERIC — the callout/layout vocab is NOT enumerated (would drift from validate.rs). divs.rs:101,162.",
       "match": "^(\\s*)(:{3,})[ \\t]*(.*)$",
       "captures": {
         "2": { "name": "punctuation.definition.tmd.div keyword.control.tmd.div" },

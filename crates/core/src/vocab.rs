@@ -68,7 +68,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("hero", "Landing-page hero block configuration."),
-        ("theorems", "Theorem-environment counter configuration."),
     ]
 }
 
@@ -96,7 +95,6 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "`true` styles this as the filled, primary button.",
         ),
         // theorems:
-        ("shared", "Kinds that share one counter."),
         // shared across blocks (hero.actions/listing reuse these):
         ("text", "The button's visible label."),
         ("title", "A human-readable name for this entry."),
@@ -133,44 +131,16 @@ fn callout_descriptions() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn theorem_descriptions() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("theorem", "Numbered theorem."),
-        ("lemma", "Numbered lemma."),
-        ("corollary", "Numbered corollary."),
-        ("definition", "Numbered definition."),
-        ("proof", "Proof block (unnumbered)."),
-    ]
-}
-
 /// Structural fenced-div classes offered to the editor. These are a subset of
 /// `render::DIV_FEATURE_CLASSES` (the near-miss anchor for the div-class did-you-mean); the
 /// `div_classes_are_a_subset_of_the_validator_vocab` test pins that so the two can't drift.
 /// Keep in sync with the `.class` dispatch in `render/divs.rs`.
-const DIV_CLASS_NAMES: &[&str] = &[
-    "panel-tabset",
-    "code-walkthrough",
-    "scrolly",
-    "step",
-    "column-margin",
-    "column-page",
-    "column-screen",
-];
+const DIV_CLASS_NAMES: &[&str] = &["column-margin", "column-page", "column-screen"];
 
 fn div_classes() -> Value {
     named(
         DIV_CLASS_NAMES,
         &[
-            (
-                "panel-tabset",
-                "Tabbed panel; each `##` heading becomes a tab.",
-            ),
-            ("code-walkthrough", "Step-through narrated code."),
-            ("scrolly", "Scroll-driven storytelling section."),
-            (
-                "step",
-                "A step inside a code-walkthrough or scrolly (line focus or stage state).",
-            ),
             ("column-margin", "Place content in the margin."),
             (
                 "column-page",
@@ -186,28 +156,23 @@ fn div_classes() -> Value {
 
 /// Which classes read a given fenced-div attribute.
 enum DivScope {
-    /// A div carrying no feature class. `layout-ncol` also wins over most feature classes in
+    /// A div carrying no feature class. `layout-ncol` also wins over the width escapes in
     /// the dispatch chain (it is tested second, right after the callout arm), but offering it
-    /// on a `.step` would recommend silently replacing the step with a grid — a footgun, not
-    /// a feature — so it is offered only where it is the intended gesture.
+    /// on a `.column-page` would recommend silently replacing the escape with a grid — a
+    /// footgun, not a feature — so it is offered only where it is the intended gesture.
     Generic,
     /// Every `callout-<kind>`.
     Callouts,
-    /// Every theorem kind, `proof` included.
-    Theorems,
-    /// One literal class name.
-    Class(&'static str),
 }
 
 /// One offered fenced-div ATTRIBUTE (`key=value` inside `::: {…}`), and which classes
 /// actually read it.
 ///
 /// **The per-class narrowing is the whole point.** `render/divs.rs` dispatches on class in an
-/// if-else chain, so an attribute is not a property of divs in general: `state=` is read only
-/// inside the `.step` arm, and `collapse=` reaches a theorem only through the `proof` arm —
-/// a `::: {.lemma collapse="true"}` renders exactly like a `::: {.lemma}`. Offering the union
-/// would have the editor recommend a no-op, which is the same failure `UNSUPPORTED_KEYS`
-/// exists to prevent for front matter.
+/// if-else chain, so an attribute is not a property of divs in general: `icon=` is read only
+/// inside the callout arm, and offering it on a `.column-page` would have the editor
+/// recommend a no-op — the same failure `UNSUPPORTED_KEYS` exists to prevent for front
+/// matter.
 ///
 /// `width` is deliberately ABSENT. `validate::validate_column_width` warns that the
 /// equal-width grid ignores it, so completing it would recommend the exact thing `check`
@@ -237,16 +202,14 @@ const DIV_ATTRIBUTES: &[DivAttribute] = &[
         name: "title",
         description: "Heading text for the box (else a leading heading, else the kind).",
         value: "$1",
-        scope: &[DivScope::Callouts, DivScope::Theorems],
+        scope: &[DivScope::Callouts],
         probe: "T",
     },
     DivAttribute {
         name: "collapse",
         description: "Fold into a `<details>`: `true` starts closed, `false` starts open.",
         value: "${1|true,false|}",
-        // Callouts, and of the theorem kinds only `proof` — the numbered arm has no
-        // collapse branch at all.
-        scope: &[DivScope::Callouts, DivScope::Class("proof")],
+        scope: &[DivScope::Callouts],
         probe: "true",
     },
     DivAttribute {
@@ -270,27 +233,6 @@ const DIV_ATTRIBUTES: &[DivAttribute] = &[
         scope: &[DivScope::Generic],
         probe: "3",
     },
-    DivAttribute {
-        name: "lines",
-        description: "Lines this walkthrough step focuses, for example `1,4-6`.",
-        value: "$1",
-        scope: &[DivScope::Class("step")],
-        probe: "1",
-    },
-    DivAttribute {
-        name: "state",
-        description: "Stage state this scrolly step activates.",
-        value: "$1",
-        scope: &[DivScope::Class("step")],
-        probe: "a",
-    },
-    DivAttribute {
-        name: "name",
-        description: "Reactive name a `{js}` cell reads the active step's state from.",
-        value: "$1",
-        scope: &[DivScope::Class("scrolly")],
-        probe: "n",
-    },
 ];
 
 impl DivAttribute {
@@ -307,12 +249,6 @@ impl DivAttribute {
                         .iter()
                         .map(|k| format!("callout-{k}")),
                 ),
-                DivScope::Theorems => out.extend(
-                    crate::render::THEOREM_KINDS
-                        .iter()
-                        .map(|k| (*k).to_string()),
-                ),
-                DivScope::Class(c) => out.push((*c).to_string()),
             }
         }
         out
@@ -373,11 +309,10 @@ fn cell_languages() -> Value {
 }
 
 /// The `@`-prefixes offered to an author and to an agent. Retired prefixes are filtered
-/// out: the renderer still resolves a *label* for `prp`/`exm`/`rem` so a leftover `@prp-a`
-/// draws `TAL-XREF-UNDEF` instead of passing through silently, but nothing can define one
-/// of those targets since the `proposition`/`example`/`remark` environments were retired on
-/// 2026-08-03. Offering them told `AGENTS.md`'s reader to write a reference that is
-/// guaranteed to be broken.
+/// out: the renderer still resolves a *label* for `thm`/`lem`/`cor`/`def`/`prp`/`exm`/`rem`
+/// so a leftover `@thm-a` draws `TAL-XREF-UNDEF` instead of passing through silently, but
+/// nothing can define one of those targets since the theorem environments were retired.
+/// Offering them would tell a reader to write a reference that is guaranteed to be broken.
 fn xref_prefixes() -> Value {
     Value::Array(
         crate::cite::XREF_LABELS
@@ -405,10 +340,9 @@ fn frontmatter_value_vocab() -> Value {
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
     use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, THEOREM_KEYS,
-        UNSUPPORTED_KEYS,
+        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, UNSUPPORTED_KEYS,
     };
-    use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
+    use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES};
 
     // A key taliesin recognizes but ignores (`csl:`) must not be OFFERED: completing it
     // is the tool recommending a no-op. It stays in KNOWN_KEYS so an author who writes it
@@ -429,12 +363,10 @@ pub fn vocab() -> Value {
                 "listing": named(LISTING_KEYS, nested_desc),
                 "hero": named(HERO_KEYS, nested_desc),
                 "hero.actions": named(HERO_ACTION_KEYS, nested_desc),
-                "theorems": named(THEOREM_KEYS, nested_desc),
             }
         },
         "cellOptions": named(CELL_OPTION_KEYS, cell_option_descriptions()),
         "calloutKinds": named(CALLOUT_KINDS, callout_descriptions()),
-        "theoremKinds": named(THEOREM_KINDS, theorem_descriptions()),
         "divClasses": div_classes(),
         "divAttributes": div_attributes(),
         "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
@@ -484,12 +416,11 @@ mod tests {
         }
         let v = vocab();
         check_named(&v["frontmatter"]["keys"], "frontmatter.keys");
-        for parent in ["execute", "listing", "hero", "hero.actions", "theorems"] {
+        for parent in ["execute", "listing", "hero", "hero.actions"] {
             check_named(&v["frontmatter"]["nested"][parent], parent);
         }
         check_named(&v["cellOptions"], "cellOptions");
         check_named(&v["calloutKinds"], "calloutKinds");
-        check_named(&v["theoremKinds"], "theoremKinds");
         check_named(&v["divClasses"], "divClasses");
         check_named(&v["divAttributes"], "divAttributes");
         check_named(&v["frontmatterValues"]["theme"], "frontmatterValues.theme");
@@ -600,8 +531,9 @@ mod tests {
     /// ignores is a no-op the editor would be recommending, and the author would sit there
     /// wondering why `collapse="true"` did nothing to their lemma.
     ///
-    /// It earned its place immediately — the first draft of this table gave `collapse` to all
-    /// eight theorem kinds, and this test showed only `proof` has a collapse branch.
+    /// It earned its place immediately — the first draft of this table gave `collapse` to
+    /// every theorem kind, and this test showed only `proof` had a collapse branch (both are
+    /// gone now, but the gate is what found it).
     #[test]
     fn every_div_attribute_is_live() {
         for a in DIV_ATTRIBUTES {
@@ -626,17 +558,19 @@ mod tests {
         }
     }
 
-    /// The negative direction, for the three narrowings most easily got wrong. Without these
+    /// The negative direction, for the narrowings most easily got wrong. Without these
     /// the table could widen back to "every attribute on every div" and `every_div_attribute_is_live`
     /// would still pass — it only checks the pairs the table already claims.
     #[test]
     fn narrowed_div_attributes_are_no_ops_off_their_class() {
         for (class, attr, probe) in [
-            // A numbered theorem has no collapse branch; only `proof` does.
-            ("lemma", "collapse", "true"),
-            // Step attributes on a callout: the callout arm wins and never looks at them.
-            ("callout-note", "state", "a"),
-            ("callout-note", "lines", "1"),
+            // `layout-ncol` is offered on a plain div only: the callout arm is tested FIRST
+            // in the dispatch chain, so it wins and the grid never fires.
+            ("callout-note", "layout-ncol", "3"),
+            // Callout attributes on a width escape: it falls through to the generic arm,
+            // which reads neither.
+            ("column-page", "collapse", "true"),
+            ("column-page", "icon", "false"),
         ] {
             assert_eq!(
                 div_html(class, ""),
@@ -647,17 +581,16 @@ mod tests {
         }
     }
 
-    /// Every attribute names a real class. A `DivScope::Class` pointing at a class the
-    /// renderer does not dispatch on would be offered where it can never fire, and
+    /// Every attribute names a real class. A scope pointing at a class the renderer does
+    /// not dispatch on would be offered where it can never fire, and
     /// `every_div_attribute_is_live` would catch it only by the render diff — this says so
-    /// directly, and covers the aliases too.
+    /// directly.
     #[test]
     fn div_attribute_classes_are_real() {
-        use crate::render::{CALLOUT_KINDS, DIV_FEATURE_CLASSES, THEOREM_KINDS};
+        use crate::render::{CALLOUT_KINDS, DIV_FEATURE_CLASSES};
         for a in DIV_ATTRIBUTES {
             for class in a.classes() {
                 let known = DIV_FEATURE_CLASSES.contains(&class.as_str())
-                    || THEOREM_KINDS.contains(&class.as_str())
                     || CALLOUT_KINDS
                         .iter()
                         .any(|k| class == format!("callout-{k}"));

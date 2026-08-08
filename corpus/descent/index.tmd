@@ -224,10 +224,11 @@ size slider lets you feel.
 ## One step at a time {#sec-walk}
 
 The playground shows the whole path at once. To see *why* it bends the way it does,
-scroll the five steps below: the picture on the side redraws for each one, from the
-bare landscape to a full run and, finally, to a run that falls apart.
+step through the five scenes below: the picture redraws for each one, from the bare
+landscape to a full run and, finally, to a run that falls apart.
 
-::: {.scrolly name="scene"}
+{{< input name="scene" type="select" options="landscape,gradient,step,iterate,diverge" value="landscape" label="scene" >}}
+
 ```{js}
 //| input: scene
 const NS = "http://www.w3.org/2000/svg";
@@ -328,32 +329,26 @@ if (scene === "landscape") {
 }
 return svg;
 ```
-::: {.step state="landscape"}
+
 **The landscape.** The rings are the loss. Descent begins at the marked point, high on
 the steep left wall of the valley. Everything that follows is a rule for getting from
 there to the dark point in the middle.
-:::
-::: {.step state="gradient"}
+
 **Which way is downhill.** At the start point, the negative gradient $-\nabla L$ points
 almost straight *across* the valley, not along it. That is the trap: the steepest
 direction is rarely the direction of the minimum.
-:::
-::: {.step state="step"}
+
 **One step.** Multiply that direction by the step size and move. With a modest $\eta$
 the first step lands well down the wall but overshoots the floor slightly, ending up on
 the far side. The path has already started to zig-zag.
-:::
-::: {.step state="iterate"}
+
 **Many steps.** Repeat, and the zig-zags shrink as the walls get shallower near the
 floor. The path settles into the trough and crawls the long way toward the minimum. It
 works, but notice how much of the effort went sideways.
-:::
-::: {.step state="diverge"}
+
 **Too far.** Now push the step size past the edge. Each step across the valley is longer
 than the last; instead of settling, the path climbs the opposite wall higher every time
 and ricochets out of the frame. Same rule, same surface, one number too large.
-:::
-:::
 
 ## Choosing the step size {#sec-rate}
 

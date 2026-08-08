@@ -19,31 +19,6 @@ print("from inside a callout")
 ```
 :::
 
-## A cell per tab
-
-The motivating case: two algorithms side by side. Splicing each output after the
-container would stack both below the tabs, including the hidden one.
-
-::: {.panel-tabset}
-
-## Iterative
-
-```{python}
-total = 0
-for i in range(5):
-    total += i
-print(total)
-```
-
-## Closed form
-
-```{python}
-n = 4
-print(n * (n + 1) // 2)
-```
-
-:::
-
 ## A cell in a layout grid
 
 ::: {layout-ncol=2}
@@ -71,9 +46,9 @@ print("| 1 | 2 |")
 ```
 :::
 
-## A cell in a theorem environment
+## A cell in a titled callout
 
-::: {.theorem title="Sum of the first n integers"}
+::: {.callout-tip title="Sum of the first n integers"}
 The sum $\sum_{i=1}^{n} i$ equals $n(n+1)/2$.
 
 ```{python}

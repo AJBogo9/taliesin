@@ -18,7 +18,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
         "unknown callout kind `warnign` (did you mean `warning`?)",
         "unknown cell option `labl` (did you mean `label`?)",
-        "unknown div class `scrolley` (did you mean `scrolly`?)",
+        "unknown div class `column-margn` (did you mean `column-margin`?)",
         // Retired, not misspelled: these two carry a REASON where the six above carry a
         // rename hint, which is the whole distinction `RETIRED_DIV_CLASSES` exists to draw.
         "unknown div class `columns`: it was removed on 2026-08-02: `{layout-ncol=N}` is \
@@ -31,13 +31,15 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown div class `fragment`: it was removed on 2026-08-08 with the slide-deck \
          engine: a page reveals nothing step by step, so the contents become ordinary \
          blocks",
-        // `theorems: shared:` names KINDS, and its list entries went unvalidated until
-        // 2026-08-07: a typo drew two separate counters and a kind retired on 2026-08-03
-        // stayed accepted, both with a clean `check`. Same rename-vs-removal split as the
-        // div classes above, one vocabulary over.
-        "unknown theorem kind `lemna` (did you mean `lemma`?)",
-        "unknown theorem kind `proposition`: it was removed on 2026-08-03: `.theorem` is \
-         the closest surviving numbered kind, and both render in the same `plain` style",
+        "unknown div class `panel-tabset`: it was removed on 2026-08-08: nothing folds \
+         alternatives into tabs now, so give each tab's content its own `###` heading",
+        // A retired PARENT key takes its whole nested block with it: `theorems:` warns once
+        // and its `shared:` list is not validated at all, because there is no vocabulary
+        // left to validate it against. That is one warning, not one per child, which is
+        // what an author wants — they delete the block, not each line of it.
+        "unknown front-matter key `theorems`: it was removed on 2026-08-08 with the \
+         theorem environments it configured: nothing counts theorems now, so delete the \
+         key and its `shared:` list",
     ];
     for e in expected {
         assert!(
@@ -92,23 +94,11 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
     let div = doc
         .warnings
         .iter()
-        .find(|w| w.message.contains("`scrolley`"))
+        .find(|w| w.message.contains("`column-margn`"))
         .unwrap();
     assert!(
         div.line.is_some(),
         "div-class warning should be located: {div:?}"
-    );
-
-    // PL7: a `.step lines=` carrying a `|` (the `code-line-numbers=` step separator) is a
-    // silent no-op — the step's comma-only parser focuses zero lines — so it must warn, located.
-    let step = doc
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("step separator"))
-        .expect("a `.step lines=` using `|` must warn");
-    assert!(
-        step.line.is_some(),
-        "step-lines warning should be located: {step:?}"
     );
 
     // PL2: an empty `::: {.input name="k"}` div (reaching for a div instead of the shortcode)

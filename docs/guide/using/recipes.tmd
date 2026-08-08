@@ -250,8 +250,8 @@ book built this way: open the Chapters drawer and press Cmd-K to try the search.
 
 ::: {.callout-note}
 There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like
-`theorems:`) and a chapter's own front matter overrides them, two levels, no directory
-merge. See [Books & sites](formats.tmd) for the difference between a book and
+`bibliography:`) and a chapter's own front matter overrides them, two levels, no
+directory merge. See [Books & sites](formats.tmd) for the difference between a book and
 a plain multi-page site.
 :::
 

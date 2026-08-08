@@ -77,20 +77,18 @@ fn plot_cell_is_a_reactive_sink_over_the_same_sliders() {
 }
 
 #[test]
-fn scrolly_has_five_named_scenes_driving_a_sticky_cell() {
+fn five_named_scenes_drive_one_graphic_from_a_select_control() {
     let h = page();
     assert!(
-        h.contains("class=\"tali-scrolly\""),
-        "the scrolly section renders: {h}"
-    );
-    assert!(
         h.contains("data-inputs=\"scene\""),
-        "the sticky graphic is a {{js}} cell keyed off the scene value: {h}"
+        "the graphic is a {{js}} cell keyed off the scene value: {h}"
     );
+    // The reader picks the scene, so the control's option list IS the scene vocabulary:
+    // a scene the cell branches on but the control cannot select is unreachable.
     for state in ["landscape", "gradient", "step", "iterate", "diverge"] {
         assert!(
-            h.contains(&format!("data-state=\"{state}\"")),
-            "scrolly step drives scene '{state}': {h}"
+            h.contains(&format!(">{state}</option>")),
+            "the scene control offers '{state}': {h}"
         );
     }
 }
@@ -134,16 +132,21 @@ fn math_and_callouts_render_alongside_the_interactives() {
 #[test]
 fn interactive_blocks_keep_the_block_model_invariants() {
     let h = page();
-    // The scrolly steps are generated blocks; they must still carry the block-id +
-    // sourcepos the incremental client and click-to-source key off. (corpus.rs
-    // enforces this document-wide; this pins it on the interactive blocks directly.)
-    let open = h.find("class=\"step\"").expect("a scrolly step renders");
-    let state = h[open..]
-        .find("data-state=\"landscape\"")
-        .expect("the first step drives the landscape scene");
-    let step_tag = &h[open..open + state];
+    // An `{{< input >}}` control expands to raw HTML mid-render; it must still come out
+    // of the block model carrying the block-id + sourcepos the incremental client and
+    // click-to-source key off. (corpus.rs enforces this document-wide; this pins it on
+    // the interactive blocks directly, which is where a shortcode-expanded block is
+    // easiest to lose.)
+    let open = h
+        .find("data-tali-input=\"scene\"")
+        .expect("the scene control renders");
+    let block = &h[..open];
+    let tag = block
+        .rfind("<div")
+        .map(|i| &block[i..])
+        .expect("the control sits inside a block div");
     assert!(
-        step_tag.contains("data-block-id=") && step_tag.contains("data-sourcepos="),
-        "a scrolly step block keeps data-block-id + data-sourcepos: {step_tag}"
+        tag.contains("data-block-id=") && tag.contains("data-sourcepos="),
+        "the control's block keeps data-block-id + data-sourcepos: {tag}"
     );
 }

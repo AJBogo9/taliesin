@@ -85,7 +85,6 @@ An option marked `(none)` in the **Default** column does nothing unless you set 
 | `tbl-cap` | `python`, `r` | (none) | A caption for the output **table**, making it a numbered table |
 | `code-fold` | `python`, `r` | (none) | `true` collapses the listing into a closed `<details>`; `show` folds it but starts open |
 | `code-summary` | `python`, `r` | `"Code"` | The summary label for a `code-fold` listing |
-| `code-line-numbers` | `python`, `r` | `false` | Wraps each source line so a `.code-walkthrough` can highlight `\|`-separated line ranges (e.g. `"1\|3-5"`); there is no line-number gutter |
 | `name` | `js` | (none) | Publish the cell's return value into the reactive scope under this name (a helper other `{js}` cells read) |
 | `viewof` | `js` | (none) | The cell returns a DOM input; its value is registered under this name for other cells to consume |
 | `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `define` value changes |

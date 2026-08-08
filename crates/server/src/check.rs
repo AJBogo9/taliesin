@@ -1954,7 +1954,7 @@ mod tests {
             &f,
             "---\ntitle: T\n---\n\n\
              A [gone](missing.tmd), an [ok](real.tmd), an [ext](https://example.com).\n\n\
-             {{< video clip.mp4 >}}\n\n\
+             <video src=\"clip.mp4\"></video>\n\n\
              ```{js}\n//| input: nope\nreturn nope;\n```\n\n\
              ```{js}\n//| name: a\n//| input: b\nreturn b;\n```\n\n\
              ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n",

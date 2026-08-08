@@ -2,7 +2,7 @@
 //!
 //! `corpus.rs`'s `every_corpus_doc_renders_with_invariants` is *structural* only
 //! (non-empty blocks, unique ids, ordered sourcepos), so a real regression in emitted
-//! HTML (a broken scrolly wrapper, a dropped reactive cell shell) renders a
+//! HTML (a dropped reactive cell shell, a lost input wrapper) renders a
 //! structurally valid document and passes. These snapshots pin the bytes.
 //!
 //! Scope is deliberately `{js}`: `exec.rs` maps only `python` to a kernel, so these
@@ -110,9 +110,4 @@ fn reactive_inputs() {
 #[test]
 fn reactive_js_error() {
     assert_snapshot("reactive_js_error", "reactive/js-error.tmd");
-}
-
-#[test]
-fn explorable_scrolly() {
-    assert_snapshot("explorable_scrolly", "explorable/scrolly.tmd");
 }

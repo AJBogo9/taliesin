@@ -116,7 +116,6 @@ their colours at render time and a CSS-variable swap can't reach them:
 | Prose, code, callouts, navbar, chrome | CSS variables re-resolve, nothing re-renders |
 | KaTeX math | already theme-neutral, untouched |
 | Mermaid diagrams | SVG colours are baked at render time, so they **re-render** |
-| Theme-matched `{{< video >}}` clips | the now-visible variant is played, the hidden one paused |
 
 The pre-paint script dispatches a `tali:themechange` event, and exactly those
 renderers listen for it. That small, explicit list is the boundary of the

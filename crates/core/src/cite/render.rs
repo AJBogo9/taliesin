@@ -12,20 +12,18 @@ use std::collections::HashMap;
 /// cannot drift. The parallel bare-prefix list in `site::xref::is_ref_anchor` is guarded
 /// against this one by a unit test there.
 ///
-/// `prp` (Proposition), `exm` (Example) and `rem` (Remark) OUTLIVE the theorem kinds
-/// that retired on 2026-08-03 (visual minimalism pass, task 14; see
-/// `render::validate::THEOREM_KINDS`) **on purpose — do not "tidy" them away.** The
-/// first cut deleted all three tuples here, and that was wrong: with the prefix gone,
-/// `parse_xref` never recognizes `@exm-x` as an xref at all, so it degrades silently to
-/// literal text — no link, no `TAL-XREF-UNDEF`, nothing. Keeping the prefix (with no
-/// div class left to ever satisfy it) means every `@exm-x`/`@prp-x`/`@rem-x` is
-/// necessarily now a *dangling* reference, which `validate_xrefs` already reports as
-/// the ordinary "broken cross-reference" error — the exact right message, for free,
-/// through the existing unresolved-anchor path, no new register needed. This is also
-/// why `vocab()`'s `xrefPrefixes` (12 entries: 5 float-ish + the 7 that were ever
-/// theorem-shaped — `thm`/`lem`/`cor`/`def` plus the 3 kept here) and `theoremKinds`
-/// (5 entries) now disagree: `prp`/`exm`/`rem` are cross-reference prefixes with no
-/// matching theorem kind any more. That asymmetry is intentional, not drift.
+/// **Seven of the twelve tuples name a construct that no longer exists, and they stay
+/// on purpose — do not "tidy" them away.** `prp`/`exm`/`rem` outlived their theorem kinds
+/// on 2026-08-03; `thm`/`lem`/`cor`/`def` outlived theirs on 2026-08-08, when the theorem
+/// environments were withdrawn entirely. An earlier cut deleted the three tuples of the
+/// first group, and that was wrong: with the prefix gone, `parse_xref` never recognizes
+/// `@exm-x` as an xref at all, so it degrades silently to literal text — no link, no
+/// `TAL-XREF-UNDEF`, nothing. Keeping the prefix (with no div class left to ever satisfy
+/// it) makes every `@thm-x`/`@exm-x`/… a *dangling* reference, which `validate_xrefs`
+/// already reports as the ordinary "broken cross-reference" error — the exact right
+/// message, for free, through the existing unresolved-anchor path, with no new register.
+/// [`RETIRED_XREF_PREFIXES`] is the list of the seven, and `vocab()`'s `xrefPrefixes`
+/// filters them out so nothing offers a reference that cannot resolve.
 pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
     ("fig", "Figure"),
     ("tbl", "Table"),
@@ -42,18 +40,19 @@ pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
 ];
 
 /// Prefixes [`XREF_LABELS`] still resolves a label for, but that an author can no longer
-/// *define* a target for: `proposition`, `example` and `remark` were retired from
-/// [`crate::render::THEOREM_KINDS`] on 2026-08-03, and nothing else mints a `prp-`/`exm-`/
-/// `rem-` anchor (not a section `{#prp-a}`, not a figure `{#exm-b}` — both were measured).
+/// *define* a target for. `proposition`, `example` and `remark` were retired on
+/// 2026-08-03; `theorem`, `lemma`, `corollary` and `definition` followed on 2026-08-08 with
+/// the whole theorem-environment family. Nothing else mints one of these anchors — not a
+/// section `{#thm-a}`, not a figure `{#exm-b}`; both were measured, because a `.theorem`
+/// div was the ONLY producer.
 ///
-/// They stay in the table on purpose, so `@prp-a` left behind by a migration still renders
-/// its label and still draws `TAL-XREF-UNDEF` rather than passing through as literal text —
-/// the silent-fallthrough the retired-div register exists to prevent. But they are **not**
-/// features: [`xref_prefixes`](crate::cite::xref_prefixes) filters them out, because the
-/// catalogue answers "what can an author write", and `taliesin features` would otherwise
-/// report three constructs as adopted by no document forever, with no document able to fix
-/// it.
-pub(crate) const RETIRED_XREF_PREFIXES: &[&str] = &["prp", "exm", "rem"];
+/// They stay in [`XREF_LABELS`] on purpose, so a `@thm-a` left behind by a migration still
+/// renders its label and still draws `TAL-XREF-UNDEF` rather than passing through as
+/// literal text — the silent-fallthrough the retired-div register exists to prevent. But
+/// they are **not** features: [`xref_prefixes`](crate::cite::xref_prefixes) filters them
+/// out, because a completion menu answers "what can an author write".
+pub(crate) const RETIRED_XREF_PREFIXES: &[&str] =
+    &["thm", "lem", "cor", "def", "prp", "exm", "rem"];
 
 /// Cross-reference kind prefixes -> display label.
 fn xref_label(prefix: &str) -> Option<&'static str> {
@@ -61,16 +60,6 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
         .iter()
         .find(|(p, _)| *p == prefix)
         .map(|(_, l)| *l)
-}
-
-/// The cross-reference prefix whose label is `label` (the inverse of [`xref_label`]),
-/// e.g. "Theorem" -> "thm". Shares [`XREF_LABELS`] so a theorem kind's suggested
-/// prefix can't drift from the label lookup. `None` for a label with no xref kind.
-pub(crate) fn xref_prefix_for_label(label: &str) -> Option<&'static str> {
-    XREF_LABELS
-        .iter()
-        .find(|(_, l)| *l == label)
-        .map(|(p, _)| *p)
 }
 
 /// Whether `id` is a cross-reference anchor (`sec-…`, `fig-…`, …) that `@ref`

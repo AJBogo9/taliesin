@@ -273,4 +273,4 @@ The other reference pages cover the rest of the configurable surface:
 - [Cell options](cell-options.tmd): the `#|` / `//|` / `%%|` options on code
   cells.
 - [Shortcodes](shortcodes.tmd): `{{< include >}}`,
-  `{{< video >}}`, `{{< input >}}`, and extension-declared shortcodes.
+  `{{< include >}}` and `{{< input >}}`.

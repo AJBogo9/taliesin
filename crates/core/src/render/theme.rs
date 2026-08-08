@@ -240,26 +240,8 @@ pub fn theme_head(default_mode: &str) -> String {
       }})(btns[i]);
     }}
   }};
-  // Theme-matched `{{< video >}}` clips: a light/dark pair carries `data-src` (no `src`)
-  // so the theme-hidden variant is never fetched. Promote `data-src`->`src` on the
-  // now-VISIBLE variant (downloading it only when it is actually shown, so `preload`
-  // can render its first frame as a still); pause the hidden one. Playback itself is
-  // never autoplay (WCAG 2.2.2): native `controls` (the default, see extension/mod.rs)
-  // is the reader's play affordance. Runs on load + on every theme change, so switching
-  // themes fetches the other clip lazily.
-  function syncThemeVideos(){{
-    var vids = document.querySelectorAll(".tali-video video");
-    for (var i = 0; i < vids.length; i++) {{
-      var v = vids[i];
-      if (getComputedStyle(v).display === "none") {{ try {{ v.pause(); }} catch(e) {{}} }}
-      else if (!v.getAttribute("src") && v.getAttribute("data-src")) {{
-        v.setAttribute("src", v.getAttribute("data-src"));
-      }}
-    }}
-  }}
-  window.addEventListener("tali:themechange", syncThemeVideos);
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){{ window.taliWireThemeToggles(); syncThemeVideos(); }});
-  else {{ window.taliWireThemeToggles(); syncThemeVideos(); }}
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", window.taliWireThemeToggles);
+  else window.taliWireThemeToggles();
 }})();
 </script>"#,
         sun_icon = THEME_ICON_SUN,

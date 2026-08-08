@@ -17,9 +17,9 @@ and an [in-page anchor](#broken-relative-links) to a real heading on this page i
 
 ## Missing local video
 
-A `{{< video >}}` whose clip file is absent:
+A hand-written `<video>` whose clip file is absent:
 
-{{< video missing-clip.mp4 >}}
+<video src="missing-clip.mp4" controls muted loop playsinline preload="metadata"></video>
 
 ## Dangling and cyclic reactive inputs
 

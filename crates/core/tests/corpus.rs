@@ -1298,18 +1298,19 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         !results.contains("data-tali-xref=\"sec-methods\""),
         "resolved cross-ref still carries its marker"
     );
-    // A cross-PAGE theorem ref resolves to the defining chapter WITH its number: a
-    // theorem is a source-literal `:::` div, so `discover`'s render-harvest knows its
-    // number ("Theorem 2.1" — methods is chapter 2, which scopes it, no config) in the
-    // live preview as well as the static build.
+    // A cross-PAGE FLOAT ref resolves to the defining chapter WITH its number. Unlike a
+    // section, a figure's number is assigned during RENDER, so this is what pins
+    // `discover`'s render-harvest: "Figure 2.1" (methods is chapter 2, which scopes it)
+    // has to reach the live preview as well as the static build.
     assert!(
-        results
-            .contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
-        "cross-chapter theorem ref not numbered: {results}"
+        results.contains(
+            "<a href=\"methods.html#fig-pipeline\" class=\"tali-xref\">Figure&nbsp;2.1</a>"
+        ),
+        "cross-chapter figure ref not numbered: {results}"
     );
     assert!(
-        !results.contains("data-tali-xref=\"thm-kl\""),
-        "resolved theorem cross-ref still carries its broken marker"
+        !results.contains("data-tali-xref=\"fig-pipeline\""),
+        "resolved figure cross-ref still carries its broken marker"
     );
 }
 
@@ -1333,30 +1334,11 @@ fn demo_book_logo_brands_both_the_topbar_and_the_chapter_drawer() {
     );
 }
 
-#[test]
-fn book_chapter_scopes_theorem_numbers() {
-    use taliesin_core::Site;
-    let site = Site::discover(&corpus_dir().join("demo-book"));
-    // methods.tmd is chapter 2, so its theorems scope to it with no config at all.
-    let methods = site.render_page("methods.tmd").expect("methods renders");
-    assert!(
-        methods.contains(
-            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
-        ),
-        "the chapter-2 theorem numbers as 2.1: {methods}"
-    );
-    assert!(
-        methods.contains("<a href=\"#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
-        "its in-page cross-ref agrees: {methods}"
-    );
-}
-
 /// A numbered book scopes float numbers to the chapter, so two chapters no longer both
 /// open with a "Figure 1" and a cross-chapter `@fig-` ref is unambiguous. intro.tmd is
 /// chapter 1 and methods.tmd is chapter 2; each carries one labelled figure, and methods
 /// references BOTH — its own (2.1) and the intro's (1.1) — so one page pins the
-/// disambiguation this exists for. Unlike theorems, floats scope with no front matter
-/// asking for it.
+/// disambiguation this exists for.
 #[test]
 fn book_chapter_scopes_float_numbers_across_chapters() {
     use taliesin_core::Site;

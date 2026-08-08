@@ -16,30 +16,7 @@ fn tarn() -> Site {
 }
 
 #[test]
-fn install_page_has_two_tabsets_lowering_to_aria_tabs() {
-    let install = tarn().render_page("install.tmd").expect("install renders");
-    // Two `.panel-tabset`s on one page (package-manager + per-OS) => two tablists, and
-    // three panels each. A page with more than one tabset is pinned nowhere else. Scope to
-    // the tabset-specific classes so page chrome (which carries its own role="tablist") does
-    // not inflate the count.
-    assert!(
-        install.contains("tabset-tab") && install.contains("role=\"tab\""),
-        "tabsets carry ARIA tab roles: {install}"
-    );
-    assert_eq!(
-        install.matches("class=\"tabset-tablist\"").count(),
-        2,
-        "two tabsets => two tablists: {install}"
-    );
-    assert_eq!(
-        install.matches("class=\"tabset-panel\"").count(),
-        6,
-        "two tabsets x three tabs => six panels: {install}"
-    );
-}
-
-#[test]
-fn search_index_spans_guide_and_reference_including_tabset_content() {
+fn search_index_spans_guide_and_reference_including_every_subsection() {
     let idx = tarn().search_index_json;
     // The full-text index covers both a Guide page and a Reference page (cross-book search).
     for url in [
@@ -49,9 +26,8 @@ fn search_index_spans_guide_and_reference_including_tabset_content() {
     ] {
         assert!(idx.contains(url), "page indexed ({url}): {idx}");
     }
-    // Tabset-nested, non-default-tab content is searchable as plain text (its section body
-    // carries every panel, not just the visible one): a command from a non-first tab of the
-    // install tabsets and the CLI tab of the quickstart tabset all appear.
+    // A section's body is indexed WHOLE, so a command that lives in a `###` subsection two
+    // levels down is searchable from the palette without opening the page first.
     for needle in [
         "conda install",
         "scoop install tarn",
@@ -73,20 +49,14 @@ fn quickstart_links_cross_page_into_the_reference() {
     let qs = tarn()
         .render_page("quickstart.tmd")
         .expect("quickstart renders");
-    // A Guide page links into Reference pages: `.tmd#anchor` rewrites to `.html#anchor`,
-    // even when the link sits inside a `.code-walkthrough` step's prose.
+    // A Guide page links into Reference pages: `.tmd#anchor` rewrites to `.html#anchor`.
     assert!(
         qs.contains("api-frame.html#fn-filter"),
-        "walkthrough step links to the Frame.filter reference entry: {qs}"
+        "the line-by-line prose links to the Frame.filter reference entry: {qs}"
     );
     assert!(
         qs.contains("api-query.html#fn-col"),
-        "walkthrough step links to the col() reference entry: {qs}"
-    );
-    // The walkthrough still lowers to line-focused steps around those links.
-    assert!(
-        qs.contains("data-cw-lines=\"2\""),
-        "the code walkthrough keeps its per-step line ranges: {qs}"
+        "…and to the col() reference entry: {qs}"
     );
 }
 
@@ -255,12 +225,12 @@ fn the_appendix_is_unnumbered_and_the_definitions_render() {
     let grouping = tarn()
         .render_page("grouping.tmd")
         .expect("grouping renders");
-    // `tali-theorem-definition`, not a bare "definition" — the syntax highlighter also
-    // emits `tali-hl-definition`, so a loose substring count would pass vacuously.
+    // `callout-note`, not a bare "note" — the bundled CSS ships selectors for every callout
+    // kind on every page, so a loose substring count would pass vacuously.
     assert_eq!(
-        grouping.matches("tali-theorem-definition").count(),
+        grouping.matches("class=\"callout callout-note\"").count(),
         2,
-        "grouping.tmd carries two `{{.definition}}` blocks: {grouping}"
+        "grouping.tmd carries two titled definition callouts: {grouping}"
     );
 }
 
@@ -473,31 +443,4 @@ fn a_long_sections_tail_is_searchable() {
         "the section's body is indexed whole ({} chars)",
         body.chars().count()
     );
-}
-
-#[test]
-fn an_inactive_tab_panel_is_findable_by_the_browsers_own_search() {
-    // `tarn.rs` asserts (above) that non-default tab content IS in the Cmd-K index. A bare
-    // `hidden` made that a half-truth: the text was indexed but invisible to the browser's
-    // own find-in-page, so the tool advertised a searchability Ctrl-F did not honour.
-    let install = tarn().render_page("install.tmd").expect("install renders");
-    // Match the panel's own attribute, `hidden="until-found">`, closing bracket included:
-    // the bundled CSS selector and the JS string both contain the bare phrase, so a loose
-    // count is inflated by three and passes whatever the emitter does.
-    let collapsed = install.matches("hidden=\"until-found\">").count();
-    assert_eq!(
-        collapsed, 4,
-        "two tabsets x (three panels - one active) = four collapsed panels, got {collapsed}"
-    );
-    // And none fell back to the bare attribute, which is what the boolean `hidden` IDL
-    // setter writes and what would silently undo this on the first tab click. Checked per
-    // OPEN TAG: the page has other legitimately-`hidden` elements (the drawer, the palette),
-    // so a whole-document substring search proves nothing about the panels.
-    for tag in install.split("<div class=\"tabset-panel\"").skip(1) {
-        let open = tag.split('>').next().unwrap_or("");
-        assert!(
-            !open.ends_with(" hidden") && !open.contains(" hidden "),
-            "a tab panel carries a bare `hidden`: <div class=\"tabset-panel\"{open}>"
-        );
-    }
 }

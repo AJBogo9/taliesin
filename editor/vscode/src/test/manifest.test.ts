@@ -262,7 +262,10 @@ test("every keybinding and menu entry points at a contributed command", () => {
 /** A `const NAME: &[&str] = &[…]` string list, read out of a Rust source. */
 function rustStrList(relPath: string, constName: string): string[] {
   const src = fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
-  const m = new RegExp(`const ${constName}: &\\[&str\\] = &\\[([\\s\\S]*?)\\];`).exec(src);
+  // `=\s*&[` rather than `= &[`: rustfmt wraps the value onto its own line once the
+  // declaration passes 100 columns, and a regex that insists on the space silently reads
+  // the const as ABSENT — which fails as "declares NAME" rather than as a parse bug.
+  const m = new RegExp(`const ${constName}: &\\[&str\\] =\\s*&\\[([\\s\\S]*?)\\];`).exec(src);
   assert.ok(m, `${relPath} declares ${constName}`);
   const out = [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
   assert.ok(out.length > 0, `${constName} parsed as empty, so this gate proves nothing`);
@@ -273,7 +276,6 @@ const VALIDATE_RS = "crates/core/src/render/validate.rs";
 const names = (list: string[]) => list;
 const vocab = {
   calloutKinds: rustStrList(VALIDATE_RS, "CALLOUT_KINDS"),
-  theoremKinds: rustStrList(VALIDATE_RS, "THEOREM_KINDS"),
   cellOptions: rustStrList(VALIDATE_RS, "CELL_OPTION_KEYS"),
   divClasses: rustStrList("crates/core/src/vocab.rs", "DIV_CLASS_NAMES"),
   // `XREF_LABELS` is `&[(prefix, label)]`, so the pair list is read whole and the retired
@@ -331,9 +333,9 @@ test("the .vscodeignore does not exclude the snippets from the package", () => {
   }
 });
 
-test("every callout kind, div class and theorem a snippet inserts is in the vocabulary", () => {
+test("every callout kind and div class a snippet inserts is in the vocabulary", () => {
   const callouts = new Set(names(vocab.calloutKinds));
-  const divs = new Set([...names(vocab.divClasses), ...names(vocab.theoremKinds)]);
+  const divs = new Set(names(vocab.divClasses));
   for (const { name, body } of snippetBodies()) {
     for (const m of body.matchAll(/:::+\s*\{\.([\w-]+)/g)) {
       const cls = m[1];

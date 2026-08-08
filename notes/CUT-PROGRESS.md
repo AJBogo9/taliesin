@@ -88,7 +88,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 4 | Publishing + web-platform ops | **done** 2026-08-08 | `cut/wave-4-publishing` | **−9,576** (+808 / −10,384, 91 files) | 12 verbs → **10**; `headless_js.rs` went with `pdf.rs`; gates 9 → **8**, canaries 5 → **4** |
 | 5 | The deck engine | **done** 2026-08-08 | `cut/wave-5-deck` | **−11,553** (+657 / −12,210, 161 files) | the biggest wave so far; `DocFormat` deleted outright, not collapsed; `code-line-numbers` went with it |
 | 6 | Reactive tail, R, Chrome kill | **done** 2026-08-08 | `cut/wave-6-reactive-r-chrome` | **−4,146** (+960 / −5,106, 100 files) | gate runtimes 4 → **2**, canaries 4 → **2**, gates 8 → 8; `chromiumoxide` and the `headless-js` feature are gone |
-| 7 | Vocabulary contraction | not started | | | needs wave 1 first |
+| 7 | Vocabulary contraction | **done** 2026-08-08 | `cut/wave-7-vocabulary` | **−5,703** (+788 / −6,491, 127 files) | 14 registered retirements in one commit; `DIV_FEATURE_CLASSES` 7 → **3**, `RETIRED_XREF_PREFIXES` 3 → **7**, shortcodes 3 → **2**; **−5,866 B of CSS off every page** |
 | 8 | CLI ergonomics + scaffolding | not started | | | keep `doctor.rs` |
 | 9 | Diagnostics catalogue (keep lint front door) | not started | | | save `codes.rs` prose first |
 | 10 | LSP long tail | not started | | | |
@@ -103,8 +103,10 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   through the bundle partition. `runspec.rs` and `run_control.rs` are **not** run-only
   (the preview server's Run buttons use them) so they survive regardless. Adjudicate
   before executing.
-- **File-to-bundle collisions to resolve before waves 7/11/12:** `corpus/tarn/`
-  (justification deletes it while narrative rewrites it). Assign it to exactly one wave.
+- **File-to-bundle collisions to resolve before waves 11/12:** `corpus/tarn/` is
+  **RESOLVED** — wave 7 REWROTE it (tabsets → `###` subsections, the walkthrough → prose,
+  the two `.definition` blocks → titled callouts) and left the project standing, so wave 12
+  inherits it whole and may still delete it.
   **`corpus/course/` is RESOLVED:** wave 5 took only `lecture.tmd` (its deck) and left the
   book standing, so waves 7 and 12 inherit it whole. **`card.rs`, `manifest.rs` and `image_opt.rs` are
   RESOLVED — all three were deleted in wave 4**, so any later step naming them is spent.
@@ -124,11 +126,13 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   a retired `TALIESIN_REQUIRE_*` variable in full, even inside a comment explaining that it
   is retired, puts it straight back into the scanned set and fails the arming loop on a gate
   that no longer exists. Say "the R gate", not the variable. Recorded in the file too.
-- **Before wave 7 retires more nested vocabulary, sweep `docs/guide` for indented retired
-  keys by hand.** Still open — carried from wave 1; no gate sees an indented key. Wave 4
-  hit this exact hole: retiring the `orcid:`/`email:` author sub-keys needed a hand edit of
-  `docs/guide/reference/frontmatter.tmd` and `corpus/structured-authors/paper.tmd`, and no
-  gate would have caught either.
+- **Sweep `docs/guide` for indented retired keys by hand before retiring nested
+  vocabulary.** Still open as a standing rule; no gate sees an indented key. Wave 7 ran the
+  sweep and it came back **clean** — the only indented match in the whole shipped tree is
+  `corpus/diagnostics/typos.tmd`'s `shared:`, which is deliberate (see wave 7's finding 2:
+  a retired PARENT key takes its children with it, so nothing under it is validated at
+  all). That is the cheap direction and it is worth knowing: retiring a parent costs one
+  register entry and silences the whole block, where retiring N children costs N.
 - **Decide whether `Site::nav_ordered` still belongs where it is.** It lived in `llms.rs`
   and moved to `feed.rs` in wave 4 because `feed_hosts` was its other caller. If wave 11's
   site-layer reduction touches feeds, that is the moment to look at it again.
@@ -874,3 +878,153 @@ says the second-half canary interval "covers 1.0". It does not, and did not befo
 conversion either: measured identically in R and in Python it is [1.003, 1.081], p = 0.036.
 Changing an analytical conclusion in a document written to be read is the author's call, not
 a cut wave's.
+
+### Wave 7 — 2026-08-08, `cut/wave-7-vocabulary`
+
+**Measured reclaim: −5,703 lines** (`+788 / −6,491` over 127 files, 27 deleted outright)
+against the ~5,140 estimate, plus **1.77 MB** of video the line count does not see (two
+`site/assets/live-*-light.mp4` clips at 1,768,784 B, and `corpus/media`'s four `tour.*`
+fixtures at 13,226 B). By area: `crates/core/src` −3,243, `crates/core/tests` −696,
+`corpus` −541, `crates/core/assets` −412, `docs/guide` −396, `crates/server/src` −189,
+`site` −141, `web-client` −49, docs (other) −24, `editor/vscode` −23, `docs/internals` −6,
+`crates/server/tests` **+12** (the grid re-fixture is longer than the tabset it replaced),
+root/other **+5**. `notes/` is excluded from every figure above and below.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries,
+**90 suites / 1,814 passed / 0 failed / 0 ignored**, exit 0. Measure wave 8 against
+**1,814, two canaries and eight gates**; a bare `cargo test --workspace` gives the same
+figure, as it has since wave 6.
+
+**THE GATE EARNED ITS KEEP, in the one way a bare `cargo test` cannot.** The first full run
+came back RED on `every_tab_of_a_tabset_runs_its_own_cell_into_its_own_panel`
+(`nested_cell_executes.rs`), a **kernel-gated** test that had passed all afternoon by
+skipping. Everything else was green, twice over, including the render-side nested-cell pin
+that looks like it covers the same ground. Re-fixtured onto a two-column `layout-ncol`
+grid, which is the surviving multi-slot container, and the ordering claim is now a real one
+rather than a co-location one: the second cell's `<pre>` must fall BETWEEN the two outputs,
+which is exactly what a sibling splice would not produce.
+
+**FOURTEEN RETIREMENTS, PROVEN ON A SCRATCH DOCUMENT RATHER THAN GREPPED FOR.** One `.tmd`
+carrying every retired name at once, run through `taliesin check`, produced **15 located
+diagnostics and no silence**: `theorems:` → `TAL-FM-KEY` with its note; all five theorem
+kinds and all four widget classes → `TAL-DIV-CLASS`, each with its own note and never a
+did-you-mean; `{{< video >}}` → `TAL-SHORTCODE` with its note; and `@thm-x` →
+`TAL-XREF-UNDEF`, which is the whole point of the next paragraph.
+
+**KEEPING ALL 12 `XREF_LABELS` TUPLES WAS THE LOAD-BEARING HALF, and the proof is that
+`@thm-x` reports as a BROKEN REFERENCE rather than rendering as literal text.**
+`RETIRED_XREF_PREFIXES` went 3 → **7** (`thm`/`lem`/`cor`/`def` joining `prp`/`exm`/`rem`)
+while the label table stayed at 12. Deleting the four tuples instead would have made
+`parse_xref` stop recognising `@thm-x` as a reference at all — no link, no diagnostic,
+nothing — which is the silent-fallthrough this whole register family exists against.
+
+**Six things that were not true, or that the playbook did not know.** Same genus as waves
+1–6:
+
+1. **A retired PARENT key takes its whole nested block with it, and that is the cheap
+   direction.** `theorems:` had a `shared:` sub-key whose VALUES were themselves validated
+   (`TAL-THM-KIND`). Retiring the parent silences the entire block — one warning, one
+   register entry — rather than one warning per child, which is also what an author wants:
+   they delete the block, not each line of it. `TAL-THM-KIND` went with it, and the
+   long-carried "sweep `docs/guide` for indented retired keys" hazard came back **clean**
+   for the first time, because there is no longer anything indented under a live key.
+2. **`.code-walkthrough` was the only caller of the whole line-wrap machinery**, which the
+   plan treats as shared infrastructure. `emit::wrap_pre_lines`, `wrap_code_lines`,
+   `line_has_text` and `text.rs`'s `.tali-hl-ln` newline restoration all died with it —
+   the playbook's step 3 explicitly says to LEAVE that restoration "(magic-move and
+   `.debug` still wrap lines)", and both of those went in waves 5 and 3. ~110 lines the
+   estimate did not carry.
+3. **`web-client/search.js` carried 44 lines of tabset-reveal logic that nothing else
+   touches.** `selectOwningTab` + `revealFor` existed because a Cmd-K hit could land in a
+   collapsed `hidden="until-found"` panel; with no tabsets, nothing on any page carries
+   that attribute, so both were dead. Neither `cargo test` nor `tsc` would ever have said
+   so — the census in `token_contract.rs` is what surfaced it, by reporting `data-src` and
+   three `*-init` attributes as browser-selected but no longer emitted.
+4. **`theme.rs`'s `syncThemeVideos` survived `{{< video >}}`'s deletion by one indirection**
+   and would have shipped inert JS on every page forever. It promotes `data-src`→`src` on
+   the theme-visible clip of a light/dark pair; with the shortcode gone nothing emits
+   `data-src` at all. Found the same way as (3), which is worth recording: **the data-*
+   census is the instrument that catches a client-side orphan, and it caught two.**
+5. **`check-superset.tmd` must stay CELL-FREE, and re-fixturing it broke that silently.**
+   The theorem-id-unreferenceable case was replaced with a hidden-cell `label:`, which
+   looked like the obvious substitute — but `validate_internal_anchors` returns early on
+   any document with an executable cell (a cell can emit the target id at runtime), so
+   adding one switched OFF the broken-anchor assertion two paragraphs above it. The test
+   failed, the fixture is cell-free again with a comment saying why, and the
+   unreferenceable-label family lives in `hidden_cell_xref_targets.rs`, which is where it
+   was already covered.
+6. **`manifest.test.ts`'s Rust-const parser insisted on `= &[` with a literal space**, so
+   the moment rustfmt wrapped `RETIRED_XREF_PREFIXES` onto its own line the gate reported
+   the const as **ABSENT** rather than as a parse failure. It reads `=\s*&[` now. Only
+   `./tools/gates.sh` runs this suite, exactly as CLAUDE.md warns.
+
+**Three judgement calls, and how they went.**
+
+- **NO new `RETIRED_SHORTCODE` register, per the playbook's CUT C4 — but the removal note
+  is delivered anyway, for six lines.** Waves 5 and 6 both declined new registers; this
+  takes the cheaper third path wave 6 found for the `range` alias. `expand_in_line` reads
+  `frontmatter::retired_note("shortcode", name)` and appends it, so `{{< video >}}` answers
+  with "write the `<video …>` tag yourself" instead of a bare "unknown", the `{{<` opener
+  stays in the message (`codes::classify` keys `TAL-SHORTCODE` off it), and the entire cost
+  is one `RETIRED_KEYS` row under a new scope. **Precedent: prefer a scope on the existing
+  register to a fourth register, every time.**
+- **The site keeps its screencasts, as hand-written `<video>` in a `<figure
+  class="tali-figure">`.** `.tali-video`'s nine CSS lines went and one rule (`figure
+  .tali-figure video`) replaced them, so the frame + caption styling now applies to what
+  the docs actually tell an author to write. The cost is the playbook's: **one clip per
+  slot instead of a theme-matched pair**, so the dark screencast now also plays on a light
+  page. That is the accepted downgrade on the shop window, and it deletes 1.77 MB.
+- **`corpus/descent`'s scrolly became a `{{< input type=select >}}`, not five figures.**
+  The playbook says to lower the five scenes to five ordinary numbered figures with prose
+  between them; that is 5× the `{js}` code for a page whose entire point is that the reader
+  drives it. One select control named `scene` keeps the one cell, the five states and the
+  five narrations, using only live vocabulary. The reader picks the scene instead of
+  scrolling to it — which is the honest description of what was lost.
+
+**What was given up, stated plainly.**
+
+**Numbered, cross-referenceable prose — the one capability in this wave with no substitute
+at all.** The ruling's dissent stands unaltered: callouts get a `title=` and an `#sec-` id
+and nothing more, so "as we showed in Theorem 3" is now hand-numbered or written as
+`## Theorem: X {#sec-x}` and referenced as "Section 2.3". `float_number` keeps 7 of its 8
+callers and `register_xref` 8 of its 9; every other numbered thing Taliesin offers (figure,
+table, equation, listing) is non-prose. `corpus/course/` survives as a book, with its
+theorems rewritten as display equations (`@eq-expectation`, `@eq-score`, `@eq-elbo`) and
+sections (`@sec-consistency`) — which reads fine, and is not the same document.
+
+**The knowledge in `render/mod.rs:2877`'s unreferenceable-theorem warning**, which encoded a
+measured bug: the div's own `id=` path, unlike figures and tables, never gated on the
+cross-reference prefix, so `::: {.theorem #pythagoras}` was numbered, silently
+unreferenceable, and `check` said nothing. Rebuilding the feature is a day; rediscovering
+that class of finding is a measurement pass.
+
+**`panel-tabset`, which is the member of the widget bundle whose replacement is visibly
+worse for the reader.** `corpus/tarn/install.tmd`'s two tabsets became six `###`
+subsections, so a reader after the macOS command now scrolls past Linux and Windows. Its
+churn record was one post-landing fix in its whole life, and its solved subtleties —
+roving tabindex, full ARIA keyboard nav, `hidden="until-found"` so Ctrl-F still reaches an
+inactive panel, tab labels as buttons so they stay out of the TOC — die with the code and
+will be rediscovered at the same defects by any re-implementation. Cut on the judgement
+that this tool is for prose.
+
+**The `#anchor` include slice, and with it go-to-definition landing on a named section.**
+`line_offset` is deleted rather than threaded as a hard-coded zero (the playbook's one real
+warning about this cut), so the source map is genuinely simpler. It degrades **loudly**:
+verified on a scratch project where `parts.tmd` really exists, `{{< include parts.tmd#sec-x
+>}}` stays literal on the page AND draws a located "include not resolved" warning, while
+the plain include beside it still splices.
+
+**`scrolly`'s a11y work and `explorable_scrolly.html`'s byte snapshot.** `label_steps`
+carried a measured finding — a scrolly was 0 steps with `aria`/`role` and a `null` root
+role, so a screen-reader user got the words and never the stage — and its fix
+(`role="group"` + an ordinal `aria-label` + `aria-controls`, kept out of `indexable_text`)
+is gone with the container.
+
+**Measured, not asserted.** `corpus/tech-blog` rebuilt with the release binary on both
+sides of the cut: `_assets/app.<hash>.css` **53,478 → 47,612 bytes, −5,866 off every page
+(−11.0%)**, the largest CSS win since wave 3's stepper removal; the shared
+`app.<hash>.js` **93,172 → 77,301, −15,871** (scrolly.js + tabset.js + walkthrough.js
+leaving `core_enhance_js`, plus search.js's reveal path). The output tree is **54 files
+before and 54 after**, differing only in the two content-hashed asset names, and an
+**in-place** rebuild over the existing tree produced a byte-identical file list — so no
+surviving keep-contributor lost its writer.

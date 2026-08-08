@@ -241,7 +241,7 @@ fn local_media_flags_missing_video() {
     let dir = Tmp::new("video");
     std::fs::write(dir.0.join("there.mp4"), "x").unwrap();
     let doc = render_document_with_includes(
-        "{{< video gone.mp4 >}}\n\n{{< video there.mp4 >}}\n\n\
+        "<video src=\"gone.mp4\"></video>\n\n<video src=\"there.mp4\"></video>\n\n\
          <video src=\"https://cdn.example/clip.mp4\"></video>\n",
         &dir.0,
     );
@@ -254,12 +254,13 @@ fn local_media_flags_missing_video() {
 }
 
 #[test]
-fn media_dark_and_poster_sources_checked() {
+fn media_poster_and_extra_sources_are_checked() {
     let dir = Tmp::new("video-dark");
     std::fs::write(dir.0.join("light.mp4"), "x").unwrap();
-    // dark= source missing; poster missing.
+    // A `<source>` inside the element and the `poster=` still are references: both are
+    // paths a build must be able to copy, and both used to ship broken in silence.
     let doc = render_document_with_includes(
-        "{{< video light.mp4 dark=dark.mp4 poster=cover.png >}}\n",
+        "<video poster=\"cover.png\"><source src=\"light.mp4\"><source src=\"dark.mp4\"></video>\n",
         &dir.0,
     );
     let m = msgs(&validate_local_media(&doc.blocks, &dir.0));

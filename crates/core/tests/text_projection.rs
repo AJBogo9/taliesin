@@ -69,7 +69,7 @@ fn text_projection_of_a_rich_doc_is_pinned() {
     );
 
     // Structured blocks stay separated (item 19): list items on their own lines, an input
-    // control as `label = value`, and scrolly steps as distinct paragraphs.
+    // control as `label = value`, and adjacent paragraphs never welded together.
     assert!(
         actual.contains("- name: the column to reference."),
         "list item on its own line"
@@ -84,6 +84,6 @@ fn text_projection_of_a_rich_doc_is_pinned() {
     );
     assert!(
         !actual.contains("wall.Which"),
-        "scrolly steps must not merge"
+        "adjacent paragraphs must not merge"
     );
 }

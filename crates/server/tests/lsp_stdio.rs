@@ -377,8 +377,8 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
     let dir = std::env::temp_dir().join(format!("tali-lsp-divattr-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);
     let doc = dir.join("d.tmd");
-    // Line 4 is a callout's attribute slot; line 7 is a numbered theorem's.
-    let text = "---\ntitle: T\n---\n\n::: {.callout-note \n:::\n\n::: {.lemma \n:::\n";
+    // Line 4 is a callout's attribute slot; line 7 is a plain (custom-class) div's.
+    let text = "---\ntitle: T\n---\n\n::: {.callout-note \n:::\n\n::: {.my-thing \n:::\n";
     std::fs::write(&doc, text).expect("fixture");
     let uri = format!("file://{}", doc.display());
 
@@ -405,7 +405,7 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
             }}
         })),
         completion(2, 4, 19), // end of `::: {.callout-note `
-        completion(3, 7, 12), // end of `::: {.lemma `
+        completion(3, 7, 15), // end of `::: {.my-thing `
         frame(serde_json::json!({
             "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
         })),
@@ -430,11 +430,11 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
             "`{expected}=` should be offered on a callout: {got:?}"
         );
     }
-    for absent in ["state", "lines", "name", "ncol", "layout-ncol"] {
+    for absent in ["ncol", "layout-ncol"] {
         assert!(
             !got.iter().any(|l| l == absent),
-            "`{absent}=` is inert on a callout (the callout arm never reads it) and must \
-             not be offered: {got:?}"
+            "`{absent}=` is inert on a callout (the callout arm is tested FIRST and never \
+             reads it) and must not be offered: {got:?}"
         );
     }
     // The value half comes with the key, and as a snippet, so `appearance` lands on a
@@ -450,16 +450,20 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
         "the closed value set should be offered as a snippet choice: {appearance:?}"
     );
 
-    let theorem = labels(&response(&stdout, 3));
+    // The other side of the narrowing: a div carrying no callout class falls through to
+    // the generic arm, which reads `layout-ncol=` and nothing else.
+    let generic = labels(&response(&stdout, 3));
     assert!(
-        theorem.iter().any(|l| l == "title"),
-        "`title=` reaches every theorem kind: {theorem:?}"
+        generic.iter().any(|l| l == "layout-ncol"),
+        "`layout-ncol=` reaches a plain div: {generic:?}"
     );
-    assert!(
-        !theorem.iter().any(|l| l == "collapse"),
-        "`collapse=` has no branch in the NUMBERED theorem arm (only `proof`), so offering \
-         it on a `.lemma` would recommend a no-op: {theorem:?}"
-    );
+    for absent in ["title", "collapse", "icon", "appearance"] {
+        assert!(
+            !generic.iter().any(|l| l == absent),
+            "`{absent}=` is a callout attribute; the generic arm never reads it, so \
+             offering it here would recommend a no-op: {generic:?}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

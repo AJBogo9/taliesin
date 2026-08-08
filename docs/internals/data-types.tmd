@@ -42,13 +42,13 @@ basis for the incremental diff. `cell` is the bridge to the server: a `Some(..)`
 marks a block the executor must run.
 
 `nested` is the second half of that bridge, and it exists because a `:::` container
-concatenates its children into one `html` string. A cell inside a callout or a tabset has
+concatenates its children into one `html` string. A cell inside a callout or a grid has
 no block of its own left, so it is invisible to an executor that scans the flat top-level
 list, which is exactly what it was until this field arrived: the cell rendered and never
 ran. The container keeps the folded child blocks here, and leaves an **empty output slot**
 in its own HTML after each one — a `<div class="tali-output">` carrying that cell's
 `{id}-out` block id plus a `data-tali-out-for` marker. The executor fills the slot in
-place, so a tab's output lands in that tab's own panel rather than below the whole tabset.
+place, so a grid cell's output lands in its own column rather than below the whole grid.
 
 Entries are flattened to one level (a container that folds another container takes its
 list wholesale), so an entry's own `nested` is always empty. The rule has no exception: a

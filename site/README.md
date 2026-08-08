@@ -18,8 +18,9 @@ stylesheet.
   `actions`) renders the top of each page. No HTML.
 - **Sections** — plain `##` headings + prose, the way any Taliesin doc reads.
 - **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
-- **Screencasts** — `{{< video light.mp4 dark=dark.mp4 caption="…" >}}` (built-in
-  shortcode; the clip matching the page theme plays, swapping live on toggle).
+- **Screencasts** — a hand-written `<video>` in a `<figure class="tali-figure">`, which
+  base.css frames and captions. One clip per slot: the `{{< video >}}` shortcode and its
+  theme-matched light/dark pair were retired on 2026-08-08.
 - **Live graphics** — `{js}` cells (the spinnable surface on the landing page, the
   reactive plots and the Lorenz attractor on `showcase.tmd`).
 - **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.

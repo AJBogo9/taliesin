@@ -264,7 +264,10 @@ suite("Taliesin companion (integration)", () => {
       divLabels.includes("callout-note"),
       `div classes should include callout-note: ${divLabels}`
     );
-    assert.ok(divLabels.includes("theorem"), `div classes should include theorem: ${divLabels}`);
+    assert.ok(
+      divLabels.includes("column-margin"),
+      `div classes should include column-margin: ${divLabels}`
+    );
   });
 
   test("offers math commands inside `$…$` and nothing in prose", async () => {

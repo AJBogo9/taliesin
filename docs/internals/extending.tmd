@@ -50,11 +50,11 @@ presentation and optional features should ride the extension points below.
 The core stays lean; two seams let you add behaviour without touching it:
 
 1. **Declarative shortcodes** (`render/extension/`). `{{< name args >}}` invocations
-   expand to inline HTML at pipeline stage 2. Two are built in: `{{< video clip.mp4 [dark=…] >}}`
-   (a theme-matched `<video>` authored in Markdown) and `{{< input … >}}` (a reactive
-   control that feeds the `{js}` graph); `{{< include >}}` is resolved by an earlier pass.
-   Any other name is left verbatim, with a warning so
-   a typo is visible rather than shipped as literal text.
+   expand to inline HTML at pipeline stage 2. One is built in here — `{{< input … >}}`, a
+   reactive control that feeds the `{js}` graph — and `{{< include >}}` is resolved by an
+   earlier pass. Any other name is left verbatim, with a warning, so a typo (or a
+   retired name, which answers with its own removal note) is visible rather than shipped
+   as literal text.
 2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
    `fn(root)` that runs after every (re)mount; load it with a `<script>` in your project's
    `_site.yml` `head:`. The built-in copy buttons and `mermaid.js` use this same public
@@ -116,7 +116,7 @@ It holds open `.tmd` buffers warm and answers:
 | capability | what it gives the author |
 |---|---|
 | `publishDiagnostics` | every `check` finding, live as you type, with its `TAL-*` code and a link to the catalog. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
-| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout and theorem kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
+| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
 | `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
 | `documentLink` | `{{< include >}}` / `{{< embed >}}` paths, so they *look* navigable |

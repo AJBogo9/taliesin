@@ -66,8 +66,7 @@ pub(crate) fn bibliography_paths(front_matter: &str) -> Vec<String> {
     // comrak's FrontMatter node includes the `---` fences, which serde_yaml reads as
     // document markers and rejects — so the faithful parse below would ALWAYS fail on the
     // real caller's input and silently fall through to the lenient scanner (which can't
-    // read a block sequence). Strip the fences first (a no-op on a fence-free string),
-    // matching `parse_theorem_config`.
+    // read a block sequence). Strip the fences first (a no-op on a fence-free string).
     let body = front_matter.trim();
     let body = body.strip_prefix("---").unwrap_or(body);
     let body = body.strip_suffix("---").unwrap_or(body);
@@ -148,106 +147,4 @@ pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
         }
     }
     None
-}
-
-/// Parsed `theorems:` front-matter config: which kinds share one counter, and nothing else.
-///
-/// Numbering itself is not configurable, and neither is its scope. A theorem is numbered; in
-/// a numbered book chapter it scopes to that chapter ("Theorem 2.3") and is flat everywhere
-/// else, the same rule every float follows. The `numbered:` key that could switch that off
-/// was retired on 2026-08-02 along with the book-wide `_site.yml theorems:` policy that
-/// carried it, so this is a per-document statement with no inheritance chain behind it.
-///
-/// Public as an opaque handle so the site search API can carry one through; its fields and
-/// accessors stay crate-internal.
-#[derive(Default, Clone, Debug, PartialEq)]
-pub struct TheoremConfig {
-    /// Kinds that share a single counter, in declaration order. Empty = the default
-    /// (each kind counts independently).
-    shared: Vec<String>,
-}
-
-impl TheoremConfig {
-    /// The counter key for `kind`: every kind in the shared group collapses to one key
-    /// (the group's first member) so they draw a single sequence; an unlisted kind keys
-    /// by itself. This governs only the NUMBER; the visible label stays per-kind.
-    pub(crate) fn counter_key<'a>(&'a self, kind: &'a str) -> &'a str {
-        if self.shared.iter().any(|k| k == kind) {
-            self.shared.first().map(String::as_str).unwrap_or(kind)
-        } else {
-            kind
-        }
-    }
-}
-
-/// Parse a `theorems:` block out of an already-parsed YAML value into a `TheoremConfig`.
-/// A missing block or unexpected shape yields the default (per-kind counters). `shared:`
-/// is a YAML list of kind names.
-pub(crate) fn parse_theorem_config_value(value: &serde_yaml::Value) -> TheoremConfig {
-    let mut config = TheoremConfig::default();
-    if let Some(shared) = value
-        .get("theorems")
-        .and_then(|t| t.get("shared"))
-        .and_then(|s| s.as_sequence())
-    {
-        config.shared = shared
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect();
-    }
-    config
-}
-
-/// The theorem config for a page, from its own `theorems:` block. A YAML parse failure
-/// yields the default; there is no project-level fallback to preserve.
-pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
-    // comrak's FrontMatter node includes the `---` fences; serde_yaml treats a leading or
-    // trailing `---` as a document marker, so strip the fences to one YAML document.
-    let body = front_matter.trim();
-    let body = body.strip_prefix("---").unwrap_or(body);
-    let body = body.strip_suffix("---").unwrap_or(body);
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(body) else {
-        return TheoremConfig::default();
-    };
-    parse_theorem_config_value(&value)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shared_group_collapses_to_one_counter_key() {
-        let cfg = parse_theorem_config("---\ntheorems:\n  shared: [theorem, lemma]\n---");
-        // Every member of the group keys by the group's first member, so they draw one
-        // sequence; the visible label stays per-kind.
-        assert_eq!(cfg.counter_key("theorem"), "theorem");
-        assert_eq!(cfg.counter_key("lemma"), "theorem");
-        // An unlisted kind keys by itself and counts separately.
-        assert_eq!(cfg.counter_key("definition"), "definition");
-    }
-
-    #[test]
-    fn no_theorems_block_counts_every_kind_separately() {
-        let cfg = parse_theorem_config("---\ntitle: X\n---");
-        assert_eq!(cfg.counter_key("theorem"), "theorem");
-        assert_eq!(cfg.counter_key("lemma"), "lemma");
-    }
-
-    /// The retired `numbered:` key must not survive as a silent parse. It is an unknown
-    /// sub-key now, diagnosed by `frontmatter::validate_front_matter`, and it must not
-    /// reach back into the counter behaviour by any route.
-    #[test]
-    fn a_leftover_numbered_key_does_not_change_counting() {
-        let cfg = parse_theorem_config("---\ntheorems:\n  numbered: false\n---");
-        assert_eq!(cfg, TheoremConfig::default());
-    }
-
-    #[test]
-    fn malformed_front_matter_yields_the_default() {
-        assert_eq!(
-            parse_theorem_config("---\ntheorems: [oops\n---"),
-            TheoremConfig::default()
-        );
-    }
 }

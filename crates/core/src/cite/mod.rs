@@ -38,7 +38,6 @@ pub use parse::{parse_bib, parse_bib_warned};
 pub use render::is_xref_anchor;
 pub use render::link_xrefs_in_fragment;
 pub use render::process;
-pub(crate) use render::xref_prefix_for_label;
 pub(crate) use render::{RETIRED_XREF_PREFIXES, XREF_LABELS};
 
 pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};

@@ -43,9 +43,7 @@ pub use doc_includes::includes_from_parts;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
-// `TheoremConfig` is public (an opaque handle) so the site search API can carry one through.
-pub use fm_extract::TheoremConfig;
-use fm_extract::{detect_title_block_hidden, detect_toc, extract_field, parse_theorem_config};
+use fm_extract::{detect_title_block_hidden, detect_toc, extract_field};
 mod cell_extract;
 pub use cell_extract::option_directive;
 use cell_extract::{
@@ -72,7 +70,7 @@ use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
-pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
+pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES};
 // The IMPLEMENTED div classes. The validator uses this directly; outside `render` its only
 // reader is `vocab.rs`'s drift test, which pins the OFFERED subset (`vocab::DIV_CLASS_NAMES`,
 // several classes shorter) as a subset of it so a class the editor suggests always gets a
@@ -179,7 +177,7 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
 }
 
 /// Like [`render_document_with_includes`] but with an optional book chapter number, so a
-/// numbered chapter renders "Figure 2.3" / "Theorem 2.3". Only the site book path passes
+/// numbered chapter renders "Figure 2.3" / "Table 2.1". Only the site book path passes
 /// `Some(n)`; everything else is `None` (continuous numbering).
 pub fn render_document_with_includes_scoped(
     src: &str,
@@ -190,8 +188,7 @@ pub fn render_document_with_includes_scoped(
 }
 
 /// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
-/// its project's `_site.yml` ([`SiteDefaults`]): the book-wide `theorems:` policy a chapter
-/// with no block of its own falls back to, and the project-wide `bibliography:` laid under
+/// its project's `_site.yml` ([`SiteDefaults`]): the project-wide `bibliography:` laid under
 /// the page's own. Everything else passes `None` and is byte-identical to
 /// [`render_document_with_includes_scoped`]. Public so the server's site build + live
 /// preview render each page with the project's policies.
@@ -218,9 +215,8 @@ pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let root = crate::includes::single_doc_root(base_dir);
     // A page of a project inherits its project-wide `bibliography:` even when invoked on its
     // own, so `preview post.tmd` and `preview <dir>` render the same document (see
-    // `site::shared_for_single_doc`). It is the only thing inherited: since the book-wide
-    // `theorems:` policy was retired (2026-08-02) a document's theorem config is entirely
-    // its own front matter, so there is no project state to reproduce here.
+    // `site::shared_for_single_doc`). It is the only thing a page inherits from its
+    // project, so there is no other project state to reproduce here.
     let site = SiteDefaults {
         bibliography: crate::site::shared_for_single_doc(&root),
     };
@@ -534,9 +530,6 @@ fn render_internal_impl(
     // `echo`/`include` have no document-level form since 2026-08-02 — they are per-cell
     // (`#| echo:`), which is where every real document already said them.
     let mut exec_cache = true;
-    // Per-document, with no project-level fallback to inherit: a chapter that starts
-    // straight into `#` with no front matter gets the default (each kind counts on its own).
-    let mut theorem_config = TheoremConfig::default();
     // Whether this render will emit a visible title block — and therefore demote every
     // body heading one level. Read from the front matter up front (not from the in-loop
     // `title`/`format`/`hide_title_block`, which are only set once the walk has passed
@@ -684,7 +677,6 @@ fn render_internal_impl(
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
                 exec_cache = detect_execute_cache(fm);
-                theorem_config = parse_theorem_config(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -1214,15 +1206,6 @@ fn render_internal_impl(
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings, chapter);
-    // Theorem environments: number per-kind in document order + register #thm-/#lem-/…
-    // anchors. Must run before cite::process resolves @thm-/@lem-/… references.
-    number_theorems(
-        &mut blocks,
-        &mut xref_registry,
-        &mut warnings,
-        &theorem_config,
-        chapter,
-    );
     let bib_line = crate::frontmatter::bibliography_line(src);
     let bib = load_bibliography(
         &bib_paths,
@@ -1917,7 +1900,7 @@ pub fn code_scripts() -> String {
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
 /// (copy buttons + the whole reader menu + skip-link and
 /// keyboard a11y) rides on every non-bare page, since every page benefits. The
-/// DOM-specific enhancers (mermaid, `{js}`, walkthrough, tabset, scrolly) ship
+/// DOM-specific enhancers (mermaid, `{js}`) ship
 /// unconditionally in [`OutputMode::Preview`] (a doc can gain any construct on an
 /// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
 /// target DOM is present in a static [`OutputMode::Build`]. [`OutputMode::Bare`]
@@ -1952,16 +1935,13 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         }
     };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}{walk_s}{tabset_s}{scrolly_s}",
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{talijs_s}",
         mermaid_s = if mode == OutputMode::Preview || mermaid_present {
             mermaid.clone()
         } else {
             String::new()
         },
         talijs_s = gate(has_client_cells(body), TALIESIN_JS),
-        walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
-        tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
-        scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
     )
 }
 
@@ -2043,16 +2023,6 @@ const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// Inlined into a static Build page that has a diagram so it renders with no CDN; the
 /// live Preview keeps the lazy loader instead (see `code_scripts_for`).
 const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
-/// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
-/// through `taliEnhancers`, no-ops without a walkthrough (like mermaid/tali-js), so it
-/// rides unconditionally in [`code_scripts`].
-const WALKTHROUGH_JS: &str = include_str!("../../assets/js/walkthrough.js");
-/// ARIA tabs interaction for `::: {.panel-tabset}` (click + arrow-key tab switching).
-/// Registers through `taliEnhancers`, no-ops without a tabset, rides in [`code_scripts`].
-const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
-/// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `taliEnhancers`,
-/// no-ops without a `.scrolly`, rides in [`code_scripts`].
-const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
 
 /// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
 /// tokens + base + dark + site chrome). Exposed so the multi-page build can externalize it
@@ -2094,13 +2064,6 @@ pub fn callout_kinds() -> &'static [&'static str] {
     CALLOUT_KINDS
 }
 
-/// The theorem-environment kind vocabulary (`::: {.theorem}`, `::: {.proof}`, …), for
-/// tests outside this crate that need to assert its size without reaching into
-/// `validate` (`pub(crate)`). Mirrors [`callout_kinds`].
-pub fn theorem_kinds() -> &'static [&'static str] {
-    THEOREM_KINDS
-}
-
 /// The retirement note for a `validate::RETIRED_DIV_CLASSES` entry, or `None` if `class`
 /// was never retired. `pub` (rather than widening `RETIRED_DIV_CLASSES` itself) so a test
 /// outside this crate can assert a retired div class is actually registered — the exact
@@ -2123,15 +2086,7 @@ pub fn retired_div_note(class: &str) -> Option<&'static str> {
 /// External page keeps that runtime INLINE instead (see `assemble_html_page`), anchoring
 /// the resolution base to the page itself.
 pub fn core_enhance_js() -> String {
-    [
-        CODE_ENHANCE_JS,
-        WALKTHROUGH_JS,
-        TABSET_JS,
-        SCROLLY_JS,
-        TOC_SPY_JS,
-        SEARCH_JS,
-    ]
-    .join("\n;\n")
+    [CODE_ENHANCE_JS, TOC_SPY_JS, SEARCH_JS].join("\n;\n")
 }
 
 /// The vendored mermaid library plus its loader (CDN placeholder already resolved), for
@@ -2441,8 +2396,8 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 /// "Figure 1" and a cross-chapter `@fig-` ref is unambiguous.
 ///
 /// There is no knob: outside a numbered chapter there is simply no chapter to scope to,
-/// so numbering stays flat — the same rule `section_number` already follows. Theorems
-/// call this too, so a chapter cannot show "Figure 2.3" beside "Theorem 5".
+/// so numbering stays flat — the same rule `section_number` already follows. Every float
+/// shares this one helper, so a chapter cannot show "Figure 2.3" beside "Table 5".
 fn float_number(chapter: Option<u32>, n: usize) -> String {
     match chapter {
         Some(ch) => format!("{ch}.{n}"),
@@ -2488,8 +2443,8 @@ pub fn sourcepos_start_line(sp: &str) -> u32 {
 }
 
 /// A labelled cell whose output the executor will never emit (`#| include: false`) has
-/// nothing to carry its anchor, so the label is unreachable. Warn at the cell, mirroring
-/// the theorem-prefix warning: the reference site's own "broken cross-reference: @fig-x"
+/// nothing to carry its anchor, so the label is unreachable. Warn at the cell rather than
+/// at the reference site: its own "broken cross-reference: @fig-x"
 /// reads as a lie to an author looking straight at the `label: fig-x` they wrote, and an
 /// unreferenced one would otherwise die silently. `kind` names the construct ("figure",
 /// "table") so the message says which label it means.
@@ -2522,111 +2477,6 @@ fn unreferenceable_nonexec_label(
          executed, so it produces no {kind} output and `@{anchor}` won't resolve"
     ))
     .at(file, line as u32)
-}
-
-/// Assign continuous, per-kind theorem numbers in document order (Theorem 1, 2, …;
-/// Lemma 1, 2, … independently), fill each theorem's number slot, and register its
-/// `#thm-`/`#lem-`/… anchor so `@thm-x` resolves. Runs after `apply_table_captions`
-/// and before `cite::process`. `proof` carries no `data-tali-theorem-kind`, so it is
-/// skipped (unnumbered, unreferenceable). Top-level theorems only — a theorem nested
-/// inside another container is embedded in the parent block's HTML (same limitation as
-/// table captions). The container id is read from the OPENING tag only (via `tag_end`)
-/// so a child block's `id=` is never mistaken for the theorem anchor.
-/// Every theorem div inside `html`, in document order, as `(kind, id)`. Scans the
-/// whole string (not just the opening tag) so a `::: {.theorem}` nested inside another
-/// fenced div — which collapses into the parent's one block — is still found, numbered,
-/// and registered as a ref target. Each `data-tali-theorem-kind` occurrence is paired
-/// with the `id` on its own opening `<div>`, bounded to that tag so a sibling div's id
-/// can't leak in.
-fn theorem_divs(html: &str) -> Vec<(String, Option<String>)> {
-    const NEEDLE: &str = "data-tali-theorem-kind=\"";
-    let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(rel) = html[from..].find(NEEDLE) {
-        let attr_pos = from + rel;
-        let kind_start = attr_pos + NEEDLE.len();
-        let Some(kind_end) = html[kind_start..].find('"').map(|i| kind_start + i) else {
-            break;
-        };
-        let kind = html[kind_start..kind_end].to_string();
-        // The theorem's own opening tag is the nearest `<div` before its kind attr.
-        let div_start = html[..attr_pos].rfind("<div").unwrap_or(attr_pos);
-        let open_tag = tag_end(&html[div_start..])
-            .map(|i| &html[div_start..div_start + i + 1])
-            .unwrap_or(&html[div_start..]);
-        out.push((kind, extract_attr(open_tag, "id")));
-        from = kind_end;
-    }
-    out
-}
-
-fn number_theorems(
-    blocks: &mut [Block],
-    xrefs: &mut HashMap<String, String>,
-    warnings: &mut Vec<Warning>,
-    config: &TheoremConfig,
-    chapter: Option<u32>,
-) {
-    let mut counts: HashMap<String, u32> = HashMap::new();
-    for b in blocks.iter_mut() {
-        // Collect every theorem in this block up front; the number slots are then filled
-        // left-to-right in the same order, so nested theorems interleave by document order.
-        for (kind, id) in theorem_divs(&b.html) {
-            // Shared-group kinds collapse to one counter key; the visible label stays
-            // per-kind (only the number is shared).
-            let key = config.counter_key(&kind).to_string();
-            let n = {
-                let c = counts.entry(key.clone()).or_insert(0);
-                *c += 1;
-                *c
-            };
-            // A theorem is always numbered (the `numbered:` opt-outs were retired
-            // 2026-08-02). A numbered book chapter scopes the number ("Theorem 2.3");
-            // anywhere else it is flat ("Theorem 3"). Same rule, same helper, as every
-            // float — so a chapter cannot show "Figure 2.3" beside "Theorem 5". There is no
-            // opt-in: scoping is a property of being in a numbered chapter, which the
-            // renderer already knows.
-            let display = float_number(chapter, n as usize);
-            // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
-            let slot = if display.is_empty() {
-                String::new()
-            } else {
-                format!("&nbsp;{display}")
-            };
-            b.html = b.html.replacen(
-                "<span class=\"tali-theorem-number\"></span>",
-                &format!("<span class=\"tali-theorem-number\">{slot}</span>"),
-                1,
-            );
-            // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
-            // valid same-page ref target that resolves to a bare label, not a broken ref.
-            // But only if the id carries a cross-reference kind prefix. A theorem gets its
-            // number from the `.theorem` class alone, so `#pythagoras` is numbered yet
-            // `@pythagoras` never resolves (`parse_xref` bails when the prefix names no xref
-            // kind) — the div's own id path, unlike figures/tables, never gated on the prefix,
-            // so this was silently unreferenceable and `check` said nothing. Warn instead, and
-            // suggest the kind's prefix (theorem -> `thm-`, lemma -> `lem-`, …).
-            if let Some(id) = id {
-                if crate::cite::is_xref_anchor(&id) {
-                    register_xref(
-                        xrefs,
-                        warnings,
-                        &id,
-                        display,
-                        b.source_file.as_deref(),
-                        sourcepos_start_line(&b.sourcepos),
-                    );
-                } else {
-                    let hint = crate::cite::xref_prefix_for_label(divs::theorem_meta(&kind).0)
-                        .map(|p| format!("; use `{p}-{id}`"))
-                        .unwrap_or_default();
-                    warnings.push(Warning::new(format!(
-                        "theorem id \u{201c}{id}\u{201d} cannot be cross-referenced (`@{id}` won't resolve){hint}"
-                    )));
-                }
-            }
-        }
-    }
 }
 
 fn apply_table_captions(
@@ -2964,13 +2814,6 @@ impl DivAttrs {
     }
     fn callout_kind(&self) -> Option<&str> {
         self.classes.iter().find_map(|c| c.strip_prefix("callout-"))
-    }
-    /// The first class that names a theorem-environment kind, or `None`.
-    fn theorem_kind(&self) -> Option<&str> {
-        self.classes
-            .iter()
-            .map(String::as_str)
-            .find(|c| validate::THEOREM_KINDS.contains(c))
     }
 }
 

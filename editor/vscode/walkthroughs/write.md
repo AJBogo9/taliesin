@@ -3,7 +3,7 @@
 Completion comes from the same vocabulary the validator enforces, so it cannot suggest
 something `check` will reject:
 
-- `::: {.` — callouts, theorems, and the structural div classes
+- `::: {.` — callout kinds and the structural div classes
 - `::: {.callout-note ` — the attributes *that class* actually reads
 - `$\al` — LaTeX commands, every one of them verified to render through KaTeX
 - `#| ` — cell options, and their values

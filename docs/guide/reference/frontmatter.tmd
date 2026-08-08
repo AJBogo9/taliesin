@@ -6,7 +6,7 @@ description: "Every top-level front-matter key, the closed vocabulary behind did
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`
 fenced header that sets the document's metadata, output, and behaviour. This page
 is the full vocabulary, every top-level key Taliesin reads, plus the nested blocks
-(`execute:`, `listing:`, `hero:`, `theorems:`) and their children. For
+(`execute:`, `listing:`, `hero:`) and their children. For
 project-wide settings (a site's navbar, footer, chapter order) see the
 [Configuration reference](configuration.tmd); for per-cell `#|` options see the
 [Cell-options reference](cell-options.tmd).
@@ -90,12 +90,6 @@ in their own sections below.
 |---|---|---|
 | `listing` | map | Turns the page into an index: a card per document under `contents:`. See [`listing:`](#listing-an-index-page) |
 | `hero` | map | A hero banner at the top of a landing page (eyebrow, headline, lead, call-to-action buttons). See [`hero:`](#hero-a-landing-banner) |
-
-### Theorem environments
-
-| Key | Type | Meaning |
-|---|---|---|
-| `theorems` | map | Counters for theorem environments. One sub-key, `shared:`, a list of kinds drawing on a single counter. Whether to number is not a key (they are numbered) and neither is the scope (an environment scopes to its numbered book chapter automatically). See [Theorems and proofs](../using/theorems.tmd) |
 
 ## `author:` (who wrote it) {#sec-authors}
 
@@ -259,8 +253,7 @@ Taliesin's front-matter vocabulary is a **closed set**: the keys above are the o
 ones it reads. Anything else warns, with a "did you mean …" hint offered when an
 unknown key is within edit distance 2 of a known one, so `treme: dark` is caught and
 nudged toward `theme:`. The same closed-vocabulary check covers the immediate
-children of `execute:`, `listing:`, `hero:` (including each `actions:` entry), and
-`theorems:`.
+children of `execute:`, `listing:` and `hero:` (including each `actions:` entry).
 
 Two deliberate exceptions:
 

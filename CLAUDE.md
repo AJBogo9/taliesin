@@ -79,10 +79,10 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
-    divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move)
+    divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)
     figure.rs        numbered figures + captions
-    extension/       shortcode expansion: `{{< video clip.mp4 dark= >}}` +
-                     `{{< input >}}`. NOT `_extensions/`, which is a theme-CSS lookup
+    extension/       shortcode expansion: `{{< input >}}` (the only one that expands
+                     here; `{{< include >}}` is resolved a pass earlier). NOT `_extensions/`, which is a theme-CSS lookup
                      in `theme.rs` and nothing else: there is no format-extension
                      mechanism, and no `format:` key either — HTML is the only output
     theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes).
@@ -294,12 +294,14 @@ dependency change. Never call one of these verified without its output.
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
-- **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** Re-measured
-  2026-08-08: `DIV_CLASS_NAMES` carries **9** classes where `render::DIV_FEATURE_CLASSES`
-  carries **14**, and `SHORTCODE_SPECS` omits `input` (dispatched ahead of it).
-  Answer "what does the tool support" from the validator consts, never from `vocab` — it
-  reports live features as missing. (`taliesin features` was the other honest instrument;
-  Wave 2 cut it, so the consts are now the only one.)
+- **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** After wave 7
+  the two agree for div classes (`DIV_CLASS_NAMES` and `render::DIV_FEATURE_CLASSES` are
+  both the same **3** width escapes, and a test pins the subset relation), but `vocab`
+  still under-reports elsewhere: `xrefPrefixes` offers **5** of the **12** `XREF_LABELS`,
+  because the other seven resolve a label for a construct nothing can define any more.
+  Answer "what does the tool support" from the validator consts, never from `vocab`.
+  (`taliesin features` was the other honest instrument; Wave 2 cut it, so the consts are
+  now the only one.)
 - **A new front-matter key trips FOUR drift gates; a RETIREMENT costs ONE line.**
   Adding a key still means `KNOWN_KEYS`, `the_reference_page_documents_every_known_key`
   (→ `docs/guide/reference/frontmatter.tmd`), `vocab.rs` + its `descriptions_present`,
@@ -326,7 +328,10 @@ dependency change. Never call one of these verified without its output.
 - **A withdrawn div class needs a `RETIRED_DIV_CLASSES` entry**; div classes are an *open*
   vocabulary, so without one a leftover class gets **silence**, not a did-you-mean, and the
   page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job,
-  a retired verb `RETIRED_COMMANDS`.) **The entry is ONE SENTENCE — the date, then the
+  a retired verb `RETIRED_COMMANDS`. A retired **shortcode** needs no register of its own:
+  that vocabulary is CLOSED, so a leftover already draws a located warning, and
+  `expand_in_line` reads the removal note out of `RETIRED_KEYS` under the `shortcode`
+  scope.) **The entry is ONE SENTENCE — the date, then the
   successor or an explicit "nothing" — not a migration paragraph.** An author reads it
   mid-edit and wants the replacement; the deliberation belongs in the commit that retired
   the thing. No entry may be phrased as a did-you-mean: `codes::extract_suggestion` lifts

@@ -7,7 +7,7 @@
 //! actually run is `crates/server/tests/nested_cell_executes.rs`, which needs a kernel.
 //!
 //! The fixture is `corpus/nested-cells.tmd`: one executable cell per container kind
-//! (callout, tabset, layout grid, width escape, theorem, two levels deep) plus a `{js}`
+//! (callout, layout grid, width escape, titled callout, two levels deep) plus a `{js}`
 //! cell, which must NOT earn a slot.
 
 use std::path::PathBuf;
@@ -33,8 +33,8 @@ fn slot_of(id: &str) -> String {
     format!("{CELL_OUT_SLOT_ATTR}=\"{id}\"></div>")
 }
 
-/// One document, one count: eight `{python}` cells across six containers (the tabset and
-/// the layout grid hold two each), and NOT the `{js}` one.
+/// One document, one count: six `{python}` cells across five containers (the layout grid
+/// holds two), and NOT the `{js}` one.
 #[test]
 fn every_python_cell_in_a_div_reaches_the_executor_and_the_js_one_does_not() {
     let doc = fixture();
@@ -45,8 +45,8 @@ fn every_python_cell_in_a_div_reaches_the_executor_and_the_js_one_does_not() {
 
     assert_eq!(
         nested.len(),
-        8,
-        "expected the fixture's eight folded {{python}} cells, got {:?}",
+        6,
+        "expected the fixture's six folded {{python}} cells, got {:?}",
         nested.iter().map(|b| &b.id).collect::<Vec<_>>()
     );
     for b in &nested {
@@ -109,37 +109,6 @@ fn each_folded_cell_has_an_empty_slot_keyed_to_its_own_id() {
             );
         }
     }
-}
-
-/// A tabset's two cells stay in their own panels, in document order.
-///
-/// The reason the output goes in a slot rather than into a sibling block after the
-/// container: a sibling would stack both tabs' outputs below the tabs, hidden one included.
-#[test]
-fn a_tabsets_cells_keep_their_panels_and_their_order() {
-    let doc = fixture();
-    let tabset = doc
-        .blocks
-        .iter()
-        .find(|b| b.html.contains("class=\"panel-tabset\""))
-        .expect("the tabset block");
-    assert_eq!(tabset.nested.len(), 2, "{:?}", tabset.nested);
-
-    let (first, second) = (&tabset.nested[0].id, &tabset.nested[1].id);
-    let at = |needle: &str| tabset.html.find(needle).expect(needle);
-    assert!(
-        at(&slot_of(first)) < at(&slot_of(second)),
-        "the tabs' slots are out of document order, so their outputs would swap"
-    );
-    // Each slot is inside its own panel: the second panel opens between them.
-    let second_panel = tabset
-        .html
-        .find("hidden=\"until-found\"")
-        .expect("a second panel");
-    assert!(
-        at(&slot_of(first)) < second_panel && at(&slot_of(second)) > second_panel,
-        "a tab's output slot is not in that tab's own panel"
-    );
 }
 
 /// A container two levels deep keeps its cell, flattened onto the outermost block.

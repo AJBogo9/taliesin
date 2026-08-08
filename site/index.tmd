@@ -73,7 +73,11 @@ See more, with the source beside each, on [the showcase](showcase.tmd).
 taliesin preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
 ```
 
-{{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="Save the file, and only the block you touched re-renders in place, with scroll and live state preserved." >}}
+<figure class="tali-figure">
+<video src="assets/live-edit-dark.mp4" controls muted loop playsinline preload="metadata"
+       aria-label="Screencast"></video>
+<figcaption>Save the file, and only the block you touched re-renders in place, with scroll and live state preserved.</figcaption>
+</figure>
 
 ## One source, many outputs
 
@@ -113,7 +117,11 @@ A `{python}` cell runs against a warm kernel. Change a parameter and only
 that cell (and the figure it produced) re-renders. The rest of the page never
 moves, and the kernel never cold-starts.
 
-{{< video assets/live-code-light.mp4 dark=assets/live-code-dark.mp4 caption="One value changes in the source; the matplotlib figure updates in place, scroll preserved." >}}
+<figure class="tali-figure">
+<video src="assets/live-code-dark.mp4" controls muted loop playsinline preload="metadata"
+       aria-label="Screencast"></video>
+<figcaption>One value changes in the source; the matplotlib figure updates in place, scroll preserved.</figcaption>
+</figure>
 
 ## Built the way you would build yours
 

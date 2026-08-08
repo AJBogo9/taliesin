@@ -37,11 +37,6 @@ surfaces, each a list-membership check:
 | Callout kinds (`.callout-<kind>`) | `CALLOUT_KINDS` | `render/validate.rs` (called from `divs.rs`) |
 | `_site.yml` keys | `NATIVE_KEYS` | `site/config/` |
 
-Two `:::` containers are also checked for **structure** rather than vocabulary: a
-`.panel-tabset` with no headings (it would render no tabs) and a `.code-walkthrough`
-with no code block (its sticky panel would be empty) each warn, since the author almost
-certainly meant something.
-
 `format:` sub-keys used to be the one deliberate hole, exempted "because a format
 extension may introduce its own". There is no such mechanism — `_extensions/` is a
 theme-CSS lookup and nothing else — so the exemption was certifying inert keys as
@@ -193,7 +188,7 @@ analysis over the rendered block model, plus the cross-page checks in the site l
 | Duplicate heading ids | `validate_duplicate_heading_ids` | two headings emitting the same explicit `{#id}` |
 | In-page anchors | `validate_internal_anchors` | a `[text](#anchor)` matching no element id |
 | Local images | `validate_local_assets` | an `<img src>` whose file is missing under the doc dir |
-| Local video | `validate_local_media` | a `{{< video clip.mp4 >}}` / `<video src>`/`poster=` whose file is missing |
+| Local video | `validate_local_media` | a `<video src>` / `<source src>` / `poster=` whose file is missing |
 | Local links | `validate_local_links` | a relative `[text](other.tmd)` link whose target file (or its `.tmd` source) is missing |
 | Reactive graph | `validate_js_reactive_graph` | a `{js}` cell's `//\| input:` naming nothing defined, or a dependency cycle |
 | Accessibility | `validate_a11y` | a heading-level skip, an `<a>`/`<button>` with no accessible name, an `<img>` with no `alt` |

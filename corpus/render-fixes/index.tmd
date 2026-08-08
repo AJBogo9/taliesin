@@ -1,9 +1,11 @@
 ---
-title: "Render fixes: figure height, video query-strings, mermaid offline"
+title: "Render fixes: figure height, mermaid offline"
 ---
 
-A small regression pin for three render/asset fixes (lane-d-render,
-2026-06-27). Each construct below exercises one fix.
+A small regression pin for two render/asset fixes (lane-d-render, 2026-06-27). Each
+construct below exercises one fix. A third — a `{{< video >}}` source carrying a query
+string, which had to stay positional rather than read as `key=value` — went with that
+shortcode on 2026-08-08.
 
 ## A figure honoring both `width=` and `height=`
 
@@ -11,20 +13,6 @@ A small regression pin for three render/asset fixes (lane-d-render,
 alongside `width=`.
 
 ![A sized diagram.](diagram.png){#fig-sized width=320px height=240px}
-
-## A video with a query-string in its source
-
-A token-bearing media path carries an `=` *after* a `?`, so it is the
-positional path, not a `key=value` named arg. The token also contains a `:`,
-which makes the path *look* like it opens with a URL scheme. Both readings are
-wrong, and the whole `src` must survive intact (no literal `{{<` braces
-shipped).
-
-`{{< video >}}` takes a file relative to the page, so this is a local clip:
-a `https:` source is refused outright and would leave the shortcode
-unexpanded. That is the shape the shortcode is built to keep positional.
-
-{{< video clip.mp4?token=a:b caption="A token-signed screencast" >}}
 
 ## A mermaid diagram (offline-aware)
 

@@ -54,39 +54,10 @@
     "description": "A numbered figure you can reference with @fig-name.",
     "body": ["![${1:Caption}](${2:image.png}){#fig-${3:name}}", "", "$0"]
   },
-  "Tabset": {
-    "prefix": "tabset",
-    "description": "A tabbed panel; each `##` heading becomes a tab.",
-    "body": [
-      "::: {.panel-tabset}",
-      "",
-      "## ${1:First}",
-      "",
-      "$0",
-      "",
-      "## ${2:Second}",
-      "",
-      ":::"
-    ]
-  },
-  "Theorem": {
-    "prefix": "thm",
-    "description": "A numbered theorem environment.",
-    "body": [
-      "::: {.theorem #thm-${1:name} title=\"${2:Title}\"}",
-      "$0",
-      ":::"
-    ]
-  },
   "Include": {
     "prefix": "include",
     "description": "Splice another .tmd file in at this point.",
     "body": ["{{< include ${1:_includes/section.tmd} >}}", "", "$0"]
-  },
-  "Video": {
-    "prefix": "video",
-    "description": "Embed a local or remote video.",
-    "body": ["{{< video ${1:clip.mp4} >}}", "", "$0"]
   },
   "Reactive input": {
     "prefix": "input",

@@ -1,6 +1,6 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check the bundled browser
 // scripts under `assets/js/` (the code-enhance/ fragments, tali-js.js,
-// mermaid.js, scrolly/tabset/walkthrough). NOT shipped or embedded — the server
+// mermaid.js). NOT shipped or embedded — the server
 // `include_str!`s the .js sources verbatim; this file only teaches the checker
 // about the globals these scripts share with each other, with the web-client
 // (client.js) and with the server-injected inline head scripts.

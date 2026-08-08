@@ -4,15 +4,16 @@
 //! The defect: `build_container` (`render/divs.rs`) folds a div's children into one HTML
 //! string and returns a composite `Block` whose `cell` is `None`, while
 //! `Executor::run_through` (`server/src/exec.rs`) only scans **top-level** blocks for a
-//! cell to run. So a `{python}`/`{r}` cell inside a `.callout-note`, a `.panel-tabset`, a
-//! `layout-ncol` grid, a `.column-page` or a theorem was dead source: it rendered, and it
-//! never ran. Silent, and it contradicts the tool's core promise — a first user who puts a
-//! cell in a callout concludes execution is broken.
+//! cell to run. So a `{python}` cell inside a `.callout-note`, a `layout-ncol` grid or a
+//! `.column-page` was dead source: it rendered, and it never ran. Silent, and it
+//! contradicts the tool's core promise — a first user who puts a cell in a callout
+//! concludes execution is broken.
 //!
 //! Placement is half the fix and is pinned here too. Splicing the output as a sibling
-//! *after* the container would be visibly wrong for a `.panel-tabset` (every tab's output
-//! stacked below the tabs, including the hidden ones), so the renderer leaves an empty
-//! `data-tali-out-for` slot after each folded cell and the executor fills that in place.
+//! *after* the container would be visibly wrong for a two-column `layout-ncol` grid (both
+//! cells' outputs stacked below the grid instead of under the cell that produced each),
+//! so the renderer leaves an empty `data-tali-out-for` slot after each folded cell and the
+//! executor fills that in place.
 //!
 //! This is an EXECUTION pin, so it lives here and not in `corpus/`: the corpus walker
 //! renders every document on every `cargo test` but never runs a cell, so a corpus doc
@@ -121,48 +122,55 @@ fn a_cell_inside_a_callout_runs_and_its_output_lands_inside_the_callout() {
 }
 
 #[test]
-fn every_tab_of_a_tabset_runs_its_own_cell_into_its_own_panel() {
+fn each_cell_of_a_two_column_grid_runs_its_output_into_its_own_column() {
     let Some(py) = python_or_skip() else {
         return;
     };
-    let dir = tmp_dir("tabset");
+    let dir = tmp_dir("grid");
     let src = dir.join("doc.tmd");
     fs::write(
         &src,
-        "---\ntitle: Tabs\n---\n\n\
-         ::: {.panel-tabset}\n\
-         ## First\n\n\
+        "---\ntitle: Grid\n---\n\n\
+         ::: {layout-ncol=2}\n\
          ```{python}\n\
-         print(\"TAB-\" + \"ONE\")\n\
+         print(\"COL-\" + \"ONE\")\n\
          ```\n\n\
-         ## Second\n\n\
          ```{python}\n\
-         print(\"TAB-\" + \"TWO\")\n\
+         print(\"COL-\" + \"TWO\")\n\
          ```\n\
-         :::\n",
+         :::\n\n\
+         After the grid.\n",
     )
     .unwrap();
     let html = build(&src, &dir.join("out.html"), &py);
 
     assert!(
-        html.contains("TAB-ONE"),
-        "first tab's cell never ran:\n{html}"
+        html.contains("COL-ONE"),
+        "the first column's cell never ran:\n{html}"
     );
     assert!(
-        html.contains("TAB-TWO"),
-        "second tab's cell never ran:\n{html}"
+        html.contains("COL-TWO"),
+        "the second column's cell never ran:\n{html}"
     );
-    // Each output belongs to its own panel: the first tab's panel must not carry the
-    // second tab's output (which is what splicing a sibling block after the container
-    // would produce — every tab's output stacked below the tabs, hidden ones included).
-    let first_panel = between(&html, "class=\"tabset-panel\"", "hidden=\"until-found\"");
+    // Both outputs are INSIDE the grid, not spliced in as siblings after it — which is
+    // what the defect produced, and what would stack both under the grid instead of
+    // under the cell that made each.
+    let grid = between(&html, "class=\"tali-layout\"", "After the grid.");
     assert!(
-        first_panel.contains("TAB-ONE"),
-        "the first tab's output is not in its own panel:\n{first_panel}"
+        grid.contains("COL-ONE") && grid.contains("COL-TWO"),
+        "an output landed outside the grid it belongs to:\n{grid}"
     );
+    // And each output sits in ITS OWN column, which is an ORDERING claim: the grid runs
+    // cell1-source, slot1, cell2-source, slot2 — so the SECOND cell's `<pre>` falls
+    // between the two outputs. Both slots stacked at the end of the grid (the shape a
+    // sibling splice produces) would leave nothing between them.
+    let one = grid.find("COL-ONE").expect("the first column's output");
+    let two = grid.find("COL-TWO").expect("the second column's output");
+    assert!(one < two, "the outputs are out of document order:\n{grid}");
     assert!(
-        !first_panel.contains("TAB-TWO"),
-        "the second tab's output leaked into the first tab's panel:\n{first_panel}"
+        grid[one..two].contains("<pre"),
+        "the second cell's source is not between the two outputs, so both outputs landed \
+         together instead of each under its own cell:\n{grid}"
     );
 }
 

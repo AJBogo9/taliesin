@@ -24,7 +24,7 @@ executes `{python}` cells, so it needs a Python with `ipykernel` + `numpy` +
 ## What each one exercises
 
 **1. Marketing website (`site/`)** — `hero:` block, top navbar + footer, `.feature-grid`
-cards, `{{< video >}}` screencasts, light/dark toggle, OpenGraph, Cmd-K search. The
+cards, light/dark toggle, OpenGraph, Cmd-K search. The
 website chrome and the editorial default theme.
 
 **2 & 3. Books (`docs/guide/`, `docs/internals/`)** — left chapter sidebar with

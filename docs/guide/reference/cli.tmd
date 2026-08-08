@@ -55,7 +55,7 @@ catches these **publish-blocking** mistakes:
 | Rule | Flags |
 |---|---|
 | Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
-| Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
+| Missing local video | A `<video src>` / `<video><source></video>` / `poster=` whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
 | Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). The static half of the live preview's a11y audit. |
@@ -147,10 +147,10 @@ At a glance, here is everything `check` looks at, grouped by what it protects:
 
 | Category | Catches |
 |---|---|
-| **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names **and their flags/arguments** (`{{< video x.mp4 control >}}` suggests `controls`), YAML parse errors |
+| **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names, YAML parse errors |
 | **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:` |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
-| **Local media** | Missing local images (`src`/`href`) and `{{< video >}}`/`<video>` files |
+| **Local media** | Missing local images (`src`/`href`) and `<video>` files |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip, an `<a>`/`<button>` with no accessible name |
 | **Opt-in** | `prose-lint:` findings (weasel words, repeated words, your own banned list) — all severity `suggestion` |
@@ -227,9 +227,9 @@ and a container or a throwaway user is the right answer for *trusting* one.
 | `--bare` | Single-doc only: emit a **bare** page (zero `<script>`, zero CDN, CSS-only theming) |
 | `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
 
-A regular `build` already content-gates the optional enhancer scripts (mermaid, `{js}`,
-walkthrough, tabset, scrolly) to the constructs a page actually uses, so a prose page
-ships less JavaScript without losing any feature. `--bare` goes further for a
+A regular `build` already content-gates the optional enhancer scripts (mermaid, `{js}`)
+to the constructs a page actually uses, so a prose page ships less JavaScript without
+losing any feature. `--bare` goes further for a
 single document: it ships **no** `<script>` at all and themes purely with CSS (a forced
 `theme:` is hard-coded; otherwise it follows the OS via `prefers-color-scheme`).
 Server-rendered math still works; `{js}` cells, Mermaid rendering, and the

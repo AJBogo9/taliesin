@@ -145,5 +145,5 @@ code all read those variables, so one small file restyles everything and the
 light/dark toggle just swaps the values: nothing re-renders. The full list of
 `--tali-*` variables and how to author a theme is in [Theming](theming.tmd).
 
-The `{{< include >}}` shortcode and its siblings `{{< video >}}` and `{{< input >}}` are
+The `{{< include >}}` shortcode and its sibling `{{< input >}}` are
 documented in the [shortcodes reference](../reference/shortcodes.tmd).

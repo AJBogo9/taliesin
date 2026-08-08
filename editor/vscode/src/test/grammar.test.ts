@@ -278,8 +278,8 @@ test("Phase 2 (injection): math-body inner tokens are highlighted natively (no e
 });
 
 test("Phase 2 (injection): {{< shortcode >}} name is scoped", async () => {
-  const toks = await tokenizeTmd('See {{< video tour.mp4 caption="A tour" >}} here\n');
-  assert.ok(hasScope(toks, "video", "keyword.control.tmd.shortcode"), "the shortcode name is a control keyword");
+  const toks = await tokenizeTmd('See {{< include parts.tmd >}} here\n');
+  assert.ok(hasScope(toks, "include", "keyword.control.tmd.shortcode"), "the shortcode name is a control keyword");
 });
 
 test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {
@@ -293,12 +293,13 @@ test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {
   );
 });
 
-// prp/exm/rem outlive the theorem kinds retired 2026-08-03 (visual minimalism pass): they stay
-// XREF-ONLY prefixes so a dangling @exm-x still errors TAL-XREF-UNDEF instead of degrading
-// silently to text (cite/render.rs's XREF_LABELS doc comment). 97d8a697 dropped them from this
+// Seven of the twelve prefixes outlive the constructs that could define them — prp/exm/rem
+// since 2026-08-03, thm/lem/cor/def since 2026-08-08 with the theorem environments — and they
+// stay XREF-ONLY so a dangling @thm-x still errors TAL-XREF-UNDEF instead of degrading silently
+// to text (cite/render.rs's XREF_LABELS doc comment). 97d8a697 dropped three of them from this
 // grammar's regex while 5330fd4a restored them in XREF_LABELS, so the two drifted out of step —
 // this pins them back together.
-test("Phase 2 (injection): @prp-/@exm-/@rem- refs are scoped too (xref-only, no theorem kind)", async () => {
+test("Phase 2 (injection): retired-target refs are scoped too (xref-only, no live construct)", async () => {
   const toks = await tokenizeTmd(
     "see @prp-cauchy and @exm-euler and @rem-note but not bob@rem-server.com\n"
   );

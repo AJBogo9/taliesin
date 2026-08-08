@@ -366,7 +366,7 @@ pub(crate) fn group_divs(
         };
 
     // An empty div that names a real feature (a `.input` control, a `.callout-*`, a
-    // `.panel-tabset`, a theorem, …) is silently dropped below (the "skip degenerate spans"
+    // `.column-page` escape, …) is silently dropped below (the "skip degenerate spans"
     // step) and renders nothing — the exact `::: {.input name="k"}` trap. Warn (located) before
     // dropping it. Position-independent (a span is empty when no flat block falls between its
     // fences), so a trailing or standalone empty feature div is caught too; a plain/custom
@@ -430,109 +430,6 @@ pub(crate) fn group_divs(
     result
 }
 
-/// The `data-state="…"` of the first `.step` block in `inner` (already attribute-escaped,
-/// since it is read back out of the step's emitted html). Used to seed the scrolly hidden
-/// input's initial value so consumer cells read a sane value before any scroll.
-fn first_step_state(inner: &[Block]) -> Option<String> {
-    let step = inner
-        .iter()
-        .find(|b| b.html.trim_start().starts_with("<div class=\"step\""))?;
-    let i = step.html.find("data-state=\"")?;
-    let rest = &step.html[i + "data-state=\"".len()..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
-}
-
-/// Give every `.step` in `steps` the semantics its container implies, and point it at the
-/// sticky stage it drives (AP7-3).
-///
-/// A `.scrolly` and a `.code-walkthrough` were measured carrying **no** accessibility
-/// semantics at all: 0 steps with `aria`/`role`, `null` root role, nothing associating a
-/// step with the thing it advances. The step prose reads fine linearly, so a screen-reader
-/// user gets the words; what they never got is the **stage** — the sticky visual, or the
-/// highlighted code lines — whose state moves only as a consequence of *visual scrolling*.
-///
-/// Two facts the renderer already has and threw away: the step's ordinal, and (in a
-/// walkthrough) the `lines=` range it focuses. A labelled `group` carries both without
-/// injecting text into the document: an `aria-label` on a bare `<div>` is ignored by AT,
-/// but on a `role="group"` it is announced, and unlike a visually-hidden span it stays out
-/// of `indexable_text`, so the Cmd-K index and `llms.txt` are unchanged.
-///
-/// Steps are deliberately NOT made focusable. They are prose, a keyboard user reads them by
-/// scrolling like anyone else, and putting `tabindex` on paragraphs would add tab stops
-/// without adding any capability.
-fn label_steps(steps: &str, stage_id: &str, lines_in_label: bool) -> String {
-    const OPEN: &str = "<div class=\"step\"";
-    let total = steps.matches(OPEN).count();
-    if total == 0 {
-        return steps.to_string();
-    }
-    let mut out = String::with_capacity(steps.len() + total * 80);
-    let mut rest = steps;
-    let mut n = 0usize;
-    while let Some(i) = rest.find(OPEN) {
-        n += 1;
-        out.push_str(&rest[..i + OPEN.len()]);
-        rest = &rest[i + OPEN.len()..];
-        // The step's own attributes run to the end of its opening tag; read `data-cw-lines`
-        // out of them so the label can name the range this step highlights.
-        let tag_end = rest.find('>').unwrap_or(0);
-        let label = match lines_in_label
-            .then(|| attr_value(&rest[..tag_end], "data-cw-lines"))
-            .flatten()
-        {
-            Some(spec) => format!("Step {n} of {total}, highlighting {}", spoken_lines(&spec)),
-            None => format!("Step {n} of {total}"),
-        };
-        out.push_str(&format!(
-            " role=\"group\" aria-label=\"{label}\" aria-controls=\"{stage_id}\""
-        ));
-    }
-    out.push_str(rest);
-    out
-}
-
-/// A `.step lines=` spec written for speech: `"3-4"` -> `"lines 3 to 4"`, `"1"` ->
-/// `"line 1"`, `"3-5,8"` -> `"lines 3 to 5, 8"`. The raw spec is a machine value that a
-/// screen reader reads as "three dash four" or "three minus four"; this is the one place it
-/// becomes something a person hears, so it is spelled out.
-fn spoken_lines(spec: &str) -> String {
-    let parts: Vec<String> = spec
-        .split(',')
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(|p| match p.split_once('-') {
-            Some((a, b)) if !a.is_empty() && !b.is_empty() => format!("{a} to {b}"),
-            _ => p.to_string(),
-        })
-        .collect();
-    // Plural unless it is exactly one bare line number ("lines 3 to 4" is still plural).
-    let one = parts.len() == 1 && !parts[0].contains(" to ");
-    format!(
-        "{} {}",
-        if one { "line" } else { "lines" },
-        parts.join(", ")
-    )
-}
-
-/// The container's own `data-block-id`, read back out of the `data` attribute string the
-/// caller is about to interpolate. Used to mint a stage id that is unique per container and
-/// stable across re-renders of unchanged source (the block id is a content hash), so the
-/// `aria-controls` wiring cannot collide between two walkthroughs on one page.
-fn block_id_of(data: &str) -> Option<String> {
-    attr_value(data, "data-block-id")
-}
-
-/// The value of `name="…"` inside an already-emitted opening tag, or `None`. The value is
-/// left exactly as emitted (already attribute-escaped), like [`first_step_state`].
-fn attr_value(tag: &str, name: &str) -> Option<String> {
-    let key = format!("{name}=\"");
-    let i = tag.find(&key)? + key.len();
-    let rest = &tag[i..];
-    let end = rest.find('"')?;
-    (!rest[..end].is_empty()).then(|| rest[..end].to_string())
-}
-
 /// The attribute marking a container's empty output slot, keyed by the folded cell's own
 /// block id.
 ///
@@ -586,18 +483,6 @@ fn callout_icon(kind: &str) -> &'static str {
     }
 }
 
-/// (display name, amsthm style suffix) for a NUMBERED theorem kind. `proof` is handled
-/// separately (unnumbered) and never reaches here; an unknown kind never enters the arm.
-pub(crate) fn theorem_meta(kind: &str) -> (&'static str, &'static str) {
-    match kind {
-        "theorem" => ("Theorem", "plain"),
-        "lemma" => ("Lemma", "plain"),
-        "corollary" => ("Corollary", "plain"),
-        "definition" => ("Definition", "definition"),
-        _ => ("", "plain"),
-    }
-}
-
 /// Render one fenced div as a container block: callouts, layout grids, or a
 /// generic class div.
 fn build_container(
@@ -621,7 +506,7 @@ fn build_container(
     // only place their per-block identity survives. A folded cell would therefore have
     // rendered and never run, because `Executor::run_through` (crates/server/src/exec.rs)
     // only scans TOP-LEVEL blocks for a `Cell`. So every folded cell — a `{python}` cell
-    // in a `.callout-note`, a `.panel-tabset` or a `layout-ncol` grid — is collected onto
+    // in a `.callout-note`, a `.column-page` escape or a `layout-ncol` grid — is collected onto
     // `Block::nested` here, each with an empty output slot left after it in the folded
     // HTML, so the executor can run them in document order and put each output back where
     // its cell sits. There is no exception to this rule (`.debug` was the one, and it is
@@ -635,7 +520,7 @@ fn build_container(
     // Only a cell in a language the *kernel* runs earns a slot. A `{js}` cell mounts its
     // own live target client-side and never produces a server-side output block, so a slot
     // after one would be an element that can never fill — which is exactly what the
-    // `explorable/scrolly.tmd` snapshot caught. `executes_to_kernel` is the canonical set
+    // `explorable/` snapshots caught. `executes_to_kernel` is the canonical set
     // (drift-locked to `exec::kernel_lang` by a test), so this asks it rather than
     // re-listing the languages.
     let mut nested: Vec<Block> = Vec::new();
@@ -705,242 +590,13 @@ fn build_container(
         format!(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
-    } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
-        // Narrated code walkthrough: the first code block becomes a sticky panel; the
-        // remaining blocks (the `.step` divs) scroll alongside it and drive line-range
-        // highlighting (walkthrough.js, reusing the `.tali-hl-ln` contract). Read-only:
-        // inner blocks keep their own ids/sourcepos via the regular grouping.
-        let code_idx = inner
-            .iter()
-            .position(|b| b.html.contains("<pre") && b.html.contains("<code"));
-        if let Some(w) =
-            super::validate::validate_walkthrough(code_idx.is_some(), open_line, file.clone())
-        {
-            warnings.push(w);
-        }
-        match code_idx {
-            Some(i) => {
-                // Line-wrap the panel so its lines are addressable by ordinal; the rest
-                // stay in document order.
-                let panel = super::emit::wrap_pre_lines(&inner[i].html);
-                let steps: String = inner
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(j, b)| (j != i).then_some(b.html.as_str()))
-                    .collect();
-                // AP7-3: name the region and tie each step to the code panel it drives. The
-                // stage id is derived from the container's own block id, so it is unique per
-                // walkthrough and stable across re-renders of unchanged source.
-                let stage_id = format!("{}-stage", block_id_of(&data).unwrap_or_default());
-                let steps = label_steps(&steps, &stage_id, true);
-                format!(
-                    "<div class=\"code-walkthrough\" role=\"group\" aria-label=\"Code walkthrough\"{data}>\
-                     <div class=\"cw-steps\">{steps}</div>\
-                     <div class=\"cw-stage\" id=\"{stage_id}\" role=\"group\" \
-                     aria-label=\"The code these steps walk through\">\
-                     <div class=\"cw-code\">{panel}</div></div></div>"
-                )
-            }
-            None => {
-                let body = concat(&inner);
-                format!(
-                    "<div class=\"code-walkthrough\"{data}><div class=\"cw-steps\">{body}</div></div>"
-                )
-            }
-        }
-    } else if attrs.classes.iter().any(|c| c == "step") {
-        // A scroll step: carry its line-focus spec as `data-cw-lines` (walkthrough.js) and/or
-        // its scrolly state as `data-state` (scrolly.js); keep the div's own id/sourcepos so
-        // its prose stays locatable. Meaningful inside `.code-walkthrough`/`.scrolly`.
-        let id_attr = id_attr(attrs.id.as_deref());
-        let cw_lines = match attrs.get("lines") {
-            Some(spec) if !spec.is_empty() => {
-                // A `|` here is a `code-line-numbers=` habit that focuses zero lines in a
-                // step's comma-only parser — warn (located) instead of degrading silently.
-                if let Some(w) = super::validate::validate_step_lines(spec, open_line, file.clone())
-                {
-                    warnings.push(w);
-                }
-                format!(" data-cw-lines=\"{}\"", escape_attr(spec))
-            }
-            _ => String::new(),
-        };
-        let state = match attrs.get("state") {
-            Some(s) if !s.is_empty() => format!(" data-state=\"{}\"", escape_attr(s)),
-            _ => String::new(),
-        };
-        let body = concat(&inner);
-        format!("<div class=\"step\"{id_attr}{data}{cw_lines}{state}>{body}</div>")
-    } else if attrs.classes.iter().any(|c| c == "panel-tabset") {
-        // Tabbed panels: child headings at the shallowest level present become tabs, and
-        // the blocks after each become its panel body (deeper headings stay in the body).
-        // Labels are emitted as ARIA tab buttons, NOT as <hN>, so they don't pollute the
-        // TOC. tab/panel ids derive from the container's block id (unique + stable).
-        // Read-only: inner blocks keep their own ids/sourcepos via direct concatenation.
-        let min_level = inner
-            .iter()
-            .filter_map(|b| block_heading_level(&b.html))
-            .min();
-        if let Some(w) =
-            super::validate::validate_tabset(min_level.is_some(), open_line, file.clone())
-        {
-            warnings.push(w);
-        }
-        match min_level {
-            None => format!("<div class=\"panel-tabset\"{data}>{}</div>", concat(&inner)),
-            Some(level) => {
-                // Partition: blocks before the first tab heading are an intro; each
-                // level-`level` heading opens a new (label, body) tab.
-                let mut intro = String::new();
-                let mut tabs: Vec<(String, String)> = Vec::new();
-                for b in &inner {
-                    if block_heading_level(&b.html) == Some(level) {
-                        tabs.push((strip_tags(&b.html), String::new()));
-                    } else if let Some((_, body)) = tabs.last_mut() {
-                        body.push_str(&b.html);
-                    } else {
-                        intro.push_str(&b.html);
-                    }
-                }
-                let mut tablist = String::from("<div class=\"tabset-tablist\" role=\"tablist\">");
-                let mut panels = String::new();
-                for (i, (label, body)) in tabs.iter().enumerate() {
-                    let sel = i == 0;
-                    let (tab_id, panel_id) = (format!("{id}-t{i}"), format!("{id}-p{i}"));
-                    tablist.push_str(&format!(
-                        // `label` is `strip_tags` output — already HTML-safe (the heading's
-                        // entities are intact), so it must NOT be `html_escape`'d again
-                        // (that turned `&amp;` into `&amp;amp;`).
-                        "<button class=\"tabset-tab\" role=\"tab\" id=\"{tab_id}\" aria-controls=\"{panel_id}\" aria-selected=\"{sel}\" tabindex=\"{}\">{label}</button>",
-                        if sel { "0" } else { "-1" },
-                    ));
-                    panels.push_str(&format!(
-                        // `hidden="until-found"`, not a bare `hidden`: an inactive panel's
-                        // text is in the built HTML and IS in the Cmd-K index, but a bare
-                        // `hidden` makes it invisible to the browser's own find-in-page, so
-                        // the tool advertised a searchability Ctrl-F did not honour. With
-                        // `until-found` the browser reveals the panel and scrolls to the hit.
-                        // Engines without it fall back to plain `hidden` (today's behaviour),
-                        // so nothing regresses.
-                        "<div class=\"tabset-panel\" role=\"tabpanel\" id=\"{panel_id}\" aria-labelledby=\"{tab_id}\"{}>{body}</div>",
-                        if sel { "" } else { " hidden=\"until-found\"" },
-                    ));
-                }
-                tablist.push_str("</div>");
-                format!("<div class=\"panel-tabset\"{data}>{intro}{tablist}{panels}</div>")
-            }
-        }
-    } else if attrs.classes.iter().any(|c| c == "scrolly") {
-        // Scrollytelling: a sticky visual stage (the non-.step inner blocks) beside a
-        // scrolling column of `.step` divs. The active step (scrolly.js, IntersectionObserver)
-        // sets `data-scrolly-state` on the root for CSS, and — when `name=` is set — drives a
-        // hidden `data-tali-input` so a sticky `{js}` cell reacts via `//| input:` through the
-        // shipped reactive graph. Read-only: scroll is reader interaction, never a source write.
-        let is_step = |b: &Block| b.html.trim_start().starts_with("<div class=\"step\"");
-        let steps: String = inner
-            .iter()
-            .filter(|b| is_step(b))
-            .map(|b| b.html.as_str())
-            .collect();
-        let stage: String = inner
-            .iter()
-            .filter(|b| !is_step(b))
-            .map(|b| b.html.as_str())
-            .collect();
-        let has_steps = inner.iter().any(is_step);
-        let has_stage = inner.iter().any(|b| !is_step(b));
-        for w in super::validate::validate_scrolly(has_stage, has_steps, open_line, file.clone()) {
-            warnings.push(w);
-        }
-        // The reactive bridge: a hidden input named `name` whose value is the active step's
-        // state (initial = the first .step's state, so consumer cells read a sane value).
-        let (name_attr, hidden) = match attrs.get("name") {
-            Some(n) if !n.is_empty() => {
-                // `first_step_state` is read back out of the already-emitted step html, so it
-                // is already attribute-escaped — do NOT re-escape it.
-                let first_state = first_step_state(&inner).unwrap_or_default();
-                (
-                    format!(" data-scrolly-name=\"{}\"", escape_attr(n)),
-                    format!(
-                        "<input type=\"hidden\" class=\"tali-scrolly-input\" data-tali-input=\"{}\" value=\"{first_state}\">",
-                        escape_attr(n)
-                    ),
-                )
-            }
-            _ => (String::new(), String::new()),
-        };
-        // AP7-3, the same treatment as `.code-walkthrough`: name the region, and tie each
-        // step to the sticky stage whose state it advances. A scrolly step has no `lines=`
-        // to name (its `state=` is an author token for `scrolly.js`, not reader prose), so
-        // its label is the ordinal alone.
-        let stage_id = format!("{}-stage", block_id_of(&data).unwrap_or_default());
-        let steps = label_steps(&steps, &stage_id, false);
-        format!(
-            "<div class=\"tali-scrolly\" role=\"group\" aria-label=\"Scroll-driven walkthrough\"{data}{name_attr}>\
-             {hidden}<div class=\"scrolly-steps\">{steps}</div>\
-             <div class=\"scrolly-stage\" id=\"{stage_id}\" role=\"group\" \
-             aria-label=\"The graphic these steps drive\">{stage}</div></div>"
-        )
-    } else if let Some(kind) = attrs.theorem_kind() {
-        if kind == "proof" {
-            let body = concat(&inner);
-            // Unnumbered, not cross-referenceable (matches common convention). Auto-QED.
-            let head = attrs
-                .get("title")
-                .map(html_escape)
-                .unwrap_or_else(|| "Proof".to_string());
-            let qed = "<span class=\"tali-qed\" aria-hidden=\"true\">\u{220e}</span>";
-            // `collapse="true"` folds the proof behind a native <details> (starts closed);
-            // `collapse="false"` is collapsible but starts open. QED rides inside <details>
-            // so a collapsed proof shows only its "Proof." summary.
-            match attrs.get("collapse") {
-                Some(v) => {
-                    let open = if v == "false" { " open" } else { "" };
-                    format!(
-                        "<div class=\"tali-proof tali-proof-collapse\"{data}><details{open}><summary class=\"tali-proof-head\">{head}.</summary><div class=\"tali-theorem-body\">{body}</div>{qed}</details></div>"
-                    )
-                }
-                None => format!(
-                    "<div class=\"tali-proof\"{data}><p class=\"tali-proof-head\">{head}.</p><div class=\"tali-theorem-body\">{body}</div>{qed}</div>"
-                ),
-            }
-        } else {
-            // The number slot is filled by the `number_theorems` post-pass (after
-            // group_divs, before cite::process), so numbering stays document-ordered.
-            let (name, style) = theorem_meta(kind);
-            let id_attr = id_attr(attrs.id.as_deref());
-            // Title: an explicit `title="..."`, else a leading heading (the same gesture that
-            // names a callout, so a theorem led by a heading names the box instead of rendering
-            // the heading as body), else nothing. A hoisted heading that carried an xref anchor
-            // keeps its id on the title span so `@thm-x`/`#thm-x` still resolves + scrolls here.
-            let title = match attrs.get("title") {
-                Some(t) => format!(
-                    " <span class=\"tali-theorem-title\">({})</span>",
-                    html_escape(t)
-                ),
-                None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
-                    let heading = inner.remove(0).html;
-                    let id = extract_attr(&heading, "id")
-                        .filter(|id| crate::cite::is_xref_anchor(id))
-                        .map(|hid| format!(" id=\"{}\"", escape_attr(&hid)))
-                        .unwrap_or_default();
-                    format!(
-                        " <span class=\"tali-theorem-title\"{id}>({})</span>",
-                        strip_tags(&heading)
-                    )
-                }
-                None => String::new(),
-            };
-            let body = concat(&inner);
-            format!(
-                "<div class=\"tali-theorem tali-theorem-{kind} tali-thm-style-{style}\"{id_attr} data-tali-theorem-kind=\"{kind}\"{data}><p class=\"tali-theorem-head\"><span class=\"tali-theorem-label\">{name}<span class=\"tali-theorem-number\"></span></span>{title}</p><div class=\"tali-theorem-body\">{body}</div></div>"
-            )
-        }
     } else {
         // Generic div: any class the author wants (styled by their own CSS). A class that is a
-        // near-miss of a known feature/theorem class is almost certainly a typo that silently
-        // degraded (a `.columns` that stacked, a `.fragmnet` that never revealed) — warn with a
-        // did-you-mean (located, click-to-source). Genuine custom classes stay silent.
+        // near-miss of a known feature class is almost certainly a typo that silently
+        // degraded (a `.column-margn` that never moved into the margin) — warn with a
+        // did-you-mean (located, click-to-source). A RETIRED class gets its removal note
+        // instead, which is what every widget and theorem fence hits now. Genuine custom
+        // classes stay silent.
         if let Some(w) =
             super::validate::validate_div_class(&attrs.classes, open_line, file.clone())
         {

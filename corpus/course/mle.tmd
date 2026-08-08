@@ -1,11 +1,6 @@
----
-theorems:
-  shared: [theorem, lemma, corollary]
----
-
 # Maximum likelihood {#sec-mle}
 
-Building on @def-expectation from @sec-probability, we turn the expectation into a
+Building on @eq-expectation from @sec-probability, we turn the expectation into a
 principle for fitting models. Given data $x_1, \dots, x_n$ drawn independently from a
 family $p(\cdot \mid \theta)$, the likelihood is the probability the family assigns to
 exactly the data we observed, read as a function of the parameter:
@@ -17,24 +12,20 @@ Maximum likelihood picks the $\theta$ that makes the observed data least surpris
 @fig-likelihood shows the shape we exploit: a single smooth peak. Two facts make that
 peak trustworthy.
 
-::: {.theorem #thm-consistency}
+## Consistency {#sec-consistency}
+
 Under mild regularity conditions the maximum-likelihood estimator is **consistent**: as
-$n \to \infty$ it converges in probability to the true parameter.
-:::
+$n \to \infty$ it converges in probability to the true parameter. The first step of the
+standard argument is that the score has zero expectation at the true parameter:
 
-::: {.lemma #lem-score}
-The score has zero expectation at the true parameter,
-$\mathbb{E}_{\theta}\!\left[\nabla_\theta \log p(X \mid \theta)\right] = 0$.
-:::
+$$ \mathbb{E}_{\theta}\!\left[\nabla_\theta \log p(X \mid \theta)\right] = 0 $$ {#eq-score}
 
-::: {.proof}
-Differentiate the identity $\int p(x \mid \theta)\,\mathrm{d}x = 1$ under the integral
-sign. The derivative of the constant is zero, while the left side becomes
+To see it, differentiate the identity $\int p(x \mid \theta)\,\mathrm{d}x = 1$ under the
+integral sign. The derivative of the constant is zero, while the left side becomes
 $\int \nabla_\theta p = \int p\,\nabla_\theta \log p = \mathbb{E}_\theta[\nabla_\theta \log p]$,
 which is therefore zero.
-:::
 
-By @thm-consistency the estimator lands in the right place, and @lem-score is the first
-step of the standard argument that it does. Compare the broad prior in @fig-distributions
+Consistency (@sec-consistency) says the estimator lands in the right place, and
+@eq-score is where that argument starts. Compare the broad prior in @fig-distributions
 (@sec-probability) with the sharp likelihood of @fig-likelihood here: that concentration
 is exactly what consistency promises.

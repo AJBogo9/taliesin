@@ -76,7 +76,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown execute key", "TAL-FM-KEY", WARNING),
     ("unknown listing key", "TAL-FM-KEY", WARNING),
     ("unknown hero key", "TAL-FM-KEY", WARNING),
-    ("unknown theorems key", "TAL-FM-KEY", WARNING),
     ("unknown prose-lint key", "TAL-FM-KEY", WARNING),
     // A recognized key taliesin reads and then ignores (`csl:`). Must precede the
     // citation needles below: the message names `bibliography`-adjacent concepts and
@@ -95,14 +94,10 @@ const TABLE: &[(&str, &str, &str)] = &[
     // families are — the page still renders, so a one-letter typo must not gate
     // `build --strict`, which is what the old `(GENERIC, ERROR)` fall-through did.
     // Above the generic needles below because the quoted invocation is author-controlled
-    // text (`{{< video math-intro.mp4 >}}` would otherwise classify as TAL-MATH).
+    // text (`{{< embed math-intro.tmd >}}` would otherwise classify as TAL-MATH).
     ("{{<", "TAL-SHORTCODE", WARNING),
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
-    // A bad value inside `theorems: shared:`. Its own family rather than TAL-FM-KEY: the
-    // key is fine and the fix edits a list ENTRY, not the key. Above the generic needles
-    // because the message quotes the author's own kind name.
-    ("unknown theorem kind", "TAL-THM-KIND", WARNING),
-    // The `.callout-…` row's sibling: a near-miss of any other feature/theorem div class.
+    // The `.callout-…` row's sibling: a near-miss of any other feature div class.
     // Separate family because the fix is a different edit (the class, not the callout kind),
     // and above the generic needles below because the message quotes the author's own class.
     ("unknown div class", "TAL-DIV-CLASS", WARNING),
@@ -112,20 +107,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     // TAL-INPUT-TYPE (an unknown type): the type is fine, the declaration is incomplete.
     ("needs a `name=` to feed", "TAL-INPUT-ATTR", WARNING),
     ("needs `options=", "TAL-INPUT-ATTR", WARNING),
-    // A feature div that HAS content but is missing a part it cannot render without — the
-    // partial sibling of TAL-EMPTY-DIV, one row per container that can be built half-formed.
-    (
-        "has no headings, so it renders no tabs",
-        "TAL-DIV-PARTS",
-        WARNING,
-    ),
-    ("has no code block to show", "TAL-DIV-PARTS", WARNING),
-    ("has no sticky stage", "TAL-DIV-PARTS", WARNING),
-    ("has no `.step` divs", "TAL-DIV-PARTS", WARNING),
-    // A `.step lines=` spec carrying a `|` (the `code-line-numbers=` step separator),
-    // which a step's own comma-only parser silently focuses to zero lines.
-    ("step separator", "TAL-STEP-LINES", WARNING),
-    // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
+    // An empty div that names a real feature (`.input`, `.callout-*`, `.column-page`, …),
     // which is dropped and renders nothing.
     ("no content between the", "TAL-EMPTY-DIV", WARNING),
     // A `.column width=` a reveal/Quarto author expects to honour, silently equalized.
@@ -369,7 +351,7 @@ const EXPLANATIONS: &[Explanation] = &[
         code: "TAL-FM-KEY",
         title: "an unknown key in front matter",
         cause: "A key in the document's front matter (or a nested `execute:`/`listing:`/\
-                `hero:`/`theorems:`/`prose-lint:` block) is not in Taliesin's closed \
+                `hero:`/`prose-lint:` block) is not in Taliesin's closed \
                 vocabulary. It is a typo, or a key from another tool that Taliesin does not \
                 implement, so it would be silently ignored.",
         fix: "Correct the key to the nearest valid name (`check --format json` carries a \
@@ -397,51 +379,22 @@ const EXPLANATIONS: &[Explanation] = &[
               kind's message names what to use instead), e.g. `::: {.callout-warning}`.",
     },
     Explanation {
-        code: "TAL-THM-KIND",
-        title: "an unknown theorem kind in `theorems: shared:`",
-        cause: "The `shared:` list names theorem kinds that should draw ONE counter, and an \
-                entry here is not one of Taliesin's five (`theorem`, `lemma`, `corollary`, \
-                `definition`, `proof`). An unrecognized kind is simply skipped, so the \
-                counter you asked to share silently stays separate and the numbering is \
-                wrong in a way nothing on the page announces. `proposition`, `example` and \
-                `remark` were retired on 2026-08-03 with their div classes, so a list \
-                carried over from before then names kinds that no longer exist.",
-        fix: "Drop the entry, or replace it with the surviving kind the message names \
-              (`theorem` covers a proposition — both render in the same `plain` style). A \
-              typo draws the nearest match instead.",
-    },
-    Explanation {
         code: "TAL-DIV-CLASS",
         title: "a misspelled or retired feature div class",
         cause: "A `:::` fenced div carries a class that is a near-miss of one Taliesin \
-                implements (`.fragmnet` for `.fragment`, `.theorm` for `.theorem`), so the \
+                implements (`.column-margn` for `.column-margin`), so the \
                 feature never dispatches and the div renders as a plain container. Div \
                 classes are an OPEN vocabulary — a genuinely custom class you style yourself \
                 is silent — so a near-miss fires only within edit distance 2 of a known \
                 name. A class Taliesin used to implement and has since removed (`.columns`; \
                 `.sidenote`/`.marginnote`/`.aside`, retired 2026-08-03 in favor of the single \
-                `.column-margin` spelling; or `.proposition`/`.example`/`.remark`, retired \
-                2026-08-03 along with their theorem kinds) fires unconditionally instead, \
-                with a removal note rather than a guessed rename.",
+                `.column-margin` spelling; the theorem environments and the narrative widgets \
+                `.panel-tabset`/`.code-walkthrough`/`.scrolly`/`.step`, retired 2026-08-08) \
+                fires unconditionally instead, with a removal note rather than a guessed \
+                rename.",
         fix: "Correct the class to the one the message suggests, or — for a retired class — \
               to the replacement its removal note names. If the class really is your own, \
               rename it so it is not a near-miss of a built-in.",
-    },
-    Explanation {
-        code: "TAL-DIV-PARTS",
-        title: "a feature div is missing a part it needs",
-        cause: "A `.panel-tabset`, `.code-walkthrough` or `.scrolly` has content but not \
-                the part that makes it work: a tabset builds its tabs from `##` \
-                headings, a walkthrough pins a code block in its sticky panel, and a scrolly \
-                needs both a sticky stage (a figure or `{js}` cell) and `.step` divs to \
-                scroll past it. The \
-                container still renders, just half-formed: a tab strip with no tabs, an \
-                empty sticky panel, a scroller that drives nothing. Distinct from \
-                TAL-EMPTY-DIV, which is a feature div with no \
-                content at all.",
-        fix: "Add the missing part named in the message: `##` headings inside the tabset, a \
-              fenced code block inside the walkthrough, or a stage and \
-              `.step` blocks inside the scrolly.",
     },
     Explanation {
         code: "TAL-CELL-OPTION",
@@ -455,13 +408,12 @@ const EXPLANATIONS: &[Explanation] = &[
         code: "TAL-EMPTY-DIV",
         title: "an empty feature div renders nothing",
         cause: "A `:::` fenced div names a real feature (a `.input` reactive control, a \
-                `.callout-…`, a `.panel-tabset`, a theorem, …) but has no content between its \
+                `.callout-…`, a `.column-page` width escape) but has no content between its \
                 fences, so it is dropped and renders nothing. The most common case is reaching \
                 for `::: {.input name=\"k\"}` as a div — the reactive input control is a \
                 shortcode, not a fenced div.",
-        fix: "Put content between the `:::` fences (the callout body, the tabset's `##` \
-              headings, the theorem statement), or, for a reactive input, use the shortcode \
-              form `{{< input name=\"k\" … >}}` instead of a div.",
+        fix: "Put content between the `:::` fences, or, for a reactive input, use the \
+              shortcode form `{{< input name=\"k\" … >}}` instead of a div.",
     },
     Explanation {
         code: "TAL-COLUMN-WIDTH",
@@ -472,17 +424,6 @@ const EXPLANATIONS: &[Explanation] = &[
         fix: "Remove the `width=` (the columns are equal), or set an explicit column count with \
               `::: {.columns ncol=N}` or `::: {layout-ncol=N}`. Variable-width columns are not \
               supported.",
-    },
-    Explanation {
-        code: "TAL-STEP-LINES",
-        title: "a `.step lines=` uses a step separator",
-        cause: "The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. \
-                The `|` is the STEP separator of a `code-line-numbers=\"1|2-3\"` \
-                spec; a `.step` is already one step, so its own `lines=` is parsed as \
-                comma-separated ranges only. The `|` matches neither a range nor a number, so \
-                the step silently focuses zero lines.",
-        fix: "Use comma-separated ranges within the step (`lines=\"3-5,8\"`), and express \
-              multiple reveal states as separate `.step` blocks — one per pipe group.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",
@@ -506,25 +447,26 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-SHORTCODE",
         title: "a shortcode taliesin could not read as written",
-        cause: "A `{{< … >}}` invocation names something the tool does not know: an unknown \
-                shortcode name, an unknown bare flag or `key=` argument, or a built-in with \
-                no source path. Nothing is lost — an unknown name stays on the page as \
-                literal text, and a known shortcode still renders with the options it did \
-                understand — which is exactly why this used to be silent: the page looked \
-                fine and the option you asked for simply never happened.",
-        fix: "Fix the spelling inside the braces; the message names the nearest known \
-              spelling when there is one. The built-ins are `{{< include file.tmd >}}`, \
-              `{{< video clip.mp4 [controls] [audio] \
-              [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A \
+        cause: "A `{{< … >}}` invocation names something the tool does not know: a typo, or \
+                a shortcode Taliesin used to expand and has since removed. Nothing is lost — \
+                the invocation stays on the page as literal text — which is exactly why this \
+                used to be silent: the page looked fine and the thing you asked for simply \
+                never happened. A RETIRED name carries its removal note instead of a bare \
+                \"unknown\".",
+        fix: "Fix the spelling inside the braces, or — for a retired shortcode — write what \
+              its removal note names. The vocabulary is exactly two: \
+              `{{< include file.tmd >}}` and `{{< input … >}}`. A \
               shortcode written as an *example* belongs in a code fence or backticks, \
               which are never expanded and never linted.",
     },
     Explanation {
         code: "TAL-XREF-UNDEF",
         title: "a cross-reference points at nothing",
-        cause: "An @-reference (`@fig-…`, `@sec-…`, `@tbl-…`, `@thm-…`) names a label that no \
-                figure, section, table, or theorem in the document defines, so it cannot \
-                resolve to a number or a link.",
+        cause: "An @-reference (`@fig-…`, `@sec-…`, `@tbl-…`, `@eq-…`) names a label that no \
+                figure, section, table or equation in the document defines, so it cannot \
+                resolve to a number or a link. A `@thm-…`/`@lem-…`/`@cor-…`/`@def-…` always \
+                lands here now: the theorem environments were retired on 2026-08-08 and \
+                nothing can define one of those anchors any more.",
         fix: "Fix the reference to match a real label (the message suggests the nearest), or \
               add the label to the target you meant to point at.",
     },
@@ -580,8 +522,8 @@ const EXPLANATIONS: &[Explanation] = &[
     Explanation {
         code: "TAL-MEDIA",
         title: "a local video was not found",
-        cause: "A `{{< video clip.mp4 >}}` (or similar) names a local media file that does \
-                not exist relative to the document.",
+        cause: "A hand-written `<video src=…>` / `<source src=…>` / `poster=` names a local \
+                media file that does not exist relative to the document.",
         fix: "Correct the path or add the file. Remote media URLs are not checked.",
     },
     Explanation {
@@ -951,18 +893,9 @@ mod tests {
             ("TAL-DIV-CLASS", WARNING)
         );
         assert_eq!(
-            classify("unknown div class `fragmnet` (did you mean `fragment`?)"),
+            classify("unknown div class `column-margn` (did you mean `column-margin`?)"),
             ("TAL-DIV-CLASS", WARNING)
         );
-        // One family for "the container is half-built", one row per container.
-        for m in [
-            "`.panel-tabset` has no headings, so it renders no tabs (add `##` headings)",
-            "`.code-walkthrough` has no code block to show in the sticky panel",
-            "`.scrolly` has no sticky stage (add a figure or `{js}` cell)",
-            "`.scrolly` has no `.step` divs to scroll through",
-        ] {
-            assert_eq!(classify(m), ("TAL-DIV-PARTS", WARNING), "{m}");
-        }
         // A missing attribute is not an unknown type: same surface, different edit.
         assert_eq!(
             classify("`.input` needs a `name=` to feed the reactive graph"),
@@ -980,8 +913,7 @@ mod tests {
         // None of these may gate a release: every one is an authoring slip whose page still
         // renders, which is what made the ERROR fall-through wrong rather than merely untidy.
         for m in [
-            "unknown div class `fragmnet` (did you mean `fragment`?)",
-            "`.scrolly` has no `.step` divs to scroll through",
+            "unknown div class `column-margn` (did you mean `column-margin`?)",
             "`.input` needs a `name=` to feed the reactive graph",
         ] {
             assert_eq!(classify(m).1, WARNING, "{m}");
@@ -996,10 +928,8 @@ mod tests {
         // literal text), and `build --strict` gates on errors, so a one-letter
         // typo blocked a release. Same class as the `.input` / div families above.
         for m in [
-            "unknown `{{< video >}}` option `control` (did you mean `controls`?) at line 5",
-            "unknown `{{< video >}}` argument `postr=` (did you mean `poster=`?) at line 5",
-            "`{{< video >}}` at line 5 has no source path (write `{{< video file >}}`)",
-            "unknown shortcode `{{< vidoe >}}` at line 7 (left as literal text)",
+            "unknown shortcode `{{< includ >}}` at line 7 (left as literal text)",
+            "unknown shortcode `{{< video >}}` at line 5: it was removed on 2026-08-08",
         ] {
             assert_eq!(classify(m), ("TAL-SHORTCODE", WARNING), "{m}");
         }
