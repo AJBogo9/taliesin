@@ -21,20 +21,20 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown div class `fragmnet` (did you mean `fragment`?)",
         // Retired, not misspelled: these two carry a REASON where the six above carry a
         // rename hint, which is the whole distinction `RETIRED_DIV_CLASSES` exists to draw.
-        "unknown div class `columns`: it was removed on 2026-08-02. `{layout-ncol=N}` was \
-         always the same grid and is now the only spelling, so the wrapper becomes \
+        "unknown div class `columns`: it was removed on 2026-08-02: `{layout-ncol=N}` is \
+         the same grid and the only spelling now, so the wrapper becomes \
          `::: {layout-ncol=2}` and its `.column` children become plain blocks separated by \
          a blank line",
-        "unknown div class `column`: it was removed on 2026-08-02 with `.columns`. Under \
+        "unknown div class `column`: it was removed on 2026-08-02 with `.columns`: under \
          `{layout-ncol=N}` each direct child block is already a column, so the child fences \
-         go away entirely rather than being renamed",
+         go away entirely",
         // `theorems: shared:` names KINDS, and its list entries went unvalidated until
         // 2026-08-07: a typo drew two separate counters and a kind retired on 2026-08-03
         // stayed accepted, both with a clean `check`. Same rename-vs-removal split as the
         // div classes above, one vocabulary over.
         "unknown theorem kind `lemna` (did you mean `lemma`?)",
-        "unknown theorem kind `proposition`: it was removed on 2026-08-03. `.theorem` is \
-         the closest surviving numbered kind now — both render in the same `plain` style",
+        "unknown theorem kind `proposition`: it was removed on 2026-08-03: `.theorem` is \
+         the closest surviving numbered kind, and both render in the same `plain` style",
     ];
     for e in expected {
         assert!(

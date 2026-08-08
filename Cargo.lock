@@ -2927,9 +2927,7 @@ version = "0.2.0"
 dependencies = [
  "axum",
  "chromiumoxide",
- "crc32fast",
  "dialoguer",
- "flate2",
  "futures",
  "futures-util",
  "image",

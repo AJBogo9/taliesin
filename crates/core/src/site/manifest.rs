@@ -3,9 +3,9 @@
 //! Safari). A sidecar generator like `feed.rs` / `llms.rs` / `seo.rs`.
 //!
 //! Deliberately NOT a service worker: installing changes how a reader RETURNS to a site,
-//! not whether it works offline. Offline is the book `<book>.zip`
-//! (`crates/server/src/zip.rs`), which the reader owns outright, with no cache living in
-//! their browser to go stale.
+//! not whether it works offline. Offline is the built output itself, which is
+//! self-contained and which the reader owns outright, with no cache living in their
+//! browser to go stale.
 
 use super::*;
 use std::path::Path;

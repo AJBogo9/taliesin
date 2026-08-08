@@ -275,12 +275,6 @@ pub(super) fn deck_page_from_doc(
     })
 }
 
-/// The deck engine `<script>` for the live deck client; load it before the
-/// preview client so `window.TaliesinDeck` is defined when the deck mounts.
-pub fn deck_client_script() -> String {
-    format!("<script>{DECK_JS}</script>")
-}
-
 /// Pre-paint `<head>` script that sets the deck's light/dark mode before first
 /// paint, so an embedded deck never flashes a white panel on a dark page. The
 /// mode is derived from the doc's resolved theme: an explicit `theme: dark`/
@@ -432,41 +426,6 @@ pub fn script_summary(html: &str) -> Option<ScriptSummary> {
         scripted,
         slides,
     })
-}
-
-/// Project a raw block list through the same per-slide transform the deck DOM sees:
-/// drop `. . .` pause markers and `---` breaks (they're consumed by the slide model,
-/// never emitted as DOM blocks), and give every block after a pause (within its slide)
-/// the `.fragment` class. The live-deck block diff runs on this projection so an
-/// incremental Update ships the slide-transformed html — a raw Update would strip a
-/// post-pause block's `.fragment`, making it permanently visible. Ids and sourcepos are
-/// preserved, so the diff still anchors on unchanged blocks. (Bg-attr hoisting is left
-/// out: it only affects a slide's lead heading, and a heading edit re-mounts, so it
-/// never reaches the client as an incremental Update.)
-pub fn deck_slide_blocks(blocks: &[Block]) -> Vec<Block> {
-    let mut out = Vec::with_capacity(blocks.len());
-    let mut paused = false;
-    for b in blocks {
-        // A `---` break or a slide-level heading starts a new slide (pause resets).
-        if is_slide_break(&b.html) || block_heading_level(&b.html).is_some_and(|l| l <= SLIDE_LEVEL)
-        {
-            paused = false;
-        }
-        if is_slide_break(&b.html) {
-            continue; // the `<hr>` delimiter is not a DOM block
-        }
-        if is_pause(&b.html) {
-            paused = true;
-            continue; // the pause marker is dropped from the DOM
-        }
-        let html = if paused {
-            add_fragment_class(&b.html)
-        } else {
-            b.html.clone()
-        };
-        out.push(Block { html, ..b.clone() });
-    }
-    out
 }
 
 /// Split blocks into flat slides at slide-level headings and `---` breaks,

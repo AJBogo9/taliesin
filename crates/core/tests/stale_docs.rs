@@ -24,12 +24,23 @@ fn read(rel: &str) -> String {
 /// day, and five of the six stale paths the path gate first reported were of exactly that
 /// kind. Rewriting a dated document to match today's tree destroys the record; this is
 /// the difference between prose that *claims* and prose that *remembers*.
+///
+/// `CLAUDE.md` is in the list even though no reader downloads it: every session and every
+/// agent reads it first, so a false claim there is copied forward before anyone checks.
+/// **What this does NOT cover, measured rather than assumed:** the path gate below reads
+/// *backticked* tokens, and CLAUDE.md's "Where things are" map is one fenced block, which
+/// the extractor sees as a single token full of spaces and discards. That is where the
+/// stale `sentences.rs`/`backlinks.rs` claim lived (deleted in `3a2f197a`, still described
+/// here on 2026-08-08), so adding this file catches its eleven backticked claims and would
+/// NOT have caught that one. Widening the extractor to parse the map was considered and
+/// declined: it is machinery, and this wave removes machinery.
 fn shipped_docs() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for rel in [
         "README.md",
         "SECURITY.md",
         "CONTRIBUTING.md",
+        "CLAUDE.md",
         "samples/README.md",
     ] {
         out.push((rel.to_string(), read(rel)));
@@ -512,8 +523,11 @@ fn retired_keys() -> Vec<(String, String)> {
 /// inside a `_site.yml` example is not caught (`configuration.tmd` is the page that would
 /// carry one, and the `_site.yml` schema golden pins the real vocabulary). And a nested
 /// retirement (`hero key`, `execute key`, …) is not caught, since its key is indented and
-/// collides with live spellings elsewhere. `from-quarto.tmd` is what tells a reader about
-/// every retirement, and `quarto_migration_page.rs` gates that all of them are named there.
+/// collides with live spellings elsewhere. Neither gap is covered by prose any more: the
+/// migration page that used to enumerate every retirement was deleted on 2026-08-08 with
+/// `quarto_migration_page.rs`, because the register IS the enumeration and a leftover key
+/// draws its own note with a file and a line — a reader who hits one is told what to do at
+/// the moment they need it, which no page can beat.
 #[test]
 fn shipped_docs_do_not_use_a_retired_front_matter_key() {
     let keys = retired_keys();

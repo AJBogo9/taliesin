@@ -59,7 +59,6 @@ mod session;
 mod testutil;
 mod trace_py;
 mod warm_pool;
-mod zip;
 
 use std::process::ExitCode;
 
@@ -172,27 +171,20 @@ const COMMANDS: &[&str] = &[
 ///
 /// Retired names are deliberately NOT in [`COMMANDS`]: they must not be suggested for a
 /// typo of something else, only recognized when typed exactly.
+///
+/// **A note is ONE sentence naming the replacement, or saying there is none.** Adding an
+/// entry is the entire cost of retiring a verb; `a_retired_command_names_its_replacement_
+/// instead_of_guessing` below covers every entry in the table, so no per-verb test is owed.
 const RETIRED_COMMANDS: &[(&str, &str)] = &[
     (
         "render",
         "`build <file.tmd> --stdout --no-exec` writes the same page to stdout",
     ),
-    (
-        "blocks",
-        "the block model is an editor concern now — `taliesin lsp` publishes it, \
-         and `build --stdout` shows the emitted `data-block-id`s",
-    ),
-    (
-        "symbols",
-        "`map <file.tmd>` lists the same cross-reference targets \
-         (a single document is a project of one page)",
-    ),
+    ("blocks", "`taliesin lsp` publishes the block model now"),
+    ("symbols", "`map <file.tmd>` lists the same targets"),
     ("serve", "use `preview`"),
     ("dev", "use `preview`"),
-    (
-        "skim",
-        "`read` projects a document to plain text; `map` outlines a project",
-    ),
+    ("skim", "`read` projects a document to plain text"),
 ];
 
 /// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the

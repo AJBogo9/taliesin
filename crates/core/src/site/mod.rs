@@ -93,12 +93,6 @@ pub struct HeroSpec {
     pub lead: Option<String>,
     /// Call-to-action buttons (`actions:` — a list of `{text, href, primary}`).
     pub actions: Vec<HeroAction>,
-    /// Optional portrait beside the hero (`image:`), page-relative; when present the
-    /// hero renders a two-column media layout (the blog homepage). Imageless heroes
-    /// (the marketing site) are unaffected.
-    pub image: Option<String>,
-    /// Alt text for `image:` (`image-alt:`).
-    pub image_alt: Option<String>,
 }
 
 /// One `hero:` call-to-action button.
@@ -605,36 +599,6 @@ impl Site {
     /// put the build somewhere else, and it does not need the config's permission.
     pub fn output_dir(&self) -> &str {
         if self.is_book() { "_book" } else { "_site" }
-    }
-
-    /// The filename of the offline download archive a book build emits at its output root
-    /// (a slug of the book/site title, `book.zip` when there is no usable title). Single
-    /// source of truth: the build names the file this, and the topbar links to it, so they
-    /// can never drift.
-    pub fn archive_name(&self) -> String {
-        let title = self
-            .book
-            .as_ref()
-            .and_then(|b| b.title.as_deref())
-            .or(self.config.title.as_deref())
-            .unwrap_or("");
-        let mut slug = String::new();
-        let mut pending_dash = false;
-        for c in title.chars() {
-            if c.is_ascii_alphanumeric() {
-                if pending_dash && !slug.is_empty() {
-                    slug.push('-');
-                }
-                pending_dash = false;
-                slug.push(c.to_ascii_lowercase());
-            } else {
-                pending_dash = true;
-            }
-        }
-        if slug.is_empty() {
-            slug.push_str("book");
-        }
-        format!("{slug}.zip")
     }
 
     /// Whether the author supplies their own `404.tmd` (output URL `404.html`). When
@@ -1712,22 +1676,12 @@ impl Site {
         let src = esc(&page.rel);
         let headline = esc(&headline);
         let inner = format!("{eyebrow}<h1>{headline}</h1>{lead}{actions}");
-        // Imageless hero (the marketing site): byte-identical to before the portrait
-        // slot existed. With an image (the blog homepage): a two-column media layout.
-        match hero.image.as_deref() {
-            None => format!(
-                "<header class=\"hero\" data-block-id=\"tali-title-block\" data-tali-src=\"{src}\">{inner}</header>"
-            ),
-            Some(image) => {
-                let image = esc(image);
-                let alt = esc(hero.image_alt.as_deref().unwrap_or(""));
-                format!(
-                    "<header class=\"hero hero-has-media\" data-block-id=\"tali-title-block\" data-tali-src=\"{src}\">\
-                     <div class=\"hero-body\">{inner}</div>\
-                     <img class=\"hero-media\" src=\"{image}\" alt=\"{alt}\"></header>"
-                )
-            }
-        }
+        // The hero banner is type, not a figure. `hero.image:`/`image-alt:` were retired on
+        // 2026-08-02 and the two-column portrait layout they drove was deleted on
+        // 2026-08-08; this is byte-identical to the emission that predated the slot.
+        format!(
+            "<header class=\"hero\" data-block-id=\"tali-title-block\" data-tali-src=\"{src}\">{inner}</header>"
+        )
     }
 
     // --- chrome -----------------------------------------------------------

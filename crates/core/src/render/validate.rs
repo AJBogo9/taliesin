@@ -276,45 +276,49 @@ pub(crate) fn validate_div_class(
 /// `::: {.columns}` + `.column` children as `{layout-ncol=N}` deletes the child fences and
 /// moves the declaration from the class to an attribute, so a blind rename would trade a
 /// warning for a document that is broken in a new way.
+///
+/// **A note is ONE sentence: the date, then the successor or an explicit "nothing".** Adding
+/// an entry is the entire cost of withdrawing a class — the table-driven tombstone in this
+/// file's `mod tests` derives the rest (gone from the live vocabulary, warns with this note
+/// and no did-you-mean, CSS rule gone), so no hand-written test is owed.
 pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
     (
         "columns",
-        "it was removed on 2026-08-02. `{layout-ncol=N}` was always the same grid and is \
-         now the only spelling, so the wrapper becomes `::: {layout-ncol=2}` and its \
-         `.column` children become plain blocks separated by a blank line",
+        "it was removed on 2026-08-02: `{layout-ncol=N}` is the same grid and the only \
+         spelling now, so the wrapper becomes `::: {layout-ncol=2}` and its `.column` \
+         children become plain blocks separated by a blank line",
     ),
     (
         "column",
-        "it was removed on 2026-08-02 with `.columns`. Under `{layout-ncol=N}` each direct \
-         child block is already a column, so the child fences go away entirely rather than \
-         being renamed",
+        "it was removed on 2026-08-02 with `.columns`: under `{layout-ncol=N}` each direct \
+         child block is already a column, so the child fences go away entirely",
     ),
     (
         "aside",
-        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
     ),
     (
         "sidenote",
-        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
     ),
     (
         "marginnote",
-        "it was removed on 2026-08-03. `.column-margin` is the only margin spelling now",
+        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
     ),
     (
         "example",
-        "it was removed on 2026-08-03. Rewrite it as `.definition` or a plain \
+        "it was removed on 2026-08-03: rewrite it as `.definition` or a plain \
          `::: {.callout-note}`, whichever fits the content",
     ),
     (
         "proposition",
-        "it was removed on 2026-08-03. `.theorem` is the closest surviving numbered kind \
-         now — both render in the same `plain` style",
+        "it was removed on 2026-08-03: `.theorem` is the closest surviving numbered kind, \
+         and both render in the same `plain` style",
     ),
     (
         "remark",
-        "it was removed on 2026-08-03. A plain `::: {.callout-note}` is the closest \
-         surviving spelling now",
+        "it was removed on 2026-08-03: a plain `::: {.callout-note}` is the closest \
+         surviving spelling",
     ),
 ];
 
@@ -613,79 +617,152 @@ mod tests {
         );
     }
 
-    /// Margin-content spellings went 4 -> 1 on 2026-08-03 (visual minimalism pass, task
-    /// 13): `.aside` and `.marginnote` had zero uses in the tree, `.sidenote` had one
-    /// (migrated to `.column-margin`). Each retired spelling must warn with the removal
-    /// note — not silence (div classes are an open vocabulary, so silence is what a
-    /// PLAIN removal from `DIV_FEATURE_CLASSES` alone would produce) and not a
-    /// did-you-mean (a removal and a misspelling are different mistakes). This is the
-    /// direct pin that `RETIRED_DIV_CLASSES` actually carries all three entries;
-    /// `crates/core/tests/retired_names.rs` pins the same three through the full render
-    /// pipeline, since `RETIRED_DIV_CLASSES` itself is `pub(crate)` and unreachable from
-    /// an external test.
-    #[test]
-    fn margin_aliases_warn_with_the_removal_note_not_a_did_you_mean() {
-        let s = |c: &str| vec![c.to_string()];
-        for gone in ["aside", "sidenote", "marginnote"] {
-            let w = validate_div_class(&s(gone), 3, None)
-                .unwrap_or_else(|| panic!("`.{gone}` must warn, div classes are open vocabulary"));
-            assert_eq!(
-                w.message,
-                format!(
-                    "unknown div class `{gone}`: it was removed on 2026-08-03. \
-                     `.column-margin` is the only margin spelling now"
-                )
-            );
-            assert!(
-                !w.message.contains("did you mean"),
-                "a retired class is not a did-you-mean: {}",
-                w.message
-            );
-        }
+    /// Is `name` used as a class SELECTOR anywhere in `css`?
+    ///
+    /// A plain `css.contains(".column")` is the obvious spelling and it is wrong: it also
+    /// matches `.column-margin`, the surviving class, so a register entry named `column`
+    /// would report its own successor as a leftover. Measured on 2026-08-08 — that is one
+    /// false positive out of the eight entries, i.e. the naive derivation fails today, not
+    /// hypothetically. Requiring a non-identifier character after the name is what makes
+    /// `.column` and `.column-margin` different selectors.
+    fn css_has_class_selector(css: &str, name: &str) -> bool {
+        let needle = format!(".{name}");
+        css.match_indices(&needle).any(|(at, _)| {
+            !css[at + needle.len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        })
     }
 
-    /// Theorem kinds went 8 -> 5 on 2026-08-03 (visual minimalism pass, task 14): `example`,
-    /// `proposition` and `remark` were never cross-referenced by any document in the tree.
-    /// Unlike a callout kind, a theorem kind carries no namespace prefix — `THEOREM_KINDS`
-    /// IS the dispatch vocabulary — so without a `RETIRED_DIV_CLASSES` entry a leftover
-    /// `.example`/`.proposition`/`.remark` falls through to a plain, unnumbered,
-    /// unreferenceable div with no diagnostic at all. This is the direct pin that
-    /// `RETIRED_DIV_CLASSES` actually carries all three entries;
-    /// `crates/core/tests/retired_names.rs` pins the same three through the full render
-    /// pipeline, since `RETIRED_DIV_CLASSES` itself is `pub(crate)` and unreachable from
-    /// an external test.
+    /// **The one tombstone for every retired `:::` vocabulary name.** Adding an entry to
+    /// `RETIRED_DIV_CLASSES` (or a `callout kind` entry to `RETIRED_KEYS`) is all a
+    /// retirement costs from here — this test covers it, at +1 line instead of the ~39 a
+    /// hand-written tombstone used to run to. It replaces three of those (the margin
+    /// aliases, the theorem kinds, and the callout kinds in
+    /// `crates/core/tests/retired_names.rs`), which between them asserted the same three
+    /// properties nine times over.
+    ///
+    /// For every retired name, all three halves of a retirement:
+    ///
+    /// 1. it is really gone from the LIVE dispatch vocabulary (else the retirement is a
+    ///    no-op and the class still renders its feature);
+    /// 2. it draws a located warning carrying the register's own note, and **never a
+    ///    "did you mean"** — `codes::extract_suggestion` lifts that exact phrase into a
+    ///    structured fix an agent applies mechanically, and none of these are mechanical
+    ///    renames. Silence is the failure mode being guarded: div classes are an OPEN
+    ///    vocabulary, so a plain removal from `DIV_FEATURE_CLASSES` earns no diagnostic
+    ///    at all and the author's page just quietly loses its layout;
+    /// 3. its CSS rule went with it, so a leftover really does render unstyled rather
+    ///    than half-working.
+    ///
+    /// Two vacuity controls, because a derived test is exactly the kind that passes
+    /// forever if its derivation is subtly wrong: the registers must be non-empty and
+    /// still carry a name each retirement was written for, and `css_has_class_selector`
+    /// must say YES to `.column-margin`, the survivor. Without that last one a helper
+    /// that always returned `false` would make half this test vacuous.
     #[test]
-    fn theorem_kind_aliases_warn_with_the_removal_note_not_a_did_you_mean() {
-        let s = |c: &str| vec![c.to_string()];
-        for gone in ["example", "proposition", "remark"] {
-            let w = validate_div_class(&s(gone), 3, None)
-                .unwrap_or_else(|| panic!("`.{gone}` must warn, div classes are open vocabulary"));
-            assert!(
-                w.message.starts_with(&format!(
-                    "unknown div class `{gone}`: it was removed on 2026-08-03."
-                )),
-                "expected a removal note for `.{gone}`, got: {}",
-                w.message
-            );
-            assert!(
-                !w.message.contains("did you mean"),
-                "a retired class is not a did-you-mean: {}",
-                w.message
-            );
-        }
-        // Removing a kind also removes it from the dispatch vocabulary itself: the three
-        // cut kinds must not survive in THEOREM_KINDS (else `theorem_kind()` would still
-        // route them into the theorem arm, and this whole retirement would be a no-op).
-        for gone in ["example", "proposition", "remark"] {
-            assert!(
-                !THEOREM_KINDS.contains(&gone),
-                "`.{gone}` must no longer be a recognized theorem kind"
-            );
-        }
+    fn every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean() {
+        let base = crate::render::base_css();
+        let site = crate::render::site_css();
+
+        // Vacuity control for the CSS half: the helper must find a selector that IS there.
+        assert!(
+            css_has_class_selector(base, "column-margin"),
+            "the CSS selector check finds nothing, so every assertion below is vacuous"
+        );
+        // …and must NOT confuse a prefix for the whole name. This is the case the naive
+        // `contains` spelling gets wrong, so it is pinned rather than left to a comment.
+        assert!(
+            !css_has_class_selector(base, "column"),
+            "`.column` must not match `.column-margin` — the derivation is too loose"
+        );
+
+        // Vacuity control for the registers themselves.
+        assert!(
+            RETIRED_DIV_CLASSES.len() >= 8
+                && RETIRED_DIV_CLASSES.iter().any(|(c, _)| *c == "columns")
+                && RETIRED_DIV_CLASSES.iter().any(|(c, _)| *c == "remark"),
+            "RETIRED_DIV_CLASSES lost entries it was written for — a name deleted from the \
+             register goes back to earning silence"
+        );
         assert_eq!(
             THEOREM_KINDS,
             &["theorem", "lemma", "corollary", "definition", "proof"],
             "theorem vocabulary should be exactly 5"
+        );
+        assert_eq!(
+            CALLOUT_KINDS,
+            &["note", "tip", "warning"],
+            "callout vocabulary should be exactly 3"
+        );
+
+        // --- Retired `:::` feature/theorem classes. `.{name}` is the selector.
+        for (name, note) in RETIRED_DIV_CLASSES {
+            assert!(
+                !DIV_FEATURE_CLASSES.contains(name) && !THEOREM_KINDS.contains(name),
+                "`.{name}` is in RETIRED_DIV_CLASSES and still live — the retirement is a no-op"
+            );
+            let w = validate_div_class(&[name.to_string()], 3, None).unwrap_or_else(|| {
+                panic!("`.{name}` must warn; silence is the failure mode this test exists to catch")
+            });
+            assert_eq!(
+                w.message,
+                format!("unknown div class `{name}`: {note}"),
+                "`.{name}` must carry the register's own note"
+            );
+            assert!(
+                !w.message.contains("did you mean"),
+                "a retired class is not a did-you-mean: {}",
+                w.message
+            );
+            for (label, css) in [("base.css", base), ("site.css", site)] {
+                assert!(
+                    !css_has_class_selector(css, name),
+                    "`.{name}` is retired but still styled in {label}"
+                );
+            }
+        }
+
+        // --- Retired callout kinds. These live in `RETIRED_KEYS` (scope `callout kind`,
+        // the literal `validate_callout_kind` passes to `unknown_key_message`), not in
+        // `RETIRED_DIV_CLASSES`, and their selector is namespaced `.callout-{name}`.
+        let mut callout_kinds_seen = 0;
+        for (scope, name, note) in crate::frontmatter::RETIRED_KEYS {
+            if *scope != "callout kind" {
+                continue;
+            }
+            callout_kinds_seen += 1;
+            assert!(
+                !CALLOUT_KINDS.contains(name),
+                "`{name}` is a retired callout kind and still live"
+            );
+            let w = validate_callout_kind(name, 3, None)
+                .unwrap_or_else(|| panic!("the retired callout kind `{name}` must warn"));
+            assert!(
+                w.message.contains(note),
+                "`{name}` must carry the register's own note, got: {}",
+                w.message
+            );
+            assert!(
+                !w.message.contains("did you mean"),
+                "a retired callout kind is not a did-you-mean: {}",
+                w.message
+            );
+            // Only the class SELECTORS go. The underlying `--tali-callout-important` /
+            // `--tali-callout-caution` custom properties stay defined: `.tali-error` /
+            // `.tali-js-error` read the first, and `deck.css` reads both.
+            for (label, css) in [("base.css", base), ("site.css", site)] {
+                assert!(
+                    !css_has_class_selector(css, &format!("callout-{name}")),
+                    "`.callout-{name}` is retired but still styled in {label}"
+                );
+            }
+        }
+        assert!(
+            callout_kinds_seen >= 2,
+            "only {callout_kinds_seen} retired callout kinds found in RETIRED_KEYS — the \
+             scope literal changed and this half of the test stopped running"
         );
     }
 
@@ -773,31 +850,6 @@ mod tests {
             validate_callout_kind("note", 7, None).is_none(),
             "note is recognized"
         );
-    }
-
-    /// `important` and `caution` were retired 2026-08-03 (visual minimalism pass, task
-    /// 12): three kinds cover the distinctions a reader can actually decode. A document
-    /// that still names one of the two cut kinds must be told it was REMOVED, not offered
-    /// a did-you-mean (that phrasing is reserved for mechanical renames, and `warning`/
-    /// `note` are judgement calls, not renames) — same rule `RETIRED_KEYS`'s own doc
-    /// comment states for front-matter keys.
-    #[test]
-    fn retired_callout_kind_gives_the_removal_note_not_a_did_you_mean() {
-        for kind in ["important", "caution"] {
-            let w = validate_callout_kind(kind, 7, None)
-                .unwrap_or_else(|| panic!("`{kind}` must still warn"));
-            assert!(
-                w.message
-                    .starts_with(&format!("unknown callout kind `{kind}`: it was removed")),
-                "expected a removal note for `{kind}`, got: {}",
-                w.message
-            );
-            assert!(
-                !w.message.contains("did you mean"),
-                "a retired kind must not be phrased as a did-you-mean: {}",
-                w.message
-            );
-        }
     }
 
     #[test]

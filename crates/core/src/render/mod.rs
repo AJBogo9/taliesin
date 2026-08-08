@@ -65,8 +65,7 @@ pub use client_lang::{
 };
 mod deck;
 pub use deck::{
-    DeckParts, ScriptSummary, assemble_deck_page, deck_client_script, deck_overlay_html,
-    deck_slide_blocks, script_summary, slides_html,
+    DeckParts, ScriptSummary, assemble_deck_page, deck_overlay_html, script_summary, slides_html,
 };
 // `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
 // tests; it's not part of the public API, so it's only pulled into scope here for

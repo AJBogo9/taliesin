@@ -260,17 +260,6 @@
   .tali-site-main:not(.tali-wide) .hero .hero-actions { justify-content: flex-start; }
   .tali-site-main:not(.tali-wide) .hero .hero-eyebrow::after { content: ""; display: block;
     width: 2.5rem; height: 2px; background: var(--tali-accent); margin-top: .55rem; }
-  /* An optional portrait beside the hero (`image:` on the block): two columns, ringed. Like the
-     editorial left-align above, the two-column grid belongs to the reading-measure (personal)
-     context; an image hero on a full-width landing is not a designed combination. */
-  .tali-site-main:not(.tali-wide) .hero-has-media { display: grid; grid-template-columns: 1fr auto;
-    gap: 2rem; align-items: center; }
-  .hero-media { width: 140px; height: 140px; border-radius: 50%; object-fit: cover;
-    border: 1px solid var(--tali-border-strong); }
-  @media (max-width: 40rem) {
-    .tali-site-main:not(.tali-wide) .hero-has-media { grid-template-columns: 1fr; }
-    .hero-media { width: 108px; height: 108px; }
-  }
   .feature-grid { display: grid; gap: 1.1rem; margin: 2.2rem 0;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border);

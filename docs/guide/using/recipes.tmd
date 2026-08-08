@@ -65,13 +65,10 @@ title: "Jane Doe"
 hero:
   headline: "Jane Doe"
   lead: "Notes on things I'm learning."
-  image: profile.webp
-  image-alt: "Jane Doe"
 toc: false
 listing:
   id: recent
   contents: posts
-  sort: "date desc"
   max-items: 3
   type: grid
 ---
@@ -98,7 +95,6 @@ title-block-style: none
 page-layout: full
 listing:
   contents: posts
-  sort: "date desc"
   type: grid
 ---
 ```
@@ -118,10 +114,10 @@ categories: [machine learning, statistics]
 ```
 
 ::: {.callout-note}
-`sort: "date desc"` is the default; write `"date asc"` for oldest-first. A post with
-no `date:` still appears, but undated posts cluster deterministically at one end (last
-under `date desc`, first under `date asc`) and ties break on file path, so give every
-post a date if order matters.
+Newest first is the only order, and there is nothing to configure (the `sort:` key was
+retired on 2026-08-02 because every listing that set it wrote the default). A post with
+no `date:` still appears, but undated posts cluster deterministically at the end and ties
+break on file path, so give every post a date if order matters.
 :::
 
 ## 2. A project / portfolio site
@@ -189,7 +185,6 @@ title-block-style: none
 page-layout: full
 listing:
   contents: projects
-  sort: "date desc"
   type: grid
 ---
 

@@ -89,70 +89,69 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 ///
 /// `(scope, key, what to do instead)`, where `scope` is [`unknown_key_message`]'s `what`
 /// label, so a retired *sub*-key is only recognized in the map it actually lived in.
+///
+/// **A note is ONE sentence: the date, then the successor or an explicit "nothing".** An
+/// author reading it is mid-edit and wants the replacement, not the deliberation; the
+/// reasoning belongs in the commit that retired the key. Adding an entry is the entire
+/// cost of a retirement now — `render::validate`'s
+/// `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
+/// derives the tombstone from this table, so no hand-written test is owed.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
-    // --- The raw-injection family, retired 2026-08-02. Four front-matter keys and three
-    // `_site.yml` ones went; `_site.yml head:` is the survivor, kept deliberately as the
-    // one escape hatch a published tool needs (analytics, search-console verification,
-    // a custom stylesheet). Every note therefore points at the same successor.
+    // --- The raw-injection family, retired 2026-08-02. `_site.yml head:` is the survivor,
+    // kept deliberately as the one escape hatch a published tool needs.
     (
         "front-matter key",
         "css",
-        "it was removed on 2026-08-02: per-document stylesheet injection had no users, and \
-         one escape hatch is enough. Put the rules in `_site.yml head:` (a `<style>` or a \
-         `<link>`), which applies site-wide, or use a `theme:` for colours",
+        "it was removed on 2026-08-02: put the rules in `_site.yml head:`, which applies \
+         site-wide, or use a `theme:` for colours",
     ),
     (
         "front-matter key",
         "include-in-header",
-        "it was removed on 2026-08-02: use `_site.yml head:`, which injects the same markup \
-         into `<head>` for the whole project. There is no per-document form any more",
+        "it was removed on 2026-08-02: `_site.yml head:` injects the same markup for the \
+         whole project, and there is no per-document form",
     ),
     (
         "front-matter key",
         "include-before-body",
-        "it was removed on 2026-08-02 with no successor: nothing used it, and markup that \
-         must precede the content is content — write it in the document. Site-wide markup \
+        "it was removed on 2026-08-02 with no per-document successor: markup that must \
+         precede the content is content, so write it in the document, and site-wide markup \
          goes in `_site.yml head:`",
     ),
     (
         "front-matter key",
         "include-after-body",
-        "it was removed on 2026-08-02 with no successor: nothing used it, and markup that \
-         must follow the content is content — write it in the document. Site-wide markup \
+        "it was removed on 2026-08-02 with no per-document successor: markup that must \
+         follow the content is content, so write it in the document, and site-wide markup \
          goes in `_site.yml head:`",
     ),
     (
         "front-matter key",
         "prose-lint",
-        "it was removed on 2026-08-02 along with the linter it configured: it was opt-in \
-         and never opted into. The doubled-word, weasel-word and banned-phrase checks are \
-         gone; nothing replaces them, so delete the key",
+        "it was removed on 2026-08-02 with the opt-in doubled-word, weasel-word and \
+         banned-phrase checks it configured, and nothing replaces them, so delete the key",
     ),
     (
         "execute key",
         "echo",
-        "it was removed on 2026-08-02: the per-cell `#| echo: false` is what documents \
-         actually use, and a document-wide default that silently changes every cell reads \
-         worse than saying it on the cells you mean. Write `#| echo: false` in each cell",
+        "it was removed on 2026-08-02: write `#| echo: false` on the cells you mean",
     ),
     (
         "execute key",
         "include",
-        "it was removed on 2026-08-02 with no successor: it suppressed a cell's source AND \
-         its output, which `#| echo: false` plus simply not writing the cell already cover",
+        "it was removed on 2026-08-02 with no successor: `#| echo: false` plus simply not \
+         writing the cell already cover it",
     ),
     (
         "listing key",
         "sort",
-        "it was removed on 2026-08-02: every listing that set it wrote `\"date desc\"`, \
-         which is what a listing already does. Newest first is the only order now, so \
-         delete the key",
+        "it was removed on 2026-08-02: newest first is the only order now, so delete the key",
     ),
     (
         "hero key",
         "image",
-        "it was removed on 2026-08-02: the hero banner is type, not a figure, and nothing \
-         set it. Put the image in the page body as a normal figure",
+        "it was removed on 2026-08-02: the hero banner is type, not a figure, so put the \
+         image in the page body as a normal figure",
     ),
     (
         "hero key",
@@ -162,149 +161,133 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
     (
         "theorems key",
         "numbered",
-        "it was removed on 2026-08-02: theorems are numbered, scoped to their book chapter \
-         automatically, and the un-numbering policies had no users. `shared:` (one counter \
-         across several kinds) is what survives the block",
+        "it was removed on 2026-08-02: theorems are numbered and chapter-scoped \
+         automatically, and `shared:` is what survives the block",
     ),
     // --- `_site.yml`. Scope `config key` is what `site::config`'s validator labels a
     // top-level key, so these are only recognized there.
     (
         "config key",
         "css",
-        "it was removed on 2026-08-02: use `head:`, which takes the same markup and is the \
-         one raw-injection hatch the config keeps",
+        "it was removed on 2026-08-02: use `head:`, the one raw-injection hatch the config \
+         keeps",
     ),
     (
         "config key",
         "body-start",
-        "it was removed on 2026-08-02 with no successor: nothing used it. Site-wide markup \
-         goes in `head:`",
+        "it was removed on 2026-08-02 with no successor: site-wide markup goes in `head:`",
     ),
     (
         "config key",
         "body-end",
-        "it was removed on 2026-08-02 with no successor: nothing used it. Site-wide markup \
-         goes in `head:`; a deferred script in `<head>` runs at the same point",
+        "it was removed on 2026-08-02 with no successor: site-wide markup goes in `head:`, \
+         where a deferred script runs at the same point",
     ),
     (
         "config key",
         "output",
-        "it was removed on 2026-08-02: both projects that set it wrote the default. `build` \
-         writes `_site/` (`_book/` for a book), or wherever `--out` says",
+        "it was removed on 2026-08-02: `build` writes `_site/` (`_book/` for a book), or \
+         wherever `--out` says",
     ),
     (
         "config key",
         "toc",
         "it was removed on 2026-08-02 and the sidebar table of contents is now automatic: \
-         an article page with enough headings gets one. To force it on or off for a page, \
-         write `toc:` in that page's own front matter",
+         force it for one page with `toc:` in that page's own front matter",
     ),
     (
         "config key",
         "theorems",
-        "it was removed on 2026-08-02 with the `numbered:` policy it carried book-wide. A \
-         chapter that shares counters across kinds says so in its own front matter: \
+        "it was removed on 2026-08-02 with the `numbered:` policy it carried book-wide: a \
+         chapter that shares counters across kinds says so in its own front matter, \
          `theorems: { shared: [...] }`",
     ),
     (
         "mounts entry key",
         "at",
-        "the `- { at:, path: }` list form was removed on 2026-08-02. Write `mounts:` as a \
-         mapping of URL prefix to project directory instead: `mounts:\\n  docs: ../docs`",
+        "the `- { at:, path: }` list form was removed on 2026-08-02: write `mounts:` as a \
+         mapping of URL prefix to project directory instead",
     ),
     (
         "mounts entry key",
         "path",
-        "the `- { at:, path: }` list form was removed on 2026-08-02. Write `mounts:` as a \
-         mapping of URL prefix to project directory instead: `mounts:\\n  docs: ../docs`",
+        "the `- { at:, path: }` list form was removed on 2026-08-02: write `mounts:` as a \
+         mapping of URL prefix to project directory instead",
     ),
     (
         "front-matter key",
         "datasets",
-        "it was removed on 2026-08-02 and the annotations now ride the invocation that \
-         uses them: write `{{< dataset data/x.csv licence=CC0-1.0 source=... >}}`. There is \
-         no `path:`/`url:` any more because the shortcode's own argument already names the \
-         file, so this is a move rather than a rename",
+        "it was removed on 2026-08-02 and the annotations ride the invocation that uses \
+         them now: `{{< dataset data/x.csv licence=CC0-1.0 source=... >}}`",
     ),
     // --- The academic-publishing cluster, retired 2026-08-03 with the reader-facing
-    // cite-this box and the Google Scholar `citation_*` meta it fed. (No quotation marks
-    // in this comment on purpose: `quarto_migration_page.rs` scans the block for string
-    // literals and chunks them by three, so a quoted phrase here shifts every tuple after
-    // it.) Citations themselves are untouched:
-    // `bibliography:` and `[@key]` are the load-bearing half and stay. What went is the
-    // *outward* record-of-publication layer, which no document outside its own fixture set.
+    // cite-this box and the Google Scholar citation meta it fed. Citations themselves are
+    // untouched: `bibliography:` and `[@key]` are the load-bearing half and stay.
     (
         "front-matter key",
         "doi",
-        "it was removed on 2026-08-03 with the appendix and the Google Scholar metadata \
-         that were its only readers. A DOI is a link like any other now: write it in the \
-         page body, e.g. `[10.5281/zenodo.1825009](https://doi.org/10.5281/zenodo.1825009)`",
+        "it was removed on 2026-08-03 with the appendix and Scholar metadata that were its \
+         only readers: write the DOI in the page body as an ordinary link",
     ),
     (
         "front-matter key",
         "links",
-        "it was removed on 2026-08-03 with the resource row it rendered under the byline. \
-         Write the artefact links in the page body as ordinary Markdown links, which is \
-         what a reader clicks either way",
+        "it was removed on 2026-08-03 with the resource row it rendered: write the artefact \
+         links in the page body as ordinary Markdown links",
     ),
     (
         "front-matter key",
         "venue",
-        "it was removed on 2026-08-03 with the resource row and the Google Scholar \
-         `citation_conference_title` it fed. Name the venue in the page body or in \
-         `subtitle:`",
+        "it was removed on 2026-08-03 with the resource row: name the venue in the page body \
+         or in `subtitle:`",
     ),
     (
         "front-matter key",
         "award",
-        "it was removed on 2026-08-03 with the resource row that rendered its badge. Say it \
+        "it was removed on 2026-08-03 with the resource row that rendered its badge: say it \
          in the page body or in `subtitle:`",
     ),
     (
         "front-matter key",
         "acknowledgments",
-        "it was removed on 2026-08-03 with the generated appendix. Acknowledgments are \
-         prose: write them as a final section of the document, where you can edit them",
+        "it was removed on 2026-08-03 with the generated appendix: acknowledgments are \
+         prose, so write them as a final section of the document",
     ),
     (
         "front-matter key",
         "acknowledgements",
         "it was removed on 2026-08-03 with the generated appendix (both spellings were \
-         accepted). Acknowledgements are prose: write them as a final section of the \
-         document, where you can edit them",
+         accepted): write them as a final section of the document",
     ),
     (
         "front-matter key",
         "about",
-        "it was removed on 2026-07-17 and the landing banner is now `hero:`, which takes \
-         a different set of sub-keys (eyebrow / headline / lead / actions), so this is a \
+        "it was removed on 2026-07-17 and the landing banner is now `hero:`, which takes a \
+         different set of sub-keys (eyebrow / headline / lead / actions), so this is a \
          rewrite rather than a rename",
     ),
     (
         "theorems key",
         "number-within",
         "it was removed when theorem numbers started scoping to a book chapter \
-         automatically, so nothing replaces it: delete the key",
+         automatically, and nothing replaces it, so delete the key",
     ),
     // --- Visual minimalism pass, 2026-08-03.
     (
         "listing key",
         "categories",
-        "it was removed on 2026-08-03: the filter-chip row paid off only on a large \
-         archive with a disciplined category vocabulary. Page-level `categories:` still \
-         works and still shows as a badge on each card",
+        "it was removed on 2026-08-03: page-level `categories:` still works and still shows \
+         as a badge on each card",
     ),
     (
         "callout kind",
         "important",
-        "it was removed on 2026-08-03: three kinds cover the distinctions a reader can \
-         actually decode. Use `warning` for a consequence, `note` for an aside",
+        "it was removed on 2026-08-03: use `warning` for a consequence, `note` for an aside",
     ),
     (
         "callout kind",
         "caution",
-        "it was removed on 2026-08-03: three kinds cover the distinctions a reader can \
-         actually decode. Use `warning`",
+        "it was removed on 2026-08-03: use `warning`",
     ),
 ];
 
@@ -993,7 +976,7 @@ mod tests {
         assert_eq!(
             w[0].message,
             "unknown theorems key `number-within`: it was removed when theorem numbers \
-             started scoping to a book chapter automatically, so nothing replaces it: \
+             started scoping to a book chapter automatically, and nothing replaces it, so \
              delete the key"
         );
         assert_eq!(w[0].line, Some(3), "`number-within` is on file line 3");

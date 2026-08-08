@@ -36,8 +36,11 @@ reproduced.)*
 
 **None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
 predates Taliesin, which means the 7.3% is not stranded either — it is the same syntax
-another Pandoc-family tool already parses. `.tmd` is a file extension, not a format: see
-[Coming from Quarto](from-quarto.tmd), which is the same migration run backwards.
+another Pandoc-family tool already parses. `.tmd` is a file extension, not a format, and
+the same argument runs backwards: a project arriving from Quarto brings its sentences,
+fenced cells, `#|` options, `:::` divs, math, citations and cross-references across
+unchanged. `taliesin check .` names the short list of vocabulary that differs, with a file
+and a line for each, which is a better migration assistant than any page could be.
 
 Three exits exist today, and this is the first place any of them is called one:
 

@@ -751,7 +751,10 @@ mod config_tests {
     fn every_retired_config_key_explains_itself_instead_of_guessing() {
         for (key, yaml, needle) in [
             ("toc", "title: X\ntoc: true\n", "now automatic"),
-            ("output", "title: X\noutput: _site\n", "wrote the default"),
+            // The needle is the INSTRUCTION, not the justification. It used to be "wrote
+            // the default" — a sentence about why the key went, which a note collapsed to
+            // one sentence correctly drops. What an author needs is where the build writes.
+            ("output", "title: X\noutput: _site\n", "`--out`"),
             ("css", "title: X\ncss: extra.css\n", "use `head:`"),
             (
                 "body-start",

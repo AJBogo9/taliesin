@@ -274,10 +274,9 @@ chapters:
     chapters: [a.tmd, b.tmd]
 ```
 
-Building a book also drops a single `<book>.zip` at the output root (named from the
-title), so a reader can grab the whole book and read it offline as one file. The built
-pages are already self-contained, so the zip is just a convenient wrapper; there is
-nothing to configure.
+The built pages are self-contained (framework CSS, JS and fonts are inlined or
+root-relative), so a book copied anywhere still reads offline. There is nothing to
+configure.
 
 ## Multi-page websites
 
@@ -362,7 +361,6 @@ title: "Blog"
 listing:
   contents: posts
   type: grid
-  sort: "date desc"
   max-items: 12
 ```
 
@@ -371,10 +369,10 @@ The knobs:
 - `contents:` (required) is the directory to list, relative to this page.
 - `type: grid` renders a card grid with cover images; omit it (or any other value) for
   a stacked list without images.
-- `sort:` orders by date. The default is `"date desc"` (newest first); use
-  `"date asc"` for oldest first. (Any value containing `asc` sorts ascending;
-  otherwise it is descending.)
 - `max-items:` caps how many cards appear.
+
+There is no `sort:` key: a listing is always newest-first by `date`, which is what every
+listing that ever set the key asked for.
 
 ## Themes
 

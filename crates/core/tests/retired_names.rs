@@ -669,8 +669,9 @@ fn the_book_drawer_outline_is_gone() {
 
 /// The book topbar's offline-download button was deleted 2026-08-04 (visual minimalism
 /// pass, task 11): one more permanent control in the topbar for an action a reader rarely
-/// wants. The `<book>.zip` build step itself (`write_book_archive` in `build.rs`) still
-/// runs for every book build — only the topbar link to it is gone.
+/// wants. The archive it linked outlived it by four days as a file nothing pointed at, and
+/// was deleted on 2026-08-08 with the whole ZIP writer. The built pages are self-contained,
+/// so a reader who wants the book offline copies the output directory.
 #[test]
 fn the_book_download_button_is_gone() {
     let css = taliesin_core::render::site_css();
@@ -680,210 +681,26 @@ fn the_book_download_button_is_gone() {
     );
 }
 
-/// Callout kinds went 5 -> 3 on 2026-08-03 (visual minimalism pass, task 12): readers
-/// cannot decode *important* vs *warning* vs *caution* visually, and all three rendered
-/// as a coloured box with a different word in it. Both cut kinds must be registered in
-/// `RETIRED_KEYS` (scope `"callout kind"`, matching the exact literal
-/// `validate_callout_kind` passes to `unknown_key_message`) or an author who leaves one
-/// in a document gets silence: a plain unstyled box, no diagnostic.
-#[test]
-fn callout_kinds_are_three_and_the_two_cut_ones_are_registered() {
-    let kinds = taliesin_core::render::callout_kinds();
-    assert_eq!(
-        kinds,
-        &["note", "tip", "warning"],
-        "callout vocabulary should be 3"
-    );
-    for gone in ["important", "caution"] {
-        assert!(
-            taliesin_core::frontmatter::retired_note("callout kind", gone).is_some(),
-            "`{gone}` must have a RETIRED_KEYS entry or an author gets silence"
-        );
-    }
-    // The CSS half of the same subtraction: the retired kinds' selector rules must be
-    // gone from base.css too (the underlying `--tali-callout-important`/`-caution` CSS
-    // custom properties stay defined — `.tali-error`/`.tali-js-error` and the frozen
-    // `deck.css` still read `--tali-callout-important`, and `deck.css` alone still reads
-    // `--tali-callout-caution` — so only the class *selectors* are checked here, not the
-    // tokens themselves).
-    let css = taliesin_core::render::base_css();
-    for needle in [".callout-important", ".callout-caution"] {
-        assert!(
-            !css.contains(needle),
-            "`{needle}` selector rule survives in base.css"
-        );
-    }
-}
-
-/// Margin-content spellings went 4 -> 1 on 2026-08-03 (visual minimalism pass, task 13):
-/// `.aside` and `.marginnote` had zero uses in the tree; `.sidenote` had exactly one
-/// (`samples/paper.tmd`, migrated to `.column-margin` in the same change). The three
-/// aliases were a Quarto/Tufte/Distill welcome mat for a tool that has otherwise shed its
-/// Quarto vocabulary.
+/// The one thing the retirement REGISTER cannot express, kept after the three
+/// vocabulary tombstones here collapsed into
+/// `render::validate::tests::every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`.
 ///
-/// `validate.rs`'s own `#[cfg(test)]` block pins that `RETIRED_DIV_CLASSES` carries all
-/// three entries directly, since the const is `pub(crate)` and unreachable from an
-/// integration test. This pins the EMITTED surface instead: the actual diagnostic an
-/// author sees through the full render pipeline, plus the CSS half of the same
-/// subtraction. Div classes are an open vocabulary — the validator stays silent on a
-/// class it does not recognize, since it cannot tell a typo from a legitimate custom
-/// class — so without a `RETIRED_DIV_CLASSES` entry a leftover `.sidenote` would get
-/// NOTHING: no error, no warning, no did-you-mean, and the page would quietly lose its
-/// margin layout. That silence is the exact failure mode this test guards against.
-#[test]
-fn margin_aliases_are_retired_through_the_full_render_pipeline() {
-    for gone in ["aside", "sidenote", "marginnote"] {
-        let src = format!("::: {{.{gone}}}\nx\n:::\n");
-        let doc = taliesin_core::render::render_document(&src);
-        let w = doc
-            .warnings
-            .iter()
-            .find(|w| w.message.contains("div class"))
-            .unwrap_or_else(|| {
-                panic!(
-                    "`.{gone}` must warn (silence is the failure mode this test exists to \
-                     catch); warnings: {:?}",
-                    doc.warnings
-                )
-            });
-        assert!(
-            w.message
-                .starts_with(&format!("unknown div class `{gone}`: it was removed")),
-            "`.{gone}` must carry the removal note, got: {}",
-            w.message
-        );
-        assert!(
-            w.message
-                .contains("`.column-margin` is the only margin spelling now"),
-            "`.{gone}`'s removal note must point at `.column-margin`, got: {}",
-            w.message
-        );
-        assert!(
-            !w.message.contains("did you mean"),
-            "a retired class is not a did-you-mean: {}",
-            w.message
-        );
-        // Purely diagnostic: the div still renders with its given class (validate.rs's own
-        // contract for every validator), so the warning above is the ONLY thing telling the
-        // author their margin note stopped working.
-        assert!(
-            doc.body_html().contains(&format!("class=\"{gone}\"")),
-            "`.{gone}` must still render with its given class: {}",
-            doc.body_html()
-        );
-    }
-    // The CSS half of the same subtraction: none of the three retired spellings are styled
-    // any more (a leftover `.sidenote` therefore really does render as a plain unstyled
-    // block, matching the warning above). `.tali-sidenote` (the unrelated auto-generated
-    // footnote margin note, a different feature entirely) is deliberately NOT in this list.
-    let css = taliesin_core::render::base_css();
-    for needle in [".sidenote", ".marginnote", ".aside"] {
-        assert!(
-            !css.contains(needle),
-            "`{needle}` selector rule survives in base.css"
-        );
-    }
-    let site_css = taliesin_core::render::site_css();
-    for needle in [".sidenote", ".marginnote", ".aside"] {
-        assert!(
-            !site_css.contains(needle),
-            "`{needle}` selector rule survives in site.css"
-        );
-    }
-    // `.column-margin` itself must survive, styled, untouched.
-    assert!(
-        css.contains(".column-margin {"),
-        "`.column-margin` must still be styled in base.css"
-    );
-}
-
-/// Theorem kinds went 8 -> 5 on 2026-08-03 (visual minimalism pass, task 14): `example`,
-/// `proposition` and `remark` were never cross-referenced by any document in the tree.
+/// That test derives everything derivable from `RETIRED_DIV_CLASSES` and `RETIRED_KEYS`:
+/// the name is gone from the live vocabulary, it warns with the register's own note and
+/// never a "did you mean", and its CSS rule went with it. What it cannot derive is this:
+/// theorem kinds went 8 -> 5 on 2026-08-03, and the `@exm-`/`@prp-`/`@rem-` cross-reference
+/// prefixes deliberately resolve the OPPOSITE way from their div classes — they STAY in
+/// `cite::XREF_LABELS`.
 ///
-/// Unlike a callout kind, a theorem kind carries NO namespace prefix (`.theorem`
-/// dispatches directly; there is no `theorem-` prefix the way there is `callout-`), so
-/// `THEOREM_KINDS` itself IS the dispatch vocabulary. A misspelled or retired kind has
-/// nothing to anchor a "did you mean", so without a `RETIRED_DIV_CLASSES` entry it falls
-/// through to a plain, unnumbered, unreferenceable div with NO diagnostic at all — the
-/// exact silent failure mode this test guards against. `validate.rs`'s own `#[cfg(test)]`
-/// block pins that `RETIRED_DIV_CLASSES` carries all three entries directly, since the
-/// const is `pub(crate)` and unreachable from this integration test; this pins the
-/// EMITTED surface, through the full render pipeline, plus the CSS half of the same
-/// subtraction and the SECOND, independent vocabulary this retirement also touches: the
-/// `@exm-`/`@prp-`/`@rem-` cross-reference prefixes — which resolve the OPPOSITE way:
-/// those three stay in `cite::XREF_LABELS` on purpose (see its doc comment), so a
-/// leftover reference is a loud "broken cross-reference" instead of silent text.
+/// That is a correction, not a decision anyone would reconstruct. Fix round 1 (2026-08-04):
+/// the first cut of the task also deleted the three prefixes, which was wrong — with the
+/// prefix gone, `@exm-x` never reaches `parse_xref`'s `Some` branch, so it degraded
+/// silently to literal text (no link, no error, nothing). They are kept precisely BECAUSE
+/// their div classes are gone: every such reference is now necessarily dangling, which the
+/// ordinary "broken cross-reference" path already reports for free. A register entry would
+/// be the wrong instrument here, so nothing derived can cover it.
 #[test]
-fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
-    let kinds = taliesin_core::render::theorem_kinds();
-    assert_eq!(
-        kinds,
-        &["theorem", "lemma", "corollary", "definition", "proof"],
-        "theorem vocabulary should be 5"
-    );
-    for gone in ["example", "proposition", "remark"] {
-        assert!(
-            taliesin_core::render::retired_div_note(gone).is_some(),
-            "`.{gone}` needs a RETIRED_DIV_CLASSES entry — a misspelled theorem kind has \
-             no prefix to anchor a did-you-mean and falls through to a plain div"
-        );
-        // The full render pipeline: silence is the failure mode this test exists to catch.
-        let src = format!("::: {{.{gone}}}\nx\n:::\n");
-        let doc = taliesin_core::render::render_document(&src);
-        let w = doc
-            .warnings
-            .iter()
-            .find(|w| w.message.contains("div class"))
-            .unwrap_or_else(|| {
-                panic!(
-                    "`.{gone}` must warn (silence is the failure mode this test exists to \
-                     catch); warnings: {:?}",
-                    doc.warnings
-                )
-            });
-        assert!(
-            w.message
-                .starts_with(&format!("unknown div class `{gone}`: it was removed")),
-            "`.{gone}` must carry the removal note, got: {}",
-            w.message
-        );
-        assert!(
-            !w.message.contains("did you mean"),
-            "a retired class is not a did-you-mean: {}",
-            w.message
-        );
-        // Purely diagnostic: the div still renders with its given class, matching every
-        // other validator in `validate.rs`.
-        assert!(
-            doc.body_html().contains(&format!("class=\"{gone}\"")),
-            "`.{gone}` must still render with its given class: {}",
-            doc.body_html()
-        );
-    }
-    // The CSS half of the same subtraction. `.tali-thm-style-remark` was the only
-    // kind-specific style selector among the three cut kinds — `example` and `proposition`
-    // reused the surviving `definition`/`plain` styles, so there was never a per-kind
-    // selector for either of them to begin with.
-    let css = taliesin_core::render::base_css();
-    assert!(
-        !css.contains(".tali-thm-style-remark"),
-        "`.tali-thm-style-remark` selector rule survives in base.css"
-    );
-    assert!(
-        css.contains(".tali-thm-style-plain") && css.contains(".tali-thm-style-definition"),
-        "the two surviving theorem styles must still be styled in base.css"
-    );
-
-    // The SECOND vocabulary this retirement touches: the cross-reference prefixes.
-    // Fix round 1 (2026-08-04): the first cut of this task ALSO deleted `exm`/`prp`/
-    // `rem` from `cite::XREF_LABELS`, which was wrong — with the prefix gone,
-    // `@exm-x` never reaches `parse_xref`'s `Some` branch at all, so it degraded
-    // silently to literal text (no link, no error, nothing). The three prefixes are
-    // kept ON PURPOSE now, specifically because their div classes are gone: every
-    // `@exm-`/`@prp-`/`@rem-` reference is therefore necessarily dangling (nothing can
-    // ever define that anchor again), which the ordinary "broken cross-reference" path
-    // already reports for free — no retirement register needed, unlike the div-class
-    // case above.
+fn the_cut_theorem_kinds_keep_their_xref_prefixes_so_a_stray_reference_errors_loudly() {
     for prefix in ["exm", "prp", "rem"] {
         let anchor = format!("{prefix}-x");
         assert!(
@@ -893,9 +710,8 @@ fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
              of degrading to silent text)"
         );
     }
-    // Render a document that references `@exm-oldid` with nothing anywhere to define it
-    // (impossible after this retirement, since no div class produces an `exm-` anchor any
-    // more) and confirm it is reported as a broken cross-reference, not silence.
+    // Nothing anywhere can define these anchors any more, so the reference must be
+    // reported as broken rather than passing through as text.
     let dangling = taliesin_core::render_document_with_includes(
         "---\ntitle: T\n---\n\nSee @exm-oldid, @prp-oldid, @rem-oldid.\n",
         std::path::Path::new("."),
@@ -907,38 +723,16 @@ fn theorem_kinds_are_five_and_the_three_cut_ones_are_registered() {
             xref_warnings.iter().any(|w| w
                 .message
                 .contains(&format!("broken cross-reference: @{anchor}"))),
-            "`@{anchor}` must be reported as a broken cross-reference, not silence: {:?}",
-            xref_warnings
+            "`@{anchor}` must be reported as a broken cross-reference, not silence: {xref_warnings:?}"
         );
     }
-    // The five surviving kinds' prefixes must still resolve, end to end: a real theorem
-    // env with an id in the wild renders as a linked, numbered cross-reference. `proof`
-    // deliberately carries no prefix (unnumbered, unreferenceable by design) so it is not
-    // in this list.
-    let src = "::: {.theorem #thm-a}\nT.\n:::\n::: {.lemma #lem-a}\nL.\n:::\n\
-               ::: {.corollary #cor-a}\nC.\n:::\n::: {.definition #def-a}\nD.\n:::\n\
-               ::: {.proof}\nP.\n:::\n\nSee @thm-a, @lem-a, @cor-a, @def-a.\n";
-    let doc = taliesin_core::render::render_document(src);
-    let body = doc.body_html();
-    for (anchor, label) in [
-        ("thm-a", "Theorem"),
-        ("lem-a", "Lemma"),
-        ("cor-a", "Corollary"),
-        ("def-a", "Definition"),
-    ] {
-        assert!(
-            body.contains(&format!(
-                "<a href=\"#{anchor}\" class=\"tali-xref\">{label}&nbsp;1</a>"
-            )),
-            "`@{anchor}` must resolve to a numbered, linked cross-reference: {body}"
-        );
-    }
-    // `proof` deliberately carries no `data-tali-theorem-kind` (it is not numbered or
-    // cross-referenceable by design; `proof_emits_qed_and_no_number_slot` in
-    // `render/tests.rs` pins the number-slot half of the same contract in isolation).
+    // `.tali-thm-style-remark` was the only kind-specific style selector among the three
+    // cut kinds (`example` and `proposition` reused the surviving `definition`/`plain`
+    // styles), so it is the one CSS leftover the `.{name}` derivation cannot see.
+    let css = taliesin_core::render::base_css();
     assert!(
-        body.contains("class=\"tali-proof\"") && !body.contains("data-tali-theorem-kind=\"proof\""),
-        "the fifth survivor, `proof`, must still render, unnumbered: {body}"
+        !css.contains(".tali-thm-style-remark"),
+        "`.tali-thm-style-remark` selector rule survives in base.css"
     );
 }
 

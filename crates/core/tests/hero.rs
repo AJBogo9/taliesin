@@ -1,6 +1,9 @@
-//! The `hero:` landing-header primitive: the imageless header (the marketing site)
-//! and the two-column portrait variant (`image:`, the blog homepage). Synthetic
-//! one-page sites, so the contract is pinned independently of the real corpus docs.
+//! The `hero:` landing-header primitive. Synthetic one-page sites, so the contract is
+//! pinned independently of the real corpus docs.
+//!
+//! There is one variant. The two-column portrait (`hero.image:`/`image-alt:`) was retired
+//! on 2026-08-02 and its emitter deleted on 2026-08-08: the hero banner is type, not a
+//! figure, and an image belongs in the page body as a normal figure.
 
 use taliesin_core::Site;
 
@@ -18,45 +21,38 @@ fn home(fm: &str) -> String {
         .expect("home renders")
 }
 
-/// An imageless hero renders the plain `.hero` header with no media wrapper, exactly
-/// as before the portrait slot existed. The marketing site relies on this.
+/// The hero renders one plain `.hero` header with no media wrapper.
+///
+/// The negatives are markup-specific on purpose: the class names would also appear in an
+/// inlined stylesheet, so a bare substring check could not tell "the CSS survived" from
+/// "the emitter survived", and this test has to see the second one.
 #[test]
-fn imageless_hero_has_no_media_markup() {
-    let html = home("hero:\n  eyebrow: WRITING\n  headline: A headline\n  lead: A lead.\n");
-    assert!(
-        html.contains("<header class=\"hero\""),
-        "plain .hero header still emitted"
-    );
-    // Markup-specific negatives: the class names also appear in the inlined base.css,
-    // so assert on the emitted header/wrappers, not bare substrings.
-    assert!(
-        !html.contains("class=\"hero hero-has-media\""),
-        "no media class on an imageless hero header"
-    );
-    assert!(
-        !html.contains("<div class=\"hero-body\">") && !html.contains("<img class=\"hero-media\""),
-        "no media wrappers on an imageless hero"
-    );
-}
-
-/// A hero with `image:` renders the two-column media variant: the `hero-has-media`
-/// class, a `.hero-body` wrapper around the text, and a `.hero-media` portrait.
-#[test]
-fn hero_with_image_renders_portrait_media() {
-    let html = home(
+fn the_hero_is_a_plain_header_with_no_media_markup() {
+    for fm in [
+        "hero:\n  eyebrow: WRITING\n  headline: A headline\n  lead: A lead.\n",
+        // The retired keys must not resurrect the portrait layout: an author who still
+        // has them in a document gets the plain header plus a located warning, not a
+        // half-styled two-column banner.
         "hero:\n  eyebrow: WRITING\n  headline: A headline\n  lead: A lead.\n  \
          image: profile.webp\n  image-alt: A face\n",
-    );
-    assert!(
-        html.contains("class=\"hero hero-has-media\""),
-        "media hero gets the hero-has-media class"
-    );
-    assert!(
-        html.contains("<div class=\"hero-body\">"),
-        "text is wrapped in .hero-body"
-    );
-    assert!(
-        html.contains("<img class=\"hero-media\" src=\"profile.webp\" alt=\"A face\">"),
-        "portrait emitted as .hero-media with src + alt"
-    );
+    ] {
+        let html = home(fm);
+        assert!(
+            html.contains("<header class=\"hero\""),
+            "plain .hero header still emitted for {fm:?}"
+        );
+        assert!(
+            !html.contains("class=\"hero hero-has-media\""),
+            "no media class on the hero header for {fm:?}"
+        );
+        assert!(
+            !html.contains("<div class=\"hero-body\">")
+                && !html.contains("<img class=\"hero-media\""),
+            "no media wrappers on the hero for {fm:?}"
+        );
+        assert!(
+            !html.contains("profile.webp"),
+            "a retired `hero.image:` must not reach the page for {fm:?}"
+        );
+    }
 }

@@ -31,16 +31,26 @@ track would render *from* the built HTML, never as a parallel format).
 > worked until the cut lands.
 
 **Scope was corpus-plus-roadmap** (paused, see the box above). "Done" still means the
-documents under `corpus/`
-render correctly: the corpus is the regression net and the arbiter of done. But the
-corpus now *leads* as well as records: each new capability ships pinned by a target
-corpus document added in the same change, so scope can grow deliberately toward "wider
-than existing computational-document tools in web-native capability" without ever
-outrunning the test net. **"Wider" means richer browser behavior in a live HTML view,
-not new output formats, and never at the cost of the load-bearing invariants or the
+documents under `corpus/` render correctly: the corpus is the regression net and the
+arbiter of done. **"Wider" means richer browser behavior in a live HTML view, not new
+output formats, and never at the cost of the load-bearing invariants or the
 Do-NOT-touch discipline.** The active roadmap is `notes/ROADMAP.md` (successor to the
-completed `notes/native-rewrite.md`); the prior "the corpus is the spec / not a general
-document compiler" framing is superseded by it.
+completed `notes/native-rewrite.md`).
+
+**The corpus records; it does not lead.** The rule used to be "each new capability ships
+pinned by a target corpus document added in the same change". That is retired, because
+it made the corpus circular as evidence: `taliesin features corpus` reported 0 of 115
+features unused, which is guaranteed by construction and therefore says nothing. Pointed
+at the 79 documents written to be *read*, the same instrument reported 32 features used
+by nothing anywhere. **The keep rule now:** a corpus document earns its place by being
+something a person wanted to read, or by being a golden no unit test can hold. A feature
+witness belongs in `crates/core/src/render/tests.rs`.
+
+> **⚠ ORDERING RULE, and it is the one most likely to bite during the cut.** *A pin and
+> its docs page are deleted in the SAME commit as their feature, never before.* A corpus
+> document deleted ahead of the code it guards leaves that code silently unguarded while
+> every gate still passes — the sweeps in `crates/core/tests/corpus.rs` iterate over
+> whatever exists, so removing a document removes coverage without removing a test.
 
 **"Do-NOT-touch" is one freeze, not two.** The only *standing* freeze is warm-page
 eviction: `MAX_WARM_PAGES` plus the deterministic LRU order in
@@ -101,8 +111,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    discovery, chrome, link rewrite, listings + `hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs),
                    Atom feeds per dated listing (feed.rs),
-                   Cmd-K search (search.rs), reading-form text + sentence splitting
-                   (sentences.rs, read by backlinks.rs),
+                   Cmd-K search (search.rs),
                    cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in
@@ -299,14 +308,22 @@ dependency change. Never call one of these verified without its output.
   carries 16, and `SHORTCODE_SPECS` omits `input` (dispatched ahead of it).
   Answer "what does the tool support" from the validator consts or from `taliesin
   features`, never from `vocab` — it reports live features as missing.
-- **A new front-matter key trips FIVE drift gates; a RETIRED one trips EIGHT.** The three
-  extra are `docs/guide/using/from-quarto.tmd` (a retired key must tell a migrating reader
-  what to do), `vocab.rs`'s `descriptions_present`, and — measured on 2026-08-02 —
-  `editor/vscode/schema/tali-site.schema.json`, a bundled COPY of the crate's schema gated
-  only by the companion's own `node --test`. **Two of the eight live outside
-  `taliesin-core`** (that one, and `crates/server/tests/agents_md_cli.rs`), so `cargo test
-  --workspace` can be green while both are stale: only `./tools/gates.sh` catches them.
-  A new *subcommand* also has four registration sites in `main.rs` plus three tables in
+- **A new front-matter key trips FIVE drift gates; a RETIREMENT now costs ONE line.**
+  Adding a key still means `KNOWN_KEYS`, `the_reference_page_documents_every_known_key`
+  (→ `docs/guide/reference/frontmatter.tmd`), `vocab.rs` + its `descriptions_present`,
+  the `agents_md` golden, and — for a `_site.yml` key — `editor/vscode/schema/
+  tali-site.schema.json`, a bundled COPY of the crate's schema gated only by the
+  companion's own `node --test`. **Two of those live outside `taliesin-core`** (that one,
+  and `crates/server/tests/agents_md_cli.rs`), so `cargo test --workspace` can be green
+  while both are stale: only `./tools/gates.sh` catches them.
+  **Retiring is the cheap direction, as of 2026-08-08.** It used to cost eight gates and a
+  ~39-line hand-written tombstone. Both extras are gone: the migration page that had to
+  name every retirement was deleted, and the three vocabulary tombstones collapsed into
+  `render::validate`'s
+  `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`,
+  which DERIVES the tombstone from the register. **Add the register entry and you are
+  done — do not write a test for it.**
+  A new *subcommand* still has four registration sites in `main.rs` plus three tables in
   `complete.rs`, each drift-gated.
 - **`RETIRED_KEYS` is SCOPED — `(scope, key, note)` — and nothing may flatten it.** The same
   word is retired in one vocabulary and live in another: `toc:`/`theorems:` are gone from
@@ -316,7 +333,13 @@ dependency change. Never call one of these verified without its output.
   own `did_you_mean` until Wave 2 and answered a retired `toc:` with "did you mean `logo`?").
 - **A withdrawn div class needs a `RETIRED_DIV_CLASSES` entry**; div classes are an *open*
   vocabulary, so without one a leftover class gets **silence**, not a did-you-mean, and the
-  page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job.)
+  page quietly loses its layout. (Front-matter keys have `RETIRED_KEYS` for the same job,
+  a retired verb `RETIRED_COMMANDS`.) **The entry is ONE SENTENCE — the date, then the
+  successor or an explicit "nothing" — not a migration paragraph.** An author reads it
+  mid-edit and wants the replacement; the deliberation belongs in the commit that retired
+  the thing. No entry may be phrased as a did-you-mean: `codes::extract_suggestion` lifts
+  that exact phrase into a fix an agent applies mechanically, and none of these are
+  mechanical renames.
 - Minimal config: perfect the default before adding a knob. Aim for a
   near-perfect default experience so the user does not *need* to configure;
   only explore configuration once the defaults are perfected, and prefer a

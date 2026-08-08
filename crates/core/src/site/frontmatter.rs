@@ -121,8 +121,6 @@ pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
         headline: scalar(map.get("headline")),
         lead: scalar(map.get("lead")),
         actions,
-        image: scalar(map.get("image")),
-        image_alt: scalar(map.get("image-alt")),
     })
 }
 
@@ -202,24 +200,26 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
 mod tests {
     use super::*;
 
+    /// `hero.image:`/`image-alt:` were retired on 2026-08-02 and their two-column layout
+    /// deleted on 2026-08-08, so `parse_hero` no longer reads either key. The RETIRED_KEYS
+    /// entries (scope `hero key`) are what keeps a leftover diagnosing instead of going
+    /// silent; this pins that the parser really stopped consuming them, which is the half
+    /// a register entry cannot say.
     #[test]
-    fn parse_hero_reads_image_and_alt() {
+    fn parse_hero_ignores_the_retired_image_keys() {
         let v: serde_yaml::Value = serde_yaml::from_str(
             "hero:\n  headline: H\n  image: profile.webp\n  image-alt: A face\n",
         )
         .unwrap();
         let h = parse_hero(v.get("hero")).expect("hero parses");
-        assert_eq!(h.image.as_deref(), Some("profile.webp"), "image: parsed");
-        assert_eq!(h.image_alt.as_deref(), Some("A face"), "image-alt: parsed");
-    }
-
-    #[test]
-    fn parse_hero_without_image_keys_is_none() {
-        let v: serde_yaml::Value = serde_yaml::from_str("hero:\n  headline: H\n").unwrap();
-        let h = parse_hero(v.get("hero")).expect("hero parses");
+        assert_eq!(
+            h.headline.as_deref(),
+            Some("H"),
+            "the live keys still parse"
+        );
         assert!(
-            h.image.is_none() && h.image_alt.is_none(),
-            "no image keys -> None"
+            !format!("{h:?}").contains("profile.webp"),
+            "a retired `hero.image:` must not reach HeroSpec: {h:?}"
         );
     }
 }

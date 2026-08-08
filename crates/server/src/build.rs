@@ -2183,8 +2183,8 @@ async fn build_project_tree(
     // or Safari's "Add to Dock". Deliberately NOT gated on `url:` like the SEO sidecars
     // below: every URL in a manifest resolves against the manifest itself, so a project with
     // no configured site URL installs correctly anyway. No service worker ships with it —
-    // installing changes how a reader returns, not whether the site works offline (that is
-    // the book `<book>.zip`).
+    // installing changes how a reader returns, not whether the site works offline (the
+    // built output is self-contained, so copying it is what offline means here).
     let mut manifest_written: Vec<PathBuf> = Vec::new();
     match std::fs::write(out.join("manifest.webmanifest"), site.manifest_json()) {
         Ok(()) => manifest_written.push(PathBuf::from("manifest.webmanifest")),
@@ -2371,22 +2371,8 @@ async fn build_project_tree(
     // an intentional download — skipping it would leave a dead link on a green build.
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
-    // Offline "read this book" download: with every file now on disk (and stale ones swept),
-    // pack the whole book output into `<book>.zip` at its root, so a reader can grab one file
-    // and read it offline. The built tree is already self-contained (framework CSS/JS/fonts
-    // inlined or root-relative), so this is a delivery wrapper, not a new output format; the
-    // topbar links it with a plain `<a download>`, which fits the no-server-at-read-time model.
-    let mut zip_note = String::new();
-    if site.is_book() {
-        let name = site.archive_name();
-        match write_book_archive(&out, &name) {
-            Ok(bytes) => zip_note = format!("  ·  {name} ({} KB)", bytes.div_ceil(1024)),
-            Err(e) => log::warn(&format!("cannot write {name}: {e}")),
-        }
-    }
-
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{zip_note}{}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
@@ -2472,52 +2458,6 @@ async fn build_project_tree(
         outcome.ok &= sub.ok;
     }
     outcome
-}
-
-/// Pack every file under `out` (except the archive itself) into `out/<name>` as a ZIP, for
-/// the book's offline-download link. Entries are sorted so a rebuild of an unchanged book
-/// produces a byte-identical archive (the directory walk order is filesystem-dependent).
-/// Returns the archive's size in bytes.
-fn write_book_archive(out: &Path, name: &str) -> std::io::Result<u64> {
-    let archive_path = out.join(name);
-    let mut entries: Vec<crate::zip::ZipEntry> = Vec::new();
-    let mut stack = vec![out.to_path_buf()];
-    // A symlinked directory under `out` is the author's own mount (the build emits none,
-    // and `sweep_stale` leaves them in place), so its contents belong in the archive —
-    // but one pointing back up the tree is a cycle, and the walk followed it until the
-    // path outgrew the kernel's link limit, failing the whole archive. Pack each
-    // directory once.
-    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-    while let Some(dir) = stack.pop() {
-        if dir.canonicalize().is_ok_and(|c| !seen.insert(c)) {
-            continue;
-        }
-        for e in std::fs::read_dir(&dir)? {
-            let path = e?.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            // Never pack the archive into itself (a prior build's copy the stale-sweep
-            // already removed, but be defensive).
-            if path == archive_path {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(out)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            entries.push(crate::zip::ZipEntry {
-                name: rel,
-                data: std::fs::read(&path)?,
-            });
-        }
-    }
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-    let bytes = crate::zip::build_zip(&entries);
-    std::fs::write(&archive_path, &bytes)?;
-    Ok(bytes.len() as u64)
 }
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
@@ -3974,36 +3914,6 @@ mod symlink_containment_tests {
             !dest.join("notes.md").exists(),
             "a linked source symlinked out of the repository must not be deployed \
              ({copied} copied)"
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_book_archive_packs_a_mounted_directory_once() {
-        // `sweep_stale` already treats a symlink under the output as the author's own
-        // mount and leaves it alone. The archive walk followed it without a cycle guard,
-        // so a mount pointing back up the tree re-packed every file once per level until
-        // the path outgrew `PATH_MAX` — at which point `read_dir` failed and `?` took the
-        // whole archive down with it.
-        let dir = tmp("book-archive-loop");
-        let out = dir.join("_book");
-        fs::create_dir_all(out.join("sub")).unwrap();
-        fs::write(out.join("index.html"), b"<p>home</p>").unwrap();
-        symlink("..", out.join("sub/up")).unwrap();
-
-        let bytes = write_book_archive(&out, "book.zip").expect("the archive must be written");
-        assert!(bytes > 0);
-
-        // A ZIP names each entry twice: local file header + central directory.
-        let zip = fs::read(out.join("book.zip")).unwrap();
-        let hits = zip
-            .windows(b"index.html".len())
-            .filter(|w| *w == b"index.html")
-            .count();
-        assert_eq!(
-            hits, 2,
-            "index.html must be packed exactly once, not once per trip through the mount"
         );
 
         let _ = fs::remove_dir_all(&dir);
