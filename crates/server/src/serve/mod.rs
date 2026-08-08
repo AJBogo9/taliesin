@@ -707,16 +707,29 @@ pub(crate) fn bad_format_error(got: Option<&str>) -> String {
 /// an absolute suggested fix. But `root` is, by construction, some number of directory
 /// levels above `path`'s own canonical form, and that level count is a fact about the
 /// real filesystem tree, not about either path's spelling — so popping that many trailing
-/// components off `path` AS TYPED recovers the ancestor in the caller's own spelling. An
-/// absolute `path` in still comes out absolute; that is simply what popping components
-/// off an absolute path yields.
+/// components off `path` AS TYPED is a plausible reconstruction of the ancestor in the
+/// caller's own spelling. An absolute `path` in still comes out absolute; that is simply
+/// what popping components off an absolute path yields.
 ///
-/// Falls back to `root` (today's absolute rendering) whenever recovering the typed
-/// spelling isn't safely possible: `path` failing to canonicalize (e.g. a race, or a
-/// permissions error — a worse-looking message beats a crash), a zero-level climb
-/// (neither caller reaches here without one, but an unchanged `path` would misname
-/// itself as its own ancestor), or `path` running out of components to pop (only
-/// reachable through a symlink whose real depth differs from its typed depth).
+/// That reconstruction is only a GUESS, though: `climbed` is counted in the canonical
+/// (symlink-resolved) tree, and popping it off the typed path is only the same operation
+/// when no symlink sits between `path` and `root`. When one does — e.g. `path`'s last
+/// component is itself a symlink into a differently-deep real tree — the two structures
+/// diverge silently: popping still lands on *some* syntactically valid directory, just
+/// not `root`, and if that wrong directory happens to have its own `_site.yml` the
+/// suggested command would build an unrelated project with no error at all. So the
+/// candidate is never trusted on arithmetic alone: it is re-canonicalized and required to
+/// name the exact same directory as `root` (both are canonical at that point, so a plain
+/// `Path` equality is the right test — no further resolution needed) before it is
+/// returned.
+///
+/// Falls back to `root` (today's absolute rendering — uglier, but always correct)
+/// whenever recovering the typed spelling isn't safely possible: `path` failing to
+/// canonicalize (e.g. a race, or a permissions error), a zero-level climb (neither
+/// caller reaches here without one, but an unchanged `path` would misname itself as its
+/// own ancestor), `path` running out of components to pop, the popped candidate itself
+/// failing to canonicalize, or — the symlink case above — the popped candidate
+/// canonicalizing to somewhere other than `root`.
 fn ancestor_as_typed(path: &Path, root: &Path) -> PathBuf {
     let Ok(canon) = path.canonicalize() else {
         return root.to_path_buf();
@@ -735,7 +748,16 @@ fn ancestor_as_typed(path: &Path, root: &Path) -> PathBuf {
             _ => return root.to_path_buf(),
         }
     }
-    shown
+    // Prove the reconstruction rather than trust the arithmetic: a symlink anywhere
+    // between `path` and `root` can make `climbed` (counted in the canonical tree) not
+    // correspond to the number of components popped off the typed one, landing on a
+    // syntactically valid but semantically wrong directory. Re-canonicalizing `shown`
+    // and requiring it match `root` exactly turns that unbounded wrong-answer class into
+    // a bounded, honest fallback.
+    match shown.canonicalize() {
+        Ok(reconstructed) if reconstructed == root => shown,
+        _ => root.to_path_buf(),
+    }
 }
 
 /// The one message both `build` and `preview` print when handed a directory that is not a
@@ -1093,6 +1115,69 @@ mod protocol_contract {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let same = manifest.canonicalize().expect("manifest dir exists");
         assert_eq!(ancestor_as_typed(manifest, &same), same);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ancestor_as_typed_falls_back_when_a_symlink_breaks_the_correspondence() {
+        // `climbed` is counted in the CANONICAL tree; popping it off the TYPED path only
+        // recovers the right directory when no symlink sits between them. Build a layout
+        // where it doesn't:
+        //
+        //   <tmp>/real/a/b/leaf/          no _site.yml
+        //   <tmp>/real/_site.yml          the TRUE ancestor project, 3 real levels up
+        //   <tmp>/fake/tech-blog/posts -> <tmp>/real/a/b/leaf   (symlink)
+        //
+        // Typed subject: `<tmp>/fake/tech-blog/posts`. Its canonical form (through the
+        // symlink) is `<tmp>/real/a/b/leaf`, so `enclosing_site_root` climbs 3 levels to
+        // `<tmp>/real`. Popping 3 components off the TYPED path instead lands on
+        // `<tmp>` itself — a real, existing directory that is NOT the ancestor. Without
+        // the canonicalize-and-compare guard this function would silently hand back
+        // `<tmp>`, and if `<tmp>` happened to carry its own `_site.yml` the suggested
+        // command would build an unrelated project with no error at all.
+        use std::os::unix::fs::symlink;
+
+        let base = std::env::temp_dir().join(format!(
+            "tali-ancestor-symlink-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("real/a/b/leaf")).unwrap();
+        std::fs::write(base.join("real/_site.yml"), b"title: T\n").unwrap();
+        std::fs::create_dir_all(base.join("fake/tech-blog")).unwrap();
+        symlink(
+            base.join("real/a/b/leaf"),
+            base.join("fake/tech-blog/posts"),
+        )
+        .unwrap();
+
+        let subject = base.join("fake/tech-blog/posts");
+        let root = taliesin_core::site::enclosing_site_root(&subject)
+            .expect("real/_site.yml is an ancestor through the symlink");
+        let true_ancestor = base.join("real").canonicalize().unwrap();
+        assert_eq!(
+            root, true_ancestor,
+            "sanity: the walk finds the real project"
+        );
+
+        let shown = ancestor_as_typed(&subject, &root);
+        assert_eq!(
+            shown, root,
+            "a symlink-broken reconstruction must fall back to the absolute (but \
+             correct) root, not a syntactically valid but wrong directory: {shown:?}"
+        );
+        // Specifically must NOT be the wrong-but-plausible directory the naive pop
+        // would have produced.
+        assert_ne!(
+            shown, base,
+            "must not silently name the wrong ancestor {base:?} as if it were correct"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }
 
