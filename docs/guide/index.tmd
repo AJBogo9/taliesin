@@ -70,8 +70,7 @@ cargo run -p taliesin-server -- preview blog/
 ```
 
 Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with
-your scroll preserved. Add `--host` to expose it on your LAN with a QR code and
-read the *live* preview on your phone.
+your scroll preserved. The server binds to loopback only.
 
 One block model drives every output, a standalone page, a site page, or a book chapter:
 

@@ -15,7 +15,6 @@
 //! | the disjointness rule         | a client language never reaches `exec.rs`             |
 //! | the `{js}` asset gate         | a prose page ships neither runtime nor libraries      |
 //! | inline vs External globals    | a global present in preview and absent in the build   |
-//! | `strip_client_scripts`        | `--bare`'s zero-`<script>` contract, driven off the registry |
 //! | `reactive.rs::runtime_defines`| the dangling-input warning is not suppressed wholesale |
 
 use taliesin_core::OutputMode;
@@ -122,41 +121,6 @@ fn the_inline_and_external_js_globals_agree() {
              the built site"
         );
     }
-}
-
-// ---------------------------------------------------------------------------
-// `--bare`
-// ---------------------------------------------------------------------------
-
-/// `--bare`'s contract is **zero** `<script>`, and a client-side cell's source rides in
-/// one. The strip was written against the `application/tali-js` literal, so registering a
-/// second language would have broken that contract silently — bare output is exactly the
-/// mode nobody looks at, because it exists to be pasted into someone else's page.
-/// Driven off the registry now, and this is the test that says so.
-#[test]
-fn bare_output_strips_every_registered_client_language() {
-    let page = |src: &str| {
-        taliesin_core::render_doc_to_page(
-            &taliesin_core::render_document(src),
-            "t",
-            OutputMode::Bare,
-        )
-    };
-
-    // The known-positive row, without which the assertion below passes on a renderer that
-    // has simply stopped emitting cells at all.
-    assert!(
-        render(CHART).body_html().contains("<script"),
-        "baseline: a client cell emits a script in a normal render"
-    );
-
-    // One statement per registered language. `strip_client_scripts` (page.rs) folds over
-    // `CLIENT_LANGS` itself, so a second registration is covered by adding a line here.
-    let out = page(CHART);
-    assert!(
-        !out.contains("<script"),
-        "--bare must emit zero <script>, but the js cell left one: {out}"
-    );
 }
 
 // ---------------------------------------------------------------------------

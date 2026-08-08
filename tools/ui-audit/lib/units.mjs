@@ -66,8 +66,8 @@ export function discoverSiteUnits(repoRoot) {
     if (!fs.existsSync(path.join(abs, '_site.yml'))) continue;
     found.push(path.relative(repoRoot, abs));
   }
-  // Drop a project nested inside another: the outer build emits it (`mounts:`),
-  // so capturing it twice would double-count and misattribute its routes.
+  // Drop a project nested inside another: the outer build emits it, so capturing it
+  // twice would double-count and misattribute its routes.
   const roots = found.filter(
     (r) => !found.some((o) => o !== r && r.startsWith(o + path.sep)),
   );

@@ -170,9 +170,7 @@ page chrome the reader never authored:
 
 - A **pre-paint theme bootstrap** in `<head>` (`theme_head`): a tiny inline `<script>`
   that reads the saved theme/reader preferences and sets `data-theme` on `<html>`
-  *before the first paint*, so a dark-mode reader never sees a white flash. (This is the
-  one piece `--bare` output drops, because bare output is script-free; it falls back to
-  CSS-only theming via a `prefers-color-scheme` media query instead.)
+  *before the first paint*, so a dark-mode reader never sees a white flash.
 - The **bundled offline assets**: `base.css`, the dark layer, the optional site CSS, and
   (only when the document actually uses math) the KaTeX stylesheet, all `include_str!`d
   into the binary so a built page is self-contained with no CDN.

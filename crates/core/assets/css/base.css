@@ -588,7 +588,7 @@
      see `render::divs::output_slot`), so unlike a top-level cell — whose output block
      only exists once there is output to put in it — the element is already on the page
      when the cell produced nothing, was `#| include: false`, or never ran at all
-     (`--no-exec`, `--bare`, no kernel). Without this it reserves 1rem of blank space
+     (`--no-exec`, no kernel). Without this it reserves 1rem of blank space
      inside the callout for output that is not coming. */
   .tali-output:empty { display: none; }
   /* Cell output is BOUNDED, in CSS. A cell that prints ten thousand lines, or returns a

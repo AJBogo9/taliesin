@@ -37,7 +37,7 @@
 })();
 
 // Shared clipboard helper: navigator.clipboard in a secure context, with a hidden-textarea
-// execCommand fallback for insecure contexts (file://, plain-http --host LAN). Never throws;
+// execCommand fallback for insecure contexts (file://, plain http). Never throws;
 // calls onOk on success, onFail (optional) on total failure.
 /** @param {string} text @param {() => void} onOk @param {() => void} [onFail] */
 function taliCopyText(text, onOk, onFail) {

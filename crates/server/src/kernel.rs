@@ -487,75 +487,13 @@ impl KernelSpec {
                     // poller for `parent_handle == 1` (the old `ppid == init` check is
                     // subreaper-fragile), and our pid arms the robust "ppid changed"
                     // path. Built in the parent before spawn, so `process::id()` is the
-                    // kernel's ppid-to-be. Warm-pool kernels reap by a different route
-                    // (the forkserver helper, `warm_pool.rs`) and never see this argv.
+                    // kernel's ppid-to-be.
                     // NOT `PR_SET_PDEATHSIG`: that fires on a parent *thread* exit,
                     // which a tokio worker can do mid-session, killing a live kernel.
                     format!("--IPKernelApp.parent_handle={}", std::process::id()),
                 ]
             },
             preambles: &[OJS_DEFINE_PREAMBLE, MPL_THEME_PREAMBLE],
-        }
-    }
-
-    /// The kernel-spec name (`python3`), used to stamp connection files for
-    /// the warm-pool's forkserver-spawned kernels just as `start` stamps them
-    /// (called from `warm_pool::PoolInner::warm_one`).
-    pub(crate) fn kernel_name(&self) -> &'static str {
-        self.kernel_name
-    }
-}
-
-/// The OS process backing a [`Kernel`].
-///
-/// A directly-spawned kernel (`python -m ipykernel_launcher`, today's cold path and
-/// the warm-pool's eager-preboot fallback) is an [`Owned`](KernelProc::Owned) tokio
-/// `Child` we wait/kill directly. A kernel forked from the forkserver warm-pool
-/// daemon is a [`Forked`](KernelProc::Forked) bare PID: it is *not* our direct
-/// child (the forkserver server reaps it), so liveness, SIGINT, and teardown go
-/// through the PID with plain signals — exactly the same primitives `interrupt()`
-/// already uses. Either way the ZMQ handshake, preambles, and `execute()` loop are
-/// identical, so the rest of `Kernel` never has to care which spawn path produced it.
-enum KernelProc {
-    Owned(Child),
-    /// A forkserver-spawned kernel, addressed by PID. Holding the daemon handle
-    /// keeps the forkserver alive for the kernel's lifetime (and lets later
-    /// children reuse its warm preloaded image). Constructed by the warm pool
-    /// (`Kernel::adopt_forked`), which the preview server and parallel build now
-    /// draw their kernels from.
-    Forked {
-        pid: u32,
-        _daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
-    },
-}
-
-impl KernelProc {
-    /// Liveness without blocking: `try_wait` for an owned child, `kill(pid, 0)` for
-    /// a forked PID (ESRCH => gone). Mirrors the old direct-child `is_alive`.
-    fn is_alive(&mut self) -> bool {
-        match self {
-            KernelProc::Owned(child) => matches!(child.try_wait(), Ok(None)),
-            KernelProc::Forked { pid, .. } => {
-                #[cfg(unix)]
-                {
-                    // Safety: signal 0 only probes for the process; a stale pid
-                    // returns ESRCH (-> false), never touching another process
-                    // within the brief window before our Drop kills it.
-                    unsafe { libc::kill(*pid as libc::pid_t, 0) == 0 }
-                }
-                #[cfg(not(unix))]
-                {
-                    true
-                }
-            }
-        }
-    }
-
-    /// The PID for signalling (SIGINT/SIGKILL), if known.
-    fn pid(&self) -> Option<u32> {
-        match self {
-            KernelProc::Owned(child) => child.id(),
-            KernelProc::Forked { pid, .. } => Some(*pid),
         }
     }
 }
@@ -616,7 +554,10 @@ impl Output {
 
 /// A live kernel process plus its shell/iopub client connections.
 pub struct Kernel {
-    proc: KernelProc,
+    /// The kernel process. Directly spawned (`python -m ipykernel_launcher`) and
+    /// `kill_on_drop`, so liveness is a non-blocking `try_wait` and teardown is a
+    /// `start_kill`.
+    proc: Child,
     shell: ClientShellConnection,
     iopub: ClientIoPubConnection,
     conn_dir: PathBuf,
@@ -684,8 +625,7 @@ async fn startup_failure(
 /// on Unix. Returns the connection info, the temp dir (owned by the `Kernel` so it
 /// is removed on drop), and the connection-file path.
 ///
-/// Shared verbatim by the direct-spawn (`Kernel::start`) and forkserver warm-pool
-/// paths so both produce identical, equally-secured connection files.
+/// Factored out of [`Kernel::start`] so the connection file's modes are stated once.
 pub(crate) async fn prepare_connection(
     kernel_name: &str,
 ) -> io::Result<(ConnectionInfo, PathBuf, PathBuf)> {
@@ -733,45 +673,6 @@ pub(crate) async fn prepare_connection(
     Ok((info, conn_dir, conn_file))
 }
 
-/// Wait until the kernel's shell + iopub ports accept a TCP connection, i.e. the
-/// kernel has bound its ZMQ sockets. The pure-Rust `zeromq` client's `connect`
-/// eagerly establishes the TCP link and, if the endpoint isn't listening yet, can
-/// burn its full 30s connect timeout before erroring — so for a freshly *forked*
-/// kernel (which binds a beat after the daemon reports its PID) we must let it
-/// finish binding first. A directly-spawned kernel races connect against the child
-/// exiting, so it doesn't need this; the fork path has no owned child to race.
-///
-/// Cheap fast-failing `TcpStream::connect` probes (not ZMQ) poll until both ports
-/// listen or `deadline` passes; the subsequent ZMQ handshake then completes
-/// immediately instead of fighting the connect-retry backoff.
-async fn wait_until_reachable(info: &ConnectionInfo, deadline: Instant) -> io::Result<()> {
-    use tokio::net::TcpStream;
-    let ip: IpAddr = info.ip.parse().map_err(io::Error::other)?;
-    let ports = [info.shell_port, info.iopub_port];
-    loop {
-        let mut all = true;
-        for p in ports {
-            // A short per-probe timeout so a refused/hung port retries quickly.
-            match timeout(Duration::from_millis(200), TcpStream::connect((ip, p))).await {
-                Ok(Ok(_stream)) => {} // listening; the probe socket drops immediately
-                _ => {
-                    all = false;
-                    break;
-                }
-            }
-        }
-        if all {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(io::Error::other(
-                "forked kernel did not bind its ZMQ ports in time",
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-}
-
 /// Connect both ZMQ channels (iopub + shell) to a kernel described by `info` and
 /// wait for the iopub welcome. Reading one iopub message confirms the SUB
 /// subscription is live, sidestepping the ZMQ slow-joiner problem before the first
@@ -798,10 +699,10 @@ impl Kernel {
     /// them, so two kernels starting concurrently can be handed the same loopback port
     /// and the loser exits with `zmq.error.ZMQError: Address already in use`. Every
     /// caller needs that re-roll, so it lives with the primitive that allocates the
-    /// ports rather than in the callers: `exec.rs` and `warm_pool.rs` each grew a
-    /// private copy, and the one caller without one — the child half of
-    /// `cold_kernel_self_reaps_on_ungraceful_parent_death`, which cold-starts a kernel
-    /// in a re-spawned test binary — inherited the race and flaked. Captured
+    /// ports rather than in the callers, which each grew a private copy; the one caller
+    /// without one, the child half of
+    /// `cold_kernel_self_reaps_on_ungraceful_parent_death` (which cold-starts a kernel
+    /// in a re-spawned test binary), inherited the race and flaked. Captured
     /// 2026-07-25 by looping the `--bin` suite; before that the flake was recorded
     /// against an unrelated interrupt test and theorized as a timing edge, which is
     /// why it survived a "fix".
@@ -880,54 +781,13 @@ impl Kernel {
 
         // Handshake succeeded: hand the dir to the `Kernel`, which now owns teardown.
         let conn_dir = dir_guard.disarm();
-        Kernel::finish(KernelProc::Owned(child), conn_dir, iopub, shell, spec).await
-    }
-
-    /// Adopt an already-spawned kernel **PID** (forked from the warm-pool
-    /// forkserver daemon) by completing the same ZMQ handshake + preambles
-    /// `start` runs for a directly-spawned child. `info`/`conn_dir` are the
-    /// connection this PID was launched against; `daemon` is kept alive for the
-    /// kernel's lifetime so the forkserver stays warm.
-    ///
-    /// Unlike `start`, there is no owned `Child` to race the connect against, so a
-    /// dead fork surfaces as a connect timeout. The warm-pool spawns these eagerly
-    /// off the hot path, so that latency is hidden; callers still treat a `None`
-    /// pool result as "fall back to `start`".
-    pub(crate) async fn adopt_forked(
-        pid: u32,
-        info: ConnectionInfo,
-        conn_dir: PathBuf,
-        daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
-        spec: &KernelSpec,
-    ) -> io::Result<Kernel> {
-        // Until ownership passes to a live `Kernel`, the forked PID + its /tmp
-        // connection dir have no owner: if the handshake below fails (a dead fork, or
-        // ports that never bind), an early `?` return would leak both. Guard them,
-        // then disarm once the connection succeeds and the `Kernel` takes over.
-        let guard = ForkedCleanup {
-            pid,
-            conn_dir: Some(conn_dir),
-        };
-        // The forked kernel binds its ZMQ ports a beat after the daemon reports its
-        // PID; wait for them to listen so the ZMQ connect succeeds immediately
-        // rather than burning the client's 30s connect timeout.
-        wait_until_reachable(&info, Instant::now() + Duration::from_secs(15)).await?;
-        let (iopub, shell) = connect_handshake(&info).await?;
-        // From here to the `Kernel` construction inside `finish` must stay infallible:
-        // once disarmed, the pid + dir are only re-homed when the `Kernel` struct owns
-        // them, so a `?` inserted in this window would leak both. Keep it fallible-free.
-        let conn_dir = guard.disarm();
-        let proc = KernelProc::Forked {
-            pid,
-            _daemon: daemon,
-        };
-        Kernel::finish(proc, conn_dir, iopub, shell, spec).await
+        Kernel::finish(child, conn_dir, iopub, shell, spec).await
     }
 
     /// Shared tail of every spawn path: build the `Kernel` and run each startup
     /// preamble once against the now-live kernel.
     async fn finish(
-        proc: KernelProc,
+        proc: Child,
         conn_dir: PathBuf,
         iopub: ClientIoPubConnection,
         shell: ClientShellConnection,
@@ -953,7 +813,7 @@ impl Kernel {
     /// (`try_wait`) used to detect a kernel that died mid-session so it can be
     /// respawned instead of hanging on the next execute's timeout.
     pub fn is_alive(&mut self) -> bool {
-        self.proc.is_alive()
+        matches!(self.proc.try_wait(), Ok(None))
     }
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).
@@ -1194,7 +1054,7 @@ impl Kernel {
     /// and prior cell state survive. See [`interrupt_pid`], which this and the explicit
     /// `taliesin run --interrupt` path share so they cannot drift on what an interrupt is.
     fn interrupt(&self) {
-        if let Some(pid) = self.proc.pid() {
+        if let Some(pid) = self.proc.id() {
             interrupt_pid(pid);
         }
     }
@@ -1206,7 +1066,7 @@ impl Kernel {
     /// signal only needs a number, and this hands that number to the caller before the
     /// borrow starts.
     pub(crate) fn pid(&self) -> Option<u32> {
-        self.proc.pid()
+        self.proc.id()
     }
 }
 
@@ -1222,9 +1082,7 @@ impl Kernel {
 pub(crate) fn interrupt_pid(pid: u32) {
     #[cfg(unix)]
     // Safety: `kill` with a valid pid + signal is sound; a stale pid just returns ESRCH,
-    // which we ignore. For a forkserver child this is the exact same `kill(pid, SIGINT)` an
-    // owned child gets — the fork-spawn path keeps runaway-cell interruption working
-    // identically.
+    // which we ignore.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGINT);
     }
@@ -1237,13 +1095,7 @@ pub(crate) fn interrupt_pid(pid: u32) {
 /// and the live [`Kernel`] (whose `Drop` removes it) takes over. An early return on any
 /// startup failure would otherwise drop the `PathBuf` and leak the dir. This guard
 /// removes it on drop and is `disarm`ed on the success path. The kernel *process* is
-/// handled separately (`kill_on_drop` on the spawn command); the sibling
-/// [`ForkedCleanup`] guards the fork path, which additionally SIGKILLs a non-child pid.
-///
-/// Also used by the warm pool's `warm_one`, the step *between* these two guards: it
-/// creates the connection dir and then forks, so it owns the dir for exactly the window
-/// where no kernel does. It is the same "dir with no owner yet" hazard, so it reuses
-/// this guard rather than growing a third one.
+/// handled separately (`kill_on_drop` on the spawn command).
 pub(crate) struct ConnDirGuard {
     conn_dir: Option<PathBuf>,
 }
@@ -1271,56 +1123,9 @@ impl Drop for ConnDirGuard {
     }
 }
 
-/// Cleanup guard for [`Kernel::adopt_forked`]: until the forked kernel's ownership
-/// passes to a live [`Kernel`] (whose own `Drop` then owns teardown), the PID + its
-/// `/tmp` connection dir have no owner. If the ZMQ handshake fails (a dead fork, or
-/// ports that never bind), an early return would leak both. This guard mirrors the
-/// `Kernel` `Drop` below (SIGKILL the PID + remove the dir) and is `disarm`ed on the
-/// success path so the live kernel keeps its process and dir.
-struct ForkedCleanup {
-    pid: u32,
-    conn_dir: Option<PathBuf>,
-}
-
-impl ForkedCleanup {
-    /// Hand the connection dir back to the caller (to pass to `Kernel::finish`) and
-    /// defuse the guard, so the now-live kernel keeps its process + dir.
-    fn disarm(mut self) -> PathBuf {
-        self.conn_dir.take().expect("conn_dir present until disarm")
-    }
-}
-
-impl Drop for ForkedCleanup {
-    fn drop(&mut self) {
-        let Some(dir) = self.conn_dir.take() else {
-            return; // disarmed: the live Kernel owns teardown now
-        };
-        // Not our direct child (the forkserver reaps it), so signal by PID —
-        // identical to the `Kernel` Drop's SIGKILL teardown of a forked kernel.
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(self.pid as libc::pid_t, libc::SIGKILL);
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}
-
 impl Drop for Kernel {
     fn drop(&mut self) {
-        match &mut self.proc {
-            KernelProc::Owned(child) => {
-                let _ = child.start_kill();
-            }
-            KernelProc::Forked { pid, .. } => {
-                // Not our direct child (the forkserver server reaps it), so we
-                // can't `start_kill`; signal it to exit by PID. SIGKILL is the
-                // teardown analogue of the owned child's `start_kill`.
-                #[cfg(unix)]
-                unsafe {
-                    libc::kill(*pid as libc::pid_t, libc::SIGKILL);
-                }
-            }
-        }
+        let _ = self.proc.start_kill();
         let _ = std::fs::remove_dir_all(&self.conn_dir);
     }
 }
@@ -1845,9 +1650,6 @@ mod tests {
         assert!(start_error_is_transient(
             "python kernel unavailable (Provided sockets combination is not compatible)"
         ));
-        assert!(start_error_is_transient(
-            "forked kernel did not bind its ZMQ ports in time"
-        ));
         assert!(
             !start_error_is_transient(
                 "cannot launch `/nonexistent/python`: No such file or directory (is it installed / on PATH?)"
@@ -2175,80 +1977,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
-    fn forked_cleanup_armed_kills_pid_and_removes_conn_dir() {
-        // The leak `adopt_forked` closes: when the handshake fails, the forked PID +
-        // its /tmp connection dir have no owner. The armed guard's Drop must SIGKILL
-        // the PID and remove the dir. A real child process stands in for the fork.
-        let dir = std::env::temp_dir().join(format!("tali-forkclean-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
-            .spawn()
-            .expect("spawn a stand-in child process");
-        let pid = child.id();
-        {
-            let _guard = ForkedCleanup {
-                pid,
-                conn_dir: Some(dir.clone()),
-            };
-        } // armed drop: must kill + remove
-
-        assert!(
-            !dir.exists(),
-            "armed guard must remove the /tmp connection dir"
-        );
-        // The child must have exited (SIGKILL). `try_wait` also reaps the zombie so
-        // `kill(pid, 0)` isn't fooled by a still-in-table corpse.
-        let mut exited = false;
-        for _ in 0..100 {
-            match child.try_wait() {
-                Ok(Some(_)) => {
-                    exited = true;
-                    break;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-                Err(_) => break,
-            }
-        }
-        assert!(exited, "armed guard must SIGKILL the forked PID");
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn forked_cleanup_disarm_preserves_pid_and_conn_dir() {
-        // On the success path the guard is disarmed: it returns the dir for the live
-        // Kernel to own, and must NOT kill the process or delete the dir.
-        let dir = std::env::temp_dir().join(format!("tali-forkclean-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let mut child = std::process::Command::new("sleep")
-            .arg("30")
-            .spawn()
-            .expect("spawn a stand-in child process");
-        let pid = child.id();
-
-        let guard = ForkedCleanup {
-            pid,
-            conn_dir: Some(dir.clone()),
-        };
-        let returned = guard.disarm();
-
-        assert_eq!(
-            returned, dir,
-            "disarm returns the dir for the Kernel to own"
-        );
-        assert!(dir.exists(), "disarm must NOT remove the connection dir");
-        assert!(
-            matches!(child.try_wait(), Ok(None)),
-            "disarm must NOT kill the forked PID"
-        );
-
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
     fn conn_dir_guard_armed_removes_dir_and_disarm_keeps_it() {
         // The leak `Kernel::start` closes: a startup failure before the live Kernel
         // takes ownership must remove the 0700 /tmp connection dir on the guard's
@@ -2332,7 +2060,7 @@ mod tests {
                 let k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
                     .await
                     .expect("cold kernel should start in child mode");
-                let pid = k.proc.pid().expect("an owned kernel has a pid");
+                let pid = k.proc.id().expect("an owned kernel has a pid");
                 let dir = k.conn_dir.clone();
                 std::fs::write(&pidfile, format!("{pid}\n{}", dir.display()))
                     .expect("write pidfile");

@@ -5,7 +5,7 @@
 //! `a_standalone_document_builds_and_previews_without_site_chrome` additionally drives a
 //! real `preview` over HTTP (the only way to reach `page_chrome` for a document with no
 //! ancestor `_site.yml`; `build` never constructs a `SiteCtx` at all). It duplicates the
-//! free-port/`Server`/`http_get` shape from `mount_serving_live.rs` — a separate test
+//! free-port/`Server`/`http_get` shape of a live-preview test, a separate test
 //! binary, so nothing there can be imported — and picks its own port band, disjoint from
 //! that file's and from `preview_single_instance.rs`'s (see [`PORT_FLOOR`]).
 
@@ -213,7 +213,7 @@ fn build_and_preview_report_the_ancestor_in_the_same_spelling_as_the_subject() {
 // has no chrome".
 
 /// A port band clear of this crate's other live-server test binaries —
-/// `mount_serving_live.rs` (15,000..~21,000) and `preview_single_instance.rs` /
+/// this file (15,000..~21,000) and `preview_single_instance.rs` /
 /// `run_session_discovery.rs` (21,000..~31,500) — and clear of the 4321 default a real
 /// preview a developer is running might be on.
 const PORT_FLOOR: u16 = 10_000;
@@ -304,7 +304,7 @@ fn get(port: u16, path: &str) -> (u16, String) {
 /// (`serve_site/mod.rs`), an out-of-project document publishes ITS OWN canonical path as
 /// identity, not its parent directory — a project of just that document, not the
 /// directory it happens to sit in — so the identity check below compares against the
-/// document itself, the same way `mount_serving_live.rs::start` compares against a
+/// document itself, the same way the live-preview probes compare against a
 /// project root.
 fn start(doc: &Path) -> (Server, u16) {
     let port = free_port();

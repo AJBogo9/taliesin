@@ -2,7 +2,7 @@
 //! revisiting a page reuses its warm kernel + freeze state instead of cold-starting,
 //! while capping resident kernels at `MAX_WARM_PAGES`. The eviction order must stay
 //! deterministic (the build relies on it); this is a verbatim relocation of that logic.
-//! `use super::*` reaches Executor / WarmPool / the std types from serve_site/mod.rs.
+//! `use super::*` reaches Executor / the std types from serve_site/mod.rs.
 
 use super::*;
 
@@ -39,11 +39,6 @@ pub(super) struct ExecPool {
     /// `_freeze/` directory for the project; each page's executor caches its outputs
     /// under it. Empty (the `Default`) disables caching — used by the unit tests.
     freeze_dir: PathBuf,
-    /// The one process-wide warm pool of pre-booted Python kernels, shared by every
-    /// page executor so the first edit on a fresh page is near-instant instead of
-    /// paying a cold boot. `None` (the `Default`, and when the interpreter is the bare
-    /// default / the forkserver can't boot) → every page cold-starts, exactly as before.
-    warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
     /// The resolved Python interpreter (from `_site.yml` python: / .venv / env /
     /// default), applied to every page executor so the pool and the executors agree on
     /// which interpreter runs. `None` (the unit-test `Default`) leaves each executor on
@@ -52,24 +47,17 @@ pub(super) struct ExecPool {
 }
 
 impl ExecPool {
-    /// A pool whose executors persist their outputs under `freeze_dir` and draw their
-    /// Python kernels from the shared `warm_pool` (when one booted).
-    pub(super) fn new(
-        freeze_dir: PathBuf,
-        warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
-        python: crate::interpreter::Resolved,
-    ) -> Self {
+    /// A pool whose executors persist their outputs under `freeze_dir`.
+    pub(super) fn new(freeze_dir: PathBuf, python: crate::interpreter::Resolved) -> Self {
         ExecPool {
             freeze_dir,
-            warm_pool,
             python: Some(python),
             ..Default::default()
         }
     }
 
     /// A fresh executor for `rel`, cache-backed when the pool has a `_freeze/` dir,
-    /// running its kernels in `work_dir` (the page's own directory), drawing Python
-    /// kernels from the shared warm pool when one is wired.
+    /// running its kernels in `work_dir` (the page's own directory).
     pub(super) fn make(&self, rel: &str, work_dir: &Path) -> crate::exec::Executor {
         let ex = if self.freeze_dir.as_os_str().is_empty() {
             crate::exec::Executor::new()
@@ -77,7 +65,6 @@ impl ExecPool {
             crate::exec::Executor::with_freeze(crate::freeze::page_path(&self.freeze_dir, rel))
         };
         let mut ex = ex.in_dir(work_dir);
-        ex.set_warm_pool(self.warm_pool.clone());
         if let Some(py) = &self.python {
             ex.set_interpreters(py.clone());
         }

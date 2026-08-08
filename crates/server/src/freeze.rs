@@ -317,7 +317,7 @@ impl FreezeCache {
         // one temp path, so one can interleave a partial write into the other's rename. The
         // rename itself is atomic, so this is not a stale-hit risk — a corrupt read starts
         // empty — but it silently loses a whole cache generation. Same `<pid>_<uuid>` shape
-        // the kernel/warm-pool runtime dirs already use.
+        // the kernel runtime dirs already use.
         let tmp = path.with_extension(format!(
             "json.{}_{}.tmp",
             std::process::id(),

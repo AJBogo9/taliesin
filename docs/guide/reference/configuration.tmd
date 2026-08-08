@@ -106,7 +106,6 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
-| `mounts` | Mount other Taliesin projects under a URL prefix: a map `{ docs: ../docs }`. `preview` serves each live; `build` writes each into `<out>/<at>/`, so the links resolve in the deploy too. The path is relative to the site root and may climb at most one level, so a mount reaches a project *beside* this one and nowhere else; an absolute or further-climbing path is ignored with a warning |
 | `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
 | `python`, `r` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
 

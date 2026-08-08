@@ -155,9 +155,10 @@ output folder is self-contained and you can copy or `rsync` it as-is. The walker
 **skips** what isn't deliverable: `.tmd` sources, `.bib`, `.Rproj`, anything whose
 name starts with `_` or `.` (so `_freeze/` and dotfiles stay out), `*_cache` /
 `*_files` working directories, and the output directory itself. A built-in
-`404.html` is emitted unless you supply your own `404.tmd`, and a `mounts:` entry
-is built too, into `<out>/<at>/`, so the links into it resolve in the deploy
-exactly as they do in the preview. The full set of flags is in the [CLI reference](../reference/cli.tmd);
+`404.html` is emitted unless you supply your own `404.tmd`. One command builds one
+project; to put two projects under one domain, build each into its own subdirectory of
+the deploy (parent first, since its sweep deletes what it did not write). The full set of
+flags is in the [CLI reference](../reference/cli.tmd);
 common build-and-deploy patterns live in [Recipes](recipes.tmd).
 
 ## Publish it

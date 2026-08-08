@@ -2,22 +2,21 @@
 //!
 //! **What:** `build <file>` writes a self-contained HTML page (executing its code cells
 //! first); `build <dir>` builds a multi-page site to `_site/`, rendering pages
-//! concurrently (memory-capped, drawing kernels from the warm pool) while keeping the
-//! output byte-identical to a sequential build. Also `--out <dir>` (portable folder),
-//! `--strict`, `--bare`, and `--jobs <N>`.
+//! concurrently (memory-capped) while keeping the output byte-identical to a sequential
+//! build. Also `--out <dir>` (portable folder), `--strict`, and `--jobs <N>`.
 //!
 //! **How to use:** `main()` dispatches `build` to [`cmd_build`].
 //!
-//! **Depends on:** [`crate::exec`] + [`crate::freeze`] + [`crate::warm_pool`] +
-//! [`crate::build_budget`] (execution + the memory budget split), [`crate::log`], and
-//! [`taliesin_core`] for rendering.
+//! **Depends on:** [`crate::exec`] + [`crate::freeze`] +
+//! [`crate::build_budget`] (execution + the memory-aware concurrency cap),
+//! [`crate::log`], and [`taliesin_core`] for rendering.
 //!
 //! **Load-bearing:** the concurrent site build (`build_site_async`/`PageOutcome`) defers
 //! all logging and replays it in `site.pages` order, so a parallel build is byte-for-byte
 //! identical to `--jobs 1`. Pinned by `tests/parallel_build_determinism.rs`. Do not
 //! restructure that ordering or the per-page output/freeze isolation.
 
-use crate::{build_budget, exec, freeze, log, warm_pool};
+use crate::{build_budget, exec, freeze, log};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -53,7 +52,6 @@ struct BuildArgs<'a> {
     out_html: Option<&'a str>,
     out_dir: Option<&'a str>,
     strict: bool,
-    bare: bool,
     /// `--no-exec`: render code cells as source on purpose. Also the opt-out from the
     /// "executable cells but no kernel" build failure.
     no_exec: bool,
@@ -74,11 +72,10 @@ struct BuildArgs<'a> {
 
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
 /// only short alias; it's not in this set (suggestions are between long flags).
-const BUILD_FLAGS: &[&str] = &[
+pub(crate) const BUILD_FLAGS: &[&str] = &[
     "--out",
     "--jobs",
     "--strict",
-    "--bare",
     "--format",
     "--json",
     "--no-exec",
@@ -130,7 +127,6 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
-    let mut bare = false;
     let mut no_exec = false;
     let mut stdout = false;
     let mut check_only = false;
@@ -164,8 +160,6 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
                 jobs_result = parse_jobs_value(raw.map(|s| s.as_str()));
             }
             "--strict" => strict = true,
-            // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
-            "--bare" => bare = true,
             // `--no-exec`: render code cells as source, deliberately. `serve` has accepted
             // it all along (as sugar for `TALIESIN_NO_EXEC`); `build` had only the env var,
             // which is a poor thing to make someone reach for now that a missing kernel
@@ -229,13 +223,12 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     // `--check-only` writes nothing, so every flag that says *where* to write contradicts it.
     // Named loudly rather than ignored: a `build x --check-only --out dist` that quietly
     // produced no `dist/` is the trap the `--stdout` conflict above was written against, and
-    // `--bare`/`--jobs` describe output that never happens.
+    // `--jobs` describes output that never happens.
     if check_only
         && let Some(other) = out_dir
             .map(|d| format!("--out {d}"))
             .or_else(|| positionals.get(1).map(|o| format!("`{o}`")))
             .or_else(|| stdout.then(|| "--stdout".to_string()))
-            .or_else(|| bare.then(|| "--bare".to_string()))
             .or_else(|| jobs.map(|n| format!("--jobs {n}")))
     {
         return Err(format!(
@@ -247,7 +240,6 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         out_html: positionals.get(1).copied(),
         out_dir,
         strict,
-        bare,
         no_exec,
         jobs,
         stdout,
@@ -269,7 +261,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         out_html,
         out_dir,
         strict,
-        bare,
         no_exec,
         jobs,
         stdout,
@@ -308,15 +299,8 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             log::error(&crate::serve::not_a_project_error(Path::new(path), "build"));
             return ExitCode::FAILURE;
         }
-        if bare {
-            log::error(
-                "--bare builds a single document, not a site (a site's navigation + \
-                 search need JavaScript)",
-            );
-            return ExitCode::FAILURE;
-        }
         // A site is many pages; there is no one page to put on stdout. Reject rather than
-        // pick a page (the same shape as `--bare`, and for the same reason).
+        // pick a page.
         if stdout {
             log::error(&format!(
                 "--stdout writes one page, but {path} is a project of many. Name a single \
@@ -326,11 +310,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         }
         return build_site(Path::new(path), out_dir, strict, jobs, json);
     }
-    let mode = if bare {
-        taliesin_core::OutputMode::Bare
-    } else {
-        taliesin_core::OutputMode::Build
-    };
+    let mode = taliesin_core::OutputMode::Build;
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -609,8 +589,7 @@ fn cell_error_diagnostics(
 /// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
 /// build's per-page execution). A missing kernel logs a warning and the cells fall
 /// back to source, matching the preview's behaviour.
-/// Result of building a single page: the rendered HTML (+ its `--strict` problem
-/// count), or a `--bare` refusal whose message is user-facing.
+/// Result of building a single page: the rendered HTML + its `--strict` problem count.
 enum BuildResult {
     Page {
         html: String,
@@ -623,34 +602,6 @@ enum BuildResult {
         /// under `--strict`), then the build exits non-zero with this message.
         kernel_failure: Option<String>,
     },
-}
-
-/// Warn (never silently degrade) about the constructs `--bare` drops: a `{js}` cell
-/// is inert without its browser runtime, and Mermaid ships its diagram as source.
-fn warn_bare_exclusions(doc: &taliesin_core::RenderedDoc) {
-    let js_cells = doc
-        .blocks
-        .iter()
-        .filter(|b| b.cell.as_ref().is_some_and(|c| c.lang == "js"))
-        .count();
-    if js_cells > 0 {
-        log::warn(&format!(
-            "--bare drops {js_cells} interactive {{js}} cell{} (no browser runtime ships); \
-             the output container is left empty",
-            if js_cells == 1 { "" } else { "s" }
-        ));
-    }
-    let mermaid = doc
-        .blocks
-        .iter()
-        .filter(|b| b.html.contains("class=\"mermaid\""))
-        .count();
-    if mermaid > 0 {
-        log::warn(&format!(
-            "--bare shows {mermaid} Mermaid diagram{} as source (no renderer ships)",
-            if mermaid == 1 { "" } else { "s" }
-        ));
-    }
 }
 
 /// Build one document, executing its cells.
@@ -748,9 +699,6 @@ fn build_page_executing(
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, label);
         diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
-        if mode == taliesin_core::OutputMode::Bare {
-            warn_bare_exclusions(&doc);
-        }
         BuildResult::Page {
             html: taliesin_core::render_doc_to_page(&doc, stem, mode),
             problems,
@@ -1113,7 +1061,6 @@ async fn build_one_page(
     freeze_dir: &Path,
     out: &Path,
     root: &Path,
-    warm_pool: Option<std::sync::Arc<warm_pool::WarmPool>>,
     bundle: &AssetBundle,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
@@ -1170,12 +1117,8 @@ async fn build_one_page(
     // No progress sink (a build has no client), but name the page: a cold site build runs
     // pages concurrently, so bare interleaved `cell 2/4` lines belong to nobody.
     exec.set_progress(None, Some(page.rel.clone()));
-    // Draw this page's Python kernel from the shared warm pool (when one booted) so a
-    // page with code cells starts near-instantly instead of cold-booting. `None`
-    // (unset interpreter / inert pool) cold-starts exactly as before.
-    exec.set_warm_pool(warm_pool);
     // Resolve this project's interpreter (from _site.yml python:, a .venv, env, or
-    // default) against the site root, matching the warm pool the orchestrator booted.
+    // default) against the site root.
     exec.set_interpreters(crate::interpreter::resolve_python(
         site.config.python.as_deref(),
         root,
@@ -1448,7 +1391,7 @@ pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
 /// This is THE enforcement point for "a directory is a project, and a project is what
 /// `_site.yml` declares": every caller inherits the guard by construction rather than
 /// having to remember to add it. `cmd_build`'s own directory branch still checks this
-/// first too (it must run ahead of `--bare`/`--stdout`, which the guard here, reached only
+/// first too (it must run ahead of `--stdout`, which the guard here, reached only
 /// after those, would otherwise shadow; see `project_required.rs`'s
 /// `stdout_conflicts_are_loud`), so for `build` this is a redundant backstop. It is not
 /// redundant for `publish`, which used to call straight into the site build and skip the
@@ -1518,40 +1461,21 @@ fn build_site(
 
 /// Build a multi-page site: render every `.tmd` page with the shared chrome to
 /// `<out>/<page>.html` and mirror the project's non-source assets alongside, so the output
-/// directory is a deployable static site — **and do the same for every project it
-/// `mounts:`**, into `<out>/<at>/`. `out_override` (the `--out` flag) wins over the config's
-/// `output-dir` (default `_site`).
+/// directory is a deployable static site. `out_override` (the `--out` flag) wins over the
+/// config's `output-dir` (default `_site`).
 ///
-/// A mount is served live by `preview` under its `at:` prefix. Until this existed the
-/// static build rendered the parent's own pages and nothing else, so a previewed site's
-/// mount links 404'd in the deploy and the fix was a shell script beside the site
-/// (`site/build.sh`, deleted with this) running one `build … --out <out>/<at>` per mount.
-/// A config key that works in `preview` and not in `build` is a support burden, and the
-/// warning that stood in for the feature was one nobody's CI acted on — which is how this
-/// project's own site shipped with its primary call-to-action 404ing (item 149).
-///
-/// `built` is the cycle guard: a mount may declare its own `mounts:`, so the walk is a
-/// graph, and `mounts: { self: . }` is a config typo away from an unbounded recursion that
-/// would fill the disk.
+/// One project per call. Composing several into one deploy (this repo's own site, with the
+/// two docs books and the gallery exhibits under it) is `tools/build-site.sh`, which runs
+/// one `build … --out <out>/<prefix>` per sub-project, parent first, because the parent's sweep
+/// deletes what it did not write. That script is run by `.githooks/pre-push`, and it
+/// resolves every cross-project link against the composed output, because the reason the
+/// `mounts:` key existed at all was a deploy whose call-to-action 404'd from a script
+/// nobody ran (item 149).
 async fn build_site_async(
     root: &Path,
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
-) -> SiteBuildOutcome {
-    // Seeded with the root itself, so `mounts: { self: . }` — a config typo away — is
-    // refused on sight rather than after one wasted pass.
-    let mut built = std::collections::HashSet::new();
-    built.insert(root.canonicalize().unwrap_or_else(|_| root.to_path_buf()));
-    build_project_tree(root, out_override, strict, jobs, &mut built).await
-}
-
-async fn build_project_tree(
-    root: &Path,
-    out_override: Option<&str>,
-    strict: bool,
-    jobs: Option<usize>,
-    built: &mut std::collections::HashSet<PathBuf>,
 ) -> SiteBuildOutcome {
     // Timed here rather than in `cmd_build`, so `publish` (which reaches the site build
     // through `run_site_build`) reports its build time too.
@@ -1695,56 +1619,12 @@ async fn build_project_tree(
     //    the default is auto, which sizes the cap against free RAM and the core count).
     //    Cross-page ordering edges (a page that must build after another) are deferred to
     //    Task 9; here every dirty page is treated as independent.
-    // Plan the build's concurrency: how many pages at once, and how many kernels to
-    // pre-warm beside them. `build_plan` keys off who chose the number — an explicit
-    // `--jobs N` is the user's PAGE count and is honored exactly (the warm pool is
-    // additive on top); auto mode splits one memory-aware budget between the two
-    // (`warm_pool + build_kernels <= cap`). The build semaphore is sized to
-    // `build_kernels`; the warm pool pre-warms `warm_pool` so each page build can draw a
-    // hot kernel instead of paying a cold boot. Determinism is untouched: a pooled kernel
-    // runs the same ipykernel with the same preambles as a cold one, so it produces
-    // identical bytes — the pool only changes *when* a kernel is ready, never *what* it
-    // computes.
-    //
-    // Resolve the interpreter BEFORE consulting the plan's warm size: whether a pool can
-    // exist at all depends on this resolution, and the log line below must not claim to
-    // pre-warm a pool that never boots (M1).
-    let interp_python = crate::interpreter::resolve_python(site.config.python.as_deref(), root);
-    let plan = build_budget::build_plan(jobs, build_budget::PER_KERNEL_MB);
-
-    // The one process-wide warm pool for this build. `None` (so every page cold-starts
-    // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
-    // dropped at the end of this fn, killing the daemon + idle kernels. The pool boots
-    // only for a concrete interpreter choice (not the bare python3 default), and each
-    // page/deck executor resolves the same way.
-    // ...and skip the pool entirely when this build will never run a cell. Under
-    // `--no-exec` / `TALIESIN_NO_EXEC` every executor renders cells as source, so a booted
-    // forkserver would spawn interpreter processes purely to be dropped unused at the end
-    // of the build. Hygiene rather than speed (measured at 0.25 s vs 0.27 s on a prose-only
-    // site), but "no-exec launched a python" is a surprising thing for the flag to do.
-    let warm_pool = if crate::exec::exec_disabled() {
-        None
-    } else {
-        warm_pool::warm_pool_for_build(plan.warm_pool, &interp_python).await
-    };
-
-    // Count only the kernels that ACTUALLY exist. A pool that declined to boot (bare
-    // `python3`) or failed to (`is_warm()` false) holds no kernels, so it costs no RAM,
-    // must not be announced as a purchase, and must not cost build slots (M1).
-    // `build_cap` applies that last rule where it means something: auto mode hands the
-    // unbooted slots back to the build; under an explicit --jobs the pool never held any.
-    let warmed = match &warm_pool {
-        Some(p) if p.is_warm() => plan.warm_pool,
-        _ => 0,
-    };
-    let build_cap = plan.build_cap(warmed).max(1);
-    log::info(&if warmed > 0 {
-        format!("building with up to {build_cap} parallel page(s); pre-warming {warmed} kernel(s)")
-    } else {
-        // Say nothing about pre-warming rather than "pre-warming 0 kernel(s)": the point
-        // of the line is what the build is doing, and it is not pre-warming anything.
-        format!("building with up to {build_cap} parallel page(s)")
-    });
+    // How many pages at once. An explicit `--jobs N` is the user's stated PAGE count and
+    // is honored exactly; auto sizes the cap against free RAM and the core count, on the
+    // worst-case assumption that every concurrent page boots a kernel. Determinism is
+    // untouched: the cap only changes *when* a page builds, never *what* it produces.
+    let build_cap = build_budget::concurrency_cap(jobs, build_budget::PER_KERNEL_MB).max(1);
+    log::info(&format!("building with up to {build_cap} parallel page(s)"));
     let mut pages = 0usize;
     // The first page whose kernel could not start. One report for the whole run: the
     // interpreter and its error cannot differ between pages of a single build, so
@@ -1757,9 +1637,8 @@ async fn build_project_tree(
 
     // Build into a slot per page (indexed by page order) so results aggregate
     // deterministically regardless of completion order. A `Semaphore` of size
-    // `build_cap` bounds how many build kernels run at once (memory-aware, reconciled
-    // with the warm pool); the pool lookup / file write each page does is on its own
-    // paths, so no lock is held across the `.await`.
+    // `build_cap` bounds how many build kernels run at once (memory-aware); the file
+    // write each page does is on its own paths, so no lock is held across the `.await`.
     let site = std::sync::Arc::new(site);
     let out = std::sync::Arc::new(out);
     let freeze_dir = std::sync::Arc::new(freeze_dir);
@@ -1774,23 +1653,13 @@ async fn build_project_tree(
         let root_arc = root_arc.clone();
         let bundle = bundle.clone();
         let sem = sem.clone();
-        let warm_pool = warm_pool.clone();
         set.spawn(async move {
             // Hold a permit only for this page's build; dropping it on return frees the
             // slot for the next queued page. The permit guards kernel count, not any
             // shared data structure, so nothing is locked across the build's `.await`.
             let _permit = sem.acquire().await.expect("build semaphore not closed");
             let page = &site.pages[idx];
-            let outcome = build_one_page(
-                &site,
-                page,
-                &freeze_dir,
-                &out,
-                &root_arc,
-                warm_pool,
-                &bundle,
-            )
-            .await;
+            let outcome = build_one_page(&site, page, &freeze_dir, &out, &root_arc, &bundle).await;
             (idx, outcome)
         });
     }
@@ -1993,69 +1862,10 @@ async fn build_project_tree(
     } else {
         warn_nonstrict_problems(problems);
     }
-    let mut outcome = SiteBuildOutcome {
+    SiteBuildOutcome {
         ok: !strict_fail && !kernel_fail,
         diagnostics,
-    };
-
-    // Now the mounts, each into `<out>/<at>/`.
-    //
-    // ORDER IS LOAD-BEARING, and it is why this sits down here rather than beside the
-    // config: the parent's `sweep_stale` (above) deletes everything under `out` it did not
-    // itself write, and `_site/docs/guide/` is neither dot- nor underscore-prefixed nor a
-    // symlink, so a mount built *first* is silently swept away by the parent. Parent
-    // finished, mounts second, always.
-    //
-    // The obvious optimisation — exempt the mount prefixes from the sweep so their output
-    // is not deleted and rewritten every build — is deliberately NOT taken. Sweeping them
-    // is what makes a mount *removed* from `_site.yml` disappear from the deploy; an
-    // exemption would leave its pages behind forever, live and unreachable from the nav,
-    // which is the harder bug to notice. The cost is bounded (a delete plus a rewrite; the
-    // `_freeze/` cache means no cell re-executes), so correctness wins.
-    //
-    // `--strict` propagates unchanged. The shell script this replaces deliberately ran the
-    // mounts non-strict, but that carve-out existed to dodge the parent's own mount
-    // warnings, which this deletes; a mount is part of the artifact being written, so a
-    // problem in one is a problem with the deploy.
-    for m in &site.config.mounts {
-        // A mount that fails containment (item 80) is not part of this site: `load_config`
-        // has already dropped it and warned. Building it anyway would be the tool
-        // performing the escape the refusal exists to prevent.
-        let Ok(mroot) = m.resolve(root) else { continue };
-        let mroot = mroot.canonicalize().unwrap_or(mroot);
-        if !built.insert(mroot.clone()) {
-            // Already built in this walk: a diamond (two prefixes onto one project) is
-            // harmless duplication, a cycle is not, and neither needs a second pass.
-            log::warn(&format!(
-                "mount '/{}/' resolves to {}, already built in this run; skipping",
-                m.at,
-                mroot.display()
-            ));
-            continue;
-        }
-        let sub_out = out.join(&m.at);
-        let Some(sub_out_str) = sub_out.to_str() else {
-            log::warn(&format!(
-                "mount '/{}/': output path is not valid UTF-8, skipping",
-                m.at
-            ));
-            continue;
-        };
-        log::info(&format!("mount '/{}/' -> {}", m.at, sub_out.display()));
-        // Boxed because this is the recursive edge: a mount may itself declare `mounts:`,
-        // and a future that directly contains itself has no finite size.
-        let sub = Box::pin(build_project_tree(
-            &mroot,
-            Some(sub_out_str),
-            strict,
-            jobs,
-            built,
-        ))
-        .await;
-        outcome.diagnostics.extend(sub.diagnostics);
-        outcome.ok &= sub.ok;
     }
-    outcome
 }
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
@@ -2656,8 +2466,10 @@ mod mirror_tests {
 
         // --out never captures a following flag as its directory: a value-less --out is
         // now a HARD ERROR (rather than silently dropping the flag + writing <stem>.html).
-        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--out", "--bare"]))
-            .expect_err("value-less --out errors");
+        let err = parse_build_args(&argv(&[
+            "taliesin", "build", "doc.tmd", "--out", "--strict",
+        ]))
+        .expect_err("value-less --out errors");
         assert!(err.contains("--out") && err.contains("requires"), "{err}");
         // --out at the very end (no following token) is the same hard error.
         let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--out"]))
@@ -2667,9 +2479,9 @@ mod mirror_tests {
         assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--dir"])).is_err());
 
         // flags may appear anywhere; both positionals still bind in order.
-        let a = argv(&["taliesin", "build", "--bare", "doc.tmd", "out.html"]);
+        let a = argv(&["taliesin", "build", "--strict", "doc.tmd", "out.html"]);
         let p = parse_build_args(&a).unwrap();
-        assert!(p.bare);
+        assert!(p.strict);
         assert_eq!((p.path, p.out_html), ("doc.tmd", Some("out.html")));
 
         // a missing path is a usage error.
@@ -2692,7 +2504,6 @@ mod mirror_tests {
         assert!(!err.contains("did you mean"), "no wild guess: {err}");
         // The real flags still parse (no regression).
         assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--strict"])).is_ok());
-        assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--bare"])).is_ok());
     }
 
     fn tmp(name: &str) -> PathBuf {
@@ -3078,26 +2889,6 @@ mod build_diag_tests {
         assert!(kernel(&cell("r")));
         assert!(!kernel(&cell("js")));
         assert!(!kernel(&None));
-    }
-
-    /// A plain document still builds under `--bare`, and the page is script-free.
-    #[test]
-    fn bare_builds_a_plain_doc_script_free() {
-        let base = std::env::temp_dir().join(format!("tali-bare-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&base);
-        let res = build_page_executing(
-            "---\ntitle: Draft\n---\n\nProse.\n",
-            &base,
-            "draft",
-            "draft.tmd",
-            taliesin_core::OutputMode::Bare,
-        )
-        .unwrap();
-        match res {
-            BuildResult::Page { html, .. } => {
-                assert!(!html.contains("<script"), "bare page must have no scripts")
-            }
-        }
     }
 }
 

@@ -272,8 +272,8 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 |---|---|
 | `main.rs` | CLI: the `preview` / `build` / `run` / `lsp` / `init` subcommands, plus the retired-verb register. |
 | `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
-| `serve/mod.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). One `DocState` + one `Executor`. Its `rebuild` runs the re-render → execute → diff path. |
-| `serve_site/mod.rs` | Multi-page site/book server (per-page `PageState`, a per-page `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |
+| `serve/mod.rs` | The dev server's shared layer: HTTP/asset plumbing, port binding + the single-instance probe, the origin/`Host`/identity guards, the watch predicates, and the CLI error helpers. Not a server itself. |
+| `serve_site/mod.rs` | THE dev server (per-page `PageState`, one `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |
 | `exec.rs` | Sits *between* render and diff: runs a doc's code cells and splices each cell's output back into the block list as a derived output block (incremental: the first changed cell + everything downstream). |
 | `kernel.rs` | The warm Jupyter kernel (ZMQ), reused across edits, with interrupt + timeout. |
 | `freeze.rs` | The persistent `_freeze/` execution cache, keyed by a cumulative content hash. |

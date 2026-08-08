@@ -129,22 +129,13 @@ under the document's directory and any `{{< include >}}`d file's directory, and
 skips build-output/VCS folders (`_site`, `_book`, `.git`). Editing a file outside
 those won't trigger a refresh.
 
-## `--host` preview is refused from my phone (or shows "needs its session link")
-
-`--host` gates non-loopback access behind a per-session token, so a request without
-it gets a 403. Open the **exact** URL from the QR code or the printed `network`
-line (it carries the `?t=…` token); a hand-typed `http://<ip>:<port>/` is refused
-on purpose. The token is regenerated on every server start, so an old QR or a
-bookmarked URL from a previous run stops working: rescan the current one. Browsing
-from the same machine (`127.0.0.1`) never needs the token.
-
 ## The VS Code companion preview won't connect
 
 The companion spawns a plain `taliesin preview <target> <port>` and points its webview
 at `http://127.0.0.1:<port>/`. `<target>` is the **project root** when the document
 sits under a `_site.yml` (the webview then opens that page's URL) and the file itself
-otherwise. It binds **loopback only**: it does **not** pass `--host`, so there is no
-LAN token to fumble and no firewall hop to clear. If the panel stays blank:
+otherwise. The preview binds **loopback only**, so there is no firewall hop to clear.
+If the panel stays blank:
 
 - Make sure `taliesin` is on the path the extension uses. It runs whatever the
   `taliesin.path` setting points at (default `taliesin`); set it to an absolute
@@ -152,8 +143,9 @@ LAN token to fumble and no firewall hop to clear. If the panel stays blank:
 - The extension waits up to a few seconds for the server to answer on its port. If
   you see *"taliesin preview did not answer"*, the binary failed to start: run the
   same `taliesin preview <target>` in a terminal to read the real error.
-- Because it's a loopback URL, do **not** add `--host` or a token: that's for phones
-  on your LAN, not for the local webview.
+- The preview is reachable only from this machine. A request whose `Host` header
+  names anything but a loopback name is refused (the DNS-rebinding guard), so a
+  proxy or tunnel in front of it will get a 403.
 
 ## A large site previews or builds slowly
 

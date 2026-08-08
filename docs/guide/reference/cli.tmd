@@ -13,7 +13,6 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
-| `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write **nothing**: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml` and an `index.tmd`, and nothing else; refuses to overwrite |
@@ -49,7 +48,7 @@ throughout (and a `serve:` tag ahead of the first line).
 `taliesin build <file|dir> --check-only` renders the document or project in memory, reports
 everything that flows through the diagnostics channel, and **writes nothing**: no `_site/`,
 no `.html`, no `_freeze/` entry. It never starts a kernel either, so `--no-exec` is implied
-rather than needed, and it refuses `--out` / `--stdout` / `--bare` / `--jobs` instead of
+rather than needed, and it refuses `--out` / `--stdout` / `--jobs` instead of
 accepting a flag that describes output it will not produce.
 
 It reports unknown front-matter / `_site.yml` / cell-option / container keys (with
@@ -174,7 +173,6 @@ is logged.
 
 | Flag | Effect |
 |---|---|
-| `--host` | Bind your LAN and print a **QR code** for phones, gated by a per-session access token (see below) |
 | `--open` | Launch the default browser at the preview URL |
 | `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does **not** strip raw HTML — see below |
 
@@ -193,10 +191,8 @@ you.** Taliesin is honest about this rather than pretending to a sandbox it does
   sanitizer: raw `<script>` in the document body and the `head:` injection still reach
   the page. There is deliberately no HTML sanitizer and no CSP, because a
   sanitizer that a document's own author can work around buys a false sense of safety.
-- **Two things are enforced rather than documented**, because they are the tool being
-  steered *outside* the document by its metadata rather than the document running its own
-  code: a `mounts:` path may not leave the directory beside the project, and a
-  `--check-only` lint never spawns an interpreter at all.
+- **One thing is enforced rather than documented**: a `--check-only` lint never spawns an
+  interpreter at all.
 
 The practical reading: `--no-exec` is the right flag for *skimming* a stranger's document,
 and a container or a throwaway user is the right answer for *trusting* one.
@@ -207,26 +203,11 @@ and a container or a throwaway user is the right answer for *trusting* one.
 |---|---|
 | `--out <dir>` | Write a portable `<dir>/index.html` + copied assets instead of a single file |
 | `--strict` | Exit non-zero if any cell errored or any located warning fired (a CI gate; the page is still written) |
-| `--bare` | Single-doc only: emit a **bare** page (zero `<script>`, zero CDN, CSS-only theming) |
 | `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
 
-A regular `build` already content-gates the optional enhancer scripts (mermaid, `{js}`)
-to the constructs a page actually uses, so a prose page ships less JavaScript without
-losing any feature. `--bare` goes further for a
-single document: it ships **no** `<script>` at all and themes purely with CSS (a forced
-`theme:` is hard-coded; otherwise it follows the OS via `prefers-color-scheme`).
-Server-rendered math still works; `{js}` cells, Mermaid rendering, and the
-copy/reader controls are dropped (each warned, never silently). A `<dir>` site is
-refused (its navigation needs JavaScript). A `build` skips code
-execution only through the `TALIESIN_NO_EXEC=1` environment variable, not a `--no-exec`
-flag.
-
-A `--bare` page is still **responsive**: the viewport meta tag and every CSS media
-query ship as usual, so it reflows on a phone and respects `prefers-color-scheme`. It
-just has no behaviour that needs scripting. Because `{js}` cells and Mermaid both
-render in the browser, a `--bare` build empties them (and warns once per kind) rather
-than shipping a broken placeholder, so reach for `--bare` on prose, math, and
-server-executed figures, not on pages built around live `{js}` or diagrams.
+A `build` already content-gates the optional enhancer scripts (mermaid, `{js}`) to the
+constructs a page actually uses, so a prose page ships less JavaScript without losing any
+feature.
 
 ## `taliesin run`: iterate on code without the HTML
 
@@ -434,10 +415,9 @@ click-to-source and incremental updates, so this is the way to confirm a block c
 the source map you expect (and, via `data-source-file`, which `{{< include >}}`d file it
 came from) without opening the browser dev tools.
 
-`preview --host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
-the printed LAN URL and QR (`?t=…`, then a `tali_token` cookie); a fresh token is
-minted each server start, and loopback (`127.0.0.1`) is exempt. See
-[Reading on any screen](../using/preview.tmd) for the full behaviour.
+`preview` binds `127.0.0.1` and nothing else: there is no flag that exposes it on a
+network. Every response passes a `Host` allowlist (the DNS-rebinding guard) and the
+websocket enforces an origin check, so a page on another site cannot drive it.
 
 Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`

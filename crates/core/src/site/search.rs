@@ -11,7 +11,7 @@ use super::*;
 /// and per anchored heading (`u`rl, `p`age title, anchor `i`d, `l`evel, heading
 /// `t`ext, section `b`ody text). Kept separate from [`assemble`] so the dev server can
 /// refresh a single edited page's entries without re-rendering the whole site (see
-/// [`super::Site::refresh_search_for_page`]). Renders each page's markdown once (no
+/// [`super::Site::rebuild_search_index`]). Renders each page's markdown once (no
 /// code execution) so the anchor ids match what the served pages emit.
 pub(super) fn build_sections(
     pages: &[Page],

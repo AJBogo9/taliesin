@@ -114,10 +114,9 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    own front-matter `image:`; the generated social-card rasterizer,
                    the JSON-LD graph, llms.txt and the PWA manifest were all cut in
                    Wave 4), Cmd-K search (search.rs),
-                   cross-refs (xref.rs). `mounts:`
-                   serves another project (e.g. the docs book) under a URL prefix in
-                   preview, and `build` recurses into each, parent first (its sweep
-                   would delete a mount built before it)
+                   cross-refs (xref.rs). ONE project per build: composing several
+                   into one deploy is tools/build-site.sh, parent first (the
+                   parent's sweep deletes output it did not itself write)
   assets/          bundled offline: css/ (base, dark, site),
                    js/ (code-enhance/ fragments, mermaid.js, tali-js.js,
                    scrolly.js, tabset.js, walkthrough.js + vendored
@@ -127,14 +126,24 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    was cut names its replacement instead of a did-you-mean)
   src/cli.rs       CLI arg parsing + subcommand dispatch
   src/serve/       the dev server's SHARED layer, not a server: HTTP/asset plumbing,
-                   port binding + the single-instance probe, security.rs's LAN/host/
+                   port binding + the single-instance probe, security.rs's origin/Host/
                    identity guards, the watch predicates, and the CLI error helpers
                    (`guarded`, `unknown_flag_error`, `bad_format_error`) that eight
-                   modules import. Wave 1.1 deleted the single-doc server that used
-                   to live here; the path stays so `crate::serve::` imports resolve
+                   modules import, plus `RETIRED_FLAGS` (the fourth CLI register, read
+                   by `unknown_flag_error` ahead of the did-you-mean). Wave 1.1 deleted
+                   the single-doc server that used to live here; the path stays so
+                   `crate::serve::` imports resolve. **The preview binds 127.0.0.1 and
+                   nothing else** (`--host` went in Wave 11), so both guards are about a
+                   local peer: `ws_origin_ok` is the only thing stopping an open tab
+                   sending `restart_kernel`, and `with_host_guard` is the unconditional
+                   DNS-rebinding allowlist
   src/serve_site/  THE dev server — one server for a project and for a single document
                    alike (mod.rs: per-page state/executor, cross-page nav, hot reload;
-                   exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze).
+                   exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze). ONE project
+                   per server since Wave 11 cut `mounts:`, so the cap now means what its
+                   name says (it used to be per-project, letting site/'s seven mounts
+                   keep 8x the cap resident). Composing several projects into one
+                   deploy is `tools/build-site.sh`, run by `.githooks/pre-push`.
                    `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
                    project, opened at that page; with no ancestor `_site.yml` it is a
                    project of just that document (`Site::discover_single`). That
@@ -208,7 +217,8 @@ web-client/      browser preview client (vanilla JS, the only client): client.js
 docs/            project's own manual: TWO sibling book projects, authored in .tmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/);
                  docs/internals/ = Internals book. docs/ itself is just a container
-                 (no _site.yml). The site mounts each at /docs/guide + /docs/internals.
+                 (no _site.yml). tools/build-site.sh writes each under the marketing
+                 site at /docs/guide + /docs/internals.
 corpus/          the real .tmd docs (the spec); cargo test renders them all
 ```
 
@@ -223,15 +233,15 @@ corpus/          the real .tmd docs (the spec); cargo test renders them all
     and how to extend it. Preview it: `taliesin preview docs/internals`.
   - `docs/` itself is just a container (no `_site.yml`); the books are siblings
     because the page-walker would otherwise swallow a nested book's pages. The
-    marketing site mounts them at `/docs/guide` + `/docs/internals`. Cross-book links
-    are written as relative `.html` (e.g. `../guide/using/formats.html`).
+    marketing site's deploy carries them at `/docs/guide` + `/docs/internals`, composed
+    by `tools/build-site.sh`. Cross-book links are written as relative `.html` (e.g.
+    `../guide/using/formats.html`).
 - **corpus/README.md** for what the test documents exercise.
 
 ## Commands
 
 ```sh
 cargo run -p taliesin-server -- preview <file.tmd> [port]      # live preview
-cargo run -p taliesin-server -- preview <file.tmd> --host      # + expose on LAN with a phone QR code
 cargo run -p taliesin-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
 cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained HTML file (default <name>.html)
 cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
@@ -239,6 +249,7 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
 cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH GATE: lint, write nothing, exit non-zero
                                                                #   (+ --strict to fail on advice, + --format json for one machine surface)
+./tools/build-site.sh [--check]                                # compose the marketing-site deploy (site + docs books + gallery)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
@@ -284,10 +295,14 @@ hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-cl
 **`.githooks/pre-push` is the only gate that runs automatically today.** It is wired
 via `core.hooksPath`, so it is invisible in `.git/hooks`: a push that includes `main`
 runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-warnings`, `cargo test --workspace`, and (new in wave 9) `build docs/guide --check-only
---no-exec` first, and a WIP-branch push skips it. That last step is the DOCUMENT gate the
-`check` verb never had wired anywhere: a broken cross-reference in this project's own
-manual used to reach a reader with every gate green.
+warnings`, `cargo test --workspace`, `build docs/guide --check-only --no-exec` (new in
+wave 9) and `tools/build-site.sh --check` (new in wave 11) first, and a WIP-branch push
+skips it. Step 4 is the DOCUMENT gate the `check` verb never had wired anywhere: a broken
+cross-reference in this project's own manual used to reach a reader with every gate green.
+Step 5 is what replaced `mounts:`: it composes the whole deploy with `--no-exec` into a
+temp dir and refuses the push if any cross-project link in `site/` has nothing behind it,
+because a composition script nobody runs is how this project's own call-to-action shipped
+404ing (item 149).
 `git push --no-verify` bypasses. Note `core.hooksPath` is **unset in a fresh clone**,
 so this hook does not exist for anyone but the author.
 

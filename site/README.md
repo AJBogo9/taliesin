@@ -34,28 +34,29 @@ The theme (serif body, sans headings, light/dark toggle) is the Taliesin default
 taliesin preview site
 ```
 
-The `Guide` and `Internals` nav links resolve live: `_site.yml`'s `mounts:` serves
-the two sibling docs books under `/docs/guide/` and `/docs/internals/` (rendered on
-request, so content edits show on refresh).
+The `Guide`, `Internals` and gallery nav links point into projects this one does not
+contain, so `preview site` shows them as links that go nowhere and `build site` reports
+each as a broken link. That is true of `site/` read on its own; the composed deploy is
+what makes them resolve.
 
-## Build (single-tree: site at root, two docs books under /docs)
+## Build (single-tree: site at root, docs and gallery under it)
 
 ```sh
-taliesin build site --out _site   # the whole tree: this project + all 7 mounts
+tools/build-site.sh              # the whole tree -> site/_site
+tools/build-site.sh --check      # the gate: --no-exec, temp dir, links asserted
 ```
 
-One command, eight projects: the parent, then one per `mounts:` entry into `_site/<at>/`.
-There is nothing else to run and nothing to keep in step with `_site.yml`.
+Seven projects: this one, then each sub-project into `_site/<prefix>/`. **The parent is
+built first, and that order is load-bearing**: the parent build sweeps stale output,
+deleting anything under the output directory it did not itself write, so a sub-project
+built first would be silently swept away.
 
-This used to need a shell script beside this file, because `mounts:` was a *preview*
-feature and a bare `taliesin build site` produced a tree whose Guide, Internals and gallery
-links 404'd — including the landing page's primary call to action (item 149). `build` walks
-the mounts itself now; the script and its `TAL-MOUNT-PREVIEW` diagnostic are both gone.
-
-**The parent is built before the mounts, and that order is load-bearing** — the parent build
-sweeps stale output, deleting anything under the output directory it did not itself write,
-so a mount built first would be silently swept away. `build` does this in the right order and
-`crates/server/tests/mount_static_build.rs` pins it by building twice into one directory.
+`_site.yml` used to carry a `mounts:` key that did this from inside the tool (cut
+2026-08-09). Before that it was a shell script, and a bare `taliesin build site` produced
+a tree whose Guide, Internals and gallery links 404'd, including the landing page's
+primary call to action (item 149). The script is back, so it is wired into
+`.githooks/pre-push` and it **asserts** every cross-project link against the composed
+output rather than trusting that it built the right thing.
 
 The `analyst` exhibit is the only one whose pages **execute**: it needs a python with
 `ipykernel` (`TALIESIN_PYTHON`) plus `pandas`/`numpy`/`scipy`/`matplotlib`. Without them

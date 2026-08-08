@@ -168,23 +168,14 @@ impl<'a> PageParts<'a> {
 /// servers. Keeping it here means a new meta tag, a bundled stylesheet, or a head
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
-    let bare = p.mode == OutputMode::Bare;
-    // The pre-paint theme bootstrap is JS; bare output is script-free.
-    let theme_init = if bare {
-        String::new()
-    } else {
-        theme_head(p.theme_default)
-    };
-    // Bare's guarantee is zero `<script>`: suppress every script source — the passed-in
-    // pre/post scripts, the enhancer bundle, and (above) the theme bootstrap + js head.
-    let scripts_pre = if bare { "" } else { p.scripts_pre };
-    let scripts_post = if bare { "" } else { p.scripts_post };
+    let theme_init = theme_head(p.theme_default);
+    let scripts_pre = p.scripts_pre;
+    let scripts_post = p.scripts_post;
     // Skip-to-content link: the first focusable thing in the body, so a keyboard /
     // screen-reader user can jump past the chrome to the reading region. Emitted
     // server-side (works with JS off) whenever the body carries the focusable
     // `<main id="tali-main">` (build + site pages always do; the live `#tali-root`
     // mount does not — the runtime `taliInitSkipLink` synthesizes the pair there).
-    // Bare output is link-only chrome but keeps the skip link (it's pure HTML/CSS).
     // A second link to the in-page TOC, on pages that have one (AP7-5). The TOC is a
     // sticky sidebar visible the whole time, but it is emitted AFTER the reading column so
     // it lands at tab stop 56 of 62 on a chapter: a keyboard user has to traverse a
@@ -219,31 +210,12 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // registry moved up to stay ahead of it. `01-registry.js` opens with
     // `if (window.taliEnhancers) return;`, so the later bundled copy (deferred app.js, or the
     // inline bundle) still no-ops exactly as it did before.
-    //
-    // Bare output ships no scripts at all, so it gets none of this.
-    let enhancer_registry = if bare {
-        String::new()
-    } else {
-        format!("<script>{REGISTRY_JS}</script>\n")
-    };
+    let enhancer_registry = format!("<script>{REGISTRY_JS}</script>\n");
     let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
         AssetMode::Inline => {
             let site_css = if p.with_site_css { SITE_CSS } else { "" };
-            // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer
-            // never matches: drop the dark token override + dark recolours from the main
-            // sheet and append flattened CSS-only theming instead.
-            let (tokens_dark, dark) = if bare {
-                ("", "")
-            } else {
-                (TOKENS_DARK_CSS, DARK_CSS)
-            };
-            let bare_theme = if bare {
-                bare_theme_css(p.theme_default)
-            } else {
-                String::new()
-            };
             let style_block = format!(
-                "<style>{FONTS_CSS}{TOKENS_CSS}{tokens_dark}{BASE_CSS}{dark}{site_css}{bare_theme}</style>"
+                "<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{site_css}</style>"
             );
             let katex_block = if p.ship_katex {
                 format!("\n<style>{KATEX_CSS}</style>")
@@ -252,9 +224,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             };
             // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
             // enhancer itself rides in code_scripts(). Gated on the rendered body (no
-            // PageParts flag). Bare drops `{js}` entirely (its script blocks are
-            // stripped from the body too).
-            let js_head_html = if !bare && has_js_cells(p.body) {
+            // PageParts flag).
+            let js_head_html = if has_js_cells(p.body) {
                 js_cell_head()
             } else {
                 String::new()
@@ -285,7 +256,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            let js_head_html = if !bare && has_js_cells(p.body) {
+            let js_head_html = if has_js_cells(p.body) {
                 format!("<script src=\"{}\" defer></script>", a.jslibs_js)
             } else {
                 String::new()
@@ -311,7 +282,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // added to the registry needs it just as much. A language with its own
             // enhancer follows it inline (and must, since it would call
             // `window.taliJs.registerLanguage` on the object this script has just defined).
-            let tali_js_inline = if !bare && has_client_cells(p.body) {
+            let tali_js_inline = if has_client_cells(p.body) {
                 format!("\n<script>{TALIESIN_JS}</script>")
             } else {
                 String::new()
@@ -378,21 +349,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     )
 }
 
-/// CSS-only theming for `--bare` output (no `[data-theme]` script). The dark layer is
-/// the palette override (`tokens-dark.css`) plus the recoloured scopes/boxes (`dark.css`),
-/// both uniformly `html[data-theme="dark"]`-prefixed, so rewriting that prefix to `:root`
-/// yields a flat dark layer: emitted unconditionally for a forced dark theme, wrapped
-/// in a `prefers-color-scheme: dark` media query for an unforced (`auto`) theme so it
-/// follows the OS. A forced light theme needs nothing (tokens.css `:root` is light).
-fn bare_theme_css(default_mode: &str) -> String {
-    let dark = format!("{TOKENS_DARK_CSS}{DARK_CSS}").replace("html[data-theme=\"dark\"]", ":root");
-    match default_mode {
-        "dark" => dark,
-        "light" => String::new(),
-        _ => format!("@media (prefers-color-scheme: dark){{{dark}}}"),
-    }
-}
-
 /// Run the client enhancers once on load (the static page has no websocket client
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
@@ -406,9 +362,8 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode)
 /// single-page path (`html_page_from_doc`) is unchanged (`site == None`).
 ///
 /// Every caller is a static-build context (the `build` CLI, the 404 page, mounted
-/// sub-site serving, `check`'s discard); the live site preview assembles its own
+/// sub-site serving, the lint pass's discard); the live site preview assembles its own
 /// `PageParts` directly. So this content-gates enhancers like any other build.
-/// `--bare` is single-doc only, so a site never reaches `OutputMode::Bare`.
 pub fn html_page_from_doc_in_site(
     doc: &RenderedDoc,
     fallback_title: &str,
@@ -515,14 +470,6 @@ fn html_page_inner(
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();
-    // Bare output must contain zero `<script>`; a `{js}` cell's runtime payload is a
-    // `<script type="application/tali-js">` in the body, so strip those (the cell is
-    // inert without its browser runtime; the build warns separately).
-    let body = if mode == OutputMode::Bare {
-        strip_tali_js_scripts(&body)
-    } else {
-        body
-    };
     // Only ship the (large) KaTeX stylesheet when the page actually has math
     // (computed before `body` is moved into the content layout below).
     let ship_katex = body.contains("class=\"katex");
@@ -726,42 +673,6 @@ pub(super) fn default_favicon() -> String {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
         base64_encode(FAVICON_SVG.as_bytes())
     )
-}
-
-/// Remove every client-side cell's `<script type="application/tali-…">…</script>` payload
-/// from a rendered body, leaving the empty output container behind. Used only for `--bare`
-/// output, whose contract is zero `<script>`; a client-side cell is inert without its
-/// browser runtime. The author source escapes any `</script` to `<\/script` (see
-/// [`emit_client_cell`]), so the first `</script>` after the opening tag is always the
-/// real terminator.
-///
-/// Driven off the [`client_lang`] registry rather than a literal, so registering a
-/// language cannot leave a `<script>` in output whose whole contract is having none.
-fn strip_tali_js_scripts(body: &str) -> String {
-    CLIENT_LANGS.iter().fold(body.to_string(), |acc, lang| {
-        strip_scripts_of_type(&acc, lang.mime)
-    })
-}
-
-fn strip_scripts_of_type(body: &str, mime: &str) -> String {
-    let open = format!("<script type=\"{mime}\"");
-    const CLOSE: &str = "</script>";
-    let mut out = String::with_capacity(body.len());
-    let mut rest = body;
-    while let Some(start) = rest.find(&open) {
-        out.push_str(&rest[..start]);
-        let after = &rest[start..];
-        match after.find(CLOSE) {
-            Some(end) => rest = &after[end + CLOSE.len()..],
-            None => {
-                // Unterminated (shouldn't happen given the escaping): keep the rest.
-                out.push_str(after);
-                return out;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
 }
 
 #[cfg(test)]

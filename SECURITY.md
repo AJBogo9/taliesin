@@ -35,15 +35,15 @@ week; please allow time for a fix before any public disclosure.
 Taliesin runs on the author's machine and trusts the documents that author edits.
 The following are by design:
 
-- **Code cells execute.** `{python}`, `{r}`, and `{js}` cells run against a warm
+- **Code cells execute.** `{python}` and `{js}` cells run against a warm
   kernel or in the browser. Opening and previewing a `.tmd` document runs its
   code, exactly like a Jupyter notebook. Do not preview documents you would not
   run. `--no-exec` renders cells as source instead.
-- **The preview binds to loopback by default.** Access is loopback-always; the
-  websocket enforces an origin check. Passing `--host` exposes the server on your
-  LAN behind a per-session token (`HttpOnly`, `SameSite=Lax`) printed at startup.
-  The LAN transport is plain HTTP, so treat `--host` as "trusted local network
-  only", never the public internet.
+- **The preview binds to loopback only.** There is no flag that exposes it on a
+  network. The websocket enforces an origin check (so a page on another site cannot
+  drive the control channel), and every HTTP response passes a `Host` allowlist (the
+  DNS-rebinding guard). To read a draft on another device, `build` it and serve the
+  folder yourself.
 - **The preview is a read-only view.** It never writes back to your source;
   click-to-source only navigates the editor.
 - **Symlinks inside your checkout are followed.** A `{{< include >}}`, `css:`,

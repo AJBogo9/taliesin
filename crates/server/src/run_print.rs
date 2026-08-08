@@ -161,8 +161,8 @@ impl Printer {
         if let Some(total) = v.get("total").and_then(|t| t.as_u64()) {
             self.total = Some(total as u32);
         }
-        // Only the cold path emits this (a warm-pool hit is near-instant and deliberately
-        // does not claim to be warming), so it is never printed for a wait that is not real.
+        // Only a genuine cold start emits this, so it is never printed for a wait that is
+        // not real.
         if phase == "warming-kernel" && !self.quiet && self.warming.insert(lang.to_string()) {
             println!("\x1b[2m⋯ starting the {lang} kernel\x1b[0m");
         }

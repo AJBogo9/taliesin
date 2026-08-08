@@ -14,8 +14,6 @@
 //! footer:                    # a string ⇒ left text; or { left/center/right }
 //!   right: [{ icon: github, href: "…" }]
 //! chapters: [index.tmd, …]   # presence ⇒ a book (no `type:` needed)
-//! mounts:                    # URL prefix ⇒ another project's directory
-//!   docs: ../docs
 //! ```
 //!
 //! Six keys were retired on 2026-08-02: `output:` and `toc:` (both wrote what the tool
@@ -60,10 +58,6 @@ pub struct SiteConfig {
     pub footer: Option<Footer>,
     /// Ordered chapter list (book only): a file name or `{ part, chapters }`.
     pub chapters: Vec<serde_yaml::Value>,
-    /// `mounts:` — other taliesin projects to mount under a URL prefix, so a site
-    /// can link to e.g. a separate docs `book` at `/docs`. In `preview` they're
-    /// served live; the static `build` recipe wires them with a second `build`.
-    pub mounts: Vec<Mount>,
     /// Project-pinned Python interpreter (`python:` in `_site.yml`), highest
     /// precedence in interpreter resolution. `None` falls back to `.venv`/env/default.
     pub python: Option<String>,
@@ -74,117 +68,6 @@ pub struct SiteConfig {
     ///
     /// Empty = no shared bibliography, which is the pre-existing per-document-only world.
     pub bibliography: Vec<String>,
-}
-
-/// One `mounts:` entry: serve the project at `path` (relative to the site root)
-/// under the `/at/` URL prefix.
-#[derive(Debug, Clone)]
-pub struct Mount {
-    pub at: String,
-    pub path: String,
-}
-
-/// Why a `mounts:` entry was refused by [`Mount::resolve`].
-///
-/// "Relative to the site root" was this key's documented contract and nothing enforced it,
-/// which made one config line the widest hole in the tool: `Path::join` **replaces** the
-/// base when its argument is absolute, and `..` climbed without limit, so
-/// `mounts: { x: /etc }` served `/etc` over HTTP (measured: `GET /x/hostname` → 200) and
-/// executed any `.tmd` found under a mounted tree. This is not a restriction on what a
-/// document may *compute* — it is a restriction on where a *config key* may point the
-/// server, which is the one class of untrusted-document defect this project does enforce
-/// rather than document (see `SECURITY.md`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MountRefusal {
-    /// An absolute `path:`. Never legitimate: a project config that names an absolute
-    /// directory is not portable to the machine that clones it.
-    Absolute,
-    /// The resolved directory left [`Mount::boundary`] — a `..` climb past the sibling
-    /// level, or a symlink whose target does.
-    OutsideBoundary,
-}
-
-impl Mount {
-    /// The directory a `path:` may resolve inside: the **parent** of the site root.
-    ///
-    /// `mounts:` exists to serve another project *beside* this one — every real mount in
-    /// this repo is one (`../docs/guide`, `../docs/internals`, `../corpus/course`,
-    /// `../corpus/tarn`) — so one level of `..` is the whole documented use, and anything
-    /// deeper has no caller. A root with no parent (the filesystem root) bounds to itself.
-    pub fn boundary(site_root: &Path) -> PathBuf {
-        let root = crate::includes::absolutize(site_root);
-        root.parent().map(Path::to_path_buf).unwrap_or(root)
-    }
-
-    /// Resolve `path:` against `site_root`, refusing anything outside [`Mount::boundary`].
-    ///
-    /// Returns the *lexical* target (callers canonicalize for display/serving, as before),
-    /// so a mount naming a directory that does not exist still reaches the caller's own
-    /// "no directory at …" warning instead of being reported as a traversal.
-    pub fn resolve(&self, site_root: &Path) -> Result<PathBuf, MountRefusal> {
-        let rel = Path::new(&self.path);
-        // `has_root` as well as `is_absolute` so a Windows drive/UNC root cannot slip past
-        // a Unix-only check, matching `includes::try_join_in`.
-        if rel.is_absolute() || rel.has_root() {
-            return Err(MountRefusal::Absolute);
-        }
-        let root = crate::includes::absolutize(site_root);
-        let target = crate::includes::normalize(&root.join(rel));
-        let boundary = Self::boundary(site_root);
-        if !target.starts_with(&boundary) {
-            return Err(MountRefusal::OutsideBoundary);
-        }
-        // Symlink defense. The lexical check governs the config *text*; a symlink is a
-        // filesystem fact the text cannot conjure, so `SECURITY.md`'s symlink allowance
-        // ("you placed it") holds for your own checkout and fails for an archive someone
-        // sent you — which is exactly the case `mounts:` is reachable in. Only checked when
-        // the target exists; a missing one cannot be an escape.
-        if let Ok(canon) = target.canonicalize() {
-            let cboundary = boundary.canonicalize().unwrap_or(boundary);
-            if !canon.starts_with(&cboundary) {
-                return Err(MountRefusal::OutsideBoundary);
-            }
-        }
-        Ok(target)
-    }
-
-    /// The warning shown for a refused mount: what was refused, why, and the shape that
-    /// works. Phrased so the fix is obvious to the author of a legitimate config, since a
-    /// misplaced project is a likelier cause than an attack.
-    pub fn refusal_warning(&self, site_root: &Path, why: MountRefusal) -> String {
-        let tail = match why {
-            MountRefusal::Absolute => "an absolute path is not allowed".to_string(),
-            MountRefusal::OutsideBoundary => {
-                format!(
-                    "it resolves outside {}",
-                    Self::boundary(site_root).display()
-                )
-            }
-        };
-        format!(
-            "mount '{}': ignoring `path: {}` — {tail}. A mount serves another project \
-             beside this one, so `path:` must be relative to the site root and may climb \
-             at most one level (e.g. `../docs`)",
-            self.at, self.path
-        )
-    }
-}
-
-/// Drop every `mounts:` entry that fails containment, warning once per entry.
-///
-/// Enforced here, at the single parse boundary, rather than at each consumer: `preview`
-/// serves mounts live, `build` prints a per-mount recipe, `map` reports them and
-/// `link_targets_enclosing_mount` validates links into them, and a check placed in one of
-/// those would leave the others reading the raw string. A refused mount is *absent*, so
-/// every one of them degrades the same way.
-fn retain_contained_mounts(root: &Path, mounts: &mut Vec<Mount>, warnings: &mut Vec<String>) {
-    mounts.retain(|m| match m.resolve(root) {
-        Ok(_) => true,
-        Err(why) => {
-            warnings.push(m.refusal_warning(root, why));
-            false
-        }
-    });
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -246,7 +129,6 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "nav",
     "footer",
     "chapters",
-    "mounts",
     "python",
     // No `theorems:`. The book-wide numbering policy went with front-matter
     // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
@@ -306,9 +188,7 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> S
             return SiteConfig::default();
         }
     };
-    let mut cfg = parse_native(&value, warnings, ConfigSource(Some(&text)));
-    retain_contained_mounts(root, &mut cfg.mounts, warnings);
-    cfg
+    parse_native(&value, warnings, ConfigSource(Some(&text)))
 }
 
 /// Whether a discovery warning is the benign "this directory has no `_site.yml`" advisory,
@@ -420,29 +300,8 @@ fn parse_native(
         nav: nav_from(value.get("nav")),
         footer: footer_from(value.get("footer")),
         chapters,
-        mounts: mounts_from(value.get("mounts")),
         python: str_of("python"),
         bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
-    }
-}
-
-/// Parse `mounts:` — a map of URL prefix to project directory, `{ docs: ../docs }`.
-///
-/// One spelling. The `- { at:, path: }` sequence form said the same thing with two extra
-/// key names and was retired on 2026-08-02 unused; a leftover one now draws the
-/// `mounts entry key` diagnostic from [`validate_mounts`] rather than mounting nothing.
-fn mounts_from(v: Option<&serde_yaml::Value>) -> Vec<Mount> {
-    match v {
-        Some(serde_yaml::Value::Mapping(m)) => m
-            .iter()
-            .filter_map(|(k, val)| {
-                Some(Mount {
-                    at: k.as_str()?.trim_matches('/').to_string(),
-                    path: val.as_str()?.to_string(),
-                })
-            })
-            .collect(),
-        _ => Vec::new(),
     }
 }
 
@@ -491,7 +350,7 @@ fn key_line(text: &str, key: &str) -> Option<usize> {
 }
 
 /// Warn on unrecognized keys against the closed native schema: top-level, and the
-/// nested `nav:`/`footer:`/`mounts:` structures (a typo in one of those silently drops
+/// nested `nav:`/`footer:` structures (a typo in one of those silently drops
 /// the whole section/item, so it warns with a "did you mean"). Every
 /// warning is prefixed `_site.yml` so it is file-located rather than an anonymous string.
 fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
@@ -503,8 +362,8 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: Con
         // `RETIRED_KEYS` first, so a key this config USED to honor is answered with what
         // to do instead. Without it a retired `toc:` draws "did you mean `logo`?" — a
         // confident instruction to write something unrelated. The `what` label is the
-        // register's scope column, so `config key` / `mounts entry key` entries are only
-        // consulted where they actually lived.
+        // register's scope column, so a `config key` entry is only consulted where it
+        // actually lived.
         warnings.push(format!(
             "{} {}",
             src.at(key),
@@ -520,7 +379,6 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: Con
         match key {
             "nav" => validate_nav_like(v, NAV_SECTION_KEYS, "nav", warnings, src),
             "footer" => validate_nav_like(v, FOOTER_SECTION_KEYS, "footer", warnings, src),
-            "mounts" => validate_mounts(v, warnings, src),
             _ => {}
         }
     }
@@ -578,32 +436,6 @@ fn validate_items(
                         did_you_mean(k, NAV_ITEM_KEYS)
                     ));
                 }
-            }
-        }
-    }
-}
-
-/// Validate `mounts:` in its sequence form (`- { at, path }`); the mapping form
-/// (`{ prefix: path }`) has author-chosen keys, so it can't be checked.
-/// Flag a `mounts:` written in the retired `- { at:, path: }` sequence form.
-///
-/// `mounts_from` reads the mapping form only, so a leftover sequence mounts *nothing* and
-/// the pages it should have served 404 — a silent failure worth a diagnostic. Every key in
-/// such an entry is reported through the shared `unknown_key_message`, which finds `at` and
-/// `path` in `RETIRED_KEYS` under the `mounts entry key` scope and answers with the mapping
-/// form to write instead.
-fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
-    let serde_yaml::Value::Sequence(seq) = v else {
-        return;
-    };
-    for item in seq {
-        if let serde_yaml::Value::Mapping(m) = item {
-            for k in m.keys().filter_map(|k| k.as_str()) {
-                warnings.push(format!(
-                    "{} {}",
-                    src.at(k),
-                    crate::frontmatter::unknown_key_message("mounts entry key", k, &[])
-                ));
             }
         }
     }
@@ -745,40 +577,6 @@ mod config_tests {
         assert!(w.is_empty(), "head: is a recognized key: {w:?}");
     }
 
-    /// A `mounts:` left in the retired `- { at:, path: }` form mounts nothing, so it must
-    /// not be silent: `mounts_from` reads the mapping form only.
-    #[test]
-    fn a_retired_mounts_sequence_is_diagnosed_not_silently_ignored() {
-        let mut w = Vec::new();
-        let v: serde_yaml::Value =
-            serde_yaml::from_str("title: X\nmounts:\n  - { at: docs, path: ../docs }\n").unwrap();
-        let cfg = parse_native(&v, &mut w, ConfigSource(None));
-        assert!(cfg.mounts.is_empty(), "the sequence form mounts nothing");
-        for key in ["at", "path"] {
-            let msg = w
-                .iter()
-                .find(|m| m.contains(&format!("`{key}`")))
-                .unwrap_or_else(|| panic!("no diagnostic for `{key}`: {w:?}"));
-            assert!(
-                msg.contains("mapping of URL prefix"),
-                "`{key}` must name the form to write instead, got: {msg}"
-            );
-        }
-    }
-
-    /// The mapping form is the one spelling and stays clean.
-    #[test]
-    fn the_mounts_mapping_form_parses_without_warning() {
-        let mut w = Vec::new();
-        let v: serde_yaml::Value =
-            serde_yaml::from_str("title: X\nmounts:\n  docs/guide: ../docs/guide\n").unwrap();
-        let cfg = parse_native(&v, &mut w, ConfigSource(None));
-        assert_eq!(cfg.mounts.len(), 1);
-        assert_eq!(cfg.mounts[0].at, "docs/guide");
-        assert_eq!(cfg.mounts[0].path, "../docs/guide");
-        assert!(w.is_empty(), "the mapping form warns about nothing: {w:?}");
-    }
-
     /// The silent-chapter-drop fix. `site::book::push_chapter_entry` consumes an entry only
     /// when it is a string or carries `file:`; anything else becomes an empty part header
     /// that `push_group` pops again, so the chapter vanishes with `check` exiting 0. Each
@@ -913,8 +711,8 @@ mod config_tests {
         assert_eq!(key_line(text, "nav"), Some(2));
         assert_eq!(key_line(text, "navigation"), Some(1));
         assert_eq!(key_line(text, "missing"), None);
-        // A list-item key is found too (`- at:` inside `mounts:`).
-        assert_eq!(key_line("mounts:\n  - at: /docs\n", "at"), Some(2));
+        // A list-item key is found too (`- text:` inside `nav:`).
+        assert_eq!(key_line("nav:\n  - text: Blog\n", "text"), Some(2));
     }
 
     #[test]
@@ -1079,7 +877,7 @@ mod config_tests {
     }
 
     #[test]
-    fn nested_nav_footer_mount_typos_warn_instead_of_silently_dropping() {
+    fn nested_nav_footer_typos_warn_instead_of_silently_dropping() {
         // A `nav:` section typo drops the whole side silently — must warn.
         let w = cfg_warnings("nav:\n  lefft:\n    - text: Blog\n      href: blog.tmd\n");
         assert!(
@@ -1103,26 +901,16 @@ mod config_tests {
                 .any(|w| w.contains("footer section `centre`") && w.contains("`center`")),
             "footer section typo: {w:?}"
         );
-
-        // A `mounts:` written in the retired sequence form mounts NOTHING, so every key in
-        // it is reported (see `a_retired_mounts_sequence_is_diagnosed_not_silently_ignored`
-        // for the message); here the point is that the shape is not accepted in silence.
-        let w = cfg_warnings("mounts:\n  - att: /docs\n    path: ../docs\n");
-        assert!(
-            w.iter().any(|w| w.contains("mounts entry key `att`")),
-            "mount key typo: {w:?}"
-        );
     }
 
     #[test]
-    fn valid_nested_nav_footer_mounts_have_no_warnings() {
-        // The real corpus shape: `{ left: [...], right: [...] }` with text/href items,
-        // a footer with left/center/right, and a `mounts:` mapping — none may warn.
+    fn valid_nested_nav_footer_have_no_warnings() {
+        // The real corpus shape: `{ left: [...], right: [...] }` with text/href items and
+        // a footer with left/center/right. Neither may warn.
         let w = cfg_warnings(concat!(
             "title: Site\n",
             "nav:\n  left:\n    - text: Blog\n      href: blog.tmd\n  right:\n    - icon: github\n      href: 'https://x'\n",
             "footer:\n  left:\n    - text: © 2026\n  center:\n    - text: mid\n  right:\n    - text: end\n",
-            "mounts:\n  docs: ../docs\n",
         ));
         assert!(w.iter().all(|w| !w.contains("unknown")), "{w:?}");
     }
@@ -1139,109 +927,5 @@ mod config_tests {
             "a valid config is not malformed: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    // Items 80 + 117 (2026-07-28). `mounts:` had *no* containment: measured before the fix,
-    // `mounts: { escaped: /etc }` under `preview` answered `GET /escaped/hostname` with 200
-    // and the contents of `/etc/hostname`, because `Path::join` replaces the base on an
-    // absolute argument and `..` climbed without limit.
-    //
-    // The positive row is load-bearing, not decoration: an all-negative table is a broken
-    // probe until proven otherwise (LESSONS.md), and it is also what stops a future "just
-    // reject `..`" simplification, since every real mount in this repo climbs one level.
-    #[test]
-    fn a_mount_may_not_escape_the_directory_beside_the_project() {
-        let dir = tmp("mount-escape");
-        // `ghost:` climbs to a directory that does not exist, which is the only row the
-        // *lexical* check owns: for a target that exists, the canonical symlink check below
-        // it refuses the same path, so without this row disabling the lexical check leaves
-        // every assertion green (measured — the mutant survived).
-        std::fs::write(
-            dir.join("_site.yml"),
-            "title: X\nmounts:\n  etc: /etc\n  up: ../../..\n  ghost: ../../nowhere-unlikely\n  \
-             sibling: ../beside\n",
-        )
-        .unwrap();
-        let mut warnings = Vec::new();
-        let cfg = load_config(&dir, &mut warnings);
-
-        let kept: Vec<&str> = cfg.mounts.iter().map(|m| m.at.as_str()).collect();
-        assert_eq!(
-            kept,
-            ["sibling"],
-            "an absolute and a climbing mount must both be dropped, the sibling kept: {kept:?}"
-        );
-        assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("mount 'etc'") && w.contains("absolute path is not allowed")),
-            "the absolute mount must say why: {warnings:?}"
-        );
-        for at in ["up", "ghost"] {
-            assert!(
-                warnings
-                    .iter()
-                    .any(|w| w.contains(&format!("mount '{at}'")) && w.contains("resolves outside")),
-                "the climbing mount '{at}' must name the boundary: {warnings:?}"
-            );
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    // The lexical check alone is fooled by a symlink, which is the shape an untrusted
-    // *archive* carries (`SECURITY.md`'s symlink allowance assumes you placed it, which is
-    // false for a project someone sent you — item 88's family).
-    #[cfg(unix)]
-    #[test]
-    fn a_mount_may_not_reach_outside_through_a_symlink() {
-        let dir = tmp("mount-symlink");
-        // `/etc` is outside the boundary (the temp dir), exists, and is read-only.
-        std::os::unix::fs::symlink("/etc", dir.join("link")).unwrap();
-        std::fs::write(dir.join("_site.yml"), "title: X\nmounts:\n  x: link\n").unwrap();
-        let mut warnings = Vec::new();
-        let cfg = load_config(&dir, &mut warnings);
-        assert!(
-            cfg.mounts.is_empty(),
-            "a mount whose lexical path is in-bounds but whose symlink target is not \
-             must be refused: {:?}",
-            cfg.mounts
-        );
-        assert!(
-            warnings.iter().any(|w| w.contains("resolves outside")),
-            "the symlink escape must be reported: {warnings:?}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    // The repo's own four mounts are the real-world positive row: they are the only mounts
-    // that exist anywhere, and all four climb one level (`../docs/guide`, `../corpus/tarn`).
-    // If containment ever narrows to "no `..` at all", this fails instead of the docs site
-    // silently losing its `/docs/` tree in preview.
-    #[test]
-    fn the_repos_own_site_keeps_every_mount() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../site");
-        let text = std::fs::read_to_string(root.join("_site.yml")).unwrap();
-        // Declared-vs-kept as an identity rather than a literal count, so adding a mount to
-        // the marketing site does not fail this test — only *refusing* one does.
-        let declared = serde_yaml::from_str::<serde_yaml::Value>(&text)
-            .unwrap()
-            .get("mounts")
-            .and_then(|m| m.as_mapping().map(serde_yaml::Mapping::len))
-            .unwrap();
-        assert!(declared >= 4, "the fixture must be real: {declared} mounts");
-
-        let mut warnings = Vec::new();
-        let cfg = load_config(&root, &mut warnings);
-        assert_eq!(
-            cfg.mounts.len(),
-            declared,
-            "every declared mount must survive containment; kept {:?} (warnings {:?})",
-            cfg.mounts.iter().map(|m| &m.at).collect::<Vec<_>>(),
-            warnings
-        );
-        assert!(
-            !warnings.iter().any(|w| w.contains("ignoring `path:")),
-            "no real mount may be refused: {warnings:?}"
-        );
     }
 }

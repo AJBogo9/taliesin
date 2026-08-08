@@ -43,14 +43,8 @@ even across files pulled in with `{{< include >}}`.
 
 ::: {.feature}
 ### Warm kernel
-A persistent Jupyter kernel (Python or R) runs your cells. A code change re-runs
+A persistent Jupyter kernel runs your `{python}` cells. A code change re-runs
 only the earliest changed cell and everything downstream, never the whole document.
-:::
-
-::: {.feature}
-### Preview on your phone
-`--host` exposes the live preview on your LAN with a QR code, so you can read the
-real, updating page on a phone while you write.
 :::
 
 ::: {.feature}

@@ -1,21 +1,12 @@
 # Taliesin marketing site: a website project, built by Taliesin itself.
-# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs are two
-# separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
-# in `preview`, and `build` writes each into `<out>/docs/guide` etc. of its own accord.
+# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs books and the
+# gallery exhibits are separate projects, composed into one deploy by tools/build-site.sh
+# (which `.githooks/pre-push` runs, and which resolves every link below against the
+# composed output). In `preview` this project serves its own pages only.
 title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.sh"
 favicon: favicon.svg
-
-# Serve the two sibling docs books + the gallery exhibits so the nav links resolve, live
-# in `preview` and on disk after `taliesin build site` (one command builds all seven).
-mounts:
-  docs/guide: ../docs/guide
-  docs/internals: ../docs/internals
-  gallery/course: ../corpus/course
-  gallery/tarn: ../corpus/tarn
-  gallery/descent: ../corpus/descent
-  gallery/analyst: ../corpus/analyst
 
 nav:
   left:

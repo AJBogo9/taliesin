@@ -10,7 +10,6 @@ use std::sync::OnceLock;
 #[derive(Clone, Copy)]
 enum Style {
     Ready,
-    Network,
     Built,
     Watch,
     Update,
@@ -26,17 +25,16 @@ impl Style {
     /// The fixed-width tag and its ANSI colour code.
     fn parts(self) -> (&'static str, &'static str) {
         match self {
-            Style::Ready => ("ready", "\x1b[32m"),     // green
-            Style::Network => ("network", "\x1b[36m"), // cyan
-            Style::Built => ("built", "\x1b[32m"),     // green
-            Style::Watch => ("watch", "\x1b[2m"),      // dim
-            Style::Update => ("update", "\x1b[36m"),   // cyan
-            Style::Source => ("source", "\x1b[34m"),   // blue
-            Style::Kernel => ("kernel", "\x1b[35m"),   // magenta
-            Style::Exec => ("exec", "\x1b[35m"),       // magenta (kernel work)
-            Style::Info => ("info", "\x1b[90m"),       // grey (a note, not an outcome)
-            Style::Warn => ("warn", "\x1b[33m"),       // yellow
-            Style::Error => ("error", "\x1b[31m"),     // red
+            Style::Ready => ("ready", "\x1b[32m"),   // green
+            Style::Built => ("built", "\x1b[32m"),   // green
+            Style::Watch => ("watch", "\x1b[2m"),    // dim
+            Style::Update => ("update", "\x1b[36m"), // cyan
+            Style::Source => ("source", "\x1b[34m"), // blue
+            Style::Kernel => ("kernel", "\x1b[35m"), // magenta
+            Style::Exec => ("exec", "\x1b[35m"),     // magenta (kernel work)
+            Style::Info => ("info", "\x1b[90m"),     // grey (a note, not an outcome)
+            Style::Warn => ("warn", "\x1b[33m"),     // yellow
+            Style::Error => ("error", "\x1b[31m"),   // red
         }
     }
 }
@@ -102,11 +100,6 @@ pub fn ready(url: &str, elapsed: std::time::Duration) {
             elapsed.as_millis()
         ),
     );
-}
-
-/// The LAN URL the preview is reachable at (printed only with `--host`).
-pub fn network(url: &str) {
-    line(Style::Network, &paint(url, "\x1b[1m"));
 }
 
 /// The one-line orientation hint for the preview's controls. Taliesin has no interactive

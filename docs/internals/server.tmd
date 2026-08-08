@@ -89,8 +89,7 @@ held releases it cleanly rather than poisoning it.
 ### The watcher
 
 `spawn_watcher` runs `notify` on its own thread (notify is synchronous) and watches the
-root project **plus every mounted sub-project**, so an edit to a mounted page
-hot-reloads exactly like a root one. Events are pumped through a channel so that thread
+project's directory. Events are pumped through a channel so that thread
 owns the watcher and can register watches for directories created after startup: the
 recursive-watch model added an inotify descriptor per directory, including
 `node_modules` and `.git`, which a large project uses to exhaust `max_user_watches` and
@@ -121,17 +120,23 @@ The lesson is the general one about a second mechanism for one job: the duplicat
 not stay a simplification, it becomes the degraded copy, and the drift shows up as
 behaviour the author has to remember rather than as a compile error.
 
-## LAN exposure & the `--host` token
+## Binding, and the two guards
 
-By default the server binds loopback only. `--host` binds `0.0.0.0` so a phone on
-the same network can open the live preview (the console prints the LAN URL and a QR
-code). That also means anyone on the network could reach it, so a shared guard in
-`serve/security.rs` (`new_session_token` / `lan_access` / `lan_token_guard`, installed via
-`with_lan_guard` on both servers) gates **non-loopback** requests behind a
-per-session token: the token is a random UUID minted at startup, threaded into the
-LAN URL/QR as `?t=…`, and the first tokened load sets a `tali_token` cookie so the
-rest of the session (assets, the websocket upgrade, reloads) authenticates with no
-client changes. Loopback peers are detected from `ConnectInfo` and exempted, so the
-local workflow (and the editor companion) is unaffected; a non-loopback request with
-no/wrong token gets a `403`. The websocket `Origin` check (`origin_allowed`) is an
-orthogonal, always-on guard against cross-site driving of the control channel.
+The server binds `127.0.0.1` and nothing else: there is no flag that puts it on a
+network. That is the whole exposure story, and it is why the two guards in
+`serve/security.rs` are both about a *local* peer rather than a remote one.
+
+`ws_origin_ok` gates the websocket upgrade on `Origin` against `Host`. A page on
+another site must not be able to open the control channel and send `restart_kernel`,
+which would destroy the warm kernel this whole design exists to keep. A loopback
+`Origin` is trusted (a second dev server, the editor companion); anything else that is
+not same-origin gets a `403`.
+
+`with_host_guard` applies `host_allowed` to every HTTP response: the `Host` header
+must name a loopback address. This is the DNS-rebinding defence, and it cannot be
+folded into the origin check, because under a rebind both headers are the attacker's
+domain and compare equal. A request with no `Host` is allowed: only a browser can
+mount a rebind, and a browser always sends one.
+
+Reading a draft on another device is a `build` and a static file server, not a flag on
+the preview.

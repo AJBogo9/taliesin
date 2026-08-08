@@ -90,6 +90,14 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 /// `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
 /// derives the tombstone from this table, so no hand-written test is owed.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    // --- The serve layer, retired 2026-08-09.
+    (
+        "config key",
+        "mounts",
+        "it was removed on 2026-08-09: build each project separately and link between \
+         them relatively, composing the deploy with a script (this repo's own is \
+         `tools/build-site.sh`)",
+    ),
     // --- The reactive tail and the second kernel language, retired 2026-08-08.
     (
         "input type",
@@ -261,18 +269,6 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "publish",
         "it was removed on 2026-08-08 with the `taliesin publish` verb: `build <dir> --out \
          <dir>` writes a plain folder any static host serves",
-    ),
-    (
-        "mounts entry key",
-        "at",
-        "the `- { at:, path: }` list form was removed on 2026-08-02: write `mounts:` as a \
-         mapping of URL prefix to project directory instead",
-    ),
-    (
-        "mounts entry key",
-        "path",
-        "the `- { at:, path: }` list form was removed on 2026-08-02: write `mounts:` as a \
-         mapping of URL prefix to project directory instead",
     ),
     (
         "front-matter key",

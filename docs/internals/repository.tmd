@@ -92,8 +92,9 @@ the page-walker does not swallow a nested book's pages:
   showcase + `reference/`).
 - **`docs/internals/`** is this book: how it is *built*.
 
-The marketing site mounts each at `/docs/guide` and `/docs/internals`; cross-book
-links are written as relative `.html`. Preview either directly with
+`tools/build-site.sh` writes each under the marketing site's deploy at `/docs/guide`
+and `/docs/internals`; cross-book links are written as relative `.html`. Preview either
+directly with
 `taliesin preview docs/guide` or `taliesin preview docs/internals`.
 
 ## The showcase: `site/` and `samples/`
@@ -188,7 +189,7 @@ exists:
 | `TALIESIN_CELL_SILENCE` | Seconds a cell may produce no output before interrupt (default `600`; `0` disables). The default liveness cap. |
 | `TALIESIN_CELL_TIMEOUT` | Optional per-cell wall-clock cap in seconds (**off** by default; `0` disables). |
 | `TALIESIN_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
-| `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them, `{python}` and `{js}` alike. Independent of `--host`, which does **not** turn it on (a `--host` preview without it only logs a warning). Not an HTML sanitizer. |
+| `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them, `{python}` and `{js}` alike. Not an HTML sanitizer. |
 | `TALIESIN_NO_CLEAR` | Keep the dev-server banner from clearing the terminal. |
 
 A few more are for build and test time rather than authoring: `TALIESIN_GIT_SHA`

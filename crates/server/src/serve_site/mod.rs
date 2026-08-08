@@ -29,64 +29,39 @@ use tokio::sync::{broadcast, mpsc};
 
 use crate::protocol::{self, Diagnostic};
 use crate::serve::{
-    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, lan_url, local_ip,
-    new_session_token, open_in_browser, percent_decode, print_qr, with_host_guard, with_identity,
-    with_lan_guard, ws_origin_ok,
+    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, open_in_browser, percent_decode,
+    with_host_guard, with_identity, ws_origin_ok,
 };
 
 mod exec_pool;
 use exec_pool::ExecPool;
 
-/// The whole live site: the root project plus any mounted sub-projects, all served
-/// through the same per-page live path. One builder task + one file watcher drive every
-/// project; a request routes to a project by URL prefix (see [`match_mount`]).
+/// The whole live site: one project, served through the per-page live path. One builder
+/// task + one file watcher drive it.
 struct SiteApp {
-    /// The root site (URL prefix `""`).
+    /// The project being served.
     root: Arc<Project>,
-    /// `mounts:` — other taliesin projects (e.g. a docs `book` or a gallery exhibit),
-    /// each served under a URL prefix. Every mount is a full [`Project`]: its pages
-    /// execute live and hot-reload exactly like the root's, so a mounted `{python}`/`{r}`
-    /// cell runs in `preview` (not just in a static `build`).
-    mounts: Vec<MountPoint>,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
     /// The bypass lane for pages that need no kernel (AP3-1). See [`SiteApp::queue_build`].
     fast_tx: mpsc::UnboundedSender<BuildMsg>,
-    /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
-    /// loopback *origin* may open the control-channel ws (see [`origin_allowed`]).
-    loopback_bound: bool,
 }
 
 impl SiteApp {
-    /// The project a build message / request targets: the root (key `""`) or a mount by
-    /// its prefix. `None` if a stale key names a mount that is no longer present.
-    fn project(&self, key: &ProjectKey) -> Option<&Arc<Project>> {
-        if key.0.is_empty() {
-            Some(&self.root)
-        } else {
-            self.mounts
-                .iter()
-                .find(|m| m.prefix == key.0)
-                .map(|m| &m.project)
-        }
-    }
-
     /// Queue a page rebuild on the lane that fits it (AP3-1).
     ///
-    /// **The defect.** One builder task consumed the whole server's build queue — root and
-    /// every mount alike — awaiting each page to completion. It serialized on the wrong
-    /// predicate: a page with **no code cells** needs no kernel, yet it queued behind
-    /// kernel work it would never use. Measured on a two-page preview with a warm pool, a
-    /// cell-free page's trivial prose edit landed in **0.11 s** alone and **12.15 s**
-    /// (110x) when an unrelated page was 1.2 s into a 12 s `{python}` cell. That is the
-    /// normal shape of this tool's own site, which `mounts:` both dogfood books beside a
-    /// corpus that has genuinely slow cells.
+    /// **The defect.** One builder task consumed the whole server's build queue, awaiting
+    /// each page to completion. It serialized on the wrong predicate: a page with **no code
+    /// cells** needs no kernel, yet it queued behind kernel work it would never use.
+    /// Measured on a two-page preview, a cell-free page's trivial prose edit landed in
+    /// **0.11 s** alone and **12.15 s** (110x) when an unrelated page was 1.2 s into a 12 s
+    /// `{python}` cell.
     ///
-    /// **Why not just parallelise the builder.** Serialization is what makes the shared
-    /// warm pool and the task-owned `ExecPool` race-free, and `ExecPool` is under the M6a
-    /// freeze. So there are two *serial* lanes, not concurrent executors: the exec lane
-    /// owns every pool and is unchanged, and the fast lane owns nothing and never touches
-    /// a pool. Neither lane gains any concurrency of its own.
+    /// **Why not just parallelise the builder.** Serialization is what makes the
+    /// task-owned `ExecPool` race-free, and `ExecPool` is under the M6a freeze. So there
+    /// are two *serial* lanes, not concurrent executors: the exec lane owns the pool and is
+    /// unchanged, and the fast lane owns nothing and never touches it. Neither lane gains
+    /// any concurrency of its own.
     ///
     /// **Routing, and why it cannot race.** A page's lane is decided by what its LAST
     /// completed build found (`PageDoc::needs_kernel`, which starts `true` so an unbuilt
@@ -98,30 +73,27 @@ impl SiteApp {
     /// The one cost is the edit that adds a page's *first* code cell: it routes to the fast
     /// lane, which renders, discovers cells, and hands the message to the exec lane —
     /// one wasted render, once, and the flag is right from then on.
-    fn queue_build(&self, key: ProjectKey, rel: String) {
+    fn queue_build(&self, rel: String) {
         let cell_free = self
-            .project(&key)
-            .and_then(|p| p.pages.lock().get(&rel).map(|ps| ps.doc.cell_free))
+            .root
+            .pages
+            .lock()
+            .get(&rel)
+            .map(|ps| ps.doc.cell_free)
             .unwrap_or(false);
         let tx = if cell_free {
             &self.fast_tx
         } else {
             &self.build_tx
         };
-        let _ = tx.send(BuildMsg::Build(key, rel));
+        let _ = tx.send(BuildMsg::Build(rel));
     }
 }
 
-/// A project's routing + build identity: `""` for the root site, otherwise the mount
-/// prefix (e.g. `gallery/course`). The builder keys each project's [`ExecPool`] by it.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct ProjectKey(String);
-
-/// A servable project: the root site or a mounted sub-project. Owns the per-project live
-/// state the builder and router act on — the discovered [`Site`], plus the live per-page
-/// block state + broadcast channels, created lazily on first visit.
+/// The served project. Owns the live state the builder and router act on: the discovered
+/// [`Site`], plus the live per-page block state + broadcast channels, created lazily on
+/// first visit.
 struct Project {
-    key: ProjectKey,
     dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
@@ -149,41 +121,6 @@ impl Project {
     }
 }
 
-/// A mounted sub-project served under `prefix` (e.g. `gallery/course`).
-struct MountPoint {
-    prefix: String,
-    project: Arc<Project>,
-}
-
-/// Longest-prefix match of a request `path` against mount `prefixes` (each like
-/// `gallery/course`). Returns the winning mount index and `path` with that prefix (and
-/// its trailing `/`) removed; `None` when nothing matches, i.e. the request belongs to
-/// the root project. Pure — this is the routing seam, unit-tested without any
-/// `Site`/kernel; the live per-page wiring on top is browser-verified.
-fn match_mount<'a>(prefixes: &[String], path: &'a str) -> Option<(usize, &'a str)> {
-    let mut best: Option<(usize, usize)> = None; // (index, prefix byte-len)
-    for (i, p) in prefixes.iter().enumerate() {
-        let hit = path == p || path.strip_prefix(p).is_some_and(|r| r.starts_with('/'));
-        if hit && best.is_none_or(|(_, len)| p.len() > len) {
-            best = Some((i, p.len()));
-        }
-    }
-    best.map(|(i, _)| {
-        let sub = path.strip_prefix(&prefixes[i]).unwrap_or("");
-        (i, sub.strip_prefix('/').unwrap_or(sub))
-    })
-}
-
-/// Resolve a request `path` to the project that owns it (root or a mount) and the path
-/// with the mount prefix stripped. The root project is the fallback when no mount matches.
-fn resolve_project<'a>(app: &'a SiteApp, path: &'a str) -> (&'a Arc<Project>, &'a str) {
-    let prefixes: Vec<String> = app.mounts.iter().map(|m| m.prefix.clone()).collect();
-    match match_mount(&prefixes, path) {
-        Some((i, sub)) => (&app.mounts[i].project, sub),
-        None => (&app.root, path),
-    }
-}
-
 /// The project source `rel` a client's `?page=` sub-key names, or `None` when it names no
 /// page in this project.
 ///
@@ -197,36 +134,11 @@ fn resolve_page_rel(project: &Project, sub: &str) -> Option<String> {
     project.site.lock().page(sub).map(|p| p.rel.clone())
 }
 
-/// The `?page=` websocket key for a page: prefixed by the project's mount so the ws
-/// handler routes the client back to the owning project (the root uses the bare rel).
-fn ws_page_key(project: &Project, rel: &str) -> String {
-    if project.key.0.is_empty() {
-        rel.to_string()
-    } else {
-        format!("{}/{}", project.key.0, rel)
-    }
-}
-
-/// Attribute a changed absolute path to the project whose root is its deepest ancestor,
-/// returning that project's key + the path relative to that root. `None` if under no
-/// project root. Pure — the watcher's routing seam; unit-tested without any I/O.
-fn classify_change(roots: &[(ProjectKey, PathBuf)], abs: &Path) -> Option<(ProjectKey, PathBuf)> {
-    roots
-        .iter()
-        .filter_map(|(key, root)| {
-            abs.strip_prefix(root)
-                .ok()
-                .map(|rel| (root.as_os_str().len(), key.clone(), rel.to_path_buf()))
-        })
-        .max_by_key(|(len, _, _)| *len)
-        .map(|(_, key, rel)| (key, rel))
-}
-
 /// A job for the executor worker: rebuild a page, or restart its kernel first
 /// (the dev-menu "Restart kernel" action) then rebuild.
 enum BuildMsg {
-    Build(ProjectKey, String),
-    Restart(ProjectKey, String),
+    Build(String),
+    Restart(String),
     /// An explicit run from `taliesin run` (the editor's Run Cell): build this page with
     /// the executor capped to `scope`, then announce completion on the page's broadcast
     /// tagged with `run_id` so the requesting client knows its own run finished.
@@ -235,7 +147,6 @@ enum BuildMsg {
     /// queue is what keeps one page's builds totally ordered. A run that overtook a
     /// pending save would execute stale source.
     Run {
-        key: ProjectKey,
         rel: String,
         scope: crate::runspec::RunScope,
         run_id: String,
@@ -524,30 +435,18 @@ fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
 }
 
 /// Entry point for `taliesin preview <dir|file.tmd>`.
-pub fn run(
-    target: Target,
-    port: u16,
-    open: bool,
-    expose: bool,
-    headless: bool,
-) -> std::io::Result<()> {
+pub fn run(target: Target, port: u16, open: bool, headless: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    let result = rt.block_on(serve(target, port, open, expose, headless));
+    let result = rt.block_on(serve(target, port, open, headless));
     // `serve` returns on a shutdown signal (see `crate::serve::shutdown_signal`);
-    // force the runtime down so the builder task that owns the warm pool + kernels is
-    // dropped promptly, running its teardown (the forkserver group-kill + kernel
-    // SIGKILLs). Bounded so a wedged task can't hang exit; the kills are synchronous.
+    // force the runtime down so the builder task that owns the kernels is dropped
+    // promptly, running its teardown (the kernel SIGKILLs). Bounded so a wedged task
+    // can't hang exit; the kills are synchronous.
     rt.shutdown_timeout(std::time::Duration::from_secs(5));
     result
 }
 
-async fn serve(
-    target: Target,
-    port: u16,
-    open: bool,
-    expose: bool,
-    headless: bool,
-) -> std::io::Result<()> {
+async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
     // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
@@ -572,59 +471,10 @@ async fn serve(
         crate::log::warn(w);
     }
     let page_count = site.pages.len();
-    // Discover any `mounts:` sub-projects (e.g. a docs book under /docs) once. Each becomes
-    // a full `Project`, so its pages execute live + hot-reload under its URL prefix.
-    let mounts: Vec<MountPoint> = site
-        .config
-        .mounts
-        .clone()
-        .into_iter()
-        .filter_map(|m| {
-            // Containment (item 80) is enforced once in `load_config`, so a refusal here can
-            // only come from a mount that did not travel through it. Kept anyway: this is
-            // the call site that turns a path into a live HTTP root plus an executor, and it
-            // must not be the one place that trusts the string.
-            let mroot = match m.resolve(&root) {
-                Ok(p) => p,
-                Err(why) => {
-                    crate::log::warn(&m.refusal_warning(&root, why));
-                    return None;
-                }
-            };
-            let mroot = mroot.canonicalize().unwrap_or(mroot);
-            if !mroot.is_dir() {
-                crate::log::warn(&format!(
-                    "mount '{}': no directory at {}",
-                    m.at,
-                    mroot.display()
-                ));
-                return None;
-            }
-            crate::log::watching(
-                &mroot.display().to_string(),
-                &format!("mounted at /{}/", m.at),
-            );
-            let msite = Site::discover_with(&mroot, taliesin_core::DraftMode::Include);
-            Some(MountPoint {
-                prefix: m.at.clone(),
-                project: Arc::new(Project {
-                    key: ProjectKey(m.at),
-                    dir: mroot,
-                    site: Mutex::new(msite),
-                    pages: Mutex::new(HashMap::new()),
-                    runs: Default::default(),
-                    // A mount is always a whole project; only the root can be a single
-                    // document, and a single document declares no `mounts:`.
-                    scope: None,
-                }),
-            })
-        })
-        .collect();
-    // A project with nothing to serve: `check <dir>` already exits 1 here, while `preview`
-    // used to bind a port, 404 `/`, and boot the kernel pool for nothing. The two front
-    // doors must agree. A page-less root that only `mounts:` sub-projects is legitimate —
-    // it is how a docs container is previewed — so it is not empty.
-    if page_count == 0 && mounts.is_empty() {
+    // A project with nothing to serve: `build <dir> --check-only` already exits 1 here,
+    // while `preview` used to bind a port, 404 `/`, and boot a kernel for nothing. The two
+    // front doors must agree.
+    if page_count == 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("no .tmd pages found under {}", root.display()),
@@ -634,32 +484,19 @@ async fn serve(
     let (fast_tx, fast_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
         root: Arc::new(Project {
-            key: ProjectKey(String::new()),
             dir: root.clone(),
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
             runs: Default::default(),
             scope: scoped,
         }),
-        mounts,
         build_tx,
         fast_tx,
-        loopback_bound: !expose,
     });
 
     spawn_builder(app.clone(), build_rx);
     spawn_fast_builder(app.clone(), fast_rx);
     spawn_watcher(app.clone());
-
-    // With --host the whole site is LAN-reachable; gate non-loopback access behind a
-    // per-session token threaded into the LAN URL/QR (loopback stays token-free).
-    let token: Option<Arc<str>> = expose.then(|| Arc::from(new_session_token()));
-    // Under --host, the bound LAN IP is a legitimate `Host`; in loopback mode only
-    // loopback names are (the DNS-rebinding allowlist).
-    let lan_ip: Option<Arc<str>> = expose
-        .then(local_ip)
-        .flatten()
-        .map(|ip| Arc::from(ip.to_string()));
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
@@ -674,10 +511,9 @@ async fn serve(
         .fallback(page_or_asset)
         .with_state(app.clone());
     let router = with_identity(router, &session_key);
-    let router = with_lan_guard(router, token.clone());
-    let router = with_host_guard(router, lan_ip);
+    let router = with_host_guard(router);
 
-    let (listener, addr) = bind_with_fallback(port, expose, &session_key).await?;
+    let (listener, addr) = bind_with_fallback(port, &session_key).await?;
     let port = addr.port();
     // Publish where this project's session is listening, so `taliesin run` attaches to
     // THIS server rather than starting a second one. A second server would mean a second
@@ -686,13 +522,9 @@ async fn serve(
     // (`bind_with_fallback` may have stepped past a busy one).
     crate::session::write_hint(&session_key, port);
     let local = format!("http://127.0.0.1:{port}");
-    let network = expose
-        .then(local_ip)
-        .flatten()
-        .map(|ip| lan_url(&format!("http://{ip}:{port}"), token.as_ref()));
 
-    // A session has nobody watching its console: the screen clear, banner, QR and hints
-    // are for a preview you launched and are looking at. Announce one line instead, so
+    // A session has nobody watching its console: the screen clear, banner and hints are
+    // for a preview you launched and are looking at. Announce one line instead, so
     // `taliesin run` still leaves something greppable behind if it misbehaves.
     if headless {
         crate::log::info(&format!("session listening on {local}"));
@@ -700,26 +532,12 @@ async fn serve(
         crate::log::clear_screen();
         crate::log::banner(taliesin_core::VERSION);
         crate::log::ready(&local, start.elapsed());
-        if let Some(net) = &network {
-            crate::log::network(net);
-        } else if expose {
-            crate::log::warn("--host set, but no LAN address was found");
-        }
         crate::log::first_run_notice();
         crate::log::keys_hint();
         crate::log::watching(
             &root.display().to_string(),
             &format!("site, {page_count} pages"),
         );
-        if let Some(net) = &network {
-            print_qr(net);
-        }
-        if expose && std::env::var_os("TALIESIN_NO_EXEC").is_none() {
-            crate::log::warn(
-                "code cells run on this machine; only serve documents you trust over --host \
-                 (pass --no-exec to preview as source)",
-            );
-        }
     }
     if open {
         // A document target opens at its own page; a project target at its home.
@@ -728,8 +546,7 @@ async fn serve(
             None => open_in_browser(&local),
         }
     }
-    // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
-    // (loopback detection); harmless when no guard is installed.
+    // `into_make_service_with_connect_info` surfaces the peer address to the router.
     let server = axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
@@ -806,10 +623,8 @@ async fn page_or_asset(
     uri: axum::http::Uri,
 ) -> axum::response::Response {
     let path = percent_decode(uri.path().trim_start_matches('/'));
-    // Route to the owning project (root or a mount) by URL prefix. A mount now serves
-    // through the SAME live per-page path as the root, so its `{python}`/`{r}` cells
-    // execute live in preview (replacing the old static pre-exec render of a mount).
-    let (project, sub) = resolve_project(&app, &path);
+    let project = &app.root;
+    let sub = path.as_str();
     let lookup = if sub.is_empty() {
         // For a single-document preview the document IS the root. `preview note.tmd`
         // serves a project of one page called `note.html`, and without this the bare
@@ -880,7 +695,7 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
-        app.queue_build(project.key.clone(), rel.clone());
+        app.queue_build(rel.clone());
     }
     site_page_html(project, page)
 }
@@ -1005,10 +820,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         js_str(&base_dir.to_string_lossy()),
         js_str(&project.dir.to_string_lossy()),
     );
-    let ws_path = format!(
-        "/ws?page={}",
-        encode_query(&ws_page_key(project, &page.rel))
-    );
+    let ws_path = format!("/ws?page={}", encode_query(&page.rel));
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
     // (depth-relative, served at the root). Empty for a project with no index.
     let search_cfg = if chrome.search_index.is_empty() {
@@ -1130,7 +942,7 @@ async fn ws_handler(
     Query(q): Query<HashMap<String, String>>,
     State(app): State<Arc<SiteApp>>,
 ) -> axum::response::Response {
-    if !ws_origin_ok(&headers, app.loopback_bound) {
+    if !ws_origin_ok(&headers) {
         return (
             axum::http::StatusCode::FORBIDDEN,
             "cross-origin websocket refused",
@@ -1145,10 +957,10 @@ async fn ws_handler(
 
 /// `POST /__taliesin/run`: execute part of a page and stream the result as NDJSON.
 ///
-/// Loopback only, unconditionally. A run is on-demand code execution, and while the
-/// preview already executes this project's cells on save, that is the author's own editor
-/// driving it. Under `--host` the LAN token gates *viewing*; it must not also hand a
-/// visitor a trigger. `taliesin run` is always local, so nothing legitimate is lost.
+/// Loopback only, checked on the peer address rather than inherited from the bind. The
+/// server binds loopback anyway, so this is belt-and-braces, but a run is on-demand code
+/// execution, which is the one route where a second, independent check is worth its line.
+/// `taliesin run` is always local, so nothing legitimate is lost.
 async fn run_handler(
     axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
     State(app): State<Arc<SiteApp>>,
@@ -1200,7 +1012,6 @@ async fn run_handler(
     // The exec lane unconditionally: a run request asserts the page has cells, and the
     // bypass lane owns no executor.
     let _ = app.build_tx.send(BuildMsg::Run {
-        key: project.key.clone(),
         rel: rel.clone(),
         scope,
         run_id: run_id.clone(),
@@ -1255,36 +1066,27 @@ async fn interrupt_handler(
 /// Compares canonicalized paths rather than strings so a symlinked or `..`-laden argument
 /// still finds its page.
 fn page_for_input(app: &Arc<SiteApp>, input: &Path) -> Option<(Arc<Project>, String)> {
-    for project in std::iter::once(&app.root).chain(app.mounts.iter().map(|m| &m.project)) {
-        let hit = {
-            let site = project.site.lock();
-            site.pages
-                .iter()
-                .find(|p| {
-                    std::fs::canonicalize(&p.input)
-                        .map(|c| c == input)
-                        .unwrap_or(false)
-                })
-                .map(|p| p.rel.clone())
-        };
-        if let Some(rel) = hit {
-            return Some((project.clone(), rel));
-        }
-    }
-    None
+    let project = &app.root;
+    let rel = {
+        let site = project.site.lock();
+        site.pages
+            .iter()
+            .find(|p| {
+                std::fs::canonicalize(&p.input)
+                    .map(|c| c == input)
+                    .unwrap_or(false)
+            })
+            .map(|p| p.rel.clone())
+    }?;
+    Some((project.clone(), rel))
 }
 
 async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     let (mut sink, mut stream) = socket.split();
 
-    // Route the client's page key (possibly `<mount-prefix>/<rel-or-url>`) to its owning
-    // project, then normalise to that project's source rel (the key may be a url).
-    let (project, rel) = {
-        let (project, sub) = resolve_project(&app, &page_key);
-        let project = project.clone();
-        let rel = resolve_page_rel(&project, sub);
-        (project, rel)
-    };
+    // Normalise the client's page key to a source rel (the key may be a url).
+    let project = app.root.clone();
+    let rel = resolve_page_rel(&project, &page_key);
 
     // A `?page=` the owning project cannot resolve names no page at all, so there is
     // nothing to render, subscribe to, or rebuild — `build_page` already returns
@@ -1311,7 +1113,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
         (full_render_json(&ps.doc), ps.tx.subscribe(), created)
     };
     if created {
-        app.queue_build(project.key.clone(), rel.clone());
+        app.queue_build(rel.clone());
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -1342,7 +1144,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                     if is_restart_kernel(t.as_str()) {
                         let _ = app
                             .build_tx
-                            .send(BuildMsg::Restart(project.key.clone(), rel.clone()));
+                            .send(BuildMsg::Restart(rel.clone()));
                     } else {
                         handle_client_msg(t.as_str());
                     }
@@ -1403,95 +1205,49 @@ fn op_json(op: &BlockOp, generation: u64) -> String {
 
 fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
-        // One ExecPool per project (root + each mount), so a mounted page executes on its
-        // OWN _freeze + interpreters. `exec_pool.rs` is used verbatim, once per project.
-        // Resolve each project's interpreters from ITS OWN _site.yml/root (python:/r:, a
-        // project .venv, env, or default). Boot a single forkserver warm pool for the root's
-        // Python and share it only with projects whose interpreter matches (a mismatched
-        // mount cold-starts — no forkserver-per-mount). The pools + warm pool are owned by
-        // this task and dropped on channel close (server shutdown), which kills every
-        // forkserver daemon + idle kernel. If `TALIESIN_PYTHON` is unset or the forkserver
-        // can't boot, `warm_pool_for_preview` is inert and every page cold-starts.
-        let mut specs: Vec<(Arc<Project>, crate::interpreter::Resolved)> = Vec::new();
-        for project in std::iter::once(&app.root).chain(app.mounts.iter().map(|m| &m.project)) {
-            let py = {
-                let s = project.site.lock();
-                crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
-            };
-            specs.push((project.clone(), py));
-        }
-        let root_py = specs[0].1.clone();
-        let warm_pool = crate::warm_pool::warm_pool_for_preview(&root_py).await;
-        let mut pools: HashMap<ProjectKey, ExecPool> = HashMap::new();
-        for (project, py) in &specs {
-            let wp = if py.path == root_py.path {
-                warm_pool.clone()
-            } else {
-                None
-            };
-            pools.insert(
-                project.key.clone(),
-                ExecPool::new(project.dir.join("_freeze"), wp, py.clone()),
-            );
-        }
+        // The project's one ExecPool. `exec_pool.rs` is used verbatim. Interpreters come
+        // from the project's own `_site.yml`/root (python:, a project .venv, env, or
+        // default). The pool is owned by this task and dropped on channel close (server
+        // shutdown), which kills every kernel it holds.
+        let project = app.root.clone();
+        let py = {
+            let s = project.site.lock();
+            crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
+        };
+        let mut pool = ExecPool::new(project.dir.join("_freeze"), py);
         while let Some(msg) = build_rx.recv().await {
             match msg {
-                BuildMsg::Build(key, rel) => {
-                    let project = app.project(&key).cloned();
-                    if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
-                        build_page_guarded(&project, &rel, Some(pool), RunRequest::none()).await;
-                    }
+                BuildMsg::Build(rel) => {
+                    build_page_guarded(&project, &rel, Some(&mut pool), RunRequest::none()).await;
                 }
                 BuildMsg::Run {
-                    key,
                     rel,
                     scope,
                     run_id,
                     epoch,
                 } => {
-                    let project = app.project(&key).cloned();
-                    if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
-                        build_page_guarded(
-                            &project,
-                            &rel,
-                            Some(pool),
-                            RunRequest {
-                                scope,
-                                run_id: Some(run_id.clone()),
-                                epoch: Some(epoch),
-                            },
-                        )
-                        .await;
-                    } else {
-                        // The page or its project vanished between request and dequeue.
-                        // The client is waiting on a terminal message for `run_id` and
-                        // would otherwise hang until its own timeout, so answer here too:
-                        // every path out of a queued run must produce exactly one.
-                        if let Some(project) = app.project(&key).cloned()
-                            && let Some(ps) = project.pages.lock().get(&rel)
-                        {
-                            let _ = ps.tx.send(protocol::run_done(
-                                Some(&rel),
-                                &run_id,
-                                "error",
-                                Some("no executor for this project"),
-                            ));
-                        }
-                    }
+                    build_page_guarded(
+                        &project,
+                        &rel,
+                        Some(&mut pool),
+                        RunRequest {
+                            scope,
+                            run_id: Some(run_id.clone()),
+                            epoch: Some(epoch),
+                        },
+                    )
+                    .await;
                 }
-                BuildMsg::Restart(key, rel) => {
+                BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes every
                     // cell against the fresh kernel).
-                    let project = app.project(&key).cloned();
-                    if let (Some(project), Some(pool)) = (project, pools.get_mut(&key)) {
-                        pool.restart(&rel);
-                        build_page_guarded(&project, &rel, Some(pool), RunRequest::none()).await;
-                        // A fresh kernel means fresh outputs — including any `ojs_define`
-                        // values. Reload the page so the `{js}` cells re-bind to the fresh
-                        // `tali-define` blobs from a clean module scope.
-                        if let Some(ps) = project.pages.lock().get(&rel) {
-                            let _ = ps.tx.send(protocol::reload());
-                        }
+                    pool.restart(&rel);
+                    build_page_guarded(&project, &rel, Some(&mut pool), RunRequest::none()).await;
+                    // A fresh kernel means fresh outputs, including any `ojs_define`
+                    // values. Reload the page so the `{js}` cells re-bind to the fresh
+                    // `tali-define` blobs from a clean module scope.
+                    if let Some(ps) = project.pages.lock().get(&rel) {
+                        let _ = ps.tx.send(protocol::reload());
                     }
                 }
             }
@@ -1512,18 +1268,14 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
             // unconditionally, because a run request is a statement that the page HAS
             // cells. Matching it here anyway keeps the enum exhaustive rather than
             // silently dropping a run if that routing ever changes.
-            let (key, rel, req) = match msg {
-                BuildMsg::Build(key, rel) | BuildMsg::Restart(key, rel) => {
-                    (key, rel, RunRequest::none())
-                }
+            let (rel, req) = match msg {
+                BuildMsg::Build(rel) | BuildMsg::Restart(rel) => (rel, RunRequest::none()),
                 BuildMsg::Run {
-                    key,
                     rel,
                     scope,
                     run_id,
                     epoch,
                 } => (
-                    key,
                     rel,
                     RunRequest {
                         scope,
@@ -1532,15 +1284,12 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
                     },
                 ),
             };
-            let Some(project) = app.project(&key).cloned() else {
-                continue;
-            };
+            let project = app.root.clone();
             if build_page_guarded(&project, &rel, None, req.clone()).await
                 == BuildOutcome::NeedsKernel
             {
                 let _ = app.build_tx.send(match req.run_id {
                     Some(run_id) => BuildMsg::Run {
-                        key,
                         rel,
                         scope: req.scope,
                         run_id,
@@ -1549,7 +1298,7 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
                         // here would launder away a cancel that arrived in between.
                         epoch: req.epoch.unwrap_or_default(),
                     },
-                    None => BuildMsg::Build(key, rel),
+                    None => BuildMsg::Build(rel),
                 });
             }
         }
@@ -1873,11 +1622,7 @@ fn is_tmd(p: &Path) -> bool {
 
 fn spawn_watcher(app: Arc<SiteApp>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
-    // Watch the root site AND every mounted sub-project's dir, so an edit to a mounted
-    // page hot-reloads it exactly like a root page.
-    let roots: Vec<PathBuf> = std::iter::once(app.root.dir.clone())
-        .chain(app.mounts.iter().map(|m| m.project.dir.clone()))
-        .collect();
+    let roots: Vec<PathBuf> = vec![app.root.dir.clone()];
 
     std::thread::spawn(move || {
         // Pump events through a channel so this thread owns the watcher and can register
@@ -1897,8 +1642,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                     return;
                 }
             };
-        // A non-recursive watch on every directory except the pruned generated/VCS trees,
-        // across the root site and every mounted sub-project.
+        // A non-recursive watch on every directory except the pruned generated/VCS trees.
         for base in &roots {
             for dir in crate::serve::watch_tree(base) {
                 if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
@@ -2178,85 +1922,23 @@ fn rebuild_project(
             }
         }
     }
-    // The Cmd-K index is GLOBAL — one `search-index.js` for every tab — so the per-page
-    // refresh below, keyed on the open tabs being rebuilt, cannot keep it true: a renumbered
-    // figure would go stale in the fragments of every page nobody happens to have open, and
-    // Cmd-K would surface a snippet contradicting the page it links to. That is the defect
-    // the discovery-time ordering exists to prevent, so it must not come back on the warm
-    // path. Only on a real move (a prose edit still refreshes one page's fragment below).
+    // The Cmd-K index is GLOBAL (one `search-index.js` for every tab), so a per-page
+    // refresh keyed on the open tabs cannot keep it true: a renumbered figure would go stale
+    // in the fragments of every page nobody happens to have open, and Cmd-K would surface a
+    // snippet contradicting the page it links to. The index is rebuilt whole, and only on a
+    // real anchor move; a prose edit reaches the palette on the next discovery.
     if moved {
         project.site.lock().rebuild_search_index();
     }
-    // Cloned once, after the refresh and before the loop: the fragment render below runs OFF
-    // the lock (see the note there) but must resolve against the registry the served pages
-    // use, or Cmd-K indexes a bare "Figure" for text the page shows as "Figure 1.1".
-    let xref_targets = project.site.lock().xref_targets.clone();
-    // Refresh the cross-page Cmd-K index for each rebuilt page, so a re-fetch of
-    // `/search-index.js` (the client re-fetches on each palette open in preview) reflects
-    // the edit's new headings/prose instead of staying frozen at discovery. Per-page so a
-    // big book re-renders one page, not the whole site. The fragment is rendered OFF the
-    // site lock and under a panic guard: this runs on the unguarded dispatch task (unlike
-    // `build_page`, which has its own guard), and a full render under the lock would stall
-    // every other site-lock reader (page serving, `/search-index.js`) on each save.
-    for rel in &to_rebuild {
-        // Read the chapter under the same brief lock as the page clone: the RENDER stays
-        // off-lock (the point of this split), and the index gets the same numbers the page
-        // shows ("Theorem 2.1", not "Theorem 1").
-        let found = {
-            let site = project.site.lock();
-            site.page(rel)
-                .map(|p| (p.clone(), site.chapter_for(p), site.render_defaults()))
-        };
-        let Some((page, chapter, site_defaults)) = found else {
-            continue;
-        };
-        let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            taliesin_core::site::page_search_fragment(
-                &page,
-                chapter,
-                &xref_targets,
-                Some(&site_defaults),
-            )
-        }));
-        // A render panic keeps the last-good fragment (don't wipe the page from search).
-        if let Ok(fragment) = computed {
-            app.root
-                .site
-                .lock()
-                .install_search_fragment(&page.rel, fragment);
-        }
-    }
     for rel in to_rebuild {
-        app.queue_build(project.key.clone(), rel);
+        app.queue_build(rel);
     }
 }
 
-/// Fan a batch of changed files out to the projects that own them (root + mounts), then
-/// rebuild each affected project independently against its own site/pages/freeze. A file
-/// under a mount's dir rebuilds that mount's page; a root file rebuilds the root's.
+/// Rebuild the project against a batch of changed files.
 fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
-    let roots: Vec<(ProjectKey, PathBuf)> =
-        std::iter::once((app.root.key.clone(), app.root.dir.clone()))
-            .chain(
-                app.mounts
-                    .iter()
-                    .map(|m| (m.project.key.clone(), m.project.dir.clone())),
-            )
-            .collect();
-    // Group changed files by the project whose root is their deepest ancestor.
-    let mut by_project: HashMap<ProjectKey, HashSet<PathBuf>> = HashMap::new();
-    for p in changed {
-        let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
-        if let Some((key, _)) = classify_change(&roots, &canon) {
-            by_project.entry(key).or_default().insert(p.clone());
-        }
-    }
-    for (key, project_changed) in by_project {
-        if let Some(project) = app.project(&key) {
-            let project = project.clone();
-            rebuild_project(app, &project, &project_changed, structural);
-        }
-    }
+    let project = app.root.clone();
+    rebuild_project(app, &project, changed, structural);
 }
 
 /// Reload every open tab and drop its cached block state, so the reload re-renders
@@ -2479,32 +2161,9 @@ mod protocol_contract {
 
 #[cfg(test)]
 mod project_tests {
-    //! The routing seam that lets a mounted sub-project be served under its URL prefix.
-    //! `match_mount` is the pure core (no `Site`/kernel), so prefix resolution is pinned
-    //! here; the live per-page wiring on top is browser-verified (no live-HTTP harness).
+    //! The per-page routing seam, pinned without a `Site`/kernel; the live wiring on top
+    //! is browser-verified (no live-HTTP harness).
     use super::*;
-
-    #[test]
-    fn match_mount_picks_the_longest_matching_prefix() {
-        let prefixes = vec!["gallery/course".to_string(), "docs/guide".to_string()];
-        // Unprefixed → None (the root project serves it).
-        assert_eq!(match_mount(&prefixes, "features.html"), None);
-        // Exact prefix (the mount landing) → that mount, empty sub-path (caller maps to index).
-        assert_eq!(match_mount(&prefixes, "gallery/course"), Some((0, "")));
-        // Nested under a prefix → that mount, prefix + leading slash stripped.
-        assert_eq!(
-            match_mount(&prefixes, "gallery/course/em.html"),
-            Some((0, "em.html"))
-        );
-        // Shares only a leading segment, not the whole prefix → None (root).
-        assert_eq!(match_mount(&prefixes, "gallery/other.html"), None);
-        // A deeper mount prefix wins over a shorter one that also matches.
-        let nested = vec!["gallery".to_string(), "gallery/course".to_string()];
-        assert_eq!(
-            match_mount(&nested, "gallery/course/em.html"),
-            Some((1, "em.html"))
-        );
-    }
 
     // dos-pages: only a key the site actually resolves may reach the `PageState`
     // allocation. Everything else must come back `None`, which the ws handler refuses —
@@ -2517,7 +2176,6 @@ mod project_tests {
     fn only_a_resolvable_page_key_gets_a_page_state() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tarn");
         let project = Project {
-            key: ProjectKey(String::new()),
             dir: dir.clone(),
             site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
             pages: parking_lot::Mutex::new(HashMap::new()),
@@ -2559,43 +2217,11 @@ mod project_tests {
     }
 
     #[test]
-    fn classify_change_attributes_a_file_to_its_deepest_project_root() {
-        let roots = [
-            (
-                ProjectKey("gallery/course".into()),
-                PathBuf::from("/corpus/course"),
-            ),
-            (ProjectKey(String::new()), PathBuf::from("/site")),
-        ];
-        // A file under the mount root → the mount, path relative to that root.
-        assert_eq!(
-            classify_change(&roots, Path::new("/corpus/course/em.tmd")),
-            Some((ProjectKey("gallery/course".into()), PathBuf::from("em.tmd")))
-        );
-        // A file under the site root → the root project.
-        assert_eq!(
-            classify_change(&roots, Path::new("/site/features.tmd")),
-            Some((ProjectKey(String::new()), PathBuf::from("features.tmd")))
-        );
-        // A file under neither project root → None.
-        assert_eq!(classify_change(&roots, Path::new("/elsewhere/x.tmd")), None);
-        // A nested project root wins over an ancestor root (deepest match).
-        let nested = [
-            (ProjectKey(String::new()), PathBuf::from("/site")),
-            (ProjectKey("sub".into()), PathBuf::from("/site/sub")),
-        ];
-        assert_eq!(
-            classify_change(&nested, Path::new("/site/sub/p.tmd")),
-            Some((ProjectKey("sub".into()), PathBuf::from("p.tmd")))
-        );
-    }
-
-    #[test]
     fn only_a_page_with_kernel_cells_takes_the_exec_lane() {
         // AP3-1's routing predicate. One builder task consumed the whole server's queue,
-        // root and every mount alike, awaiting each page to completion — so it serialized
-        // on the wrong thing: a page with no code cells needs no kernel, yet queued behind
-        // kernel work it would never use. Measured on a two-page preview with a warm pool,
+        // awaiting each page to completion, so it serialized on the wrong thing: a page
+        // with no code cells needs no kernel, yet queued behind kernel work it would never
+        // use. Measured on a two-page preview,
         // a cell-free page's prose edit landed in 0.11 s alone and 12.15 s (110x) when an
         // unrelated page was 1.2 s into a 12 s `{python}` cell.
         let render =
@@ -2666,7 +2292,6 @@ mod project_tests {
             },
         );
         let project = Arc::new(Project {
-            key: ProjectKey(String::new()),
             dir,
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),

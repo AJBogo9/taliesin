@@ -136,8 +136,8 @@ pub struct Site {
     pub warnings: Vec<String>,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Assembled
-    /// from `search_sections`; the dev server refreshes it per-edited-page via
-    /// [`Site::refresh_search_for_page`] so live-preview search doesn't go stale.
+    /// from `search_sections`; the dev server rebuilds it whole whenever a cross-reference
+    /// anchor moves, so a snippet never contradicts the page it links to.
     pub search_index_json: String,
     /// The per-page fragments `search_index_json` is assembled from — `(page rel, that
     /// page's JSON entries)` in page order — kept so an edited page's entries can be
@@ -161,23 +161,6 @@ pub struct Site {
     /// open an empty nav, and the footer would credit a site that does not exist.
     /// `build <file>` has never emitted any of it; this is what makes `preview` agree.
     pub standalone: bool,
-}
-
-/// Compute a page's Cmd-K search fragment (its JSON entries, or `None` when the page is
-/// excluded from search or unreadable) — renders the page's markdown once, no code
-/// execution. A free function so the dev server can render it OFF the site lock (and
-/// under a panic guard) before installing it via [`Site::install_search_fragment`].
-/// `chapter` is the page's book chapter (`Site::chapter_for`), and `targets` the xref
-/// registry ([`Site::xref_targets`]) — both read under the site lock by the caller before it
-/// releases it, so the indexed text carries the numbers the page shows (its own "Theorem
-/// 2.1", and a cross-page "Figure 1.1" rather than a bare "Figure").
-pub fn page_search_fragment(
-    page: &Page,
-    chapter: Option<u32>,
-    targets: &HashMap<String, XrefTarget>,
-    site_defaults: Option<&render::SiteDefaults>,
-) -> Option<String> {
-    search::page_fragment(page, chapter, targets, site_defaults)
 }
 
 mod book;
@@ -217,7 +200,7 @@ pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
     join_rel, join_rel_in_root, manual_local_links, resolve_href, sourcepos_start_line,
-    tmd_to_html, under_mount,
+    tmd_to_html,
 };
 
 /// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
@@ -262,43 +245,6 @@ fn walk_up_for_site_yml(start: &Path, stop_at_git: bool) -> Option<PathBuf> {
         }
         dir = dir.parent()?.to_path_buf();
     }
-}
-
-/// Whether `link`, as written in a document at `doc_dir`, targets a project **mounted** by an
-/// enclosing site (`mounts:` in its `_site.yml`).
-///
-/// This is what a standalone single-file check needs and cannot otherwise know. A mounted
-/// project is served by the site under a URL prefix, so a card linking `gallery/course/` is
-/// correct — but nothing named `gallery/course` exists relative to the *document*, so the
-/// on-disk link rule calls it broken. `taliesin check <dir>` was clean on exactly the page
-/// `taliesin check <that page>` reported four errors on, which is the worst kind of
-/// disagreement: it reached the author through the editor companion, on every keystroke.
-///
-/// Resolution goes through the site root so a link from a subdirectory (`../gallery/x/`)
-/// resolves the same way the site resolves it, and the mount test itself is
-/// [`under_mount`] — the same predicate `validate_cross_page_links` applies, so the two
-/// checkers cannot drift on what a mount covers.
-pub fn link_targets_enclosing_mount(doc_dir: &Path, link: &str) -> bool {
-    let Some(root) = enclosing_site_root(doc_dir) else {
-        return false;
-    };
-    let mut warnings = Vec::new();
-    let mounts = config::load_config(&root, &mut warnings).mounts;
-    if mounts.is_empty() {
-        return false;
-    }
-    let Some(dir_rel) = doc_dir
-        .canonicalize()
-        .ok()
-        .and_then(|d| d.strip_prefix(&root).ok().map(Path::to_path_buf))
-    else {
-        return false;
-    };
-    // `join_rel_in_root` takes the linking FILE's site-relative path and reads the directory
-    // off it, so hand it a synthetic file name in this directory rather than reimplementing
-    // the `..`-aware join (and its climbing-above-the-root rejection) a second time.
-    let from = format!("{}/_", dir_rel.to_string_lossy().replace('\\', "/"));
-    join_rel_in_root(&from, link).is_some_and(|url| under_mount(&mounts, &url))
 }
 
 /// One outgoing local link found in a rendered page, kept with enough context to locate a
@@ -378,27 +324,6 @@ impl Site {
             pages.retain(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want);
         }
 
-        // A `mounts:` prefix that collides with a real page URL: the mounted sub-site
-        // and the page share a route, so one silently shadows the other depending on
-        // match order. Flag it rather than serve an unpredictable page.
-        for m in &config.mounts {
-            let at = m.at.trim_matches('/');
-            if at.is_empty() {
-                continue;
-            }
-            let prefix = format!("{at}/");
-            if let Some(p) = pages
-                .iter()
-                .find(|p| p.url == at || p.url.starts_with(&prefix))
-            {
-                warnings.push(format!(
-                    "mount `{}` collides with page `{}`: the mounted project and the page \
-                     share a URL prefix and will shadow each other",
-                    m.at, p.url
-                ));
-            }
-        }
-
         // A `chapters:` entry naming a file that does not exist: the chapter is silently
         // skipped (its title falls back to the file stem, its body is empty), so a typo
         // in `_site.yml` drops a chapter with no signal.
@@ -469,11 +394,9 @@ impl Site {
     /// registry. Separate from `discover` so the ordering requirement above has one name,
     /// and so [`refresh_xrefs`](Self::refresh_xrefs) can be followed by it — which the dev
     /// server does whenever a target MOVES. Whole-index, because the index is GLOBAL (one
-    /// `search-index.js` for every tab): the per-page
-    /// [`install_search_fragment`](Self::install_search_fragment) path is keyed on the pages
-    /// being REBUILT, i.e. the open tabs, and a renumbered figure goes stale in the
-    /// fragments of pages nobody has open — which is the exact
-    /// snippet-contradicts-its-target defect this index ordering exists to prevent.
+    /// `search-index.js` for every tab): a per-page refresh keyed on the open tabs leaves a
+    /// renumbered figure stale in the fragments of pages nobody has open, which is the
+    /// exact snippet-contradicts-its-target defect this index ordering exists to prevent.
     pub fn rebuild_search_index(&mut self) {
         self.search_sections = search::build_sections(
             &self.pages,
@@ -528,59 +451,6 @@ impl Site {
         self.pages
             .iter()
             .find(|p| p.input.canonicalize().ok().as_deref() == Some(&want))
-    }
-
-    /// Re-extract the Cmd-K search entries for the given page (accepts its `rel` or
-    /// `url`, like [`Site::page`]) and reassemble the index, so a content edit in the
-    /// live preview doesn't leave stale headings/prose in search (the static build
-    /// always builds the index fresh). A no-op for an unknown page.
-    ///
-    /// This renders the page inline (holding whatever lock the caller holds). The dev
-    /// server's hot path renders OFF the site lock and under a panic guard via
-    /// [`page_search_fragment`] + [`Site::install_search_fragment`] instead; this
-    /// convenience wrapper is for callers (tests) where that doesn't matter.
-    pub fn refresh_search_for_page(&mut self, rel_or_url: &str) {
-        let Some((rel, fragment)) = self.page(rel_or_url).map(|page| {
-            (
-                page.rel.clone(),
-                search::page_fragment(
-                    page,
-                    self.chapter_for(page),
-                    &self.xref_targets,
-                    Some(&self.render_defaults()),
-                ),
-            )
-        }) else {
-            return;
-        };
-        self.install_search_fragment(&rel, fragment);
-    }
-
-    /// Install a freshly-computed search fragment for page `rel` (from
-    /// [`page_search_fragment`]) and reassemble the index. Split from the render so the
-    /// dev server can render the fragment off the site lock. A no-op for an unknown page
-    /// that has no content to add.
-    pub fn install_search_fragment(&mut self, rel: &str, fragment: Option<String>) {
-        match self.search_sections.iter().position(|(r, _)| r == rel) {
-            // Already indexed: replace its fragment, or drop it if the page now yields none.
-            Some(pos) => match fragment {
-                Some(frag) => self.search_sections[pos].1 = frag,
-                None => {
-                    self.search_sections.remove(pos);
-                }
-            },
-            // Not previously indexed but now has content: recompute so page order holds.
-            None if fragment.is_some() => {
-                self.search_sections = search::build_sections(
-                    &self.pages,
-                    &self.book,
-                    &self.xref_targets,
-                    Some(&self.render_defaults()),
-                );
-            }
-            None => return,
-        }
-        self.search_index_json = search::assemble(&self.search_sections);
     }
 
     /// This page is the site's root index: its `<title>` stays the bare site name (no
@@ -913,13 +783,7 @@ impl Site {
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: any source file that exists under the root is a
                     // legitimate target.
-                    // A target under a configured `mounts:` prefix resolves only when
-                    // the mounted project is served (preview) or copied in (build) — it is
-                    // not in this site's own page registry, so it is not "broken". (build
-                    // separately warns these links are preview-only.) Matches the mount
-                    // root (`docs`), its index (`docs/index.html`), and anything beneath it.
-                    if under_mount(&self.config.mounts, &target_url)
-                        || self.root.join(&target_url).is_file()
+                    if self.root.join(&target_url).is_file()
                         || html_to_tmd(&target_url)
                             .iter()
                             .any(|p| self.root.join(p).is_file())
@@ -2044,54 +1908,6 @@ pub(crate) mod tests {
         let _ = fs::remove_dir_all(&bare);
     }
 
-    #[test]
-    fn refresh_search_reflects_a_page_edit() {
-        use std::fs;
-        // A content edit in the live preview must not leave Cmd-K search frozen at the
-        // page's load-time headings: after `refresh_search_for_page`, the index carries
-        // the new heading and drops the old one.
-        let root = write_site(
-            "search-refresh",
-            &[
-                ("_site.yml", "title: Demo\n"),
-                (
-                    "index.tmd",
-                    "---\ntitle: Home\n---\n\n# Original Heading\n\nHi.\n",
-                ),
-            ],
-        );
-        let mut site = Site::discover(&root);
-        assert!(
-            site.search_index_json.contains("Original Heading"),
-            "the original heading is indexed at discovery: {}",
-            site.search_index_json
-        );
-
-        fs::write(
-            root.join("index.tmd"),
-            "---\ntitle: Home\n---\n\n# Brand New Heading\n\nHi.\n",
-        )
-        .unwrap();
-        // Resolve by url form too (exercises the rel-or-url lookup).
-        site.refresh_search_for_page("index.html");
-        assert!(
-            site.search_index_json.contains("Brand New Heading"),
-            "the edited heading is now indexed: {}",
-            site.search_index_json
-        );
-        assert!(
-            !site.search_index_json.contains("Original Heading"),
-            "the stale heading is gone: {}",
-            site.search_index_json
-        );
-        // An unknown page is a harmless no-op (doesn't panic or corrupt the index).
-        let before = site.search_index_json.clone();
-        site.refresh_search_for_page("does-not-exist");
-        assert_eq!(before, site.search_index_json);
-
-        let _ = fs::remove_dir_all(&root);
-    }
-
     /// A two-chapter book whose `methods` chapter cross-references a figure defined in
     /// `intro` — the smallest shape that exercises the xref registry's whole seam.
     fn xref_book(tag: &str) -> std::path::PathBuf {
@@ -2627,27 +2443,6 @@ pub(crate) mod tests {
             site.warnings
                 .iter()
                 .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
-            "{:?}",
-            site.warnings
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn mount_page_collision_warns() {
-        let root = write_site(
-            "mountcol",
-            &[
-                ("_site.yml", "title: Demo\nmounts:\n  docs: ../other\n"),
-                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
-                ("docs/page.tmd", "---\ntitle: Doc\n---\n\nDoc.\n"),
-            ],
-        );
-        let site = Site::discover(&root);
-        assert!(
-            site.warnings
-                .iter()
-                .any(|w| w.contains("mount") && w.contains("collides")),
             "{:?}",
             site.warnings
         );

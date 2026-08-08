@@ -176,7 +176,7 @@ Two copies of one contract with no gate between them can only drift, and they ha
 What is left in the extension is what the protocol has no concept of:
 
 - **The live preview + bidirectional source sync.** It spawns `taliesin preview` on a free
-  **localhost** port (no `--host`, so the LAN token never enters the picture), embeds that
+  **localhost** port (the only kind the preview binds), embeds that
   URL in a webview via `vscode.env.asExternalUri`, and runs a small **relay** HTML document
   inside the webview to bridge the preview iframe's `postMessage` protocol to and from the
   extension host. Forward sync (`tali-goto`) calls `revealRange` to move the editor cursor;

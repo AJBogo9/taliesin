@@ -54,7 +54,6 @@ mod cell_numbered;
 pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 mod client_lang;
-pub(crate) use client_lang::CLIENT_LANGS;
 pub use client_lang::{
     ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
 };
@@ -1806,7 +1805,7 @@ fn fonts_css_linked(hrefs: &[(&str, String)]) -> String {
 /// The owned design tokens (the light palette, fonts, geometry, motion),
 /// `include_str!`'d ahead of `base.css` so
 /// the palette is declared exactly once. See `tokens.css`. The dark palette override
-/// is `TOKENS_DARK_CSS` (kept separate so a `--bare` page can flatten just that layer).
+/// is `TOKENS_DARK_CSS` (kept separate so the dark palette override is one layer).
 pub(crate) const TOKENS_CSS: &str = include_str!("../../assets/css/tokens.css");
 /// The dark palette override, keyed on `html[data-theme="dark"]`. See `TOKENS_CSS`.
 pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-dark.css");
@@ -1900,16 +1899,12 @@ pub fn code_scripts() -> String {
 
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
 /// (copy buttons + the whole reader menu + skip-link and
-/// keyboard a11y) rides on every non-bare page, since every page benefits. The
+/// keyboard a11y) rides on every page, since every page benefits. The
 /// DOM-specific enhancers (mermaid, `{js}`) ship
 /// unconditionally in [`OutputMode::Preview`] (a doc can gain any construct on an
 /// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
-/// target DOM is present in a static [`OutputMode::Build`]. [`OutputMode::Bare`]
-/// ships nothing (the zero-`<script>` contract).
+/// target DOM is present in a static [`OutputMode::Build`].
 pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
-    if mode == OutputMode::Bare {
-        return String::new();
-    }
     let mermaid_present = body.contains("class=\"mermaid\"");
     // A static Build inlines the vendored mermaid library (it sets `globalThis.mermaid`,
     // which the loader below short-circuits on) so a diagram renders FULLY OFFLINE — no

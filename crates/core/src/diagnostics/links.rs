@@ -83,13 +83,6 @@ pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
             if path.is_empty() || path.starts_with('/') || link_target_exists(base, path) {
                 continue;
             }
-            // Nothing on disk backs it — but a document inside a site may legitimately link
-            // a project that site MOUNTS, which resolves by URL prefix and so has no file
-            // under this document's directory. Asked only here, on a link already about to
-            // be reported, so the common path still costs nothing.
-            if crate::site::link_targets_enclosing_mount(base, path) {
-                continue;
-            }
             // A migrated document's links keep the extension the old tool used, and the
             // answer is usually sitting right next to the link (item 128). Suggest, never
             // rewrite: a `.md` link may point at a real shipped `.md`.

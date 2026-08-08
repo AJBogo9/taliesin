@@ -2850,44 +2850,6 @@ fn build_mode_content_gates_separate_enhancers() {
         preview.contains("a tiny enhancer that replaces the vendored"),
         "preview ships tali-js.js unconditionally"
     );
-    // Bare ships no enhancer scripts at all (the zero-<script> contract).
-    assert!(
-        code_scripts_for("<p>x</p>", OutputMode::Bare).is_empty(),
-        "bare ships no enhancer scripts"
-    );
-}
-
-#[test]
-fn bare_theming_resolves_per_theme_default() {
-    // CSS-only theming has three branches: a forced dark theme hard-codes the dark
-    // layer onto :root (no media query); a forced light theme adds nothing (base
-    // :root is light); an unforced (auto) theme follows the OS via a media query.
-    // `#16181d` is the dark `--tali-bg`, present only in the dark layer.
-    let bare = |src: &str| render_doc_to_page(&render_document(src), "t", OutputMode::Bare);
-
-    let dark = bare("---\ntheme: dark\n---\n\nx\n");
-    assert!(dark.contains("#16181d"), "forced dark ships the dark layer");
-    assert!(
-        !dark.contains("@media (prefers-color-scheme: dark)"),
-        "forced dark is unconditional, not OS-gated"
-    );
-    assert!(!dark.contains("<script"), "still script-free");
-
-    let light = bare("---\ntheme: light\n---\n\nx\n");
-    assert!(
-        !light.contains("#16181d"),
-        "forced light ships no dark layer (base :root is light)"
-    );
-
-    let auto = bare("---\ntitle: T\n---\n\nx\n");
-    assert!(
-        auto.contains("@media (prefers-color-scheme: dark)"),
-        "an unforced theme follows the OS via a media query"
-    );
-    assert!(
-        auto.contains("#16181d"),
-        "the OS-gated layer still carries the dark vars"
-    );
 }
 
 #[test]
@@ -3028,8 +2990,12 @@ fn token_hex_in(css: &str, selector: &str, token: &str) -> String {
 #[test]
 fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
     let head = super::theme::theme_head("light");
+    // Each row names the selector its OWN file keys the palette on. `tokens-dark.css` has
+    // no `:root` block: it is `html[data-theme="dark"]` throughout, and naming `:root` here
+    // matched a mention inside a comment that happened to sit directly above the real
+    // block. Editing that comment (wave 11) is what surfaced it.
     for (mode, css, selector) in [
-        ("dark", TOKENS_DARK_CSS, ":root"),
+        ("dark", TOKENS_DARK_CSS, "html[data-theme=\"dark\"]"),
         ("light", TOKENS_CSS, ":root"),
     ] {
         let want = token_hex_in(css, selector, "--tali-bg");

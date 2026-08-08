@@ -68,7 +68,7 @@ the drawer. (Leaving a file out of `chapters:` still works as before.)
 ## The config model
 
 The typed `SiteConfig` is Taliesin's **native, flat** schema (title, nav, footer,
-`mounts:`, ...). Config is deliberately **two levels with no cascade**: the root
+`chapters:`, ...). Config is deliberately **two levels with no cascade**: the root
 `_site.yml` sets project-wide defaults and a page's own front matter overrides
 them, full stop. There is no `_metadata.yml` directory merge, the single most
 confusing part of the older model.
@@ -81,7 +81,7 @@ flattened to the native shape.
 
 `validate_keys` is deliberately a **warning, not an error**: every top-level key in
 `_site.yml` is checked against the `NATIVE_KEYS` constant (`title`, `author`,
-`description`, `url`, `favicon`, `logo`, `head`, `nav`, `footer`, `chapters`, `mounts`,
+`description`, `url`, `favicon`, `logo`, `head`, `nav`, `footer`, `chapters`,
 `python`, `r`, `bibliography`), and an unknown one is reported but the rest of
 the config still parses. A key the config *used* to honour is answered from
 `frontmatter::RETIRED_KEYS` under the `config key` scope, so it gets the reason it went
@@ -289,47 +289,35 @@ Newsreader TTF at build time and written to `og/<hash>.png`; the page's own `ima
 deliberately excluded from it. Now it is the only source, so nothing here is generated and
 nothing here can drift from a file on disk.
 
-## Mounts
+## Composing several projects into one deploy
 
-`mounts:` serves *another* project under a URL prefix in `preview`, which is how the
-marketing site resolves its `/docs/guide` and `/docs/internals` links live. Under
-`preview` a mounted page is **rendered on request as static output**, so it has no live
-websocket, no dev menu, and no click-to-source; to edit a mounted book with the full live
-loop, preview it directly (`preview docs/internals`) rather than through the mount.
+A `Site` is one project. The marketing site, the two docs books and the gallery exhibits
+are six separate projects that share one domain, and what composes them is a shell script
+(`tools/build-site.sh`), not a config key: it runs one `build … --out <out>/<prefix>` per
+project and then asserts that every cross-project link written in `site/` resolves against
+the composed output.
 
-The static `build` wires mounts too: after finishing its own pages it runs a **full,
-independent build of each mounted project** into `<out>/<at>/`, so the deployed
-`/docs/internals/` links resolve exactly as the previewed ones do. One command builds the
-whole tree.
+**The order is load-bearing.** The parent is built first and the sub-projects second,
+because the parent's stale-output sweep deletes everything under the output directory it
+did not itself write, and `_site/docs/guide/` is not one of the dot-, underscore- or
+symlink-prefixed exemptions. A sub-project built first would be swept away by the parent,
+silently, on a green exit.
 
-This is a recursion, not an inheritance. Each mount is built by the same code path as a
-top-level `build`, reading its own `_site.yml`, its own theme, its own execution settings —
-nothing cascades down from the parent, which is what the flat, no-cascade config model is
-for. The parent contributes exactly one thing: the output directory, `<out>/<at>/`, which is
-the URL prefix the parent already committed to in its nav. `--strict` and the kernel
-requirement propagate, because a mount is part of the artifact being written.
+`mounts:` used to do this from `_site.yml`: `preview` served each sub-project under a URL
+prefix and `build` recursed into each. It cost a config vocabulary with its own containment
+rules, a prefix-routing layer in the dev server, a per-project executor map and a cycle
+guard in the build, all so that one deploy could be assembled by one command. It was
+retired on 2026-08-09. The failure mode to watch is the one the key was introduced to fix:
+a composition script nobody runs ships a deploy whose primary call to action 404s (item
+149). That is why the script is a step in `.githooks/pre-push` and why it verifies rather
+than merely builds.
 
-For a while `build` stopped at a warning here, on the argument that a separate project
-deserves an explicit command. What that produced in practice was a deploy whose primary call
-to action 404'd, a diagnostic (`TAL-MOUNT-PREVIEW`) written to describe the hole, and a shell
-script beside the site to fill it — three artifacts standing in for one recursion. A config
-key that works in `preview` and not in `build` is a bug with a rationale attached.
-
-**The order is load-bearing.** The parent is built first and the mounts second, because the
-parent's stale-output sweep deletes everything under the output directory it did not itself
-write, and `_site/docs/guide/` is not one of the dot-, underscore- or symlink-prefixed
-exemptions. A mount built first would be swept away by the parent, silently, on a green
-exit. The sweep is deliberately *not* taught to skip mount prefixes: sweeping them is what
-makes a mount deleted from `_site.yml` disappear from the deploy, and the cost of the
-delete-and-rewrite is bounded because `_freeze/` means no cell re-executes.
-
-A mount that resolves outside its containment boundary is not built, for the same reason it
-is not served: `load_config` has already refused it, and building it would perform the
-escape one step later.
+The visible cost is that `build site` now reports each of those cross-project links as
+broken, which is true of `site/` read on its own: nothing in that project backs them. The
+script says so before it runs, and its own link assertion is what actually decides.
 
 ::: {.callout-tip}
-Because a mounted page under `preview` is rendered as plain static output (no websocket, no
-click-to-source), preview a mounted book *directly* (`preview docs/internals`) when you
-want the full incremental live loop on it, and use the mount only to check that the
-cross-project links resolve.
+Preview each project directly (`preview docs/internals`) while you write it: that is where
+the incremental live loop, the dev menu and click-to-source are. The composed tree is a
+deploy artifact, checked by the script rather than browsed live.
 :::

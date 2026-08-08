@@ -40,7 +40,6 @@ mod serve_site;
 mod session;
 #[cfg(test)]
 mod testutil;
-mod warm_pool;
 
 use std::process::ExitCode;
 
@@ -254,27 +253,26 @@ Preview & build
                              execute code cells in the terminal against this
                              project's warm session; no browser, outputs cached
                              so a later build re-executes nothing
-  preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]
-                             live preview server (a dir previews the whole SITE
-                             with nav + hot reload;
+  preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]
+                             live preview server, on loopback only (a dir previews
+                             the whole SITE with nav + hot reload;
                              default port 4321 (or [port] / --port <N>), replacing
                              this project's own running preview and stepping past
                              anyone else's;
-                             --host exposes it on your LAN with a QR code
-                             to open on a phone; --open launches a browser;
+                             --open launches a browser;
                              --no-exec renders code cells as source,
                              kernel and {js} alike, but does not strip raw
                              HTML: see `Documents you did not write`)
-  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only] [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]
+  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only] [--strict] [--jobs <N>] [--no-exec] [--format json]
                              render a self-contained HTML file (a dir builds the
                              whole SITE to _site/); default <name>.html beside
                              the source; --out <dir> writes a portable folder;
                              --stdout writes the page to stdout instead of a file;
                              --check-only lints and writes nothing (the
                              pre-publish gate); --strict exits non-zero on a
-                             cell error or located warning; --bare emits zero-JS, CSS-only single-doc
-                             HTML; --jobs <N> caps parallel page renders (site
-                             build); --no-exec renders code cells as source
+                             cell error or located warning; --jobs <N> caps
+                             parallel page renders (site build); --no-exec
+                             renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
 
 Inspect
@@ -310,9 +308,9 @@ fn usage() {
 fn subcommand_help(cmd: &str) -> Option<&'static str> {
     let text = match cmd {
         "preview" => {
-            "taliesin preview <file.tmd | dir> [port] [--port <N>] [--host] [--open] [--no-exec]\n\
+            "taliesin preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]\n\
              \n\
-             Live preview server. A file previews one document; a\n\
+             Live preview server, bound to loopback only. A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
              Default port 4321. Re-previewing a project replaces its own running\n\
              preview, so there is only ever one; a port held by anything else falls\n\
@@ -321,9 +319,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Flags:\n\
              \x20 --port <N>  serve on port N (same as the [port] positional, which it wins\n\
              \x20             over when both are given)\n\
-             \x20 --host      bind your LAN + print a QR code for phones (token-gated)\n\
              \x20 --open      launch the default browser at the preview URL\n\
-             \x20 --no-exec   render code cells as source ({python}/{r} and {js} alike),\n\
+             \x20 --no-exec   render code cells as source ({python} and {js} alike),\n\
              \x20             never executing them. Not an HTML sanitizer\n\
              \n\
              Example:\n\
@@ -366,7 +363,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
         }
         "build" => {
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only]\n\
-             \x20                            [--strict] [--bare] [--jobs <N>] [--no-exec] [--format json]\n\
+             \x20                            [--strict] [--jobs <N>] [--no-exec] [--format json]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -379,10 +376,9 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --check-only lint and write NOTHING: render in memory, print every located\n\
              \x20              diagnostic, exit non-zero if any of them gates. The pre-publish\n\
              \x20              gate. Never starts a kernel, so --no-exec is implied, and it\n\
-             \x20              refuses --out/--stdout/--bare/--jobs (nothing is written)\n\
+             \x20              refuses --out/--stdout/--jobs (nothing is written)\n\
              \x20 --strict     exit non-zero on a cell error or located warning (CI gate);\n\
              \x20              with --check-only, also fail on advice (suggestions)\n\
-             \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
              \x20 --no-exec    render code cells as source instead of running them. A build\n\
@@ -853,9 +849,16 @@ mod cli_microcopy_tests {
             for (i, _) in src.match_indices(MARK) {
                 // A top-level `const` only. A flag list declared *inside* a function is a
                 // test fixture or a local carve-out, not a parser's real accepted set, and
-                // it is indented — so requiring `const` at column 0 excludes it.
+                // it is indented, so requiring the declaration at column 0 excludes it.
+                // The visibility prefix is optional: `BUILD_FLAGS`/`SERVE_FLAGS` are
+                // `pub(crate)` so `serve::retired_flags` can assert a retired flag is
+                // offered by no live parser.
                 let line_start = src[..i].rfind('\n').map_or(0, |n| n + 1);
-                let Some(prefix) = src[line_start..i].strip_prefix("const ") else {
+                let decl = &src[line_start..i];
+                let Some(prefix) = decl
+                    .strip_prefix("const ")
+                    .or_else(|| decl.strip_prefix("pub(crate) const "))
+                else {
                     continue;
                 };
                 let Some(end) = src[i + MARK.len()..].find("];") else {

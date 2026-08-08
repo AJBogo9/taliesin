@@ -24,10 +24,10 @@ use std::process::ExitCode;
 
 use crate::runspec::RunScope;
 
-/// How long to wait for a freshly spawned session to answer. Generous: it boots a
-/// forkserver and pre-imports numpy/matplotlib/torch, which on a cold page cache is
-/// seconds, and a client that gives up early would spawn a *second* session — the exact
-/// two-kernel, two-cache-writer state this design exists to prevent.
+/// How long to wait for a freshly spawned session to answer. Generous: it boots a kernel
+/// and imports whatever the page's cells reach for, which on a cold page cache is seconds,
+/// and a client that gives up early would spawn a *second* session: the exact two-kernel,
+/// two-cache-writer state this design exists to prevent.
 const SESSION_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// How long to wait for the TCP connect + response head from a session we believe is up.

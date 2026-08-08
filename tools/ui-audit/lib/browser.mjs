@@ -32,7 +32,7 @@ export async function launch({ chromePath = DEFAULT_CHROME } = {}) {
 
 // Force a theme deterministically. localStorage seeding is the dominant lever
 // (it wins over front-matter `theme:` and OS in the pre-paint head script);
-// media emulation is belt-and-braces for `--bare`/auto pages. `tali-theme`
+// media emulation is belt-and-braces for auto pages. `tali-theme`
 // covers single-doc + site/book pages.
 export async function forceTheme(page, theme) {
   await page.evaluateOnNewDocument((mode) => {

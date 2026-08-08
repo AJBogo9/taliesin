@@ -156,7 +156,7 @@ pub(super) fn join_rel(from_rel: &str, target: &str) -> String {
 }
 
 /// Like [`join_rel`] but returns `None` when `target` climbs *above* the file's directory
-/// (`../` past the site root). A root-escaping link points at a sibling project/mount the
+/// (`../` past the site root). A root-escaping link points at a sibling project the
 /// single-site registry can't see, so the cross-page link checker skips it rather than
 /// false-flag a legitimate cross-book link.
 pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
@@ -179,21 +179,6 @@ pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
         }
     }
     Some(parts.join("/"))
-}
-
-/// Whether the site-root-relative `target_url` is served by one of `mounts`: the mount root
-/// itself (`docs/guide`), its index (`docs/guide/index.html`), or anything beneath it.
-///
-/// A mounted project resolves only when it is served (`preview`) or built in beside this one,
-/// so it is never part of this site's own page registry. Two different checkers have to ask
-/// this question — the site-aware cross-page checker and the STANDALONE single-file checker,
-/// which has no site at all — so they ask it here instead of each carrying a copy.
-pub(super) fn under_mount(mounts: &[Mount], target_url: &str) -> bool {
-    mounts.iter().any(|m| {
-        target_url == m.at
-            || target_url == format!("{}/index.html", m.at)
-            || target_url.starts_with(&format!("{}/", m.at))
-    })
 }
 
 /// `.html`→source-extension candidates on a url path (`x.html` → `x.tmd`, one per
@@ -357,7 +342,7 @@ mod tests {
             join_rel_in_root("index.html", "/abs.html").as_deref(),
             Some("abs.html")
         );
-        // A link climbing ABOVE the site root (a sibling book / mount) is rejected, so the
+        // A link climbing ABOVE the site root (a sibling book) is rejected, so the
         // cross-page checker skips it rather than false-flag a legitimate cross-book link.
         assert_eq!(
             join_rel_in_root("index.html", "../internals/index.html"),

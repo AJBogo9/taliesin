@@ -125,14 +125,11 @@ Point it at a **single file** or a **directory** (a multi-page site project):
 ```sh
 cargo run -p taliesin-server -- preview corpus/posts/born-machines.tmd  # one doc
 cargo run -p taliesin-server -- preview corpus/tech-blog                # a whole site
-cargo run -p taliesin-server -- preview corpus/tech-blog --host         # + LAN URL & QR
 cargo run -p taliesin-server -- build   corpus/tech-blog                # static _site/
-cargo run -p taliesin-server -- render  corpus/posts/born-machines.tmd > out.html
-cargo run -p taliesin-server -- blocks  corpus/posts/born-machines.tmd
+cargo run -p taliesin-server -- build   corpus/posts/born-machines.tmd --stdout > out.html
 ```
 
-`--host` exposes the preview on your LAN with a phone-scannable QR code, gated by a
-per-session access token baked into the printed URL (loopback access needs none).
+The preview binds to loopback only.
 
 Code execution needs a Python with `ipykernel`; point the server at it with the
 `TALIESIN_PYTHON` env var (defaults to `python3`). Cells render as source if no

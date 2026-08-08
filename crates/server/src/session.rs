@@ -1,8 +1,8 @@
 //! Finding (and starting) the **session** that owns a project's kernels.
 //!
 //! A session is not a new program: it is the ordinary dev server, which already owns
-//! the warm kernels ([`crate::exec::Executor`]), the warm pool, the per-page executor
-//! LRU, and the `_freeze/` cache. `taliesin run` is a thin client against it, so a
+//! the warm kernels ([`crate::exec::Executor`]), the per-page executor LRU, and the
+//! `_freeze/` cache. `taliesin run` is a thin client against it, so a
 //! terminal run and a browser preview share one kernel set and one cache writer. That
 //! sharing is the whole point: two owners of `_freeze/<page>.json` is a lost-update bug
 //! that publishes stale output.

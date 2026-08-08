@@ -1,8 +1,7 @@
 
   /* Dark palette override. Keyed on BOTH the page's `html[data-theme="dark"]` attribute and the
      `html[data-theme="dark"]` attribute, so every surface shares one dark palette instead of
-     a parallel per-surface set. A `--bare` page (no data-theme script) flattens this file's `html[data-theme=
-     "dark"]` prefix to `:root` via bare_theme_css. Same accent hue as light (OKLCH H 272),
+     a parallel per-surface set. Same accent hue as light (OKLCH H 272),
      lifted in lightness and eased in chroma so it does not vibrate on the dark surface. 7.62:1 as
      link text. */
   html[data-theme="dark"] {

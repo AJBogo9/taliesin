@@ -273,8 +273,8 @@ ${
   others.length
     ? `<h2>The manual and the marketing site <span class="badge">${others.length}</span></h2>
 <p class="lede">Not corpus, but the same rendered surface &mdash; and the first thing a
-stranger sees. <code>site/</code> also mounts the two books and the gallery exhibits, so it
-is where <code>mounts:</code> is exercised.</p>
+stranger sees. <code>site/</code> is composed with the two books and the gallery exhibits
+by <code>tools/build-site.sh</code>.</p>
 ${others.map((u) => unitCard(u, ++n)).join('\n')}`
     : ''
 }

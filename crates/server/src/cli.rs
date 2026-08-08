@@ -2,7 +2,7 @@
 //! and `preview` (launch the live preview server).
 //!
 //! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd`);
-//! `cmd_serve` parses the preview flags (`--open`/`--host`/`--no-exec`/port) and starts the
+//! `cmd_serve` parses the preview flags (`--open`/`--no-exec`/port) and starts the
 //! dev server.
 //!
 //! **How to use:** `main()` dispatches `init`, `new` and `preview` to `cmd_init` /
@@ -440,7 +440,7 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
 /// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
 ///
 /// [`SESSION_FLAG`] is deliberately absent: it is internal, not offered and not documented.
-const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port"];
+pub(crate) const SERVE_FLAGS: &[&str] = &["--open", "--no-exec", "--port"];
 
 /// The hidden flag `taliesin run` passes when it starts a session for itself. Underscore-
 /// prefixed like the `__complete` subcommand, and for the same reason: it is a seam between
@@ -455,7 +455,6 @@ pub(crate) struct ServeArgs<'a> {
     pub path: &'a str,
     pub port: u16,
     pub open: bool,
-    pub expose: bool,
     pub no_exec: bool,
     /// Run as a background SESSION: no console chrome, never opens a browser. The server
     /// is otherwise identical, which is the point — `taliesin run` must not get a
@@ -463,26 +462,25 @@ pub(crate) struct ServeArgs<'a> {
     pub headless: bool,
 }
 
-/// Parse `preview <file.tmd|dir> [port] [--port <N>] [--host] [--open] [--no-exec]`.
+/// Parse `preview <file.tmd|dir> [port] [--port <N>] [--open] [--no-exec]`.
 ///
 /// The port may be the second positional (the original spelling) or `--port <N>` /
 /// `--port=<N>`. Without the flag, `--port 4400` tripped the unknown-flag did-you-mean and
-/// suggested `--host`, which is two edits away and does something else entirely.
+/// was answered with an unrelated flag two edits away.
 /// Pure + unit-tested: no environment reads, no filesystem.
 pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut flag_port: Option<&str> = None;
-    let (mut open, mut expose, mut no_exec) = (false, false, false);
+    let (mut open, mut no_exec) = (false, false);
     let mut headless = false;
 
     let mut it = args[2..].iter().peekable();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--open" => open = true,
-            "--host" => expose = true,
             "--no-exec" => no_exec = true,
             // A SESSION rather than a preview you are watching. Same server, same kernels,
-            // same `_freeze/` — it just skips the console chrome (screen clear, banner, QR)
+            // same `_freeze/`. It just skips the console chrome (screen clear, banner)
             // that a background process has nobody to show. Passed by `taliesin run` when
             // no session is up; see [`SESSION_FLAG`].
             s if s == SESSION_FLAG => headless = true,
@@ -495,7 +493,7 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
             }
             s if s.starts_with("--port=") => flag_port = Some(&s["--port=".len()..]),
             // An unrecognized `--flag` is a hard error with a did-you-mean (never silently
-            // dropped: a typo'd `--hots` would otherwise preview without exposing).
+            // dropped: a typo'd `--noexec` would otherwise preview and run every cell).
             s if s.starts_with("--") => return Err(serve::unknown_flag_error(s, SERVE_FLAGS)),
             s => positionals.push(s),
         }
@@ -511,7 +509,6 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
         path,
         port,
         open,
-        expose,
         no_exec,
         headless,
     })
@@ -529,11 +526,9 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // `--open` and `--host` are flags and only flags. The `TALIESIN_OPEN`/`TALIESIN_HOST`
-    // env vars that also set them were retired in Wave 5: a second spelling for a flag is
-    // not worth its documentation, and an exported `TALIESIN_HOST` silently changed the
-    // network exposure of every preview in that shell.
-    let (open, expose) = (parsed.open, parsed.expose);
+    // `--open` is a flag and only a flag. The `TALIESIN_OPEN` env var that also set it was
+    // retired in Wave 5: a second spelling for a flag is not worth its documentation.
+    let open = parsed.open;
     // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`. Two readers, one owner
     // (`taliesin_core::render::no_exec_in_force`): `exec::Executor` skips the kernel, and the
     // render pass leaves a `{js}` cell as source, since a `{js}` cell is a code cell whose
@@ -551,7 +546,6 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
         serve_site::Target::at(PathBuf::from(parsed.path)),
         parsed.port,
         open && !parsed.headless,
-        expose,
         parsed.headless,
     );
     match result {
@@ -589,7 +583,7 @@ mod tests {
         let a = argv(&["taliesin", "preview", "doc.tmd", "4400"]);
         assert_eq!(parse_serve_args(&a).unwrap().port, 4400);
 
-        // `--port 4400` used to error with "unknown flag `--port` (did you mean `--host`?)".
+        // `--port 4400` used to error with "unknown flag `--port` (did you mean …?)".
         let a = argv(&["taliesin", "preview", "doc.tmd", "--port", "4400"]);
         assert_eq!(parse_serve_args(&a).unwrap().port, 4400);
 
@@ -617,17 +611,16 @@ mod tests {
         let a = argv(&["taliesin", "preview", "doc.tmd", "--port"]);
         assert!(parse_serve_args(&a).unwrap_err().contains("needs a value"));
 
-        // An unknown flag still gets a did-you-mean, and `--prot` now resolves to
-        // `--port` rather than to the unrelated `--host`.
+        // An unknown flag still gets a did-you-mean.
         let a = argv(&["taliesin", "preview", "doc.tmd", "--prot", "4400"]);
         let err = parse_serve_args(&a).unwrap_err();
         assert!(err.contains("--prot"), "{err}");
         assert!(err.contains("--port"), "{err}");
 
         // Flags are not swallowed as positionals.
-        let a = argv(&["taliesin", "preview", "doc.tmd", "--host", "--open"]);
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--no-exec", "--open"]);
         let p = parse_serve_args(&a).unwrap();
-        assert!(p.expose && p.open && p.port == 4321);
+        assert!(p.no_exec && p.open && p.port == 4321);
     }
 
     fn tmp(name: &str) -> PathBuf {

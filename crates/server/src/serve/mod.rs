@@ -3,7 +3,7 @@
 //!
 //! HTTP + asset plumbing (`serve_asset_from`, `content_type`, `percent_decode`), the
 //! bundled client + favicon + dev-menu CSS, port binding and the single-instance takeover
-//! probe, the LAN/host/identity guards in [`security`], the shutdown signal, the file-watch
+//! probe, the origin/host/identity guards in [`security`], the shutdown signal, the file-watch
 //! predicates, and `guarded`/`panic_msg`/`unknown_flag_error`/`bad_format_error`.
 //!
 //! **There is no server here.** The live preview is [`crate::serve_site`], for a project
@@ -18,8 +18,6 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-// `security` is a child module on `use super::*`, so its `Arc<str>` tokens resolve here.
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -30,9 +28,7 @@ pub(crate) const FAVICON: &str = include_str!("../../../../web-client/favicon.sv
 
 mod security;
 // Re-exported at `crate::serve::*` because serve_site.rs imports several of these.
-pub(crate) use security::{
-    lan_url, new_session_token, with_host_guard, with_lan_guard, ws_origin_ok,
-};
+pub(crate) use security::{with_host_guard, ws_origin_ok};
 
 async fn unix_signal(kind: tokio::signal::unix::SignalKind) {
     match tokio::signal::unix::signal(kind) {
@@ -47,10 +43,10 @@ async fn unix_signal(kind: tokio::signal::unix::SignalKind) {
 /// SIGHUP. The two dev servers race their `axum::serve` against this so `serve`
 /// **returns** on a signal (rather than the process being hard-killed with kernels
 /// still live), letting `run` tear the runtime down and drop the watcher/builder
-/// tasks that own the kernels + warm pool — which runs their teardown Drops. We race
+/// tasks that own the kernels, which runs their teardown Drops. We race
 /// (rather than `axum`'s `with_graceful_shutdown`) because the preview holds a
 /// persistent websocket that never closes on its own, so graceful shutdown would
-/// hang. Without this, a Ctrl-C'd preview leaks the whole kernel/forkserver subtree.
+/// hang. Without this, a Ctrl-C'd preview leaks the whole kernel subtree.
 ///
 /// SIGHUP is here because closing a terminal tab is the most common way a dev server
 /// dies, and its default disposition *terminates the process*, skipping this teardown
@@ -233,8 +229,7 @@ async fn try_bind(
     Ok((listener, bound))
 }
 
-/// Bind `port` for a preview of `root`. Binds 0.0.0.0 (LAN-reachable) with `expose`,
-/// else loopback only.
+/// Bind `port` for a preview of `root`, on loopback only.
 ///
 /// Three outcomes, in order. The port is free, and we take it. Or the port (or one in
 /// the fallback range) is held by a preview of *this same root*, which we replace:
@@ -245,10 +240,9 @@ async fn try_bind(
 /// alongside the first.
 pub(crate) async fn bind_with_fallback(
     port: u16,
-    expose: bool,
     root: &Path,
 ) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
-    let host = if expose { [0, 0, 0, 0] } else { [127, 0, 0, 1] };
+    let host = [127, 0, 0, 1];
     let mut last_err = match try_bind(host, port).await {
         Ok(bound) => return Ok(bound),
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => Some(e),
@@ -314,28 +308,6 @@ pub(crate) async fn bind_with_fallback(
         }
     }
     Err(last_err.unwrap_or_else(|| std::io::Error::other("no free port")))
-}
-
-/// The machine's primary LAN IP, found by asking the OS which local address it
-/// would route an outbound packet from. No packet is sent, so this works offline;
-/// returns `None` when there is no route (e.g. no network interface).
-pub(crate) fn local_ip() -> Option<std::net::IpAddr> {
-    let sock = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
-    sock.connect(("8.8.8.8", 80)).ok()?;
-    sock.local_addr().ok().map(|a| a.ip())
-}
-
-/// Print a scannable QR code (terminal half-blocks) for `url`, so the preview can
-/// be opened on a phone on the same network without typing the address.
-pub(crate) fn print_qr(url: &str) {
-    let Ok(code) = qrcode::QrCode::new(url.as_bytes()) else {
-        return;
-    };
-    let art = code
-        .render::<qrcode::render::unicode::Dense1x2>()
-        .quiet_zone(true)
-        .build();
-    eprintln!("{art}");
 }
 
 /// Open `url` in the default browser (best effort; ignores failure).
@@ -670,12 +642,41 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|p| panic_msg(&*p))
 }
 
-/// Build a hard-error message for an unrecognized `--flag`, appending a `closest`-based
-/// "did you mean `--strict`?" when a known flag is within edit distance 2. Shared by the
-/// `build`/`check`/`serve` flag parsers so a typo'd flag fails loudly instead of being
-/// silently dropped. `known` is each parser's own accepted long-flag set. No `error:`
-/// prefix — the caller frames it (raw `eprintln!` adds `error: `; `log::error` styles it).
+/// Flags this tool used to accept, each naming its successor or an explicit "nothing".
+///
+/// The fourth CLI retirement register, beside `RETIRED_COMMANDS` (verbs) and
+/// `RETIRED_NEW_KINDS` (`new` kinds). It exists for the same reason those do: without an
+/// entry, a flag the author has in their fingers falls through to the did-you-mean below,
+/// and a retirement answered with "did you mean `--dir`?" sends them to a flag that does
+/// something else. Keyed on the flag alone, not on the verb: an author who types
+/// `build --host` should learn the flag is gone just as surely as one who types
+/// `preview --host`.
+///
+/// **One sentence per entry: the date, then the successor or "nothing".** Never phrased as
+/// a did-you-mean.
+const RETIRED_FLAGS: &[(&str, &str)] = &[
+    (
+        "--bare",
+        "`--bare` was removed on 2026-08-09: plain `build <file.tmd>` writes the same page \
+         with its scripts, and a reader who wants none can strip them.",
+    ),
+    (
+        "--host",
+        "`--host` was removed on 2026-08-09: the preview binds to loopback only. To read a \
+         draft on another device, `build` it and serve the folder yourself.",
+    ),
+];
+
+/// Build a hard-error message for an unrecognized `--flag`: a retired flag's removal note
+/// if [`RETIRED_FLAGS`] knows it, otherwise a `closest`-based "did you mean `--strict`?"
+/// when a known flag is within edit distance 2. Shared by the `build`/`preview` flag
+/// parsers so a typo'd flag fails loudly instead of being silently dropped. `known` is each
+/// parser's own accepted long-flag set. No `error:` prefix, so the caller frames it (raw
+/// `eprintln!` adds `error: `; `log::error` styles it).
 pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
+    if let Some((_, note)) = RETIRED_FLAGS.iter().find(|(f, _)| *f == flag) {
+        return (*note).to_string();
+    }
     match taliesin_core::closest(flag, known) {
         Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
         None => format!("unknown flag `{flag}`"),
@@ -683,8 +684,8 @@ pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
 }
 
 /// One wording for a bad `--format` value, shared by every subcommand that takes
-/// `--format`/`--json` (`build`/`publish`/`check`/`doctor`/`map`/`symbols`/`init`/`new`)
-/// so the same mistake reads identically everywhere. `got` is the offending value, or
+/// `--format`/`--json` (`build`/`doctor`/`init`/`new`) so the same mistake reads
+/// identically everywhere. `got` is the offending value, or
 /// `None` when `--format` was given with nothing after it. No `error:` prefix — the caller
 /// frames it exactly like `unknown_flag_error` (raw `eprintln!`, or `log::error` styles it).
 pub(crate) fn bad_format_error(got: Option<&str>) -> String {
@@ -796,6 +797,41 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     // `exec.rs`'s `kernel_failure_report`, and for the same reason). Done here, once,
     // rather than at each call site, so `build` and `preview` cannot drift or forget it.
     body.replace('\n', "\n          ")
+}
+
+#[cfg(test)]
+mod retired_flags {
+    use super::*;
+
+    /// A flag this tool used to accept answers with its removal note, never with a
+    /// did-you-mean, and is offered by no live parser. Derived from the register, as the
+    /// verb and `new`-kind registers are: adding an entry owes no test of its own.
+    #[test]
+    fn a_retired_flag_names_what_happened_instead_of_guessing() {
+        let live: &[(&str, &[&str])] = &[
+            ("build", crate::build::BUILD_FLAGS),
+            ("preview", crate::cli::SERVE_FLAGS),
+        ];
+        for (flag, note) in RETIRED_FLAGS {
+            assert!(!note.is_empty(), "`{flag}` retired with no note");
+            for (verb, known) in live {
+                assert!(
+                    !known.contains(flag),
+                    "`{flag}` is retired but still offered by `{verb}`"
+                );
+                let e = unknown_flag_error(flag, known);
+                assert!(e.contains(flag), "the error names the flag typed: {e}");
+                assert!(
+                    !e.contains("did you mean"),
+                    "the removal note replaces the did-you-mean, it does not follow it: {e}"
+                );
+                assert_eq!(
+                    e, **note,
+                    "a retired flag is answered by its register entry"
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

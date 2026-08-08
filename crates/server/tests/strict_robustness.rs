@@ -349,11 +349,12 @@ fn preview_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("previewflag");
     let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
-    // A typo'd `--hots` (for --host) must fail fast, before the server binds a port.
+    // A typo'd `--noexec` (for --no-exec) must fail fast, before the server binds a port,
+    // and this one is not cosmetic: dropped silently, the preview would run every cell.
     let res = taliesin()
         .arg("preview")
         .arg(&doc)
-        .arg("--hots")
+        .arg("--noexec")
         .output()
         .expect("run preview");
     let err = String::from_utf8_lossy(&res.stderr);
@@ -363,8 +364,8 @@ fn preview_rejects_unknown_flag_with_suggestion() {
         "an unknown preview flag must fail, stderr was:\n{err}"
     );
     assert!(
-        err.contains("--hots") && err.contains("--host"),
-        "the error names the bad flag and suggests --host: {err}"
+        err.contains("--noexec") && err.contains("--no-exec"),
+        "the error names the bad flag and suggests --no-exec: {err}"
     );
 }
 

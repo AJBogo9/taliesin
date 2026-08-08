@@ -71,6 +71,6 @@
     --tali-scrim: rgba(0, 0, 0, .42);
   }
 
-  /* The dark palette override lives in tokens-dark.css (keyed on `html[data-theme="dark"]` AND
-     the `html[data-theme="dark"]` toggle) so a `--bare` page can flatten just that layer to
-     `:root` / a `prefers-color-scheme` query. */
+  /* The dark palette override lives in tokens-dark.css, keyed on the
+     `html[data-theme="dark"]` toggle, so the dark palette is one layer rather than a
+     parallel per-surface set. */

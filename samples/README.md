@@ -1,7 +1,7 @@
 # samples/ — the standalone format test set
 
 One comprehensive document per Taliesin HTML format, each **standalone-previewable**,
-for honing every format's UX in isolation. Integration between them (mounts, embeds)
+for honing every format's UX in isolation. Integration between them (embeds)
 is deliberately deferred: polish each on its own first, then wire them together.
 
 This dir holds the one document that did not already exist as a standalone project

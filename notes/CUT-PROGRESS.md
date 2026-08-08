@@ -98,12 +98,17 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 8 | CLI ergonomics + scaffolding | **done** 2026-08-08 | `cut/wave-8-cli-scaffolding` | **−2,349** (+397 / −2,746, 40 files, 16 deleted) | 10 verbs → **9, the ruling's target**; `doctor.rs` + `packages.rs` untouched as ruled; `dialoguer` gone; `init` templates 3 → **1**, `new` kinds 3 → **1** |
 | 9 | Diagnostics catalogue (keep lint front door) | **done** 2026-08-08 | `cut/wave-9-diagnostics` | **−4,957** (+1,288 / −6,245, 93 files, 13 deleted) | verbs stay **9**: `check` retired into `build --check-only`; `check.rs` → `lint.rs`, 1,189 → **620** impl lines; severity is a FIELD, the `TAL-*` catalogue is gone |
 | 10 | LSP long tail | **done** 2026-08-09 | `cut/wave-10-lsp` | **−9,838** (+180 / −10,018, 38 files, 17 deleted) | 16 advertised providers → **7**, custom methods 8 → **3**; every LSP **write path** is gone; binary **−415,712 B**; verbs stay **9** |
-| 11 | Serve layer, opened once | not started | | | only wave that opens `exec_pool.rs` |
+| 11 | Serve layer, opened once | **done** 2026-08-09 | `cut/wave-11-serve` | **−5,015** (+768 / −5,783, 80 files, 5 deleted) | the one wave that opened `exec_pool.rs`, and the LRU is absent from its diff; warm pool, `mounts:`, `--bare` and `--host` all gone; binary **−491,072 B**; a FOURTH CLI register (`RETIRED_FLAGS`); `tools/build-site.sh` is pre-push step 5 |
 | 12 | Justification layer (corpus, docs, tests) | not started | | | genuinely last |
 | 13 | **`taliesin run`** (unadjudicated, 2,406 lines) | not started | | | needs an adjudication pass first |
 
 ## Open items carried forward
 
+- **A retired FLAG now has a register: `serve::RETIRED_FLAGS`** (`crates/server/src/serve/mod.rs`),
+  the fourth CLI one beside `RETIRED_COMMANDS` (verbs) and `RETIRED_NEW_KINDS` (`new` kinds).
+  Keyed on the flag alone, not on the verb, and consulted by `unknown_flag_error` **before**
+  the did-you-mean. It carries `--bare` and `--host`. One derived test covers the register, so
+  a later retirement is one entry and nothing else, the same contract the other three have.
 - **Wave 13 is not planned yet.** `run_cmd.rs` (513), `run_print.rs` (820),
   `runspec.rs` (328), `run_control.rs` (238), `session.rs` (242), `http1.rs` (265) fell
   through the bundle partition. `runspec.rs` and `run_control.rs` are **not** run-only
@@ -121,8 +126,9 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     `from-quarto.tmd`". **Skip every one of them; the page does not exist.** The register
     entry IS the migration note now, and it reaches the author with a file and a line at
     the moment they hit the retired key, which no page can beat.
-- **Re-measure the warm pool on the preview path** before wave 11 if you want the
-  number. The directive says cut regardless; measure only if you want to know the cost.
+- **The warm pool is GONE (wave 11) and the accepted cost is recorded in that wave's log**:
+  a `warming-kernel` state on the first cell of every fresh code-cell page in preview, and
+  again on any page evicted past `MAX_WARM_PAGES = 6`.
 - **Chrome is GONE from the tree, and there is no automated browser test net at all.**
   Wave 6 deleted `reactive_browser.rs`, `headless_js_feature.rs`, the `headless-js` cargo
   feature and the `chromiumoxide` dependency together. `gates.sh` and `ci.yml` pass no
@@ -139,9 +145,9 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   a retired PARENT key takes its children with it, so nothing under it is validated at
   all). That is the cheap direction and it is worth knowing: retiring a parent costs one
   register entry and silences the whole block, where retiring N children costs N.
-- **Decide whether `Site::nav_ordered` still belongs where it is.** It lived in `llms.rs`
-  and moved to `feed.rs` in wave 4 because `feed_hosts` was its other caller. If wave 11's
-  site-layer reduction touches feeds, that is the moment to look at it again.
+- **`Site::nav_ordered` stays in `feed.rs`.** Wave 11's site-layer reduction did not touch
+  feeds (`feed.rs` is byte-identical), so the question the wave-4 note deferred never came
+  up; `feed_hosts` is still its only caller and the file is still the right home.
 - **A RETIREMENT NOTE CAN GO STALE, AND NO GATE SEES IT. New in wave 8, applies to every
   wave after it.** `RETIRED_COMMANDS`' `schema` entry named `.taliesin/tali-site.schema.json`
   as its replacement; wave 8 deleted that file's writer, so the note would have shipped a
@@ -172,6 +178,19 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   severity looked plausible. **When a property is derived from prose, the derivation is a
   place bugs live silently**, which is the argument that made wave 9 worth doing, found by
   doing it.
+- **A TEST CAN BE ASSERTING ON A DOC COMMENT, and only deleting the comment shows it. New in
+  wave 11.** `the_pre_paint_canvas_map_tracks_the_theme_tokens` located `--tali-bg` by finding
+  `:root` in `TOKENS_DARK_CSS`, a file with **no `:root` block at all**: the only match was
+  inside a comment that happened to sit directly above the real
+  `html[data-theme="dark"]` block. It read the right value for months by accident. **When a
+  test locates its subject by a string that also occurs in prose, editing the prose is a
+  code change**, and no gate says so. Same genus as wave 9's derived-classification finding.
+- **A VISIBILITY CHANGE CAN DROP A CONST OUT OF A SOURCE-SCANNING GATE. New in wave 11.**
+  `every_parsed_flag_is_documented_in_its_subcommand_help` finds `<PREFIX>_FLAGS` by requiring
+  the literal `const ` at column 0, so making `BUILD_FLAGS`/`SERVE_FLAGS` `pub(crate)` removed
+  `build` and `preview` from the comparison entirely. Its own **floor assertion** caught it
+  (`lists.len() >= 5`, collected 3), which is the whole reason that floor exists. Any later
+  wave that changes a scanned declaration's shape owes a look at the scanners in `main.rs`.
 - **Removing a SHORT flag from a parser that takes bare positionals is a reclassification.**
   Wave 8's `-y`/`--yes`: with the flag merely deleted, `taliesin init -y` would have created
   a directory named `-y`. Both scaffolders now reject any leading-dash token. A later wave
@@ -185,11 +204,11 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 - [x] Entry points wired — **done 2026-08-08.** `CLAUDE.md` now opens with the cut banner
       (it previously steered a fresh session toward *growing* the tool), `notes/README.md`
       indexes these three files, and `notes/ROADMAP.md` is marked paused.
-- [ ] Write `tools/build-site.sh` before `mounts:` goes, and wire it into
-      `.githooks/pre-push`. `build.rs:1651` records that the shell-script alternative is
-      what once shipped this project's own call-to-action with a 404. **Wave 9 opened that
-      hook** and added a fourth step (`build docs/guide --check-only --no-exec`), so the
-      shape to copy is already there.
+- [x] Write `tools/build-site.sh` before `mounts:` goes, and wire it into
+      `.githooks/pre-push`. **Done 2026-08-09 in wave 11, and it verifies rather than
+      merely building**: it resolves every cross-project link written in `site/` against the
+      composed output and exits non-zero naming any that has nothing behind it. Pre-push
+      step 5, `--check` (`--no-exec`, temp dir, 1.1 s).
 - [ ] **A fence attribute has no validator at all, and `code-line-numbers=` just became the
       first retirement that spelling cannot report.** The `#|` form answers with its
       `RETIRED_KEYS` note; `{.python code-line-numbers="1|2"}` is silent. Every other fence
@@ -1710,3 +1729,190 @@ Those were the tests only a real Extension Host could write, and the capabilitie
 are gone, so nothing is left unguarded. But `missing_input_suggests.rs`-style arithmetic
 applies here too: the *surviving* wire tests are now a larger fraction of a smaller surface,
 and each survivor's success condition was re-read rather than trusted by name.
+
+### Wave 11, 2026-08-09, `cut/wave-11-serve`
+
+**Measured reclaim: −5,015 lines** (`+768 / −5,783` over 80 files, **5 deleted outright**)
+against the ~5,107 estimate. By area: `crates/server/src` −3,225, `crates/server/tests`
+−854, `crates/core/src` −717, `docs` −155, `crates/core/tests` −108, `corpus` −36,
+`site` −14, `web-client` −14, `crates/core/assets` −2, `editor` −1, and `tools` **+98**
+(`build-site.sh`, deliberately) and root +13. `notes/` is excluded, as in every figure
+above.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **83 suites / 1,443
+passed / 0 failed / 0 ignored**, exit 0. Measure wave 12 against **1,443, two canaries and
+eight gates**; a bare `cargo test --workspace` gives the same figure. The three suites gone
+from wave 10's 86 are `mount_serving_live`, `mount_static_build` and `build_jobs`.
+
+**NINE CLI VERBS ARE STILL NINE.** This wave retires two FLAGS, `--bare` and `--host`, and
+one config key, `mounts:`.
+
+**THE FREEZE, AUDITED BY EYE AND NOT BY A GREEN TEST, which is the whole reason this wave
+exists.** `git diff main -- crates/server/src/serve_site/exec_pool.rs` is 21 lines and every
+one of them is above `get()`: the `warm_pool` field, the second `ExecPool::new` parameter,
+the `set_warm_pool` call in `make()`, and three doc comments. Grepping the diff for `mru`,
+`MAX_WARM_PAGES`, `execs.remove`, `pop()`, `retain` and `insert(0` returns **nothing**.
+`MAX_WARM_PAGES` also stops lying: it was per-project, so `site/`'s six mounts permitted up
+to 7x the cap resident, and after the mounts cut the number means what its name says.
+
+**THE HARD BLOCKER WAS REAL AND IT WENT FIRST.** `tools/build-site.sh` did not exist;
+`build.rs` recorded that the shell-script alternative had already shipped this project's own
+call-to-action with a 404 (item 149), and removing `mounts:` without a replacement would have
+repeated it. The script is written, and it **verifies rather than merely builds**: it greps
+every `docs/`- or `gallery/`-prefixed link out of `site/_site.yml` and `site/*.tmd`, resolves
+each against the composed output, and exits non-zero naming any that has nothing behind it.
+`.githooks/pre-push` gained a fifth step, `tools/build-site.sh --check` (`--no-exec`, into a
+temp dir, 1.1 s). Verified against the pre-cut build: the composed tree is **file-set
+identical to what `build site` with `mounts:` produced, 126 files**, and all 7 cross-project
+links resolve.
+
+**BEHAVIOURAL VERIFICATION, because two of these are security assertions nothing automated
+covers.** Against a live `preview corpus/tech-blog` on 4388, with real curl:
+
+```
+Host: 127.0.0.1:4388            -> 200      Origin: http://evil.example   -> 403
+Host: localhost:4388            -> 200      Origin: https://evil.example  -> 403
+Host: evil.example              -> 403      Origin: null                  -> 403
+Host: 127.0.0.1.evil.example    -> 403      Origin: http://127.0.0.1:4388 -> 101
+/search-index.js, Host: evil.example -> 403 Origin: http://localhost:9999 -> 101
+```
+
+So the DNS-rebinding guard survived the `lan_ip` removal and is still layered over every
+route (not just the page route), and `ws_origin_ok` did **not** become a no-op: a hostile
+origin cannot open the socket, which is the only thing stopping an open tab from sending
+`restart_kernel` and destroying the warm kernel. The console prints `ready` and `watch` and
+no `network` line.
+
+**THE BYTE-DIFF OF `corpus/tech-blog` IS NOT CLEAN, AND THE ONE DIFFERENCE IS WORTH THE
+PARAGRAPH.** Deduplicated across all 54 files, the entire diff is **two lines**: one JS
+comment in `code-enhance/01-registry.js` that named `--host`, and the `app.<hash>.js` src
+that changed because of it. `minify_js` went in wave 4, so JS comments now ship verbatim and
+a comment edit is a shipped-byte edit. Everything else is byte-identical, checked by name:
+**402 `data-block-id`, 373 `data-sourcepos`, 9 `data-source-file`** (hashes of the sorted
+occurrence lists compared), `blog.xml` (3,994 B), `search-index.js` (121,312 B),
+`sitemap.xml`, `robots.txt`, `projects.xml`, the hero markup and all four listings. Filtering
+those two lines out leaves **0** differing lines.
+
+**Measured, not asserted.** Two `cargo build --release -p taliesin-server` runs into separate
+target dirs, same toolchain, `main` in a throwaway worktree: **30,376,272 → 29,885,200 bytes,
+−491,072 (−1.62%)**, the largest binary win of the campaign so far and ahead of wave 10's
+−415,712 from half the lines. The CSS bundle is unchanged apart from three comment edits, so
+there is no per-page CSS win to report.
+
+**Eight things that were not true, or that the playbook did not know.** Same genus as waves
+1 to 10:
+
+1. **A TEST WAS ASSERTING ON A DOC COMMENT, and only deleting the comment could show it.**
+   `the_pre_paint_canvas_map_tracks_the_theme_tokens` read `--tali-bg` out of the first block
+   after `:root` in `TOKENS_DARK_CSS`. That file **has no `:root` block**: it is
+   `html[data-theme="dark"]` throughout, and the only `:root` in it was inside a comment
+   explaining how `bare_theme_css` flattened the prefix. The comment happened to sit directly
+   above the real block, so the scan landed on the right value for four months by accident.
+   Removing the `--bare` mention made it panic `no :root block in the token CSS`. Re-pointed
+   at the selector the file actually uses. **The genus is wave 9's derived-classification
+   finding: when a test locates its subject by a string that also appears in prose, the prose
+   is load-bearing and nothing says so.**
+2. **MAKING A FLAG CONST `pub(crate)` SILENTLY DROPPED IT FROM THE DRIFT GATE.**
+   `every_parsed_flag_is_documented_in_its_subcommand_help` finds each `<PREFIX>_FLAGS` by
+   requiring the literal `const ` at column 0. `RETIRED_FLAGS`' own gate needs to read
+   `BUILD_FLAGS` and `SERVE_FLAGS`, so both became `pub(crate) const`, and the scan stopped
+   seeing them, taking `build`'s and `preview`'s whole flag sets out of the comparison. Only
+   the scan's own **floor assertion** (`lists.len() >= 5`, collected 3) caught it, which is
+   exactly the "a scan that finds nothing would pass every assertion below it" guard its
+   author wrote it for. The scan now accepts an optional visibility prefix.
+3. **`stale_sweep.rs` MUST NOT BE DELETED, and the playbook's STAGE 1e says to.** The file
+   contains no mount reference at all; its subject is the stale-output sweep, which survives
+   and is now *more* load-bearing than before, because the sweep is precisely why
+   `build-site.sh` must build the parent first. Kept.
+4. **THREE OF THE SIX SITE-LAYER STAGES WERE ALREADY PAID.** STAGE 3 (social cards) and
+   STAGE 4 (the PWA manifest) both went in wave 4. STAGE 5 (the dead hero-image branch) went
+   on 2026-08-02: `HeroSpec` has no `image` field and `frontmatter.rs` already carries a test
+   asserting a retired `hero.image:` never reaches it. Read the code before executing a stage.
+5. **THE TWO `mounts entry key` RETIRED_KEYS ROWS WENT STALE THE MOMENT THE KEY DID.** Both
+   said "write `mounts:` as a mapping of URL prefix to project directory instead": an
+   instruction to write a key that no longer exists, in a register whose whole job is to name
+   a live successor. Deleted; the new `config key`/`mounts` row answers instead. This is the
+   **third** recurrence of wave 8's lesson (wave 10 found `map`'s), and the first where the
+   stale rows were in a *scope* the cut removed rather than in the key itself.
+6. **A FOURTH REGISTER IS RIGHT HERE, AND IT IS RIGHT BECAUSE IT SERVES TWO ENTRIES.** Wave 3
+   declined a register for `TAL-DEBUG-TRACE` on the ground that machinery serving one entry is
+   not worth it; wave 8's `RETIRED_NEW_KINDS` is the counter-precedent. `RETIRED_FLAGS` lands
+   in `serve/mod.rs` beside `unknown_flag_error`, carries **`--bare` and `--host`**, is keyed
+   on the flag alone (so `build --host` is answered too) and is consulted **before** the
+   did-you-mean, which matters: with the flag merely deleted, `--bare` fell through to
+   `BUILD_FLAGS` and `--host` to `SERVE_FLAGS`, and CLAUDE.md forbids answering a retirement
+   with a did-you-mean because `codes::extract_suggestion` lifts that phrase into a mechanical
+   fix. One derived test over the register, mirroring `a_retired_kind_names_what_to_do_instead`;
+   no per-entry tombstone.
+7. **`adopt_forked` TOOK MORE WITH IT THAN THE PLAN LISTS.** `wait_until_reachable` (the
+   TCP-probe loop that existed because a forked kernel binds its ZMQ ports a beat after the
+   daemon reports its PID) had no other caller, and its error string was a row in
+   `start_error_is_transient`'s test. `KernelSpec::kernel_name` was `warm_pool::warm_one`'s
+   alone. `runtime_dirs.rs` lost `warmpool_dir` **and** `WARMPOOL_PREFIX`, which forced a real
+   decision: the sweep's live-non-own-pid row used a `tali-warmpool-` dir as its fixture, so it
+   is re-pointed at `tali-kernel-` rather than deleted. `prepare_connection` stays, as
+   required, and `KernelProc` collapsed to a bare `Child` rather than to a one-variant enum
+   (wave 5's precedent).
+8. **THE PLAYBOOK'S OWN DISSENT WAS RIGHT ABOUT THE COST, AND THE COST IS VISIBLE.** With
+   `mounts:` gone, `build site` reports **12 broken cross-project links** (the nav, the two
+   `docs/guide/` CTAs, the four gallery cards). Those links are correct in the composed deploy
+   and unresolvable from inside `site/`, so the diagnostic is true. Three ways out were
+   considered and rejected: making the site checker skip root-absolute links (a real weakening,
+   since `corpus/tech-blog/404.tmd` links `/` and `/blog.tmd` and those ARE validated today),
+   writing the links as absolute URLs against `url:` (breaks the local composed preview), and
+   simply accepting silence. What ships instead is the honest pair: the tool reports what it
+   can see, and `build-site.sh` resolves the links against the composed output and says so out
+   loud before the site build runs.
+
+**The judgement call, and how it went.** The dissent's strongest point was that a shell script
+nobody runs is how item 149 happened. That is answered structurally, not by promising to run
+it: the script is a **pre-push step**, and it **asserts** rather than builds. What it checks is
+also strictly stronger than what `mounts:` gave: `under_mount` only tested that a link's
+prefix was *declared* in the config, never that anything was behind it, so a mount pointing at
+an empty directory passed. The script tests the file.
+
+**What was given up, stated plainly.**
+
+**The warm pool, and the ~1.9 s spinner it was buying.** Recorded knowingly, as the plan asked:
+every fresh code-cell page in preview regains a `warming-kernel` state on its first cell, and
+past `MAX_WARM_PAGES = 6` an evicted page pays it again. `exec.rs`'s
+`pooled_kernel_serves_cells_without_a_long_warming_state` was the user-facing contract and it is
+deliberately deleted. The dissent's case is narrow but real and parallelism cannot substitute
+for it in preview, because `spawn_builder` is a single task draining an mpsc: preview builds
+pages strictly one at a time. What goes with it is 1,621 lines of `warm_pool.rs` (a forkserver
+daemon written as an embedded, unlinted Python program, `set_forkserver_preload`ing numpy /
+matplotlib / torch, plus the `ready + in_flight <= cap` accounting whose off-by-one would
+transiently overshoot the RAM budget), the `Forked` kernel process model, and `build_budget.rs`'s
+whole split half. The memory-aware `concurrency_cap` survives untouched, as ruled: it is a
+safety mechanism, not a perf knob.
+
+**`--host` plus the QR code: the only in-tool way to put a live, hot-reloading preview on a
+phone in under five seconds.** The ruling cut it and the dissent is worth restating, because it
+is the one question only the author can answer: the bundled CSS carries 53 `@media` blocks and
+the honest way to check a phone layout is now `build` plus a static file server, or a deploy.
+What is bought is a smaller trusted surface: the session token, its cookie, the LAN guard
+middleware, the `?t=` strip in the client, `local_ip`, `print_qr` and the `qrcode` dependency
+are gone, and `origin_allowed`/`host_allowed` each lost a parameter and a whole mode. Two modes
+collapse to one on the path that runs every day.
+
+**`mounts:`, and with it the ability to preview the composed site.** `preview site` now shows
+the marketing site alone; the Guide and Internals links go nowhere until the deploy is composed.
+That is the sharpest daily loss in this wave, and it is why the callout in `docs/internals/sites.tmd`
+now says to preview each project directly.
+
+**The warm-path Cmd-K refresh.** A heading renamed in a live preview no longer surfaces under
+its new text until the page set changes or a cross-reference anchor moves; the index is rebuilt
+whole on an anchor move (the correctness guard) and at discovery, and nowhere else. This
+re-opens a defect the author had closed (`serve_site/mod.rs`'s own comment explained that a
+stale index makes a search snippet contradict the page it links to), and the trade is 40 lines
+of per-page re-render under a panic guard, plus `page_search_fragment` /
+`install_search_fragment` / `refresh_search_for_page` in `taliesin-core`, all of which were
+`pub` and so invisible to dead-code analysis (wave 10's lesson, applied on purpose rather than
+discovered).
+
+**`--bare`.** Zero-`<script>`, zero-CDN, CSS-only-theme single-doc output, its `bare_theme_css`
+prefix-rewriting trick, `strip_tali_js_scripts` (driven off the `CLIENT_LANGS` registry so a
+second client language could not silently break the zero-script contract), and
+`corpus/bare-draft.tmd` with it.

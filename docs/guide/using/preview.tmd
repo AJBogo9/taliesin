@@ -201,23 +201,9 @@ On a phone the table of contents drops the sticky sidebar and appears inline,
 after the article, rather than floating alongside it — there is no separate
 button or sheet to open.
 
-To see it on a real device, start the server with `--host`:
-
-```sh
-cargo run -p taliesin-server -- preview docs/ --host
-```
-
-That binds your LAN, prints a `network` URL, and renders a **QR code** in the
-terminal. Scan it and the *live* preview opens on your phone, updating as you edit
-on your laptop.
-
-Because `--host` exposes the preview to everyone on the network, non-loopback
-access is gated by a **per-session access token** baked into that printed URL and
-QR (`?t=…`); the first load sets a cookie so the rest of the session needs nothing
-further. Loopback (`127.0.0.1`, your own machine) is exempt and never needs the
-token. The token is regenerated every server start, so scan the current QR or copy
-the current URL: an old link from a previous run stops working, and a bare
-`http://<lan-ip>:<port>/` typed by hand (or by a snooping neighbour) is refused.
+The preview binds to **loopback only**, so it is reachable from the machine running
+it and nowhere else. To read a draft on a phone, `build` it and serve the folder from
+somewhere both devices can see.
 
 Pressing <kbd>Cmd/Ctrl-P</kbd> gives a clean print/PDF: the dev menu, the TOC
 handle, and any diagnostics are hidden, the palette forces light, and content flows

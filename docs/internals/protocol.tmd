@@ -314,44 +314,25 @@ compares the upgrade request's `Origin` against its `Host`:
 
 - **No `Origin`** means the request isn't from a browser (a non-browser client sends
   none), so it is allowed.
-- **`Origin` authority equals `Host`** (same origin) is allowed. This also covers
-  the LAN case: a phone dials the exact `Host` it sees.
-- **`Origin` host is loopback** (`localhost`, `127.0.0.1`, `::1`, `[::1]`) is allowed
-  **on a loopback-bound preview only** — the default, where a page on another local
-  port (a second dev server, the editor companion) is a trusted local peer.
-  **`--host` drops this allowance** (`allow_loopback_origins: false`): there a page at
-  `http://localhost:X` in the author's own browser is a loopback *peer*, so the LAN
-  token guard waves it through, yet it may be hostile — so under `--host` only a
-  same-origin request may drive the control channel.
+- **`Origin` authority equals `Host`** (same origin) is allowed.
+- **`Origin` host is loopback** (`localhost`, `127.0.0.1`, `::1`, `[::1]`) is allowed:
+  the preview binds loopback only, so a page on another local port (a second dev
+  server, the editor companion) is a peer on the author's own machine.
 - Anything else gets a **`403`** ("cross-origin websocket refused").
 
-The *check* is always installed, with or without `--host`, because a browser always
-sends `Origin`, so it blocks cross-site driving without affecting non-browser clients.
-What `--host` changes is not whether it runs but how much it allows: strictly less.
+The check is always installed, because a browser always sends `Origin`, so it blocks
+cross-site driving without affecting non-browser clients. It is the only thing
+stopping an open tab from sending `restart_kernel` and killing the warm kernel.
 
-### LAN access token (`--host` only)
+### The `Host` allowlist
 
-By default the server binds loopback only. `--host` binds `0.0.0.0` so a phone on
-the same network can open the preview, which also means anyone on the LAN could
-reach it. A **per-session token** gates non-loopback access.
-
-| Caller | Token needed? | Outcome |
-|---|---|---|
-| Loopback (your own machine, the [VS Code companion](extending.tmd)) | no | always allowed |
-| LAN peer with valid `?t=` in the URL | yes | allowed; server sets a `tali_token` cookie |
-| LAN peer with a valid `tali_token` cookie | yes | allowed |
-| LAN peer with no / wrong token | yes | `403` |
-
-The token is a random UUID minted at startup and threaded into the printed LAN URL
-and QR code as `?t=…`. The first tokened load sets a `tali_token` cookie
-(`Path=/; SameSite=Lax; Max-Age=86400`, a 24-hour expiry), so every later
-same-origin request (assets, the websocket upgrade, reloads) authenticates by cookie
-with no client changes. The token is regenerated each server start, so a stale cookie
-simply fails closed and the author re-scans. **Loopback peers
-are detected from the connection address and exempted entirely**, so the local
-workflow and the editor companion never see the token. Without `--host` there is no
-token and the guard is never installed at all. Full rationale lives in [the dev
-server](server.tmd#lan-exposure-the-host-token).
+The origin check compares `Origin` against `Host`, and under a DNS-rebinding attack
+both are the attacker's domain and match, so it cannot see one. Every HTTP response
+therefore passes a second, unconditional guard (`host_allowed`, installed via
+`with_host_guard`): the `Host` header must name a loopback address, or the request is
+refused with a `403`. A request with no `Host` is allowed, because only a browser can
+mount a rebind and a browser always sends one. Full rationale lives in [the dev
+server](server.tmd#binding-and-the-two-guards).
 
 ## Inverse search and forward search
 

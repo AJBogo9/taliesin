@@ -1,10 +1,10 @@
-//! Naming + startup sweep for the two runtime `/tmp` dirs that leak on ungraceful
-//! taliesin death.
+//! Naming + startup sweep for the runtime `/tmp` dirs that leak on ungraceful taliesin
+//! death.
 //!
-//! `Kernel` and `ForkserverDaemon` remove their `/tmp` connection dirs in `Drop`, but
-//! a SIGKILL / crash / closed terminal skips `Drop`, orphaning the dir. (The process
-//! halves now self-reap — the warm-pool forkserver and the cold kernel both die with
-//! taliesin — but removing the *dir* was always `Drop`'s job, and that never ran.) We
+//! `Kernel` removes its `/tmp` connection dir in `Drop`, but a SIGKILL / crash / closed
+//! terminal skips `Drop`, orphaning the dir. (The kernel process itself self-reaps and
+//! dies with taliesin, but removing the *dir* was always `Drop`'s job, and that never
+//! ran.) We
 //! tag each dir with the server's pid, so a later start can identify and reclaim the
 //! ones whose owner is dead. Strictly pid-based: a live process's dir is never touched.
 //!
@@ -13,18 +13,11 @@
 use std::path::{Path, PathBuf};
 
 const KERNEL_PREFIX: &str = "tali-kernel-";
-const WARMPOOL_PREFIX: &str = "tali-warmpool-";
 
 /// A fresh cold-kernel connection dir, tagged `tali-kernel-<pid>_<uuid>` so a later run
 /// can reclaim it if we die ungracefully. Replaces the old `tali-kernel-<uuid>`.
 pub(crate) fn kernel_conn_dir() -> PathBuf {
     tagged(KERNEL_PREFIX)
-}
-
-/// A fresh warm-pool helper dir, tagged `tali-warmpool-<pid>_<uuid>`. Same reclaim
-/// contract as [`kernel_conn_dir`].
-pub(crate) fn warmpool_dir() -> PathBuf {
-    tagged(WARMPOOL_PREFIX)
 }
 
 /// `<prefix><pid>_<uuid>`, where `<pid>` is THIS server's — the process whose death
@@ -49,7 +42,7 @@ fn owner_pid(name: &str, prefix: &str) -> Option<u32> {
     pid.parse::<u32>().ok()
 }
 
-/// Best-effort: remove leaked kernel / warm-pool dirs under the system temp dir whose
+/// Best-effort: remove leaked kernel dirs under the system temp dir whose
 /// owning server pid is dead. Called once at the start of the kernel-spawning commands
 /// (preview/serve + build).
 pub(crate) fn sweep_stale_runtime_dirs() {
@@ -69,8 +62,7 @@ fn sweep_in(base: &Path) {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        let Some(pid) = owner_pid(name, KERNEL_PREFIX).or_else(|| owner_pid(name, WARMPOOL_PREFIX))
-        else {
+        let Some(pid) = owner_pid(name, KERNEL_PREFIX) else {
             continue;
         };
         if pid == own || pid_alive(pid) {
@@ -117,13 +109,6 @@ mod tests {
             ),
             Some(3698019)
         );
-        assert_eq!(
-            owner_pid(
-                "tali-warmpool-42_cc8652b8-6ab2-4f1f-b362-7e4a23592628",
-                WARMPOOL_PREFIX
-            ),
-            Some(42)
-        );
         // Legacy uuid-only (no `_`) → None: never swept.
         assert_eq!(
             owner_pid(
@@ -142,36 +127,35 @@ mod tests {
             None
         );
         // Prefix mismatch → None.
-        assert_eq!(owner_pid("tali-warmpool-99_x", KERNEL_PREFIX), None);
+        assert_eq!(owner_pid("tali-conn-99_x", KERNEL_PREFIX), None);
         assert_eq!(owner_pid("tali-interp-python3", KERNEL_PREFIX), None);
     }
 
     /// The producer and the consumer were only ever tested apart: `owner_pid` against
     /// hand-written names, `sweep_in` against hand-built dirs. So nothing checked that the names
-    /// `tagged` actually *produces* are the ones `owner_pid` can read back — and all three
-    /// producers survived being replaced by `PathBuf::default()` in the 2026-07-27 mutation run.
+    /// `tagged` actually *produces* are the ones `owner_pid` can read back, and every producer
+    /// survived being replaced by `PathBuf::default()` in the 2026-07-27 mutation run.
     /// If the tag format ever drifted, the sweep would silently stop matching real dirs while
     /// every test above stayed green. Close the loop.
     #[test]
     fn a_produced_dir_name_round_trips_through_the_owner_pid_reader() {
         let own = std::process::id();
-        for (path, prefix) in [
-            (kernel_conn_dir(), KERNEL_PREFIX),
-            (warmpool_dir(), WARMPOOL_PREFIX),
-        ] {
-            assert_eq!(
-                path.parent(),
-                Some(std::env::temp_dir().as_path()),
-                "a runtime dir belongs under the system temp dir, got {path:?}"
-            );
-            let name = path.file_name().unwrap().to_str().unwrap();
-            assert!(name.starts_with(prefix), "{name:?} must carry {prefix:?}");
-            assert_eq!(
-                owner_pid(name, prefix),
-                Some(own),
-                "the sweep must read this process's pid back out of {name:?}"
-            );
-        }
+        let path = kernel_conn_dir();
+        assert_eq!(
+            path.parent(),
+            Some(std::env::temp_dir().as_path()),
+            "a runtime dir belongs under the system temp dir, got {path:?}"
+        );
+        let name = path.file_name().unwrap().to_str().unwrap();
+        assert!(
+            name.starts_with(KERNEL_PREFIX),
+            "{name:?} must carry {KERNEL_PREFIX:?}"
+        );
+        assert_eq!(
+            owner_pid(name, KERNEL_PREFIX),
+            Some(own),
+            "the sweep must read this process's pid back out of {name:?}"
+        );
         // The uuid half keeps two dirs from the same server apart, so a second kernel never
         // reuses the first one's connection dir.
         assert_ne!(kernel_conn_dir(), kernel_conn_dir());
@@ -183,7 +167,7 @@ mod tests {
     /// never exercised. Plant one dead-owner orphan in the real temp dir and watch the real entry
     /// point reclaim it.
     ///
-    /// Safe by construction: the only thing this can remove is a `tali-kernel-`/`tali-warmpool-`
+    /// Safe by construction: the only thing this can remove is a `tali-kernel-`
     /// dir whose owner pid is provably dead, which is exactly what the function exists to remove.
     /// The sibling test's fixtures live inside its own subdirectory, so a top-level scan cannot
     /// see them.
@@ -247,9 +231,9 @@ mod tests {
 
         let own_pid = std::process::id();
         let dead_kernel = base.join(format!("tali-kernel-{dead_pid}_{}", uuid::Uuid::new_v4()));
-        let dead_pool = base.join(format!("tali-warmpool-{dead_pid}_{}", uuid::Uuid::new_v4()));
+        let dead_pool = base.join(format!("tali-kernel-{dead_pid}_{}", uuid::Uuid::new_v4()));
         let own = base.join(format!("tali-kernel-{own_pid}_{}", uuid::Uuid::new_v4()));
-        let live = base.join(format!("tali-warmpool-{live_pid}_{}", uuid::Uuid::new_v4()));
+        let live = base.join(format!("tali-kernel-{live_pid}_{}", uuid::Uuid::new_v4()));
         let legacy = base.join(format!("tali-kernel-{}", uuid::Uuid::new_v4()));
         for d in [&dead_kernel, &dead_pool, &own, &live, &legacy] {
             std::fs::create_dir_all(d).unwrap();
@@ -269,7 +253,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
 
         assert!(dead_kernel_gone, "a dead-owner kernel dir must be swept");
-        assert!(dead_pool_gone, "a dead-owner warm-pool dir must be swept");
+        assert!(dead_pool_gone, "a second dead-owner dir must be swept too");
         assert!(own_kept, "our own live pid's dir must be kept");
         assert!(live_kept, "a live non-own pid's dir must be kept");
         assert!(legacy_kept, "a legacy (no-pid) dir must be left untouched");

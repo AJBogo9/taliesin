@@ -20,7 +20,7 @@ function taliCopyButtons(root) {
     btn.setAttribute('aria-label', 'Copy code');
     btn.innerHTML = copyIcon;
     btn.addEventListener('click', function () {
-      // Secure context → navigator.clipboard; --host LAN / file:// → execCommand fallback.
+      // Secure context → navigator.clipboard; file:// / plain http → execCommand fallback.
       taliCopyText(code.innerText, function () {
         btn.innerHTML = checkIcon;
         btn.classList.add('tali-copied');

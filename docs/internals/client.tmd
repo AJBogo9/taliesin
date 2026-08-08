@@ -240,7 +240,7 @@ indistinguishable from core's. The notable ones:
 
 - **Copy buttons** (`taliCopyButtons`) on every `pre > code`, using a clipboard
   helper that falls back to a hidden-textarea `execCommand` in insecure contexts
-  (`file://`, a plain-HTTP `--host` LAN preview).
+  (`file://`, or a built page opened without a server).
 - **`{js}` cells** (`tali-js.js`): finds each `<script type="application/tali-js">`,
   runs the author's code with a small scope, and mounts the result into its sibling
   target `<div>`. It is idempotent through a `data-tali-ran` guard and drives the

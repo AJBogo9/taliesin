@@ -32,9 +32,7 @@ when the OS has no dark preference. Either way the reader can still flip the pag
 from the **Settings** gear (top-right of every page, or the dev menu on a single
 doc), and the choice persists in their browser (checked first, ahead of both the
 front-matter mode and the OS preference). A page with a *custom* CSS theme that
-doesn't name a built-in mode is one of those "auto" cases too. `--bare` output (a
-fragment with no pre-paint script) follows the same OS-preference logic, just via a
-plain CSS `prefers-color-scheme` media query instead of the head script.
+doesn't name a built-in mode is one of those "auto" cases too.
 
 ::: {.callout-note}
 ## Two built-in palettes, and the reader picks between them

@@ -185,9 +185,6 @@ pub enum OutputMode {
     /// what the page actually contains. `code-enhance.js` (reader menu + a11y) still
     /// ships on every page.
     Build,
-    /// A bare single-doc build: zero `<script>`, zero CDN, CSS-only theming. For a
-    /// rough draft, an archive, or a future print pipeline.
-    Bare,
 }
 
 /// How severe a diagnostic is: the one axis a gate and an editor squiggle both read.
@@ -323,7 +320,7 @@ pub struct RenderedDoc {
 }
 
 /// How a page's framework CSS/JS is delivered. `Inline` bakes every blob into the page
-/// (the portable single-file build, `--bare`, and live preview). `External` links to
+/// (the portable single-file build and the live preview). `External` links to
 /// content-hashed shared files under `_assets/` (the multi-page `build <dir>` path).
 pub enum AssetMode<'a> {
     Inline,

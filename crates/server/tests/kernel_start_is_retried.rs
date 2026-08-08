@@ -4,11 +4,10 @@
 //! `prepare_connection` peeks free loopback ports by binding then releasing them, so two
 //! kernels starting at the same moment can be handed the same port and the loser exits
 //! with `zmq.error.ZMQError: Address already in use`. The re-roll that survives this used
-//! to live in the *callers* (`exec.rs` and `warm_pool.rs` each had a private copy), which
-//! meant a caller that forgot it inherited a known race with nothing to catch the
-//! omission. Three had: the child half of `cold_kernel_self_reaps_on_ungraceful_parent_
-//! death`, the live-kernel test in `kernel.rs`, and the cold-fallback test in
-//! `warm_pool.rs`. The suite starts many kernels at once, so on any given run one of them
+//! to live in the *callers*, each with a private copy, which meant a caller that forgot it
+//! inherited a known race with nothing to catch the omission. Three had, among them the
+//! child half of `cold_kernel_self_reaps_on_ungraceful_parent_death` and the live-kernel
+//! test in `kernel.rs`. The suite starts many kernels at once, so on any given run one of them
 //! could lose the race — which is why the resulting flake was mis-attributed for weeks to
 //! whichever test happened to lose it, and "fixed" against a theory of timing that was
 //! never the cause.
