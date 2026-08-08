@@ -14,7 +14,7 @@ use crate::frontmatter::{closest, unknown_key_message};
 
 /// Cell options taliesin recognizes on a code cell's leading `#|` / `//|` / `%%|`
 /// lines (the union across all cell languages; each is read in `cell_option` /
-/// `parse_js_opts` / `code_fold` / `emit::code_line_numbers`).
+/// `parse_js_opts` / `code_fold`).
 pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "echo",
     "include",
@@ -25,7 +25,6 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "tbl-cap",
     "code-fold",
     "code-summary",
-    "code-line-numbers",
     "name",   // {js}
     "viewof", // {js}
     "input",  // {js}
@@ -53,30 +52,19 @@ pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 /// `.example`/`.proposition`/`.remark` gets no diagnostic at all.
 pub(crate) const THEOREM_KINDS: &[&str] = &["theorem", "lemma", "corollary", "definition", "proof"];
 
-/// Structural + deck feature classes a `:::` fenced div can carry. This is **not** a closed
+/// Structural feature classes a `:::` fenced div can carry. This is **not** a closed
 /// vocabulary — a div may carry any custom class (styled by the author's own CSS) — so this list
 /// only anchors the *did-you-mean* (`validate_div_class`); it never rejects. Keep in sync with the
-/// `.class` dispatch in `render/divs.rs` and the deck classes in `assets/css/deck.css`; a
-/// `vocab.rs` test pins `vocab::div_classes()`'s names as a subset.
+/// `.class` dispatch in `render/divs.rs`; a `vocab.rs` test pins `vocab::div_classes()`'s names
+/// as a subset.
 pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
     "scrolly",
-    "magic-move",
     "step",
     "column-margin",
     "column-page",
     "column-screen",
-    "fragment",
-    "incremental",
-    // Fragment EFFECT modifiers: real styled classes (`deck.css`) that ride alongside
-    // `.fragment` (`::: {.fragment .fade-out}`), so a typo in the effect (`.fade-ot`,
-    // `.hihglight`) is exactly a deck author's fiddly mistake. Anchored here for the
-    // did-you-mean; like `.fragment`/`.incremental` they are deck-authoring modifiers, so
-    // (matching that family) they are NOT offered in the editor vocab (`vocab::DIV_CLASS_NAMES`).
-    "fade-out",
-    "highlight",
-    "notes",
 ];
 
 /// Input control types `.input type=` recognizes.
@@ -139,7 +127,7 @@ pub(crate) fn validate_callout_kind(
 /// A misspelled feature/theorem `:::` class → a located "did you mean". Fired from the generic-div
 /// fall-through in `build_container` (the classes that matched no feature arm). Only a *near-miss*
 /// of a known feature class ([`DIV_FEATURE_CLASSES`] ∪ [`THEOREM_KINDS`], edit distance ≤ 2) warns:
-/// an exactly-known class (a legit generic like `.fragment`) and a genuine custom class
+/// an exactly-known class (a legit generic like `.column-page`) and a genuine custom class
 /// (far from every known name) both stay silent, since div classes are an *open* vocabulary. At
 /// most one warning per div (the first offending class), and purely diagnostic — the div still
 /// renders with its given class. `line` is the 1-based source line of the opening fence.
@@ -194,6 +182,36 @@ pub(crate) fn validate_div_class(
 /// file's `mod tests` derives the rest (gone from the live vocabulary, warns with this note
 /// and no did-you-mean, CSS rule gone), so no hand-written test is owed.
 pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
+    (
+        "fragment",
+        "it was removed on 2026-08-08 with the slide-deck engine: a page reveals nothing \
+         step by step, so the contents become ordinary blocks",
+    ),
+    (
+        "incremental",
+        "it was removed on 2026-08-08 with the slide-deck engine: the list inside it \
+         becomes a plain list",
+    ),
+    (
+        "notes",
+        "it was removed on 2026-08-08 with the slide-deck engine and its presenter view; \
+         speaker notes have nowhere to show on a page, so delete them or write them as prose",
+    ),
+    (
+        "fade-out",
+        "it was removed on 2026-08-08 with the slide-deck engine: it modified a \
+         `.fragment` reveal, and nothing replaces it",
+    ),
+    (
+        "highlight",
+        "it was removed on 2026-08-08 with the slide-deck engine: it modified a \
+         `.fragment` reveal, and nothing replaces it",
+    ),
+    (
+        "magic-move",
+        "it was removed on 2026-08-08 with the slide-deck engine: the code blocks inside \
+         it become ordinary consecutive code blocks",
+    ),
     (
         "debug",
         "it was removed on 2026-08-08 along with the algorithm stepper and `#| trace:`, \
@@ -273,10 +291,10 @@ pub(crate) fn validate_empty_feature_div(
 }
 
 /// Validate a `.step lines=` value (located, click-to-source). The `|` is the STEP separator
-/// of a deck/listing `code-line-numbers="1|2-3"` spec, but a `.step` is already one step, so
+/// of a `code-line-numbers="1|2-3"` spec, but a `.step` is already one step, so
 /// its own `lines=` is parsed as comma-separated ranges only (`walkthrough.js`/`scrolly.js`).
 /// A `|` therefore matches neither a range nor a number and silently focuses zero lines — a
-/// deck author's muscle-memory trap. Purely diagnostic — the step still renders. `line` is the
+/// author's muscle-memory trap. Purely diagnostic — the step still renders. `line` is the
 /// 1-based source line of the div's opening fence.
 pub(crate) fn validate_step_lines(
     spec: &str,
@@ -285,7 +303,7 @@ pub(crate) fn validate_step_lines(
 ) -> Option<Warning> {
     spec.contains('|').then(|| {
         Warning::new(format!(
-            "`.step lines=\"{spec}\"` uses `|` (the step separator for a deck's \
+            "`.step lines=\"{spec}\"` uses `|` (the step separator in a cell's \
              `code-line-numbers=`), but a `.step`'s own `lines=` focuses one step and takes \
              comma-separated ranges only (e.g. `3-5,8`), so the `|` groups highlight nothing. \
              Split the pipe groups into separate `.step` blocks."
@@ -427,10 +445,10 @@ mod tests {
     fn validate_div_class_suggests_near_miss_only() {
         let s = |c: &str| vec![c.to_string()];
         // A near-miss of a feature class → located "did you mean".
-        let w = validate_div_class(&s("fragmnet"), 3, None).expect("a near-miss warning");
+        let w = validate_div_class(&s("scrolley"), 3, None).expect("a near-miss warning");
         assert_eq!(
             w.message,
-            "unknown div class `fragmnet` (did you mean `fragment`?)"
+            "unknown div class `scrolley` (did you mean `scrolly`?)"
         );
         assert_eq!(w.line, Some(3));
         // A near-miss of a THEOREM kind (the case validate.rs's own comment calls out).
@@ -450,7 +468,7 @@ mod tests {
         );
         // Only the first offending class warns (no pile-up).
         assert_eq!(
-            validate_div_class(&s("fragmnet"), 3, None)
+            validate_div_class(&["scrolley".to_string(), "theorm".to_string()], 3, None)
                 .into_iter()
                 .count(),
             1
@@ -589,9 +607,8 @@ mod tests {
                 "a retired callout kind is not a did-you-mean: {}",
                 w.message
             );
-            // Only the class SELECTORS go. The underlying `--tali-callout-important` /
-            // `--tali-callout-caution` custom properties stay defined: `.tali-error` /
-            // `.tali-js-error` read the first, and `deck.css` reads both.
+            // Only the class SELECTORS go. The underlying `--tali-callout-important`
+            // custom property stays defined: `.tali-error` / `.tali-js-error` read it.
             for (label, css) in [("base.css", base), ("site.css", site)] {
                 assert!(
                     !css_has_class_selector(css, &format!("callout-{name}")),
@@ -603,35 +620,6 @@ mod tests {
             callout_kinds_seen >= 2,
             "only {callout_kinds_seen} retired callout kinds found in RETIRED_KEYS — the \
              scope literal changed and this half of the test stopped running"
-        );
-    }
-
-    #[test]
-    fn fragment_effect_modifiers_are_did_you_mean_anchors() {
-        // PL9: `.fade-out`/`.highlight` are real styled fragment effects (`deck.css`), so a
-        // typo in the effect modifier alongside a legit `.fragment` must draw a did-you-mean
-        // instead of silently rendering a plain fragment. Before this, the effect names weren't
-        // known anchors, so `.fade-ot`/`.hihglight` matched nothing and stayed silent.
-        let div = |classes: &[&str]| classes.iter().map(|c| c.to_string()).collect::<Vec<_>>();
-        let w = validate_div_class(&div(&["fragment", "fade-ot"]), 5, None)
-            .expect("a mistyped fragment effect warns");
-        assert_eq!(
-            w.message,
-            "unknown div class `fade-ot` (did you mean `fade-out`?)"
-        );
-        assert!(
-            validate_div_class(&div(&["fragment", "hihglight"]), 5, None)
-                .is_some_and(|w| w.message.contains("did you mean `highlight`?")),
-            "a mistyped `.highlight` effect is caught too"
-        );
-        // The correct effect spellings are legit → silent (known anchors, not typos).
-        assert!(
-            validate_div_class(&div(&["fragment", "fade-out"]), 5, None).is_none(),
-            "the real `.fade-out` effect is silent"
-        );
-        assert!(
-            validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
-            "the real `.highlight` effect is silent"
         );
     }
 
@@ -663,7 +651,7 @@ mod tests {
 
     #[test]
     fn validate_step_lines_warns_only_on_the_pipe_step_separator() {
-        // PL7: a `|` in a `.step lines=` is a deck `code-line-numbers=` habit that the step's
+        // PL7: a `|` in a `.step lines=` is a `code-line-numbers=` habit that the step's
         // comma-only parser focuses to zero lines — warn, located.
         let w = validate_step_lines("1|2-3", 7, Some("d.tmd".into())).expect("`|` warns");
         assert!(

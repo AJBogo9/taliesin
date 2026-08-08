@@ -1,6 +1,6 @@
 //! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The
-//! built-ins are `{{< embed deck.tmd >}}` (an isolated deck iframe), `{{< video
-//! clip.mp4 >}}` (a framed screencast) and `{{< input … >}}` (a reactive control).
+//! built-ins are `{{< video clip.mp4 >}}` (a framed screencast) and `{{< input … >}}`
+//! (a reactive control).
 //! Line-preserving so the include source
 //! map stays valid; `use super::*` reaches the shared `Warning` and HTML-escape helpers.
 
@@ -49,7 +49,7 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
 /// it in [`expand_in_line`], and `include` is resolved a whole pass earlier
 /// (`crate::includes`). A feature report built on `SHORTCODE_SPECS` alone would report two
 /// of the four as not existing.
-pub const SHORTCODE_NAMES: &[&str] = &["embed", "video", "input", "include"];
+pub const SHORTCODE_NAMES: &[&str] = &["video", "input", "include"];
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
@@ -164,20 +164,12 @@ fn expand_in_line(
     out
 }
 
-/// Render one built-in `name args` shortcode (`embed` / `video`), or `None` for any
+/// Render one built-in `name args` shortcode (`video`), or `None` for any
 /// other name (left verbatim by the caller). Args are `key=value` (named) or bare
 /// (positional path); quotes group values with spaces.
 fn render_shortcode(inner: &str) -> Option<String> {
     let toks = tokenize_args(inner);
     let (name, args) = toks.split_first()?;
-    // `{{< embed deck.tmd [title="…"] >}}` embeds another document's deck view in an
-    // isolating iframe with a fullscreen affordance (the deck is built/served as a
-    // dependency, see `embed_targets`).
-    if name == "embed" {
-        return source_path("embed", args)
-            .filter(|p| url_scheme(p).is_none())
-            .map(|p| embed_html(&p, embed_title(args).as_deref()));
-    }
     // `{{< video clip.mp4 [controls=false] [audio] [captions=clip.vtt] [dark=clip-dark.mp4]
     // [poster=…] [caption="…"] >}}` — a framed screencast (never autoplaying: playback is
     // user-initiated, see `video_html`), authored in Markdown so a page needs no raw
@@ -275,17 +267,13 @@ fn tokenize_args(inner: &str) -> Vec<String> {
     toks
 }
 
-/// The first bare (non `key=value`) argument of an `embed`/`video` shortcode: the path
-/// to the deck document or media file, relative to the embedding page.
+/// The first bare (non `key=value`) argument of a shortcode: the path to the media
+/// file, relative to the embedding page.
 ///
 /// A token is a *named* argument only when it looks like `key=value` with a plain
 /// identifier key (`[A-Za-z][A-Za-z0-9_-]*` before the first `=`). Anything else is the
 /// positional path, so a path carrying a query string (`clip.mp4?token=abc`) is **not**
 /// mistaken for a named arg just because it contains an `=` after the `?`.
-fn embed_path(args: &[String]) -> Option<String> {
-    args.iter().find(|a| !is_named_arg(a)).cloned()
-}
-
 /// Whether `tok` is a `key=value` named shortcode argument: an identifier key
 /// (`[A-Za-z][A-Za-z0-9_-]*`) immediately followed by `=`. A `?` (or any other
 /// non-identifier character) before the first `=` means the `=` belongs to a query
@@ -301,14 +289,12 @@ fn is_named_arg(tok: &str) -> bool {
 
 /// The URL scheme a shortcode's path argument carries, if any.
 ///
-/// Both built-ins document their positional argument as a path **relative to the
-/// embedding page** (`{{< video tour.mp4 >}}` — "the video file, relative to the page";
-/// `{{< embed talk.tmd >}}` — "built beside the embedding page"), and an embed target is
-/// additionally *built* as a local file, so a URL there names nothing the builder can
-/// reach. A scheme-bearing token is therefore not a path at all, and passing it through
-/// put an author-controlled URL directly into an `<iframe src>` / `<video src>` with
-/// nothing but attribute escaping in the way. It also slipped past `check`'s
-/// missing-local-media diagnostic, which only looks at local files.
+/// `{{< video tour.mp4 >}}` documents its positional argument as a path **relative to
+/// the embedding page**, so a URL there names nothing the builder can reach. A
+/// scheme-bearing token is therefore not a path at all, and passing it through put an
+/// author-controlled URL directly into a `<video src>` with nothing but attribute
+/// escaping in the way. It also slipped past `check`'s missing-local-media diagnostic,
+/// which only looks at local files.
 ///
 /// Two boundaries worth stating, because both are shapes that *look* like a scheme:
 ///
@@ -336,7 +322,6 @@ fn url_scheme(tok: &str) -> Option<&str> {
 /// the same token instead of re-deriving it from two copies of the rule.
 fn source_path(name: &str, args: &[String]) -> Option<String> {
     match name {
-        "embed" => embed_path(args),
         "video" => video_path(args),
         _ => None,
     }
@@ -346,8 +331,7 @@ fn source_path(name: &str, args: &[String]) -> Option<String> {
 /// opposed to prose like `caption=` / `title=`. Kept beside [`SHORTCODE_SPECS`] because it
 /// is the same closed vocabulary viewed by type: these are the keys [`url_scheme`] guards,
 /// and a path-valued key added there but not here is silently unguarded.
-const PATH_KEYS: [(&str, &[&str]); 2] =
-    [("embed", &[]), ("video", &["dark", "poster", "captions"])];
+const PATH_KEYS: [(&str, &[&str]); 1] = [("video", &["dark", "poster", "captions"])];
 
 /// The path-valued keys declared for `name`.
 fn path_keys(name: &str) -> &'static [&'static str] {
@@ -383,17 +367,14 @@ const VIDEO_FLAGS: [&str; 2] = ["controls", "audio"];
 /// **The vocabulary is closed**, which is what lets [`validate_shortcode_args`] tell a typo
 /// from an argument it simply has not heard of — the same closed-vocabulary contract front
 /// matter, cell options and `_site.yml` are linted against.
-const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 2] = [
-    ("embed", &["title"], &[]),
-    (
-        // `controls` is both a bare flag (`VIDEO_FLAGS`, redundant now it is the default)
-        // AND a named key (`controls=false`, the opt-out) — the two spellings coexist
-        // deliberately so pre-existing `{{< video … controls >}}` content still validates.
-        "video",
-        &["dark", "poster", "caption", "captions", "controls"],
-        &VIDEO_FLAGS,
-    ),
-];
+const SHORTCODE_SPECS: [(&str, &[&str], &[&str]); 1] = [(
+    // `controls` is both a bare flag (`VIDEO_FLAGS`, redundant now it is the default)
+    // AND a named key (`controls=false`, the opt-out) — the two spellings coexist
+    // deliberately so pre-existing `{{< video … controls >}}` content still validates.
+    "video",
+    &["dark", "poster", "caption", "captions", "controls"],
+    &VIDEO_FLAGS,
+)];
 
 /// Whether a bare token is more plausibly a **misspelled flag** than a source path. A path
 /// carries an extension or a directory separator; a flag is a bare word. Without this the
@@ -499,11 +480,6 @@ fn suggestion(tok: &str, keys: &[&'static str], flags: &[&'static str]) -> Strin
 /// Whether a bare (valueless) flag token is present, matched whole.
 fn shortcode_flag(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
-}
-
-/// The optional `title="…"` argument (used as the iframe's accessible name).
-fn embed_title(args: &[String]) -> Option<String> {
-    shortcode_named(args, "title")
 }
 
 /// A shortcode's `key=value` argument by name (quotes already stripped by the tokenizer).
@@ -708,99 +684,6 @@ fn video_html(
     format!("<figure class=\"tali-video\">{videos}{cap}</figure>")
 }
 
-/// Map a deck source path to its built output URL (`x.tmd` → `x.html`), leaving a
-/// path that is already `.html` (or anything else) untouched.
-fn deck_href(path: &str) -> String {
-    match crate::ext::strip_source_ext(path) {
-        Some(stem) => format!("{stem}.html"),
-        None => path.to_string(),
-    }
-}
-
-/// The HTML for an embedded deck: a responsive 16:9 iframe (isolating the deck's
-/// full-viewport CSS/JS/keyboard from the host page) plus a fullscreen button and an
-/// "open in a new tab" link. Emitted as a raw-HTML block, which the renderer passes
-/// through.
-fn embed_html(path: &str, title: Option<&str>) -> String {
-    let href = escape_attr(&deck_href(path));
-    // `title` lands in a double-quoted attribute, so escape `"` too (escape_attr,
-    // not html_escape) — otherwise a `"` in the title breaks out of the attribute.
-    let title = escape_attr(title.unwrap_or("Embedded slide deck"));
-    // One fullscreen control only: the labelled `⤢ Fullscreen` button in the bar below.
-    // (A second floating `⤢` overlay on the stage was redundant — same requestFullscreen().)
-    format!(
-        "<div class=\"tali-embed\">\
-         <div class=\"tali-embed-stage\">\
-         <iframe class=\"tali-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
-         </div>\
-         <div class=\"tali-embed-bar\">\
-         <button type=\"button\" class=\"tali-embed-btn\" onclick=\"this.closest('.tali-embed').querySelector('iframe').requestFullscreen()\">\u{2922} Fullscreen</button>\
-         <a class=\"tali-embed-btn\" href=\"{href}\" target=\"_blank\" rel=\"noopener\">Open \u{2197}<span class=\"tali-sr-only\"> (opens in a new tab)</span></a>\
-         </div></div>"
-    )
-}
-
-/// Invoke `f` with the inner body of each `{{< … >}}` on `line` that is *not* inside
-/// an inline code span, so a shortcode shown as an example in backticks is ignored
-/// (the same discipline `expand_in_line` uses when expanding).
-fn each_shortcode(line: &str, mut f: impl FnMut(&str)) {
-    let bytes = line.as_bytes();
-    let mut i = 0;
-    while i < line.len() {
-        if bytes[i] == b'`' {
-            let run = line[i..].bytes().take_while(|&c| c == b'`').count();
-            let ticks = &line[i..i + run];
-            match line[i + run..].find(ticks) {
-                Some(rel) => i = i + run + rel + run,
-                None => i += run,
-            }
-        } else if line[i..].starts_with("{{<") {
-            let Some(rel_end) = line[i + 3..].find(">}}") else {
-                break;
-            };
-            let end = i + 3 + rel_end;
-            f(line[i + 3..end].trim());
-            i = end + 3;
-        } else {
-            i += line[i..].chars().next().unwrap().len_utf8();
-        }
-    }
-}
-
-/// Every deck referenced by a `{{< embed PATH >}}` in `src` (paths as written,
-/// relative to the page), deduped and in document order. Fenced and inline code are
-/// skipped so an `embed` shown as an example stays inert. The site build/preview uses
-/// this to also build/serve each referenced deck.
-pub fn embed_targets(src: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut in_code = false;
-    for line in src.lines() {
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if in_code {
-            continue;
-        }
-        each_shortcode(line, |inner| {
-            let toks = tokenize_args(inner);
-            if let Some((name, args)) = toks.split_first()
-                && name == "embed"
-                && let Some(p) = source_path("embed", args)
-                // A URL is not a deck the builder can build, and the renderer already
-                // declines to embed it — collecting it here would hand `build` a target
-                // it can only fail on.
-                && url_scheme(&p).is_none()
-                && !out.contains(&p)
-            {
-                out.push(p);
-            }
-        });
-    }
-    out
-}
-
 #[cfg(test)]
 mod arg_validation_tests {
     use super::*;
@@ -815,16 +698,13 @@ mod arg_validation_tests {
     }
 
     #[test]
-    fn a_url_source_is_refused_because_both_built_ins_take_a_page_relative_path() {
-        // Item 97. Both built-ins document the positional argument as a file relative to
-        // the page, and an embed target is additionally BUILT as a local file — so a
-        // scheme-bearing token is not a path, yet it went straight into `<iframe src>` /
+    fn a_url_source_is_refused_because_the_built_in_takes_a_page_relative_path() {
+        // Item 97. `{{< video >}}` documents its positional argument as a file relative to
+        // the page, so a scheme-bearing token is not a path — yet it went straight into a
         // `<video src>` with only attribute escaping in the way, and slipped past `check`'s
         // missing-local-media diagnostic (which only looks at local files).
         for src in [
-            "{{< embed javascript:alert(1) >}}\n",
             "{{< video javascript:alert(1) >}}\n",
-            "{{< embed //evil.example/x.tmd >}}\n",
             "{{< video https://evil.example/x.mp4 >}}\n",
             "{{< video data:text/html,x >}}\n",
         ] {
@@ -835,7 +715,7 @@ mod arg_validation_tests {
             // `<iframe src>` / `<video src>`. Assert the ATTRIBUTE, not the substring:
             // the literal `{{< … >}}` still contains the URL, which is the point.
             assert!(
-                !html.contains("<iframe") && !html.contains("<video"),
+                !html.contains("<video"),
                 "no media element may be built from a URL source: {html}"
             );
             assert!(
@@ -889,7 +769,6 @@ mod arg_validation_tests {
             "{{< video clip.mp4?token=a:b >}}\n",
             // A Windows drive is a single-letter "scheme" and is not one.
             "{{< video C:/clips/tour.mp4 >}}\n",
-            "{{< embed talk.tmd >}}\n",
             "{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption=\"A: a tour\" >}}\n",
         ] {
             let (_, warnings) = expand_shortcodes(src);
@@ -899,18 +778,6 @@ mod arg_validation_tests {
         // And a caption is prose: a colon in a sentence is not a scheme.
         let (html, _) = expand_shortcodes("{{< video tour.mp4 caption=\"Fig 1: the tour\" >}}\n");
         assert!(html.contains("Fig 1: the tour"), "caption survives: {html}");
-    }
-
-    #[test]
-    fn a_url_embed_is_not_collected_as_a_build_target() {
-        // `embed_targets` is what the site build walks to build each referenced deck.
-        // A URL is not a deck it can build, so collecting one hands `build` a target it
-        // can only fail on.
-        assert_eq!(
-            embed_targets("{{< embed talk.tmd >}}\n{{< embed https://e.x/d.tmd >}}\n"),
-            vec!["talk.tmd".to_string()],
-            "only the real local deck is a build target"
-        );
     }
 
     #[test]
@@ -964,8 +831,6 @@ mod arg_validation_tests {
             "{{< video tour.mp4 dark=tour-dark.mp4 poster=cover.png caption=\"A tour\" >}}\n",
             // A path carrying a query string: the `=` belongs to the value, not a key.
             "{{< video clip.mp4?token=abc >}}\n",
-            "{{< embed deck.tmd >}}\n",
-            "{{< embed deck.tmd title=\"The deck\" >}}\n",
         ] {
             assert!(
                 warn_msgs(src).is_empty(),
@@ -1039,21 +904,6 @@ mod a11y_tests {
         assert!(
             html.contains("for=\"tali-in-freq\" data-tali-out"),
             "the <output> readout must be tied to its control via for=: {html}"
-        );
-    }
-
-    #[test]
-    fn embed_external_link_announces_the_new_tab() {
-        // PA-M11: the embed's `target="_blank"` "Open ↗" link gives no programmatic new-tab cue.
-        // A visually-hidden suffix keeps the visible label terse while AT announces the new tab.
-        let html = embed_html("deck.tmd", None);
-        assert!(
-            html.contains("target=\"_blank\""),
-            "sanity: the link opens a new tab: {html}"
-        );
-        assert!(
-            html.contains("<span class=\"tali-sr-only\"> (opens in a new tab)</span>"),
-            "the new-tab link needs a visually-hidden cue for AT: {html}"
         );
     }
 }

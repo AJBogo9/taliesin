@@ -93,8 +93,6 @@ The chapters build on each other, roughly from the outside in:
 - **[Offline-first rendering & theming](offline-theming.tmd)** is how math, code, and
   themes render server-side and offline, so a light/dark toggle re-styles the page
   with nothing to re-render.
-- **[The deck engine](deck-engine.tmd)** is how the same block model becomes a slide
-  deck on Taliesin's own engine.
 - **[The multi-page subsystem](sites.tmd)** is how a directory becomes a website or a
   book: discovery, chrome, listings, cross-page references, and search.
 - **[The block model](block-model.tmd)** is the load-bearing data structure, and the

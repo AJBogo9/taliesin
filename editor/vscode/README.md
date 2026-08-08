@@ -8,8 +8,8 @@ It is the missing *producer* for the source-sync protocol the preview client
   jumps to that block's source line (`tali-goto`).
 - **Forward search (editor → preview):** moving the cursor in the `.tmd` *marks* the
   matching block with `.tali-hl` and never moves the page; **`Ctrl+Alt+J`**
-  (**Taliesin: Reveal Cursor in Preview**) scrolls it into view, or jumps a deck to the
-  right slide (`tali-cursor {reveal}` → `highlightAtLine`). Marking is continuous because
+  (**Taliesin: Reveal Cursor in Preview**) scrolls it into view
+  (`tali-cursor {reveal}` → `highlightAtLine`). Marking is continuous because
   it costs the author nothing; scrolling is on request because it takes their scroll
   position away.
 
@@ -24,7 +24,7 @@ The extension also **owns editor syntax highlighting for `.tmd`** via a `taliesi
 the Taliesin deltas — braced exec cells (` ```{python} `/`{r}`/`{js}`/…, with real embedded
 inner-language color and `#|`/`//|`/`%%|` cell options scoped as directives), `:::` fenced divs
 + `{.class #id key=val}` attrs, `$…$`/`$$…$$` math (with `{#eq-…}` labels), `{{< shortcodes >}}`,
-`@fig-`/`@sec-`/… cross-refs, `[@cite]` citations, and the deck `. . .` pause. Leading `---` YAML
+`@fig-`/`@sec-`/… cross-refs and `[@cite]` citations. Leading `---` YAML
 front matter is handled by the inherited markdown grammar. Inline deltas live in a small
 **injection grammar** scoped to `text.tmd.markdown` (so they fire mid-paragraph but never leak
 into plain `.md` files).
@@ -112,11 +112,9 @@ see: the visual round trip *through the live preview iframe*.
    view and the editor keeps focus.
 4. **Inverse search:** Ctrl-click a block in the preview — the editor cursor jumps to that
    block's source line.
-5. **Deck:** open `corpus/deck.tmd`, Open Preview, move the cursor into a later slide's
-   content, then press `Ctrl+Alt+J` — the deck jumps to that slide.
-6. **Reuse:** press `Ctrl+Shift+K` a second time — the existing panel is revealed, and no
+5. **Reuse:** press `Ctrl+Shift+K` a second time — the existing panel is revealed, and no
    second `taliesin preview` process appears.
-7. Close the preview panel — the spawned `taliesin preview` process exits (no orphan).
+6. Close the preview panel — the spawned `taliesin preview` process exits (no orphan).
 
 ## Known risk
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::render::{DocFormat, Warning, render_document, render_document_with_includes};
+use crate::render::{Warning, render_document, render_document_with_includes};
 use std::path::Path;
 
 /// A throwaway directory under the system temp dir, removed on drop.
@@ -405,7 +405,7 @@ fn a11y_flags_heading_level_skip_mid_document() {
     // h2 -> h4 skips h3; flagged, located. The leading h2 (no prior heading) is fine,
     // and "doesn't start at h1" is never flagged.
     let doc = render_document("## Top\n\nbody\n\n#### Deep\n\nmore\n");
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     assert_eq!(m.len(), 1, "only the h2->h4 skip: {m:?}");
     assert!(m[0].contains("heading level skips from h2 to h4"), "{m:?}");
@@ -416,17 +416,8 @@ fn a11y_flags_heading_level_skip_mid_document() {
 fn a11y_one_level_deeper_is_fine() {
     // h2 -> h3 is a single step, not a skip; never flagged.
     let doc = render_document("## A\n\n### B\n\n#### C\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(m.is_empty(), "single-level steps must be silent: {m:?}");
-}
-
-#[test]
-fn a11y_heading_skip_skipped_for_decks() {
-    // A deck's per-slide `## … ####` is slide structure, not a single outline; the
-    // heading-skip rule must not fire when the format is a reveal deck.
-    let doc = render_document("## Top\n\n#### Deep\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Reveal));
-    assert!(m.is_empty(), "decks skip the heading-skip rule: {m:?}");
 }
 
 #[test]
@@ -434,7 +425,7 @@ fn a11y_does_not_flag_first_heading_below_h1() {
     // A doc whose first heading is an h2 (a common pattern; the title is the h1) must
     // NOT be flagged — only a mid-document skip counts.
     let doc = render_document("## Section\n\nbody\n\n## Another\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(m.is_empty(), "first-heading-below-h1 is not a skip: {m:?}");
 }
 
@@ -446,7 +437,7 @@ fn a11y_flags_raw_img_without_alt() {
         "<img src=\"logo.png\">\n\n<img src=\"ok.png\" alt=\"described\">\n\n\
          <img src=\"deco.png\" alt=\"\">\n\n![real alt](pic.png)\n",
     );
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     assert_eq!(m.len(), 1, "only the alt-less raw img: {m:?}");
     assert!(m[0].contains("image is missing alt text"), "{m:?}");
@@ -463,7 +454,7 @@ fn a11y_flags_placeholder_alt_but_not_descriptive() {
          ![A scree plot of the eigenvalues](scree.png)\n\n\
          <img src=\"deco.png\" alt=\"\">\n",
     );
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     assert_eq!(
         m.iter()
@@ -487,7 +478,7 @@ fn a11y_flags_link_with_no_accessible_name() {
          and <a href=\"x\" aria-label=\"Home\"></a>, \
          and <a href=\"y\"><img src=\"i.png\" alt=\"icon\"></a>.\n",
     );
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     assert_eq!(m.len(), 1, "only the empty link: {m:?}");
     assert!(
@@ -501,14 +492,14 @@ fn a11y_flags_link_with_no_accessible_name() {
 fn a11y_title_attr_names_a_link() {
     // A `title=` (tooltip) is an accessible name, same as `scanA11y`.
     let doc = render_document("A <a href=\"x\" title=\"Home\"></a> link.\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(m.is_empty(), "title= names the link: {m:?}");
 }
 
 #[test]
 fn a11y_flags_button_with_no_name() {
     let doc = render_document("A <button></button> here.\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert_eq!(m.len(), 1, "{m:?}");
     assert!(m[0].contains("button has no accessible name"), "{m:?}");
 }
@@ -523,7 +514,7 @@ fn a11y_flags_role_button_with_no_name() {
          <div role=\"button\" aria-label=\"Close\"></div>\n\n\
          <div role=\"button\">Submit</div>\n",
     );
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     assert_eq!(m.len(), 1, "only the unnamed role=button div: {m:?}");
     assert!(
@@ -537,7 +528,7 @@ fn a11y_flags_role_link_and_role_tab_without_name() {
     // `role="link"` and `role="tab"` on a non-native element are audited too.
     let doc =
         render_document("A <span role=\"link\"></span> and a <span role=\"tab\"></span> here.\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert_eq!(m.len(), 2, "both the unnamed role link + tab: {m:?}");
     assert!(
         m.iter().any(|s| s.contains("link has no accessible name")),
@@ -556,7 +547,7 @@ fn a11y_native_button_with_role_tab_is_not_flagged_twice() {
     // the label gives it an accessible name anyway (no double-count even if unnamed).
     let doc =
         render_document("A <button role=\"tab\" aria-selected=\"true\">Overview</button> tab.\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(
         m.is_empty(),
         "a labelled role=tab button must be silent: {m:?}"
@@ -571,7 +562,7 @@ fn a11y_clean_document_is_silent() {
         "# Title\n\n## Section\n\n### Subsection\n\n\
          ![a described picture](pic.png)\n\nA [normal link](page.html).\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(m.is_empty(), "a clean doc must be silent: {m:?}");
 }
 
@@ -580,7 +571,7 @@ fn a11y_named_anchor_is_not_a_link() {
     // An `<a id="x">` with no href is a named anchor target, not an interactive link;
     // it must not be flagged for "no accessible name".
     let doc = render_document("Anchor: <a id=\"jump\"></a> here.\n");
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(m.is_empty(), "named anchor (no href) is not a link: {m:?}");
 }
 
@@ -768,32 +759,7 @@ fn no_bibliography_declared_means_no_scan() {
 // as importantly, what they must not.
 
 fn shape(src: &str) -> Vec<String> {
-    msgs(&validate_document_shape(
-        &render_document(src).blocks,
-        DocFormat::Html,
-    ))
-}
-
-#[test]
-fn shape_lints_do_not_run_on_a_deck() {
-    // Every rule inverts on a deck, so the family is exempt wholesale. Two slides sharing a
-    // title is the `{auto-animate=true}` magic-move idiom (`corpus/deck.tmd:92`/`:96` do
-    // exactly this on purpose) — it was a live false positive before the format gate. A
-    // titleless slide is image-only; a title-only slide is a section divider.
-    let src =
-        "---\ntitle: T\nformat: deck\n---\n\n## One idea\n\na\n\n## One idea\n\nb\n\n## Divider\n";
-    let doc = render_document(src);
-    assert_eq!(doc.format, DocFormat::Reveal, "fixture really is a deck");
-    assert!(
-        validate_document_shape(&doc.blocks, doc.format).is_empty(),
-        "decks are exempt: {:?}",
-        msgs(&validate_document_shape(&doc.blocks, doc.format))
-    );
-    // The same source as an ordinary page is not exempt, so the gate is what silences it.
-    assert!(
-        !validate_document_shape(&doc.blocks, DocFormat::Html).is_empty(),
-        "the exemption must come from the format, not from the content"
-    );
+    msgs(&validate_document_shape(&render_document(src).blocks))
 }
 
 #[test]
@@ -934,7 +900,7 @@ fn a11y_flags_a_label_that_disagrees_with_the_visible_text() {
          <a href=\"/x\" aria-label=\"Search the site\">Search</a>\n\n\
          <button aria-label=\"Close\">Close</button>\n",
     );
-    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let ws = validate_a11y(&doc.blocks);
     let m = msgs(&ws);
     let flagged: Vec<&String> = m
         .iter()
@@ -966,7 +932,7 @@ fn a11y_label_in_name_accepts_a_name_that_only_adds_context() {
          <button aria-label=\"next page\">Next Page</button>\n\n\
          <button aria-label=\"Read more about decks\">Read more…</button>\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(
         !m.iter()
             .any(|s| s.contains("disagrees with its visible text")),
@@ -985,7 +951,7 @@ fn a11y_label_in_name_ignores_an_aria_hidden_subtree() {
          <svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg>\
          <kbd aria-hidden=\"true\">\u{2318}K</kbd></button>\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(
         !m.iter()
             .any(|s| s.contains("disagrees with its visible text")),
@@ -998,7 +964,7 @@ fn a11y_label_in_name_ignores_an_aria_hidden_subtree() {
          <svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg>\
          <kbd>\u{2318}K</kbd></button>\n",
     );
-    let bm = msgs(&validate_a11y(&bad.blocks, DocFormat::Html));
+    let bm = msgs(&validate_a11y(&bad.blocks));
     assert!(
         bm.iter()
             .any(|s| s.contains("disagrees with its visible text")),
@@ -1014,7 +980,7 @@ fn a11y_label_in_name_is_silent_on_an_icon_only_control() {
     let doc = render_document(
         "<button aria-label=\"Close\"><svg aria-hidden=\"true\"><path d=\"M0 0\"/></svg></button>\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(
         m.is_empty(),
         "an icon-only labelled control is clean: {m:?}"
@@ -1033,7 +999,7 @@ fn a11y_label_in_name_survives_a_void_element_inside_the_hidden_subtree() {
          <span aria-hidden=\"true\"><img src=\"i.png\" alt=\"\"><br></span>\
          Save draft</button>\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     let hit = m
         .iter()
         .find(|s| s.contains("disagrees with its visible text"));
@@ -1055,7 +1021,7 @@ fn a11y_label_in_name_declines_to_judge_aria_labelledby() {
     let doc = render_document(
         "<button aria-labelledby=\"t\" aria-label=\"Submit\">Save draft</button>\n",
     );
-    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    let m = msgs(&validate_a11y(&doc.blocks));
     assert!(
         !m.iter()
             .any(|s| s.contains("disagrees with its visible text")),

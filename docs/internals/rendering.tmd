@@ -181,11 +181,10 @@ page chrome the reader never authored:
 - For a page with `{js}` cells, the vendored d3 + Observable Plot libs and the `{js}`
   enhancer (gated on the rendered body, so a page without `{js}` carries none of it).
 
-A deck routes through `render/deck.rs` instead, and a site/book page adds chrome from
-`site/`, but the **same assembler builds the page shell for the static `build` and for
-both live-preview servers** (preview just injects the websocket client into that shell),
-so they can't drift apart. The same block list backs all three outputs (see
-[Architecture](architecture.tmd)).
+A site/book page adds chrome from `site/`, but the **same assembler builds the page
+shell for the static `build` and for the live-preview server** (preview just injects the
+websocket client into that shell), so they can't drift apart. The same block list backs
+every output (see [Architecture](architecture.tmd)).
 
 ## Interactive cells (`{js}`)
 

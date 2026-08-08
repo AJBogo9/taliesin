@@ -1,7 +1,7 @@
 //! Static accessibility checks (heading-level skips, unnamed interactives, alt-less images).
 
 use super::helpers::{heading_level, start_line, strip_tags, tag_attr};
-use crate::render::{Block, DocFormat, Warning};
+use crate::render::{Block, Warning};
 
 /// Whether the tag opened at the start of `tag` (everything before the first `>`)
 /// carries attribute `attr` (e.g. `"alt"`), matched as a whole word so `alt` does
@@ -209,8 +209,7 @@ fn title_block_level(html: &str) -> Option<u8> {
 ///
 /// 1. **Heading-level skip** — a heading that jumps `>= 2` levels deeper than the
 ///    previous one (e.g. `<h2>` then `<h4>`). Conservative: only a *mid-document* skip
-///    is flagged (never "doesn't start at h1"), and decks are skipped entirely
-///    (slides are slide-structured, not a single outline).
+///    is flagged (never "doesn't start at h1").
 /// 2. **Interactive element with no accessible name** — an `<a href>`/`<button>`, or any
 ///    element with `role="button"|"link"|"tab"` (e.g. a `<div role="button">`), whose
 ///    text is empty and which carries no `aria-label`/`title` and no labelled
@@ -221,11 +220,11 @@ fn title_block_level(html: &str) -> Option<u8> {
 ///
 /// The heading scan counts the page's title block as its `<h1>` (see
 /// [`title_block_level`]), so the first body heading is compared against something.
-pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
+pub fn validate_a11y(blocks: &[Block]) -> Vec<Warning> {
     let mut out = Vec::new();
 
-    // (1) Heading-level skips — skipped wholesale for decks.
-    if format != DocFormat::Reveal {
+    // (1) Heading-level skips.
+    {
         let mut prev = 0u8;
         for b in blocks {
             let Some(lvl) = heading_level(&b.html).or_else(|| title_block_level(&b.html)) else {

@@ -4,10 +4,9 @@
 // navbar / book topbar (server-rendered, [data-tali-settings]); on a chrome-less single doc we
 // create a floating one. Click handling is delegated on document so a hot-reload that re-injects
 // the navbar keeps working without re-running this (guarded) initializer. Reader-side, read-only.
-// Skipped on decks. Built once. (Internal names keep the `taliReaderMenu` / `.tali-rmenu-*` spelling.)
+// Built once. (Internal names keep the `taliReaderMenu` / `.tali-rmenu-*` spelling.)
 function taliInitReaderMenu() {
   if (window.taliReaderMenu) return;
-  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
   var panelId = 'tali-rmenu-panel';
   // Same gear as chrome.rs SETTINGS_ICON (kept in sync); only used for the floating fallback.

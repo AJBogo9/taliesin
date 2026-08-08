@@ -1,6 +1,6 @@
 
   /* The owned palette (light + dark) + fonts/geometry/motion tokens live in
-     tokens.css, `include_str!`'d ahead of this file (and ahead of deck.css) so they are
+     tokens.css, `include_str!`'d ahead of this file so they are
      declared exactly once. See tokens.css. */
   html { scroll-behavior: smooth; }
 
@@ -198,27 +198,6 @@
   a.btn-outline-secondary { border-color: var(--tali-border-strong); color: var(--tali-muted); }
   a.btn-outline-secondary:hover { background: var(--tali-fg); color: var(--tali-bg); border-color: var(--tali-fg); }
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
-  /* Embedded slide deck (`{{< embed deck.tmd >}}`): a 16:9 iframe that isolates the
-     deck's full-viewport CSS/JS/keyboard from the page, plus fullscreen + open. */
-  .tali-embed { margin: 1.6rem 0; }
-  .tali-embed-stage { position: relative; width: 100%; aspect-ratio: 16 / 9;
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md); overflow: hidden;
-    background: var(--tali-code-bg); box-shadow: var(--tali-shadow-sm); }
-  .tali-embed-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
-  /* hover-revealed corner "expand" (the deck is interactive, so it can't be
-     click-to-zoom; this enlarges via real fullscreen, like a video player's icon). */
-  .tali-embed-expand { position: absolute; top: .55rem; right: .55rem; z-index: 3;
-    width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center;
-    padding: 0; border: 0; border-radius: var(--tali-radius-md); cursor: pointer; font-size: 1.05rem; line-height: 1;
-    color: #fff; background: rgba(20, 22, 27, .72); opacity: 0; transition: opacity var(--tali-dur) ease;
-    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-  .tali-embed-stage:hover .tali-embed-expand, .tali-embed-expand:focus-visible { opacity: 1; }
-  .tali-embed-bar { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .55rem; }
-  .tali-embed-btn { font: 500 .82rem var(--tali-font-head); cursor: pointer; line-height: 1;
-    padding: .4rem .85rem; border-radius: var(--tali-radius-md); border: 1px solid var(--tali-border-strong);
-    background: transparent; color: var(--tali-muted); text-decoration: none;
-    transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
-  .tali-embed-btn:hover { border-color: var(--tali-accent); color: var(--tali-link); }
   /* `{{< video >}}` — a framed screencast (muted/loop by default) + optional caption.
      Never autoplays (WCAG 2.2.2); native `controls` (the default, see extension/mod.rs)
      is the reader's play affordance, so this frame carries no decorative overlay of its
@@ -577,8 +556,8 @@
   .cw-steps .step.cw-step-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
   .cw-steps .step > :first-child { margin-top: 0; }
   .cw-steps .step > :last-child { margin-bottom: 0; }
-  /* Reuse the deck's line-focus contract (block lines, dim the rest, accent the
-     focused range), scoped to the page-side walkthrough so it never touches decks. */
+  /* The line-focus contract `emit::wrap_pre_lines` emits (block lines, accent the
+     focused range), scoped to the walkthrough, its only consumer. */
   .code-walkthrough pre .tali-hl-ln { display: block; }
   /* The focused range is marked POSITIVELY (accent wash + inset rail); every other line keeps its
      full syntax contrast. Dimming them to `opacity: .32` rendered code at 1.68-2.58:1, a WCAG
@@ -1003,7 +982,7 @@
   /* WCAG 2.5.8 (Target Size, Minimum). Measured at a 390px viewport before this rule: the
      link's own box was 15px tall, because it is inline text in a list item and inherits the
      line box. `inline-block` + padding is what gives it a box of its own to grow. 24px is
-     the AA floor; a coarse pointer gets the 44px comfort size the deck controls already use. */
+     the AA floor; a coarse pointer gets the 44px comfort size. */
   .tali-repro-dl { display: inline-block; padding: .3rem 0; min-height: 24px; }
   @media (hover: none) and (pointer: coarse) {
     .tali-repro-dl { min-height: 44px; display: flex; align-items: center; }

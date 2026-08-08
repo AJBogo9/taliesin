@@ -320,11 +320,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             diagnostics,
             kernel_failure,
         })) => (html, problems, diagnostics, kernel_failure),
-        // `--bare` refused (e.g. a slide deck): the message is already user-facing.
-        Ok(Ok(BuildResult::Refused(msg))) => {
-            log::error(&msg);
-            return ExitCode::FAILURE;
-        }
         Ok(Err(e)) => {
             log::error(&format!("cannot start runtime: {e}"));
             return ExitCode::FAILURE;
@@ -376,11 +371,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&format!("{}{}", out.display(), elapsed_note(started)));
-            // For a deck with speaker notes, report the estimated narration length so a
-            // recording author knows the runtime before pressing record. No-op otherwise.
-            if let Some(d) = taliesin_core::script_summary(&html) {
-                log::deck_duration(d.total_secs, d.scripted, d.slides);
-            }
             finalize_build(true, strict, problems, kernel_failure.as_deref())
         }
         Err(e) => {
@@ -598,7 +588,6 @@ enum BuildResult {
         /// under `--strict`), then the build exits non-zero with this message.
         kernel_failure: Option<String>,
     },
-    Refused(String),
 }
 
 /// Warn (never silently degrade) about the constructs `--bare` drops: a `{js}` cell
@@ -669,16 +658,6 @@ fn build_page_executing(
         // document the site build emits for the same page (PP-3) without re-opening the
         // climb-out-of-a-checkout escape PT-2 closed.
         let mut doc = taliesin_core::render_single_doc(src, base);
-        // `--bare` is prose-shaped, JS-free output: a slide deck (whose navigation is
-        // JavaScript) can't be one. Refuse before doing any execution work.
-        if mode == taliesin_core::OutputMode::Bare && doc.format == taliesin_core::DocFormat::Reveal
-        {
-            return BuildResult::Refused(
-                "--bare cannot build a slide deck: deck navigation needs JavaScript. \
-                 Build it without --bare."
-                    .to_string(),
-            );
-        }
         // Located render warnings (front-matter typos, broken refs, and now
         // unresolved `{{< include … >}}` directives — the path-resolution channel)
         // are logged here so a `build` never ships a silently dropped include.
@@ -691,21 +670,6 @@ fn build_page_executing(
         // a reword must not fail a build, or the only way to keep CI green is to leave the
         // rule off. Same classification `check` gates on, so the two cannot disagree.
         problems += crate::check::blocking(&doc.warnings);
-        // `{{< embed >}}` only resolves in a SITE build, which also builds the
-        // embedded target beside the page. A single-doc build ships the iframe but
-        // not its target, so the embed would 404 — warn (and count it toward `--strict`,
-        // like the render/xref warnings) instead of failing silently or passing green.
-        let embeds = taliesin_core::render::embed_targets(src);
-        for target in &embeds {
-            let msg = format!(
-                "{{{{< embed {target} >}}}} won't resolve in a single-doc build (its \
-                 target isn't built); build the containing directory as a site, or \
-                 inline the content instead."
-            );
-            log::warn(&msg);
-            diagnostics.push(crate::check::Diagnostic::new(label.to_string(), None, msg));
-        }
-        problems += embeds.len();
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
@@ -723,7 +687,6 @@ fn build_page_executing(
             src,
             &doc.blocks,
             base,
-            doc.format,
             crate::check::Scope::Standalone,
         );
         for w in &statics {
@@ -1166,13 +1129,8 @@ async fn build_one_page(
     // does). `Scope::InSite` omits the single-doc link rule: an intra-site `[x](other.tmd)`
     // rewrites to `other.html`, so only `validate_cross_page_links` can judge it, and that
     // runs once for the whole project after every page is built.
-    let statics = crate::check::page_static_diagnostics(
-        &src,
-        &doc.blocks,
-        base,
-        doc.format,
-        crate::check::Scope::InSite,
-    );
+    let statics =
+        crate::check::page_static_diagnostics(&src, &doc.blocks, base, crate::check::Scope::InSite);
     problems += crate::check::blocking(&statics);
     for w in &statics {
         warnings.push(locate(w, &page.rel));
@@ -1225,9 +1183,6 @@ async fn build_one_page(
         app_js: &app_js,
         mermaid_js: &mermaid_js,
         jslibs_js: &jslibs_js,
-        // A page never links the deck pair (its own `app_css`/`app_js` are the right ones).
-        deck_css: "",
-        deck_js: "",
         font_preload: &font_preload,
     };
     let (html, render_warnings) = site.render_page_doc_external(page, doc, ext);
@@ -1289,11 +1244,6 @@ struct AssetBundle {
     app_js: String,
     mermaid_js: String,
     jslibs_js: String,
-    /// The deck engine's pair, `""` in a build with no deck (a deck's stylesheet is not the
-    /// page's, so it cannot share `app_css`, and a site without a deck should not pay for a
-    /// file nothing links).
-    deck_css: String,
-    deck_js: String,
     /// The roman body face, root-relative, for each page's `preload` (item 150).
     font_preload: String,
 }
@@ -1376,18 +1326,16 @@ impl AssetBundle {
 
 /// Minify + content-hash each shared blob, write it once under `<out>/_assets/`, and
 /// return the (root-relative) filenames. Clears any stale `_assets/` first so old hashes
-/// do not accumulate across rebuilds. `with_deck` adds the deck engine's own CSS/JS pair,
-/// which only a build that actually has a deck to link them needs.
+/// do not accumulate across rebuilds.
 ///
 /// Two departures from "hash it and write it", both about weight:
 ///
-/// * The body typeface's faces (item 150) are written **first**, because `app_css` and
-///   `deck_css` now reference them by hashed name and so cannot be hashed until those
-///   names exist.
+/// * The body typeface's faces (item 150) are written **first**, because `app_css` now
+///   references them by hashed name and so cannot be hashed until those names exist.
 /// * The three conditional blobs are hashed here but **not** written, so a page has an
 ///   href to link; [`AssetBundle::write_conditional`] then writes whichever ones a page
 ///   actually did link (item 137).
-fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundle> {
+fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
     use taliesin_core::hash::{fnv1a, fnv1a_bytes};
     let dir = out.join("_assets");
     let _ = std::fs::remove_dir_all(&dir); // own the lifecycle; clear stale hashes
@@ -1433,28 +1381,12 @@ fn write_asset_bundle(out: &Path, with_deck: bool) -> std::io::Result<AssetBundl
     );
     let mermaid_js = hashed("mermaid", "js", &taliesin_core::mermaid_bundle_js());
     let jslibs_js = hashed("jslibs", "js", &taliesin_core::js_cell_libs_js());
-    let (deck_css, deck_js) = if with_deck {
-        (
-            named(
-                "deck",
-                "css",
-                &crate::minify::minify_css(&taliesin_core::deck_shared_css_linked_fonts(
-                    &font_hrefs,
-                )),
-            )?,
-            named("deck", "js", &taliesin_core::deck_shared_js())?,
-        )
-    } else {
-        (String::new(), String::new())
-    };
     Ok(AssetBundle {
         app_css,
         katex_css,
         app_js,
         mermaid_js,
         jslibs_js,
-        deck_css,
-        deck_js,
         font_preload,
     })
 }
@@ -1704,7 +1636,7 @@ async fn build_project_tree(
     // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
     // (dedups what would otherwise be a copy inlined into every page); every page below
     // links to it instead of shipping its own inline blob.
-    let bundle = match write_asset_bundle(&out, !site.decks.is_empty()) {
+    let bundle = match write_asset_bundle(&out) {
         Ok(b) => b,
         Err(e) => {
             let msg = format!("cannot write {}/_assets: {e}", out.display());
@@ -1871,122 +1803,9 @@ async fn build_project_tree(
             pages += 1;
         }
     }
-    // Reclaim the owned values the deck loop below still uses.
+    // Reclaim the owned values the tail of this function still uses.
     let site = std::sync::Arc::try_unwrap(site).unwrap_or_else(|arc| (*arc).clone());
     let out = std::sync::Arc::try_unwrap(out).unwrap_or_else(|arc| (*arc).clone());
-    let freeze_dir = std::sync::Arc::try_unwrap(freeze_dir).unwrap_or_else(|arc| (*arc).clone());
-
-    // 3. Build each deck referenced by a `{{< embed >}}` to its own self-contained
-    //    `.html` (not a chapter/page: no site chrome), so the embedding iframes
-    //    resolve in the deployed tree.
-    let mut decks = 0usize;
-    for deck in &site.decks {
-        let Ok(src) = std::fs::read_to_string(&deck.input) else {
-            log::warn(&format!(
-                "cannot read embedded deck {}",
-                deck.input.display()
-            ));
-            continue;
-        };
-        let base = deck.input.parent().unwrap_or(root);
-        let doc = taliesin_core::render_document_scoped_with_site(
-            &src,
-            base,
-            None,
-            Some(&site.render_defaults()),
-        );
-        let mut ex =
-            exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
-        ex.set_interpreters(
-            crate::interpreter::resolve_python(site.config.python.as_deref(), root),
-            crate::interpreter::resolve_r(site.config.r.as_deref(), root),
-        );
-        ex.set_progress(None, Some(deck.url.clone()));
-        // Item 109: the deck's own render + static diagnostics, counted toward `--strict`
-        // like a page's. This loop rendered `doc` and looked only at cell *errors*, so a
-        // deck's missing assets, broken links, alt-less images and malformed math shipped
-        // under `--strict` with exit 0 — the deck was the one document in a site that no
-        // validator ever read. `Scope::Standalone` matches `check`'s deck pass: a deck is
-        // not a page of the site, so it is judged as the standalone document it is served
-        // as (its `.tmd` links are rewritten below, but not by `Site::render_page_doc_*`).
-        let deck_statics = crate::check::page_static_diagnostics(
-            &src,
-            &doc.blocks,
-            base,
-            doc.format,
-            crate::check::Scope::Standalone,
-        );
-        // Cross-refs too, resolved the way `check <deck.tmd>` resolves them (a deck inside a
-        // project may legitimately point at an anchor another page defines). Without this the
-        // two front doors disagreed by exactly one diagnostic on the same file — measured —
-        // which is the drift item 134 is about.
-        let deck_elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(&deck.input);
-        let deck_xrefs =
-            taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &deck_elsewhere);
-        for w in doc
-            .warnings
-            .iter()
-            .chain(deck_statics.iter())
-            .chain(deck_xrefs.iter())
-        {
-            log::warn(&locate(w, &deck.url));
-        }
-        problems += crate::check::blocking(&doc.warnings)
-            + crate::check::blocking(&deck_statics)
-            + crate::check::blocking(&deck_xrefs);
-        kernel_failure = kernel_failure.or_else(|| ex.kernel_failure_report());
-        problems += report_cell_errors(&doc.blocks, &deck.url);
-        let stem = deck
-            .url
-            .rsplit('/')
-            .next()
-            .and_then(|f| f.strip_suffix(".html"))
-            .unwrap_or("deck");
-        // A deck inside a site build links that build's shared `_assets/` like every page
-        // beside it, instead of inlining the deck framework (and, with a diagram, a second
-        // copy of the 3.5 MB mermaid library) into every deck page (L2-1). The standalone
-        // `build <deck.tmd>` path keeps the self-contained single file.
-        let deck_css = asset_href(&deck.url, &bundle.deck_css);
-        let deck_js = asset_href(&deck.url, &bundle.deck_js);
-        let katex_css = asset_href(&deck.url, &bundle.katex_css);
-        let mermaid_js = asset_href(&deck.url, &bundle.mermaid_js);
-        let jslibs_js = asset_href(&deck.url, &bundle.jslibs_js);
-        let font_preload = asset_href(&deck.url, &bundle.font_preload);
-        // A deck is built off-`Page`, so it never passes through `Site::render_page_doc_*`
-        // where the intra-site `.tmd`->`.html` rewrite lives. Applying it here is not
-        // cosmetic: `.tmd` is in `SKIP_EXT`, so `deploy_referenced_sources` publishes any
-        // *referenced* `.tmd`, and an unrewritten href therefore turns "link to my page"
-        // into "publish my markdown" — including for a `draft:` page the HTML build
-        // correctly refused to emit.
-        let html =
-            taliesin_core::site::rewrite_tmd_links(&taliesin_core::render_deck_to_page_external(
-                &doc,
-                stem,
-                taliesin_core::ExternalAssets {
-                    // A deck never links the page bundle: its stylesheet is `deck.css`, and its
-                    // script bundle deliberately leaves out the Cmd-K palette runtime.
-                    app_css: "",
-                    app_js: "",
-                    katex_css: &katex_css,
-                    mermaid_js: &mermaid_js,
-                    jslibs_js: &jslibs_js,
-                    deck_css: &deck_css,
-                    deck_js: &deck_js,
-                    font_preload: &font_preload,
-                },
-            ));
-        // A deck links the same conditional blobs a page does, so it votes the same way
-        // (item 137). Missing this is how a deck with a diagram would 404 on mermaid.
-        used.merge(bundle.used_by(&html));
-        let dest = out.join(&deck.url);
-        if let Some(parent) = dest.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match std::fs::write(&dest, html) {
-            Ok(()) => decks += 1,
-            Err(e) => log::warn(&format!("cannot write {}: {e}", dest.display())),
-        }
-    }
 
     // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it via
     // window.TALIESIN_SEARCH_URL rather than inlining it). Written as a `search-index.js`
@@ -2023,8 +1842,6 @@ async fn build_project_tree(
             app_js: &app_js,
             mermaid_js: &mermaid_js,
             jslibs_js: &jslibs_js,
-            deck_css: "",
-            deck_js: "",
             font_preload: &font_preload,
         };
         let html = site.render_404_page_external(ext);
@@ -2083,12 +1900,6 @@ async fn build_project_tree(
     } else {
         format!("  ·  {} SEO file(s)", seo_written.len())
     };
-    let deck_note = if decks > 0 {
-        format!("  ·  {decks} deck{}", if decks == 1 { "" } else { "s" })
-    } else {
-        String::new()
-    };
-
     // Sweep stale output: a page or asset removed/renamed in the source must not linger
     // across rebuilds (the output tree is a mirror of what this build produced). Anything
     // in `out` that this build didn't write — and isn't dot/underscore deploy metadata —
@@ -2097,7 +1908,6 @@ async fn build_project_tree(
     // too; the pass below then re-ships only the sources the current pages still link.
     let mut keep: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     keep.extend(site.pages.iter().map(|p| PathBuf::from(&p.url)));
-    keep.extend(site.decks.iter().map(|d| PathBuf::from(&d.url)));
     keep.extend(asset_paths.iter().cloned());
     keep.insert(PathBuf::from("404.html"));
     if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
@@ -2131,7 +1941,7 @@ async fn build_project_tree(
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{not_found}{seo_note}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
@@ -3272,31 +3082,6 @@ mod build_diag_tests {
         assert!(!kernel(&None));
     }
 
-    /// `--bare` refuses a slide deck (its navigation is JavaScript). The refusal
-    /// happens before any execution, so no kernel is needed here.
-    #[test]
-    fn bare_refuses_a_slide_deck() {
-        let src = "---\nformat: deck\n---\n\n# Slide one\n\n## Slide two\n";
-        let res = build_page_executing(
-            src,
-            std::path::Path::new("."),
-            "deck",
-            "deck.tmd",
-            taliesin_core::OutputMode::Bare,
-        )
-        .unwrap();
-        match res {
-            BuildResult::Refused(msg) => {
-                assert!(msg.contains("--bare"), "message names the flag: {msg}");
-                assert!(
-                    msg.to_lowercase().contains("deck"),
-                    "message names decks: {msg}"
-                );
-            }
-            BuildResult::Page { .. } => panic!("--bare on a slide deck must be refused"),
-        }
-    }
-
     /// A plain document still builds under `--bare`, and the page is script-free.
     #[test]
     fn bare_builds_a_plain_doc_script_free() {
@@ -3314,7 +3099,6 @@ mod build_diag_tests {
             BuildResult::Page { html, .. } => {
                 assert!(!html.contains("<script"), "bare page must have no scripts")
             }
-            BuildResult::Refused(m) => panic!("a plain doc should build under --bare: {m}"),
         }
     }
 }
@@ -3470,7 +3254,7 @@ mod asset_bundle_tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let bundle = write_asset_bundle(&dir, true).expect("write bundle");
+        let bundle = write_asset_bundle(&dir).expect("write bundle");
         // The vendored pair is conditional (item 137): named by `write_asset_bundle`, written
         // only for a build whose pages link them. This test is about the BYTES, so ask for
         // both and then read them.
@@ -3507,43 +3291,6 @@ mod asset_bundle_tests {
             "app.css should still be minified"
         );
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    /// The deck pair is written only for a build that has a deck to link it. Externalizing
-    /// the deck framework must not make every deck-less site carry ~200 KB nothing requests;
-    /// the whole item was about weight.
-    #[test]
-    fn the_deck_asset_pair_is_written_only_when_the_build_has_a_deck() {
-        let names = |with_deck: bool| -> Vec<String> {
-            let dir = std::env::temp_dir().join(format!(
-                "tali-bundle-{}-deck-{with_deck}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).expect("temp dir");
-            let bundle = write_asset_bundle(&dir, with_deck).expect("write bundle");
-            assert_eq!(bundle.deck_css.is_empty(), !with_deck);
-            assert_eq!(bundle.deck_js.is_empty(), !with_deck);
-            let mut got: Vec<String> = std::fs::read_dir(dir.join("_assets"))
-                .expect("_assets")
-                .flatten()
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .filter(|n| n.starts_with("deck."))
-                .collect();
-            got.sort();
-            let _ = std::fs::remove_dir_all(&dir);
-            got
-        };
-        assert_eq!(
-            names(false).len(),
-            0,
-            "a build with no deck must not write the deck pair"
-        );
-        assert_eq!(
-            names(true).len(),
-            2,
-            "a build with a deck writes deck.<hash>.css + deck.<hash>.js"
-        );
     }
 }
 

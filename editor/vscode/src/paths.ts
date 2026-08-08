@@ -124,8 +124,7 @@ export function sitePages(answer: unknown): SitePage[] | null {
 
 /**
  * Where a document is served inside its project, or `null` when the project does not publish
- * it — a draft, an `{{< embed >}}`-referenced deck (deliberately kept out of `site.pages`),
- * or a file outside the root entirely.
+ * it — a draft, or a file outside the root entirely.
  *
  * The lookup is deliberately a *lookup*: `.tmd`→`.html`, book chapter numbering and `index`
  * handling all live in Rust, and deriving the URL here would be the second implementation the
@@ -171,7 +170,7 @@ export function cursorTarget(
   const file = relativeKey(pageDoc, editorPath);
   if (file === null) return { navigateTo: null, file: null };
   const url = root && pages ? pageUrlFor(pages, root, editorPath) : null;
-  // No URL means the project does not publish it — a draft, an `{{< embed >}}`ed deck, a
-  // file outside the root — so there is no page to select and it is keyed as an include.
+  // No URL means the project does not publish it — a draft, or a file outside the root —
+  // so there is no page to select and it is keyed as an include.
   return url ? { navigateTo: url, file: null } : { navigateTo: null, file };
 }

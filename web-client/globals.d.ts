@@ -1,7 +1,7 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check client.js.
 // NOT shipped or embedded — the server only `include_str!`s client.js itself.
 // These declare the globals client.js shares with the server-injected inline
-// scripts (theme_head, deck client, tali-js cells) and page flags.
+// scripts (theme_head, tali-js cells) and page flags.
 
 interface Window {
   /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
@@ -16,8 +16,6 @@ interface Window {
   /** The server's per-process boot id; a mismatch on a reconnect (restarted server,
    *  whose `gen` counter reset) forces a re-mount instead of a stale-body skip. */
   TALIESIN_BOOT?: number;
-  /** Document format flag (`"deck"` switches the client into deck mode). */
-  TALIESIN_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */
   TALIESIN_WS_PATH?: string;
   /** Draft pages in the previewed project (preview only; the build ships neither this
@@ -25,8 +23,6 @@ interface Window {
    *  Root-absolute urls so a link resolves from any page depth. */
   TALIESIN_DRAFTS?: Array<{ url: string; title: string }>;
 
-  /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
-  TaliesinDeck?: any;
   /** Client-side cell runtime API (defined by tali-js.js): teardown a removed cell
    *  subtree, reset the whole runtime on a full re-mount (to avoid leaking WebGL
    *  contexts / RAF loops across edits + reconnects), and register a client-side cell

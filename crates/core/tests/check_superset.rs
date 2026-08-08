@@ -280,7 +280,7 @@ fn corpus_shape_fixture_trips_each_shape_code_exactly_once() {
     let src = std::fs::read_to_string(dir.join("skim-shape.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
     let mut got: BTreeMap<&str, usize> = BTreeMap::new();
-    for w in diagnostics::validate_document_shape(&doc.blocks, doc.format) {
+    for w in diagnostics::validate_document_shape(&doc.blocks) {
         let (code, severity) = diagnostics::codes::classify(&w.message);
         assert_eq!(
             severity,
@@ -305,7 +305,7 @@ fn corpus_shape_fixture_trips_each_shape_code_exactly_once() {
 
     let clean_src = std::fs::read_to_string(dir.join("skim-shape-clean.tmd")).unwrap();
     let clean = taliesin_core::render_document_with_includes(&clean_src, &dir);
-    let ws = diagnostics::validate_document_shape(&clean.blocks, clean.format);
+    let ws = diagnostics::validate_document_shape(&clean.blocks);
     assert!(
         ws.is_empty(),
         "the well-shaped document must be clean: {:?}",
@@ -355,12 +355,9 @@ fn all_diagnostics_for(path: &Path) -> Vec<taliesin_core::render::Warning> {
     out.extend(diagnostics::validate_local_media(&doc.blocks, base));
     out.extend(diagnostics::validate_local_links(&doc.blocks, base));
     out.extend(diagnostics::validate_js_reactive_graph(&doc.blocks));
-    out.extend(diagnostics::validate_a11y(&doc.blocks, doc.format));
+    out.extend(diagnostics::validate_a11y(&doc.blocks));
     out.extend(diagnostics::validate_link_text_collisions(&doc.blocks));
-    out.extend(diagnostics::validate_document_shape(
-        &doc.blocks,
-        doc.format,
-    ));
+    out.extend(diagnostics::validate_document_shape(&doc.blocks));
     out.extend(diagnostics::validate_math(&doc.blocks));
     out.extend(diagnostics::validate_code_languages(&doc.blocks));
     out.extend(diagnostics::citations_without_bibliography(

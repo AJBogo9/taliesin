@@ -131,21 +131,6 @@ fn project_block(b: &Block) -> String {
         return project_list(html, 0);
     }
 
-    // An embedded page (`{{< embed deck.tmd >}}`): an iframe carries none of its content
-    // into this document, so the honest projection names what is embedded and where it
-    // lives. Reading the visible text instead yields only the frame's own controls
-    // ("⤢ FullscreenOpen ↗ (opens in a new tab)"), which tells an agent nothing about the
-    // document and reads as if the page contained a stray toolbar.
-    if html.contains("class=\"tali-embed\"") {
-        let src = first_attr(html, "src").unwrap_or_default();
-        let title = first_attr(html, "title").unwrap_or_default();
-        return match (src.is_empty(), title.is_empty()) {
-            (false, false) => format!("[embed {src}: {title}]"),
-            (false, true) => format!("[embed {src}]"),
-            _ => "[embed]".to_string(),
-        };
-    }
-
     // A scrolly / code-walkthrough: project each `.step`'s narration as its own paragraph
     // so adjacent steps don't merge across the boundary (`…in the middle.Which way…`). The
     // `scrolly-steps` container carries the token `scrolly-steps`, not `step`, so matching
@@ -956,26 +941,6 @@ mod tests {
         assert!(
             out.find("def m_step").unwrap() < out.find("[lines 2]").unwrap(),
             "code before narration:\n{out}"
-        );
-    }
-
-    #[test]
-    fn projects_an_embedded_page_as_its_source_not_the_frames_own_buttons() {
-        // Item 16 F-03. An iframe carries none of its content into this document, so the
-        // visible text of the block is only the frame's controls — "⤢ FullscreenOpen ↗
-        // (opens in a new tab)" reads as a stray toolbar and names nothing.
-        let doc = crate::render_document_with_includes(
-            "{{< embed lecture.tmd >}}\n",
-            std::path::Path::new("."),
-        );
-        let out = project(&doc.blocks);
-        assert!(
-            out.contains("[embed lecture.html: Embedded slide deck]"),
-            "the embed projects as what it embeds:\n{out}"
-        );
-        assert!(
-            !out.contains("Fullscreen") && !out.contains("opens in a new tab"),
-            "the frame's own chrome must not leak into the projection:\n{out}"
         );
     }
 

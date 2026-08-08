@@ -1,12 +1,9 @@
 //! Front-matter FIELD extraction: lightweight key scans over the raw front-matter
-//! string (format / toc / title-block detection + a generic top-level field reader).
+//! string (toc / title-block detection + a generic top-level field reader).
 //!
 //! Distinct from crate-level `frontmatter.rs` (a full YAML parse + lint): these are
-//! read-only string classifiers the render orchestrator runs before any heavy parse,
-//! and `is_reveal_doc` is a public fast-path for site discovery. None touches the
-//! orchestrator's shared state.
-
-use super::DocFormat;
+//! read-only string classifiers the render orchestrator runs before any heavy parse.
+//! None touches the orchestrator's shared state.
 
 /// The **top-level** front-matter `toc:` setting as a tri-state: `Some(true)`/
 /// `Some(false)` when the page sets it, `None` when absent. Returning `Option` lets a
@@ -46,9 +43,7 @@ pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
 /// from one level deeper, so a scan that guessed differently would resolve `@sec-x` to a
 /// number the heading does not show.
 pub(crate) fn emits_title_block(front_matter: &str) -> bool {
-    detect_format(front_matter) == DocFormat::Html
-        && !detect_title_block_hidden(front_matter)
-        && extract_field(front_matter, "title").is_some()
+    !detect_title_block_hidden(front_matter) && extract_field(front_matter, "title").is_some()
 }
 
 /// The un-indented (top-level) front-matter lines, trimmed. The shared primitive behind
@@ -58,64 +53,6 @@ fn top_level_lines(front_matter: &str) -> impl Iterator<Item = &str> {
         .lines()
         .filter(|l| !l.starts_with(char::is_whitespace))
         .map(str::trim)
-}
-
-/// Whether a document's front matter selects a slide deck. Reads only the
-/// front matter (no full parse), so site discovery can cheaply flag a loose deck
-/// dropped into a website — which would otherwise be flattened into an article.
-pub fn is_reveal_doc(src: &str) -> bool {
-    crate::frontmatter::front_matter_block(src)
-        .is_some_and(|fm| detect_format(fm) == DocFormat::Reveal)
-}
-
-/// Detect the output format from raw front matter. A deck declares a `format:`
-/// whose inline value or indented sub-keys name a deck variant (`deck` or a
-/// `<name>-deck` form). Everything else is a standard page.
-pub(super) fn detect_format(front_matter: &str) -> DocFormat {
-    let lines: Vec<&str> = front_matter.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        // Only consider the top-level `format:` key, not nested ones.
-        if line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let Some(rest) = line.trim_end().strip_prefix("format:") else {
-            continue;
-        };
-        let inline = rest.trim();
-        if !inline.is_empty() {
-            // `format: deck` (or a list `[html, deck]`): match a format *name*,
-            // not any substring, so a theme/filename that merely contains "deck"
-            // (e.g. `theme: my-deck.css`) can't flip an HTML doc to a deck.
-            return if inline.split(['[', ']', ',', ' ']).any(is_reveal_format) {
-                DocFormat::Reveal
-            } else {
-                DocFormat::Html
-            };
-        }
-        // Block form: the sub-keys are format *names* (`html:`, `deck:`,
-        // `<name>-deck:`). Match the key, never a value substring.
-        for sub in &lines[i + 1..] {
-            if sub.trim().is_empty() {
-                continue;
-            }
-            if !sub.starts_with(char::is_whitespace) {
-                break;
-            }
-            let key = sub.trim().split(':').next().unwrap_or("");
-            if is_reveal_format(key) {
-                return DocFormat::Reveal;
-            }
-        }
-        return DocFormat::Html;
-    }
-    DocFormat::Html
-}
-
-/// Whether a `format:` name selects a slide deck. The only spelling is `deck`
-/// (or an extension variant `<ext>-deck`); the engine is taliesin's own.
-fn is_reveal_format(name: &str) -> bool {
-    let n = name.trim().trim_matches(['"', '\'']);
-    n == "deck" || n.ends_with("-deck")
 }
 
 /// The `bibliography:` front-matter value as a list of paths. Accepts a scalar

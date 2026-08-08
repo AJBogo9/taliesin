@@ -176,21 +176,6 @@ pub fn built(path: &str) {
     line(Style::Built, &paint(path, "\x1b[1m"));
 }
 
-/// A deck's estimated spoken-narration duration, printed once on build/preview from
-/// the per-slide `::: {.notes}` word counts. `scripted`/`slides` disclose how much of
-/// the deck is scripted, so the total reads honestly as "for the narrated portion"
-/// rather than implying the whole deck is timed.
-pub fn deck_duration(secs: u64, scripted: usize, slides: usize) {
-    let (m, s) = (secs / 60, secs % 60);
-    line(
-        Style::Info,
-        &format!(
-            "narration ~{m}:{s:02} across {slides} slide{} ({scripted} scripted)",
-            if slides == 1 { "" } else { "s" }
-        ),
-    );
-}
-
 /// What is being watched, plus a short format descriptor (e.g. "html, toc").
 pub fn watching(path: &str, desc: &str) {
     line(

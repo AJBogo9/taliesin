@@ -260,14 +260,10 @@ const perPage = await parallel(
           `  (flags: consoleErrors=${c.errorCount}, failedReq=${c.failedRequests}, hOverflow=${c.horizontalOverflow})`,
       )
       .join('\n');
-    const deckNote =
-      g.format === 'deck'
-        ? '\nNOTE: this is a DECK captured in its default scroll/reader view; do NOT flag "only one slide visible" or reader-mode layout as a bug.'
-        : '';
     const prompt = `You are auditing ONE rendered page of Taliesin (a .tmd->HTML document tool) for VISUAL/LAYOUT bugs a reader would notice. Console/JS and network errors are harvested separately and mechanically, so do NOT report those here.
 
 Page: ${g.unit} ${g.route}
-Source: ${g.sourceFile}  Format: ${g.format}${deckNote}
+Source: ${g.sourceFile}  Format: ${g.format}
 
 For EACH cell below, use Read on the screenshot PNG (it renders as an image). You may also Read the meta JSON for its domFlags (horizontalOverflow, pastRight, brokenImages) as hints.
 
@@ -392,7 +388,7 @@ Example instance: ${inst.unit} ${inst.route} @ ${inst.viewport}/${inst.theme}
 Representative screenshot (Read it): ${shotAbs}
 
 You MAY Grep/Read the repo to check intent vs defect, e.g.:
-  crates/core/src/render/emit.rs, divs.rs, figure.rs, deck.rs
+  crates/core/src/render/emit.rs, divs.rs, figure.rs
   crates/core/assets/css/base.css, crates/core/assets/css/dark.css
   crates/core/src/render/theme.rs, web-client/client.js
 Return "confirmed" ONLY if it is a genuine defect a reader would see; "refuted" if not real / intended; "uncertain" if truly undecidable.`;

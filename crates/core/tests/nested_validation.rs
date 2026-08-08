@@ -18,7 +18,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
         "unknown callout kind `warnign` (did you mean `warning`?)",
         "unknown cell option `labl` (did you mean `label`?)",
-        "unknown div class `fragmnet` (did you mean `fragment`?)",
+        "unknown div class `scrolley` (did you mean `scrolly`?)",
         // Retired, not misspelled: these two carry a REASON where the six above carry a
         // rename hint, which is the whole distinction `RETIRED_DIV_CLASSES` exists to draw.
         "unknown div class `columns`: it was removed on 2026-08-02: `{layout-ncol=N}` is \
@@ -28,6 +28,9 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown div class `column`: it was removed on 2026-08-02 with `.columns`: under \
          `{layout-ncol=N}` each direct child block is already a column, so the child fences \
          go away entirely",
+        "unknown div class `fragment`: it was removed on 2026-08-08 with the slide-deck \
+         engine: a page reveals nothing step by step, so the contents become ordinary \
+         blocks",
         // `theorems: shared:` names KINDS, and its list entries went unvalidated until
         // 2026-08-07: a typo drew two separate counters and a kind retired on 2026-08-03
         // stayed accepted, both with a clean `check`. Same rename-vs-removal split as the
@@ -89,14 +92,14 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
     let div = doc
         .warnings
         .iter()
-        .find(|w| w.message.contains("`fragmnet`"))
+        .find(|w| w.message.contains("`scrolley`"))
         .unwrap();
     assert!(
         div.line.is_some(),
         "div-class warning should be located: {div:?}"
     );
 
-    // PL7: a `.step lines=` carrying a `|` (the deck `code-line-numbers=` step separator) is a
+    // PL7: a `.step lines=` carrying a `|` (the `code-line-numbers=` step separator) is a
     // silent no-op — the step's comma-only parser focuses zero lines — so it must warn, located.
     let step = doc
         .warnings

@@ -91,18 +91,9 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                         html_escape(summary)
                     ));
                 } else {
-                    // `code-line-numbers` wraps each line so a deck can highlight /
-                    // step through them; absent, the code block is emitted unchanged.
-                    match code_line_numbers(&cb.info, &cb.literal) {
-                        Some(spec) => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
-                            escape_attr(&spec),
-                            wrap_code_lines(&highlighted),
-                        )),
-                        None => out.push_str(&format!(
-                            "<pre{attrs}{cell_attr}><code{class}>{highlighted}</code></pre>"
-                        )),
-                    }
+                    out.push_str(&format!(
+                        "<pre{attrs}{cell_attr}><code{class}>{highlighted}</code></pre>"
+                    ));
                 }
             }
         }
@@ -297,32 +288,12 @@ pub(crate) fn footnote_ref_markup(name: &str, ref_num: u32, ix: u32) -> String {
     )
 }
 
-/// The `code-line-numbers` spec for a code block: from a `{python}` cell option
-/// (`#| code-line-numbers: "1|3-5"`) or a fenced attribute
-/// (```` ```{.python code-line-numbers="1|3-5"} ````). `None` if absent. The spec
-/// is `|`-separated steps, each a comma list of line numbers / `a-b` ranges /
-/// `all` (e.g. `"1|3-5|all"`).
-fn code_line_numbers(info: &str, literal: &str) -> Option<String> {
-    if let Some(v) = cell_option(literal, "code-line-numbers") {
-        return Some(v.trim_matches(['"', '\'']).to_string());
-    }
-    let rest = &info[info.find("code-line-numbers=")? + "code-line-numbers=".len()..];
-    let mut chars = rest.chars();
-    match chars.next()? {
-        q @ ('"' | '\'') => rest[1..].find(q).map(|e| rest[1..1 + e].to_string()),
-        _ => {
-            let end = rest.find([' ', '}', '\t']).unwrap_or(rest.len());
-            Some(rest[..end].to_string())
-        }
-    }
-}
-
 /// Wrap each source line of already-highlighted code HTML in `<span class="tali-hl-ln">`
-/// so a deck can address individual lines. A highlight span left open across a
+/// so a caller can address individual lines. A highlight span left open across a
 /// newline is closed at the line end and reopened at the next line's start, so each
 /// line is self-contained. Lines are block-displayed (no trailing newline needed);
 /// the copy button reads `innerText`, which still reconstructs the line breaks.
-pub(crate) fn wrap_code_lines(html: &str) -> String {
+fn wrap_code_lines(html: &str) -> String {
     let mut lines: Vec<String> = vec![String::new()];
     let mut open: Vec<String> = Vec::new();
     let mut rest = html;

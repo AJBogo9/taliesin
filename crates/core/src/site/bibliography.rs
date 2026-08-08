@@ -136,15 +136,8 @@ impl Site {
         let (bib, dup_warnings) = crate::cite::parse_bib_warned(&text);
         let mut out: Vec<Warning> = dup_warnings.into_iter().map(Warning::new).collect();
 
-        // Every page, plus the decks: a deck is held out of `pages` but is built, served
-        // and may cite. Missing one would report a cited entry as dead weight.
         let mut cited: Vec<String> = Vec::new();
-        let sources = self
-            .pages
-            .iter()
-            .map(|p| &p.input)
-            .chain(self.decks.iter().map(|d| &d.input));
-        for input in sources {
+        for input in self.pages.iter().map(|p| &p.input) {
             let Ok(src) = std::fs::read_to_string(input) else {
                 continue;
             };

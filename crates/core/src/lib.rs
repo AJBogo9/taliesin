@@ -53,16 +53,14 @@ pub use includes::single_doc_root;
 /// `render::extension` itself stays crate-private.
 pub use render::extension::SHORTCODE_NAMES;
 pub use render::{
-    AssetMode, Block, DeckParts, DocFormat, ExternalAssets, FONT_FILES, OutputMode,
-    PREVIEW_MERMAID_PATH, PageParts, RenderedDoc, SEARCH_JS, ScriptSummary, TOC_SPY_JS,
-    assemble_deck_page, assemble_html_page, code_scripts, core_enhance_js, deck_overlay_html,
-    deck_shared_css, deck_shared_css_linked_fonts, deck_shared_js, escape_attr, favicon_link,
-    has_mermaid, html_escape, html_page_from_doc_in_site_external, js_cell_libs_js, katex_css,
-    mermaid_bundle_js, mermaid_min_js, render_deck_to_page_external, render_doc_to_page,
+    AssetMode, Block, ExternalAssets, FONT_FILES, OutputMode, PREVIEW_MERMAID_PATH, PageParts,
+    RenderedDoc, SEARCH_JS, TOC_SPY_JS, assemble_html_page, code_scripts, core_enhance_js,
+    escape_attr, favicon_link, has_mermaid, html_escape, html_page_from_doc_in_site_external,
+    js_cell_libs_js, katex_css, mermaid_bundle_js, mermaid_min_js, render_doc_to_page,
     render_doc_to_page_external, render_document, render_document_scoped_with_site,
     render_document_with_includes, render_document_with_includes_scoped, render_html_page,
-    render_html_page_with_includes, render_single_doc, script_summary, shared_site_css,
-    shared_site_css_linked_fonts, slides_html, title_with_site_suffix,
+    render_html_page_with_includes, render_single_doc, shared_site_css,
+    shared_site_css_linked_fonts, title_with_site_suffix,
 };
 pub use site::{DraftMode, Page, Site};
 

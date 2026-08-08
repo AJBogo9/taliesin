@@ -1,7 +1,7 @@
 //! Interaction pin for the "course author" demand-probe pilot (corpus/course/).
 //! Locks the feature *combinations* the single-feature corpus docs never exercise
-//! together: shared theorem counters × chapter scoping, cross-PAGE crossrefs, a deck
-//! embedded in a book chapter, and the hover index over definitional blocks. See
+//! together: shared theorem counters × chapter scoping, cross-PAGE crossrefs, a code
+//! walkthrough in a book chapter, and the hover index over definitional blocks. See
 //! notes/2026-07-22-corpus-demand-probe-course-author.md for the findings this produced.
 
 mod common;
@@ -56,15 +56,5 @@ fn cross_page_refs_resolve_to_scoped_numbers() {
             "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;3.1</span></span>"
         ),
         "the ELBO theorem is 3.1 in chapter 3: {em}"
-    );
-}
-
-#[test]
-fn em_chapter_embeds_the_lecture_deck() {
-    let em = course().render_page("em.tmd").expect("em renders");
-    // The {{< embed lecture.tmd >}} lowers to an iframe pointing at the built deck html.
-    assert!(
-        em.contains("<iframe") && em.contains("lecture.html"),
-        "the EM chapter embeds the lecture deck as an iframe: {em}"
     );
 }

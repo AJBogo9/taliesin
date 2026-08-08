@@ -3,7 +3,7 @@
 # separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
 # in `preview`, and `build` writes each into `<out>/docs/guide` etc. of its own accord.
 title: "Taliesin"
-description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.sh"
 favicon: favicon.svg
 

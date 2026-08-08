@@ -66,7 +66,7 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
       // locally served, so waiting for 500ms of zero network activity mostly
       // just burns the 30s ceiling on any page with a lingering socket. settle()
       // below is the real readiness gate (fonts, images, mermaid, {js} output,
-      // deck-ready), so DOM-ready + settle covers the same ground far faster.
+      // ready signals), so DOM-ready + settle covers the same ground far faster.
       await tab.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
     } catch (e) {
       navError = String(e?.message || e);

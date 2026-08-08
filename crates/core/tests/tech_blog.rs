@@ -630,8 +630,6 @@ fn site_404_page_links_the_shared_bundle_in_a_build() {
         app_js: "/_assets/app.cccc.js",
         mermaid_js: "",
         jslibs_js: "",
-        deck_css: "",
-        deck_js: "",
         font_preload: "/_assets/newsreader-latin-wght-normal.dddd.woff2",
     });
     assert!(

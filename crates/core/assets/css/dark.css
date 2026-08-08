@@ -1,5 +1,5 @@
 
-  /* The dark palette tokens live in tokens.css (shared with the deck's `.tali-deck-dark`).
+  /* The dark palette tokens live in tokens.css.
      This file keeps only what tokens can't express: the recoloured syntax scopes. The
      diagnostic boxes (stderr/error/js-error) now derive from the callout tokens over the
      page bg (base.css), so they no longer need a dark override here. (.tali-copy is fully

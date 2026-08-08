@@ -23,7 +23,6 @@ table below repeats the front-matter keys most often paired with project config.
 | Key | Meaning |
 |---|---|
 | `title`, `subtitle`, `author`, `date`, `description` | Metadata; `title` drives `<title>`, the title block, OpenGraph, and nav/listing labels |
-| `format` | `html` (default), `deck`, or a `<name>-deck` variant |
 | `theme` | `light` / `dark`, a `.css`/`.scss` file, or an installed `_extensions/<name>/` bundle. Only an explicit `light` (or `default`) / `dark` forces that mode; unset (or a custom theme) follows the reader's OS `prefers-color-scheme`, falling back to light |
 | `toc` | Forces the table of contents on or off for this page; leave it out and it is automatic (an article with enough headings gets one) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
@@ -101,7 +100,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
-| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. The same key a deck's front matter takes, so one name brands all three surfaces. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
+| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
 | `image` | Deprecated; the social-card image is now auto-generated per page |
 | `head` | Raw markup injected into every page's `<head>`: a path, a `{ text: … }` / `{ file: … }` map, or a list of those. The **one** raw-injection hatch — analytics, a search-console `<meta>`, a custom stylesheet |
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
@@ -264,23 +263,6 @@ Reserved names, all skipped by page discovery:
 A `404.tmd` is special-cased the other way: it builds to `404.html` at the site root
 (most static hosts serve it for unknown URLs) but stays out of the nav.
 
-### How a deck gets built
-
-A slide deck is any doc with `format: deck`. How it ends up in your output
-depends on *how the project refers to it*: there are three cases, and missing the
-distinction is the usual way a deck goes missing from a build:
-
-- **Standalone**: `taliesin preview deck.tmd` or `taliesin build deck.tmd`. The deck
-  is the whole document; it renders as slides. Nothing else needed.
-- **Embedded**: `{{< embed deck.tmd >}}` from a page or chapter. The deck is built as
-  its own standalone slide file and shown inline as an isolating iframe; it is kept
-  *out* of the nav and search (it isn't a page, it's an inclusion). This is how to put
-  a deck inside a site or book. See [Formats](../using/formats.tmd).
-- **Loose (warns)**: a `format: deck` file sitting in a site directory that no
-  page embeds and that isn't a standalone target. It is neither chaptered nor embedded,
-  so the build has no reason to emit it; Taliesin warns and would otherwise flatten it
-  into a chrome-wrapped article. **Fix:** embed it from a page, or build it standalone.
-
 ## See also
 
 The other reference pages cover the rest of the configurable surface:
@@ -289,5 +271,5 @@ The other reference pages cover the rest of the configurable surface:
   `hero:`, in full.
 - [Cell options](cell-options.tmd): the `#|` / `//|` / `%%|` options on code
   cells.
-- [Shortcodes](shortcodes.tmd): `{{< include >}}`, `{{< embed >}}`,
+- [Shortcodes](shortcodes.tmd): `{{< include >}}`,
   `{{< video >}}`, `{{< input >}}`, and extension-declared shortcodes.

@@ -26,10 +26,9 @@ pub(crate) fn static_diagnostics(
     src: &str,
     blocks: &[taliesin_core::Block],
     base: &Path,
-    format: taliesin_core::DocFormat,
     scope: Scope,
 ) -> Vec<Diagnostic> {
-    page_static_diagnostics(src, blocks, base, format, scope)
+    page_static_diagnostics(src, blocks, base, scope)
         .iter()
         .map(located)
         .collect()
@@ -88,13 +87,7 @@ mod tests {
         let base = tmp_base("static-img");
         let src = "# Title\n\n![a chart](nope.png)\n";
         let doc = taliesin_core::render_single_doc(src, base.as_path());
-        let diags = static_diagnostics(
-            src,
-            &doc.blocks,
-            base.as_path(),
-            doc.format,
-            Scope::Standalone,
-        );
+        let diags = static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone);
         assert!(
             diags.iter().any(|d| d.message.contains("nope.png")),
             "expected a diagnostic naming the missing image, got: {:?}",
@@ -108,13 +101,7 @@ mod tests {
         let base = tmp_base("static-clean");
         let src = "# Title\n\nJust a paragraph of plain prose, no links or images.\n";
         let doc = taliesin_core::render_single_doc(src, base.as_path());
-        let diags = static_diagnostics(
-            src,
-            &doc.blocks,
-            base.as_path(),
-            doc.format,
-            Scope::Standalone,
-        );
+        let diags = static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone);
         assert!(
             diags.is_empty(),
             "clean doc should lint clean, got: {:?}",

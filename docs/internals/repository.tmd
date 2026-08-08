@@ -67,8 +67,8 @@ they are just consumers of the core's stable protocol:
 `.tmd` documents that serve as the specification. "Done" means these render
 correctly, and `crates/core/tests/corpus.rs` renders every one of them on each test
 run and asserts the load-bearing invariants (every block has an id + valid
-sourcepos, ids are unique, blocks stay in document order, includes resolve, decks
-split into slides, books get a numbered TOC, sites discover their pages and rewrite
+sourcepos, ids are unique, blocks stay in document order, includes resolve,
+books get a numbered TOC, sites discover their pages and rewrite
 `.tmd`→`.html` links). The corpus is both the regression net and the arbiter of
 done, so it must stay green.
 
@@ -76,7 +76,7 @@ It now also *leads*: under the corpus-plus-roadmap scope, each new capability sh
 pinned by a new corpus document added in the same change. The documents span every
 format and feature, one subdirectory per concern, for example `posts/` (blog
 posts, from pure prose to heavy math + live `{js}`), `tech-blog/` (the multi-page
-website spec), `demo-book/` (the multi-chapter book), `deck.tmd` (a slide deck),
+website spec), `demo-book/` (the multi-chapter book),
 `narrate/`, `layout/`, `callouts/`, `media/`,
 `reactive/`, `reader/`, and `diagnostics/` (documents that deliberately trip the
 validators). `corpus/README.md` is the index, with provenance and what each
@@ -102,9 +102,9 @@ links are written as relative `.html`. Preview either directly with
   nothing but Markdown + YAML with no custom stylesheet, the framework's own
   dogfood test of its defaults.
 - **`samples/`** is one comprehensive, standalone-previewable document per HTML
-  format, for honing each format's UX in isolation. The two documents that did not
-  already exist as standalone projects (`deck.tmd`, `paper.tmd`) live here; the
-  website and books are referenced from their canonical homes.
+  format, for honing each format's UX in isolation. The one document that did not
+  already exist as a standalone project (`paper.tmd`) lives here; the website and
+  books are referenced from their canonical homes.
 Source media lives **next to the document that uses it**, never in a central pile:
 the Fourier-transform post ships its `*.wav` and the blog its `*.webp` images under
 `corpus/tech-blog/`, the showcase its assets under `samples/assets/`. Media a cell
@@ -203,7 +203,7 @@ corpus must render and satisfy the invariants); the rest lock down one seam each
 
 | Test | Locks in |
 |---|---|
-| `corpus.rs` | The corpus-wide invariants (ids, sourcepos, order, includes, decks, books, sites). |
+| `corpus.rs` | The corpus-wide invariants (ids, sourcepos, order, includes, books, sites). |
 | `incremental.rs` / `transient.rs` | The incremental-update seam and per-keystroke re-render robustness. |
 | `tech_blog.rs` | Per-post feature coverage for the author's real blog. |
 | `config.rs` / `search.rs` / `theme_css.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |

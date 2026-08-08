@@ -170,12 +170,11 @@ test("pageUrlFor finds the URL of a document inside the project", () => {
 });
 
 test("pageUrlFor is null for a document the project does not publish", () => {
-  // Three real shapes, one answer: a DRAFT, an `{{< embed >}}`-referenced deck (deliberately
-  // kept out of `site.pages`), and a file that is not under the root at all. A page with no
-  // URL has nothing to open, so the caller falls back to a single-file preview.
+  // Two real shapes, one answer: a DRAFT (deliberately kept out of `site.pages` in a
+  // published build) and a file that is not under the root at all. A page with no URL has
+  // nothing to open, so the caller falls back to a single-file preview.
   const pages = [{ rel: "index.tmd", url: "index.html" }];
   assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/drafts/wip.tmd"), null);
-  assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/guide/demo/tour.tmd"), null);
   assert.strictEqual(pageUrlFor(pages, "/repo/guide", "/repo/other/loose.tmd"), null);
 });
 
@@ -223,8 +222,8 @@ test("cursorTarget: a cursor in another chapter selects that chapter first", () 
 });
 
 test("cursorTarget: a document the project does not publish is treated as an include", () => {
-  // A draft or an `{{< embed >}}`ed deck has no URL to select, so the old behaviour is the
-  // right one: key it against the page on screen and let the client find it or not.
+  // A draft has no URL to select, so the old behaviour is the right one: key it against
+  // the page on screen and let the client find it or not.
   assert.deepEqual(cursorTarget("/g/index.tmd", GUIDE, "/g", "/g/drafts/wip.tmd"), {
     navigateTo: null,
     file: "drafts/wip.tmd",

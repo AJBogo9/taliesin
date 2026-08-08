@@ -1,20 +1,18 @@
 
   /* ===========================================================================
      Design tokens: the ONE source of the owned palette (+ fonts, geometry, motion).
-     `include_str!`'d ahead of BOTH the page bundle (base.css) and the deck bundle
-     (deck.css), so the light/dark palette is typed exactly once instead of
-     re-declared per surface. The deck reads the same `--tali-*` tokens (it used to
-     carry a parallel `--deck-*` near-miss of each); the OG-card generator can't share
+     `include_str!`'d ahead of the page bundle (base.css), so the light/dark palette
+     is typed exactly once instead of re-declared per surface. The OG-card generator can't share
      CSS, so `site/card.rs` is drift-locked against the dark values by a test.
      Keep in sync: nothing else should declare these tokens.
      =========================================================================== */
   :root {
-    /* The accent is ONE owned hue across light/dark and the deck: OKLCH H 271, chroma
+    /* The accent is ONE owned hue across light and dark: OKLCH H 271, chroma
        .077: roughly a third the chroma of a brand blue, and darker. It reads as ink rather
        than as a button, which is the point: iron-gall ink is what Taliesin's Book survives in.
        Its three lightnesses are the only accent values in the product. Previously this was
        three unrelated vendor blues (a stock light blue, GitHub Primer's, and Tailwind's
-       blue-600) plus a fourth in the deck. The exact hexes are banned by a test. */
+       blue-600). The exact hexes are banned by a test. */
     --tali-bg: #ffffff; --tali-fg: #1a1a1a; --tali-muted: #555; --tali-accent: #3a4673;
     /* Light is dark enough that the accent doubles as its own fill (white on it is
        9.12:1); only dark needs a separate, darker fill. */
@@ -50,7 +48,7 @@
        and reading measure are deliberately separate levers. */
     --tali-chrome-maxw: 62rem;
     /* One keyboard-focus ring for every interactive control (links, buttons, tabs,
-       reader-menu + deck controls). One token so a theme can retune the ring once and
+       reader-menu controls). One token so a theme can retune the ring once and
        every control follows; the global rule below applies it via :focus-visible. */
     --tali-focus: 2px solid var(--tali-accent);
     --tali-focus-offset: 2px;
@@ -58,7 +56,7 @@
        (each built on the per-theme --tali-edge-shadow so they adapt automatically), and two
        motion durations. Single-sources what used to be ~13 ad-hoc border-radius, ~25 hand-
        written box-shadow, and repeated transition-duration literals. Intentional specials
-       stay literal: 50% circles, 999px pills, em-based inline radii, the deck's dark-overlay
+       stay literal: 50% circles, 999px pills, em-based inline radii, the dark-overlay
        shadows, and one-off timings. */
     --tali-radius-sm: 4px; --tali-radius-md: 8px; --tali-radius-lg: 12px;
     --tali-shadow-sm: 0 1px 4px var(--tali-edge-shadow);
@@ -70,12 +68,13 @@
        that a runaway cell cannot take the page's scrollbar hostage. Lifted in print. */
     --tali-output-max: 32rem;
     /* One "dim behind an overlay" scrim for every modal/drawer/sheet backdrop, so the dimming
-       is set once instead of drifting per surface (it was .38/.42/.55 across site/base/deck).
+       is set once instead of drifting per surface (it was .38/.42/.55 across site/base/deck
+       before those surfaces were folded down to site.css's book drawer).
        A pure black alpha, theme-independent like the literals it replaces (a black scrim reads
        as "content is behind this" in light and dark alike). */
     --tali-scrim: rgba(0, 0, 0, .42);
   }
 
   /* The dark palette override lives in tokens-dark.css (keyed on `html[data-theme="dark"]` AND
-     the deck's `html.tali-deck-dark` toggle) so a `--bare` page can flatten just that layer to
+     the `html[data-theme="dark"]` toggle) so a `--bare` page can flatten just that layer to
      `:root` / a `prefers-color-scheme` query. */

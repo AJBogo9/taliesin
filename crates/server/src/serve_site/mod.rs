@@ -513,20 +513,14 @@ struct Resolved {
     doc: Option<PathBuf>,
 }
 
-/// The URL a scoped document lives at: its page, or the deck it is. Used both to open the
-/// browser at it and to answer the project root with it.
+/// The URL a scoped document lives at. Used both to open the browser at it and to answer
+/// the project root with it.
 fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
     let same = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) == file;
     site.pages
         .iter()
         .find(|p| same(&p.input))
         .map(|p| p.url.clone())
-        .or_else(|| {
-            site.decks
-                .iter()
-                .find(|d| same(&d.input))
-                .map(|d| d.url.clone())
-        })
 }
 
 /// Entry point for `taliesin preview <dir|file.tmd>`.
@@ -630,7 +624,7 @@ async fn serve(
     // used to bind a port, 404 `/`, and boot the kernel pool for nothing. The two front
     // doors must agree. A page-less root that only `mounts:` sub-projects is legitimate —
     // it is how a docs container is previewed — so it is not empty.
-    if page_count == 0 && mounts.is_empty() && site.decks.is_empty() {
+    if page_count == 0 && mounts.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("no .tmd pages found under {}", root.display()),
@@ -854,55 +848,7 @@ async fn page_or_asset(
         )
             .into_response();
     }
-    // 3) A deck referenced by `{{< embed >}}` (a standalone document, not a page/chapter):
-    //    render it self-contained on the fly so the embedding iframe resolves in preview.
-    let deck = { project.site.lock().deck(&lookup).cloned() };
-    if let Some(deck) = deck
-        && let Ok(src) = std::fs::read_to_string(&deck.input)
-    {
-        let base = deck.input.parent().unwrap_or(&project.dir).to_path_buf();
-        // A deck is a page of the project too: it inherits the project-wide
-        // `bibliography:`, and `Site::validate_shared_bibliography` counts a deck's
-        // citations, so the two must agree about what a deck can resolve.
-        let defaults = { project.site.lock().render_defaults() };
-        let doc =
-            taliesin_core::render_document_scoped_with_site(&src, &base, None, Some(&defaults));
-        let stem = deck
-            .url
-            .rsplit('/')
-            .next()
-            .and_then(|f| f.strip_suffix(".html"))
-            .unwrap_or("deck");
-        // Same rewrite the page path applies below: a deck's author `.tmd` references
-        // must resolve to `.html` here too, or preview disagrees with the build about
-        // where a deck's links point (preview happens to serve the rendered page for a
-        // `.tmd` URL, which is exactly what masks the build's version of this bug).
-        let html = taliesin_core::site::rewrite_tmd_links(&taliesin_core::render_doc_to_page(
-            &doc,
-            stem,
-            taliesin_core::OutputMode::Preview,
-        ));
-        // Click-to-source, which is one of the three load-bearing goals and was dead on
-        // every deck served here: `client.js`'s `openSource` bails without `TALIESIN_DOC`,
-        // so a deck's blocks carried `data-block-id`/`data-sourcepos` that nothing could
-        // act on. The page path above injects this; the deck path never did.
-        let doc_path = deck
-            .input
-            .canonicalize()
-            .unwrap_or_else(|_| deck.input.clone());
-        let doc_global = format!(
-            "<script>window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};</script>",
-            js_str(&doc_path.to_string_lossy()),
-            js_str(&base.to_string_lossy()),
-            js_str(&project.dir.to_string_lossy()),
-        );
-        return Html(match html.rfind("</body>") {
-            Some(i) => format!("{}{doc_global}{}", &html[..i], &html[i..]),
-            None => format!("{html}{doc_global}"),
-        })
-        .into_response();
-    }
-    // 4) A static asset under this project's root, else this project's own 404 page
+    // 3) A static asset under this project's root, else this project's own 404 page
     //    (with a 404 status) so preview mirrors the deployed `404.html`.
     let asset = serve_asset(&project.dir, &lookup);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
@@ -1773,7 +1719,6 @@ async fn build_page(
         &src,
         &doc.blocks,
         &base,
-        doc.format,
         crate::check::Scope::InSite,
     );
     // Resolve the run's cap against the RENDERED blocks — the same list the executor is
@@ -1855,7 +1800,7 @@ async fn build_page(
     ps.doc.diagnostics = diags;
     // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
     // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
-    // A site page never restructures a deck, so `recovered` is the only remount trigger.
+    // `recovered` is the only remount trigger.
     let generation = ps.doc.generation;
     let messages = protocol::Broadcast {
         ops: &ops,
@@ -2117,26 +2062,6 @@ fn rebuild_project(
             reload_open_tabs(project);
             return;
         }
-    }
-
-    // A deck is served by rendering it on request, not from live per-page block state, so
-    // it owns no entry in `project.pages` and the dependency scan below — which walks
-    // `site.page(rel)` — cannot see it. Without this, editing a deck produced no feedback
-    // at all: not a block update, not a reload, nothing.
-    //
-    // A full reload is the right answer rather than an oversight. The block-level path
-    // wants live state per document, and a deck has none here; decks are frozen, so the
-    // fix is to make the existing mechanism reach them, not to build a second live path.
-    // Every deck in a project already behaved this way — now the standalone one does too.
-    let deck_changed = {
-        let site = project.site.lock();
-        site.decks.iter().any(|d| {
-            changed_canon.contains(&d.input.canonicalize().unwrap_or_else(|_| d.input.clone()))
-        })
-    };
-    if deck_changed {
-        reload_open_tabs(project);
-        return;
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.

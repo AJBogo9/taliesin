@@ -17,7 +17,7 @@ description: "Every subcommand and flag: preview and build, the check gate, and 
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `check <file.tmd\|dir> [--format human\|json] [--errors-only\|--strict]` | List every located diagnostic and exit non-zero on any error or warning (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): `_site.yml`, `index.tmd`, and a `.taliesin/` holding the `_site.yml` JSON schema. `--template site\|book` adds that starter's pages; refuses to overwrite |
-| `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
+| `new <post\|page\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
@@ -54,11 +54,11 @@ catches these **publish-blocking** mistakes:
 
 | Rule | Flags |
 |---|---|
-| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a `{{< embed >}}` deck or a cross-book / mounted link (one that climbs above the site root) is left alone. |
+| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
 | Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
 | Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
-| Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"), and slide decks are skipped (they are slide-structured). The static half of the live preview's a11y audit. |
+| Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). The static half of the live preview's a11y audit. |
 | Missing alt text | A hand-written / passthrough `<img>` with no `alt` attribute, so a screen reader can't describe it (a decorative image should set `alt=""`). Markdown `![…](…)` always emits an `alt`, so this catches raw `<img>` only. |
 | No accessible name | An `<a href>` / `<button>` in content with empty text and no `aria-label` / `title` / labelled image (e.g. an icon-only link), which a screen reader announces as just "link" / "button". |
 
@@ -135,10 +135,6 @@ the **degraded** languages (an all-green probe is `doctor`'s business) and point
 `taliesin doctor` for the full audit. See the [configuration
 reference](configuration.html) for how the interpreter is chosen.
 
-A site's `{{< embed >}}`-referenced **decks** count toward this footer too. A deck is built
-and served but held out of the page list, so a project whose only code cells live in a talk
-would otherwise report no environment at all.
-
 **A project-supplied interpreter is reported, not run.** When the interpreter comes from
 the project being checked — a `_site.yml` `python:` / `r:` field, or the project's own
 `.venv` — `check` names it but never spawns it, and its `runs` is `null` with a
@@ -156,7 +152,7 @@ At a glance, here is everything `check` looks at, grouped by what it protects:
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
 | **Local media** | Missing local images (`src`/`href`) and `{{< video >}}`/`<video>` files |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
-| **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip (decks exempt), an `<a>`/`<button>` with no accessible name |
+| **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip, an `<a>`/`<button>` with no accessible name |
 | **Opt-in** | `prose-lint:` findings (weasel words, repeated words, your own banned list) — all severity `suggestion` |
 
 External `http(s)://` links are never fetched (`check` stays offline and
@@ -237,8 +233,8 @@ ships less JavaScript without losing any feature. `--bare` goes further for a
 single document: it ships **no** `<script>` at all and themes purely with CSS (a forced
 `theme:` is hard-coded; otherwise it follows the OS via `prefers-color-scheme`).
 Server-rendered math still works; `{js}` cells, Mermaid rendering, and the
-copy/reader controls are dropped (each warned, never silently). A slide deck or
-a `<dir>` site is refused (their navigation needs JavaScript). A `build` skips code
+copy/reader controls are dropped (each warned, never silently). A `<dir>` site is
+refused (its navigation needs JavaScript). A `build` skips code
 execution only through the `TALIESIN_NO_EXEC=1` environment variable, not a `--no-exec`
 flag.
 
@@ -415,7 +411,6 @@ other publish-blocking mistakes ship to your readers.
 ```sh
 taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
 taliesin new page about           # about.tmd
-taliesin new deck my-talk         # my-talk.tmd, with `format: deck`
 ```
 
 The scaffold is correct on its first save: it renders, and `taliesin check` passes on it

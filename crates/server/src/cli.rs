@@ -28,7 +28,7 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
-    - Scaffold a post, paper, or deck with `taliesin new` (e.g. `taliesin new post my-first-post`; add `--draft` to hold it back).\n\
+    - Scaffold a post, page, or paper with `taliesin new` (e.g. `taliesin new post my-first-post`; add `--draft` to hold it back).\n\
     - Add more `.tmd` pages beside this one: each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
@@ -378,23 +378,28 @@ fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBu
 pub(crate) enum NewKind {
     Post,
     Page,
-    Deck,
     Paper,
 }
 
 /// The kind names, for the unknown-kind did-you-mean.
-pub(crate) const NEW_KINDS: &[&str] = &["post", "page", "deck", "paper"];
+pub(crate) const NEW_KINDS: &[&str] = &["post", "page", "paper"];
 
 impl NewKind {
     fn parse(raw: &str) -> Result<Self, String> {
         match raw {
             "post" => Ok(Self::Post),
             "page" => Ok(Self::Page),
-            "deck" => Ok(Self::Deck),
             "paper" => Ok(Self::Paper),
+            // A removal, not a misspelling: answering `deck` with a did-you-mean would
+            // send the author to a kind that scaffolds something else entirely.
+            "deck" => Err(
+                "`new deck` was removed on 2026-08-08 with the slide-deck engine: \
+                 scaffold a `page` and write the talk as prose"
+                    .to_string(),
+            ),
             other => Err(match taliesin_core::closest(other, NEW_KINDS) {
                 Some(k) => format!("unknown kind `{other}` (did you mean `{k}`?)"),
-                None => format!("unknown kind `{other}` (expected post, page, deck, or paper)"),
+                None => format!("unknown kind `{other}` (expected post, page, or paper)"),
             }),
         }
     }
@@ -404,7 +409,6 @@ impl NewKind {
         match self {
             Self::Post => "post",
             Self::Page => "page",
-            Self::Deck => "deck",
             Self::Paper => "paper",
         }
     }
@@ -586,32 +590,13 @@ pub(crate) fn new_files(
                  Save the file and the preview re-renders only the block you changed.\n"
             ),
         ),
-        NewKind::Deck => {
-            let body = format!(
-                "---\n\
-                     title: \"{title}\"\n{draft}\
-                     subtitle: \"A subtitle\"\n\
-                     format: deck\n\
-                     ---\n\
-                     \n\
-                     ## The first slide\n\
-                     \n\
-                     - A point worth making\n\
-                     - Another one\n\
-                     \n\
-                     ## The second slide\n\
-                     \n\
-                     Each `##` heading starts a new slide.\n"
-            );
-            (PathBuf::from(format!("{slug}.tmd")), body)
-        }
         // Paper is handled by the early return above (it writes two files).
         NewKind::Paper => unreachable!("Paper scaffold is built before this match"),
     };
     vec![(path, body)]
 }
 
-/// `taliesin new <post|page|deck> <slug> [--dir <root>]`: scaffold one document, correct
+/// `taliesin new <post|page|paper> <slug> [--dir <root>]`: scaffold one document, correct
 /// on its first save. Refuses to overwrite, exactly as `init` does.
 pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
@@ -667,8 +652,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             }
         },
         None if interactive => {
-            const KINDS: [NewKind; 4] =
-                [NewKind::Post, NewKind::Page, NewKind::Deck, NewKind::Paper];
+            const KINDS: [NewKind; 3] = [NewKind::Post, NewKind::Page, NewKind::Paper];
             match interactive::select("What do you want to create?", NEW_KINDS, 0) {
                 Ok(i) => KINDS[i],
                 Err(e) => {
@@ -707,7 +691,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
                 for f in &written {
                     log::built(&f.display().to_string());
                 }
-                println!("{}", new_next_steps(root, kind, &written[0]));
+                println!("{}", new_next_steps(&written[0]));
             }
             ExitCode::SUCCESS
         }
@@ -719,36 +703,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
 }
 
 /// What to do with a freshly scaffolded document.
-///
-/// A deck inside a site needs different words from every other kind, because the obvious next
-/// command is the wrong one (item 120). `init` prints "Preview it: `taliesin preview .`" and
-/// the scaffold's own Next steps point at `taliesin new deck`; following both in order used to
-/// warn that the deck will flatten, and it did — browser-verified, the scaffolded slide reading
-/// "Each `##` heading starts a new slide" rendered as one stacked article. A deck is a
-/// *component* of a site page, not a page of it, so the site path only builds it when a page
-/// references it with `{{< embed >}}`.
-///
-/// Words, not a write: `new` must not edit an existing `index.tmd` to insert the embed. The
-/// `.tmd` is the author's editing surface and a scaffolder that rewrites their prose is the
-/// same mistake as a preview that writes back.
-fn new_next_steps(root: &Path, kind: NewKind, written: &Path) -> String {
-    let in_site = root.join("_site.yml").is_file();
-    if kind == NewKind::Deck && in_site {
-        let name = written
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| written.display().to_string());
-        return format!(
-            "A deck in a site is a component of a page, not a page of its own.\n\
-             Either embed it in a page (add this line to `index.tmd`):\n\
-             \x20 {{{{< embed {name} >}}}}\n\
-             or preview the deck on its own:\n\
-             \x20 taliesin preview {}\n\
-             `taliesin preview .` renders the site, where an unreferenced deck flattens \
-             into an article.",
-            written.display()
-        );
-    }
+fn new_next_steps(written: &Path) -> String {
     format!("Preview it:\n  taliesin preview {}", written.display())
 }
 
@@ -1180,10 +1135,7 @@ mod new_tests {
         let e = NewKind::parse("pots").unwrap_err();
         assert!(e.contains("did you mean `post`?"), "got: {e}");
         let e = NewKind::parse("zzzzzz").unwrap_err();
-        assert!(
-            e.contains("expected post, page, deck, or paper"),
-            "got: {e}"
-        );
+        assert!(e.contains("expected post, page, or paper"), "got: {e}");
     }
 
     /// The scaffold's bytes are pinned by `corpus/scaffold/`, which the corpus regression
@@ -1193,11 +1145,10 @@ mod new_tests {
     #[test]
     fn every_scaffold_matches_its_corpus_pin() {
         let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/scaffold");
-        for kind in [NewKind::Post, NewKind::Page, NewKind::Deck, NewKind::Paper] {
+        for kind in [NewKind::Post, NewKind::Page, NewKind::Paper] {
             let slug = match kind {
                 NewKind::Post => "my-first-post",
                 NewKind::Page => "about",
-                NewKind::Deck => "my-talk",
                 NewKind::Paper => "my-paper",
             };
             for (rel, contents) in new_files(kind, slug, "2026-07-10", NewOpts::default()) {

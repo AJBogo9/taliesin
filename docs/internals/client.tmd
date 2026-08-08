@@ -41,8 +41,7 @@ first `full_render` after connect is **identical** to what is already on screen,
 the client *skips* the destructive part of mounting it (a `window.TALIESIN_SSR` flag,
 consumed once): no `resetJs()` teardown of `{js}` cells and no `root.innerHTML`
 replacement, so there is no flash. It does *not* skip the `afterChange()` pass that
-runs after every render, so the deck is still initialized (the first `syncDeck`
-calls `TaliesinDeck.initialize`) and the code enhancers still run over the SSR'd DOM. A
+runs after every render, so the code enhancers still run over the SSR'd DOM. A
 reconnect, by contrast, re-mounts normally, and a dropped socket retries on a
 one-second loop (`onclose` → `setTimeout(connect, 1000)`).
 
@@ -68,7 +67,7 @@ For the incremental ops, every block is found by its `data-block-id`
 
 The other server messages are handled too: `diagnostics` repaints the issue panel,
 `style` hot-swaps the theme `<style id="tali-theme">` in place (no reload, so scroll
-and the current slide survive a theme edit), `error` raises a full-screen overlay
+survives a theme edit), `error` raises a full-screen overlay
 over the last good content, and `reload` (sent after a kernel restart or a config
 change) does a plain `location.reload()`.
 
@@ -98,7 +97,7 @@ missing kernel), per-cell runtime errors (Python `.tali-error`, `{js}`
 text, heading-level skips, links/buttons with no accessible name, a missing
 `<html lang>`, and body text below WCAG AA contrast). The total issue count shows as
 an amber badge on the collapsed toggle, so a problem is visible without expanding
-the panel. In deck mode (no control bar) the status survives as a standalone pill.
+the panel. Without a control bar the status survives as a standalone pill.
 
 ### Scroll and live-state preservation
 
@@ -113,7 +112,7 @@ restore is never animated even on a page with smooth scrolling. Without it, an
 reader's place.
 
 `afterChange()` runs after each mount and re-attaches everything that lives
-*outside* the block model: it re-syncs the deck, rebuilds the live TOC, re-inits the
+*outside* the block model: it rebuilds the live TOC, re-inits the
 scrollspy against the fresh nav, recomputes the word count, re-runs the code
 enhancers (`window.taliEnhanceCode(root)`), and re-scans for cell errors and a11y
 issues. `set_meta` deliberately **skips** `afterChange()`, because nothing was
@@ -130,7 +129,7 @@ spliced out of the `{js}` runtime's registry. Without this, editing a Three.js c
 (whose content-hash id changes, so the block is replaced wholesale) would leak a
 WebGL context and an animation-frame loop on every save. A wholesale re-mount calls
 `resetJs()` first, tearing down *every* cell so the runtime rebuilds clean. Both are
-no-ops when `tali-js.js` is not loaded (a deck or a page with no `{js}` cells).
+no-ops when `tali-js.js` is not loaded (a page with no `{js}` cells).
 :::
 
 ## Reverse sync: `highlightAtLine`
@@ -156,14 +155,11 @@ it**.
 The chosen block gets a `tali-hl` outline (any previous one is cleared first), and
 then the view follows the cursor:
 
-- in a normal page, the block is scrolled into view only if it is off-screen
-  (`getBoundingClientRect` outside the viewport), with `block: "center"`;
-- in a **deck**, scrolling makes no sense, so the client finds the
-  `.tali-slides > section` containing the block and jumps the deck to it with
-  `window.TaliesinDeck.slide(i)`.
+The block is scrolled into view only if it is off-screen (`getBoundingClientRect`
+outside the viewport), with `block: "center"`.
 
-This is the same smallest-containing-block model the [deck engine](deck-engine.tmd)
-and the source map were built around, run backwards.
+This is the same smallest-containing-block model the source map was built around,
+run backwards.
 
 ## The `postMessage` bridge
 

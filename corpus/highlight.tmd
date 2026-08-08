@@ -32,9 +32,9 @@ so they are pinned here.
 
 ```ts
 // A TypeScript fence: `ts` aliases to `typescript`.
-export function mount(deck: HTMLElement, opts: DeckOptions = {}): void {
-    const slides = deck.querySelectorAll<HTMLElement>(".tali-slide");
-    slides.forEach((s, i) => s.setAttribute("data-index", String(i)));
+export function mount(root: HTMLElement, opts: MountOptions = {}): void {
+    const panels = root.querySelectorAll<HTMLElement>(".tali-panel");
+    panels.forEach((p, i) => p.setAttribute("data-index", String(i)));
 }
 ```
 

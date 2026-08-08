@@ -357,7 +357,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    is `position: sticky`, so that height is subtracted from every screen of reading, forever.
    Scoped to the topbar because `.tali-book-brand` is emitted TWICE (`chrome.rs` topbar + the
    drawer's sidebar head); the drawer heading has room and should keep wrapping. The idiom is
-   the one already used correctly at `deck.css`'s `.tali-menu-slide-t`. */
+   the value the retired deck stylesheet already used correctly. */
 .tali-book-topbar .tali-book-brand { min-width: 0; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 /* Below ~22rem the "Chapters" word stops earning its 66px (27% of the row): measured, the

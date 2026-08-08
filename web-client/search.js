@@ -802,7 +802,7 @@
       e.preventDefault();
       move(-1);
     } else if ((e.key === "Home" || e.key === "End") && matches.length && !input.value) {
-      // Jump to the ends of the list — the motion the cite tabs and the deck menu both
+      // Jump to the ends of the list — the motion the cite tabs also
       // have and the longest list in the app did not.
       //
       // Gated on an EMPTY input, and that gate is the whole design. Focus never leaves the
@@ -896,10 +896,9 @@
     return null;
   }
   // Flash the first occurrence of `terms` in the section headed by `headingEl`. Scrolls
-  // to it only if off-screen (the heading is already in view). No-op on decks / no match.
+  // to it only if off-screen (the heading is already in view). No-op without a match.
   /** @param {Element | null} headingEl @param {string[]} terms */
   function flashTermsIn(headingEl, terms) {
-    if (document.querySelector(".tali-deck")) return; // decks have their own chrome
     if (!headingEl || !terms || !terms.length) return;
     var range = firstTermRange(headingEl, terms);
     if (!range) return;

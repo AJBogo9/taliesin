@@ -1,6 +1,6 @@
 ---
 title: "Recipes"
-description: "Whole working projects to copy rather than fragments to assemble: front matter, config and layout for five kinds of document."
+description: "Whole working projects to copy rather than fragments to assemble: front matter, config and layout for four kinds of document."
 ---
 
 Five complete, copyable setups: a personal blog, a project portfolio, a
@@ -251,79 +251,11 @@ book built this way: open the Chapters drawer and press Cmd-K to try the search.
 ::: {.callout-note}
 There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like
 `theorems:`) and a chapter's own front matter overrides them, two levels, no directory
-merge. See [Slides, books & sites](formats.tmd) for the difference between a book and
+merge. See [Books & sites](formats.tmd) for the difference between a book and
 a plain multi-page site.
 :::
 
-## 4. A talk (a standalone deck, embedded in notes)
-
-> A self-contained slide deck (`format: deck`), plus a notes page that embeds it
-> with `{{< embed >}}`.
-
-```text
-talk/
-├── _site.yml
-├── index.tmd            # the talk's companion notes page
-└── slides.tmd           # the deck itself (format: deck)
-```
-
-The deck is a normal document with `format: deck`. `##` starts a slide, `#`
-starts a section that nests the following slides as a vertical stack, and a title
-slide is generated from the metadata:
-
-```markdown
----
-title: "My talk"
-subtitle: "A live demo"
-format: deck
----
-
-## First slide
-
-- a point
-- another point
-
-## A diagram slide
-
-Some prose, then a chart or image.
-```
-
-The notes page embeds the deck inline as an isolating, interactive iframe with a
-fullscreen button. The deck is built and served automatically as a dependency of the
-page; it does not show up in the nav or search (it is an inclusion, not a page):
-
-```markdown
----
-title: "Talk notes"
----
-
-Here are the slides, then the long-form notes.
-
-{{< embed slides.tmd title="My talk" >}}
-
-## Notes
-
-The points I didn't have room for on the slides go here.
-```
-
-`_site.yml` lists only the notes page; the deck is reached through the embed:
-
-```yaml
-title: "My talk"
-nav:
-  - { text: Notes, href: index.tmd }
-```
-
-::: {.callout-warning}
-`{{< embed >}}` only builds its target during a **site** build (`taliesin build
-<dir>`). A single-doc build (`taliesin build index.tmd`) does *not* build the embedded
-deck and will warn. To present the deck on its own instead, point the command
-straight at it: `taliesin preview slides.tmd` or `taliesin build slides.tmd`. See
-[Slides, books & sites](formats.tmd) for the deck engine's features (speaker view,
-fragments, overview, and the phone reading feed).
-:::
-
-## 5. A single long-form technical post
+## 4. A single long-form technical post
 
 > One `.tmd` file with math, citations from a `.bib`, and numbered, cross-referenced
 > figures. No `_site.yml`, no directory: just a file you preview and build directly.
@@ -387,11 +319,11 @@ fig-…` and `#| fig-cap: "…"` options; see [Running code](code.tmd) and
 
 ## Where to go next
 
-- [Slides, books & sites](formats.tmd): the full feature set behind formats 3 and 4.
+- [Books & sites](formats.tmd): the full feature set behind recipes 2 and 3.
 - [Running code](code.tmd): cells, outputs, and the execution cache for any recipe
   with `{python}` / `{r}`.
 - [Interactive content](interactive.tmd): live `{js}` cells and reactive inputs to
-  add to a post or a deck.
+  add to a post.
 - [Configuration reference](../reference/configuration.tmd): every `_site.yml` key, in
   full.
 - [Front matter reference](../reference/frontmatter.tmd): every per-page `---` key the

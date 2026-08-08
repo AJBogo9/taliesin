@@ -33,13 +33,11 @@ export async function launch({ chromePath = DEFAULT_CHROME } = {}) {
 // Force a theme deterministically. localStorage seeding is the dominant lever
 // (it wins over front-matter `theme:` and OS in the pre-paint head script);
 // media emulation is belt-and-braces for `--bare`/auto pages. `tali-theme`
-// covers single-doc + site/book pages; `tali-deck-theme` covers standalone decks
-// (separate key + `tali-deck-dark` class).
+// covers single-doc + site/book pages.
 export async function forceTheme(page, theme) {
   await page.evaluateOnNewDocument((mode) => {
     try {
       localStorage.setItem('tali-theme', mode);
-      localStorage.setItem('tali-deck-theme', mode);
     } catch {
       /* localStorage may be unavailable on some origins; ignore */
     }
@@ -89,9 +87,9 @@ export function attachCollectors(page) {
 }
 
 // Wait until the page has visually settled: SSR math/highlighting need no wait,
-// but web fonts, images, mermaid, {js} cells, and deck layout do. On timeout we
+// but web fonts, images, mermaid and {js} cells do. On timeout we
 // screenshot anyway rather than hang the whole run. The ceiling only bites when
-// something never signals ready (an erroring {js} cell, a deck that never
+// something never signals ready (an erroring {js} cell that never
 // becomes ready); real content settles well under it.
 export async function settle(page, { timeout = 6000 } = {}) {
   try {
@@ -132,14 +130,7 @@ export async function settle(page, { timeout = 6000 } = {}) {
             return !o || o.childElementCount > 0;
           },
         );
-        const deck = document.querySelector('.tali-deck');
-        const deckOk =
-          !deck ||
-          (window.TaliesinDeck &&
-            typeof window.TaliesinDeck.isReady === 'function' &&
-            window.TaliesinDeck.isReady()) ||
-          deck.classList.contains('tali-ready');
-        return imgsOk && mermaidOk && jsOk && deckOk;
+        return imgsOk && mermaidOk && jsOk;
       },
       { timeout, polling: 100 },
     );

@@ -21,7 +21,7 @@ const NESTED_PARENTS: &[&str] = &[
     "theorems",
 ];
 
-/// Build/vcs dirs never worth offering as a `{{< embed/include >}}` target.
+/// Build/vcs dirs never worth offering as a `{{< include >}}` target.
 const IGNORE_DIRS: &[&str] = &[".git", "target", "node_modules", "_site", "_freeze"];
 
 fn is_word(c: char) -> bool {
@@ -34,10 +34,9 @@ fn is_hspace(c: char) -> bool {
     c == ' ' || c == '\t'
 }
 
-/// The two shortcodes that take a file-path first argument.
+/// The shortcode that takes a file-path first argument.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Shortcode {
-    Embed,
     Include,
 }
 
@@ -164,7 +163,6 @@ const PATH_KEYS: &[(&str, PathKind)] = &[
 /// `includes.rs` resolves before expansion.
 const SHORTCODE_NAMES: &[(&str, &str)] = &[
     ("include", "Splice another .tmd file in at this point."),
-    ("embed", "Embed a deck or page in an iframe."),
     ("video", "Embed a local or remote video."),
     ("input", "A reader-facing control that {js} cells can read."),
 ];
@@ -596,9 +594,9 @@ fn cell_option_value(line_prefix: &str) -> Option<(String, String)> {
     (!typed.contains(char::is_whitespace)).then(|| (key.to_string(), typed.to_string()))
 }
 
-/// `{{< embed `/`{{< include ` then the first (path) token, while still typing that token.
-/// A space or `>` after it means we've moved on to named args, not a path. `/\{\{<\s*(embed|
-/// include)\s+([^\s>]*)$/`.
+/// `{{< include ` then the first (path) token, while still typing that token. A space or
+/// `>` after it means we've moved on to named args, not a path.
+/// `/\{\{<\s*include\s+([^\s>]*)$/`.
 fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     let chars: Vec<char> = line_prefix.chars().collect();
     let n = chars.len();
@@ -619,7 +617,6 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     // it has no directory-descent behaviour to preserve — so it routes to the general
     // `Path` context with the media extensions rather than to `ShortcodePath`.
     let shortcode = match keyword.as_str() {
-        "embed" => Some(Shortcode::Embed),
         "include" => Some(Shortcode::Include),
         "video" => None,
         _ => return None,
@@ -918,7 +915,7 @@ pub(crate) struct PathCandidate {
     pub detail: String,
 }
 
-/// Candidates for a `{{< embed/include <path> >}}` file argument: the `.tmd` files and
+/// Candidates for a `{{< include <path> >}}` file argument: the `.tmd` files and
 /// descendable subdirs in the directory of `typed`, filtered by its leaf and returned as
 /// insert-values relative to the document (dirs suffixed `/` so you can keep descending).
 /// `entries` is that directory's listing; `file_detail` labels the `.tmd` hits.
@@ -1389,15 +1386,15 @@ mod tests {
         );
         // A `@` inside a path must not be read as an xref (shortcode is checked first).
         assert_eq!(
-            ctx("{{< embed a@b", "{{< embed a@b"),
+            ctx("{{< include a@b", "{{< include a@b"),
             CompletionContext::ShortcodePath {
-                shortcode: Shortcode::Embed,
+                shortcode: Shortcode::Include,
                 typed: "a@b".to_string()
             }
         );
         // Past the path token (a space after it) → no longer a path context.
         assert_eq!(
-            ctx("{{< embed deck.tmd ", "{{< embed deck.tmd "),
+            ctx("{{< include part.tmd ", "{{< include part.tmd "),
             CompletionContext::None
         );
     }
@@ -1669,17 +1666,9 @@ mod tests {
                     typed: String::new(),
                 },
             ),
-            (
-                "",
-                "{{< embed a",
-                CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Embed,
-                    typed: "a".to_string(),
-                },
-            ),
             // One space past the path token, and the closer, are both outside it.
-            ("", "{{< embed a ", CompletionContext::None),
-            ("", "{{< embed a>", CompletionContext::None),
+            ("", "{{< include a ", CompletionContext::None),
+            ("", "{{< include a>", CompletionContext::None),
             ("", "{{< inclu x", CompletionContext::None),
             ("", "{{ include x", CompletionContext::None),
             // All three characters of the `{{<` opener are load-bearing and must be checked at
@@ -1699,9 +1688,9 @@ mod tests {
             // Only the *last* `{{<` can still be an open path token.
             (
                 "",
-                "{{< include a >}} {{< embed b",
+                "{{< include a >}} {{< include b",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Embed,
+                    shortcode: Shortcode::Include,
                     typed: "b".to_string(),
                 },
             ),

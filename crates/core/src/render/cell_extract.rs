@@ -166,8 +166,8 @@ pub(super) fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
 /// `{=latex}`, ...) are not languages and return `None`.
 /// Whether a fence info string marks an EXECUTABLE cell: ```` ```{python} ````, but not
 /// ```` ```{.python code-line-numbers="1|2-3"} ````, whose leading dot is the documented
-/// display-only form ("the deck's display form for a non-executing block",
-/// `docs/guide/using/formats.tmd`), nor a plain ```` ```python ```` fence.
+/// display-only form for a non-executing block (`docs/guide/reference/cell-options.tmd`),
+/// nor a plain ```` ```python ```` fence.
 ///
 /// Kept beside [`code_lang`] because the two must agree on fence syntax while answering
 /// different questions: `code_lang` deliberately strips the dot (the display path still

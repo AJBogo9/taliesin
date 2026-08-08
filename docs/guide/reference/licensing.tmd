@@ -6,7 +6,7 @@ description: "Taliesin is AGPL-3.0. The documents you build with it are not: the
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · Licensing*
 
 Taliesin is licensed under the **GNU Affero General Public License v3.0**. That governs
-*the program*. It makes no claim on the blog posts, lecture notes, papers, decks and books
+*the program*. It makes no claim on the blog posts, lecture notes, papers and books
 you write with it.
 
 The licence answers "who owns what I write". The other half of that question — what happens
@@ -21,7 +21,7 @@ A built page is self-contained on purpose. There is no CDN, no build step for th
 and no network fetch at view time, which is what lets a page work offline and keeps a
 document readable in ten years. Taliesin achieves that by copying its own stylesheets and
 scripts **into the page it produces** — `base.css`, `tali-js.js`, the `code-enhance/`
-fragments, `deck.js` for a slide deck, and so on.
+fragments, `mermaid.js` for a page with diagrams, and so on.
 
 So a page you build genuinely does contain a copy of some of Taliesin's own AGPL-licensed
 source. Read strictly and without any further grant, someone could argue that every page

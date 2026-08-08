@@ -1,5 +1,5 @@
-//! Page + deck discovery: walk `.tmd` files under the project root (path-ordered) into
-//! [`Page`]s, and find loose reveal decks. The filesystem-walking front end of
+//! Page discovery: walk `.tmd` files under the project root (path-ordered) into
+//! [`Page`]s. The filesystem-walking front end of
 //! `Site::discover`.
 
 use std::collections::HashSet;
@@ -79,42 +79,6 @@ pub(super) fn website_pages(
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
-}
-
-/// Resolve every `{{< embed PATH >}}` across the pages to a deduped [`DeckRef`].
-/// The path is written relative to the embedding page, so it's mapped to a
-/// site-root-relative path via [`join_rel`]; a target that isn't a file is warned
-/// about and skipped (the embed iframe would otherwise 404).
-pub(super) fn discover_decks(
-    root: &Path,
-    pages: &[Page],
-    warnings: &mut Vec<String>,
-) -> Vec<DeckRef> {
-    let mut decks: Vec<DeckRef> = Vec::new();
-    for page in pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            continue;
-        };
-        // Expand `{{< include >}}` first: an `{{< embed >}}` living inside an included
-        // partial must be discovered too (else the deck flattens to an article + leaks
-        // into search). The embed path stays relative to the embedding page.
-        let base = page.input.parent().unwrap_or(root);
-        let (src, _origins) = crate::includes::resolve(&src, base);
-        for target in crate::render::embed_targets(&src) {
-            let rel = join_rel(&page.rel, &target);
-            let url = tmd_to_html(&rel);
-            if decks.iter().any(|d| d.url == url) {
-                continue;
-            }
-            let input = root.join(&rel);
-            if input.is_file() {
-                decks.push(DeckRef { input, url });
-            } else {
-                warnings.push(format!("{}: embedded deck not found: {target}", page.rel));
-            }
-        }
-    }
-    decks
 }
 
 /// Recursively collect input `.tmd` pages under `dir`, skipping `_`-prefixed

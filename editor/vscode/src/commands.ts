@@ -13,7 +13,7 @@ import { languageClient } from "./client";
 // binary already publishes.
 //
 // The structural commands (move a section up or down, promote or demote a heading) are the
-// legal replacement for the drag-to-reorder-slides gesture removed for breaking the
+// legal replacement for the drag-to-reorder gesture removed for breaking the
 // single-editing-surface rule: they transform the `.tmd` **buffer**, in the editor, and the
 // preview stays a read-only view of it. What is here is only the editor plumbing — the
 // cursor, the edit, the message. Which lines make up a section, which neighbour is a sibling

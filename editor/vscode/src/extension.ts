@@ -163,8 +163,8 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
   // Where the document is served inside its project. The server owns this: `.tmd`→`.html`,
   // book chapter numbering and `index` handling all live in Rust, and a second implementation
   // here is what the LSP rewrite existed to delete. Anything that leaves us without a URL —
-  // `taliesin/siteMap` unanswerable, or a document the project does not publish (a draft, an
-  // `{{< embed >}}`ed deck) — falls back to the single-file preview rather than losing it.
+  // `taliesin/siteMap` unanswerable, or a document the project does not publish (a draft) —
+  // falls back to the single-file preview rather than losing it.
   const pages = root ? await readSiteMap(root) : null;
   const pageUrl = root && pages ? pageUrlFor(pages, root, docPath) : null;
   const site = root && pages && pageUrl ? { root, pages, pageUrl } : null;

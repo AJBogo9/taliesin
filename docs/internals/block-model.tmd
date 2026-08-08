@@ -217,11 +217,11 @@ DOM mutation, and the diff above is what keeps that set small.
   source mapping stays exact.
 - Every mutation runs inside **`keepScroll`**, which pins `window.scrollY` across the
   change (instantly, never animated), and is followed by **`afterChange`**, which
-  re-attaches the deck, rebuilds the TOC, re-runs the code enhancers, and re-scans for
+  rebuilds the TOC, re-runs the code enhancers, and re-scans for
   cell errors and a11y issues. `set_meta` skips `afterChange` (nothing rendered).
 - The first paint is **server-rendered** into `#tali-root`, so the very first
   `full_render` after connect is identical and is **skipped** (no flash, no needless
-  deck/`{js}` re-init). A *reconnect* re-mounts normally, and a dropped socket retries
+  `{js}` re-init). A *reconnect* re-mounts normally, and a dropped socket retries
   on a short loop.
 - Because block ids are unique, an `insert` first drops any element already carrying
   the incoming id. The server emits all **`remove`s before any `insert`s**, so this is
@@ -231,7 +231,7 @@ DOM mutation, and the diff above is what keeps that set small.
 Forward search runs the same model backwards: `highlightAtLine(file, line, reveal)` picks
 the **smallest** block whose `data-sourcepos` covers the line (else the nearest block
 starting before it) and outlines it with `.tali-hl`. Only when `reveal` is set does it
-scroll the block into view or, in a deck, jump `TaliesinDeck` to the containing slide.
+scroll the block into view.
 
 ## Inverse search & forward search
 
@@ -249,8 +249,8 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   as the integration surface for an embedded editor host. The in-repo [VS Code
   companion](extending.tmd) is that host: the client posts `tali-goto` up to it (which
   reveals the source), and accepts `tali-cursor {file, line, reveal}` to mark the block
-  whose `data-sourcepos` covers that line, scrolling to it (in a deck, jumping to the
-  containing slide) only when `reveal` is set. So an editor can host the preview and add
+  whose `data-sourcepos` covers that line, scrolling to it only when `reveal` is set.
+  So an editor can host the preview and add
   cursor sync without forking the client.
 
 ## Trust model

@@ -171,17 +171,3 @@ fn the_last_section_stops_before_the_generated_references_block() {
         "the last section ends at block {end}, at or past the References block {refs}"
     );
 }
-
-/// A deck is excluded by construction: `render/deck.rs` projects the same blocks into
-/// one real `<section>` per slide, so the marker would be redundant there — and it is
-/// not free, since it makes a heading's HTML depend on the last block of its section.
-#[test]
-fn a_deck_does_not_carry_section_extents() {
-    let doc = taliesin_core::render_document(
-        "---\nformat: deck\n---\n\n## One\n\nBody.\n\n## Two\n\nMore.\n",
-    );
-    assert!(
-        doc.blocks.iter().all(|b| section_end(&b.html).is_none()),
-        "a deck already has real <section> boundaries and must not also carry the marker"
-    );
-}

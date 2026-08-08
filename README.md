@@ -6,7 +6,7 @@
 > (with `tali` as a shorter alias).
 
 A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
-files: blog posts, slide decks, books, and **multi-page websites**. Built for
+files: blog posts, papers, books, and **multi-page websites**. Built for
 one author's workflow around three goals:
 
 1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element, jump to its `.tmd` source.
@@ -81,7 +81,7 @@ fetched at runtime and there is no `node_modules`. Put `target/release/taliesin`
 `PATH` to call `taliesin` from anywhere.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
-highlighting, decks, and sites render with no kernel at all; a kernel is needed only
+highlighting, and sites render with no kernel at all; a kernel is needed only
 to *run* `{python}`/`{r}` code cells (without one they render as source). Each
 language runs against its own warm kernel:
 
@@ -175,7 +175,7 @@ with `data-block-id` + `data-sourcepos` on every block.
   config typos (with did-you-mean), and an advisory client-side accessibility audit
   (missing alt text, heading skips, low contrast), each click-to-source.
 
-The native deck engine, mermaid, and the `{js}` cell enhancer are the only
+Mermaid and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
 See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
 books, authored in `.tmd` and built with Taliesin itself.

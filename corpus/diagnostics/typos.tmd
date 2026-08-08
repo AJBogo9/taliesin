@@ -28,12 +28,19 @@ there silently drew separate counters.
 This callout names a kind Taliesin does not define.
 :::
 
-::: {.fragmnet}
+::: {.scrolley}
 This div names a feature class Taliesin does not define; it silently degraded before DX5.
 :::
 
+::: {.fragment}
+This div names a class Taliesin RETIRED (with the slide-deck engine, 2026-08-08) rather
+than one it never had, so it must draw the register's removal note instead of a rename
+hint. Div classes are an open vocabulary, so without the register entry this gets silence
+and the page quietly loses its layout.
+:::
+
 ::: {.step lines="1|2-3"}
-This scroll step's `lines=` uses the deck `code-line-numbers=` `|` step separator, which a
+This scroll step's `lines=` uses the `code-line-numbers=` `|` step separator, which a
 step's comma-only parser silently focuses to zero lines.
 :::
 

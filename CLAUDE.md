@@ -1,7 +1,7 @@
 # Taliesin
 
 A single-purpose Rust dev server that renders `.tmd` files to **HTML only** (blog
-posts, slide decks, books, multi-page sites) for one author's workflow, built around
+posts, papers, books, multi-page sites) for one author's workflow, built around
 three load-bearing goals: click-to-source, block-level incremental updates, and no
 per-edit startup cost (warm server + Jupyter kernel). It is **not** a general document
 compiler: HTML is the only output target (no LaTeX/Typst/Word/ePub; a future print/PDF
@@ -64,7 +64,7 @@ standing freeze; their behavior may still change when a change makes the tool be
 Edits flow one way: you change the source in your editor, the preview re-renders.
 Click-to-source is the only bridge back, and it *navigates* (preview → editor
 cursor), it never *writes*. The preview must not mutate the source. A
-drag-to-reorder-slides feature once broke this and was removed: a second write path
+drag-to-reorder feature once broke this and was removed: a second write path
 fights click-to-source over who owns the file (editor-buffer vs. on-disk conflicts),
 and "you may reorder but not edit/delete" is an arbitrary line that invites WYSIWYG
 scope creep. The in-scope way to make a source edit ergonomic is an editor command,
@@ -78,19 +78,13 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
-    deck.rs          slide decks on Taliesin's OWN engine (reveal.js removed): bundles
-                     deck.css/deck.js, emits the native `.tali-deck`/`.tali-slides`
-                     contract + a `window.TaliesinDeck` API (no reveal vocabulary).
-                     The old back-compat alias is deleted; `window.TaliesinDeck` is
-                     the only name
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
     divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, magic-move)
     figure.rs        numbered figures + captions
-    extension/       shortcode expansion, incl. the built-in `{{< embed deck.tmd >}}`
-                     + `{{< video clip.mp4 dark= >}}`. NOT `_extensions/`, which is a
-                     theme-CSS lookup in `theme.rs` and nothing else: there is no
-                     format-extension mechanism (`frontmatter.rs` says so at the
-                     `format:` sub-key validator)
+    extension/       shortcode expansion: `{{< video clip.mp4 dark= >}}` +
+                     `{{< input >}}`. NOT `_extensions/`, which is a theme-CSS lookup
+                     in `theme.rs` and nothing else: there is no format-extension
+                     mechanism, and no `format:` key either — HTML is the only output
     theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes).
                      The storage key is `tali-theme` and the event is
                      `tali:themechange`; `crates/core/tests/retired_names.rs` keeps the
@@ -113,13 +107,12 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    own front-matter `image:`; the generated social-card rasterizer,
                    the JSON-LD graph, llms.txt and the PWA manifest were all cut in
                    Wave 4), Cmd-K search (search.rs),
-                   cross-refs (xref.rs); an {{< embed >}}-
-                   referenced deck is built/served but kept out of nav. `mounts:`
+                   cross-refs (xref.rs). `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in
                    preview, and `build` recurses into each, parent first (its sweep
                    would delete a mount built before it)
-  assets/          bundled offline: css/ (base, dark, deck, site),
-                   js/ (deck.js, code-enhance/ fragments, mermaid.js, tali-js.js,
+  assets/          bundled offline: css/ (base, dark, site),
+                   js/ (code-enhance/ fragments, mermaid.js, tali-js.js,
                    scrolly.js, tabset.js, walkthrough.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
@@ -137,8 +130,7 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze).
                    `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
                    project, opened at that page; with no ancestor `_site.yml` it is a
-                   project of just that document (`Site::discover_single`), and a
-                   standalone `format: deck` file is served AS a deck. That
+                   project of just that document (`Site::discover_single`). That
                    synthesized one-page project renders no navbar and no footer (the
                    theme toggle still shows), so `preview <file>` and `build <file>`
                    now agree on page chrome; the table of contents does not share that
@@ -195,8 +187,8 @@ web-client/      browser preview client (vanilla JS, the only client): client.js
                  blocks + applies ops (Ctrl-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)
 docs/            project's own manual: TWO sibling book projects, authored in .tmd
-                 (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour
-                 decks); docs/internals/ = Internals book. docs/ itself is just a container
+                 (dogfooding). docs/guide/ = User Guide (using/ + reference/);
+                 docs/internals/ = Internals book. docs/ itself is just a container
                  (no _site.yml). The site mounts each at /docs/guide + /docs/internals.
 corpus/          the real .tmd docs (the spec); cargo test renders them all
 ```
@@ -208,7 +200,7 @@ corpus/          the real .tmd docs (the spec); cargo test renders them all
   - **`docs/guide/`** = the User Guide (`using/` feature showcase + `reference/`):
     how to *use* Taliesin. Preview it: `taliesin preview docs/guide`.
   - **`docs/internals/`** = the Internals book: the architecture, the rendering
-    pipeline, the deck engine, the block model, the execution model, the dev server,
+    pipeline, the block model, the execution model, the dev server,
     and how to extend it. Preview it: `taliesin preview docs/internals`.
   - `docs/` itself is just a container (no `_site.yml`); the books are siblings
     because the page-walker would otherwise swallow a nested book's pages. The
@@ -228,7 +220,7 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
-cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
+cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
 ```
 
 A `taliesin` launcher on `PATH` (`~/.local/bin/taliesin`) rebuilds the release

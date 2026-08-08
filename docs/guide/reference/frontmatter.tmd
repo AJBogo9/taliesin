@@ -48,24 +48,13 @@ or `{ file: … }` map, or a list of those.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | string | `html` (default), `deck` (a slide deck), or a `<name>-deck` variant. **Its sub-keys are not validated** |
 | `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified (or any custom theme) follows the OS via `prefers-color-scheme`, falling back to light; only an explicit `light` (or `default`)/`dark` forces that mode |
 | `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
 | `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`** — an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
-| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `check` — a page that does not ship should not fail a pre-flight, and `check` names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing. Ignored on an `{{< embed >}}` target |
+| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `check` — a page that does not ship should not fail a pre-flight, and `check` names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
-
-### Deck chrome
-
-Both are read only by a slide deck (`format: deck`) and ignored on an ordinary page.
-See [Slide decks](../using/formats.tmd#slide-decks).
-
-| Key | Type | Meaning |
-|---|---|---|
-| `footer` | string | Small footer text repeated on every slide |
-| `logo` | string | An image path shown in the slide's bottom-left corner; resolved and copied like any other slide image |
 
 ### Raw-HTML includes
 
@@ -309,7 +298,6 @@ lang: en                                          # <html lang> (default en)
 categories: [machine-learning, training]          # listing tags -> card badges
 
 # --- Output / format / theme ---
-format: html                                      # html (default) or deck
 theme: dark                                        # light / dark / file / extension (unspecified follows the OS)
 page-layout: full                                 # widen the column (default: reading width)
 

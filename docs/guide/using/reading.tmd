@@ -5,8 +5,8 @@ description: "What a built page gives its reader: theme and keyboard access, plu
 
 A Taliesin page is not just rendered HTML, it is a reading surface. Every built
 page carries a small suite of reader tools behind a single **Settings** gear in the
-top-right corner. They need no author configuration: they appear on every
-article automatically (slide decks have their own chrome, so they are skipped).
+top-right corner. They need no author configuration: they appear on every article
+automatically.
 
 One principle holds for everything on this page:
 
@@ -77,9 +77,8 @@ A book made the point plainly. Once a chapter's right-rail TOC was removed, focu
 had literally nothing left to hide there: the sticky topbar was never in its hide list,
 so the toggle was a no-op that still occupied a row in the Settings menu.
 
-Fullscreen stays where it earns its place: a **slide deck**, which is presented rather
-than read, keeps its own `F` shortcut and toolbar button. For a page, the browser's own
-fullscreen (F11) is one key away and belongs to the reader, not to the document.
+Nothing replaced it: the browser's own fullscreen (F11) is one key away and belongs
+to the reader, not to the document.
 
 ## What else was tried, and cut
 
@@ -137,7 +136,7 @@ WCAG 2.1.4's requirement to make character-key shortcuts switchable off does not
 and there is no such control in Settings.
 
 Keyboard focus is always visible: every interactive control (links, buttons, tabs,
-the Settings controls, and the deck controls) shares one consistent focus ring,
+and the Settings controls) shares one consistent focus ring,
 shown only for keyboard or assistive-technology focus and never on a mouse click. The
 ring is a single theme token, so it follows the active theme (including the
 high-contrast modes below).
@@ -152,10 +151,6 @@ returns it to the gear when you press Esc, but it never traps Tab, so you can al
 by tabbing or by clicking away. (It moves focus because the panel is not adjacent to its gear
 in the page's source order, so without the move a keyboard reader would be stranded far from
 the menu they just opened.)
-
-**Slide decks** announce as you navigate. Each slide is a labelled group ("Slide 3 of
-12"), and a polite live region speaks the new position (and its title) on every move,
-so a deck is navigable and announceable with a screen reader.
 
 **High contrast.** In Windows High Contrast / `forced-colors` mode, and under
 `prefers-contrast: more`, borders, focus rings, separators, and the active-item

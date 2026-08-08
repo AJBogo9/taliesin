@@ -214,7 +214,7 @@ test("an unlocated diagnostic is matched by its own pattern", () => {
   // file as a whole (a `_site.yml` problem). The located pattern must NOT match it, and a
   // second pattern must, or those findings never reach the Problems panel.
   const real =
-    "_site.yml: warning[TAL-SHORTCODE]: deck.tmd: declares `format: deck` but is a loose page in the site";
+    "_site.yml: warning[TAL-CONFIG-KEY]: unknown config key `naav` (did you mean `nav`?)";
   assert.strictEqual(
     new RegExp(locatedPattern().regexp).exec(real),
     null,

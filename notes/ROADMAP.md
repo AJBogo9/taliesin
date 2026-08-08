@@ -437,21 +437,19 @@ Wave 2 (benchmark + hero demo).
   plans under `docs/superpowers/plans/2026-06-29-theorem-environments-*`.
 
   **Remaining (OPTIONAL, demand-driven, NOT started):** (a) reference-name polish
-  (plural/capitalized cleveref-style names; low value for the single-`@ref` model); (b) Phase 4
-  rich deck support, theorems on slides currently render UNSTYLED (decks load `deck.css`, not
-  `base.css`): the design-doc plan is to extract a shared `theorem.css` into both, reveal
-  proofs via the existing `.fragment` mechanism, and number per-slide-group via a
-  `QmdDeck.registerPlugin` client plugin, pinned by a deck corpus doc.
+  (plural/capitalized cleveref-style names; low value for the single-`@ref` model).
+  **↳ (b) Phase 4 rich deck support is CUT, 2026-08-08 (cut wave 5).** It existed because
+  theorems on slides rendered unstyled (a deck loaded `deck.css`, not `base.css`); the deck
+  engine is gone, so there is no second stylesheet to reconcile and no slide group to number
+  within.
   *Invariant held throughout: read-only-additive; rode `build_container` + a post-pass +
   additive `xref_label`/CSS/validator/schema + the `render_…_scoped` chapter thread; no
   `:::`-scanner / numbering-scanner / cite-lowering / deck-core rewrite.*
-- **DEFER, `deck-typed-slide-effects`** (`take_bg_attrs` string surgery → typed `Block`
-  field): high-invariant-risk `model.rs` refactor (must emit byte-identical `<section>`
-  HTML or block ids shift) whose win is mostly internal tidiness. Defer until a NEW slide
-  effect actually needs to be added safely; then phase it, the typed-field refactor
-  ALONE first, merge-gated on section-HTML byte-equality, features (transitions, footer/
-  logo, mobile/touch) only after it lands green. Footer/logo + mobile/touch stay separate
-  demand-driven backlog items.
+- **CUT 2026-08-08 (cut wave 5), was DEFER, `deck-typed-slide-effects`** (`take_bg_attrs`
+  string surgery → typed `Block` field): a `model.rs` refactor of the slide-effect
+  representation, deferred until a new slide effect needed adding safely. The slide-deck
+  engine went in cut wave 5, taking `take_bg_attrs`, `heading_section_attrs` and the whole
+  `<section>` projection with it, so there is nothing left to type.
 - **DEFER, `cross-doc-live-embed`** (live source-mapped transclusion): genuine
   novel web-native idea, but large; needs a host→source registry in `serve_site.rs` that
   compounds the known "visited pages never evicted" bug, and no corpus doc needs it.

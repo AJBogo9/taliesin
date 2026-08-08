@@ -318,13 +318,6 @@ fn a_structured_author_still_reaches_the_byline_at_all() {
 }
 
 #[test]
-fn reveal_deck_has_no_html_title_block() {
-    // The deck builds its own title slide; no `tali-title-block` block.
-    let doc = render_document("---\ntitle: T\nformat: deck\n---\n\n## Slide\n");
-    assert!(!doc.blocks.iter().any(|b| b.id == "tali-title-block"));
-}
-
-#[test]
 fn html_is_escaped_in_text() {
     let doc = render_document("a < b & c\n");
     assert!(doc.blocks[0].html.contains("a &lt; b &amp; c"));
@@ -1082,14 +1075,14 @@ fn cell_option_lines_are_dropped() {
     );
 }
 
-/// A LEADING DOT means display-only: `{.python}` is "the deck's display form for a
+/// A LEADING DOT means display-only: `{.python}` is "the display form for a
 /// non-executing block" (docs/guide/using/formats.tmd). Only bare `{python}` executes.
 /// The cell gate used to test `starts_with('{')` alone, and `code_lang` strips the dot,
-/// so `{.python code-line-numbers="1|2-3"}` became an executable cell — it warmed a
-/// kernel and spliced an output block under an illustrative snippet. `corpus/deck.tmd`
-/// authors exactly that shape over an undefined `values`, so a live kernel baked a real
-/// NameError traceback into a slide. Invisible to the kernel-free corpus tests, which
-/// only assert the static highlight markup.
+/// so `{.python some-attr="x"}` became an executable cell — it warmed a kernel and spliced
+/// an output block under an illustrative snippet. The corpus deck authored exactly that
+/// shape over an undefined `values`, so a live kernel baked a real NameError traceback into
+/// a slide. Invisible to the kernel-free corpus tests, which only assert the static
+/// highlight markup.
 #[test]
 fn a_leading_dot_fence_is_display_only_and_never_executes() {
     let doc = render_document("```{.python code-line-numbers=\"1|2-3\"}\ntotal = 0\n```\n");
@@ -1107,11 +1100,6 @@ fn a_leading_dot_fence_is_display_only_and_never_executes() {
     assert!(
         b.html.contains("tali-hl-"),
         "the dot form must still be syntax-highlighted as python: {}",
-        b.html
-    );
-    assert!(
-        b.html.contains("data-code-lines"),
-        "and must keep its code-line-numbers stepping: {}",
         b.html
     );
     // The bare form is unaffected: it is the executable one.
@@ -1625,77 +1613,6 @@ fn front_matter_without_title_yields_no_blocks() {
 }
 
 #[test]
-fn a_deck_ignores_the_retired_include_keys_like_every_other_format() {
-    let src = "---\n\
-            format: deck\n\
-            include-in-header:\n  text: |\n    <meta name=\"deck\" content=\"1\">\n\
-            include-after-body:\n  text: |\n    <script>window.__deck=1</script>\n\
-            ---\n\n## Slide\n";
-    let page = render_html_page(src, "deck");
-    assert!(
-        page.contains("<div class=\"tali-deck\">"),
-        "should still render as a deck"
-    );
-    for needle in ["<meta name=\"deck\" content=\"1\">", "window.__deck=1"] {
-        assert!(
-            !page.contains(needle),
-            "the deck must not resurrect a retired include key: {needle:?}"
-        );
-    }
-}
-
-#[test]
-fn deck_footer_and_logo_render_a_persistent_overlay() {
-    // A deck's front-matter `footer:`/`logo:` become a fixed overlay inside `.tali-deck`,
-    // a sibling of `.tali-slides`. `footer` is escaped text; `logo` is an <img> with an
-    // empty alt (decorative branding that repeats on every slide).
-    let src = "---\n\
-        format: deck\n\
-        footer: \"ACME <2026> & co\"\n\
-        logo: brand.png\n\
-        ---\n\n## Slide\n";
-    let page = render_html_page(src, "deck");
-    assert!(
-        page.contains("<div class=\"tali-deck-footer\">ACME &lt;2026&gt; &amp; co</div>"),
-        "footer text not rendered/escaped"
-    );
-    assert!(
-        page.contains("<img class=\"tali-deck-logo\" src=\"brand.png\" alt=\"\" />"),
-        "logo image not rendered"
-    );
-    // The overlay closes the slides container first, so it is a sibling of `.tali-slides`
-    // inside `.tali-deck` (not swept into the scrolling slide area). Search the node markup,
-    // not the bare class (which also appears in the inlined deck CSS in <head>).
-    let slides = page.find("<div class=\"tali-slides\"").expect("has slides");
-    let footer = page
-        .find("<div class=\"tali-deck-footer\"")
-        .expect("has footer node");
-    assert!(
-        slides < footer,
-        "overlay must come after the slides container"
-    );
-}
-
-#[test]
-fn deck_without_footer_or_logo_emits_no_overlay() {
-    // Regression: a chrome-less deck must render exactly what it did before (no empty
-    // overlay nodes), so `deck_overlay_html(None, None)` is the empty string. (The class
-    // names live in the inlined deck CSS, so assert on the node markup, not the class.)
-    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "deck");
-    assert!(
-        !page.contains("<div class=\"tali-deck-footer\""),
-        "phantom footer node"
-    );
-    assert!(
-        !page.contains("<img class=\"tali-deck-logo\""),
-        "phantom logo node"
-    );
-    assert_eq!(deck_overlay_html(None, None), "");
-    // Whitespace-only values are treated as unset (no blank strip).
-    assert_eq!(deck_overlay_html(Some("   "), Some(" ")), "");
-}
-
-#[test]
 fn front_matter_lang_sets_html_lang_attr() {
     // `lang:` drives `<html lang>` (for screen readers + SEO); absent falls back to en.
     assert!(
@@ -1892,550 +1809,6 @@ fn special_chars_in_inline_code_are_escaped_not_interpreted() {
     assert!(h.contains("<code>a &lt; b &amp;&amp; c</code>"), "got: {h}");
 }
 
-// --- deck / slides ---
-
-#[test]
-fn reveal_format_detected_from_front_matter() {
-    // Inline form.
-    let inline = render_document("---\nformat: deck\n---\n\n## A\n");
-    assert_eq!(inline.format, DocFormat::Reveal);
-    // Bare block form: `format:` with just `deck:` subkey.
-    let bare_block =
-        render_document("---\nformat:\n  deck:\n    slide-number: true\n---\n\n## A\n");
-    assert_eq!(bare_block.format, DocFormat::Reveal);
-    // Nested block form: `format:` with a `<name>-deck` subkey.
-    let ext =
-        render_document("---\nformat:\n  custom-deck:\n    slide-number: true\n---\n\n## A\n");
-    assert_eq!(ext.format, DocFormat::Reveal);
-    // A normal post is Html, even if a nested non-format key mentions deck.
-    let post = render_document("---\ntitle: Post\nformat: html\n---\n\nHi.\n");
-    assert_eq!(post.format, DocFormat::Html);
-    // A theme filename that merely contains "deck" must not flip an HTML doc.
-    let not_a_deck = render_document("---\nformat: html\ntheme: my-deck.css\n---\n\nHi.\n");
-    assert_eq!(not_a_deck.format, DocFormat::Html);
-}
-
-#[test]
-fn built_deck_with_mermaid_inlines_the_library_offline() {
-    // A built deck (OutputMode::Build) must not breach the offline-build contract:
-    // a Mermaid diagram should ship the vendored library inlined (globalThis.mermaid
-    // set), exactly like the HTML page path, so the browser never actually reaches
-    // the CDN fallback baked into the loader. deck_page_from_doc used to hardcode
-    // OutputMode::Preview regardless of the caller's mode, so a built deck never
-    // inlined the library and the CDN fetch was live.
-    let src = "---\nformat: deck\n---\n\n## A\n\n```mermaid\nflowchart LR\n  A --> B\n```\n";
-    let doc = render_document(src);
-    assert_eq!(doc.format, DocFormat::Reveal);
-    let build = render_doc_to_page(&doc, "t", OutputMode::Build);
-    assert!(
-        build.contains("__esbuild_esm_mermaid") && build.contains("globalThis.mermaid"),
-        "built deck must inline the vendored mermaid library"
-    );
-    // Preview keeps the lean lazy loader (dev-time network is fine).
-    let preview = render_doc_to_page(&doc, "t", OutputMode::Preview);
-    assert!(
-        !preview.contains("__esbuild_esm_mermaid"),
-        "preview deck should not inline the 2.5 MB mermaid library"
-    );
-}
-
-#[test]
-fn revealjs_format_is_no_longer_a_deck() {
-    // `format: revealjs` was the deprecated legacy spelling; after shedding it, a
-    // doc with that format is a normal HTML page, not a deck.
-    let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
-    assert_eq!(doc.format, DocFormat::Html);
-}
-
-#[test]
-fn deck_splits_into_title_slide_and_one_section_per_heading() {
-    let doc = render_document(
-        "---\ntitle: Deck\nsubtitle: A subtitle\nformat: deck\n---\n\n## First\n\nHello.\n\n## Second\n\nWorld.\n",
-    );
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    // Title slide from front matter.
-    assert!(slides.contains("id=\"title-slide\""), "got: {slides}");
-    assert!(
-        slides.contains("<h1 class=\"title\">Deck</h1>"),
-        "got: {slides}"
-    );
-    assert!(
-        slides.contains("<p class=\"subtitle\">A subtitle</p>"),
-        "got: {slides}"
-    );
-    // One <section> per h2, id slugged from the heading text.
-    assert!(
-        slides.contains(
-            "<section id=\"first\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
-        ),
-        "got: {slides}"
-    );
-    assert!(
-        slides.contains(
-            "<section id=\"second\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
-        ),
-        "got: {slides}"
-    );
-    // Heading keeps its block id inside the section (block-swap/click-to-source).
-    assert!(
-        slides.contains("<h2 data-block-id="),
-        "heading lost its block id: {slides}"
-    );
-    // title + two content slides, no nesting.
-    assert_eq!(slides.matches("<section").count(), 3, "got: {slides}");
-}
-
-#[test]
-fn deck_emits_script_duration_from_speaker_notes() {
-    // A slide's `::: {.notes}` is the spoken script; its word count / 130 wpm is the
-    // estimated speaking time, emitted as `data-script-secs` on the <section> for the
-    // speaker window (planned vs. elapsed) and the build console. 26 words / 130 wpm *
-    // 60 = 12s exactly. A slide without notes carries no estimate at all.
-    let note = "one two three four five six seven eight nine ten eleven twelve \
-                thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty \
-                twentyone twentytwo twentythree twentyfour twentyfive twentysix";
-    let src = format!(
-        "---\nformat: deck\n---\n\n## Scripted\n\nVisible.\n\n::: {{.notes}}\n{note}\n:::\n\n## Silent\n\nNo notes here.\n"
-    );
-    let doc = render_document(&src);
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    assert!(
-        slides.contains("data-script-secs=\"12\""),
-        "scripted slide should carry a 12s estimate (26 words / 130wpm): {slides}"
-    );
-    assert_eq!(
-        slides.matches("data-script-secs").count(),
-        1,
-        "only slides with notes carry an estimate: {slides}"
-    );
-}
-
-#[test]
-fn script_summary_totals_scripted_slide_estimates() {
-    let n26 = "one two three four five six seven eight nine ten eleven twelve thirteen \
-               fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone \
-               twentytwo twentythree twentyfour twentyfive twentysix"; // 26 words -> 12s
-    let n13 = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu"; // 13 words -> 6s
-    let src = format!(
-        "---\nformat: deck\n---\n\n## A\n\n::: {{.notes}}\n{n26}\n:::\n\n## B\n\n::: {{.notes}}\n{n13}\n:::\n\n## C\n\nNo script.\n"
-    );
-    let doc = render_document(&src);
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    let sum = script_summary(&slides).expect("a deck with notes has a summary");
-    assert_eq!(
-        sum.total_secs, 18,
-        "12s + 6s across the two scripted slides"
-    );
-    assert_eq!(sum.scripted, 2, "two of three slides carry notes");
-    assert_eq!(sum.slides, 3, "three content slides, no title slide");
-    // With a front-matter title, its slide counts toward the navigable total (so the
-    // build console agrees with the speaker window's "slide X / N"), but not the script.
-    let titled = render_document(&format!(
-        "---\ntitle: T\nformat: deck\n---\n\n## A\n\n::: {{.notes}}\n{n26}\n:::\n\n## B\n\nNo script.\n"
-    ));
-    let titled_slides = slides_html(
-        titled.title.as_deref(),
-        titled.subtitle.as_deref(),
-        &titled.blocks,
-    );
-    let tsum = script_summary(&titled_slides).unwrap();
-    assert_eq!(tsum.slides, 3, "title slide + two content slides");
-    assert_eq!(
-        tsum.scripted, 1,
-        "only the one slide with notes is scripted"
-    );
-    // A deck with no notes at all yields no summary (nothing to report).
-    let plain = render_document("---\nformat: deck\n---\n\n## Only\n\nHi.\n");
-    let plain_slides = slides_html(
-        plain.title.as_deref(),
-        plain.subtitle.as_deref(),
-        &plain.blocks,
-    );
-    assert!(script_summary(&plain_slides).is_none());
-}
-
-#[test]
-fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
-    let doc = render_document("---\nformat: deck\n---\n\nOne.\n\n---\n\nTwo.\n");
-    let slides = slides_html(None, None, &doc.blocks);
-    assert!(
-        !slides.contains("<hr"),
-        "the --- delimiter must not render: {slides}"
-    );
-    assert_eq!(slides.matches("<section").count(), 2, "got: {slides}");
-}
-
-#[test]
-fn pause_marker_drops_and_fragments_following_blocks() {
-    // A `. . .` line is a pause: the marker itself is dropped, and every block
-    // after it (until end of slide) becomes a `.fragment` step.
-    let doc = render_document(
-        "---\nformat: deck\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
-    );
-    let slides = slides_html(None, None, &doc.blocks);
-    assert!(
-        !slides.contains(". . ."),
-        "the pause marker must not render as text: {slides}"
-    );
-    // The block before the pause stays plain; the one after gains `class="fragment"`.
-    assert!(
-        slides.contains(">Visible now.</p>"),
-        "pre-pause block should be unmodified: {slides}"
-    );
-    assert!(
-        slides.contains("class=\"fragment\">After the pause."),
-        "post-pause block should become a fragment: {slides}"
-    );
-}
-
-#[test]
-fn h1_wraps_following_h2s_in_a_vertical_stack() {
-    let doc = render_document("---\nformat: deck\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
-    let slides = slides_html(None, None, &doc.blocks);
-    // Outer wrapper section, then the h1 lead slide, then the two h2 children.
-    assert!(
-        slides
-            .contains("<section>\n<section id=\"part-one\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
-        "got: {slides}"
-    );
-    assert!(
-        slides.contains(
-            "<section id=\"a\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
-        ),
-        "got: {slides}"
-    );
-    assert!(
-        slides.contains(
-            "<section id=\"b\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
-        ),
-        "got: {slides}"
-    );
-    // 1 wrapper + lead + 2 children = 4 sections.
-    assert_eq!(slides.matches("<section").count(), 4, "got: {slides}");
-}
-
-#[test]
-fn deck_page_carries_native_scaffolding() {
-    let page = render_html_page("---\ntitle: D\nformat: deck\n---\n\n## Slide\n", "fallback");
-    assert!(page.contains("class=\"tali-deck\""));
-    assert!(page.contains("class=\"tali-slides\""));
-    // The deck engine is bundled (no CDN); it exposes the window.TaliesinDeck API.
-    assert!(page.contains("window.TaliesinDeck"));
-    assert!(page.contains("TaliesinDeck.initialize("));
-    assert!(
-        !page.contains("jsdelivr") || !page.contains("reveal.js@"),
-        "the deck must not load reveal.js from a CDN"
-    );
-}
-
-/// PA-H1's other residual: a STANDALONE built deck emitted no `description`/OG at all, so
-/// a shared deck link previewed as a bare URL while every page previewed richly.
-///
-/// It gets the same context-free block a standalone page gets (`social_meta_head`), not a
-/// second implementation — a deck built inside a SITE already receives the richer,
-/// URL-aware block on `include-in-header`, and that one must keep winning rather than
-/// being duplicated.
-#[test]
-fn a_standalone_deck_gets_social_meta_but_a_site_deck_is_not_duplicated() {
-    let deck = render_html_page(
-        "---\ntitle: My Talk\ndescription: A talk about ports.\nformat: deck\n---\n\n## Slide\n",
-        "fallback",
-    );
-    for needle in [
-        r#"<meta name="description" content="A talk about ports.">"#,
-        r#"<meta property="og:title" content="My Talk">"#,
-        r#"<meta property="og:description" content="A talk about ports.">"#,
-        r#"<meta property="og:type" content="website">"#,
-    ] {
-        assert!(
-            deck.contains(needle),
-            "a standalone deck must emit {needle}"
-        );
-    }
-
-    // A page that already carries an `og:title` on `include-in-header` — the site's
-    // `social_head`, or one an author wrote — must suppress the basic set rather than stack
-    // with it.
-    let site_deck = render_html_page(
-        "---\ntitle: My Talk\ndescription: A talk about ports.\nformat: deck\n\
-         include-in-header:\n  text: |\n    \
-         <meta property=\"og:title\" content=\"My Talk\">\n---\n\n## Slide\n",
-        "fallback",
-    );
-    assert_eq!(
-        site_deck.matches("property=\"og:title\"").count(),
-        1,
-        "the richer site block must win outright, not stack with the basic one: {site_deck}"
-    );
-}
-
-#[test]
-fn deck_viewport_allows_pinch_zoom() {
-    // B5-1 (WCAG 1.4.4/1.4.10, pairs with the A3 mobile feed): a deck is a reading
-    // surface — especially the phone feed — so its viewport must not lock the scale.
-    // Keep width=device-width + initial-scale; drop maximum-scale / user-scalable so
-    // pinch-zoom works.
-    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "fallback");
-    let vp = page
-        .split("name=\"viewport\"")
-        .nth(1)
-        .and_then(|s| s.split("/>").next())
-        .expect("deck page must carry a viewport meta");
-    assert!(vp.contains("width=device-width"), "viewport: {vp}");
-    assert!(
-        !vp.contains("user-scalable=no"),
-        "deck must allow pinch-zoom (no user-scalable=no): {vp}"
-    );
-    assert!(
-        !vp.contains("maximum-scale"),
-        "deck must not cap zoom (no maximum-scale): {vp}"
-    );
-}
-
-#[test]
-fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
-    // The deck redesign (A1/A2) removed reader/scroll mode and PDF-export mode: a
-    // deck opens AS a deck (stepped), and a stray Cmd/Ctrl+P is handled by a minimal
-    // `@media print` fallback rather than a bespoke flatten-to-PDF `tali-print` mode.
-    // Pin at the bundle level so the machinery can't creep back in; the runtime
-    // front-door behavior is covered by the ui-audit deck smoke.
-    let page = render_html_page("---\nformat: deck\n---\n\n## A\n\n## B\n", "fallback");
-    for gone in [
-        "enterScroll",
-        "exitScroll",
-        "enterPrint",
-        "exitPrint",
-        "tali-scroll-stack",
-        "tali-print-stack",
-        "Reader mode",
-        "Export PDF",
-    ] {
-        assert!(
-            !page.contains(gone),
-            "deck still bundles removed reader/PDF machinery: {gone}"
-        );
-    }
-    // A minimal print fallback survives so a stray Cmd/Ctrl+P stays legible.
-    assert!(
-        page.contains("@media print"),
-        "deck must keep a minimal @media print fallback"
-    );
-}
-
-#[test]
-fn deck_bundles_the_mobile_feed() {
-    // A3: on a phone / portrait screen a deck opens as a vertical scroll-feed of full-
-    // viewport slides (routed by aspect, with `?tali=feed` / `?tali=present` escape hatches).
-    // Pin the machinery at the bundle level so it can't silently regress; the runtime
-    // front-door behavior is covered by the ui-audit deck browser smoke.
-    let page = render_html_page("---\nformat: deck\n---\n\n## A\n\n## B\n", "fallback");
-    // CSS: the feed layout (a scroll-snap container gated on html.tali-feed).
-    assert!(
-        page.contains(".tali-feed"),
-        "deck must bundle the mobile-feed CSS"
-    );
-    assert!(
-        page.contains("scroll-snap-type: y mandatory"),
-        "feed must use CSS scroll-snap"
-    );
-    // JS: the feed entry path + aspect routing.
-    assert!(
-        page.contains("function enterFeed"),
-        "deck.js must bundle the feed entry path"
-    );
-    assert!(
-        page.contains("function isPortrait"),
-        "deck.js must route the front door by aspect"
-    );
-    assert!(
-        page.contains("tali === 'feed'"),
-        "deck.js must honour the ?tali=feed escape hatch"
-    );
-}
-
-#[test]
-fn paused_plain_code_block_is_a_fragment_without_line_steps() {
-    // B0-1: a `. . .` pause before a PLAIN code block (no code-line-numbers) stamps the
-    // `<pre>` with class="fragment" but leaves it WITHOUT data-code-lines — the shape the
-    // deck engine must tolerate (fragsOf used to run `null.split('|')` here and wedge nav).
-    let doc = render_document(
-        "---\nformat: deck\n---\n\n## S\n\nIntro.\n\n. . .\n\n```python\ndef f():\n    return 1\n```\n",
-    );
-    let slides = slides_html(None, None, &doc.blocks);
-    // Find the paused <pre>'s opening tag.
-    let pre = slides
-        .split("<pre")
-        .find(|seg| seg.starts_with(' ') && seg[..seg.find('>').unwrap_or(0)].contains("fragment"))
-        .expect("the paused plain code block should render a <pre class=\"fragment\">");
-    let open = &pre[..pre.find('>').unwrap()];
-    assert!(open.contains("class=\"fragment\""), "got: {open}");
-    assert!(
-        !open.contains("data-code-lines"),
-        "a plain code block must carry no line-step spec: {open}"
-    );
-}
-
-#[test]
-fn deck_title_slide_id_does_not_collide_with_a_slide_titled_title_slide() {
-    // B2-10: the front-matter title slide hardcodes id="title-slide"; a content slide
-    // literally titled "Title Slide" slugs to the same id -> two #title-slide in the DOM
-    // (getElementById/#hash target the wrong section). The injected id must be reserved
-    // in the dedup map so the colliding heading becomes title-slide-1.
-    let doc = render_document("---\ntitle: Deck\nformat: deck\n---\n\n## Title Slide\n\nHi.\n");
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    assert_eq!(
-        slides.matches("id=\"title-slide\"").count(),
-        1,
-        "duplicate #title-slide: {slides}"
-    );
-    assert!(
-        slides.contains("id=\"title-slide-1\""),
-        "colliding heading should dedup to title-slide-1: {slides}"
-    );
-}
-
-#[test]
-fn deck_explicit_slide_id_is_kept_verbatim_not_slugified() {
-    // B2-11: an author `{#id}` on a slide heading becomes the <section> anchor VERBATIM
-    // so `@sec-…`/`#hash` resolve; only the heading-text fallback is slugged. Today the
-    // deck path slugs both, so `## Two {#sec-My_Two}` emits id="sec-my-two" while the
-    // xref href stays "#sec-My_Two" -> dead link.
-    let doc = render_document(
-        "---\nformat: deck\n---\n\n## Intro\n\nSee @sec-My_Two.\n\n## Two {#sec-My_Two}\n\nBody.\n",
-    );
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    assert!(
-        slides.contains("<section id=\"sec-My_Two\""),
-        "explicit slide id was slugified instead of kept verbatim: {slides}"
-    );
-    assert!(
-        slides.contains("href=\"#sec-My_Two\""),
-        "xref href drifted from the section id: {slides}"
-    );
-}
-
-#[test]
-fn deck_explicit_slide_id_with_special_chars_is_escaped_once() {
-    // The explicit {#id} rides in as an HTML-attr-escaped data-slide-anchor; split_slides
-    // must unescape before storing so render_section escapes exactly once — otherwise an
-    // id with & < > double-escapes (id="a&amp;amp;b") and its @ref/#hash goes dead.
-    let doc = render_document("---\ntitle: D\nformat: deck\n---\n\n## Two {#a&b}\n\nBody.\n");
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    assert!(
-        slides.contains("id=\"a&amp;b\""),
-        "explicit id should be escaped exactly once: {slides}"
-    );
-    assert!(
-        !slides.contains("a&amp;amp;b"),
-        "explicit id double-escaped: {slides}"
-    );
-}
-
-#[test]
-fn code_line_numbers_wraps_lines_for_stepping() {
-    let page = render_html_page(
-        "---\nformat: deck\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",
-        "fallback",
-    );
-    assert!(
-        page.contains("data-code-lines=\"1|2\""),
-        "missing line spec"
-    );
-    // two source lines -> two line spans (the trailing-newline line is dropped).
-    assert_eq!(
-        page.matches("class=\"tali-hl-ln\"").count(),
-        2,
-        "expected one line span per source line"
-    );
-    // a code block without the attribute is left unwrapped.
-    let plain = render_html_page(
-        "---\nformat: deck\n---\n\n## S\n\n```python\na = 1\n```\n",
-        "fb",
-    );
-    // (check the attribute, not bare "tali-hl-ln" — the inlined CSS mentions `.tali-hl-ln`.)
-    assert!(
-        !plain.contains("class=\"tali-hl-ln\""),
-        "plain code should not be line-wrapped"
-    );
-}
-
-#[test]
-fn heading_background_attr_moves_to_section() {
-    let page = render_html_page(
-        "---\nformat: deck\n---\n\n## Title {background-color=\"#123456\"}\n\nbody\n",
-        "fb",
-    );
-    // the background hoists onto the <section> and the `{...}` is stripped.
-    assert!(
-        page.contains("data-background-color=\"#123456\""),
-        "bg attr missing"
-    );
-    assert!(
-        !page.contains("{background-color"),
-        "the {{...}} must be stripped"
-    );
-    assert!(
-        !page.contains("<h2 data-background"),
-        "bg must move off the heading"
-    );
-}
-
-#[test]
-fn heading_auto_animate_marks_the_section() {
-    let page = render_html_page(
-        "---\nformat: deck\n---\n\n## Title {auto-animate=true}\n\nbody\n",
-        "fb",
-    );
-    assert!(
-        page.contains("data-auto-animate"),
-        "auto-animate marker missing"
-    );
-    // it hoists onto the <section>, not the heading, and the `{...}` is stripped.
-    assert!(
-        !page.contains("<h2 data-auto-animate"),
-        "must move off the heading"
-    );
-    assert!(
-        !page.contains("{auto-animate"),
-        "the {{...}} must be stripped"
-    );
-}
-
-#[test]
-fn magic_move_div_wraps_code_lines() {
-    let page = render_html_page(
-        "---\nformat: deck\n---\n\n## S\n\n::: {.magic-move}\n```js\na = 1\n```\n\n```js\na = 2\nb = 3\n```\n:::\n",
-        "fb",
-    );
-    assert!(
-        page.contains("class=\"magic-move\""),
-        "magic-move div missing"
-    );
-    // both blocks' lines are wrapped so the engine can match/glide them (1 + 2 = 3).
-    assert_eq!(
-        page.matches("class=\"tali-hl-ln\"").count(),
-        3,
-        "magic-move code blocks should be line-wrapped"
-    );
-}
-
-#[test]
-fn deck_dedups_repeated_slide_ids() {
-    // Repeated headings (common with auto-animate's shared titles) must get
-    // distinct section ids, else `#/hash` + getElementById only find the first.
-    let page = render_html_page(
-        "---\nformat: deck\n---\n\n## Step\n\na\n\n## Step\n\nb\n",
-        "fb",
-    );
-    assert!(page.contains("id=\"step\""), "first slide id missing");
-    assert!(
-        page.contains("id=\"step-1\""),
-        "duplicate slide id not deduped"
-    );
-}
-
-// --- books: heading anchors, figures, toc ---
-
 #[test]
 fn headings_get_deduped_anchor_ids() {
     let doc = render_document("# Intro\n\nbody\n\n# Intro\n");
@@ -2447,23 +1820,6 @@ fn headings_get_deduped_anchor_ids() {
     // a repeated heading slug is deduped with a -N suffix.
     let last = doc.blocks.last().unwrap();
     assert!(last.html.contains("id=\"intro-1\""), "got: {}", last.html);
-}
-
-#[test]
-fn reveal_headings_have_no_id_to_avoid_duplicating_section_ids() {
-    // In a deck the slug lives on the wrapping <section>, so the heading must
-    // not also carry it (that would be a duplicate id in the DOM).
-    let doc = render_document("---\nformat: deck\n---\n\n## A Slide\n");
-    let h = doc
-        .blocks
-        .iter()
-        .find(|b| b.html.starts_with("<h2"))
-        .unwrap();
-    assert!(
-        !h.html.contains(" id=\""),
-        "deck heading should not carry an id: {}",
-        h.html
-    );
 }
 
 #[test]
@@ -2624,9 +1980,9 @@ fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
 /// extends that to every page kind, and to fullscreen with it: static chrome is not a
 /// distraction, so neither toggle earned its place on a page that is read rather than presented.
 ///
-/// **A DECK keeps its own fullscreen** — see the sibling test below. The removed page-level
-/// implementation always early-returned on `.tali-deck`, so the two never shared code; a change
-/// that rips fullscreen out of `deck.js` too passes this test and fails that one.
+/// The slide deck kept its own fullscreen until the engine was cut on 2026-08-08; the
+/// removed page-level implementation always early-returned on `.tali-deck`, so the two never
+/// shared code and this needle was always about the page.
 #[test]
 fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
@@ -2638,9 +1994,8 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
             "focus mode was removed but `{needle}` is still shipped"
         );
     }
-    // `requestFullscreen` gets its own needle rather than joining the loop above,
-    // because the deck keeps a legitimate one (`a_deck_keeps_its_own_fullscreen` right
-    // below pins it), so this has to be asserted where the content gating is real: a
+    // `requestFullscreen` gets its own needle rather than joining the loop above, so it is
+    // asserted where the content gating is real: a
     // Build-mode page, not `render_html_page`'s Preview bundle, which ships every core
     // enhancer unconditionally so a live-diff edit can gain any construct without a
     // reload.
@@ -2659,17 +2014,6 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     assert!(
         !built_prose.contains("requestFullscreen"),
         "a built page that is not a deck must not ship requestFullscreen: {built_prose}"
-    );
-}
-
-/// The other half of the removal's scope: a deck presents, so it keeps the fullscreen it always
-/// owned in `deck.js` (its own `toggleFullscreen`, `F` key, toolbar button and wake-lock).
-#[test]
-fn a_deck_keeps_its_own_fullscreen() {
-    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "deck");
-    assert!(
-        page.contains("requestFullscreen"),
-        "a deck must keep the fullscreen it owns in deck.js"
     );
 }
 
@@ -3079,54 +2423,6 @@ fn theme_dark_default_drives_data_theme_resolver() {
 }
 
 #[test]
-fn deck_theme_is_custom_and_head_gating() {
-    // A plain deck (built-in theme) is managed: the deck theme head is emitted
-    // and the deck follows OS/host/front-matter.
-    let plain = render_document("---\nformat: deck\n---\n\n# A\n");
-    assert!(!plain.theme_is_custom, "a plain deck has no custom theme");
-    assert!(
-        deck_theme_head(&plain.theme_default, plain.theme_is_custom).contains("taliDeckApplyTheme"),
-        "a built-in-theme deck should get the theme head"
-    );
-    // A user `include-in-header` is not a theme extension, so it must not flip
-    // the deck out of built-in light/dark management.
-    let with_header = render_document(
-        "---\nformat: deck\ninclude-in-header:\n  text: \"<meta name=x>\"\n---\n\n# A\n",
-    );
-    assert!(!with_header.theme_is_custom);
-    // An explicit `theme: dark` forces dark and is still managed.
-    assert_eq!(
-        render_document("---\nformat: deck\ntheme: dark\n---\n\n# A\n").theme_default,
-        "dark"
-    );
-    // A custom theme owns the colours -> no theme-management script.
-    assert!(deck_theme_head("auto", true).is_empty());
-    // B4-22: an embedded deck follows the host page's data-theme, and only the two modes
-    // that exist — anything else falls through to the OS rather than guessing. (A `sepia`
-    // host used to map to a light deck; the mode was removed in item 200.)
-    let head = deck_theme_head("auto", false);
-    assert!(
-        head.contains("(t==='dark'||t==='light') ? t : null"),
-        "hostTheme() should take the host's mode when it is one it knows, else defer: {head}"
-    );
-    // PL13: the 3-state Auto/Light/Dark control. `taliDeckThemeChoice` exposes the current choice
-    // ('auto' when no key), the setter CLEARS the key for a non-light/dark value (so "Auto"
-    // resumes OS-follow), and a standalone Auto deck reacts to a live OS flip.
-    assert!(
-        head.contains("taliDeckThemeChoice"),
-        "the deck exposes its theme choice for the segment"
-    );
-    assert!(
-        head.contains("removeItem('tali-deck-theme')"),
-        "a non-light/dark choice (Auto) clears the stored key -> OS-follow: {head}"
-    );
-    assert!(
-        head.contains("prefers-color-scheme: dark") && head.contains("addEventListener"),
-        "a standalone Auto deck follows a live OS light/dark flip: {head}"
-    );
-}
-
-#[test]
 fn theme_list_takes_first_entry() {
     // `theme: [dark, custom.scss]` (list form) selects the base.
     let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
@@ -3466,75 +2762,6 @@ fn input_shortcode_other_types_emit_their_native_control() {
     assert!(
         sel.contains("<option>a</option>") && sel.contains("<option selected>b</option>"),
         "options: {sel}"
-    );
-}
-
-#[test]
-fn embed_shortcode_renders_isolating_deck_iframe() {
-    // `{{< embed slides.tmd >}}` embeds another document's deck view in an isolating
-    // iframe. The source path is mapped to its BUILT output (`.tmd` -> `.html`, because
-    // the deck is built beside the embedding page), a default accessible name is
-    // supplied, and the frame carries the fullscreen + open-in-new-tab affordances.
-    let doc =
-        render_document_with_includes("{{< embed slides.tmd >}}\n", std::path::Path::new("."));
-    let h = doc.body_html();
-    assert!(h.contains("class=\"tali-embed\""), "wrapper: {h}");
-    assert!(
-        h.contains("<iframe class=\"tali-embed-frame\" src=\"slides.html\""),
-        "the `.tmd` source maps to its built `.html` output: {h}"
-    );
-    assert!(
-        h.contains("title=\"Embedded slide deck\""),
-        "default accessible name: {h}"
-    );
-    assert!(h.contains("allowfullscreen"), "fullscreen affordance: {h}");
-    assert!(
-        h.contains("href=\"slides.html\"") && h.contains("target=\"_blank\""),
-        "open-in-new-tab link points at the same built deck: {h}"
-    );
-}
-
-#[test]
-fn embed_title_overrides_default_and_is_attribute_escaped() {
-    // A `title="…"` names the iframe; the bare token is still the deck path (a `key=value`
-    // named arg is never mistaken for it). The title is attribute-escaped so a `&` (or a
-    // `"`) can't break out of the double-quoted attribute.
-    let doc = render_document_with_includes(
-        "{{< embed slides.tmd title=\"Q & A session\" >}}\n",
-        std::path::Path::new("."),
-    );
-    let h = doc.body_html();
-    assert!(
-        h.contains("src=\"slides.html\""),
-        "the named `title=` arg is not mistaken for the deck path: {h}"
-    );
-    assert!(
-        h.contains("title=\"Q &amp; A session\""),
-        "custom title, attribute-escaped: {h}"
-    );
-    assert!(
-        !h.contains("Embedded slide deck"),
-        "default title is replaced: {h}"
-    );
-}
-
-#[test]
-fn embed_targets_collects_in_order_dedups_and_skips_code_examples() {
-    // The build/preview uses `embed_targets` to also build each referenced deck. It must
-    // return paths in document order, deduped, and must skip a `{{< embed >}}` shown as an
-    // *example* inside inline or fenced code (which stays literal, never a real dependency).
-    let src = "\
-{{< embed a.tmd >}}\n\
-{{< embed b.tmd >}}\n\
-{{< embed a.tmd >}}\n\
-An inline example `{{< embed inline.tmd >}}` stays literal.\n\
-```\n\
-{{< embed fenced.tmd >}}\n\
-```\n";
-    assert_eq!(
-        embed_targets(src),
-        vec!["a.tmd".to_string(), "b.tmd".to_string()],
-        "order preserved, a.tmd deduped, code examples skipped"
     );
 }
 
@@ -4182,17 +3409,6 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     );
 }
 
-/// PL20: the deck key-sheet documents First/last (Home/End) + Fit map (0) — keys that were
-/// bound but missing from the help overlay.
-#[test]
-fn deck_key_sheet_lists_home_end_and_fit_map() {
-    let js = super::deck::DECK_JS;
-    assert!(
-        js.contains("'Home End', 'First / last slide'") && js.contains("'0', 'Fit map'"),
-        "the deck key-sheet must document Home/End + the 0 (fit-map) key"
-    );
-}
-
 /// Cell output is bounded in CSS, so one runaway cell cannot take the page's scrollbar
 /// hostage. Three shapes, three deliberate decisions: a `<pre>` and a table SCROLL, an image
 /// is SCALED, and print lifts every bound (paper has no scrollbar, and a clipped traceback
@@ -4323,32 +3539,6 @@ fn the_tab_switcher_preserves_until_found_across_a_click() {
     );
 }
 
-/// The overview's wrap column count is chosen for the WHOLE map, not per run. Per run,
-/// `ceil(sqrt(run.length))` makes each run individually square, and several squares stack
-/// into a map the overview has to zoom past — browser-measured on a 21-slide three-topic
-/// deck at 1100x1000, that showed 13 of 25 slides where one shared count shows 23.
-/// The layout itself is browser-verified, not corpus-pinned (it is client JS with no
-/// server-rendered output); what this pins is that the per-run square has not come back.
-#[test]
-fn the_overview_wraps_at_one_count_for_the_whole_map() {
-    let js = super::deck::DECK_JS;
-    // Match the CODE, not the word: the explanatory comment names the old formula.
-    assert!(
-        !js.contains("Math.ceil(Math.sqrt(run.length))"),
-        "the wrap count must not be computed per run"
-    );
-    assert!(
-        js.contains("function computeOverviewCols") && js.contains("dimsAtCols"),
-        "the count is chosen by measuring the map at each candidate column count"
-    );
-    // The row count must come from the real run lengths: `n/cols` under-counts, because a
-    // run boundary rounds up, and a count that then does not fit is the bug being fixed.
-    assert!(
-        js.contains("Math.ceil(len / c)"),
-        "rows are counted from the real run lengths, not estimated from the slide total"
-    );
-}
-
 /// The hex value of `token` inside the first block after `selector` in `css`. The block
 /// matters: a stylesheet can define `--tali-bg` more than once (a `:root` and a themed
 /// override), so a first-match scan would silently compare against the wrong palette.
@@ -4366,49 +3556,6 @@ fn token_hex_in(css: &str, selector: &str, token: &str) -> String {
         .find('#')
         .unwrap_or_else(|| panic!("no hex value for `{token}` after `{selector}`"));
     after[h..h + 7].to_ascii_lowercase()
-}
-
-/// PA-C5, half one: a per-slide background (`{background="#111"}`) forces its own ink,
-/// because a slide that is dark on a LIGHT deck cannot use `var(--tali-link)` — the variable
-/// follows the page's theme, which is the opposite of what the slide needs. So the values are
-/// literals by necessity, and the risk is silent drift: move a token and the deck keeps the
-/// old hue with nothing failing. This is `card.rs`'s drift-lock idiom applied to CSS-can't-
-/// invert-a-var instead of Rust-can't-read-CSS.
-///
-/// Only the literals that HAVE a token counterpart are locked. `#fff` on a dark slide and the
-/// `rgba()` subtitle washes are deliberate absolutes, not copies of a token.
-#[test]
-fn per_slide_background_ink_tracks_the_paired_theme_tokens() {
-    let deck = super::deck::DECK_CSS;
-    // A dark slide takes the DARK palette's link colour, whatever the deck's own theme is.
-    let dark_link = token_hex_in(TOKENS_DARK_CSS, ":root", "--tali-link");
-    for sel in ["section.tali-dark-bg a", "section.tali-dark-bg li::marker"] {
-        let rule = deck
-            .find(sel)
-            .map(|i| &deck[i..i + 80])
-            .unwrap_or_else(|| panic!("no `{sel}` rule in deck.css"));
-        assert!(
-            rule.to_ascii_lowercase().contains(&dark_link),
-            "`{sel}` must carry the dark `--tali-link` ({dark_link}); it reads: {rule}"
-        );
-    }
-    // A light slide takes the LIGHT palette's link + body ink.
-    let light_link = token_hex_in(TOKENS_CSS, ":root", "--tali-link");
-    let light_fg = token_hex_in(TOKENS_CSS, ":root", "--tali-fg");
-    for (sel, want) in [
-        ("section.tali-light-bg a", &light_link),
-        ("section.tali-light-bg li::marker", &light_link),
-        ("section.tali-light-bg strong", &light_fg),
-    ] {
-        let rule = deck
-            .find(sel)
-            .map(|i| &deck[i..i + 80])
-            .unwrap_or_else(|| panic!("no `{sel}` rule in deck.css"));
-        assert!(
-            rule.to_ascii_lowercase().contains(want.as_str()),
-            "`{sel}` must carry {want} from the light tokens; it reads: {rule}"
-        );
-    }
 }
 
 /// PA-C5, half two: the pre-paint head script sets the canvas (and the mobile `theme-color`)
@@ -4446,7 +3593,6 @@ fn sepia_is_gone_from_every_theme_surface() {
         ("tokens-dark.css", TOKENS_DARK_CSS),
         ("base.css", BASE_CSS),
         ("dark.css", DARK_CSS),
-        ("deck.css", deck::DECK_CSS),
     ] {
         assert!(
             !css.to_ascii_lowercase().contains("sepia"),
@@ -4475,113 +3621,6 @@ fn sepia_is_gone_from_every_theme_surface() {
     assert!(
         !CODE_ENHANCE_JS.contains("sepia"),
         "the reader menu still offers a Sepia row"
-    );
-}
-
-/// PA-H1's residual: a DECK keeps `<meta name="theme-color">` in step with its canvas too.
-///
-/// The page has done this since PA-C5, but a deck never did: it runs an entirely separate
-/// pre-paint script (`deck_theme_head`), so a dark deck sat under a white mobile status
-/// bar. The audit filed this as "the deck `<head>` is bare"; favicon and `generator` were
-/// fixed then, theme-color was the piece left.
-///
-/// The values are literals for exactly the reason the page's are (PA-C5, half two): this
-/// script runs BEFORE the deck stylesheet parses, so reading the computed background would
-/// get the UA default. That is what makes a drift pin necessary rather than optional.
-#[test]
-fn the_decks_pre_paint_script_keeps_theme_color_with_its_canvas() {
-    let head = deck_theme_head("auto", false);
-    // Needle the mechanism, not the phrase: a bare `contains("theme-color")` is satisfied
-    // by any *comment* naming it, which is how the first draft of this pin passed against
-    // a build with the fix deliberately removed.
-    assert!(
-        head.contains(r#"setAttribute('name', 'theme-color')"#),
-        "the deck's pre-paint script must create a theme-color meta; it does not"
-    );
-    assert!(
-        head.contains("mc.setAttribute('content', BG[m]"),
-        "the deck's theme-color must be set from the BG map, so it follows the toggle"
-    );
-
-    // Dark: the deck canvas is `html.tali-deck-dark { background: var(--tali-bg) }`, so
-    // the literal must track the same token the page's dark entry does.
-    let dark = token_hex_in(TOKENS_DARK_CSS, ":root", "--tali-bg");
-    let dark_entry = format!("dark: '{dark}'");
-    assert!(
-        head.to_ascii_lowercase().contains(&dark_entry),
-        "the deck's BG map must read `{dark_entry}` (from `--tali-bg`); it does not"
-    );
-
-    // Light: the deck canvas is deck.css's own `html { background: … }`, which is a bare
-    // literal rather than a token — so read it from the stylesheet and normalise `#fff`
-    // to the 6-digit form the script uses.
-    let rule = deck_css_html_canvas();
-    let light_entry = format!("light: '{rule}'");
-    assert!(
-        head.to_ascii_lowercase().contains(&light_entry),
-        "the deck's BG map must read `{light_entry}` (from deck.css's `html` rule); it does not"
-    );
-}
-
-/// deck.css's `html { background: … }` canvas colour, as a lowercase 6-digit hex.
-fn deck_css_html_canvas() -> String {
-    let deck_css = include_str!("../../assets/css/deck.css");
-    let rule = deck_css
-        .split("html {")
-        .nth(1)
-        .expect("deck.css must carry an `html {` canvas rule");
-    let at = rule
-        .find('#')
-        .expect("deck.css's `html` canvas rule must be a hex literal");
-    let hex: String = rule[at + 1..]
-        .chars()
-        .take_while(|c| c.is_ascii_hexdigit())
-        .collect();
-    let hex = hex.to_ascii_lowercase();
-    match hex.len() {
-        // `#fff` and `#ffffff` are the same colour; the script spells it in full.
-        3 => {
-            let c: Vec<char> = hex.chars().collect();
-            format!("#{0}{0}{1}{1}{2}{2}", c[0], c[1], c[2])
-        }
-        _ => format!("#{hex}"),
-    }
-}
-
-/// The overview map is clamped against the STAGE, not against the grid plus a spare cell.
-/// The old clamp never looked at the stage or the scale, so when the map missed fitting —
-/// by 7 px on a 21-slide three-topic deck at 1100x1000 — `fitOverview` fell back to "follow
-/// the current tile", and for a slide in the FIRST row that centres row 0 in the stage.
-/// Browser-measured there: 269 px of empty stage above the map, the last rows clipped 276 px
-/// below, and 9 of 25 tiles on screen where every other viewport showed 25. With the clamp:
-/// 5 px above (the tile's own gutter inset), 12 px clipped, 23 of 25 on screen — and the
-/// viewports that already fitted are unchanged, because the clamp centres a span that fits.
-///
-/// The audit filed this as `roomy` wrongly computing false. It does not: it reads the DECK
-/// STAGE, which is letterboxed to 16:9, so at a 1100x1000 window the stage is 1100x619 and a
-/// 626 px map really does not fit. The recorded cause measured the window instead.
-#[test]
-fn the_overview_map_is_clamped_against_the_stage_not_the_grid() {
-    let js = super::deck::DECK_JS;
-    // Match the CODE, not the word: the explanatory comment names the old rule.
-    assert!(
-        !js.contains("Math.min(deck.ov.cx, gw + W)"),
-        "the clamp must not allow a spare cell of void past the grid"
-    );
-    assert!(
-        js.contains("function clampAxis"),
-        "the clamp is per axis, in world units"
-    );
-    // The two halves of the rule: centre a span that fits, and pin a larger span's edge to
-    // the stage's edge. `half` is half the stage converted to world units by the scale —
-    // which is the input the old clamp did not have at all.
-    assert!(
-        js.contains("stage / (2 * s)") && js.contains("span <= 2 * half"),
-        "a span that fits the stage is centred; one that does not is edge-clamped"
-    );
-    assert!(
-        js.contains("Math.max(half, Math.min(c, span - half))"),
-        "a larger span's edges must never come inside the stage's edges"
     );
 }
 
@@ -5280,16 +4319,12 @@ fn de_emphasised_text_never_uses_an_opacity_multiplier() {
             "{label} dims with opacity; recede with --tali-muted instead: {rule}"
         );
     }
-    // Code lines carry syntax colours, so no alpha exists that dims visibly AND keeps the comment
-    // token at 4.5:1 (it needs >= .94). Both the page walkthrough and the deck must mark the
-    // FOCUSED range instead of dimming the rest.
+    // Code lines carry syntax colours, so no alpha exists that dims visibly AND keeps the
+    // comment token at 4.5:1 (it needs >= .94). The walkthrough must mark the FOCUSED range
+    // instead of dimming the rest.
     assert!(
         !BASE_CSS.contains("pre.tali-hl-lines-active .tali-hl-ln { opacity"),
         "the walkthrough must not dim non-focused code lines"
-    );
-    assert!(
-        !super::deck::DECK_CSS.contains("pre.tali-hl-lines-active .tali-hl-ln { opacity"),
-        "the deck must not dim non-focused code lines"
     );
 }
 
@@ -5320,16 +4355,6 @@ fn every_theme_defines_its_own_flash_tint() {
     );
 }
 
-/// Deck link text sat at 4.32:1 on the deck's white background, below AA. The deck now shares
-/// the page's accent (via tokens.css), which is dark enough to serve as link text unaided.
-#[test]
-fn deck_link_text_meets_wcag_aa() {
-    // The deck reads the shared light `--tali-accent` (tokens.css `:root`, first occurrence).
-    let c = color_after(TOKENS_CSS, "--tali-accent:");
-    let r = wcag_contrast(c, "#ffffff");
-    assert!(r >= 4.5, "light deck accent {c} as link on white = {r:.2}");
-}
-
 /// The brand rests on ONE owned accent hue. These are the vendor defaults it replaced: three
 /// blues (a stock light blue, GitHub Primer's, Tailwind's blue-600), the deck's fourth blue,
 /// Material's error red, and the old maximally-saturated callout set. Shipping any of them again
@@ -5340,7 +4365,7 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
         ("#4c8dff", "the old stock light blue"),
         ("#1f6feb", "GitHub Primer's blue"),
         ("#2563eb", "Tailwind blue-600"),
-        ("#4c6ef5", "the deck's fourth blue"),
+        ("#4c6ef5", "the retired deck's fourth blue"),
         ("#b00020", "Material Design's error red"),
         ("#2bb673", "the old callout tip green"),
         ("#e0a800", "the old callout warning amber"),
@@ -5352,7 +4377,6 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
         ("tokens-dark.css", TOKENS_DARK_CSS),
         ("base.css", BASE_CSS),
         ("dark.css", DARK_CSS),
-        ("deck.css", super::deck::DECK_CSS),
         ("site.css", SITE_CSS),
     ] {
         let lower = css.to_ascii_lowercase();
@@ -5366,14 +4390,14 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
 }
 
 /// One `--tali-scrim` token single-sources the "dim behind an overlay" backdrop, which used to
-/// carry three drifted black alphas: the mobile TOC sheet (base, .42), the book drawer (site,
-/// .38), and the deck share modal (deck, .55). Folded to one token; no raw scrim literal survives
+/// carry drifted black alphas per sheet. Folded to one token; no raw scrim literal survives
 /// (each literal string was unique to its own backdrop rule). PA-F2.
 ///
 /// **base.css dropped out of the per-sheet loop 2026-08-03**, visual minimalism pass: its only
 /// two dimmed-overlay surfaces, the lightbox and the mobile TOC sheet, were both deleted (the
 /// second in the same pass that added this note), and nothing else in base.css is a full-screen
-/// modal backdrop. The token itself still single-sources site.css and deck.css.
+/// modal backdrop. The deck's share modal left with the deck engine on 2026-08-08, so
+/// site.css's book drawer is the last backdrop the token single-sources.
 #[test]
 fn overlay_backdrops_share_the_scrim_token() {
     assert_eq!(
@@ -5381,25 +4405,19 @@ fn overlay_backdrops_share_the_scrim_token() {
         1,
         "--tali-scrim must be defined exactly once, in tokens.css :root"
     );
-    for (sheet, css) in [("site.css", SITE_CSS), ("deck.css", super::deck::DECK_CSS)] {
-        assert!(
-            css.contains("var(--tali-scrim)"),
-            "{sheet}'s overlay backdrop must reference var(--tali-scrim)"
-        );
-    }
+    assert!(
+        SITE_CSS.contains("var(--tali-scrim)"),
+        "site.css's overlay backdrop must reference var(--tali-scrim)"
+    );
     assert!(
         !SITE_CSS.contains("rgba(0, 0, 0, .38)"),
         "site.css still ships the raw .38 book-drawer scrim; route it through --tali-scrim"
-    );
-    assert!(
-        !super::deck::DECK_CSS.contains("rgba(0, 0, 0, .55)"),
-        "deck.css still ships the raw .55 share-modal scrim; route it through --tali-scrim"
     );
 }
 
 /// The motion scale is exactly two durations (`--tali-dur` / `--tali-dur-slow`); a bare `.15s`
 /// had crept in as an undocumented third value. Every `.15s` left in base.css is part of the
-/// `1.15s` peek-hint animation (an intentional special), and site/deck carry none. PA-S3.
+/// `1.15s` peek-hint animation (an intentional special), and site.css carries none. PA-S3.
 #[test]
 fn no_stray_15s_duration_outside_the_motion_scale() {
     assert_eq!(
@@ -5407,12 +4425,10 @@ fn no_stray_15s_duration_outside_the_motion_scale() {
         BASE_CSS.matches("1.15s").count(),
         "base.css has a bare .15s transition; fold it to var(--tali-dur)"
     );
-    for (sheet, css) in [("site.css", SITE_CSS), ("deck.css", super::deck::DECK_CSS)] {
-        assert!(
-            !css.contains(".15s"),
-            "{sheet} carries a stray .15s duration; fold it to var(--tali-dur)"
-        );
-    }
+    assert!(
+        !SITE_CSS.contains(".15s"),
+        "site.css carries a stray .15s duration; fold it to var(--tali-dur)"
+    );
 }
 
 /// Layout breakpoints are rem, so they scale with the reader's text-zoom; a `640px` width query
@@ -5605,86 +4621,6 @@ fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
     );
 }
 
-/// PA-C1/C2/C3 (2026-07-22 polish audit): the "confirmed"/"active" chrome controls — the
-/// deck speaker "Read mode" toggle and the deck share "Copy" button (deck.css) — filled
-/// themselves with the raw `--tali-accent` behind white text. In dark mode the accent is a
-/// LIGHT indigo (#9aa8dc), so white-on-accent was ≈2.3:1, below AA on the one control a dark
-/// reader sees on success. Every filled control must use the AA-tuned `--tali-accent-fill`
-/// (white on it = 5.59:1 in dark) + `--tali-on-accent`, the same pairing the Cmd-K selected
-/// row already uses; the off-palette one-off blues (#3b6ea5, #4b57b0) must be gone.
-///
-/// The audit's third control was the cite-this "Copied!" button; it left with the box on
-/// 2026-08-03, so the two deck controls are the whole live set.
-#[test]
-fn filled_chrome_controls_use_the_aa_accent_fill_not_raw_accent() {
-    // The deck's two filled controls (speaker "Read mode" active + share "Copy").
-    //
-    // Match the rule that sets the FILL, not merely the first rule naming the selector: a
-    // selector may legitimately appear more than once (the touch tap-target floor added a
-    // `.tali-share-close, .tali-share-copy { min-* }` rule ABOVE this one in 2026-07-27), and
-    // `find` would then assert the accent contract against a rule that sets no colour at all.
-    // Requiring exactly one background-setting rule keeps this STRONGER than a first-match
-    // lookup: it also fails if the fill declaration disappears entirely.
-    let d = super::deck::DECK_CSS;
-    for (name, needle) in [
-        ("speaker read-mode active", ".tali-speaker.read .sp-read {"),
-        ("share copy", ".tali-share-copy {"),
-    ] {
-        let filled: Vec<&str> = d
-            .match_indices(needle)
-            .map(|(j, _)| &d[j..j + d[j..].find('}').expect("closing brace")])
-            .filter(|rule| rule.contains("background"))
-            .collect();
-        assert_eq!(
-            filled.len(),
-            1,
-            "expected exactly one rule filling `{needle}`, found {}",
-            filled.len()
-        );
-        let rule = filled[0];
-        assert!(
-            rule.contains("var(--tali-accent-fill)") && rule.contains("var(--tali-on-accent)"),
-            "deck {name} must fill with --tali-accent-fill + --tali-on-accent: {rule}"
-        );
-    }
-    // The two off-palette one-off blues must be gone from the deck sheet.
-    let ld = d.to_ascii_lowercase();
-    assert!(
-        !ld.contains("#3b6ea5") && !ld.contains("#4b57b0"),
-        "deck.css still ships an off-palette one-off blue (#3b6ea5/#4b57b0); route it through --tali-accent-fill"
-    );
-    // The resolved dark fill must actually clear AA (the regression floor the tokens promise).
-    assert!(
-        wcag_contrast("#ffffff", "#57659d") >= 4.5,
-        "white on the dark --tali-accent-fill must clear AA"
-    );
-}
-
-/// PA-D1: the deck's `:focus-visible` ring reached only `.tali-ctl`/`.tali-menu-item`/
-/// `.tali-menu-slide`; the theme segment, share-dialog controls, and speaker buttons had no
-/// keyboard-focus ring at all — and deck.js focuses the share "Copy" button programmatically
-/// (a ringless target). Every interactive deck control must carry a `:focus-visible` ring.
-#[test]
-fn every_interactive_deck_control_gets_a_focus_visible_ring() {
-    let d = super::deck::DECK_CSS;
-    for cls in [
-        ".tali-ctl",
-        ".tali-menu-item",
-        ".tali-menu-slide",
-        ".tali-theme-opt",
-        ".tali-share-copy",
-        ".tali-share-close",
-        ".sp-read",
-        ".sp-reset",
-        ".sp-size button",
-    ] {
-        assert!(
-            d.contains(&format!("{cls}:focus-visible")),
-            "deck control {cls} must get a :focus-visible ring"
-        );
-    }
-}
-
 /// PA-F3: keyboard focus on a listing card missed the pointer-hover lift/border/title-tint,
 /// so a keyboard reader tabbing the blog got no card affordance. The `:focus-visible` state
 /// must mirror the `:hover` one.
@@ -5764,24 +4700,6 @@ fn quoted_figure_width_survives_smart_punctuation() {
 }
 
 #[test]
-fn explicit_slide_heading_id_becomes_the_section_anchor() {
-    // Batch 4: an explicit `{#sec-x}` on a slide heading was dropped — the slide got a
-    // text-slug id instead, so `@sec-x` linked to a missing anchor. The explicit id
-    // must become the `<section>` id so the cross-reference resolves.
-    let doc =
-        render_document("---\nformat: deck\n---\n\nSee @sec-two.\n\n## One\n\n## Two {#sec-two}\n");
-    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    assert!(
-        slides.contains("<section id=\"sec-two\""),
-        "the explicit {{#sec-two}} must be the slide's section id, got: {slides}"
-    );
-    assert!(
-        !slides.contains("<section id=\"two\""),
-        "the text-slug id must not win over the explicit anchor"
-    );
-}
-
-#[test]
 fn heading_consumed_as_callout_title_keeps_its_anchor_id() {
     // Batch 4: a `{#sec-x}` heading used as a callout title had its id stripped with
     // its tags, so `@sec-x` resolved to a number but linked to a missing anchor. The
@@ -5814,116 +4732,6 @@ fn same_page_sec_ref_stays_flat_without_a_chapter() {
         body.contains("class=\"tali-xref\">Section&nbsp;1</a>")
             && body.contains("class=\"tali-xref\">Section&nbsp;2</a>"),
         "chapterless @sec- refs stay flat 1,2, got: {body}"
-    );
-}
-
-#[test]
-fn deck_overview_reveals_magic_move_final_block() {
-    // B1-5: a magic-move on a slide never made current stays opacity:0 (a blank tile) in
-    // overview unless overview forces its final block visible AND hides the current slide's
-    // active non-last block (which would otherwise overlap it in the shared grid cell).
-    let deck_css = include_str!("../../assets/css/deck.css");
-    assert!(
-        deck_css.contains(".tali-deck.overview .magic-move > pre:last-of-type"),
-        "overview magic-move final-block override missing (unvisited slides render blank)"
-    );
-    assert!(
-        deck_css.contains(".tali-deck.overview .magic-move > pre {"),
-        "overview must also hide non-last magic-move blocks or the current slide overlaps two pres"
-    );
-}
-
-#[test]
-fn deck_fragment_effect_class_rides_alongside_the_fragment_class() {
-    // D107: an effect is authored as a second class on the SAME fenced div
-    // (`::: {.fragment .fade-out}`), matching the existing `::: {.fragment}` pattern. The
-    // generic class-div path joins the classes, so the block still matches deck.js's
-    // FRAG_SEL (`.fragment`) and still earns a step: the effect is CSS on top, not a new
-    // authoring form and not a new step kind.
-    let doc = render_document(
-        "---\nformat: deck\n---\n\n## S\n\n::: {.fragment .fade-out}\nGone on the next press.\n:::\n\n::: {.fragment .highlight}\nMarked on the next press.\n:::\n",
-    );
-    let slides = slides_html(None, None, &doc.blocks);
-    assert!(
-        slides.contains("<div class=\"fragment fade-out\""),
-        "`.fade-out` must survive alongside `fragment`: {slides}"
-    );
-    assert!(
-        slides.contains("<div class=\"fragment highlight\""),
-        "`.highlight` must survive alongside `fragment`: {slides}"
-    );
-}
-
-#[test]
-fn deck_fragment_effects_start_visible_and_step_into_their_effect() {
-    // D107: a plain fragment is hidden until its step. An EFFECT fragment inverts that: it
-    // starts VISIBLE and its step changes it, so it must override the base hidden rule or
-    // it reads as a plain fragment (invisible until stepped) and the effect is lost.
-    let deck_css = include_str!("../../assets/css/deck.css");
-    assert!(
-        deck_css.contains(".tali-deck .fragment.fade-out,")
-            && deck_css.contains(".tali-deck .fragment.highlight {"),
-        "effect fragments must override the base hidden state or they never show before their step"
-    );
-    assert!(
-        deck_css.contains(".tali-deck .fragment.fade-out.tali-frag-visible {"),
-        "`.fade-out` must leave on its step"
-    );
-    assert!(
-        deck_css.contains(".tali-deck .fragment.highlight.tali-frag-visible {"),
-        "`.highlight` must mark the block on its step"
-    );
-}
-
-#[test]
-fn deck_faded_out_fragment_returns_in_overview_and_feed() {
-    // A stepped `.fade-out` still carries `.tali-frag-visible`, and its hide rule outranks
-    // overview's and the feed's "show every fragment" overrides on specificity, so without
-    // an explicit exception the block VANISHES from the overview grid and the mobile feed,
-    // neither of which steps, and the content is unreachable there. Pin both exceptions.
-    let deck_css = include_str!("../../assets/css/deck.css");
-    assert!(
-        deck_css.contains(".tali-deck.overview .fragment.fade-out.tali-frag-visible"),
-        "overview must show a faded-out fragment (it shows every slide complete)"
-    );
-    assert!(
-        deck_css.contains("html.tali-feed .fragment.fade-out.tali-frag-visible"),
-        "the mobile feed must show a faded-out fragment (it never steps)"
-    );
-}
-
-#[test]
-fn deck_defines_light_bg_text_override() {
-    // Batch 3d: a light per-slide background needs a `.tali-light-bg` rule forcing
-    // DARK text, or the deck's default (light) text is invisible on it. Pin both the
-    // dark-bg and light-bg overrides so the mirror can't be dropped.
-    let deck_css = include_str!("../../assets/css/deck.css");
-    assert!(
-        deck_css.contains(".tali-slides section.tali-dark-bg"),
-        "dark-bg text override missing"
-    );
-    assert!(
-        deck_css.contains(".tali-slides section.tali-light-bg"),
-        "light-bg text override missing (light named/hex slide backgrounds render invisible text)"
-    );
-    // The light-bg override forces near-black text.
-    let dark_text = color_after(
-        deck_css,
-        ".tali-slides section.tali-light-bg strong { color: ",
-    );
-    assert!(
-        wcag_contrast(dark_text, "#ffffff") >= 7.0,
-        "light-bg text {dark_text} must be dark enough to read on a light slide"
-    );
-    // B4-20: a contrast-flipped slide forces its own text light/dark, but a code panel
-    // keeps its themed `--tali-code-bg`, so `pre`/`code` ink must be re-pinned to
-    // `--tali-fg` or untokenized code goes invisible on the panel. Pin the rule so a
-    // future refactor can't silently drop it.
-    assert!(
-        deck_css.contains("section.tali-dark-bg pre")
-            && deck_css.contains("section.tali-light-bg code")
-            && deck_css.contains("{ color: var(--tali-fg); }"),
-        "the contrast-flip code-ink override (B4-20) is missing"
     );
 }
 
@@ -6089,45 +4897,31 @@ fn the_palette_jumps_to_the_list_ends_only_when_the_caret_has_no_work() {
     );
 }
 
-/// PA-B15: both light-dismiss popovers (reader settings menu, deck control menu) closed on Esc
-/// and on click-away but stayed open behind a keyboard reader who Tabbed past them — and the
-/// reader panel is appended to `<body>`, so "past it" is a whole page away from its gear. A
+/// PA-B15: the reader settings menu closed on Esc and on click-away but stayed open behind a
+/// keyboard reader who Tabbed past it — and the panel is appended to `<body>`, so "past it"
+/// is a whole page away from its gear. A
 /// null `relatedTarget` (window blur) must NOT dismiss, or switching apps drops the menu.
 /// The needles are each popover's OWN dismissal test, not the bare word `focusout`: three
 /// other enhancer fragments already listen for it, so `CODE_ENHANCE_JS.contains("focusout")`
 /// passed with this fix deleted (caught by mutation, not by the green suite).
 #[test]
 fn a_light_dismiss_popover_closes_when_focus_tabs_out() {
-    for (js, listener, body, what) in [
-        (
-            CODE_ENHANCE_JS,
-            "panel.addEventListener('focusout'",
-            "to.closest('[data-tali-settings]')",
-            "the reader settings menu",
-        ),
-        (
-            super::deck::DECK_JS,
-            "menu.addEventListener('focusout'",
-            "to === deck.menuBtn",
-            "the deck control menu",
-        ),
-    ] {
-        // Element-scoped, so it cannot be satisfied by another fragment's focusout listener,
-        // and BOTH halves are pinned: renaming the event alone left a body-only needle passing.
-        assert!(
-            js.contains(listener),
-            "{what} must listen for focus leaving it, not only Esc + click-away"
-        );
-        assert!(
-            js.contains(body),
-            "{what}'s dismissal must exempt its own launcher"
-        );
-        // A null relatedTarget is focus leaving the document (window blur), never a dismissal.
-        assert!(
-            js.contains("if (!to ||"),
-            "{what} must treat a null relatedTarget as \"not a dismissal\""
-        );
-    }
+    let (js, what) = (CODE_ENHANCE_JS, "the reader settings menu");
+    // Element-scoped, so it cannot be satisfied by another fragment's focusout listener,
+    // and BOTH halves are pinned: renaming the event alone left a body-only needle passing.
+    assert!(
+        js.contains("panel.addEventListener('focusout'"),
+        "{what} must listen for focus leaving it, not only Esc + click-away"
+    );
+    assert!(
+        js.contains("to.closest('[data-tali-settings]')"),
+        "{what}'s dismissal must exempt its own launcher"
+    );
+    // A null relatedTarget is focus leaving the document (window blur), never a dismissal.
+    assert!(
+        js.contains("if (!to ||"),
+        "{what} must treat a null relatedTarget as \"not a dismissal\""
+    );
 }
 
 #[test]
@@ -6264,20 +5058,6 @@ fn hidden_title_block_leaves_body_headings_alone() {
         "got: {}",
         doc.blocks[0].html
     );
-}
-
-#[test]
-fn deck_headings_are_not_demoted() {
-    // A deck (Reveal) builds its own title slide and uses h1/h2 as slide breaks; demotion
-    // must never touch it. `## Slide` stays <h2> (the slide-open level), `### Point` <h3>.
-    let doc = render_document("---\ntitle: T\nformat: deck\n---\n\n## Slide\n\n### Point\n");
-    let joined = doc
-        .blocks
-        .iter()
-        .map(|b| b.html.as_str())
-        .collect::<String>();
-    assert!(joined.contains("<h2 "), "slide heading stays h2:\n{joined}");
-    assert!(joined.contains("<h3 "), "sub-heading stays h3:\n{joined}");
 }
 
 #[test]
@@ -6528,44 +5308,6 @@ fn media_block_slices_a_balanced_block_and_reports_a_missing_query() {
 }
 
 #[test]
-fn deck_menu_drops_keyboard_affordances_on_a_touch_device() {
-    // MOB-1: `buildMenu()` appended a 125px ten-shortcut legend + per-tool hint badges
-    // unconditionally, so a phone reader got a keyboard manual taking a third of the menu.
-    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
-        .expect("deck.css has no input-capability query");
-    assert!(
-        block.contains(".tali-menu-keys"),
-        "the keyboard legend is not gated on capability:\n{block}"
-    );
-    assert!(
-        block.contains(".tali-keys-head"),
-        "the legend's own 'Keyboard' heading is not gated, so it survives alone:\n{block}"
-    );
-    assert!(
-        block.contains(".tali-menu-hint"),
-        "the per-tool key hint badges (O / S / F) are not gated:\n{block}"
-    );
-    // The heading must actually carry the class the CSS gates, or the rule targets nothing.
-    assert!(
-        super::deck::DECK_JS.contains(r#"class="tali-menu-head tali-keys-head">Keyboard<"#),
-        "deck.js does not tag the Keyboard head with the class deck.css gates"
-    );
-}
-
-#[test]
-fn deck_menu_hides_speaker_view_by_capability_not_by_layout_mode() {
-    // MOB-2: the gate was `html.tali-feed .tali-menu-item[data-action="speaker"]`, and feed
-    // mode is chosen by ORIENTATION — so rotating a phone to landscape handed back a
-    // presenter tool that opens a second window, which is a dead end on a phone.
-    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
-        .expect("deck.css has no input-capability query");
-    assert!(
-        block.contains(r#"[data-action="speaker"]"#),
-        "Speaker view is still gated only on layout mode, so a rotation restores it:\n{block}"
-    );
-}
-
-#[test]
 fn search_kbd_badge_is_hidden_on_touch_at_any_width() {
     // MOB-3: `.tali-search-kbd` was hidden only under `max-width: 40rem`, and the rule's own
     // comment states the intent as CAPABILITY ("meaningless on a touch phone"). 40rem misses
@@ -6636,88 +5378,6 @@ fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
         gate > zero_copy,
         "the capability block is above an `opacity: 0` of equal specificity, so the cascade \
          silently discards it (gate at {gate}, .tali-copy at {zero_copy})"
-    );
-}
-
-#[test]
-fn deck_copy_button_is_reachable_on_touch() {
-    // 2026-07-27 deck x touch round, DT-1: measured `opacity: 0` at 390x844 with
-    // `hover: none` + `pointer: coarse`, on the BUILT artifact as well as in preview — so
-    // copy-code was invisible on every deck for every touch reader. The deck's only reveals
-    // are `pre:hover` (a pointer a phone does not have) and `:focus-visible` (a keyboard).
-    //
-    // MOB-4 fixed the PAGE surface and could not reach this one: base.css's override is
-    // `.tali-copy` at (0,1,0), the deck declares `.tali-deck .tali-copy` at (0,2,0), and a
-    // media query adds NO specificity — so the deck's `opacity: 0` wins wherever it sits and
-    // no reordering of base.css would have helped. The test above asserts base.css's order;
-    // it is structurally blind to a higher-specificity override in another file, which is
-    // exactly how this shipped green.
-    let css = super::deck::DECK_CSS;
-    let zero = css
-        .find(".tali-deck .tali-copy {")
-        .expect("no `.tali-deck .tali-copy` declaration");
-    let reveal = css
-        .find(".tali-deck .tali-copy { opacity: 1;")
-        .expect("copy-code is still hover-only on a deck, so it is invisible on touch");
-    // Order, not just presence: this override only MATCHES the specificity it overrides
-    // (0,2,0 both), so above the `opacity: 0` it would lose silently — MOB-4's own trap, one
-    // file over. The deck's other capability block sits above that declaration.
-    assert!(
-        reveal > zero,
-        "the touch reveal is ABOVE the `opacity: 0` it must beat, where an equal-specificity \
-         rule is discarded by the cascade (reveal at {reveal}, opacity: 0 at {zero})"
-    );
-    // …and it must be gated on capability, not unconditional: a mouse deck keeps the
-    // hover-reveal so the chip stops cluttering every code panel.
-    let gate = css[..reveal]
-        .rfind("@media (hover: none) and (pointer: coarse)")
-        .expect("the touch reveal is not inside an input-capability query");
-    let block = media_block(&css[gate..], "(hover: none) and (pointer: coarse)")
-        .expect("unbalanced capability block");
-    assert!(
-        block.contains(".tali-deck .tali-copy { opacity: 1;"),
-        "the reveal is not inside the capability block that precedes it:\n{block}"
-    );
-    // The tap target grows by a centred overlay, because a 44px chip would blanket a short
-    // code block. 24px is the AA floor for an in-content affordance; the button itself
-    // measured 20.5x19.1, which fails it.
-    assert!(
-        block.contains(".tali-deck .tali-copy::after"),
-        "no tap-target overlay: the visible chip measured 20.5x19.1, under the 24px AA \
-         floor:\n{block}"
-    );
-}
-
-#[test]
-fn deck_touch_targets_meet_the_floor_the_tree_adopted() {
-    // 2026-07-27 deck x touch round, DT-2. The deck's capability block only ever HID things
-    // (key hints, Speaker); every control kept the size a mouse wants. Measured on a coarse
-    // pointer: 34x34 for prev/next/menu 6px apart, 30.6 for a jump-list row, 30.9 for a theme
-    // option, 30x30 for the share close — all clearing the 24px AA floor, all missing the
-    // 44px the tree adopted for chrome on 2026-07-26 (`.tali-book-drawer-close`, site.css).
-    //
-    // `min-*` rather than `width`/`height` is load-bearing: `.tali-ctl` and `.tali-share-close`
-    // carry explicit `width`/`height`, and `min-width` beats them by definition of the used
-    // value, so this survives regardless of where the block sits relative to them.
-    let block = media_block(super::deck::DECK_CSS, "(hover: none) and (pointer: coarse)")
-        .expect("deck.css has no input-capability query");
-    for sel in [
-        ".tali-ctl",
-        ".tali-menu-item",
-        ".tali-menu-slide",
-        ".tali-theme-opt",
-        ".tali-share-close",
-        ".tali-share-copy",
-    ] {
-        assert!(
-            block.contains(sel),
-            "{sel} is still sized for a mouse on a touch device:\n{block}"
-        );
-    }
-    assert!(
-        block.matches("min-height: 44px").count() >= 3,
-        "the capability block names the controls but does not raise them to the adopted \
-         44px floor:\n{block}"
     );
 }
 

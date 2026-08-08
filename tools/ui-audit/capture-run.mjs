@@ -17,7 +17,7 @@
 //                        [--shard i/N] [--merge] [--no-build] [--no-cache]
 //
 // --only accepts a glob/substring matched against unit slug or source, e.g.
-//   --only 'corpus/deck.tmd'      one standalone
+//   --only 'corpus/descent'       one standalone
 //   --only 'demo-book'            one site project
 //   --only 'refs__*'              all refs standalones
 // Pass --only multiple times to select several units.

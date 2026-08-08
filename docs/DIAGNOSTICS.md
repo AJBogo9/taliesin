@@ -162,14 +162,6 @@ A `:::` fenced div names a real feature (a `.input` reactive control, a `.callou
 
 To fix: Put content between the `:::` fences (the callout body, the tabset's `##` headings, the theorem statement), or, for a reactive input, use the shortcode form `{{< input name="k" … >}}` instead of a div.
 
-## TAL-FM-FORMAT
-
-**an unknown `format:` value**
-
-The `format:` field names an output Taliesin does not produce. Taliesin renders HTML only (`html`, `deck`); format names from other tools (`revealjs`, `pdf`, `docx`) have no meaning here.
-
-To fix: Use a format Taliesin supports, or drop the field to accept the default. HTML is the only output target; a slide deck is `format: deck`.
-
 ## TAL-FM-KEY
 
 **an unknown key in front matter**
@@ -336,13 +328,13 @@ To fix: Write the section, or delete the heading. If it was meant to group other
 
 A `{{< … >}}` invocation names something the tool does not know: an unknown shortcode name, an unknown bare flag or `key=` argument, or a built-in with no source path. Nothing is lost — an unknown name stays on the page as literal text, and a known shortcode still renders with the options it did understand — which is exactly why this used to be silent: the page looked fine and the option you asked for simply never happened.
 
-To fix: Fix the spelling inside the braces; the message names the nearest known spelling when there is one. The built-ins are `{{< include file.tmd >}}`, `{{< embed deck.tmd [title=…] >}}`, `{{< video clip.mp4 [controls] [audio] [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A shortcode written as an *example* belongs in a code fence or backticks, which are never expanded and never linted.
+To fix: Fix the spelling inside the braces; the message names the nearest known spelling when there is one. The built-ins are `{{< include file.tmd >}}`, `{{< video clip.mp4 [controls] [audio] [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A shortcode written as an *example* belongs in a code fence or backticks, which are never expanded and never linted.
 
 ## TAL-STEP-LINES
 
 **a `.step lines=` uses a step separator**
 
-The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. The `|` is the STEP separator of a deck/listing `code-line-numbers="1|2-3"` spec; a `.step` is already one step, so its own `lines=` is parsed as comma-separated ranges only. The `|` matches neither a range nor a number, so the step silently focuses zero lines.
+The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. The `|` is the STEP separator of a `code-line-numbers="1|2-3"` spec; a `.step` is already one step, so its own `lines=` is parsed as comma-separated ranges only. The `|` matches neither a range nor a number, so the step silently focuses zero lines.
 
 To fix: Use comma-separated ranges within the step (`lines="3-5,8"`), and express multiple reveal states as separate `.step` blocks — one per pipe group.
 

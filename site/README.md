@@ -4,9 +4,9 @@ The Taliesin landing site, **built by Taliesin itself** with **nothing but Markd
 + YAML — no custom CSS**. It's the framework's own dogfood test: if this looks good
 on the defaults, the framework is doing its job.
 
-Pages: `index.tmd` (landing), `features.tmd`, `formats.tmd`, plus `demo.tmd` (the
-showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
-`_site.yml` (native flat schema). There is intentionally no stylesheet.
+Pages: `index.tmd` (landing), `features.tmd`, `formats.tmd`, `showcase.tmd` and
+`gallery.tmd`. Config is `_site.yml` (native flat schema). There is intentionally no
+stylesheet.
 
 > Placeholder to update before going live: the GitHub links in `_site.yml`
 > (currently `github.com/AJBogo9/taliesin`). `url:` is now the registered
@@ -20,7 +20,8 @@ showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 - **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
 - **Screencasts** — `{{< video light.mp4 dark=dark.mp4 caption="…" >}}` (built-in
   shortcode; the clip matching the page theme plays, swapping live on toggle).
-- **Live deck** — `{{< embed demo.tmd >}}` (built-in shortcode).
+- **Live graphics** — `{js}` cells (the spinnable surface on the landing page, the
+  reactive plots and the Lorenz attractor on `showcase.tmd`).
 - **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.
 - **Closing CTA** — a `::: {.hero}` fenced div.
 
@@ -78,9 +79,3 @@ done
 cp out/live-edit-light.mp4 out/live-edit-dark.mp4 \
    out/live-code-light.mp4 out/live-code-dark.mp4 ../../site/assets/
 ```
-
-`demo.tmd` is a copy of `docs/guide/demo.tmd`; re-copy it if the showcase deck changes
-(`cp ../docs/guide/demo.tmd demo.tmd`). The stale `docs/demo.tmd` path this line used to
-name does not exist, which is how the two copies drifted: the guide's copy was corrected
-and the marketing copy went on advertising a PDF export, a "reader" mode and a pen tool
-the engine has never had. `crates/core/tests/stale_docs.rs` now gates both copies.

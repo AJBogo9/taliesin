@@ -6,8 +6,8 @@ description: "The user guide: how to write, preview, execute and publish a .tmd 
 # Why Taliesin {.unnumbered}
 
 **A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
-posts, slide decks, books, and whole websites) with executable code blocks
-and an editing loop that updates the instant you save.**
+posts, papers, books, and whole websites) with executable code blocks and an
+editing loop that updates the instant you save.**
 
 Taliesin is built around one idea: writing technical content should feel as
 immediate as editing code. You save the file, and only the block you changed
@@ -30,12 +30,13 @@ This guide is itself a multi-page **book** built with Taliesin: the Chapters dra
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](../internals/), covers how it works inside.
 
-## The 60-second tour {.unnumbered}
+## The 60-second version {.unnumbered}
 
-The fastest way in: a short slide deck, embedded right here (it is itself a Taliesin
-deck: step through it in place, or open its menu for fullscreen).
-
-{{< embed tour.tmd title="Taliesin: a 60-second tour" >}}
+Write a `.tmd` file, run `taliesin preview` on it, and leave the browser open beside
+your editor. Every save re-renders only the block you touched, so a figure a `{python}`
+cell drew stays on screen while you edit the paragraph above it, and Ctrl-clicking
+(Cmd-clicking on Mac) any block in the preview opens its source line in your editor.
+That loop is the whole product; everything below is what you can put inside it.
 
 ## Coming from Jupyter?
 
@@ -72,13 +73,13 @@ Open `http://127.0.0.1:4321`, edit, and watch a single block update in place wit
 your scroll preserved. Add `--host` to expose it on your LAN with a QR code and
 read the *live* preview on your phone.
 
-One block model drives every output, a page, a slide deck, or a book:
+One block model drives every output, a standalone page, a site page, or a book chapter:
 
 ```{mermaid}
 flowchart LR
   Q[".tmd"] --> BM["block model"]
   BM --> H["HTML page"]
-  BM --> R["slide deck"]
+  BM --> S["website + nav"]
   BM --> K["book + TOC"]
 ```
 
@@ -97,5 +98,5 @@ predictable.
 The rest of this guide tours what you can put on a page: [the live preview
 loop](using/preview.tmd), [executable content](using/code.tmd) (Python/R cells,
 `{js}` cells, 3D graphics), [rich writing](using/writing.tmd) (math, diagrams,
-figures, citations), and [slides, books and sites](using/formats.tmd). For how
+figures, citations), and [books and sites](using/formats.tmd). For how
 Taliesin works inside, read the companion [Internals](../internals/) book.

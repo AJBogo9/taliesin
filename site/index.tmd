@@ -1,11 +1,11 @@
 ---
 title: "Taliesin"
-description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 page-layout: full
 hero:
   eyebrow: "Markdown in · live HTML out"
   headline: "Technical writing at the speed of code"
-  lead: "A focused dev server that turns one .tmd file into a live post, slide deck, book, or website, updating the instant you save."
+  lead: "A focused dev server that turns one .tmd file into a live post, book, or website, updating the instant you save."
   actions:
     - { text: "Read the docs", href: "docs/guide/", primary: true }
     - { text: "Explore the features", href: "features.tmd" }
@@ -91,14 +91,6 @@ cells and live interactive graphics.
 :::
 
 ::: {.feature}
-### Slide decks
-A native slide engine: fragments, presenter view, an overview map, code stepping,
-and code that actually runs on the slide.
-
-[Open the live deck →](formats.tmd#slide-decks)
-:::
-
-::: {.feature}
 ### Multi-chapter books
 A sidebar, numbered chapters, cross-chapter references, and full-text search. These
 very docs are a Taliesin book.
@@ -115,13 +107,6 @@ Taliesin website.
 :::
 :::
 
-## A real slide deck, embedded
-
-This is the running deck engine, not a screenshot. Step through it in place, open its
-menu for fullscreen and the slide list, or open it in its own tab.
-
-{{< embed demo.tmd title="The Taliesin deck engine" >}}
-
 ## Edit the code. The output re-runs in place.
 
 A `{python}` or `{r}` cell runs against a warm kernel. Change a parameter and only
@@ -132,15 +117,15 @@ moves, and the kernel never cold-starts.
 
 ## Built the way you would build yours
 
-There is nothing here a screenshot could fake: **this landing page, its
-[documentation book](docs/guide/), and the slide deck above are all built and served by
-Taliesin**, from plain `.tmd` files in one repository. If it reads well here, the
-framework is doing its job.
+There is nothing here a screenshot could fake: **this landing page, the surface you
+spun at the top of it, and the [documentation book](docs/guide/) it links to are all
+built and served by Taliesin**, from plain `.tmd` files in one repository. If it reads
+well here, the framework is doing its job.
 
 ::: {.hero}
 ## Write your next thing in plain text
 
-Author in `.tmd`, preview it live, and ship self-contained HTML: a post, a deck, a
+Author in `.tmd`, preview it live, and ship self-contained HTML: a post, a paper, a
 book, or a site.
 
 [Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/guide/){.btn .btn-lg}

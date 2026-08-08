@@ -255,7 +255,7 @@ COMMANDS:
 Author
   init   [dir]               scaffold a starter site you can preview right away
                              (writes _site.yml + index.tmd; default: current dir)
-  new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--json]
+  new <post|page|paper> <slug> [--dir <root>] [--draft] [--json]
                              scaffold one document, correct on its first save
 
 Preview & build
@@ -448,11 +448,11 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
         "new" => {
-            "taliesin new [post|page|deck|paper] [slug] [--dir <root>] [--draft] [--json] [-y]\n\
+            "taliesin new [post|page|paper] [slug] [--dir <root>] [--draft] [--json] [-y]\n\
              \n\
              Scaffold one document that is correct on its first save: it renders, and\n\
              `taliesin check` passes on it with no diagnostics. A post lands in\n\
-             posts/<slug>/index.tmd and is dated today; a page and a deck land in\n\
+             posts/<slug>/index.tmd and is dated today; a page lands in\n\
              <slug>.tmd; a paper lands in posts/<slug>/ with a ready-to-cite\n\
              references.bib beside it. Refuses to overwrite an existing file.\n\
              \n\

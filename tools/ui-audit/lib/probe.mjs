@@ -28,32 +28,7 @@ async function safe(feature, assertion, fn) {
   }
 }
 
-// 1. Deck navigation. A deck opens stepped by default now; ?tali=present just pins
-// that (over a future portrait slide-feed). ArrowRight should advance the active leaf.
-export async function probeDeck(page) {
-  const F = 'deck-nav';
-  return safe(F, 'ArrowRight advances the active slide', async () => {
-    await page.waitForFunction(
-      () => window.TaliesinDeck && window.TaliesinDeck.isReady?.(),
-      { timeout: 8000 },
-    );
-    const before = await page.evaluate(() =>
-      JSON.stringify(window.TaliesinDeck.getIndices()),
-    );
-    await page.keyboard.press('ArrowRight');
-    await page.waitForFunction(
-      (b) => JSON.stringify(window.TaliesinDeck.getIndices()) !== b,
-      { timeout: 4000 },
-      before,
-    );
-    const after = await page.evaluate(() =>
-      JSON.stringify(window.TaliesinDeck.getIndices()),
-    );
-    return ok(F, 'ArrowRight advances the active slide', { before, after });
-  });
-}
-
-// 2. Cmd-K search. Open, type a query, expect result rows.
+// 1. Cmd-K search. Open, type a query, expect result rows.
 export async function probeSearch(page, query = 'the') {
   const F = 'search';
   return safe(F, 'query yields result rows', async () => {

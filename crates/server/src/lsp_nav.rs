@@ -282,7 +282,7 @@ pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Targ
         i += 1;
     }
 
-    // Include / embed shortcode path.
+    // Include shortcode path.
     if let Some(t) = classify_include(&lt, character) {
         return t;
     }
@@ -324,7 +324,7 @@ fn classify_include(lt: &[char], character: usize) -> Option<Target> {
                 kw.push(lt[j]);
                 j += 1;
             }
-            if kw == "include" || kw == "embed" {
+            if kw == "include" {
                 let ws_start = j;
                 while j < n && (lt[j] == ' ' || lt[j] == '\t') {
                     j += 1;
@@ -1445,17 +1445,14 @@ mod tests {
         );
     }
 
-    /// `{{< embed >}}` is navigable and every *other* shortcode is not.
-    ///
-    /// The include scan accepts exactly two keywords, and only `include` was ever typed here, so
-    /// the `embed` arm was free to invert: dropping `embed` costs go-to-definition on an embedded
-    /// deck, and accepting everything else makes the first argument of `{{< video … >}}` (or any
-    /// future shortcode) look like a document to open.
+    /// `{{< include >}}` is navigable and every *other* shortcode is not: accepting anything
+    /// else makes the first argument of `{{< video … >}}` (or any future shortcode) look like
+    /// a document to open.
     #[test]
-    fn only_include_and_embed_shortcodes_are_navigable() {
-        match classify_target("{{< embed deck.tmd >}}", 0, 12) {
-            Target::Include { path, .. } => assert_eq!(path, "deck.tmd"),
-            other => panic!("expected `embed` to be a navigable include, got {other:?}"),
+    fn only_the_include_shortcode_is_navigable() {
+        match classify_target("{{< include part.tmd >}}", 0, 14) {
+            Target::Include { path, .. } => assert_eq!(path, "part.tmd"),
+            other => panic!("expected `include` to be a navigable include, got {other:?}"),
         }
         assert_eq!(
             classify_target("{{< video clip.mp4 >}}", 0, 12),

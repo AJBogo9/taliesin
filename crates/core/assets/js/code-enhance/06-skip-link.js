@@ -2,10 +2,9 @@
 // screen-reader users past the chrome to the content. Build + site pages now emit the
 // link + a focusable `<main id="tali-main" tabindex="-1">` SERVER-SIDE (page.rs), so it
 // works with JS off; this only enhances. The live `#tali-root` mount has no server `<main>`,
-// so the pair is synthesized there. Read-only, deck-skipped, idempotent.
+// so the pair is synthesized there. Read-only, idempotent.
 function taliInitSkipLink() {
   if (window.__taliSkipLink) return;
-  if (document.querySelector('.tali-deck')) return;
   // `const` (not `var`) so the null-narrowing below survives into the deferred
   // focus closure; the element is mutated in place, never reassigned.
   const main = /** @type {HTMLElement | null} */ (

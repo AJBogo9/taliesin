@@ -208,66 +208,6 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
     }
 }
 
-/// The 2026-07-12 deck audit (A1/A2) deleted reader/scroll mode, drawing mode and
-/// PDF-export mode, and `render::tests::deck_opens_as_a_deck_without_reader_or_pdf_export`
-/// pins the machinery gone at the bundle level. Nothing pinned the *prose*: the two
-/// marketing pages went on selling PDF export, and `samples/README.md` listed reader mode
-/// and drawing on top of it. That audit's own findings doc even claims the stale claims
-/// "were all stale and are now corrected" — the sweep missed all three files. fmt, clippy,
-/// the suite and `check` every one of them pass over a false sentence, so gate the prose
-/// against the machinery instead of against a memory of it.
-#[test]
-fn shipped_prose_does_not_advertise_deleted_deck_modes() {
-    let deck_js = read("crates/core/assets/js/deck.js");
-    for machinery in ["enterPrint", "enterScroll", "drawMode"] {
-        assert!(
-            !deck_js.contains(machinery),
-            "{machinery} is back in deck.js — revive the prose deliberately rather than \
-             deleting this test"
-        );
-    }
-
-    // These sell the deck engine and have no other reason to name a deleted mode, so a
-    // bare mention is the defect. (`docs/guide/using/formats.tmd` deliberately says there
-    // is *no* PDF export, which is why it is not on this list.)
-    //
-    // `demo.tmd` is on the list because the first version of this gate omitted it and the
-    // omission cost exactly what the gate exists to prevent: `site/demo.tmd` is embedded
-    // INTO `site/index.tmd` and `site/formats.tmd` via `{{< embed >}}`, so checking only
-    // the two embedding pages proves nothing about what the landing page renders. It went
-    // on advertising a one-slide-per-page PDF, a "scrollable reader", and a <kbd>D</kbd>
-    // pen tool that never existed in any version of the engine.
-    //
-    // The needles are the *shapes that actually shipped*, not the vocabulary the deleted
-    // features were named after: the stale prose said "one-slide-per-page PDF" and
-    // "scrollable **reader**", neither of which contains "PDF export" or "reader mode".
-    for rel in [
-        "site/index.tmd",
-        "site/formats.tmd",
-        "site/demo.tmd",
-        "docs/guide/demo.tmd",
-        "samples/README.md",
-    ] {
-        let text = read(rel);
-        for claim in [
-            "PDF export",
-            "PDF-export",
-            "per-page PDF",
-            "reader mode",
-            "Reader mode",
-            "scrollable **reader**",
-            "a **pen**",
-            "to annotate",
-        ] {
-            assert!(
-                !text.contains(claim),
-                "{rel} advertises {claim:?}, which the deck engine does not do \
-                 (reader/PDF modes were deleted 2026-07-12; the pen never existed)"
-            );
-        }
-    }
-}
-
 /// Every file in the repo, plus every suffix a doc might reasonably name it by.
 ///
 /// A doc writes `serve/mod.rs`, `server/exec.rs` or `tests/regression.rs` — a suffix of
@@ -411,22 +351,11 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
         );
     }
 
-    // A doc may name a dead path when the dead path IS the subject of the sentence.
-    // Every exemption must still be present where it claims to be — a rewritten sentence
-    // must delete its exemption rather than leave it shadowing a future defect.
-    const DEAD_PATH_IS_THE_SUBJECT: &[(&str, &str, &str)] = &[(
-        "site/README.md",
-        "docs/demo.tmd",
-        "the sentence explains that this path is stale and names it as the reason the \
-         guide's demo and the marketing copy drifted apart",
-    )];
-    for (rel, tok, _why) in DEAD_PATH_IS_THE_SUBJECT {
-        assert!(
-            read(rel).contains(&format!("`{tok}`")),
-            "{rel} no longer mentions `{tok}`: delete this exemption instead of leaving \
-             it to hide the next stale path"
-        );
-    }
+    // A doc may name a dead path when the dead path IS the subject of the sentence. There
+    // is no such exemption today: the one that existed (`site/README.md` explaining why the
+    // guide's demo deck and the marketing copy had drifted) went with the deck engine on
+    // 2026-08-08. An exemption must be deleted with the sentence that earned it, never left
+    // behind to shadow the next stale path.
 
     let mut checked = 0usize;
     let mut stale = Vec::new();
@@ -434,12 +363,6 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
         for tok in backticked(&text) {
             let tok = without_location_suffix(tok.trim_end_matches('/'));
             if !is_repo_path_claim(tok) {
-                continue;
-            }
-            if DEAD_PATH_IS_THE_SUBJECT
-                .iter()
-                .any(|(f, t, _)| *f == rel && *t == tok)
-            {
                 continue;
             }
             checked += 1;

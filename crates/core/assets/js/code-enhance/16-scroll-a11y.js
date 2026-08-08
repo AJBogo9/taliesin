@@ -14,7 +14,6 @@
   }
   /** @param {Element} el */
   function sync(el) {
-    // A scroll container inside a deck manages its own focus.
     var overflows = el.scrollWidth - el.clientWidth > 1;
     var tagged = el.hasAttribute('data-scroll-a11y');
     if (overflows && !tagged) {

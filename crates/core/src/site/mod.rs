@@ -20,17 +20,6 @@ use std::path::{Path, PathBuf};
 
 use crate::render::{self, Block, SiteCtx, Warning, block_heading_level, escape_attr as esc};
 
-/// A deck referenced by a `{{< embed >}}` on some page: a standalone document
-/// (not a chapter/page) that the build renders to its own self-contained `.html`
-/// and the preview serves live, so the embedding iframe resolves.
-#[derive(Debug, Clone)]
-pub struct DeckRef {
-    /// Absolute path to the deck's `.tmd` source.
-    pub input: PathBuf,
-    /// Output URL relative to the site root (`demo.tmd` → `demo.html`).
-    pub url: String,
-}
-
 /// Whether discovery keeps `draft: true` pages (`Include`, the preview view) or drops
 /// them from the page set (`Exclude`, the published view: build/publish/check/map).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,10 +141,6 @@ pub struct Site {
     /// page's JSON entries)` in page order — kept so an edited page's entries can be
     /// re-extracted without re-rendering the whole site.
     search_sections: Vec<(String, String)>,
-    /// Decks referenced by `{{< embed >}}` shortcodes across the pages (deduped).
-    /// These aren't pages/chapters; the build renders each to its own `.html` and
-    /// the preview serves them live so the embedding iframes resolve.
-    pub decks: Vec<DeckRef>,
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
@@ -221,7 +206,7 @@ mod discovery;
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
 pub use discovery::collect_pages;
-use discovery::{discover_decks, website_pages};
+use discovery::website_pages;
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
@@ -357,18 +342,13 @@ impl Site {
     /// `_site.yml`. Scoping to the one file (rather than discovering the whole parent
     /// directory) is the point: previewing a scratch note must not pull thirty unrelated
     /// siblings into the nav, and must not parse them to find that out.
-    ///
-    /// A file that declares `format: deck` becomes a [`DeckRef`] rather than a page, so it
-    /// is served as a deck. Without that it would be a *loose* deck — flattened to a
-    /// chrome-wrapped article, with a warning telling the author to embed it — which is the
-    /// right answer inside a real site and the wrong one for the file you asked to see.
     pub fn discover_single(file: &Path) -> Site {
         let root = file.parent().unwrap_or_else(|| Path::new("."));
         Self::discover_scoped(root, DraftMode::Include, Some(file))
     }
 
     /// [`discover_with`](Self::discover_with), optionally narrowed to one document
-    /// (see [`discover_single`](Self::discover_single)). The narrowing happens before decks,
+    /// (see [`discover_single`](Self::discover_single)). The narrowing happens before
     /// cross-references and the search index are computed, so every downstream artifact is
     /// built from the scoped page set rather than filtered afterwards.
     fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
@@ -389,75 +369,11 @@ impl Site {
             )
         };
 
-        // Decks referenced by `{{< embed >}}`. A website discovers *every* `.tmd` as a
-        // page, so a deck that's only there to be embedded would otherwise also become
-        // a navigable, chrome-wrapped page (and show up in nav/search). Drop those from
-        // the page set: an embedded deck is served as a standalone deck, not a page.
-        // Scoped to one document: drop every other page BEFORE decks/xrefs/search are
-        // computed, so they are built from the one page and not filtered after the fact.
+        // Scoped to one document: drop every other page BEFORE xrefs/search are computed,
+        // so they are built from the one page and not filtered after the fact.
         if let Some(only) = only {
             let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
             pages.retain(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want);
-        }
-
-        let mut decks = discover_decks(root, &pages, &mut warnings);
-        pages.retain(|p| !decks.iter().any(|d| d.url == p.url));
-
-        // The scoped document is itself a deck: serve it as one. In a real site a deck is
-        // reached through the page that embeds it, so `discover_decks` finds it there; a
-        // deck previewed on its own is embedded by nothing and would otherwise flatten.
-        if only.is_some()
-            && let Some(p) = pages.first()
-            && std::fs::read_to_string(&p.input).is_ok_and(|s| render::is_reveal_doc(&s))
-        {
-            decks.push(DeckRef {
-                input: p.input.clone(),
-                url: p.url.clone(),
-            });
-            pages.clear();
-        }
-
-        // An `{{< embed >}}` target is a COMPONENT of the page that embeds it, not an
-        // independently published page: `discover_decks` resolves it straight off the
-        // filesystem, so a published page's deck ships whatever its own front matter says
-        // (it must, or that page's iframe 404s). `draft:` therefore cannot hold it back —
-        // so never count it as "not published" (it IS published), and say so, since the
-        // author probably meant to draft the embedding page.
-        for d in &decks {
-            let rel = d
-                .input
-                .strip_prefix(root)
-                .unwrap_or(&d.input)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if parse_front_matter(&d.input, &rel, &mut Vec::new()).draft {
-                warnings.push(format!(
-                    "{rel}: `draft: true` is ignored on an embedded deck: it ships with \
-                     the published page that embeds it. Mark the embedding page `draft:` \
-                     instead."
-                ));
-            }
-        }
-        excluded_drafts.retain(|rel| !decks.iter().any(|d| d.url == tmd_to_html(rel)));
-
-        // A loose deck: a `format: deck` page that survived the embed retain above, so it
-        // isn't referenced by `{{< embed >}}` anywhere. It would be flattened into a
-        // chrome-wrapped article (no slides, no deck JS) with no other signal — warn so the
-        // author embeds it or moves it out of the site.
-        //
-        // The message says `deck`, the value the author actually wrote, not `revealjs`
-        // (item 121): `is_reveal_format` accepts only `deck` / `*-deck`, so the old wording
-        // named a value the parser *rejects* — it told the reader to look for a string that
-        // cannot be in their file, and `revealjs` appears zero times in `docs/`.
-        for p in &pages {
-            if std::fs::read_to_string(&p.input).is_ok_and(|s| render::is_reveal_doc(&s)) {
-                warnings.push(format!(
-                    "{}: declares `format: deck` but is a loose page in the site, so it \
-                     will render as a flat article. Reference it with {{{{< embed {} >}}}} \
-                     from a page, or move it out of the site.",
-                    p.rel, p.rel
-                ));
-            }
         }
 
         // A `mounts:` prefix that collides with a real page URL: the mounted sub-site
@@ -529,7 +445,6 @@ impl Site {
             // cross-page `@fig-` before a single number had been harvested.
             search_index_json: String::new(),
             search_sections: Vec::new(),
-            decks,
             excluded_drafts,
             standalone,
         };
@@ -565,13 +480,6 @@ impl Site {
             Some(&self.render_defaults()),
         );
         self.search_index_json = search::assemble(&self.search_sections);
-    }
-
-    /// A deck referenced by an `{{< embed >}}`, looked up by its output URL (what a
-    /// browser requests). Used by the preview to render embedded decks on the fly.
-    pub fn deck(&self, url: &str) -> Option<&DeckRef> {
-        let needle = url.trim_start_matches('/');
-        self.decks.iter().find(|d| d.url == needle)
     }
 
     /// Whether this project is a book (`project: type: book`).
@@ -1001,16 +909,14 @@ impl Site {
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
                     // A target outside the page registry is only "broken" if nothing
-                    // on disk backs it: an `{{< embed >}}`-referenced deck (built +
-                    // served but kept out of nav/registry) and any source file that
-                    // exists under the root are legitimate targets.
+                    // on disk backs it: any source file that exists under the root is a
+                    // legitimate target.
                     // A target under a configured `mounts:` prefix resolves only when
                     // the mounted project is served (preview) or copied in (build) — it is
                     // not in this site's own page registry, so it is not "broken". (build
                     // separately warns these links are preview-only.) Matches the mount
                     // root (`docs`), its index (`docs/index.html`), and anything beneath it.
                     if under_mount(&self.config.mounts, &target_url)
-                        || self.decks.iter().any(|d| d.url == target_url)
                         || self.root.join(&target_url).is_file()
                         || html_to_tmd(&target_url)
                             .iter()
@@ -1987,45 +1893,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn draft_on_an_embedded_deck_is_not_reported_as_unpublished() {
-        // An `{{< embed >}}` target ships with the published page that embeds it (it must,
-        // or the iframe 404s), so `draft:` on it is ignored. The build must NOT then claim
-        // it was "not published" — that combination shipped the deck AND lied about it.
-        let root = write_site(
-            "draftdeck",
-            &[
-                ("_site.yml", "title: T\n"),
-                (
-                    "index.tmd",
-                    "---\ntitle: Home\n---\n\n{{< embed talk.tmd >}}\n",
-                ),
-                (
-                    "talk.tmd",
-                    "---\ntitle: Talk\nformat: revealjs\ndraft: true\n---\n\n## Slide\n",
-                ),
-            ],
-        );
-        let site = Site::discover(&root);
-        assert!(
-            site.decks.iter().any(|d| d.url == "talk.html"),
-            "the embedded deck is still built (the embedding page needs it)"
-        );
-        assert!(
-            site.excluded_drafts.is_empty(),
-            "a deck that IS published must never be reported as not published: {:?}",
-            site.excluded_drafts
-        );
-        assert!(
-            site.warnings
-                .iter()
-                .any(|w| w.contains("talk.tmd") && w.contains("ignored on an embedded deck")),
-            "the author is told `draft:` is ignored there: {:?}",
-            site.warnings
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
     fn listing_card_shows_draft_badge_only_for_drafts() {
         let root = write_site(
             "cardbadge",
@@ -2387,61 +2254,6 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// A deck previewed on its own is a DECK. Inside a site a deck is reached through the
-    /// page that `{{< embed >}}`s it, so a deck with no embedder is "loose" and flattens to
-    /// an article — the right answer for a stray file in a real site, the wrong one for the
-    /// file the author asked to look at.
-    #[test]
-    fn discover_single_serves_a_standalone_deck_as_a_deck() {
-        let root = write_site(
-            "singledeck",
-            &[(
-                "talk.tmd",
-                "---\ntitle: Talk\nformat: deck\n---\n\n# One\n\n# Two\n",
-            )],
-        );
-        let site = Site::discover_single(&root.join("talk.tmd"));
-        assert!(site.pages.is_empty(), "not served as a flat page");
-        assert!(
-            site.deck("talk.html").is_some(),
-            "served as a deck: {:?}",
-            site.decks
-        );
-        assert!(
-            !site.warnings.iter().any(|w| w.contains("loose page")),
-            "no loose-deck warning for a deck previewed deliberately: {:?}",
-            site.warnings
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// Scoping happens before decks are discovered, so the one page still brings its own
-    /// embedded deck with it (that deck is a component of the page, not a sibling).
-    #[test]
-    fn discover_single_keeps_the_pages_own_embedded_deck() {
-        let root = write_site(
-            "singleembed",
-            &[
-                (
-                    "post.tmd",
-                    "---\ntitle: Post\n---\n\n{{< embed slides.tmd >}}\n",
-                ),
-                (
-                    "slides.tmd",
-                    "---\ntitle: Slides\nformat: deck\n---\n\n# A\n\n# B\n",
-                ),
-            ],
-        );
-        let site = Site::discover_single(&root.join("post.tmd"));
-        assert_eq!(site.pages.len(), 1, "one page");
-        assert!(
-            site.deck("slides.html").is_some(),
-            "its embedded deck is still served: {:?}",
-            site.decks
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
     /// A single-document project has exactly one page and no `index.tmd`, so the server
     /// must answer the bare preview URL with that document. This pins the fact the routing
     /// depends on: the one page's URL is NOT `index.html`, so a root request that falls
@@ -2501,8 +2313,6 @@ pub(crate) mod tests {
             app_js: "_assets/app.c.js",
             mermaid_js: "_assets/mermaid.d.js",
             jslibs_js: "_assets/jslibs.e.js",
-            deck_css: "",
-            deck_js: "",
             font_preload: "",
         };
         let (html, _w) = site.render_page_doc_external(page, doc, ext);

@@ -44,13 +44,13 @@ media captions are the author's responsibility; Taliesin *lints* for them
 | 1.4.3 Contrast (Minimum) | Supports | Zero contrast violations in **both** themes, desktop and mobile |
 | 1.4.10 Reflow | Supports | No horizontal overflow at mobile widths (measured 2026-07-26) |
 | 1.4.11 Non-text Contrast | Supports | No violations |
-| 2.1.1 Keyboard | **Partially supports** | Deck navigation is keyboard-first and pinned by a test, but a full keyboard walkthrough of every surface has not been run |
+| 2.1.1 Keyboard | **Partially supports** | The reader controls and the Cmd-K palette are keyboard-first and pinned by tests, but a full keyboard walkthrough of every surface has not been run |
 | 2.4.2 Page Titled | Supports | Titles compose as `"{page} · {site}"`, page name first |
 | 2.4.4 Link Purpose | Supports | No violations; the static `validate_link_text_collisions` rule covers the ambiguous-link-text case |
-| 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted, **except on decks**, which are slide-structured rather than outline-structured |
+| 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted on every page |
 | 2.5.3 Label in Name | Supports | The search control's visible `⌘K` hint is `aria-hidden`, so it is not part of the accessible name |
 | 3.1.1 Language of Page | Supports | Page builders always set `lang`, honouring a front-matter `lang:` |
-| 4.1.2 Name, Role, Value | **Partially supports** | Clean on every audited page, but off-screen deck slides are `inert` and so were not reachable by the automated oracle |
+| 4.1.2 Name, Role, Value | **Supports** | Clean on every audited page |
 
 ## Not evaluated
 
@@ -64,7 +64,6 @@ each is an absence of evidence.
   (Focus Order) and 2.4.7 (Focus Visible) appear nowhere in the table.
 - **No standalone axe-core run.** Lighthouse runs a weighted subset, and that weighting
   has demonstrably hidden a real defect here before.
-- **Deck content beyond the first slide**, for the `inert` reason above.
 - **1.2.x (time-based media), 3.2.x and 3.3.x** were not assessed.
 - **The live preview was not audited** — only built output. The preview is a development
   surface, not a published one.

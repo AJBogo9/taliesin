@@ -18,10 +18,9 @@ function taliMermaidConfig() {
   var cs = getComputedStyle(document.documentElement);
   /** @param {string} n */
   var get = function (n) { return cs.getPropertyValue(n).trim(); };
-  // Dark is a page's `data-theme="dark"` OR a deck's own `html.tali-deck-dark` class
-  // (the deck flags dark that way via deck_theme_head, not with data-theme).
+  // Dark is a page's `data-theme="dark"`
   var el = document.documentElement;
-  var dark = el.getAttribute('data-theme') === 'dark' || el.classList.contains('tali-deck-dark');
+  var dark = el.getAttribute('data-theme') === 'dark';
   /** @type {Record<string, any>} */
   var cfg = {
     startOnLoad: false,

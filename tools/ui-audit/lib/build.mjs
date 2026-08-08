@@ -4,7 +4,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { EMBED_DECK_SOURCES } from './units.mjs';
 
 function* walkFiles(dir) {
   let entries;
@@ -81,7 +80,7 @@ export function enumeratePages(unit, outDir, _repoRoot) {
       format = unit.format || 'article';
     } else {
       sourceFile = `${unit.source}/${routeNoHtml}.tmd`;
-      format = EMBED_DECK_SOURCES.has(sourceFile) ? 'deck' : unit.kind;
+      format = unit.kind;
     }
 
     pages.push({

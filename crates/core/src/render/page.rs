@@ -5,35 +5,7 @@
 use super::*;
 
 pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    match doc.format {
-        // A deck assembles its own page (deck.js + native `.tali-deck`); `mode` still
-        // gates the enhancer scripts (e.g. inlining Mermaid offline for Build) so a
-        // built deck keeps the same offline contract as an HTML page. `--bare` on a
-        // deck is refused at the CLI.
-        DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title, mode, AssetMode::Inline),
-        DocFormat::Html => html_page_from_doc(doc, fallback_title, mode),
-    }
-}
-
-/// A deck built *inside* a multi-page `build <dir>`: links the shared, content-hashed
-/// `_assets/` files instead of inlining the deck framework into the page. The standalone
-/// `build <deck.tmd>` artifact keeps [`render_doc_to_page`]'s inline form — it has no
-/// `_assets/` beside it, and being one self-contained file is the point of it.
-///
-/// Before this existed a deck in a site build linked `_assets/` zero times, so a site whose
-/// only deck drew one mermaid diagram shipped that 3.5 MB library twice in one output tree
-/// (L2-1, 2026-07-26).
-pub fn render_deck_to_page_external(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    assets: ExternalAssets,
-) -> String {
-    deck::deck_page_from_doc(
-        doc,
-        fallback_title,
-        OutputMode::Build,
-        AssetMode::External(assets),
-    )
+    html_page_from_doc(doc, fallback_title, mode)
 }
 
 /// Render an already-built [`RenderedDoc`] into a standalone HTML page (no site
@@ -287,8 +259,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            // Never a deck: `page_from_doc` dispatches `DocFormat::Reveal` to
-            // `deck::deck_page_from_doc` before this assembler ever runs.
             let framework_scripts = code_scripts_for(p.body, p.mode);
             (style_block, katex_block, js_head_html, framework_scripts)
         }
@@ -831,8 +801,6 @@ mod tests {
                 app_js: "_assets/app.cccc.js",
                 mermaid_js: "_assets/mermaid.dddd.js",
                 jslibs_js: "_assets/jslibs.eeee.js",
-                deck_css: "",
-                deck_js: "",
                 font_preload: "",
             };
             assemble_html_page(&PageParts {
@@ -898,8 +866,6 @@ mod tests {
             app_js: "_assets/app.cccc.js",
             mermaid_js: "_assets/mermaid.dddd.js",
             jslibs_js: "_assets/jslibs.eeee.js",
-            deck_css: "",
-            deck_js: "",
             font_preload: "",
         };
         let body = "<main id=\"tali-main\"><span class=\"katex\">x</span>\
@@ -945,8 +911,6 @@ mod tests {
             app_js: "a.js",
             mermaid_js: "m.js",
             jslibs_js: "j.js",
-            deck_css: "",
-            deck_js: "",
             font_preload: "",
         };
         let html = assemble_html_page(&PageParts {

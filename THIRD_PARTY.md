@@ -48,7 +48,7 @@ Fonts and syntax definitions already carried theirs
   <https://github.com/productiontype/Newsreader>.
 
 The other scripts under `crates/core/assets/js/` (the `code-enhance/` fragments,
-`deck.js`, `mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`, `scrolly.js`)
+`mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`, `scrolly.js`)
 are Taliesin's own, under the project's AGPL-3.0-only license.
 
 ### Sample 3-D models (corpus content)

@@ -10,7 +10,7 @@
 //! `build --strict` or `publish`. The author edits the `.tmd`; nothing here rewrites source.
 
 use super::helpers::{heading_level, start_line, strip_tags};
-use crate::render::{Block, DocFormat, Warning};
+use crate::render::{Block, Warning};
 
 /// The inner HTML between the first `open` tag and the next `close`, if both are present.
 fn inner_between<'a>(html: &'a str, open: &str, close: &str) -> Option<&'a str> {
@@ -84,19 +84,9 @@ fn is_content(b: &Block) -> bool {
 /// Structural lints over one rendered document: empty / duplicated / hollow / title-echoing
 /// headings, and numbered floats whose caption is only the label.
 ///
-/// **Decks are exempt, entirely.** Every rule here reasons about *document* structure — a
-/// heading is a section that earns a TOC row — and a deck has no TOC: its headings are
-/// slide titles with different semantics. Each rule inverts on a deck. Two slides sharing a
-/// title is the `{auto-animate=true}` magic-move idiom, not a duplicate (measured:
-/// `corpus/deck.tmd:92`/`:96` do exactly this on purpose); a titleless slide is an
-/// image-only slide; a title-only slide is a section divider. Running the family on decks
-/// would flag the deck engine's own vocabulary as a defect.
-pub fn validate_document_shape(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
+pub fn validate_document_shape(blocks: &[Block]) -> Vec<Warning> {
     use std::collections::HashSet;
     let mut out = Vec::new();
-    if format == DocFormat::Reveal {
-        return out;
-    }
     let title = page_title(blocks).map(|t| norm(&t));
 
     let at = |b: &Block, w: Warning| match start_line(&b.sourcepos) {

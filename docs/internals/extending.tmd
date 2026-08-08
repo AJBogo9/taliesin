@@ -50,10 +50,10 @@ presentation and optional features should ride the extension points below.
 The core stays lean; two seams let you add behaviour without touching it:
 
 1. **Declarative shortcodes** (`render/extension/`). `{{< name args >}}` invocations
-   expand to inline HTML at pipeline stage 2. Three are built in: `{{< embed deck.tmd >}}`
-   (embed another document's deck as an isolating iframe), `{{< video clip.mp4 [dark=…] >}}`
-   (a theme-matched `<video>` authored in Markdown), and `{{< input … >}}` (a reactive
-   control that feeds the `{js}` graph). Any other name is left verbatim, with a warning so
+   expand to inline HTML at pipeline stage 2. Two are built in: `{{< video clip.mp4 [dark=…] >}}`
+   (a theme-matched `<video>` authored in Markdown) and `{{< input … >}}` (a reactive
+   control that feeds the `{js}` graph); `{{< include >}}` is resolved by an earlier pass.
+   Any other name is left verbatim, with a warning so
    a typo is visible rather than shipped as literal text.
 2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
    `fn(root)` that runs after every (re)mount; load it with a `<script>` in your project's
@@ -192,7 +192,7 @@ What is left in the extension is what the protocol has no concept of:
   inside the webview to bridge the preview iframe's `postMessage` protocol to and from the
   extension host. Forward sync (`tali-goto`) calls `revealRange` to move the editor cursor;
   reverse sync turns a cursor move into a debounced `tali-cursor`, which the client resolves
-  with `highlightAtLine` (and, in a deck, jumps `TaliesinDeck` to the containing slide).
+  with `highlightAtLine`.
 
   **What it spawns is the project, not the buffer**, whenever the document sits under a
   `_site.yml` (`projectRootFor`, nearest ancestor, never `.git`): one server serves the whole
@@ -201,9 +201,8 @@ What is left in the extension is what the protocol has no concept of:
   rule reimplemented in TypeScript, which is the same discipline the LSP rewrite enforced.
   (It was a `taliesin map --format json` spawn until Wave 2 cut that verb; the capability
   moved onto the wire the client already holds open, which is where it belonged.) The registry is keyed by project root so a second chapter reveals the
-  preview it already has; anything that leaves the document without a URL (an unusable map, a
-  draft, an `{{< embed >}}`ed deck) falls back to a single-file preview rather than to no
-  preview. Because one preview now spans many documents, forward sync anchors on the page the
+  preview it already has; anything that leaves the document without a URL (an unusable map,
+  a draft) falls back to a single-file preview rather than to no preview. Because one preview now spans many documents, forward sync anchors on the page the
   client last reported via `tali-page`, and a cursor in another chapter sends `tali-navigate`
   first, then the cursor.
 - **Editor commands:** *Open Preview*, *Check This Document*, *Diagnose Setup*, *Insert Math

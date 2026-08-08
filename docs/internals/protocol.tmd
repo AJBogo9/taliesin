@@ -45,7 +45,7 @@ Twelve types travel this direction.
 
 The whole document body and the diagnostics list, in one message. Sent as the
 first message on every connect, and again whenever a change is too large to express
-as ops (recovering from a failed render, or a structural deck change).
+as ops (recovering from a failed render).
 
 ```json
 {
@@ -65,7 +65,7 @@ as ops (recovering from a failed render, or a structural deck change).
 The client handles it specially on the **first** message. Because the server
 already server-rendered the body into `#tali-root` for the first paint, the first
 `full_render` after connect is byte-identical, so the client **skips re-mounting
-it** (no flash, no needless deck or `{js}` re-init) and only wires up diagnostics.
+it** (no flash, no needless `{js}` re-init) and only wires up diagnostics.
 A *reconnect* re-mounts normally: it tears down all prior `{js}` cells first (so
 their WebGL contexts and animation loops are released) and replaces the body.
 
@@ -195,7 +195,7 @@ of `<style id="tali-theme">` in place (creating the element if absent).
 { "type": "style", "css": ":root { --tali-accent: #4c8dff; … }" }
 ```
 
-Because nothing in the body is rebuilt, scroll position, the current deck slide, and
+Because nothing in the body is rebuilt, scroll position and
 open callouts all survive a theme edit. A combined content-plus-theme save sends the
 block ops *and* a `style` message in the same rebuild, so both update with no reload.
 
@@ -392,8 +392,8 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   file (else the nearest block starting before it) and outlines it with `.tali-hl`.
   **`reveal` decides whether the page moves.** A cursor move sends `reveal: false`, so the
   block is only marked; the host's *Reveal Cursor in Preview* command (`Ctrl+Alt+J`) sends
-  `reveal: true`, which scrolls the block into view or, in a deck, jumps `TaliesinDeck` to
-  the containing slide. Marking is continuous because it costs the reader nothing; moving
+  `reveal: true`, which scrolls the block into view. Marking is continuous because it
+  costs the reader nothing; moving
   the page is on request because it takes their scroll position away.
 
 The in-repo VS Code companion is the host that drives this; it is documented in

@@ -30,12 +30,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Images / social
     "image",
     "image-alt",
-    // Deck chrome: a persistent per-slide footer text + corner logo image (deck-only,
-    // ignored elsewhere).
-    "footer",
-    "logo",
-    // Output / format / theme
-    "format",
+    // Theme
     "theme",
     "page-layout",
     // Drafts: `draft: true` holds a page (or book chapter) out of the published build
@@ -97,6 +92,35 @@ pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 /// `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
 /// derives the tombstone from this table, so no hand-written test is owed.
 pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
+    // --- The slide-deck engine, retired 2026-08-08. `_site.yml` keeps its own `footer:`
+    // and `logo:`; only the per-document deck chrome goes.
+    (
+        "front-matter key",
+        "format",
+        "it was removed on 2026-08-08 with the slide-deck engine: HTML is the only output, \
+         so delete the key — a `format: deck` document becomes an ordinary page",
+    ),
+    (
+        "front-matter key",
+        "footer",
+        "it was removed on 2026-08-08 with the slide-deck engine: it painted a per-slide \
+         overlay, and a website's footer is the `footer:` block in `_site.yml`",
+    ),
+    (
+        "cell option",
+        "code-line-numbers",
+        "it was removed on 2026-08-08 with the slide-deck engine, which was the only thing \
+         that stepped through the marked ranges — in BOTH spellings, so a fence attribute \
+         `{.python code-line-numbers=\"1|2\"}` is inert too (fence attributes have no \
+         validator, so that one is silent); a `.code-walkthrough` marks lines from its own \
+         `.step lines=` and needs no cell option",
+    ),
+    (
+        "front-matter key",
+        "logo",
+        "it was removed on 2026-08-08 with the slide-deck engine: it painted a per-slide \
+         corner logo, and a website's logo is `logo:` in `_site.yml`",
+    ),
     // --- The raw-injection family, retired 2026-08-02. `_site.yml head:` is the survivor,
     // kept deliberately as the one escape hatch a published tool needs.
     (
@@ -371,8 +395,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             ));
         }
     }
-    validate_format_value(map, block, &mut out);
-    validate_format_subkeys(map, block, &mut out);
     validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
     validate_date_value(map, block, &mut out);
@@ -642,90 +664,6 @@ fn validate_theorem_shared_kinds(map: &serde_yaml::Mapping, block: &str, out: &m
             msg,
             block_key_span(block, "shared").or_else(|| block_key_span(block, "theorems")),
         ));
-    }
-}
-
-/// Common non-HTML output targets (Pandoc/Quarto) an author might carry over. Taliesin
-/// renders HTML only (the deck engine included), so any of these silently produces HTML
-/// instead of the requested format — worth a warning rather than a clean `check`.
-const NON_HTML_FORMATS: &[&str] = &[
-    "pdf", "typst", "docx", "latex", "beamer", "epub", "pptx", "odt", "rtf", "jats", "docbook",
-];
-
-/// Validate the top-level `format:` value (string, block-mapping keyed by the spelling,
-/// or sequence). Flags the dropped legacy deck spelling (`revealjs` / `*-revealjs`),
-/// whose edit distance to `deck` is too large for the generic did-you-mean, and any
-/// known non-HTML output target ([`NON_HTML_FORMATS`]) that Taliesin can't produce — both
-/// otherwise render a plain HTML page with no signal.
-/// `format:` sub-keys (`format:\n  deck:\n    transition: fade`) are read by NOTHING, so
-/// they must warn instead of certifying as supported on a green check — the `csl:` rule.
-/// `format:` takes a NAME (`html`/`deck`), which is all the guide teaches.
-///
-/// This used to be deliberately un-linted "because an extension owns them", but no such
-/// mechanism exists: `_extensions/` is a theme-CSS lookup (`render/theme.rs`), `DocFormat`
-/// has two built-in variants, and `deck.rs` hardcodes its engine init reading no sub-key.
-/// The one shape that *appeared* to work — `format: html: toc:` — did so only because
-/// `detect_toc` trimmed before matching, which also let a `toc:` under `hero:` set the
-/// document's TOC; that scan is now top-level-only, so every sub-key is uniformly inert
-/// and this warning is true rather than a lie.
-fn validate_format_subkeys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    // `format: deck` (a bare name) is a String, not a Mapping: nothing to lint.
-    let Some(serde_yaml::Value::Mapping(fmt)) = map.get("format") else {
-        return;
-    };
-    for opts in fmt.values() {
-        // `format:\n  deck:` with no options parses as Null, not an empty Mapping.
-        let serde_yaml::Value::Mapping(opts) = opts else {
-            continue;
-        };
-        for key in opts.keys().filter_map(|k| k.as_str()) {
-            // A sub-key that names a real top-level key is the likely mistake (the Quarto
-            // shape), so point at where it belongs rather than only rejecting it.
-            // Worded to stay distinct from `validate_format_value`'s "unknown format
-            // `revealjs`", which is about the format NAME — an "unknown format sub-key"
-            // phrasing reads as (and substring-matches) that different diagnostic.
-            let msg = if KNOWN_KEYS.contains(&key) {
-                format!("`format:` sub-key `{key}` is ignored (did you mean a top-level `{key}:`?)")
-            } else {
-                format!("`format:` sub-key `{key}` is ignored (nothing reads `format:` sub-keys)")
-            };
-            out.push(located_span(msg, nested_key_span(block, "format", key)));
-        }
-    }
-}
-
-fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    let Some(fmt) = map.get("format") else {
-        return;
-    };
-    // The declared format NAME(s): the scalar, the block-mapping keys (`html:`/`deck:`),
-    // or the sequence entries.
-    let names: Vec<String> = match fmt {
-        serde_yaml::Value::String(s) => vec![s.clone()],
-        serde_yaml::Value::Mapping(m) => m
-            .keys()
-            .filter_map(|k| k.as_str().map(str::to_string))
-            .collect(),
-        serde_yaml::Value::Sequence(seq) => seq
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect(),
-        _ => Vec::new(),
-    };
-    let line = block_key_line(block, "format");
-    for name in &names {
-        let n = name.trim().trim_matches(['"', '\'']);
-        if n == "revealjs" || n.ends_with("-revealjs") {
-            out.push(located(
-                format!("unknown format `{n}` (did you mean `deck`?)"),
-                line,
-            ));
-        } else if NON_HTML_FORMATS.contains(&n) {
-            out.push(located(
-                format!("format `{n}` is not supported (Taliesin renders HTML only)"),
-                line,
-            ));
-        }
     }
 }
 
@@ -1221,112 +1159,6 @@ mod tests {
             "---\ntitle: X\ntoc: true\nexecute:\n  cache: true\nlisting:\n  contents: posts\n  type: grid\n---\n\nx\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
-    }
-
-    /// `format:` sub-keys are read by NOTHING, so they must warn rather than certify as
-    /// supported — the `csl:` rule (a key that reads as honored and does nothing is the
-    /// bug). This REPLACES `format_subkeys_are_not_linted`, whose stated rationale ("an
-    /// extension owns them") was false: `_extensions/` is only a theme-CSS mechanism
-    /// (`render/theme.rs`), `DocFormat` has exactly two built-in variants, and the deck
-    /// engine hardcodes its init, reading no sub-key at all.
-    #[test]
-    fn format_subkeys_warn_because_nothing_reads_them() {
-        let w =
-            validate_front_matter("---\ntitle: X\nformat:\n  deck:\n    transition: fade\n---\n");
-        assert_eq!(w.len(), 1, "got: {w:?}");
-        assert_eq!(
-            w[0].message,
-            "`format:` sub-key `transition` is ignored (nothing reads `format:` sub-keys)"
-        );
-        assert_eq!(w[0].line, Some(5), "located on the sub-key's own line");
-    }
-
-    /// A sub-key that names a real TOP-LEVEL key is the likely mistake (the Quarto shape),
-    /// so say where it belongs instead of just rejecting it.
-    #[test]
-    fn a_format_subkey_that_is_a_top_level_key_says_where_it_belongs() {
-        let w = validate_front_matter("---\ntitle: X\nformat:\n  html:\n    toc: true\n---\n");
-        assert_eq!(w.len(), 1, "got: {w:?}");
-        assert_eq!(
-            w[0].message,
-            "`format:` sub-key `toc` is ignored (did you mean a top-level `toc:`?)"
-        );
-    }
-
-    #[test]
-    fn a_bare_format_name_never_warns() {
-        // `format: deck` / `format: html` (the documented form) has no sub-keys at all.
-        assert!(validate_front_matter("---\ntitle: X\nformat: deck\n---\n").is_empty());
-        assert!(validate_front_matter("---\ntitle: X\nformat: html\n---\n").is_empty());
-        // An empty format block is not a sub-key either.
-        assert!(validate_front_matter("---\ntitle: X\nformat:\n  deck:\n---\n").is_empty());
-    }
-
-    #[test]
-    fn revealjs_format_value_warns_with_did_you_mean() {
-        // `format: revealjs` was the dropped legacy deck spelling. Its edit distance to
-        // `deck` is too large for the generic did-you-mean, so name the migration
-        // explicitly rather than silently rendering a plain HTML page.
-        let m = msgs("---\nformat: revealjs\ntitle: T\n---\n");
-        assert!(
-            m.iter()
-                .any(|w| w.contains("unknown format `revealjs`")
-                    && w.contains("did you mean `deck`")),
-            "expected a revealjs->deck did-you-mean, got {m:?}"
-        );
-    }
-
-    #[test]
-    fn revealjs_format_value_is_located() {
-        let w = validate_front_matter("---\ntitle: T\nformat: revealjs\n---\n");
-        let hit = w
-            .iter()
-            .find(|w| w.message.contains("unknown format `revealjs`"))
-            .expect("revealjs warning");
-        assert_eq!(hit.line, Some(3), "`format:` is on file line 3");
-    }
-
-    #[test]
-    fn revealjs_format_value_warns_in_block_and_sequence_forms() {
-        // Block form: `format:` mapping keyed by the dropped spelling.
-        let block = msgs("---\nformat:\n  revealjs:\n    incremental: true\n---\n");
-        assert!(
-            block
-                .iter()
-                .any(|w| w.contains("unknown format `revealjs`")),
-            "block-form revealjs warns: {block:?}"
-        );
-        // An extension variant `<name>-revealjs` is dropped too.
-        let variant = msgs("---\nformat: acme-revealjs\n---\n");
-        assert!(
-            variant
-                .iter()
-                .any(|w| w.contains("unknown format `acme-revealjs`") && w.contains("`deck`")),
-            "*-revealjs variant warns: {variant:?}"
-        );
-    }
-
-    #[test]
-    fn non_html_format_values_warn_html_only() {
-        // A carried-over non-HTML target (pdf/typst/docx/…) silently renders HTML; flag
-        // it, located at the `format:` line, so `check` doesn't certify it green.
-        for fmt in ["pdf", "typst", "docx", "latex", "beamer", "epub"] {
-            let w = validate_front_matter(&format!("---\ntitle: T\nformat: {fmt}\n---\n"));
-            let hit = w
-                .iter()
-                .find(|w| w.message.contains(&format!("format `{fmt}`")))
-                .unwrap_or_else(|| panic!("expected an HTML-only warning for `{fmt}`: {w:?}"));
-            assert!(hit.message.contains("HTML only"), "{}", hit.message);
-            assert_eq!(hit.line, Some(3), "`format:` is on file line 3");
-        }
-        // The block-mapping form (`format:\n  pdf:\n    …`) is caught too.
-        let block = msgs("---\nformat:\n  pdf:\n    toc: true\n---\n");
-        assert!(
-            block
-                .iter()
-                .any(|w| w.contains("format `pdf`") && w.contains("HTML only")),
-            "block-form non-HTML format warns: {block:?}"
-        );
     }
 
     #[test]

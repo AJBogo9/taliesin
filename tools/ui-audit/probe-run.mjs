@@ -16,7 +16,6 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { launch } from './lib/browser.mjs';
 import {
-  probeDeck,
   probeSearch,
   probeToc,
   probeClickToSource,
@@ -27,14 +26,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
 // Each group = one preview server + the probes it can serve. Grouped to minimise
-// server spawns. click-to-source lives on the gallery doc (a normal article with
-// visible blocks) rather than the deck (present-mode slides are inert).
+// server spawns. click-to-source lives on the gallery doc, a normal article with
+// visible blocks.
 const GROUPS = [
-  {
-    target: 'corpus/deck.tmd',
-    kind: 'doc',
-    tasks: [{ feature: 'deck-nav', nav: '/?tali=present', run: probeDeck }],
-  },
   {
     target: 'corpus/media/gallery.tmd',
     kind: 'doc',

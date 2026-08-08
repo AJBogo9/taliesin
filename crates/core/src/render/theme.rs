@@ -208,10 +208,8 @@ pub fn theme_head(default_mode: &str) -> String {
   // dark-mode string is #a5d6ff: 1.6:1 on paper), so the print stylesheet's token reset
   // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach
   // them; the syntax scopes are what still force the swap.) Drop the whole document to the
-  // light theme for the duration of the print job and restore afterwards. (This used to
-  // cite deck.js as precedent; deck.js has neither a PDF-export mode nor a beforeprint
-  // handler since the 2026-07-12 deck audit deleted them, so there is no precedent to
-  // cite.) `apply()` restores colour-scheme, canvas, and mermaid.
+  // light theme for the duration of the print job and restore afterwards. `apply()`
+  // restores colour-scheme, canvas, and mermaid.
   try {{
     window.addEventListener("beforeprint", function(){{
       var el = document.documentElement;

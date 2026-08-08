@@ -252,7 +252,7 @@ const html = `<!doctype html>
 <h1>Taliesin corpus sweep</h1>
 <p class="lede">Every document of the rendered surface, built and browsable: the corpus, the two
 dogfooded manuals, and the marketing site. Click a page to open the real rendered HTML &mdash;
-interactive features work (decks, reactive cells, Cmd-K search, scrollspy), so judge them live
+interactive features work (reactive cells, Cmd-K search, scrollspy), so judge them live
 rather than from a screenshot.</p>
 <div class="summary">
   <div><b>${units.length}</b> units</div>

@@ -5,10 +5,10 @@
 //! CPU-seconds — 24% of the build**.
 //!
 //! **As of 2026-08-08 nothing a released binary can run touches it.** `read --run-js` went
-//! with the machine-facing verbs in Wave 2 and `pdf` went with the print track in Wave 4,
-//! so the only consumers left are the `deck_browser` and `reactive_browser` test binaries.
-//! That is why `release.yml` no longer asks for the feature and this file no longer checks
-//! that it does.
+//! with the machine-facing verbs in Wave 2, `pdf` went with the print track in Wave 4, and
+//! `deck_browser` went with the slide-deck engine in Wave 5, so `reactive_browser` is the
+//! single consumer left. That is why `release.yml` no longer asks for the feature and this
+//! file no longer checks that it does.
 //!
 //! Each direction of drift fails differently, and the quiet one is the dangerous one:
 //!
@@ -16,7 +16,7 @@
 //!   build silently pays that 24% again. Nothing else would notice: the tree still
 //!   compiles and every test still passes.
 //! - **Drop `--features taliesin-server/headless-js` from `gates.sh` or `ci.yml`,** and
-//!   the two browser test binaries stop being built at all — `required-features` makes
+//!   the browser test binary stops being built at all — `required-features` makes
 //!   cargo skip them without a word. `TALIESIN_REQUIRE_CHROME` cannot catch that, because
 //!   the tests it guards no longer exist to be skipped. The suite shrinks and stays green.
 //!
@@ -85,8 +85,10 @@ fn the_headless_js_feature_is_not_on_by_default() {
 
 #[test]
 fn every_browser_test_binary_declares_the_feature_it_needs() {
+    // One binary left as of Wave 5; written as a list so a second one is a row, not a rewrite.
+    const BROWSER_TEST_BINARIES: &[&str] = &["reactive_browser"];
     let m = server_manifest_code();
-    for name in ["deck_browser", "reactive_browser"] {
+    for name in BROWSER_TEST_BINARIES {
         let decl = m
             .split("[[test]]")
             .find(|s| s.contains(&format!("name = \"{name}\"")))

@@ -191,7 +191,7 @@ const views = {
   "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
   "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
-  "many-outputs": () => [group("row", tile("blog post"), tile("slide deck"), tile("book")), note("The same blocks become a post, a deck, or a book.")],
+  "many-outputs": () => [group("row", tile("blog post"), tile("website"), tile("book")), note("The same blocks become a post, a site page, or a book.")],
 };
 (views[stage] || views["one-source"])().forEach(n => wrap.append(n));
 return wrap;
@@ -206,7 +206,7 @@ return wrap;
 **A save diffs only what changed.** Edit one cell and only that block, plus its output, crosses the wire. Your scroll, your live canvas, and your warm kernel all survive.
 :::
 ::: {.step state="many-outputs"}
-**One source, many outputs.** The same blocks render as a blog post, a slide deck, or a multi-chapter book. Choose the output in the front matter.
+**One source, many outputs.** The same blocks render as a blog post, a page of a website, or a chapter of a multi-chapter book.
 :::
 :::
 
@@ -234,7 +234,7 @@ const views = {
   "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
   "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
-  "many-outputs": () => [group("row", tile("blog post"), tile("slide deck"), tile("book")), note("The same blocks become a post, a deck, or a book.")],
+  "many-outputs": () => [group("row", tile("blog post"), tile("website"), tile("book")), note("The same blocks become a post, a site page, or a book.")],
 };
 (views[stage] || views["one-source"])().forEach(n => wrap.append(n));
 return wrap;

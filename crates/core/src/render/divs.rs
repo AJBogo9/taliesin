@@ -705,14 +705,6 @@ fn build_container(
         format!(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
-    } else if attrs.classes.iter().any(|c| c == "magic-move") {
-        // Magic-move: the contained code blocks are animation steps. Line-wrap each so
-        // the deck engine can match + glide lines between consecutive blocks.
-        let body: String = inner
-            .iter()
-            .map(|b| super::emit::wrap_pre_lines(&b.html))
-            .collect();
-        format!("<div class=\"magic-move\"{data}>{body}</div>")
     } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
         // Narrated code walkthrough: the first code block becomes a sticky panel; the
         // remaining blocks (the `.step` divs) scroll alongside it and drive line-range
@@ -728,8 +720,8 @@ fn build_container(
         }
         match code_idx {
             Some(i) => {
-                // Line-wrap the panel so its lines are addressable by ordinal (the same
-                // idempotent helper magic-move uses); the rest stay in document order.
+                // Line-wrap the panel so its lines are addressable by ordinal; the rest
+                // stay in document order.
                 let panel = super::emit::wrap_pre_lines(&inner[i].html);
                 let steps: String = inner
                     .iter()
@@ -763,7 +755,7 @@ fn build_container(
         let id_attr = id_attr(attrs.id.as_deref());
         let cw_lines = match attrs.get("lines") {
             Some(spec) if !spec.is_empty() => {
-                // A `|` here is a deck `code-line-numbers=` habit that focuses zero lines in a
+                // A `|` here is a `code-line-numbers=` habit that focuses zero lines in a
                 // step's comma-only parser — warn (located) instead of degrading silently.
                 if let Some(w) = super::validate::validate_step_lines(spec, open_line, file.clone())
                 {

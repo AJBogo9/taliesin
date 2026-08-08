@@ -80,17 +80,6 @@ export function discoverSiteUnits(repoRoot) {
   }));
 }
 
-// Decks that exist only as `{{< embed >}}` targets. They are NOT standalone
-// units (the owning site build emits them as tour.html / demo.html inside its
-// output tree, so they get captured there). Listed here so the site enumerator
-// can label their route as `deck`.
-export const EMBED_DECK_SOURCES = new Set([
-  'docs/guide/tour.tmd',
-  'docs/guide/demo.tmd',
-  'site/demo.tmd',
-]);
-export const EMBED_DECK_BASENAMES = new Set(['tour.html', 'demo.html']);
-
 // A path segment starting with `_` or `.` marks a partial/hidden file that the
 // site walker skips (e.g. corpus/_includes/*, subsections/_intro.tmd). We apply
 // the same rule so a naive glob never treats an include target as a page.
@@ -118,25 +107,6 @@ function* walk(dir) {
     if (ent.isDirectory()) yield* walk(abs);
     else if (ent.isFile()) yield abs;
   }
-}
-
-// Read a .tmd's front matter and decide its format. Only decks matter for
-// standalone capture (a deck renders very differently); everything else is a
-// plain article/page.
-export function detectFormat(absTmdPath) {
-  let text = '';
-  try {
-    text = fs.readFileSync(absTmdPath, 'utf8').slice(0, 4000);
-  } catch {
-    return 'article';
-  }
-  if (!text.startsWith('---')) return 'article';
-  const end = text.indexOf('\n---', 3);
-  const fm = end === -1 ? text : text.slice(0, end);
-  const m = fm.match(/^\s*format:\s*([A-Za-z0-9_-]+)/m);
-  const fmt = (m?.[1] || '').toLowerCase();
-  if (fmt === 'deck' || fmt === 'reveal' || fmt === 'slides') return 'deck';
-  return 'article';
 }
 
 // Standalone corpus docs = every corpus/**/*.tmd that is NOT under a site-unit
@@ -191,7 +161,7 @@ export function allUnits(repoRoot) {
     slug: standaloneSlug(rel),
     source: rel,
     type: 'standalone',
-    format: detectFormat(path.join(repoRoot, rel)),
+    format: 'article',
   }));
   return [...site, ...standalone];
 }

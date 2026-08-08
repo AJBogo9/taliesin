@@ -32,11 +32,9 @@ input pages: every `.tmd` becomes a page, **skipping `_`-prefixed directories**
 `x.html`, mirroring the input tree). Both `build` (static) and `preview` (live) drive a
 project through the same `discover` + `render_page`.
 
-Two kinds of `.tmd` are discovered but deliberately kept out of the navigable page set: a
+One kind of `.tmd` is discovered but deliberately kept out of the navigable page set: a
 `draft: true` page is held out of the **published** view (no output, nav, listing, or
-prev/next entry), and a deck pulled in by `{{< embed >}}` is built and served but stays
-out of nav and search, since it is an inclusion, not a page. A loose `format: deck` file
-that no page embeds warns rather than silently becoming a chrome-wrapped article.
+prev/next entry).
 
 ### How `draft:` filtering works {#sec-draft-filtering}
 
@@ -66,40 +64,6 @@ bumping the chapter counter, so the book renumbers as if it were never listed an
 drawer never links a page that wasn't built; a part whose chapters are *all* drafts drops
 its now-empty header. In `Include` the chapter stays, numbered in context and marked in
 the drawer. (Leaving a file out of `chapters:` still works as before.)
-
-**`draft:` is ignored on an `{{< embed >}}` target.** An embed target is a *component* of
-the page that embeds it, not an independently published page: `discover_decks` resolves it
-straight off the filesystem, so a published page's deck must ship or that page's iframe
-404s. Such a deck is therefore never counted in `excluded_drafts` (it *is* published), and
-discovery warns that the flag was ignored, pointing at the embedding page instead.
-
-### How embedded decks are discovered {#sec-deck-discovery}
-
-A website discovers *every* `.tmd` as a page, so a slide deck that exists only to be
-embedded would otherwise become a navigable, chrome-wrapped article with no slides. The
-flow that prevents that, @fig-deck-discovery:
-
-```{mermaid}
-%%| label: fig-deck-discovery
-%%| fig-cap: "Embedded decks are discovered from the pages, then removed from the page set and kept as standalone DeckRefs."
-flowchart TB
-  pages["pages (every .tmd)"] --> scan["discover_decks:<br/>resolve includes · scan {{< embed >}} targets"]
-  scan --> exist{"target is a file?"}
-  exist -->|yes| ref["DeckRef { input, url }<br/>(deduped by URL)"]
-  exist -->|no| warn["warn: embedded deck not found"]
-  ref --> retain["pages.retain(not a deck)"]
-  retain --> served["served standalone<br/>(no nav · no search)"]
-```
-
-`discover_decks` walks the page set, resolves `{{< include >}}` in each page first (so an
-`{{< embed >}}` living inside an included partial is still found), then collects every
-embed target. Each target is written relative to its embedding page, so it is mapped back
-to a site-root-relative path; a target that is not a real file warns and is skipped (the
-embed iframe would otherwise 404). The surviving targets become deduplicated `DeckRef`s,
-and `pages.retain(...)` then drops every page whose URL matches a `DeckRef`, so the deck
-leaves the navigable set while staying reachable as a standalone deck (the preview looks
-it up by output URL via `Site::deck`). What is left after that retain is a true page; a
-`format: deck` file *still* in the set is the loose-deck case above, and it warns.
 
 ## The config model
 
@@ -289,9 +253,9 @@ under `file://` too. A static `build` ships the same `search-index.js` beside th
 search works on a deployed, server-less site identically to the live preview.
 
 ::: {.callout-note}
-The index is built from `self.pages`, so the two exclusions compound automatically: in a
-published build a `draft:` page and an embedded deck are both absent from `self.pages`,
-and therefore absent from search, without search needing any special case for either. (In
+The index is built from `self.pages`, so the draft exclusion compounds automatically: in
+a published build a `draft:` page is absent from `self.pages`, and therefore absent from
+search, without search needing any special case for it. (In
 `preview` a draft *is* in `self.pages`, so it is searchable while you work on it — the
 same mechanism, read through the other discovery mode. See @sec-draft-filtering.)
 :::

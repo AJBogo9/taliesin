@@ -29,7 +29,7 @@ fn outline(src: &str) -> Vec<u8> {
 
 fn skips(src: &str) -> Vec<String> {
     let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
-    diagnostics::validate_a11y(&doc.blocks, doc.format)
+    diagnostics::validate_a11y(&doc.blocks)
         .into_iter()
         .filter(|w| w.message.contains("heading level skips"))
         .map(|w| w.message)
@@ -135,7 +135,7 @@ fn the_heading_rule_counts_the_title_block_as_the_pages_h1() {
         cell: None,
         nested: Vec::new(),
     });
-    let ws = diagnostics::validate_a11y(&blocks, doc.format);
+    let ws = diagnostics::validate_a11y(&blocks);
     assert!(
         ws.iter().any(|w| w.message.contains("from h1 to h3")),
         "a body heading two levels under the title must be reported: {:?}",
@@ -158,16 +158,12 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
     // the regression net (the standing "what the test net structurally cannot see" note), so
     // this walks them explicitly alongside the corpus book that carries the awkward shapes.
     //
-    // Decks are counted SEPARATELY and never toward the floor (item 111). `a11y.rs` exempts
-    // `DocFormat::Reveal` from the heading-skip rule wholesale — slides are slide-structured,
-    // not one outline — so `docs/guide/{demo,tour}.tmd` cannot fail this walk however they
-    // are written. Counting them toward `pages >= 40` let two rows that are empty **by
-    // construction** vouch that the walk was live. The floor now applies only to the pages
-    // the rule can actually fire on, and the deck count is asserted in its own right, so
-    // this notices if the walk stops meeting a deck at all.
+    // The rule used to exempt decks wholesale (item 111), which meant two of these files
+    // could not fail the walk however they were written. The slide-deck engine was cut on
+    // 2026-08-08, so the exemption and its two files are both gone and every page walked
+    // here is a page the rule can fire on.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut pages = 0usize;
-    let mut decks: Vec<String> = Vec::new();
     let mut bad: Vec<String> = Vec::new();
     for book in ["docs/guide", "docs/internals", "corpus/tarn"] {
         let dir = root.join(book);
@@ -185,12 +181,8 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
                         &src,
                         p.parent().unwrap_or(&dir),
                     );
-                    if doc.format == taliesin_core::DocFormat::Reveal {
-                        decks.push(p.display().to_string());
-                        continue;
-                    }
                     pages += 1;
-                    let ws: Vec<String> = diagnostics::validate_a11y(&doc.blocks, doc.format)
+                    let ws: Vec<String> = diagnostics::validate_a11y(&doc.blocks)
                         .into_iter()
                         .filter(|w| w.message.contains("heading level skips"))
                         .map(|w| w.message)
@@ -204,22 +196,7 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
     }
     assert!(
         pages >= 40,
-        "the book walk found only {pages} pages the heading rule applies to \
-         (decks excluded: {decks:?})"
-    );
-    // The exemption is a real decision about real files, so the walk must keep meeting the
-    // decks it exempts. If this goes to zero the exclusion above became dead code, and a
-    // later reader would read "decks are excluded" as coverage of something.
-    //
-    // There is deliberately NO assertion here that a deck emits no skip. It would pass for
-    // two independent reasons and so could never fail: measured 2026-07-28, re-running the
-    // rule over these same blocks as `DocFormat::Html` (i.e. without the exemption) also
-    // reports **0** skips on both files. Excluding them costs this walk nothing it had,
-    // and asserting the exemption "works" here would just be a second vacuous row.
-    assert_eq!(
-        decks.len(),
-        2,
-        "expected the two dogfood decks to be walked and exempted, found: {decks:?}"
+        "the book walk found only {pages} pages the heading rule applies to"
     );
     assert!(
         bad.is_empty(),

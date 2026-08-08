@@ -184,7 +184,7 @@ test("Phase 1: {=html} raw-output is NOT a cell (excluded; falls through to mark
 });
 
 // ---------------------------------------------------------------------------
-// Phase 2 — front matter, math, divs, shortcodes, xref, cite, deck pause.
+// Phase 2 — front matter, math, divs, shortcodes, xref, cite.
 // ---------------------------------------------------------------------------
 
 test("Phase 2: a mid-doc --- stays a thematic break (never front matter)", async () => {
@@ -192,7 +192,7 @@ test("Phase 2: a mid-doc --- stays a thematic break (never front matter)", async
   // rule is \A-anchored and sets meta.embedded.block.frontmatter → yaml via our embeddedLanguages);
   // \A only fires at true document start, which an isolated tokenizeLine harness can't reproduce, so
   // that positive case is an F5 check. What the harness CAN pin (and the real risk) is that a mid-doc
-  // `---` is NOT swallowed as front matter — it stays a markdown thematic break / deck slide separator.
+  // `---` is NOT swallowed as front matter — it stays a markdown thematic break.
   const toks = await tokenizeTmd("text\n\n---\n\nmore\n");
   const midDash = toks.find((t) => t.text.includes("---") && t.line === 2);
   assert.ok(midDash, "found the mid-doc ---");
@@ -207,11 +207,6 @@ test("Phase 2: ::: div fence + {.class #id} attrs are scoped", async () => {
   assert.ok(hasScope(toks, ":::", "keyword.control.tmd.div"), "::: colons scoped as a div keyword");
   assert.ok(hasScope(toks, ".callout-note", "entity.name.tag.tmd.div-class"), ".class scoped");
   assert.ok(hasScope(toks, "#warn", "entity.other.attribute-name.id.tmd"), "#id scoped");
-});
-
-test("Phase 2: deck pause `. . .` is scoped", async () => {
-  const toks = await tokenizeTmd("a\n\n. . .\n\nb\n");
-  assert.ok(hasScope(toks, ". . .", "keyword.control.tmd.fragment"), "the `. . .` fragment break is scoped");
 });
 
 test("Phase 2 (injection): inline $…$ and display $$…$$ math get a math scope", async () => {
@@ -285,8 +280,8 @@ test("Phase 2 (injection): math-body inner tokens are highlighted natively (no e
 });
 
 test("Phase 2 (injection): {{< shortcode >}} name is scoped", async () => {
-  const toks = await tokenizeTmd('See {{< embed slides.tmd title="Talk" >}} here\n');
-  assert.ok(hasScope(toks, "embed", "keyword.control.tmd.shortcode"), "the shortcode name is a control keyword");
+  const toks = await tokenizeTmd('See {{< video tour.mp4 caption="A tour" >}} here\n');
+  assert.ok(hasScope(toks, "video", "keyword.control.tmd.shortcode"), "the shortcode name is a control keyword");
 });
 
 test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {

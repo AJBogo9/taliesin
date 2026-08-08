@@ -2,7 +2,7 @@
 //!
 //! The four operations every outliner has (move up, move down, promote, demote) as **pure
 //! text transforms of the `.tmd` buffer**, computed here and applied by the editor. This is
-//! the legal replacement for the drag-to-reorder-slides gesture that was removed for
+//! the legal replacement for the drag-to-reorder gesture that was removed for
 //! breaking the single-editing-surface rule: the source stays the one editing surface, the
 //! preview stays a read-only view, and click-to-source keeps pointing one way.
 //!
@@ -543,50 +543,5 @@ mod tests {
         // The refusal is about the descendant, not the heading under the cursor: demoting
         // `#####` alone is legal, and only the `######` under it makes it impossible.
         assert!(err.contains("######"), "{err}");
-    }
-
-    #[test]
-    fn a_deck_slide_is_a_section_so_the_same_command_reorders_slides() {
-        // The corpus deck is the pin: `##` is the slide level (`render::deck::SLIDE_LEVEL`),
-        // so "move section down" IS "move this slide later" with no deck-specific code —
-        // and this is the operation the removed drag-to-reorder gesture used to do.
-        let deck = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/deck.tmd"),
-        )
-        .expect("corpus/deck.tmd");
-        let slides = |text: &str| -> Vec<String> {
-            crate::lsp_outline::sections(text)
-                .into_iter()
-                .filter(|s| s.level == 2)
-                .map(|s| s.title)
-                .collect()
-        };
-        let before = slides(&deck);
-        assert!(before.len() > 3, "the corpus deck should have slides");
-        let first = crate::lsp_outline::sections(&deck)
-            .into_iter()
-            .find(|s| s.level == 2)
-            .expect("a level-2 slide");
-        let moved = edit(&deck, first.start_line as u32, SectionOp::MoveDown);
-
-        let after = slides(&moved);
-        assert_eq!(after.len(), before.len(), "a slide was lost or gained");
-        assert_eq!(
-            (&after[0], &after[1]),
-            (&before[1], &before[0]),
-            "the first two slides should have traded places"
-        );
-        assert_eq!(
-            moved.split('\n').count(),
-            deck.split('\n').count(),
-            "reordering must not change the line count"
-        );
-        // Same bytes, reordered: nothing was rewritten on the way through.
-        let sorted = |t: &str| {
-            let mut v: Vec<&str> = t.split('\n').collect();
-            v.sort_unstable();
-            v.join("\n")
-        };
-        assert_eq!(sorted(&moved), sorted(&deck), "a line changed content");
     }
 }

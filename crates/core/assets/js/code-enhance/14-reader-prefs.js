@@ -1,11 +1,10 @@
 // Reader theme picker (auto / light / dark), mounted as a row in the Settings menu. The
 // choice lives in the reader's own localStorage and is applied before paint by the pre-paint
 // head script (taliSetTheme / taliGetThemeChoice in theme.rs), so this enhancer is only the UI.
-// Read-only. Skipped on decks.
+// Read-only.
 function taliInitReaderPrefs() {
   if (window.__taliReaderPrefs) return;
   if (!window.taliSetTheme || !window.taliReaderMenu) return; // need the pre-paint API + the menu host
-  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__taliReaderPrefs = true;
 
   var THEMES = [

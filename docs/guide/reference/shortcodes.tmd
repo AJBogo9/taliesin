@@ -1,6 +1,6 @@
 ---
 title: "Shortcode reference"
-description: "The four shortcodes: include for a partial, embed for a deck in an iframe, video for a framed screencast, and input for a reactive control."
+description: "The three shortcodes: include for a partial, video for a framed screencast, and input for a reactive control."
 ---
 
 *Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
@@ -24,7 +24,7 @@ time comrak sees it. Two rules keep that pass from surprising you:
 Expansion is line-preserving: each shortcode opens and closes on one line and
 expands inline, so click-to-source still points at the right line.
 
-There are five built-in shortcodes, documented below.
+There are three built-in shortcodes, documented below.
 
 ## `{{< include >}}`: inline a partial
 
@@ -106,44 +106,6 @@ silently. Four things stop an expansion, each with its own located warning:
 
 A `{{< include >}}` inside a fenced code block is treated as documentation (this
 page relies on that) and is neither expanded nor watched.
-
-## `{{< embed >}}`: a slide deck in an iframe
-
-```markdown
-{{< embed talk.tmd >}}
-{{< embed talk.tmd title="My conference talk" >}}
-```
-
-Embeds another document's deck view inside the current page as a responsive **16:9
-iframe**, with a fullscreen button and an "Open ↗" link to view it standalone. The
-iframe is deliberate: a deck's full-viewport CSS, keyboard handlers, and JavaScript
-are isolated from the host page, so an embedded deck cannot fight the page that
-holds it.
-
-| Argument | Required | Default | Effect |
-|---|---|---|---|
-| *path* (positional) | yes | (none) | The deck source, relative to the embedding page. A `.tmd` path is mapped to its built `.html`; an already-`.html` path is used as written. |
-| `title="…"` | no | "Embedded slide deck" | The iframe's accessible name (its `title` attribute), announced by screen readers. |
-
-It emits a `<div class="tali-embed">` containing the framed `<iframe>` and the
-control bar. A deck on a **built-in** theme is theme-aware: an embedded deck
-follows the host page's light/dark setting rather than its own. A deck with a
-custom or extension `theme:` owns its own colours and is left as-is (no
-host-following script is emitted).
-
-::: {.callout-warning}
-## Embeds need a site build, not a single-doc build
-
-In a **site** build or preview, every deck referenced by an `{{< embed >}}` is
-discovered, built, and served as a dependency, yet kept **out of the navigation and
-the search index** (it is a component of a page, not a page in its own right). A
-**single-document** `build` does **not** build the embedded target (it would not
-know where to put it), so it warns and the iframe points at a file that may not
-exist. Use a site build, or build the deck yourself alongside the page.
-:::
-
-The deck syntax the embed points at is covered in
-[Output formats](../using/formats.tmd).
 
 ## `{{< video >}}`: a framed screencast or a narrated clip
 

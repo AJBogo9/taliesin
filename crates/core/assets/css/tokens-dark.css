@@ -1,12 +1,11 @@
 
   /* Dark palette override. Keyed on BOTH the page's `html[data-theme="dark"]` attribute and the
-     deck engine's `html.tali-deck-dark` class (deck.js sets the class on <html>, not a data-theme
-     attribute), so the page and the deck share one dark palette instead of the old parallel
-     `--deck-*` set. A `--bare` page (no data-theme script) flattens this file's `html[data-theme=
+     `html[data-theme="dark"]` attribute, so every surface shares one dark palette instead of
+     a parallel per-surface set. A `--bare` page (no data-theme script) flattens this file's `html[data-theme=
      "dark"]` prefix to `:root` via bare_theme_css. Same accent hue as light (OKLCH H 272),
      lifted in lightness and eased in chroma so it does not vibrate on the dark surface. 7.62:1 as
      link text. */
-  html[data-theme="dark"], html.tali-deck-dark {
+  html[data-theme="dark"] {
     --tali-bg: #16181d; --tali-fg: #e6e6e6; --tali-muted: #9aa0aa; --tali-accent: #9aa8dc;
     /* Dark is the one theme where the accent is too light to fill behind white text, so it takes
        a darker fill at the same hue (white on it = 5.59:1). */

@@ -8,14 +8,14 @@
 //! reaches the page; it cannot see whether the shader compiled, whether `tali.state`
 //! survives a re-run, or whether `num.gaussian.pdf` returns the right number. Those are the claims
 //! the features actually make, and without this file all of them would be untested — the
-//! exact hole `deck_browser.rs` was written to close for `deck.js`.
+//! exact hole the retired `deck_browser.rs` was written to close for `deck.js`.
 //!
 //! Everything below is read from the **live** DOM after the page settles. Nothing
 //! re-derives what the runtime should have done, and every negative assertion is paired
 //! with a known-positive reading, because a probe whose every cell is negative is a broken
 //! probe until proven otherwise.
 //!
-//! Gated exactly like `deck_browser.rs` and `read_run_js.rs`: no system Chrome → skip,
+//! Gated the way `deck_browser.rs` and `read_run_js.rs` were: no system Chrome → skip,
 //! unless `TALIESIN_REQUIRE_CHROME=1` turns the skip into a hard failure. One browser run
 //! serves every test here (a `OnceLock`).
 //!
@@ -37,7 +37,7 @@ use chromiumoxide::{Browser, BrowserConfig, Page};
 use futures::StreamExt;
 
 // ---------------------------------------------------------------------------
-// Chrome gate (mirrors deck_browser.rs, which mirrors headless_js::chrome_path)
+// Chrome gate (the launch policy the retired headless_js::chrome_path used)
 // ---------------------------------------------------------------------------
 
 fn which_chrome() -> Option<PathBuf> {
@@ -233,7 +233,7 @@ fn run() -> &'static Result<Run, String> {
 
 /// Build one corpus document into a standalone page.
 ///
-/// **No `TALIESIN_NO_EXEC` here, unlike `deck_browser.rs`**: the subject IS the browser
+/// **No `TALIESIN_NO_EXEC` here**: the subject IS the browser
 /// execution. None of these four documents has a kernel cell, so the page is identical on
 /// a laptop and in CI regardless.
 fn build(dir: &Path, doc: &str) -> Result<PathBuf, String> {

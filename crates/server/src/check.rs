@@ -177,10 +177,7 @@ fn collect_diagnostics(path: &Path, scope: &mut CheckScope) -> Result<Vec<Diagno
         collect_site_diagnostics(path, scope)
     } else {
         // Site-aware when the file is a page of a project, so `check <file.tmd>` and
-        // `check <dir>` answer the same question about that page. The deck pass inside
-        // `collect_site_diagnostics` keeps calling `collect_file_diagnostics` directly: it
-        // is already inside a discovered project, and re-discovering per deck would make a
-        // site check quadratic in the number of decks.
+        // `check <dir>` answer the same question about that page.
         let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
         let site = enclosing_site_of(path);
         collect_file_diagnostics_in_site(path, &src, Some(scope), site.as_ref())
@@ -216,7 +213,6 @@ pub(crate) fn page_static_diagnostics(
     src: &str,
     blocks: &[taliesin_core::Block],
     base: &Path,
-    format: taliesin_core::DocFormat,
     scope: Scope,
 ) -> Vec<taliesin_core::render::Warning> {
     use taliesin_core::diagnostics as dx;
@@ -229,9 +225,9 @@ pub(crate) fn page_static_diagnostics(
         out.extend(dx::validate_local_links(blocks, base));
     }
     out.extend(dx::validate_js_reactive_graph(blocks));
-    out.extend(dx::validate_a11y(blocks, format));
+    out.extend(dx::validate_a11y(blocks));
     out.extend(dx::validate_link_text_collisions(blocks));
-    out.extend(dx::validate_document_shape(blocks, format));
+    out.extend(dx::validate_document_shape(blocks));
     out.extend(dx::validate_math(blocks));
     out.extend(dx::validate_code_languages(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
@@ -282,30 +278,10 @@ pub(crate) fn cannot_read(path: &Path, e: &std::io::Error) -> String {
     }
 }
 
-/// `scope` is `None` for the callers that only want diagnostics (a site's per-deck pass hands
-/// its own in; `buffer_diagnostics` has no report to fill).
-fn collect_file_diagnostics(
-    path: &Path,
-    scope: Option<&mut CheckScope>,
-) -> Result<Vec<Diagnostic>, String> {
-    let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
-    collect_file_diagnostics_from_src(path, &src, scope)
-}
-
 /// Lint an already-in-hand source buffer as if it were the file at `path` — the seam the
 /// LSP uses to lint an editor buffer (unsaved edits) instead of the last-saved file.
 /// `path` supplies the base dir (relative includes/assets/links) + the reported location;
-/// the file on disk is never read. `collect_file_diagnostics` is just this with the buffer
-/// read from disk first.
-fn collect_file_diagnostics_from_src(
-    path: &Path,
-    src: &str,
-    scope: Option<&mut CheckScope>,
-) -> Result<Vec<Diagnostic>, String> {
-    collect_file_diagnostics_in_site(path, src, scope, None)
-}
-
-/// [`collect_file_diagnostics_from_src`] told which project the page belongs to.
+/// the file on disk is never read. `site` names the project the page belongs to.
 ///
 /// `site` is `Some` only when this file is a published page of that project (see
 /// [`taliesin_core::Site::page_for_input`]), and it changes two things, both of which the
@@ -318,7 +294,7 @@ fn collect_file_diagnostics_from_src(
 ///   only thing that can see a broken cross-page **anchor** at all.
 ///
 /// Passing `None` keeps the standalone behaviour, which is right for a document with no
-/// project above it and for a deck (a deck is built and served but is deliberately not one
+/// project above it (or for one inside a project but deliberately not one
 /// of `site.pages`, so the site rules would remove its link check and put nothing back).
 fn collect_file_diagnostics_in_site(
     path: &Path,
@@ -346,7 +322,7 @@ fn collect_file_diagnostics_in_site(
     } else {
         Scope::Standalone
     };
-    let statics = page_static_diagnostics(src, &doc.blocks, base, doc.format, scope_kind);
+    let statics = page_static_diagnostics(src, &doc.blocks, base, scope_kind);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
@@ -373,8 +349,8 @@ fn collect_file_diagnostics_in_site(
 /// The project enclosing `path`, discovered now.
 ///
 /// Whether `path` is a *page* of it is a separate question, settled downstream in
-/// [`collect_file_diagnostics_in_site`] so that one place decides it: a deck and a
-/// `draft: true` chapter both sit inside a project and are both linted standalone.
+/// [`collect_file_diagnostics_in_site`] so that one place decides it: a `draft: true`
+/// chapter sits inside a project and is still linted standalone.
 ///
 /// `DraftMode::Exclude`, matching `check <dir>` rather than the preview: this is the seam
 /// whose whole claim is "the same validators as `check`".
@@ -426,9 +402,6 @@ pub(crate) struct CheckScope {
     /// a site purely to learn this, measured at **+50%** on a site check. The rendered block
     /// model is right there in `collect_site_diagnostics`; reading two booleans off it is free.
     ///
-    /// A site's DECKS contribute here too, and deliberately: a deck is built and served but
-    /// held out of `site.pages`, so the old page-only walk reported an empty environment for a
-    /// project whose only code cells live in a talk. Same class as item 109.
     pub used_languages: Vec<&'static str>,
     /// The project's `_site.yml` `python:` / `r:` pins, so resolution needs no second
     /// `Site::discover`. `None` for a single file, which has no project to pin them.
@@ -452,8 +425,8 @@ impl CheckScope {
 ///
 /// A `check` that reports nothing is read as "this project is clean", so every deliberate
 /// omission has to be visible or the verdict is wider than the work. Item 109 was the
-/// expensive version of this lesson: a site check silently skipped decks, and a deck with
-/// six real defects reported "no problems found", exit 0.
+/// expensive version of this lesson: a site check silently skipped the embedded decks it
+/// built, and a deck with six real defects reported "no problems found", exit 0.
 ///
 /// **Drafts are deliberately excluded, and that is the ruling, not an oversight.** A
 /// `draft: true` page is not in the published set, so linting it would report defects in
@@ -527,7 +500,7 @@ fn collect_site_diagnostics(
         scope.note_languages(&doc.blocks);
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
-        for w in &page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::InSite) {
+        for w in &page_static_diagnostics(&src, &doc.blocks, base, Scope::InSite) {
             out.push(diag_from(w, &page.rel));
         }
         let (_html, warnings) = site.render_page_doc_warned(page, doc);
@@ -552,38 +525,6 @@ fn collect_site_diagnostics(
     // one page cites is used, however many pages leave it alone.
     for w in site.validate_shared_bibliography() {
         out.push(Diagnostic::new("_site.yml".to_string(), None, w.message));
-    }
-    // An `{{< embed >}}`-referenced deck is BUILT and SERVED but deliberately kept out of
-    // `site.pages` so it stays out of nav + search (`site/mod.rs`'s `pages.retain`). Every
-    // static validator walked `site.pages`, so a deck in a site reached **none** of them:
-    // measured, a site whose deck carried two missing assets, a broken link, an alt-less
-    // `<img>`, an unnamed link and malformed `$$` gave "no problems found", exit 0, while
-    // `check talk.tmd` reported all six (item 109). The asymmetry mattered more than its
-    // severity suggests, because a deck's defects are otherwise found by an *audience* —
-    // the latest and most expensive point in the stream (item 132).
-    //
-    // `Scope::Standalone` is the honest scope: a deck is not a page of the site, so
-    // cross-page xref resolution does not apply to it — it is checked as the standalone
-    // document it is served as, which is also what `check talk.tmd` does.
-    for deck in &site.decks {
-        let rel = deck
-            .input
-            .strip_prefix(root)
-            .unwrap_or(&deck.input)
-            .display()
-            .to_string();
-        // A deck's languages count toward the Environment report: it is built and served, so
-        // its cells run, and holding it out of `site.pages` must not also hold it out of the
-        // report of what this project needs installed.
-        match collect_file_diagnostics(&deck.input, Some(scope)) {
-            // Report the deck by its site-relative path, like every page above it, rather
-            // than the absolute path the single-file path uses.
-            Ok(diags) => out.extend(diags.into_iter().map(|mut d| {
-                d.file = rel.clone();
-                d
-            })),
-            Err(e) => out.push(Diagnostic::new(rel, None, e)),
-        }
     }
     Ok(out)
 }
@@ -1856,14 +1797,13 @@ mod tests {
         // and it must still locate to the real file path (for click-to-source) and resolve
         // the base dir from it (so relative includes/assets still work).
         //
-        // This pins `collect_file_diagnostics_from_src`, which SURVIVED the `--stdin` cut:
-        // `taliesin lsp` calls it through `buffer_diagnostics` on every didOpen/didChange.
-        // The retired flag was one of two callers, and the test is named for the other now.
+        // This pins `collect_file_diagnostics_in_site`, the seam `taliesin lsp` calls
+        // through `buffer_diagnostics` on every didOpen/didChange.
         let dir = tmp("check-buffer");
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
-        let diags = collect_file_diagnostics_from_src(&f, buffer, None).expect("ok");
+        let diags = collect_file_diagnostics_in_site(&f, buffer, None, None).expect("ok");
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
@@ -2175,27 +2115,6 @@ mod tests {
     }
 
     #[test]
-    fn collect_diagnostics_skips_heading_skip_for_decks() {
-        // A reveal deck's `## … ####` is per-slide structure, not a single outline, so the
-        // heading-skip rule must not fire on a deck.
-        let dir = tmp("check-a11y-deck");
-        let f = dir.join("deck.tmd");
-        fs::write(
-            &f,
-            "---\ntitle: T\nformat: deck\n---\n\n## Slide one\n\n#### A deeper heading\n",
-        )
-        .unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
-        assert!(
-            !diags
-                .iter()
-                .any(|d| d.message.contains("heading level skips")),
-            "decks skip the heading-skip rule: {diags:?}"
-        );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
     fn collect_site_diagnostics_flags_broken_cross_page_link_and_anchor() {
         // The site path resolves links against the page registry: a `.tmd` link to a
         // missing page, and a `page.html#frag` whose anchor isn't on the target page.
@@ -2382,32 +2301,6 @@ mod tests {
         assert!(
             env[0].not_probed.is_some(),
             "and the report says so out loud"
-        );
-    }
-
-    #[test]
-    fn a_site_deck_contributes_its_language_to_the_environment() {
-        // A deck is built and served but held out of `site.pages`, so the old page-only walk
-        // reported an empty environment for a project whose only code cells live in a talk
-        // (item 109's family). Sourcing languages from the diagnostics walk fixes it, and this
-        // pins that it stays fixed.
-        let dir = tmp("env-deck");
-        std::fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
-        std::fs::write(
-            dir.join("index.tmd"),
-            "---\ntitle: Home\n---\n\nProse only.\n\n{{< embed talk.tmd >}}\n",
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("talk.tmd"),
-            "---\ntitle: Talk\nformat: deck\n---\n\n## One\n\n```{python}\nprint(1)\n```\n",
-        )
-        .unwrap();
-        let env = environment_for(&dir, ProbePolicy::Never);
-        assert_eq!(
-            env.iter().map(|e| e.lang).collect::<Vec<_>>(),
-            vec!["python"],
-            "the deck's python cell is reported even though the deck is not a page"
         );
     }
 

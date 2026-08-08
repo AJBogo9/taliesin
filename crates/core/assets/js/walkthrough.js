@@ -5,9 +5,9 @@
 // (`.cw-stage > .cw-code > pre`). As the reader scrolls, the step nearest the
 // viewport centre becomes active and its `data-cw-lines` spec focuses the matching
 // lines in the panel by washing them in the accent. Read-only / scroll-only: it never writes
-// source. Reuses the deck's `.tali-hl-ln` / `.tali-hl-ln-hl` / `.tali-hl-lines-active` class
-// contract (styled in base.css), but does NOT depend on deck.js (not loaded on
-// pages), so the tiny line-spec parse lives here.
+// source. Rides the `.tali-hl-ln` / `.tali-hl-ln-hl` / `.tali-hl-lines-active` class
+// contract that `emit::wrap_pre_lines` produces (styled in base.css); this file is its
+// only remaining consumer, so the tiny line-spec parse lives here.
 //
 // Registered through the shared `taliEnhancers` API, so it re-runs after every
 // incremental block swap and is idempotent (guarded with `data-cw-init`). When a
@@ -17,7 +17,7 @@
   // Parse a line spec ("3-5", "1,4", "all", "") into a Set of 1-based line numbers.
   // Clamp a range's upper bound to the rendered line count: focusLines only queries
   // on.has(i+1) for i in [0, lines-1], so a line past the code could never match — but
-  // an unbounded typo range (a-99999999) would OOM-freeze the tab. Mirrors deck.js.
+  // an unbounded typo range (a-99999999) would OOM-freeze the tab.
   /** @param {string | null} spec @param {number} max @returns {Set<number>} */
   function parseLineSpec(spec, max) {
     var on = /** @type {Set<number>} */ (new Set());

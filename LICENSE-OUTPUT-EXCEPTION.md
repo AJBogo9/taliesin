@@ -7,7 +7,7 @@ Version 1.0, 2026-07-29. Copyright © 2026 Andreas Bogossian.
 ## Why this exists
 
 Taliesin builds a self-contained HTML document. To do that it copies parts of its
-own runtime — stylesheets and scripts such as `base.css`, `tali-js.js`, `deck.js`
+own runtime — stylesheets and scripts such as `base.css`, `tali-js.js`
 and the `code-enhance/` fragments — **into the page it produces**. Those copies are
 what make a built page work offline with no CDN and no build step, and they are the
 reason this document exists: without an explicit grant, a reader could reasonably

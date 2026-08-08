@@ -86,7 +86,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 2 | Machine-facing verbs (keep one JSON surface) | **done** 2026-08-08 | `cut/wave-2-machine-verbs` | **−7,796** (+685 / −8,481, 79 files) | 18 verbs → **12**; `map` + `vocab` re-homed into the LSP |
 | 3 | Debug mode | **done** 2026-08-08 | `cut/wave-3-debug` | **−5,374** (+118 / −5,492, 45 files) | `DEBUG_CSS` was ungated in **three** places, not two; proven **−7,245 B** of shipped CSS per page |
 | 4 | Publishing + web-platform ops | **done** 2026-08-08 | `cut/wave-4-publishing` | **−9,576** (+808 / −10,384, 91 files) | 12 verbs → **10**; `headless_js.rs` went with `pdf.rs`; gates 9 → **8**, canaries 5 → **4** |
-| 5 | The deck engine | not started | | | biggest churn win: 122 commits |
+| 5 | The deck engine | **done** 2026-08-08 | `cut/wave-5-deck` | **−11,553** (+657 / −12,210, 161 files) | the biggest wave so far; `DocFormat` deleted outright, not collapsed; `code-line-numbers` went with it |
 | 6 | Reactive tail, R, Chrome kill | not started | | | drops 2 gate runtimes |
 | 7 | Vocabulary contraction | not started | | | needs wave 1 first |
 | 8 | CLI ergonomics + scaffolding | not started | | | keep `doctor.rs` |
@@ -103,9 +103,10 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   through the bundle partition. `runspec.rs` and `run_control.rs` are **not** run-only
   (the preview server's Run buttons use them) so they survive regardless. Adjudicate
   before executing.
-- **File-to-bundle collisions to resolve before waves 5/7/11/12:** `corpus/course/` +
-  `corpus/tarn/` (justification deletes them while theorems and narrative rewrite them).
-  Assign each to exactly one wave. **`card.rs`, `manifest.rs` and `image_opt.rs` are
+- **File-to-bundle collisions to resolve before waves 7/11/12:** `corpus/tarn/`
+  (justification deletes it while narrative rewrites it). Assign it to exactly one wave.
+  **`corpus/course/` is RESOLVED:** wave 5 took only `lecture.tmd` (its deck) and left the
+  book standing, so waves 7 and 12 inherit it whole. **`card.rs`, `manifest.rs` and `image_opt.rs` are
   RESOLVED — all three were deleted in wave 4**, so any later step naming them is spent.
   - **`docs/guide/using/from-quarto.tmd` — RESOLVED, assigned to wave 1, deleted there.**
     Six later bundles have a removal step saying "add the migration row to
@@ -114,6 +115,11 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
     the moment they hit the retired key, which no page can beat.
 - **Re-measure the warm pool on the preview path** before wave 11 if you want the
   number. The directive says cut regardless; measure only if you want to know the cost.
+- **Wave 6's Chrome kill is down to one test binary.** Wave 5 deleted `deck_browser.rs`, so
+  `reactive_browser.rs` is the SOLE consumer of `headless-js` + `chromiumoxide`. Both were
+  deliberately kept: cutting them here would have meant cutting wave 6's own subject.
+  `headless_js_feature.rs`'s binary list is now a one-element `BROWSER_TEST_BINARIES` const,
+  so adding or removing one is a row.
 - **Wave 6 inherits exactly ONE chrome canary now.** `gates.sh` is down to **4** canaries
   (python, R, node, reactive); wave 4 dropped `CANARY_PRINT` with the print track, and
   `CANARY_REACTIVE` is the only thing left that proves Chrome ran. Waves 2, 3 and 4 each
@@ -150,6 +156,12 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 - [ ] Write `tools/build-site.sh` before `mounts:` goes, and wire it into
       `.githooks/pre-push`. `build.rs:1651` records that the shell-script alternative is
       what once shipped this project's own call-to-action with a 404.
+- [ ] **A fence attribute has no validator at all, and `code-line-numbers=` just became the
+      first retirement that spelling cannot report.** The `#|` form answers with its
+      `RETIRED_KEYS` note; `{.python code-line-numbers="1|2"}` is silent. Every other fence
+      attribute was always silent, so this is a pre-existing hole a retirement walked into
+      rather than a new one — but a later wave retiring a fence-attribute vocabulary should
+      know it is retiring into silence.
 - [ ] Decide whether to keep one browser smoke test. After wave 6 there is no automated
       browser test net at all, and nothing tests that a `{js}` cell's teardown runs on a
       block diff.
@@ -563,3 +575,134 @@ site now reads its HTML like everyone else. And JSON-LD went entirely, which is 
 structured-data surface a search engine reads directly — `sitemap.xml`, `robots.txt`, the
 Atom feeds and the OpenGraph block all survive, so discoverability is reduced rather than
 removed.
+
+### Wave 5 — 2026-08-08, `cut/wave-5-deck`
+
+**Measured reclaim: −11,553 lines** (`+657 / −12,210` over 161 files) against the ~8,500
+estimate — the largest wave so far, ahead of wave 4's −9,576. By area:
+`crates/core/assets` −3,902 (deck.js 2,720 + deck.css 1,129 + the `.tali-embed` block and
+the client trims), `crates/core/src` −3,036, `crates/server/tests` −1,366,
+`crates/server/src` −717, `crates/core/tests` −710, `docs/guide` −564, `corpus` −316,
+`samples` −281, `docs/internals` −265, `web-client` −145, `site` −140, `tools` −75,
+`editor` −16, root/docs −20. **25 files deleted outright.**
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **4/4** canaries,
+**97 suites / 1,932 passed / 0 failed / 0 ignored**, exit 0. Measure wave 6 against
+**1,932, four canaries and eight gates**. (A bare default-feature `cargo test --workspace`
+is **95 suites / 1,927 passed**.)
+
+**Ten CLI verbs are still ten.** This wave cut no verb — it cut a `new` KIND. `taliesin new
+deck` answers with a one-sentence removal note from a hand-written arm in `NewKind::parse`,
+not a did-you-mean, because `deck` is edit-distance 3 from `page` and a did-you-mean would
+have sent the author to a scaffold that writes something else.
+
+**THE VOCABULARY, WHICH THE PLAYBOOK CORRECTLY CALLED THE SILENT FAILURE MODE — PROVEN, NOT
+ASSERTED.** Eleven register entries went in, and each was verified by authoring a scratch
+`.tmd` and running `taliesin check` on it rather than by grepping for absence:
+
+- `RETIRED_DIV_CLASSES` ×6 (`fragment`, `incremental`, `notes`, `fade-out`, `highlight`,
+  `magic-move`) — a scratch doc with all three of `.fragment`/`.magic-move`/`.notes`
+  produced three located `TAL-DIV-CLASS` warnings naming the date and the successor.
+- `RETIRED_KEYS` ×3 under `front-matter key` (`format`, `footer`, `logo`) — a scratch doc
+  with `format: deck` + `footer:` + `logo:` produced three located `TAL-FM-KEY` warnings.
+- `RETIRED_KEYS` ×1 under a NEW `cell option` scope (`code-line-numbers`, see finding 1).
+- One hand arm for `new deck`, verified by running the command.
+
+`corpus/diagnostics/typos.tmd` now carries a `::: {.fragment}` as a permanent witness, so
+the retirement path is exercised by the corpus and not only by a scratch file.
+
+**Six things that were not true, or that the playbook did not know.** Same genus as waves
+1–4:
+
+1. **`code-line-numbers` was deck-only, and nothing in the plan said so.** Its
+   `data-code-lines` attribute was read by `deck.js` alone, and `.code-walkthrough` — the
+   feature the guide claims it serves — calls `wrap_pre_lines` on its panel unconditionally
+   and never reads the option. Left in place it would have been exactly wave 4's
+   `orcid:`/`email:` failure: parsed, honored-looking and inert. Cut, and retired under a
+   scope `RETIRED_KEYS` did not have before. **Its fence-attribute spelling stays silent**
+   (`{.python code-line-numbers="1|2"}`) because this tree has no fence-attribute validator
+   at all; the register note says so in its own sentence.
+2. **`DocFormat` was deleted, not collapsed to one variant.** A one-variant enum threaded
+   through `RenderedDoc.format`, `validate_a11y(blocks, format)`,
+   `validate_document_shape(blocks, format)`, `page_static_diagnostics` and `preview_diag`
+   is ceremony that says nothing. Deleting it took the parameter off both diagnostics
+   entry points and took `BuildResult::Refused` with it — that variant's only case in the
+   whole tree was `--bare` on a deck.
+3. **`format:` is retired as a KEY, not as a value, and that was the cheap direction.** The
+   ruling asked for a retired-VALUE note for `format: deck`; there is no value register, so
+   that would have meant new machinery for one entry. Retiring the key costs one line and
+   answers `format: deck`, `format: pdf` AND `format: revealjs` with one sentence — so
+   `NON_HTML_FORMATS` (12 names), `validate_format_value`, `validate_format_subkeys`, the
+   `revealjs`→`deck` did-you-mean and the whole `TAL-FM-FORMAT` diagnostic went too.
+   `docs/DIAGNOSTICS.md` was re-blessed from `codes.rs` with `TALIESIN_BLESS=1`, per wave
+   3's recorded precedent — this time without editing the golden by hand first.
+4. **`token_contract.rs`'s browser census scans Rust files containing `<script>`, which
+   includes `render/tests.rs`.** `data-code-lines` stayed in the ACTUAL census after every
+   `.js`/`.css` reference was gone, because two *test string literals* were keeping it
+   alive. Worth knowing before the next census diff: the census is not asset-only.
+5. **NO `RETIRED_SHORTCODE` register was added, deliberately.** The shortcode vocabulary is
+   CLOSED, so a leftover `{{< embed x.tmd >}}` already gets a located, named "unknown
+   shortcode … (left as literal text)" warning — and the corpus proved it, by failing
+   `every_corpus_doc_emits_no_unknown_key_warnings` on the one `{{< embed lecture.tmd >}}`
+   left in `corpus/course/em.tmd`. There is no silence to prevent, so a fourth register
+   serving one entry is the machinery wave 3 declined for `TAL-DEBUG-TRACE`. The playbook's
+   CUT C4 proposes one for `{{< video >}}` in wave 7; that proposal should be re-examined
+   against this, since the same closed-vocabulary warning covers it.
+6. **`tools/ui-audit/` had a whole deck probe and a deck readiness gate, and no gate reads
+   it.** `probeDeck` waited on `window.TaliesinDeck.isReady()`, `browser.mjs`'s settle
+   predicate ANDed in a `deckOk` term, and `units.mjs` carried a `detectFormat` whose only
+   job was to answer "deck". All of it could only ever hang or no-op after this cut, and
+   `cargo test` would never have said so.
+
+**The judgement call the playbook flagged, and the fact that resolved it.**
+
+The dissent and the ruling both call the embedded deck "the marketing site's single live
+interactive artefact" and make deleting `site/demo.tmd` conditional on replacing it.
+**That premise is false, and reading the page is what showed it.** `site/index.tmd:19`
+already opens with a live Three.js `{js}` scene *above the fold* — the reader spins a
+surface before they reach the deck section at :118 — and `site/showcase.tmd` carries five
+more live exhibits, including the equation-plus-plot and the Lorenz attractor that wave 3
+recorded as surviving. So the landing page needed no replacement artefact. The
+"A real slide deck, embedded" section is deleted, the closing "nothing here a screenshot
+could fake" paragraph now names the surface the reader already spun, and the feature grid
+drops to three cards. `site/formats.tmd` goes from **"One source, four outputs"** to three,
+losing its `## Slide decks` section and its hero copy with it. `docs/guide/index.tmd`'s
+"60-second tour" is now a 60-second *description* of the edit loop, which is what the tour
+deck was demonstrating anyway.
+
+**What was given up, stated plainly.**
+
+**The layout engine and the bug class it was built against.** `deck_browser.rs`'s own
+header recorded that its first real-browser run found two shipped defects that 300-plus
+server-side emission assertions had all passed over: code blocks clipped off the right edge
+of 5 of 21 slides, and a focus ring painted around every slide in a vertical stack. That is
+direct evidence that scale-to-fit slide layout has a failure mode invisible to the kind of
+test this repo is good at, and `deck.js`'s 372 lines of fit logic were hard-won against it.
+Rebuilding later means rediscovering the bug class and rebuilding the CDP harness that
+catches it.
+
+**`deck_qr_golden.rs` and the encoder under it.** ~180 lines of table-driven Reed-Solomon
+over GF(256), format/version bit tables and ISO/IEC 18004 mask-penalty scoring, verified
+bit-for-bit against a reference encoder off-repo and pinned here by fingerprint. It was the
+one deck capability with real algorithmic surface, and the golden was its only net.
+
+**A use case, not a decoration** — the point the dissent made and the only one in the audit
+that applies. A writer who gives talks got slides from the same source, the same warm
+kernel and the same offline bundle, with no second tool. That is gone; a talk is now a page.
+
+**Three documents a person wrote to be read:** `samples/deck.tmd` ("Decisions in the Room",
+the business-value sample that exercised every slide feature), `docs/guide/tour.tmd` and
+`docs/guide/demo.tmd`. `corpus/course/` survives whole apart from its `lecture.tmd`.
+
+**Two gates got strictly stronger, and nothing had to be fixed for it.** Both diagnostics
+exemptions are gone (`a11y.rs`'s heading-skip and `shape.rs`'s whole document-shape family),
+so every page now reaches every rule. `a11y_outline.rs`'s book walk lost its deck branch —
+its own doc comment said the exemption let two files pass "by construction" — and the corpus
+and both books were clean under the newly-armed rules on the first run.
+
+**Measured, not asserted.** `corpus/tech-blog` rebuilt with the release binary:
+`_assets/app.<hash>.css` **56,429 → 54,951 bytes (−1,478 off every page)**, which is the
+`.tali-embed` iframe block leaving `base.css`; `app.<hash>.js` 93,684 → 93,172 (−512). An
+**in-place** rebuild over the existing output produced a byte-identical 53-file list, so no
+surviving keep-contributor lost its writer, and no `deck`/`embed` artefact remains in the
+output tree.

@@ -49,12 +49,6 @@ unrelated siblings into the nav, nor parse them to find that out. The scope is c
 on `Project::scope`, so a later re-discovery (a `_site.yml` save, a new `.tmd`) cannot
 silently widen it.
 
-A file that declares `format: deck` becomes a deck rather than a page, so
-`preview slides.tmd` serves slides. Inside a real site a deck is reached through the
-page that `{{< embed >}}`s it, and a deck nothing embeds is "loose" — flattened to an
-article with a warning. That is the right answer for a stray file in a project and the
-wrong one for the file you asked to look at.
-
 ## The server (`serve_site/mod.rs`)
 
 State is **per page**, built lazily on first visit:
@@ -106,11 +100,6 @@ Skipping `_freeze` matters: the executor writes its own cache there on every run
 without the skip each write would kick a redundant rebuild. The filter as a whole keeps
 an unrelated save (an editor swap file, a build-output write) from triggering a wasteful
 0-op rebuild. A burst of saves is debounced so several files coalesce into one rebuild.
-
-A **deck** is the exception to per-page rebuilding. It is rendered on request rather
-than from live per-page state, so it owns no entry in `pages` and the dependency scan
-(which walks the page list) cannot see it; a deck source change therefore reloads open
-tabs instead of swapping blocks.
 
 ## Why one server, not two
 

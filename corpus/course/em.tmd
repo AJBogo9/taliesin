@@ -20,10 +20,6 @@ $\mathrm{KL}(q \,\|\, p(z \mid x))$, and the divergence is non-negative by Gibbs
 inequality.
 :::
 
-The lecture slides give the intuition before we compute anything:
-
-{{< embed lecture.tmd >}}
-
 The E-step sets $q$ to the current posterior over the latents; every responsibility is a
 posterior mean in the sense of @def-expectation. The M-step then maximizes the bound in
 closed form. Here is that update, walked through line by line:

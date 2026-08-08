@@ -40,21 +40,6 @@ struct Token {
     value: String,
 }
 
-/// Whether `tok` is a `key=value` named argument, so not the positional path. Mirrors
-/// `render::extension::is_named_arg`: an identifier key (`[A-Za-z][A-Za-z0-9_-]*`)
-/// immediately followed by `=`. Anything else before the first `=` (a `?` query string, say)
-/// means the `=` belongs to the value and the token IS a path.
-fn is_named_arg(tok: &str) -> bool {
-    let Some((key, _)) = tok.split_once('=') else {
-        return false;
-    };
-    let mut chars = key.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    first.is_ascii_alphabetic() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
-
 /// Tokenize `chars[from, to)` the way `render::extension::tokenize_args` does: a quote
 /// toggles quoting rather than delimiting, so whitespace inside quotes does not split and
 /// `title="A deck"` stays one token. Splitting naively on whitespace lets a quoted `title=`
@@ -122,51 +107,6 @@ fn unquote(chars: &[char], start: usize, end: usize) -> (usize, usize) {
     }
 }
 
-/// Every `{{< … >}}` span on the line that is NOT inside an inline code span, as
-/// `(inner_start, inner_end)` scalar indices. Walks backtick runs the way `expand_in_line`
-/// does, so a shortcode shown in backticks is skipped.
-fn shortcode_spans(chars: &[char]) -> Vec<(usize, usize)> {
-    let mut spans = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '`' {
-            let run = chars[i..].iter().take_while(|&&c| c == '`').count();
-            // The matching run of the same length closes the span.
-            let mut j = i + run;
-            let mut close = None;
-            while j + run <= chars.len() {
-                if chars[j..j + run].iter().all(|&c| c == '`') {
-                    close = Some(j + run);
-                    break;
-                }
-                j += 1;
-            }
-            match close {
-                Some(after) => i = after,
-                None => i += run, // unterminated run: keep scanning after the backticks
-            }
-            continue;
-        }
-        if chars[i..].starts_with(&['{', '{', '<']) {
-            let mut j = i + 3;
-            let mut end = None;
-            while j + 3 <= chars.len() {
-                if chars[j..j + 3] == ['>', '}', '}'] {
-                    end = Some(j);
-                    break;
-                }
-                j += 1;
-            }
-            let Some(e) = end else { break }; // no close on this line: not a shortcode
-            spans.push((i + 3, e));
-            i = e + 3;
-            continue;
-        }
-        i += 1;
-    }
-    spans
-}
-
 /// The include link on this line, if any. `includes::parse_include` strips `{{<`/`>}}` off
 /// the TRIMMED LINE, so the directive must own its line — a mid-sentence `{{< include >}}` is
 /// never expanded and must not be linked.
@@ -197,34 +137,7 @@ fn include_link(chars: &[char], line: u32) -> Option<PathLink> {
     })
 }
 
-/// The embed links on this line. Unlike an include, an embed expands mid-paragraph, so every
-/// `{{< embed … >}}` outside an inline code span counts.
-fn embed_links(chars: &[char], line: u32) -> Vec<PathLink> {
-    let mut out = Vec::new();
-    for (inner, inner_end) in shortcode_spans(chars) {
-        let toks = tokenize(chars, inner, inner_end);
-        if toks.first().map(|t| t.value.as_str()) != Some("embed") {
-            continue;
-        }
-        let Some(positional) = toks[1..].iter().find(|t| !is_named_arg(&t.value)) else {
-            continue;
-        };
-        if positional.value.is_empty() {
-            continue;
-        }
-        let (s, e) = unquote(chars, positional.start, positional.end);
-        out.push(PathLink {
-            line,
-            start: s,
-            end: e,
-            path: positional.value.clone(),
-            shortcode: Shortcode::Embed,
-        });
-    }
-    out
-}
-
-/// Every navigable `{{< include >}}` / `{{< embed >}}` path in `text`, in reading order.
+/// Every navigable `{{< include >}}` path in `text`, in reading order.
 pub(crate) fn path_links(text: &str) -> Vec<PathLink> {
     let mut out = Vec::new();
     let mut in_code = false;
@@ -242,9 +155,7 @@ pub(crate) fn path_links(text: &str) -> Vec<PathLink> {
         let chars: Vec<char> = line.chars().collect();
         if let Some(inc) = include_link(&chars, i as u32) {
             out.push(inc);
-            continue; // an include owns its whole line, so nothing else can be on it
         }
-        out.extend(embed_links(&chars, i as u32));
     }
     out
 }
@@ -271,26 +182,6 @@ mod tests {
     }
 
     #[test]
-    fn finds_an_embed() {
-        let links = path_links("{{< embed deck.tmd >}}\n");
-        assert_eq!(links.len(), 1);
-        assert_eq!(links[0].path, "deck.tmd");
-        assert_eq!(links[0].shortcode, Shortcode::Embed);
-    }
-
-    #[test]
-    fn an_embeds_path_is_the_first_token_that_is_not_key_value() {
-        // Mirrors `embed_path` / `is_named_arg`: `title=…` is a named arg, not the source.
-        let line = r#"{{< embed title="A deck" tour.tmd >}}"#;
-        let links = path_links(&format!("{line}\n"));
-        assert_eq!(links.len(), 1);
-        assert_eq!(links[0].path, "tour.tmd");
-        let chars: Vec<char> = line.chars().collect();
-        let span: String = chars[links[0].start..links[0].end].iter().collect();
-        assert_eq!(span, "tour.tmd");
-    }
-
-    #[test]
     fn strips_quotes_around_an_include_path_and_spans_the_inside() {
         let line = r#"{{< include "a b/part.tmd" >}}"#;
         let links = path_links(&format!("{line}\n"));
@@ -308,12 +199,12 @@ mod tests {
 
     #[test]
     fn a_tilde_fence_also_suppresses_links() {
-        assert!(path_links("~~~\n{{< embed x.tmd >}}\n~~~\n").is_empty());
+        assert!(path_links("~~~\n{{< include x.tmd >}}\n~~~\n").is_empty());
     }
 
     #[test]
     fn a_shortcode_inside_an_inline_code_span_is_an_example() {
-        assert!(path_links("Write `{{< embed deck.tmd >}}` to embed it.\n").is_empty());
+        assert!(path_links("Write `{{< include part.tmd >}}` to splice it in.\n").is_empty());
     }
 
     #[test]
@@ -338,17 +229,8 @@ mod tests {
     }
 
     #[test]
-    fn two_embeds_on_one_line_are_both_linked() {
-        assert_eq!(
-            paths("{{< embed a.tmd >}} and {{< embed b.tmd >}}\n"),
-            vec!["a.tmd", "b.tmd"]
-        );
-    }
-
-    #[test]
     fn an_unterminated_shortcode_yields_no_link() {
         assert!(path_links("{{< include broken.tmd\n").is_empty());
-        assert!(path_links("{{< embed broken.tmd\n").is_empty());
     }
 
     #[test]
@@ -358,14 +240,15 @@ mod tests {
 
     #[test]
     fn columns_are_scalar_indices_not_bytes() {
-        // An astral char before the directive must shift the span by ONE scalar, not by its
-        // four UTF-8 bytes; `lsp_pos` converts to UTF-16 at the wire, and a byte index here
-        // would land mid-character.
-        let line = "😀 {{< embed d.tmd >}}";
+        // An astral char inside the path must shift the span's end by ONE scalar per char,
+        // not by its four UTF-8 bytes; `lsp_pos` converts to UTF-16 at the wire, and a byte
+        // index here would land mid-character. The astral char goes IN the path because an
+        // include owns its whole line, so nothing may precede the directive.
+        let line = "{{< include 😀/d.tmd >}}";
         let links = path_links(&format!("{line}\n"));
         assert_eq!(links.len(), 1);
         let chars: Vec<char> = line.chars().collect();
         let span: String = chars[links[0].start..links[0].end].iter().collect();
-        assert_eq!(span, "d.tmd");
+        assert_eq!(span, "😀/d.tmd");
     }
 }

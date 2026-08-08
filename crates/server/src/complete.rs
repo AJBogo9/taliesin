@@ -667,7 +667,7 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
 
     // 4. Enumerated first positionals.
     if prior.len() == 1 && prior[0] == "new" {
-        return enumerated(cur, &["post", "page", "deck", "paper"]);
+        return enumerated(cur, &["post", "page", "paper"]);
     }
     // `completions` offers the shell kinds until one is chosen, so it also fires after
     // `completions --install` (where an interleaved flag pushed prior.len() past 1).
@@ -913,7 +913,7 @@ mod brain_tests {
     fn enumerated_positionals() {
         assert_eq!(
             values(&["new", ""]),
-            ["post", "page", "deck", "paper"]
+            ["post", "page", "paper"]
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<_>>()

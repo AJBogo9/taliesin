@@ -1,6 +1,6 @@
 // Keyboard reader: left/right move to the previous/next chapter (the book prev/next
 // anchors). Guarded so it never fires while typing or under a modal. Read-only,
-// deck-skipped, idempotent.
+// idempotent.
 //
 // The `?` (open Settings) and `/` (open search) character-key shortcuts, and the
 // WCAG 2.1.4 off-switch they forced into the Settings menu (the shared reader-preference
@@ -9,7 +9,6 @@
 // character keys, so they carry no such obligation and stay live with no control.
 function taliInitKeyboard() {
   if (window.__taliKeyboard) return;
-  if (document.querySelector('.tali-deck')) return;
   window.__taliKeyboard = true;
 
   document.addEventListener('keydown', function (e) {

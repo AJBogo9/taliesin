@@ -50,15 +50,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("categories", "Tags used to group the page in listings."),
         ("image", "Social-card and listing thumbnail image path."),
         ("image-alt", "Alt text for `image`."),
-        (
-            "footer",
-            "Deck-only: persistent footer text shown on every slide.",
-        ),
-        ("logo", "Deck-only: logo image shown in a slide corner."),
-        (
-            "format",
-            "Output format (for example `deck`); an extension owns its sub-keys.",
-        ),
         ("theme", "Named theme or theme overrides."),
         ("page-layout", "Page width and layout mode."),
         (
@@ -160,7 +151,6 @@ const DIV_CLASS_NAMES: &[&str] = &[
     "panel-tabset",
     "code-walkthrough",
     "scrolly",
-    "magic-move",
     "step",
     "column-margin",
     "column-page",
@@ -177,7 +167,6 @@ fn div_classes() -> Value {
             ),
             ("code-walkthrough", "Step-through narrated code."),
             ("scrolly", "Scroll-driven storytelling section."),
-            ("magic-move", "Animated code diff between steps."),
             (
                 "step",
                 "A step inside a code-walkthrough or scrolly (line focus or stage state).",
@@ -405,17 +394,12 @@ fn xref_prefixes() -> Value {
 }
 
 /// Suggested VALUES for the front-matter keys that have a small, useful closed set, as
-/// `key -> [{name, description}]`. This is a completion aid, not a validated gate: an
-/// unrecognized `format:` value just renders as HTML, and a `theme:` may instead name an
-/// extension theme or a CSS file. Sourced from the recognizers so it can't drift from
-/// behaviour: `render::fm_extract::is_reveal_format` (`deck`, else HTML) and
-/// `render::theme::resolve_theme` (the `dark`/`light`/`default` built-ins).
+/// `key -> [{name, description}]`. This is a completion aid, not a validated gate: a
+/// `theme:` may instead name an extension theme or a CSS file. Sourced from the recognizer
+/// so it can't drift from behaviour: `render::theme::resolve_theme` (the
+/// `dark`/`light`/`default` built-ins).
 fn frontmatter_value_vocab() -> Value {
     json!({
-        "format": [
-            { "name": "html", "description": "Standard HTML page (the default)." },
-            { "name": "deck", "description": "Slide deck on taliesin's own engine." },
-        ],
         "theme": [
             { "name": "dark", "description": "Built-in dark theme." },
             { "name": "light", "description": "Built-in light theme." },
@@ -513,20 +497,14 @@ mod tests {
         check_named(&v["theoremKinds"], "theoremKinds");
         check_named(&v["divClasses"], "divClasses");
         check_named(&v["divAttributes"], "divAttributes");
-        for key in ["format", "theme"] {
-            check_named(
-                &v["frontmatterValues"][key],
-                &format!("frontmatterValues.{key}"),
-            );
-        }
+        check_named(&v["frontmatterValues"]["theme"], "frontmatterValues.theme");
     }
 
     /// The value vocab is a completion aid keyed by front-matter key. Pin its content (not
-    /// just via the golden file, which a bless could empty): `format` must offer both
-    /// recognized names and `theme` both built-ins, mirroring `is_reveal_format` /
-    /// `resolve_theme`. Removing a value fails here.
+    /// just via the golden file, which a bless could empty): `theme` must offer both
+    /// built-ins, mirroring `resolve_theme`. Removing a value fails here.
     #[test]
-    fn frontmatter_values_offer_format_and_theme() {
+    fn frontmatter_values_offer_the_built_in_themes() {
         let v = vocab();
         let names = |k: &str| {
             v["frontmatterValues"][k]
@@ -536,11 +514,6 @@ mod tests {
                 .map(|e| e["name"].as_str().unwrap().to_string())
                 .collect::<Vec<_>>()
         };
-        let format = names("format");
-        assert!(
-            format.contains(&"html".to_string()) && format.contains(&"deck".to_string()),
-            "format values must offer html + deck: {format:?}"
-        );
         let theme = names("theme");
         assert!(
             theme.contains(&"dark".to_string()) && theme.contains(&"light".to_string()),

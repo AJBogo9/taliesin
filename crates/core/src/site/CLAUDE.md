@@ -6,7 +6,7 @@ reading column; the chapter list is an off-canvas drawer summoned from a slim st
 
 Module map:
 - `mod.rs`        the `Site` type + its `impl` (discover, page render, listings, `hero:` blocks)
-- `discovery.rs`  `.tmd` page + loose-deck filesystem walk (`website_pages`, `discover_decks`)
+- `discovery.rs`  the `.tmd` page filesystem walk (`website_pages`)
 - `chapter.rs`    book-chapter section numbering (`number_chapter_headings`, `section_number`)
 - `links.rs`      `.tmd`→`.html` href rewrite (`rewrite_tmd_links`, pub) + cross-page link validation
 - `chrome.rs`     navbar / footer / post-nav / book sidebar HTML + social-icon glyphs
@@ -26,4 +26,3 @@ Conventions:
   `preview` — rendered on request via `serve_site`'s `MountedSite` — and `build` recurses
   into each one, writing it to `<out>/<at>/` **after** the parent (whose stale-output sweep
   would otherwise delete it).
-- An `{{< embed >}}`-referenced deck is built/served but kept out of nav + search.

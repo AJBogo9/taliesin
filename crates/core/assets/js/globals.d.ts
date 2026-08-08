@@ -1,5 +1,5 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check the bundled browser
-// scripts under `assets/js/` (the code-enhance/ fragments, deck.js, tali-js.js,
+// scripts under `assets/js/` (the code-enhance/ fragments, tali-js.js,
 // mermaid.js, scrolly/tabset/walkthrough). NOT shipped or embedded — the server
 // `include_str!`s the .js sources verbatim; this file only teaches the checker
 // about the globals these scripts share with each other, with the web-client
@@ -7,7 +7,7 @@
 //
 // The jsconfig also pulls in `web-client/globals.d.ts`, whose `interface Window`
 // declarations MERGE with the ones below (TypeScript declaration merging), so the
-// members those scripts already share (taliEnhancers, taliFocusTrap, TaliesinDeck,
+// members those scripts already share (taliEnhancers, taliFocusTrap,
 // taliJs, the theme API, the search index, …) are not repeated here — only the
 // globals authored under `assets/js/` that web-client does not itself reference.
 
@@ -34,15 +34,6 @@ interface Window {
   /** Vendored d3 global (d3.min.js), available to `{js}` cells. */
   d3?: any;
 
-  // --- deck engine (deck.js) -------------------------------------------------
-  /** The deck is rendered inside an `{{< embed >}}` iframe, not standalone. */
-  taliDeckEmbedded?: boolean;
-  /** Deck-local theme controls (deck.js), distinct from the page theme API. */
-  taliDeckThemeChoice?: () => string;
-  taliDeckSetTheme?: (choice: string) => void;
-  taliDeckApplyTheme?: (choice: string) => void;
-  /** The host page manages the deck's theme (embedded decks follow the parent). */
-  taliDeckThemeManaged?: boolean;
 
   // --- mermaid loader (mermaid.js) -------------------------------------------
   /** Vendored mermaid API, lazy-attached by the loader shim. */

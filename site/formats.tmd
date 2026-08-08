@@ -1,11 +1,11 @@
 ---
 title: "Document types"
-description: "One .tmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites, all from the same block model."
+description: "One .tmd source, three outputs: blog posts and papers, multi-chapter books, and multi-page websites, all from the same block model."
 page-layout: full
 hero:
-  eyebrow: "One source, four outputs"
-  headline: "Pick the output in the front matter"
-  lead: "A blog post, a slide deck, a book, and a website are the same document seen four ways: they share the block model, the offline math and highlighting, and the live edit loop."
+  eyebrow: "One source, three outputs"
+  headline: "One block model, three shapes"
+  lead: "A blog post, a book, and a website are the same document seen three ways: they share the block model, the offline math and highlighting, and the live edit loop."
   actions:
     - { text: "See the features", href: "features.tmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }
@@ -27,19 +27,6 @@ bibliography: references.bib
 
 Live Observable inputs and Three.js scenes belong here too: they keep their runtime
 state while you edit the prose around them.
-
-## Slide decks {#slide-decks}
-
-`format: deck` turns the same headings into a deck, on Taliesin's own engine,
-with no reveal.js dependency: fragments and incremental lists, a presenter view
-with notes and a timer, an overview map, per-slide backgrounds,
-auto-animate, magic-move code, and step-through line highlighting. And because the
-exec pipeline is format-agnostic, a `{python}` cell **runs on the slide** and
-re-runs as you edit it.
-
-{{< embed demo.tmd title="The Taliesin deck engine" >}}
-
-The deck above is live: step through it in place, and open its menu for fullscreen.
 
 ## Multi-chapter books {#books}
 

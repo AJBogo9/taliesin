@@ -139,26 +139,6 @@ enum CellRole {
 }
 ```
 
-### `DocFormat`
-
-The output format from the front-matter `format:` key. Decides which page
-scaffold (and which live client) is emitted.
-
-```rust
-enum DocFormat {
-    Html,   // default: a standard HTML page (blog post, book page)
-    Reveal, // a slide deck (format: deck / *-deck)
-}
-```
-
-::: {.callout-note}
-The enum variant is `Reveal` for historical reasons (the deck engine used to be
-reveal.js). The engine is now Taliesin's own; reveal.js was removed. The variant
-name is the only fossil left: the runtime exposes `window.TaliesinDeck` and nothing
-else, with no back-compat alias and no `window.Reveal`. See
-[the deck engine](deck-engine.tmd).
-:::
-
 ### `OutputMode`
 
 How aggressively a page trims its optional machinery, threaded from the `build`
@@ -200,12 +180,11 @@ struct RenderedDoc {
     subtitle: Option<String>,
     lang: Option<String>,         // front-matter lang: (BCP-47), → <html lang>; None falls back to "en"
     description: Option<String>,  // SEO/OpenGraph meta for a standalone page
-    format: DocFormat,
     toc: bool,                    // effective TOC flag (a site recomputes this from its default)
     toc_explicit: Option<bool>,   // the page's explicit toc: as a tri-state, so a site can tell off from unset
     theme_css: String,            // resolved custom theme CSS; empty for the built-in light/dark themes
     theme_default: String,        // "dark" | "light" force it; "auto" follows prefers-color-scheme
-    theme_is_custom: bool,        // a custom theme owns the colours (decks skip built-in light/dark management)
+    theme_is_custom: bool,        // a custom theme owns the colours
     includes: PageIncludes,       // resolved include-* + css front-matter markup
     warnings: Vec<Warning>,
     blocks: Vec<Block>,

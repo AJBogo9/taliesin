@@ -2384,7 +2384,6 @@ fn resolve_completion(
                     })
                     .collect();
             let file_detail = match shortcode {
-                Shortcode::Embed => "deck / page",
                 Shortcode::Include => "partial",
             };
             // Replace the whole typed path (incl. any dir prefix) so descending overwrites
@@ -4703,34 +4702,6 @@ mod tests {
             cache.kind,
             Some(lsp_types::CompletionItemKind::PROPERTY),
             "a front-matter key completes as a property"
-        );
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
-    // The typed-prefix filter, on the axis the `||` short-circuit hides: with nothing typed
-    // every value is offered (covered by the tests above, which complete from an empty
-    // token), so only a NON-empty prefix shows whether the filter runs at all — and shows
-    // it in both directions, since the match must survive and the non-match must not.
-    #[test]
-    fn completion_filters_frontmatter_values_by_the_typed_prefix() {
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-comp-fmvalue.tmd").unwrap();
-        let text = "---\nformat: d\n---\n\nBody.\n".to_string();
-        did_open(&client, &uri, text);
-        let _ = recv_publish(&client);
-
-        // Line 1 is `format: d`; the cursor sits after the `d`, so `html` cannot match.
-        let items = complete_at(&client, &uri, 45, 1, 9);
-        let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        assert_eq!(
-            labels,
-            vec!["deck"],
-            "only the values matching what is typed should be offered"
         );
 
         shutdown(&client);

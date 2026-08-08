@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 mod model;
 pub(crate) use model::CellRole;
 pub use model::{
-    AssetMode, Block, Cell, CellFigure, CellTable, DocFormat, ExternalAssets, JsOpts, OutputMode,
+    AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
     PageIncludes, RenderedDoc, SiteDefaults, Warning,
 };
 
@@ -43,12 +43,9 @@ pub use doc_includes::includes_from_parts;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
-pub use fm_extract::is_reveal_doc;
 // `TheoremConfig` is public (an opaque handle) so the site search API can carry one through.
 pub use fm_extract::TheoremConfig;
-use fm_extract::{
-    detect_format, detect_title_block_hidden, detect_toc, extract_field, parse_theorem_config,
-};
+use fm_extract::{detect_title_block_hidden, detect_toc, extract_field, parse_theorem_config};
 mod cell_extract;
 pub use cell_extract::option_directive;
 use cell_extract::{
@@ -63,21 +60,11 @@ pub(crate) use client_lang::CLIENT_LANGS;
 pub use client_lang::{
     ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
 };
-mod deck;
-pub use deck::{
-    DeckParts, ScriptSummary, assemble_deck_page, deck_overlay_html, script_summary, slides_html,
-};
-// `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
-// tests; it's not part of the public API, so it's only pulled into scope here for
-// the tests rather than re-exported.
-#[cfg(test)]
-use deck::deck_theme_head;
 // `pub(crate)` only so `frontmatter` can reach `extension::dataset::DATASET_KEYS`: the
 // front-matter linter validates `datasets:` sub-keys against the same closed list the
 // renderer reads, rather than a second copy that could drift from it.
-pub(crate) mod extension;
-pub use extension::embed_targets;
 mod divs;
+pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
@@ -124,8 +111,8 @@ mod page;
 use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    html_page_from_doc_in_site_external, render_deck_to_page_external, render_doc_to_page,
-    render_doc_to_page_external, title_with_site_suffix,
+    html_page_from_doc_in_site_external, render_doc_to_page, render_doc_to_page_external,
+    title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -514,11 +501,6 @@ fn render_internal_impl(
     let mut authors: Vec<crate::author::Author> = Vec::new();
     let mut description: Option<String> = None;
     let mut lang: Option<String> = None;
-    // Deck chrome: a persistent per-slide footer text + corner logo image. Read on any
-    // doc but only the deck builders render them.
-    let mut footer: Option<String> = None;
-    let mut logo: Option<String> = None;
-    let mut format = DocFormat::Html;
     let mut toc_explicit: Option<bool> = None;
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
     // but skips the visible `<h1>` header (nav landing pages don't need it).
@@ -696,11 +678,8 @@ fn render_internal_impl(
                     }
                 }
                 description = extract_field(fm, "description");
-                footer = extract_field(fm, "footer");
-                logo = extract_field(fm, "logo");
                 lang = extract_field(fm, "lang");
                 bib_paths = bibliography_paths(fm);
-                format = detect_format(fm);
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
@@ -817,9 +796,7 @@ fn render_internal_impl(
             make_id(&keyed, &mut id_counts)
         };
         let file_attr = source_file_attr(source_file.as_deref());
-        // A heading gets a stable, deduped anchor id (HTML docs only — reveal
-        // decks put the slug on the wrapping `<section>` instead, so adding it
-        // here too would duplicate the id in the DOM).
+        // A heading gets a stable, deduped anchor id.
         // A heading may carry a Pandoc attribute (`## Title {#sec-x}`): use
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
@@ -855,7 +832,7 @@ fn render_internal_impl(
             );
         }
         let id_attr = match heading_level {
-            Some(_) if format == DocFormat::Html => {
+            Some(_) => {
                 let id = match &h_attr {
                     // An explicit `{#id}` must be deduped too: two same explicit ids
                     // (or an explicit id colliding with an autoslug) would otherwise
@@ -1179,23 +1156,13 @@ fn render_internal_impl(
         }
         // One <h1> per page: when this render emits a visible title block, shift every body
         // heading so its sections nest directly beneath the title. `emits_title_block` is
-        // the title-block insertion condition (Html, not hidden, titled), computed once
-        // before the walk and shared with the section numbering above, so a shifted heading
-        // and its `@sec-` number can never disagree. A deck (Reveal) never satisfies it, so
-        // its slide-break machinery is untouched.
+        // the title-block insertion condition (not hidden, titled), computed once before
+        // the walk and shared with the section numbering above, so a shifted heading and
+        // its `@sec-` number can never disagree.
         if let Some(level) = heading_level
             && let Some(shift) = heading_shift
         {
             html = shift_heading_html(&html, level, shift);
-        }
-        // A deck heading may set section-level attrs (`## T {background-image="..."}`,
-        // `{auto-animate=true}`): emit them as data-* on the heading so the slide model
-        // can hoist them onto the wrapping `<section>`.
-        if heading_level.is_some() && format == DocFormat::Reveal {
-            let section_attrs = heading_section_attrs(&block_src);
-            if !section_attrs.is_empty() {
-                html = apply_heading_bg(&html, &section_attrs);
-            }
         }
         // Reserve each local raster image's box before its bytes arrive, so loading one does
         // not shove the text below it down the page. Relative to `base_dir` like every other
@@ -1275,9 +1242,8 @@ fn render_internal_impl(
     // splice in the walk above). Keeping a trailing list as well would put every note's
     // text in the DOM twice, which Ctrl-F and all four text projections (`taliesin read`,
     // `skim.rs`, the search index, `llms-full.txt`) would each report twice.
-    // A visible title block (HTML only; reveal builds its own title slide). It is
-    // a generated block (no sourcepos), so it rides the block model + diff like
-    // the References section.
+    // A visible title block. It is a generated block (no sourcepos), so it rides the
+    // block model + diff like the References section.
     // A dated document is an article (a post), which gates both the reading-time estimate and
     // the standalone `og:type`. An undated page is a generic `website`, not an `article`.
     let is_article = date.as_deref().is_some_and(|d| !d.is_empty());
@@ -1288,8 +1254,7 @@ fn render_internal_impl(
         let mins = ((crate::prose::word_count(src) + 100) / 200).max(1);
         format!("{mins} min read")
     });
-    if format == DocFormat::Html
-        && !hide_title_block
+    if !hide_title_block
         && let Some(tb) = title_block_html(
             title.as_deref(),
             subtitle.as_deref(),
@@ -1310,8 +1275,7 @@ fn render_internal_impl(
                 nested: Vec::new(),
             },
         );
-    } else if format == DocFormat::Html
-        && hide_title_block
+    } else if hide_title_block
         && let Some(t) = title.as_deref().filter(|t| !t.is_empty())
         && !blocks.iter().any(|b| b.html.contains("<h1"))
     {
@@ -1336,53 +1300,36 @@ fn render_internal_impl(
         );
     }
     // The appendix (author contributions), after the References a reader scrolls past and
-    // before the code download, which is chrome rather than content. Reading view only: a
-    // deck has no appendix.
-    if format == DocFormat::Html {
-        let ap = appendix_html(&authors);
-        if !ap.is_empty() {
-            blocks.push(Block {
-                id: APPENDIX_BLOCK_ID.to_string(),
-                sourcepos: String::new(),
-                source_file: None,
-                html: ap,
-                cell: None,
-                nested: Vec::new(),
-            });
-        }
+    // before the code download, which is chrome rather than content.
+    let ap = appendix_html(&authors);
+    if !ap.is_empty() {
+        blocks.push(Block {
+            id: APPENDIX_BLOCK_ID.to_string(),
+            sourcepos: String::new(),
+            source_file: None,
+            html: ap,
+            cell: None,
+            nested: Vec::new(),
+        });
     }
     // The reader's code download (C-READ-2), appended last of the generated blocks so it
-    // sits after the References/footnotes a reader scrolls past. Reading view only: a deck
-    // has no place to put a download list, and `mark_section_extents` below must still see
-    // the final block list.
-    if format == DocFormat::Html
-        && let Some(b) = repro::repro_block(&blocks)
-    {
+    // sits after the References/footnotes a reader scrolls past. `mark_section_extents`
+    // below must still see the final block list.
+    if let Some(b) = repro::repro_block(&blocks) {
         blocks.push(b);
     }
     // LAST over the block list: every block that will ever be in the document is in it
     // by now (References, footnotes, the title block), so a section's end is final.
-    //
-    // Reading view only. A deck already has real section boundaries — `deck.rs` projects
-    // the same blocks into one `<section>` per slide — so the marker would be redundant
-    // there, and it is not free: it makes a heading's HTML depend on the last block of
-    // its section, which on a deck means editing a slide's last line also re-emits the
-    // slide's own heading.
-    if format == DocFormat::Html {
-        mark_section_extents(&mut blocks);
-    }
+    mark_section_extents(&mut blocks);
     let theme_css = resolve_theme(theme.as_deref(), base_dir, include_root, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
     let theme_is_custom = !theme_css.trim().is_empty();
     RenderedDoc {
         title,
         subtitle,
-        footer,
-        logo,
         lang,
         description,
         is_article,
-        format,
         // Standalone default: a TOC only when the page asked for one. The site
         // path overrides this via `page_toc` using `toc_explicit`.
         toc: toc_explicit.unwrap_or(false),
@@ -1873,16 +1820,15 @@ fn fonts_css_linked(hrefs: &[(&str, String)]) -> String {
 }
 
 /// The owned design tokens (the light palette, fonts, geometry, motion),
-/// `include_str!`'d ahead of BOTH `base.css` (the page) and `deck.css` (the deck) so
+/// `include_str!`'d ahead of `base.css` so
 /// the palette is declared exactly once. See `tokens.css`. The dark palette override
 /// is `TOKENS_DARK_CSS` (kept separate so a `--bare` page can flatten just that layer).
 pub(crate) const TOKENS_CSS: &str = include_str!("../../assets/css/tokens.css");
-/// The dark palette override (keyed on `html[data-theme="dark"]` + the deck's
-/// `html.tali-deck-dark`), shared by the page and the deck. See `TOKENS_CSS`.
+/// The dark palette override, keyed on `html[data-theme="dark"]`. See `TOKENS_CSS`.
 pub(crate) const TOKENS_DARK_CSS: &str = include_str!("../../assets/css/tokens-dark.css");
 
 /// Base document styling (typography, tables, callouts, references, block
-/// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
+/// highlight). Emitted by the page builders in `page.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 
@@ -1913,7 +1859,7 @@ pub(crate) const GENERATOR_BANNER: &str = concat!(
 // large (~2.8 MB) and only needed when a diagram is actually present, so it's lazy-loaded
 // by `mermaid.js` (the self-registering enhancer) the first time a `{mermaid}` block
 // appears. It's a client-side presentation layer, so it never affects the block model or
-// the diff. (Syntax highlighting is server-side; the deck engine and KaTeX are bundled
+// the diff. (Syntax highlighting is server-side; KaTeX is bundled
 // offline.)
 //
 // OFFLINE: a static Build with a diagram INLINES the vendored library (`MERMAID_MIN_JS`,
@@ -2179,50 +2125,6 @@ pub fn retired_div_note(class: &str) -> Option<&'static str> {
         .map(|(_, note)| *note)
 }
 
-/// The raw framework CSS a deck inlines in its main `<style>` (fonts + tokens + the deck
-/// stylesheet). A deck's sheet is not the page's: it is `deck.css` instead of
-/// base + dark + site chrome, so a deck inside a `build <dir>` cannot link `app.<hash>.css`
-/// and gets its own `deck.<hash>.css` instead.
-pub fn deck_shared_css() -> String {
-    format!("{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{}", deck::DECK_CSS)
-}
-
-/// [`deck_shared_css`] with the body typeface linked rather than inlined, for a deck inside
-/// a site build. The deck sheet is a *second* copy of the same faces, so leaving them
-/// inlined here would keep 160 KB of base64 in the build even after the page sheet dropped
-/// it — and both sheets sit in `_assets/`, so both reference the same two files.
-pub fn deck_shared_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
-    format!(
-        "{}{TOKENS_CSS}{TOKENS_DARK_CSS}{}",
-        fonts_css_linked(hrefs),
-        deck::DECK_CSS
-    )
-}
-
-/// Everything a deck's script tail carries that can be shared across the decks in one
-/// build: the deck engine plus the enhancers a deck can use. Separated by a bare `;` on its
-/// own line so concatenation is ASI-safe, like [`core_enhance_js`].
-///
-/// **Deliberately not `core_enhance_js`**, even though the two overlap in `code-enhance.js`:
-/// the page bundle also carries `search.js`, which binds a capture-phase Cmd/Ctrl-K on
-/// `document` and `preventDefault()`s it. Linking the page bundle from a deck would hand
-/// decks a command palette they have never had, built from a document structure they do not
-/// have, and take a key away from the deck's own handling. The duplicated `code-enhance.js`
-/// is the price of leaving deck behaviour exactly where it was.
-///
-/// Excluded for the same reasons as the page bundle: mermaid (its own conditional file) and
-/// the `{js}`-cell runtime (must stay inline so a cell's `import()` resolves page-relative).
-pub fn deck_shared_js() -> String {
-    [
-        deck::DECK_JS,
-        CODE_ENHANCE_JS,
-        WALKTHROUGH_JS,
-        TABSET_JS,
-        SCROLLY_JS,
-    ]
-    .join("\n;\n")
-}
-
 /// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each
 /// piece is separated by a bare `;` on its own line so concatenation is ASI-safe. The
 /// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files), and
@@ -2280,7 +2182,6 @@ pub(crate) fn block_heading_level(html: &str) -> Option<u8> {
     None
 }
 
-/// A reveal slide separator: a thematic break (`<hr ...>`).
 /// GitHub-style slug for a heading's visible text, used as the `<section>` id.
 fn slugify(s: &str) -> String {
     let mut out = String::new();
@@ -2440,51 +2341,6 @@ pub(crate) fn parse_heading_attr(block_src: &str) -> Option<(String, Option<Stri
         .filter(|id| !id.is_empty())
         .map(str::to_string);
     Some((line[..open].trim_end().to_string(), id))
-}
-
-/// Per-slide background data attributes from a heading's trailing `{...}` —
-/// `background-color`/`-image`/`-gradient`/`-size`/`-position`/`-repeat`/`-opacity`
-/// become ` data-background-*="..."`. Empty if the heading has no `{...}` or no
-/// background keys.
-fn heading_section_attrs(block_src: &str) -> String {
-    let line = heading_attr_line(block_src);
-    let Some(open) = line.rfind('{') else {
-        return String::new();
-    };
-    if !line.ends_with('}') {
-        return String::new();
-    }
-    let attrs = divs::parse_attrs(&line[open + 1..line.len() - 1]);
-    let mut out = String::new();
-    // An explicit `{#id}` on a slide heading becomes the `<section>` anchor (the slide
-    // model reads `data-slide-anchor`), so `@sec-x` into a deck resolves instead of the
-    // text-slug id winning and leaving a dead link.
-    if let Some(id) = &attrs.id {
-        out.push_str(&format!(" data-slide-anchor=\"{}\"", escape_attr(id)));
-    }
-    for (k, v) in &attrs.kv {
-        if k.starts_with("background") {
-            out.push_str(&format!(" data-{}=\"{}\"", k, escape_attr(v)));
-        }
-    }
-    // `auto-animate` (as `auto-animate=true` or a bare class) marks the slide so the
-    // deck engine tweens matched elements into the next auto-animate slide.
-    let auto = attrs.kv.iter().any(|(k, _)| k == "auto-animate")
-        || attrs.classes.iter().any(|c| c == "auto-animate");
-    if auto {
-        out.push_str(" data-auto-animate=\"\"");
-    }
-    out
-}
-
-/// Strip a heading's trailing `{...}` (if still present) and inject `bg_data` into
-/// its opening tag, so `## T {background-image="x"}` -> `<h2 data-background-image="x">T</h2>`.
-fn apply_heading_bg(html: &str, bg_data: &str) -> String {
-    let stripped = strip_heading_attr(html);
-    match stripped.find('>') {
-        Some(gt) => format!("{}{}{}", &stripped[..gt], bg_data, &stripped[gt..]),
-        None => stripped,
-    }
 }
 
 /// Remove the trailing `{...}` attribute comrak leaves as literal text inside a
@@ -3157,7 +3013,7 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
 }
 
 /// Strip HTML tags, returning the visible text (callout/tabset titles, TOC entries,
-/// figure alt-text, deck slugs). Quote-aware, like [`tag_end`]: a `>` inside a quoted
+/// figure alt-text, heading slugs). Quote-aware, like [`tag_end`]: a `>` inside a quoted
 /// attribute value (e.g. KaTeX's `<span title="a>b">`) does NOT end the tag, so the
 /// visible text isn't truncated mid-attribute.
 ///
@@ -3452,9 +3308,6 @@ pub fn escape_attr(s: &str) -> String {
 /// theme extension restyles it for free. Deliberately leaner than a full
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");
-
-// The deck engine (deck.css/deck.js) is bundled into the page like KaTeX —
-// decks render with no network, the same as every other format.
 
 #[cfg(test)]
 mod tests;

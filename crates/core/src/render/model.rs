@@ -172,18 +172,6 @@ impl Block {
     }
 }
 
-/// The output format the document targets, taken from its front matter
-/// `format:` key. Drives which page scaffold (and live client) is emitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DocFormat {
-    /// A standard HTML page (blog post, book): the default.
-    #[default]
-    Html,
-    /// A slide deck, rendered by taliesin's OWN native engine (reveal.js was removed);
-    /// selected by `format: deck` / `*-deck`.
-    Reveal,
-}
-
 /// How a page is being emitted, which decides how much optional machinery ships.
 /// Threaded from the build CLI through the page builders onto [`PageParts`]; the
 /// live preview always uses [`OutputMode::Preview`] so the dev loop is untouched.
@@ -255,11 +243,6 @@ impl std::fmt::Display for Warning {
 pub struct RenderedDoc {
     pub title: Option<String>,
     pub subtitle: Option<String>,
-    /// Deck chrome (front-matter `footer:`/`logo:`), rendered as a persistent overlay
-    /// on every slide by the deck builders. `footer` is plain text; `logo` is an image
-    /// URL/path (resolved like any slide image). Ignored on non-deck documents.
-    pub footer: Option<String>,
-    pub logo: Option<String>,
     /// Front-matter `lang:` (a BCP-47 tag like `en`/`fr`), emitted as `<html lang>`
     /// by the page builders. `None` falls back to `en`.
     pub lang: Option<String>,
@@ -270,7 +253,6 @@ pub struct RenderedDoc {
     /// estimate uses. Drives the standalone `og:type` (`article` vs `website`) so a generic
     /// undated page isn't mislabelled an article to crawlers.
     pub is_article: bool,
-    pub format: DocFormat,
     /// Whether this doc shows a table of contents. For a standalone render this
     /// is the front-matter `toc:` (default off); inside a site it is recomputed
     /// from `Site::page_toc` so the site default can apply.
@@ -286,8 +268,6 @@ pub struct RenderedDoc {
     /// `"auto"` follows the OS `prefers-color-scheme`.
     pub theme_default: String,
     /// Whether a custom `theme:` (a CSS file or bundle) owns this doc's colours.
-    /// Decks use this to skip the built-in light/dark management when a custom theme
-    /// is in charge.
     pub theme_is_custom: bool,
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
     /// `css` from the doc's front matter, injected into the page template.
@@ -314,19 +294,12 @@ pub enum AssetMode<'a> {
 }
 
 /// Depth-adjusted hrefs for the shared `_assets/` files, supplied per page by the build.
-///
-/// `deck_css`/`deck_js` are the deck engine's own pair (a deck's stylesheet is `deck.css`,
-/// not the page's base + site chrome, so it cannot share `app_css`). They are written only
-/// when the build has a deck to link them, and are `""` otherwise — an ordinary page never
-/// reads them.
 pub struct ExternalAssets<'a> {
     pub app_css: &'a str,
     pub katex_css: &'a str,
     pub app_js: &'a str,
     pub mermaid_js: &'a str,
     pub jslibs_js: &'a str,
-    pub deck_css: &'a str,
-    pub deck_js: &'a str,
     /// The roman body face, for a `<link rel="preload" as="font">` ahead of the stylesheet
     /// (item 150). Unlike the `url()` refs *inside* the sheet, this href is resolved against
     /// the **page**, so it carries the depth climb.

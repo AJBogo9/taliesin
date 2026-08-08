@@ -8,7 +8,7 @@ description: "Tab completion that offers only .tmd files and the directories hol
 Tab completion for the `taliesin` (and `tali`) command. Press Tab and it offers
 subcommands, flags, and, for a path argument, only `.tmd` files plus directories that
 contain one, with site and book roots listed first. Directories with no `.tmd` inside
-(and build folders like `target/`) are hidden, so finding the document, deck, or site
+(and build folders like `target/`) are hidden, so finding the document or site
 you want to open is quick.
 
 All the logic lives in the binary, so every shell stays in sync and there is nothing to
@@ -31,5 +31,5 @@ Then open a new shell (for zsh you may need to re-run `compinit`, or add the pri
 Press Tab after `tali preview` and it offers matching documents. The same completion
 also drives `taliesin build`, `render`, `check`, and the other path-taking commands. In
 the editor, the companion extends this idea *inside* a document: typing the file
-argument of `{{< embed … >}}` or `{{< include … >}}` completes the sibling `.tmd`
+argument of `{{< include … >}}` completes the sibling `.tmd`
 files and directories.

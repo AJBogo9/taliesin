@@ -78,7 +78,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown hero key", "TAL-FM-KEY", WARNING),
     ("unknown theorems key", "TAL-FM-KEY", WARNING),
     ("unknown prose-lint key", "TAL-FM-KEY", WARNING),
-    ("unknown format", "TAL-FM-FORMAT", WARNING),
     // A recognized key taliesin reads and then ignores (`csl:`). Must precede the
     // citation needles below: the message names `bibliography`-adjacent concepts and
     // would otherwise classify as TAL-CITE-BIB.
@@ -123,7 +122,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("has no code block to show", "TAL-DIV-PARTS", WARNING),
     ("has no sticky stage", "TAL-DIV-PARTS", WARNING),
     ("has no `.step` divs", "TAL-DIV-PARTS", WARNING),
-    // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
+    // A `.step lines=` spec carrying a `|` (the `code-line-numbers=` step separator),
     // which a step's own comma-only parser silently focuses to zero lines.
     ("step separator", "TAL-STEP-LINES", WARNING),
     // An empty div that names a real feature (`.input`, `.callout-*`, `.panel-tabset`, …),
@@ -378,15 +377,6 @@ const EXPLANATIONS: &[Explanation] = &[
               reference lists every recognized key.",
     },
     Explanation {
-        code: "TAL-FM-FORMAT",
-        title: "an unknown `format:` value",
-        cause: "The `format:` field names an output Taliesin does not produce. Taliesin \
-                renders HTML only (`html`, `deck`); format names from other tools \
-                (`revealjs`, `pdf`, `docx`) have no meaning here.",
-        fix: "Use a format Taliesin supports, or drop the field to accept the default. HTML \
-              is the only output target; a slide deck is `format: deck`.",
-    },
-    Explanation {
         code: "TAL-FM-UNSUPPORTED",
         title: "a recognized but unsupported key",
         cause: "This key is one Taliesin knows about but deliberately does not act on (for \
@@ -487,7 +477,7 @@ const EXPLANATIONS: &[Explanation] = &[
         code: "TAL-STEP-LINES",
         title: "a `.step lines=` uses a step separator",
         cause: "The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. \
-                The `|` is the STEP separator of a deck/listing `code-line-numbers=\"1|2-3\"` \
+                The `|` is the STEP separator of a `code-line-numbers=\"1|2-3\"` \
                 spec; a `.step` is already one step, so its own `lines=` is parsed as \
                 comma-separated ranges only. The `|` matches neither a range nor a number, so \
                 the step silently focuses zero lines.",
@@ -524,7 +514,7 @@ const EXPLANATIONS: &[Explanation] = &[
                 fine and the option you asked for simply never happened.",
         fix: "Fix the spelling inside the braces; the message names the nearest known \
               spelling when there is one. The built-ins are `{{< include file.tmd >}}`, \
-              `{{< embed deck.tmd [title=…] >}}`, `{{< video clip.mp4 [controls] [audio] \
+              `{{< video clip.mp4 [controls] [audio] \
               [dark=] [poster=] [caption=] [captions=] >}}` and `{{< input … >}}`. A \
               shortcode written as an *example* belongs in a code fence or backticks, \
               which are never expanded and never linted.",
