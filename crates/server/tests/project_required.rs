@@ -1,8 +1,21 @@
 //! `build` and `preview` render a *project*, and a project is what `_site.yml` declares.
 //! A bare directory is refused with guidance, the same stance `read` already takes
 //! (`read_of_a_non_site_directory_is_rejected_with_guidance` in `read_book.rs`).
+//!
+//! `a_standalone_document_builds_and_previews_without_site_chrome` additionally drives a
+//! real `preview` over HTTP (the only way to reach `page_chrome` for a document with no
+//! ancestor `_site.yml`; `build` never constructs a `SiteCtx` at all). It duplicates the
+//! free-port/`Server`/`http_get` shape from `mount_serving_live.rs` — a separate test
+//! binary, so nothing there can be imported — and picks its own port band, disjoint from
+//! that file's and from `preview_single_instance.rs`'s (see [`PORT_FLOOR`]).
 
-use std::process::Command;
+use std::fs;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::time::{Duration, Instant};
 
 fn run(args: &[&str]) -> (bool, String, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
@@ -66,25 +79,151 @@ fn preview_of_a_non_project_directory_is_rejected_with_guidance() {
     );
 }
 
-/// The contract: for a document with no ancestor `_site.yml`, what `preview` serves and what
-/// `build` writes carry the same chrome. This is the assertion the "Home" button bug failed.
+// ---------------------------------------------------------------------------
+// A real `preview`, over real HTTP
+// ---------------------------------------------------------------------------
+//
+// `build <file.tmd>` (`build.rs` -> `render_doc_to_page` -> `page.rs` with `site: None`)
+// never constructs a `SiteCtx` and never reaches `page_chrome`'s `navbar_html: if book ||
+// self.standalone` gate. The bug this whole plan exists to catch lived in `preview
+// <file.tmd>`'s `Site::discover_single` -> `page_chrome` path
+// (`serve_site/mod.rs::site_page_html`'s `let chrome = { project.site.lock().page_chrome
+// (page) };`), so only a test that drives `preview` over HTTP can regress-guard it. The
+// `build` half below stays as the control: it pins the half of the contract that was
+// never broken, so the test as a whole says "preview matches build", not merely "preview
+// has no chrome".
+
+/// A port band clear of this crate's other live-server test binaries —
+/// `mount_serving_live.rs` (15,000..~21,000) and `preview_single_instance.rs` /
+/// `run_session_discovery.rs` (21,000..~31,500) — and clear of the 4321 default a real
+/// preview a developer is running might be on.
+const PORT_FLOOR: u16 = 10_000;
+
+/// How far past its requested port a preview walks when that port is taken
+/// (`serve/mod.rs`: `for p in port+1..=port+9`).
+const FALLBACK_SPAN: u16 = 9;
+
+const SLOT: u16 = 16;
+const BAND: u16 = 64;
+const STRIDE: u16 = 256;
+
+static NEXT_BAND: AtomicU16 = AtomicU16::new(0);
+
+fn port_is_free(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// A port no other test in this binary and no recent run of it will ask for. Only
+/// *peeked* at, never acquired — [`start`]'s identity check is what actually proves the
+/// server answering here is ours.
+fn free_port() -> u16 {
+    let band = NEXT_BAND.fetch_add(1, Ordering::SeqCst);
+    let start = PORT_FLOOR + (std::process::id() as u16 % 16) * STRIDE + band * BAND;
+    for base in (start..start + BAND).step_by(SLOT as usize) {
+        if (0..=FALLBACK_SPAN).all(|i| port_is_free(base + i)) {
+            return base;
+        }
+    }
+    panic!("no free port in band {band}");
+}
+
+/// A spawned preview that is always reaped, even when an assertion panics: a leaked dev
+/// server holds a port and a kernel subtree.
+struct Server(Child);
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+impl Server {
+    fn spawn(doc: &Path, port: u16) -> Server {
+        let child = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+            .arg("preview")
+            .arg(doc)
+            .arg(port.to_string())
+            // Mirrors the build half's `--no-exec`: this test pins chrome, not code-cell
+            // execution, and must not depend on a Jupyter kernel being installed.
+            .arg("--no-exec")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn preview");
+        Server(child)
+    }
+}
+
+/// One loopback HTTP/1.1 GET: `(status, body)`.
+fn http_get(port: u16, path: &str) -> Option<(u16, String)> {
+    let mut sock = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    sock.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
+    sock.write_all(
+        format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").as_bytes(),
+    )
+    .ok()?;
+    let mut raw = Vec::new();
+    sock.read_to_end(&mut raw).ok()?;
+    let raw = String::from_utf8_lossy(&raw).into_owned();
+    let (head, body) = raw.split_once("\r\n\r\n")?;
+    let status = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse::<u16>().ok())?;
+    Some((status, body.to_string()))
+}
+
+fn get(port: u16, path: &str) -> (u16, String) {
+    http_get(port, path).unwrap_or_else(|| panic!("GET {path} on {port} failed"))
+}
+
+/// Bring a preview of a single out-of-project document up and prove the server answering
+/// on `port` is ours.
+///
+/// `doc` is a *document*, not a directory. Per `Resolved::session_key`'s doc comment
+/// (`serve_site/mod.rs`), an out-of-project document publishes ITS OWN canonical path as
+/// identity, not its parent directory — a project of just that document, not the
+/// directory it happens to sit in — so the identity check below compares against the
+/// document itself, the same way `mount_serving_live.rs::start` compares against a
+/// project root.
+fn start(doc: &Path) -> (Server, u16) {
+    let port = free_port();
+    let server = Server::spawn(doc, port);
+    let canonical = fs::canonicalize(doc).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while Instant::now() < deadline {
+        if let Some((200, body)) = http_get(port, "/__taliesin")
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&body)
+            && v["root"].as_str().map(Path::new) == Some(canonical.as_path())
+        {
+            return (server, port);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("preview of {} never came up on {port}", doc.display());
+}
+
+/// The contract: for a document with no ancestor `_site.yml`, what `preview` serves and
+/// what `build` writes carry the same chrome. `build` never had the bug (it never reaches
+/// `page_chrome` at all), so its half below is the control; the `preview` half is what
+/// actually pins the "Home" button regression, which lived in `preview`'s `page_chrome`
+/// gate, not `build`'s render path.
 #[test]
-fn a_standalone_document_builds_without_site_chrome() {
+fn a_standalone_document_builds_and_previews_without_site_chrome() {
+    let doc = corpus("agent/executed-read.tmd");
+
+    // Control: `build <file.tmd>` constructs no `SiteCtx`, so this half was never able to
+    // regress the way `preview` did; it stays green throughout as the reference point.
     let out = std::env::temp_dir().join(format!(
         "tali-standalone-chrome-{}.html",
         std::process::id()
     ));
     let out_s = out.to_string_lossy().into_owned();
-    let (ok, _o, stderr) = run(&[
-        "build",
-        &corpus("agent/executed-read.tmd"),
-        &out_s,
-        "--no-exec",
-    ]);
+    let (ok, _o, stderr) = run(&["build", &doc, &out_s, "--no-exec"]);
     assert!(ok, "single-document build; stderr: {stderr}");
-    let html = std::fs::read_to_string(&out).expect("built page");
+    let built = std::fs::read_to_string(&out).expect("built page");
     let _ = std::fs::remove_file(&out);
-
     for marker in [
         "tali-site-nav",
         "tali-nav-brand",
@@ -92,10 +231,44 @@ fn a_standalone_document_builds_without_site_chrome() {
         "tali-site-footer",
     ] {
         assert!(
-            !html.contains(marker),
-            "a standalone document must carry no `{marker}`"
+            !built.contains(marker),
+            "a standalone BUILD must carry no `{marker}`"
+        );
+    }
+    assert!(
+        built.contains("tali-theme-toggle"),
+        "theme toggle survives the build"
+    );
+
+    // The assertion that actually discriminates: `preview` of the same document, over
+    // real HTTP, through the `page_chrome` gate `preview` runs and `build` does not.
+    //
+    // Checked as the literal `<header>`/`<footer>` opening tags and the brand/burger
+    // ids, not the bare class names used above: `preview` unconditionally inlines the
+    // full site CSS on every page ("Live preview always ships everything",
+    // `serve_site/mod.rs::site_page_html`'s `with_site_css: true`), so `.tali-site-nav {
+    // … }` and friends are always present as CSS *rules*, chrome-free page or not — a
+    // bare `contains("tali-site-nav")` is true either way and cannot discriminate here
+    // (confirmed empirically: it matches this exact page's CSS bundle even on the
+    // correctly-fixed build). Only the markup-level open tags/ids appear exclusively
+    // when the elements are actually emitted.
+    let (_server, port) = start(Path::new(&doc));
+    let (status, served) = get(port, "/");
+    assert_eq!(status, 200, "the standalone document's own page");
+    for marker in [
+        "<header class=\"tali-site-nav\"",
+        "class=\"tali-nav-brand\"",
+        "id=\"tali-nav-toggle\"",
+        "<footer class=\"tali-site-footer\"",
+    ] {
+        assert!(
+            !served.contains(marker),
+            "a standalone PREVIEW must carry no `{marker}`"
         );
     }
     // The reader affordances stay: they are personal, not project, chrome.
-    assert!(html.contains("tali-theme-toggle"), "theme toggle survives");
+    assert!(
+        served.contains("tali-theme-toggle"),
+        "theme toggle survives in preview"
+    );
 }
