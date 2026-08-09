@@ -48,8 +48,12 @@ fn shipped_docs() -> Vec<(String, String)> {
     for dir in ["docs/guide", "docs/internals", "site"] {
         collect_docs(&repo().join(dir), &repo(), &mut out);
     }
+    // An anti-vacuity guard against a broken walk, not a content floor: it exists so a
+    // `read_dir` that silently returns nothing cannot make every gate below pass forever.
+    // Lowered from 40 on 2026-08-09, when the Internals book went from thirteen chapters
+    // to six; the walk finds ~38 today.
     assert!(
-        out.len() > 40,
+        out.len() > 25,
         "only {} shipped docs found — the walk broke, and an empty gate passes forever",
         out.len()
     );
@@ -107,14 +111,13 @@ fn docs_do_not_claim_quarto_config_still_works() {
     );
 }
 
-#[test]
-fn internals_do_not_describe_the_deleted_shim() {
-    let sites = read("docs/internals/sites.tmd");
-    assert!(
-        !sites.contains("site/config/quarto.rs"),
-        "sites.tmd still describes the deleted quarto.rs shim"
-    );
-}
+// `internals_do_not_describe_the_deleted_shim` lived here and read
+// `docs/internals/sites.tmd` by name to assert it no longer described the deleted
+// `site/config/quarto.rs`. That chapter was deleted on 2026-08-09, and the assertion is
+// not re-pointed, because `shipped_docs_do_not_name_a_file_that_does_not_exist` below
+// already subsumes it: `site/config/quarto.rs` is a backticked `.rs` path that resolves
+// to nothing, so any doc that names it fails the derived gate. A needle test whose
+// subject file is gone is the vacuous shape this file exists to prevent.
 
 /// The workflow was restored on 2026-07-28, but **every job is guarded on repository
 /// visibility** so it stays inert until this repo is public. That means the false claim
@@ -190,7 +193,6 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
         ".claude/hooks/cargo-fmt.sh",
         ".claude/agents/corpus-verifier.md",
         "docs/internals/extending.tmd",
-        "docs/internals/repository.tmd",
     ] {
         let text = read(rel);
         // Match the shapes that actually shipped, not one canonical phrasing. `deny.toml`
@@ -371,8 +373,12 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
             }
         }
     }
+    // Anti-vacuity, like the walk floor above: an extractor that stopped matching yields
+    // ~0, not 60. Lowered from 120 on 2026-08-09 with the seven Internals chapters, which
+    // were the densest path-claim prose in the tree. 122 survive, and a floor two below
+    // the live count would fail the next docs edit for the wrong reason.
     assert!(
-        checked >= 120,
+        checked >= 60,
         "only {checked} path claims examined: the extractor stopped matching, so this \
          gate is now green for the wrong reason"
     );

@@ -131,8 +131,8 @@ which target it is serving. One server handles a project and a single document
 alike (a document resolves to the project it belongs to, or becomes a project of
 itself): navigation between pages is an ordinary full page load (no SPA), and only
 the visited page keeps a warm kernel. The multi-page subsystem
-(page discovery, chrome, cross-page references) lives a layer up in `site/`; see
-[The multi-page subsystem](sites.tmd).
+(page discovery, chrome, cross-page references) lives a layer up, in
+`crates/core/src/site/`, whose `mod.rs` header is the entry point to read.
 
 ## The codebase map
 

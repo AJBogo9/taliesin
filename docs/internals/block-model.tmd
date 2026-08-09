@@ -26,8 +26,8 @@ this one model. A code cell's *output* is itself a block, keyed to the cell's id
 so when an upstream cell re-runs, only the affected output blocks update.
 
 The exact field shapes (`Block`, `Cell`, `RenderedDoc`, and friends) live in
-[the data-type reference](data-types.tmd); this chapter explains how the diff and
-the protocol *use* them.
+`crates/core/src/render/model.rs`, one small file with a doc comment per field; this
+chapter explains how the diff and the protocol *use* them.
 
 ### How the id is computed
 
@@ -199,10 +199,9 @@ These message shapes are defined **once**, in `protocol.rs`, and shared by the d
 server and the browser client. `serve_site/` and `web-client/` are the two ends of this
 one contract, so they can't drift apart from each other. The `update` / `insert` / `remove` / `set_meta` messages are
 just the serialized `BlockOp` enum (the variant name lowercased into the `type`
-field); its four Rust variants and their fields are catalogued in [the data-type
-reference](data-types.tmd#blockop). For the exact JSON shape of every message,
-when each is sent, and how the client applies it, see [the websocket
-protocol](protocol.tmd).
+field); its four Rust variants and their fields are declared in `crates/core/src/diff.rs`.
+For the exact JSON shape of every message and when each is sent, read
+`crates/server/src/protocol.rs`; for how the client applies one, `web-client/client.js`.
 
 ### Applying the ops (the client)
 

@@ -45,7 +45,7 @@ fn references_section(html: &str) -> &str {
 /// EXACTLY so a regression in the accent/string/heading paths is caught.
 #[test]
 fn ieee_corpus_reference_output_is_byte_stable() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     let refs = references_section(&html);
     assert_eq!(
         refs,

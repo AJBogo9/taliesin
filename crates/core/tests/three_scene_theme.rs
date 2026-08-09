@@ -9,23 +9,20 @@
 //!
 //! The fix is that transparency is not a knob: the canvas is always transparent and the
 //! page background (which already flips with the theme via `--tali-*`) shows through. So
-//! this pins the *construct*, not a caller's opt-in, in all four copies of the helper,
-//! plus the two properties that made the knob's absence safe:
+//! this pins the *construct*, not a caller's opt-in, in every copy of the helper the walk
+//! below finds, plus the two properties that made the knob's absence safe:
 //!
 //! * no caller anywhere passes a clear colour (the knob is gone, not merely defaulted);
 //! * the helper's DOM chrome is token-driven, so it flips instead of shipping a fixed
 //!   dark chip on white.
 //!
-//! `three-scene.tmd` lives in several copies in two variants: an EXTENDED one
+//! `three-scene.tmd` lives in more than one copy, in two variants: an EXTENDED one
 //! (`controls`/`autoRotate`/`rebuild`/`loadGLTF`, used by the marketing site) and a base
 //! one. The copies are **discovered by walking the tree**, not listed. That is the fix for
-//! a real defect: the list used to name four paths while five files existed, and
-//! `corpus/posts/pca-geometry/_includes/three-scene.tmd` drifted unpinned under a gate
-//! whose own assertion claimed it covered every copy. A walk cannot undercount.
-//!
-//! `corpus/_includes` <-> `corpus/tech-blog/_includes` is also pinned byte-identical by
-//! `corpus.rs::twinned_corpus_sources_stay_byte_identical`; the pca-geometry copy is
-//! pinned only here, because it has no twin under that test's paired roots.
+//! a real defect: the list used to name four paths while five files existed, and a copy
+//! under a duplicated corpus post drifted unpinned under a gate whose own assertion
+//! claimed it covered every copy. A walk cannot undercount, which is why the duplicate
+//! cull on 2026-08-09 took three of the five copies without leaving a hole here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,10 +49,12 @@ fn helper_copies() -> Vec<(String, String)> {
         })
         .collect();
     copies.sort();
-    // A rename must not silently make this file vacuous.
+    // A rename must not silently make this file vacuous. Two is the floor because two is
+    // what survives the 2026-08-09 duplicate cull: one copy per variant, which is also the
+    // minimum `same_variant_three_scene_copies_stay_byte_identical` needs to stay honest.
     assert!(
-        copies.len() >= 4,
-        "expected at least four copies of the helper, found {}: {copies:#?}",
+        copies.len() >= 2,
+        "expected at least one copy of the helper per variant, found {}: {copies:#?}",
         copies.len()
     );
     copies
@@ -174,13 +173,15 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
 /// Copies of the SAME variant are hand-kept identical and must stay so, or a theme fix
 /// lands in one and rots the others. Grouped by content rather than by a listed pair,
 /// because the variant a given copy belongs to is a property of the file, not of a name:
-/// the base variant has three copies today and the extended one (the marketing site's,
-/// carrying `controls`/`autoRotate`/`rebuild`/`loadGLTF`) has one.
+/// the base variant has one copy today (`corpus/tech-blog/_includes/`) and so does the
+/// extended one (`site/_includes/`, carrying `controls`/`autoRotate`/`rebuild`/`loadGLTF`).
 ///
-/// The extended variant HAD a second copy under `corpus/graphics3d/`, which was cut on
-/// 2026-08-08. One copy cannot drift, so the assertion below simply has nothing to compare
-/// for it — but it still fails loudly if a future edit merges the two variants, which is
-/// the other half of what the old paired pin was buying.
+/// The extended variant HAD a second copy under `corpus/graphics3d/` (cut 2026-08-08) and
+/// the base variant had three (`corpus/_includes/` and the loose `corpus/posts/`
+/// pca-geometry copy went with the duplicate cull on 2026-08-09). One copy cannot drift, so
+/// the assertion below simply has nothing to compare, but it still fails loudly if a
+/// future edit merges the two variants, which is the other half of what the old paired pin
+/// was buying, and it fails again the moment a second copy of either variant reappears.
 #[test]
 fn same_variant_three_scene_copies_stay_byte_identical() {
     let copies = helper_copies();

@@ -17,7 +17,7 @@ live state of every one of those blocks survives the edit. None of these are thi
 batch compiler's cold-pass-plus-full-reload model (Jupyter/nbconvert, R Markdown/knitr,
 Quarto, MyST) can match.
 
-## live-edit benchmark: `corpus/posts/em-algorithm/index.tmd`
+## live-edit benchmark: `corpus/tech-blog/posts/em-algorithm/index.tmd`
 
 | metric | value |
 |---|---|

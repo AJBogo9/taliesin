@@ -181,8 +181,8 @@ Two ways to write a figure that is right either way:
 
 - **Use a palette that works on both.** Mid-tone strokes and fills, chosen to hold contrast
   against a light and a dark background alike, and no `prefers-color-scheme` block. This is
-  the cheapest option and the one to reach for by default. `corpus/course/likelihood.svg` is
-  written this way.
+  the cheapest option and the one to reach for by default. `corpus/demo-book/structure.svg`
+  is written this way: `#888` strokes, no `prefers-color-scheme` block anywhere in it.
 - **Draw it in the page instead.** A `{js}` cell (or a Mermaid diagram) renders into the
   document, reads `--tali-*` directly, and re-renders on `tali:themechange`. Right for a
   figure whose colours genuinely have to match the page.

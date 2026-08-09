@@ -833,7 +833,7 @@ suite("Taliesin companion (integration)", () => {
     // numbers, so editing the post for unrelated reasons cannot break it — it only asserts
     // that a document the project actually ships gets buttons at all.
     const lenses = await lensesFor(
-      vscode.Uri.file(path.join(REPO_ROOT, "corpus/posts/pca-geometry/index.tmd"))
+      vscode.Uri.file(path.join(REPO_ROOT, "corpus/tech-blog/posts/pca-geometry/index.tmd"))
     );
     assert.ok(
       lenses.some((l) => l.command?.title === "▶ Run Cell"),

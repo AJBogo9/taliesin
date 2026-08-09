@@ -7,15 +7,6 @@ toc: false
 Where [See it live](showcase.tmd) shows one capability at a time, the gallery shows
 **entire projects**, each a real `.tmd` source tree rendered by Taliesin.
 
-## Probabilistic Modeling: a short course
-
-A lecturer's interactive lecture notes. A numbered **book** whose figures and display
-equations number and cross-reference **across chapters**, real **math** rendered offline,
-and an executable Python cell: the whole authoring surface a course needs, in one
-project.
-
-[Open the course &rarr;](gallery/course/)
-
 ## Tarn: a library documentation site
 
 The docs for a small dataframe library. A numbered **book** split into a Guide and an

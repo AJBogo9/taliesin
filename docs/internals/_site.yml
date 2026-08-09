@@ -3,16 +3,9 @@ author: "Andreas Bogossian"
 
 chapters:
   - index.tmd
-  - repository.tmd
   - architecture.tmd
   - rendering.tmd
-  - offline-theming.tmd
-  - sites.tmd
   - block-model.tmd
-  - data-types.tmd
-  - protocol.tmd
   - execution.tmd
   - server.tmd
-  - client.tmd
-  - validation.tmd
   - extending.tmd

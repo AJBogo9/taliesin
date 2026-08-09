@@ -81,7 +81,7 @@ export function discoverSiteUnits(repoRoot) {
 }
 
 // A path segment starting with `_` or `.` marks a partial/hidden file that the
-// site walker skips (e.g. corpus/_includes/*, subsections/_intro.tmd). We apply
+// site walker skips (e.g. corpus/tech-blog/_includes/*, subsections/_intro.tmd). We apply
 // the same rule so a naive glob never treats an include target as a page.
 function hasHiddenSegment(relPath) {
   return relPath
@@ -143,7 +143,7 @@ export function estimatePages(unit, repoRoot) {
 }
 
 // Build a stable slug from a source rel-path, e.g.
-//   corpus/posts/em-algorithm/index.tmd -> posts__em-algorithm__index
+//   corpus/tech-blog/posts/em-algorithm/index.tmd -> posts__em-algorithm__index
 function standaloneSlug(relTmd) {
   return relTmd
     .replace(/^corpus\//, '')

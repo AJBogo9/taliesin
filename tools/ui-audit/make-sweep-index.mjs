@@ -34,15 +34,15 @@ const buildRoot = path.join(outDir, 'build');
 // so a build-tree sweep silently omits them. Named here so the index can SAY they are
 // missing rather than leaving a hole the reader has to notice.
 const DRAFT_ONLY = [
-  'corpus/course/problems.tmd',
   'corpus/demo-book/appendix.tmd',
   'corpus/tech-blog/posts/draft-example/index.tmd',
 ];
 
-// Pull each corpus doc's "Exercises" cell out of corpus/README.md so the index
-// says what a unit is FOR, not just that it exists. The table is
-// `| path | category | exercises | source |`; paths are repo-relative-ish
-// (`posts/em-algorithm/`), so match by prefix against the unit source.
+// Pull each corpus doc's description out of corpus/README.md so the index says what a
+// unit is FOR, not just that it exists. The table is `| Path | What it is |` (it was a
+// four-column `| path | category | exercises | source |` until 2026-08-09, when the
+// per-document pinning table was replaced by the keep rule); paths are
+// repo-relative-ish (`tech-blog/`), so match by prefix against the unit source.
 function readCorpusNotes() {
   const notes = [];
   let md = '';
@@ -59,10 +59,10 @@ function readCorpusNotes() {
     const cells = line
       .split(/(?<!\\)\|/)
       .map((c) => c.replace(/\\\|/g, '|').trim());
-    if (cells.length < 5) continue;
+    if (cells.length < 4) continue;
     const key = cells[1].replace(/`/g, '').replace(/\/$/, '');
     if (!key || key === 'Path' || key.startsWith('---')) continue;
-    notes.push({ key, category: cells[2], exercises: cells[3] });
+    notes.push({ key, what: cells[2] });
   }
   return notes;
 }
@@ -147,7 +147,7 @@ const esc = (s) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-// `exercises` cells carry inline markdown (`code`, **bold**); render the two
+// Description cells carry inline markdown (`code`, **bold**); render the two
 // that actually appear so the index reads as prose rather than source.
 const mdInline = (s) =>
   esc(s)
@@ -196,7 +196,7 @@ function unitCard(u, i) {
     ${kind ? `<span class="badge kind">${esc(kind)}</span>` : ''}
     <span class="badge count">${u.routes.length} page${u.routes.length === 1 ? '' : 's'}</span>
   </h3>
-  ${u.note ? `<p class="note"><strong>${mdInline(u.note.category)}.</strong> ${mdInline(u.note.exercises)}</p>` : ''}
+  ${u.note ? `<p class="note">${mdInline(u.note.what)}</p>` : ''}
   ${u.built ? `<ul class="routes">${rows}</ul>` : '<p class="missing">NOT BUILT</p>'}
   ${
     u.side.length

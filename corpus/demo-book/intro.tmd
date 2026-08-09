@@ -8,4 +8,8 @@ one another.
 
 ## Background
 
-Some background, with a little inline math $e^{i\pi}+1=0$ to check rendering.
+Some background, with a little inline math $e^{i\pi}+1=0$ to check rendering. The
+identity behind it is worth naming, because @eq-euler is referred to again in the
+next part:
+
+$$ e^{i\theta} = \cos\theta + i\sin\theta $$ {#eq-euler}

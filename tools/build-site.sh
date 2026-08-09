@@ -38,7 +38,6 @@ TALIESIN=${TALIESIN:-cargo run -q -p taliesin-server --}
 subprojects=(
     "docs/guide:docs/guide"
     "docs/internals:docs/internals"
-    "corpus/course:gallery/course"
     "corpus/tarn:gallery/tarn"
     "corpus/descent:gallery/descent"
     "corpus/analyst:gallery/analyst"

@@ -7,16 +7,21 @@ use std::path::Path;
 
 fn main() {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let doc = format!("{manifest}/../../corpus/posts/em-algorithm/index.tmd");
+    let doc = format!("{manifest}/../../corpus/tech-blog/posts/em-algorithm/index.tmd");
     let src = std::fs::read_to_string(&doc).expect("read the em-algorithm corpus doc");
     let base = Path::new(&doc).parent().expect("doc has a parent dir");
 
-    let m = measure_live_edit("corpus/posts/em-algorithm/index.tmd", &src, base, |s| {
-        s.replace(
-            "Let's start from a practical example.",
-            "A freshly typed opening line.\n\nLet's start from a practical example.",
-        )
-    });
+    let m = measure_live_edit(
+        "corpus/tech-blog/posts/em-algorithm/index.tmd",
+        &src,
+        base,
+        |s| {
+            s.replace(
+                "Let's start from a practical example.",
+                "A freshly typed opening line.\n\nLet's start from a practical example.",
+            )
+        },
+    );
 
     print!("{}", markdown_report(&m));
 

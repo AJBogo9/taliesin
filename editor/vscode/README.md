@@ -104,7 +104,7 @@ Most of what used to be on this checklist is now covered by `npm run test:e2e`, 
 a real Extension Host (see below). What remains is the one thing no headless harness can
 see: the visual round trip *through the live preview iframe*.
 
-1. Open `corpus/posts/em-algorithm/index.tmd`. Run **Taliesin: Open Preview**
+1. Open `corpus/tech-blog/posts/em-algorithm/index.tmd`. Run **Taliesin: Open Preview**
    (`Ctrl+Shift+K`, the command palette, or the editor-title button).
 2. **Forward search, passive:** move the cursor onto a heading / paragraph — the matching
    block in the preview gains the `.tali-hl` outline. The preview must **not** scroll.

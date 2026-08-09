@@ -112,8 +112,7 @@ appended to the document (the one structural change), formatted from the parsed
 BibTeX. `@fig-` / `@sec-` / `@tbl-` / `@lst-` / `@eq-` references become links to their
 anchor, carrying the resolved number when it is known. It is deliberately **pragmatic, not
 a full CSL engine**. Cross-*page* references (a `@fig-` that lives in another
-chapter) are resolved a layer up, in the site subsystem (see [The multi-page
-subsystem](sites.tmd)).
+chapter) are resolved a layer up, in the site subsystem (`crates/core/src/site/xref.rs`).
 
 Markdown footnotes (`[^name]`) are the one construct whose **content is written in one
 place and rendered in another**, and the mechanism is worth being precise about:

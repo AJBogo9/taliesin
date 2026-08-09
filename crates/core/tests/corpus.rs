@@ -429,13 +429,14 @@ fn every_corpus_doc_renders_with_invariants() {
 fn includes_are_resolved_with_origin_files() {
     // pca-geometry pulls in _includes/three-scene.tmd via {{< include >}}.
     //
-    // The tech-blog copy, not the loose `corpus/posts/` one, and deliberately: the loose
-    // copy's nearest project marker is the repository's own `.git`, so this assertion used
-    // to pass only inside a checkout and fail in any export, vendored copy or `docker COPY`
-    // without VCS metadata. That is not a hypothetical — it is what kept the unmutated
-    // cargo-mutants baseline red (its scratch copy carries no `.git`), which blocked the
-    // mutation re-run outright. The tech-blog page sits under a real `_site.yml`, so what
-    // bounds it is the project the author declared rather than a fact about the checkout.
+    // A page under a real `_site.yml`, and deliberately so. A loose copy of this post used
+    // to live at `corpus/posts/pca-geometry/` (deleted 2026-08-09 as a duplicate) and its
+    // nearest project marker was the repository's own `.git`, so the same assertion aimed
+    // there passed only inside a checkout and failed in any export, vendored copy or
+    // `docker COPY` without VCS metadata. That is not a hypothetical: it is what kept the
+    // unmutated cargo-mutants baseline red (its scratch copy carries no `.git`), which
+    // blocked the mutation re-run outright. What bounds this page is the project the author
+    // declared rather than a fact about the checkout.
     let dir = corpus_dir().join("tech-blog/posts/pca-geometry");
     let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
     // The entry point the commands use, not the library-only one. Rendering via
@@ -500,14 +501,13 @@ fn includes_are_resolved_with_origin_files() {
 /// EVERY corpus document must resolve its includes when built **on its own**, which is
 /// what `taliesin build <file.tmd>` does and what a reader copying one example does.
 ///
-/// The test above deliberately renders the tech-blog copy, because that one sits under a
-/// `_site.yml`. That left the loose `corpus/posts/pca-geometry/` copy — same bytes, no
-/// project marker above it — with no coverage at all, and it rotted: a standalone build
-/// shipped the literal `{{< include ../../_includes/three-scene.tmd >}}` as text plus
-/// three "couldn't load" boxes where the 3D figures belong, because a single invoked
-/// document is confined to its own directory (PT-2, see `include_root_parity.rs`) so
-/// `../../` escapes. Sweeping every doc through the single-doc entry point is what makes
-/// that unmissable for the next one.
+/// The test above renders one named page, which is how a loose copy of that same post
+/// (`corpus/posts/pca-geometry/`, deleted 2026-08-09) went uncovered and rotted: a
+/// standalone build shipped the literal `{{< include ../../_includes/three-scene.tmd >}}`
+/// as text plus three "couldn't load" boxes where the 3D figures belong, because a single
+/// invoked document is confined to its own directory (PT-2, see `include_root_parity.rs`)
+/// so `../../` escapes. A named-page test cannot see the document nobody named. Sweeping
+/// every doc through the single-doc entry point is what makes that unmissable.
 #[test]
 fn every_corpus_doc_resolves_its_includes_when_built_alone() {
     /// Drop `<code>`/`<pre>` subtrees, so a document that *shows* the include syntax
@@ -864,7 +864,8 @@ fn gathered_sections_stay_unlocatable() {
 fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)
-    let src = fs::read_to_string(corpus_dir().join("posts/em-algorithm/index.tmd")).unwrap();
+    let src =
+        fs::read_to_string(corpus_dir().join("tech-blog/posts/em-algorithm/index.tmd")).unwrap();
     let doc = taliesin_core::render_document(&src);
     for b in &doc.blocks {
         // Raw HTML comments are emitted verbatim; generated blocks (References)
@@ -1267,6 +1268,15 @@ fn demo_book_logo_brands_both_the_topbar_and_the_chapter_drawer() {
 /// chapter 1 and methods.tmd is chapter 2; each carries one labelled figure, and methods
 /// references BOTH — its own (2.1) and the intro's (1.1) — so one page pins the
 /// disambiguation this exists for.
+///
+/// **Two float kinds, deliberately.** Figures and display equations number through the
+/// same `float_number` helper but reach it by different paths (a `figure.rs` caption vs a
+/// `tali-eqn-number` badge), and until 2026-08-09 only the equation half was pinned on a
+/// book at all, by `corpus/course/`, a five-page fiction deleted that day as part of the
+/// justification-layer cut. The equation assertions below are that coverage, re-fixtured
+/// onto the book that already carries the figure half, and they are strictly stronger than
+/// what `course.rs` asserted: the exact badge and the exact resolved link text, rather than
+/// "the page contains the substring `1.1` somewhere".
 #[test]
 fn book_chapter_scopes_float_numbers_across_chapters() {
     use taliesin_core::Site;
@@ -1304,119 +1314,33 @@ fn book_chapter_scopes_float_numbers_across_chapters() {
         !methods.contains("data-tali-xref=\"fig-structure\""),
         "resolved cross-chapter figure ref still carries its broken marker: {methods}"
     );
-}
 
-/// Authored source extensions that must stay in lockstep between twinned corpus
-/// documents. Generated media is excluded on purpose: `fourier-transform`'s own
-/// `{python}` cell writes `chord.wav`/`tone_*.wav` at render time, so those bytes
-/// are an output, not an authored invariant. The gitignored `_freeze/` cache is
-/// likewise skipped.
-const TWINNED_SOURCE_EXTS: [&str; 4] = ["tmd", "bib", "js", "css"];
-
-fn is_twinned_source(p: &Path) -> bool {
-    p.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| TWINNED_SOURCE_EXTS.contains(&e))
-}
-
-/// Every authored file that exists under both `a_root` and `b_root` at the same
-/// relative path, discovered rather than hardcoded so a renamed or newly-shared
-/// document is picked up automatically.
-fn shared_sources(a_root: &Path, b_root: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(a_root.join(rel)) else {
-        return;
-    };
-    for entry in entries {
-        let p = entry.unwrap().path();
-        let name = p.file_name().unwrap().to_owned();
-        let child = rel.join(&name);
-        if p.is_dir() {
-            if name == "_freeze" {
-                continue;
-            }
-            shared_sources(a_root, b_root, &child, out);
-        } else if is_twinned_source(&p) && b_root.join(&child).is_file() {
-            out.push(child);
-        }
-    }
-}
-
-/// `corpus/posts/<slug>/` and `corpus/tech-blog/posts/<slug>/` hold identical copies of
-/// three posts (plus a shared `_includes/three-scene.tmd`), and both copies are live
-/// documents in the regression net. Nothing stopped a content fix from landing in one
-/// copy and rotting the other; `fa200e5`'s own message notes that "every fix lands
-/// twice". This pins that.
-///
-/// The one licensed difference is an `{{< include >}}`'s **path prefix**. The two copies
-/// sit under different project boundaries, and the boundary decides what a relative
-/// include may reach: the tech-blog copy resolves `../../_includes/three-scene.tmd`
-/// against `corpus/tech-blog/_site.yml` (pinned as that exact literal by
-/// `includes_are_resolved_with_origin_files` and `include_relative_base.rs`), while the
-/// loose copy has no `_site.yml` above it and so is confined to its own directory
-/// (PT-2). Byte-identity and both-copies-resolve cannot both hold. Normalising the
-/// include target to its basename keeps the pin on *which file* is pulled in and on all
-/// the prose/code around it, and gives up only the prefix the boundary dictates.
-#[test]
-fn twinned_corpus_sources_stay_byte_identical() {
-    /// Reduce `{{< include <path>/<name>.tmd … >}}` to `{{< include <name>.tmd … >}}`,
-    /// so the two copies' differing project-relative prefixes compare equal.
-    fn normalize_include_paths(bytes: &[u8]) -> String {
-        let text = String::from_utf8_lossy(bytes);
-        text.lines()
-            .map(|line| match line.find("{{< include ") {
-                None => line.to_string(),
-                Some(at) => {
-                    let head = &line[..at + "{{< include ".len()];
-                    let tail = &line[at + "{{< include ".len()..];
-                    let (path, rest) = tail.split_once(' ').unwrap_or((tail, ""));
-                    let base = path.rsplit('/').next().unwrap_or(path);
-                    format!("{head}{base} {rest}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
-    let corpus = corpus_dir();
-    let roots = [
-        (corpus.join("posts"), corpus.join("tech-blog/posts")),
-        (corpus.join("_includes"), corpus.join("tech-blog/_includes")),
-    ];
-
-    let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
-    for (a_root, b_root) in &roots {
-        let mut rels = Vec::new();
-        shared_sources(a_root, b_root, Path::new(""), &mut rels);
-        pairs.extend(rels.into_iter().map(|r| (a_root.join(&r), b_root.join(&r))));
-    }
-    pairs.sort();
-
-    // A rename must not silently make this test vacuous.
+    // The equation half of the same rule, on the same two chapters.
     assert!(
-        pairs.len() >= 8,
-        "expected at least the 3 twinned posts' sources + the shared include, found {}: {pairs:#?}",
-        pairs.len()
+        intro.contains("<span class=\"tali-eqn-number\">(1.1)</span>"),
+        "chapter 1's first display equation numbers as (1.1): {intro}"
     );
-
-    let drifted: Vec<String> = pairs
-        .iter()
-        .filter(|(a, b)| {
-            normalize_include_paths(&fs::read(a).unwrap())
-                != normalize_include_paths(&fs::read(b).unwrap())
-        })
-        .map(|(a, b)| {
-            format!(
-                "  {} != {}",
-                a.strip_prefix(&corpus).unwrap().display(),
-                b.strip_prefix(&corpus).unwrap().display()
-            )
-        })
-        .collect();
-
     assert!(
-        drifted.is_empty(),
-        "twinned corpus sources have drifted; a fix landed in one copy only:\n{}",
-        drifted.join("\n")
+        intro.contains("<a href=\"#eq-euler\" class=\"tali-xref\">Equation&nbsp;1.1</a>"),
+        "the intro's own ref to its equation agrees: {intro}"
+    );
+    assert!(
+        methods.contains("<span class=\"tali-eqn-number\">(2.1)</span>"),
+        "chapter 2's first display equation numbers as (2.1), not the flat (2): {methods}"
+    );
+    assert!(
+        methods.contains("<a href=\"#eq-kl\" class=\"tali-xref\">Equation&nbsp;2.1</a>"),
+        "its same-chapter equation ref agrees: {methods}"
+    );
+    assert!(
+        methods
+            .contains("<a href=\"intro.html#eq-euler\" class=\"tali-xref\">Equation&nbsp;1.1</a>"),
+        "the cross-chapter equation ref resolves to the intro's chapter-scoped number: \
+         {methods}"
+    );
+    assert!(
+        !methods.contains("data-tali-xref=\"eq-euler\""),
+        "resolved cross-chapter equation ref still carries its broken marker: {methods}"
     );
 }
 

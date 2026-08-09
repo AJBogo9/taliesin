@@ -6,6 +6,11 @@ This document deliberately trips every static superset validator that reports a 
 you cannot see in the rendered page. It lives in `corpus/diagnostics/`, which is exempt
 from the corpus clean-render guards.
 
+**It must stay free of code cells.** `diagnostics/anchors.rs` conservatively switches the
+manual-anchor check off for any document that executes, because a cell can mint an id at
+runtime (`HTML('<div id="x">')`), so adding one cell here would silently retire the
+duplicate-id and broken-jump halves of this fixture with every gate still green.
+
 ## Heading {#dup}
 
 First section.

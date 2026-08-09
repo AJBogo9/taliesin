@@ -84,27 +84,28 @@ plt.show()
 
 The chapters build on each other, roughly from the outside in:
 
-- **[The repository](repository.tmd)** is the lay of the land: what every top-level
-  directory is for, so you know where to look before opening a file.
 - **[Architecture](architecture.tmd)** is the map: the crates, the data flow, and
   what happens on a save.
 - **[The rendering pipeline](rendering.tmd)** follows a `.tmd` from raw text to a
-  block model to HTML.
-- **[Offline-first rendering & theming](offline-theming.tmd)** is how math, code, and
-  themes render server-side and offline, so a light/dark toggle re-styles the page
-  with nothing to re-render.
-- **[The multi-page subsystem](sites.tmd)** is how a directory becomes a website or a
-  book: discovery, chrome, listings, cross-page references, and search.
+  block model to HTML, including the offline-first decisions (math, highlighting and
+  themes all resolved server-side).
 - **[The block model](block-model.tmd)** is the load-bearing data structure, and the
   websocket message contract that rides on it.
 - **[Code execution & the kernel](execution.tmd)** covers the warm Jupyter kernel,
   the execution plan, and the persistent output cache.
 - **[The dev server](server.tmd)** is the long-running process: the file watcher, the
   websocket, and the multi-page site server.
-- **[Validation & schemas](validation.tmd)** is the closed-vocabulary validator, the
-  located warnings it emits, and the drift-locked JSON Schemas behind editor autocomplete.
-- **[Extending Taliesin](extending.tmd)** is the conventions for adding a feature, and
-  where extensions live outside the core.
+- **[Extending Taliesin](extending.tmd)** is the conventions for adding a feature,
+  the two seams meant to be extended, and the editor surface.
 
 If you read only one chapter, read [Architecture](architecture.tmd). It frames
 everything else.
+
+**Six chapters, and that is deliberate.** This book had thirteen until 2026-08-09; the
+seven that went (the repository layout, the multi-page subsystem, the data-type
+reference, the websocket protocol, the browser client, validation, and offline theming)
+were each a second, hand-maintained description of something a single file already
+states precisely. Where a chapter now points you at
+`crates/core/src/render/model.rs` or `crates/server/src/protocol.rs` instead of
+restating it, that is the trade: one description that cannot go stale, rather than two
+that can disagree.

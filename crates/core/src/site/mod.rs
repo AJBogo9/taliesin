@@ -1551,8 +1551,7 @@ pub(crate) mod tests {
         // as its title, so <title>, og:title, listing cards, nav, and search — all of which
         // read `Page.title` — agree. (A website page resolves title-first; a BOOK chapter
         // resolves `text:` -> `# H1` -> `title:`, because a chapter has a nav label distinct
-        // from its page title. See the note in docs/internals/sites.tmd; a chapter that sets
-        // both deliberately shows two names.)
+        // from its page title; a chapter that sets both deliberately shows two names.)
         let root = write_site(
             "h1title",
             &[

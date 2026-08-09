@@ -57,9 +57,9 @@ fn assert_no_source_leaks(label: &str, html: &str) {
 #[test]
 fn tech_blog_posts_render_leak_free() {
     for post in [
-        "posts/em-algorithm/index.tmd",
-        "posts/pca-geometry/index.tmd",
-        "posts/fourier-transform/index.tmd",
+        "tech-blog/posts/em-algorithm/index.tmd",
+        "tech-blog/posts/pca-geometry/index.tmd",
+        "tech-blog/posts/fourier-transform/index.tmd",
     ] {
         let html = render_post(post);
         assert!(
@@ -75,7 +75,7 @@ fn tech_blog_posts_render_leak_free() {
 /// `$$...$$`, and `\begin{align*}` blocks all reach KaTeX.
 #[test]
 fn math_renders_inline_display_and_align() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     assert!(
         html.contains("class=\"katex\""),
         "no inline KaTeX spans rendered"
@@ -95,7 +95,7 @@ fn math_renders_inline_display_and_align() {
 /// fenced-div markers do not leak.
 #[test]
 fn callout_renders_with_title_and_body() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     assert!(html.contains("callout-note"), "callout-note class missing");
     assert!(
         html.contains("class=\"callout-title\""),
@@ -115,7 +115,7 @@ fn callout_renders_with_title_and_body() {
 /// References section is generated at the end.
 #[test]
 fn citations_resolve_and_emit_references_section() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     assert!(
         html.contains("href=\"#ref-bishop2006pattern\""),
         "citation did not become an anchor to the reference"
@@ -134,7 +134,7 @@ fn citations_resolve_and_emit_references_section() {
 /// title as its `<summary>`, so it is collapsible without any JavaScript.
 #[test]
 fn callout_collapse_renders_as_details() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     assert!(
         html.contains("callout-collapse"),
         "collapsible callout class missing"
@@ -152,7 +152,7 @@ fn callout_collapse_renders_as_details() {
 /// using `code-summary` as the disclosure label.
 #[test]
 fn code_fold_wraps_listing_in_details() {
-    let html = render_post("posts/pca-geometry/index.tmd");
+    let html = render_post("tech-blog/posts/pca-geometry/index.tmd");
     assert!(
         html.contains("class=\"tali-code-fold\""),
         "code-fold did not produce a <details>"
@@ -171,7 +171,7 @@ fn code_fold_wraps_listing_in_details() {
 /// `code-fold: true` with no `code-summary` falls back to the "Code" label.
 #[test]
 fn code_fold_defaults_to_code_label() {
-    let html = render_post("posts/em-algorithm/index.tmd");
+    let html = render_post("tech-blog/posts/em-algorithm/index.tmd");
     assert!(
         html.contains("class=\"tali-code-fold\""),
         "code-fold did not produce a <details>"
@@ -187,7 +187,7 @@ fn code_fold_defaults_to_code_label() {
 /// `application/tali-js` script, and `//|` option lines are stripped.
 #[test]
 fn js_cells_render_as_live_placeholders() {
-    let html = render_post("posts/fourier-transform/index.tmd");
+    let html = render_post("tech-blog/posts/fourier-transform/index.tmd");
     assert!(
         html.contains("class=\"cell tali-js-cell\""),
         "js cell not emitted as a live placeholder"
@@ -210,7 +210,7 @@ fn js_cells_render_as_live_placeholders() {
 /// runtime); a prose-only page ships neither.
 #[test]
 fn js_page_ships_libs_when_cells_present() {
-    let dir = corpus_dir().join("posts/fourier-transform");
+    let dir = corpus_dir().join("tech-blog/posts/fourier-transform");
     let src = std::fs::read_to_string(dir.join("index.tmd")).unwrap();
     let page = taliesin_core::render_html_page_with_includes(&src, &dir, "post");
     assert!(
@@ -240,7 +240,7 @@ fn js_page_ships_libs_when_cells_present() {
 /// `<audio>`/`<source>` elements (end-to-end, through the real post).
 #[test]
 fn fourier_audio_players_render_live() {
-    let html = render_post("posts/fourier-transform/index.tmd");
+    let html = render_post("tech-blog/posts/fourier-transform/index.tmd");
     assert!(
         html.contains("<audio controls"),
         "audio players not passed through"
@@ -256,7 +256,7 @@ fn fourier_audio_players_render_live() {
 /// and the `@eq-dft` cross-reference resolves to a numbered "Equation N" link.
 #[test]
 fn equation_crossref_resolves_to_number() {
-    let html = render_post("posts/fourier-transform/index.tmd");
+    let html = render_post("tech-blog/posts/fourier-transform/index.tmd");
     assert!(
         html.contains("id=\"eq-dft\""),
         "labelled equation id missing"
@@ -668,9 +668,9 @@ fn site_404_page_links_the_shared_bundle_in_a_build() {
 #[test]
 fn every_js_cell_has_matching_target_and_script() {
     for post in [
-        "posts/fourier-transform/index.tmd",
-        "posts/em-algorithm/index.tmd",
-        "posts/pca-geometry/index.tmd",
+        "tech-blog/posts/fourier-transform/index.tmd",
+        "tech-blog/posts/em-algorithm/index.tmd",
+        "tech-blog/posts/pca-geometry/index.tmd",
     ] {
         let html = render_post(post);
         let cells = html.matches("class=\"cell tali-js-cell\"").count();
@@ -694,7 +694,7 @@ fn every_js_cell_has_matching_target_and_script() {
 fn computed_output_crossrefs_resolve() {
     // fourier: a matplotlib figure (fig-components) gets a number; the {js} winding
     // figure is a real <figure> anchor.
-    let f = render_post("posts/fourier-transform/index.tmd");
+    let f = render_post("tech-blog/posts/fourier-transform/index.tmd");
     assert!(
         f.contains("<a href=\"#fig-components\" class=\"tali-xref\">Figure&nbsp;1</a>"),
         "@fig-components did not resolve to a numbered link"
@@ -706,7 +706,7 @@ fn computed_output_crossrefs_resolve() {
 
     // pca: a {js} figure (fig-3d-pca) and a code listing (lst-data-generation)
     // resolve to numbered, anchored targets at render time.
-    let p = render_post("posts/pca-geometry/index.tmd");
+    let p = render_post("tech-blog/posts/pca-geometry/index.tmd");
     assert!(
         p.contains("id=\"fig-3d-pca\""),
         "js-cell figure anchor missing"

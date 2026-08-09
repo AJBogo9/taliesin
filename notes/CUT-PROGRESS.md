@@ -99,11 +99,45 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 9 | Diagnostics catalogue (keep lint front door) | **done** 2026-08-08 | `cut/wave-9-diagnostics` | **−4,957** (+1,288 / −6,245, 93 files, 13 deleted) | verbs stay **9**: `check` retired into `build --check-only`; `check.rs` → `lint.rs`, 1,189 → **620** impl lines; severity is a FIELD, the `TAL-*` catalogue is gone |
 | 10 | LSP long tail | **done** 2026-08-09 | `cut/wave-10-lsp` | **−9,838** (+180 / −10,018, 38 files, 17 deleted) | 16 advertised providers → **7**, custom methods 8 → **3**; every LSP **write path** is gone; binary **−415,712 B**; verbs stay **9** |
 | 11 | Serve layer, opened once | **done** 2026-08-09 | `cut/wave-11-serve` | **−5,015** (+768 / −5,783, 80 files, 5 deleted) | the one wave that opened `exec_pool.rs`, and the LRU is absent from its diff; warm pool, `mounts:`, `--bare` and `--host` all gone; binary **−491,072 B**; a FOURTH CLI register (`RETIRED_FLAGS`); `tools/build-site.sh` is pre-push step 5 |
-| 12 | Justification layer (corpus, docs, tests) | not started | | | genuinely last |
+| 12 | Justification layer (corpus, docs, tests) | **done** 2026-08-09 | `cut/wave-12-justification` | **−4,627** (+266 / −4,893, 61 files, 30 deleted) | the last planned wave; corpus 93 → **83** docs, Internals 14 → **7** chapters; `corpus/tarn` KEPT and `corpus/course` cut, reasoned below; the wave's stated deliverable was re-specified and then **refuted by its own measurement** |
 | 13 | **`taliesin run`** (unadjudicated, 2,406 lines) | not started | | | needs an adjudication pass first |
 
 ## Open items carried forward
 
+- **THE UNUSED-VOCABULARY TAIL, MEASURED 2026-08-09, IS THE INSTRUMENT'S ANSWER AND THE
+  NEXT ROUND'S INPUT. New in wave 12.** `taliesin features` is gone, so the surviving
+  instrument is a scan of the validator consts against the shipped `.tmd` read set (110
+  documents: `corpus/` minus `corpus/diagnostics/`, plus `docs/guide`, `docs/internals`,
+  `site`, `samples`). **10 of 63 offered names are witnessed by nothing:** `csl:` (front
+  matter), `head:` and `python:` (`_site.yml`), and the seven theorem-family xref prefixes
+  `cor`/`def`/`exm`/`lem`/`prp`/`rem`/`thm`. Zero unused cell options, callout kinds, div
+  classes or shortcodes. **The same scan on the pre-wave tree gives the same 10**, which is
+  the finding: the corpus's coverage was never an artefact of the documents wave 12 cut.
+- **THERE IS STILL NO FLOOR ASSERTING THAT ANY BOOK EXISTS.** `corpus.rs` sweeps whatever
+  is there, so a later wave could delete `corpus/tarn`, `corpus/demo-book` and both
+  `docs/` books one at a time and never fail a test for it. Wave 12 kept `tarn` partly on
+  that ground and did not add the floor, because a floor whose only job is to forbid a
+  future cut is machinery this campaign is removing. Know it before cutting a book.
+- **BEFORE HONOURING A "MUST SURVIVE", CHECK THE FILE EXISTS. Wave 12 found EIGHT spent
+  justifications in one wave** (four the handoff already named, four more it did not: the
+  PT-2 synthetic pin `include_root_parity.rs` was asked to add already exists,
+  `section_extents.rs` reads `structure.tmd` not `dense-output.tmd`, and the survive list
+  names `corpus/transclude.tmd`, `corpus/_includes/shared-derivation.tmd` and
+  `corpus/scaffold*/`, none of which are in the tree). This is now the rule with the most
+  recurrences in the campaign.
+- **AN ANTI-VACUITY FLOOR IS NOT A CONTENT FLOOR, AND THE DIFFERENCE MATTERS WHEN YOU CUT.**
+  Wave 12 moved three: `stale_docs.rs`'s walk floor (40 → 25), its path-claim floor
+  (120 → 60, measured at 122 with two of headroom, which would have failed the next docs
+  edit for the wrong reason), and `three_scene_theme.rs`'s copy floor (4 → 2, which would
+  have hard-failed on the duplicate cull). Each now carries the count it was measured
+  against and the reason it exists, so the next wave can tell "the walk broke" from "the
+  content shrank" without re-deriving it.
+- **`tools/ui-audit/` IS NOT CLEAN BY DEFAULT AND NO GATE READS IT.** Five waves running it
+  has found something. Wave 12's was the sharpest: `make-sweep-index.mjs` parses
+  `corpus/README.md`'s table with a four-column shape, so the two-column rewrite would have
+  skipped every row and produced a sweep index with no annotations at all, looking exactly
+  like a corpus with nothing worth saying about it. Run the parser by hand after touching
+  any file it reads.
 - **A retired FLAG now has a register: `serve::RETIRED_FLAGS`** (`crates/server/src/serve/mod.rs`),
   the fourth CLI one beside `RETIRED_COMMANDS` (verbs) and `RETIRED_NEW_KINDS` (`new` kinds).
   Keyed on the flag alone, not on the verb, and consulted by `unknown_flag_error` **before**
@@ -1932,3 +1966,196 @@ discovered).
 prefix-rewriting trick, `strip_tali_js_scripts` (driven off the `CLIENT_LANGS` registry so a
 second client language could not silently break the zero-script contract), and
 `corpus/bare-draft.tmd` with it.
+
+### Wave 12, 2026-08-09, `cut/wave-12-justification`
+
+**Measured reclaim: −4,627 lines** (`+266 / −4,893` over 61 files, **30 deleted outright**)
+against the ~5,976 estimate; the gap is almost exactly the steps that were already spent
+(`corpus/graphics3d`, 920 lines, and two Internals chapters cut with waves 3 and 5). By
+area: `corpus` −2,498, `docs` −2,004, `crates` −126, `site` −9, `CLAUDE.md` **+6**,
+`tools` **+4**, `editor` and `web-client` 0. `notes/` is excluded, as in every figure
+above.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **82 suites / 1,439
+passed / 0 failed / 0 ignored**, exit 0. `tools/build-site.sh --check` composes 5
+sub-projects and resolves **6** cross-project links (was 7; the course card's link went
+with the exhibit). Measure any later wave against **1,439, two canaries and eight gates**.
+
+**NO CODE SHIPPED.** The diff touches exactly two lines of non-test Rust
+(`render/tests.rs`, which is `#[cfg(test)]`, and a comment inside `site/mod.rs`'s
+`mod tests`) and **zero** bytes of `crates/core/assets/` or `web-client/`. So there is no
+binary win and no per-page byte win to report, and none was measured: the release binary
+stays at wave 11's **29,885,200 B** by construction, not by claim.
+
+**THE STATED DELIVERABLE WAS IMPOSSIBLE, AND ITS REPLACEMENT REFUTED THE PREMISE.** The
+playbook ends: *"`taliesin features corpus` must now report a NON-EMPTY unused tail. That
+is the point of the whole wave."* That verb was cut in wave 2. The instrument that
+survives is the validator consts, so the deliverable was re-specified as: **scan the whole
+shipped `.tmd` read set for every name the live vocabulary offers, and report the names
+nothing witnesses.** Six registers, 63 names (`KNOWN_KEYS` 19, `NATIVE_KEYS` 12,
+`CELL_OPTION_KEYS` 12, `XREF_LABELS` 12, `CALLOUT_KINDS` 3, `DIV_FEATURE_CLASSES` 3,
+`SHORTCODE_NAMES` 2), read set = every `.tmd` under `corpus/` (minus `corpus/diagnostics/`,
+which trips validators on purpose), `docs/guide`, `docs/internals`, `site`, `samples`.
+
+Run on this branch and, for comparison, on `main` in a throwaway worktree:
+
+| | read set | unused tail |
+|---|---|---|
+| `main` (before) | 127 documents | **10 of 63** |
+| this branch (after) | 110 documents | **10 of 63** |
+
+**Identical.** The tail is `csl:` (front matter), `head:` and `python:` (`_site.yml`), and
+the seven theorem-family xref prefixes `cor`/`def`/`exm`/`lem`/`prp`/`rem`/`thm`. Zero
+unused cell options, callout kinds, div classes or shortcodes, before and after.
+
+That is a real finding and it goes the other way from the playbook. **The premise was that
+the corpus's full-coverage answer was an artefact of the documents this wave deletes.
+Measured, it is not**: the 17 documents cut were duplicates and fiction that used only
+vocabulary other documents also use, so removing them removed no *last* witness of
+anything. The tail was already non-empty and is unchanged. What the wave actually
+delivered is the other half, 4,627 lines of justification layer gone with **zero** loss of
+vocabulary coverage and zero loss of sweep power, and the tail it hands the next round is
+the same tail `main` already had. Note also that the seven xref prefixes are exactly what
+CLAUDE.md's `vocab.rs` paragraph already asserts from the consts ("the other seven resolve
+a label for a construct nothing can define any more"); this is an independent
+confirmation, not a discovery.
+
+**THE JUDGEMENT CALL THE HANDOFF ASKED FOR, MADE EXPLICITLY: `corpus/tarn` is KEPT,
+`corpus/course` is CUT.** Both are fiction and the standing directive says cut, so this
+needs its reasoning on the record.
+
+- **`course/` (5 pages, 145 lines; `course.rs`, 56 lines, 2 tests) is cut** because its
+  unique coverage is one property and that property re-fixtures for six lines.
+  `corpus.rs::book_chapter_scopes_float_numbers_across_chapters` already pinned
+  chapter-scoped **figure** numbering and cross-page `@fig-` refs on `corpus/demo-book`;
+  `tarn.rs::cross_page_section_refs_number_by_chapter` already pinned the `@sec-` half.
+  What only `course` had was the **equation** float kind. `demo-book/intro.tmd` gained one
+  labelled display equation and `methods.tmd` labelled the one it already carried and now
+  references the intro's, and the existing test grew six assertions. Those assertions are
+  **stronger** than the ones deleted: `course.rs` asserted `mle.contains("1.1")`, the
+  substring `1.1` anywhere on the page, where the new ones pin the exact
+  `<span class="tali-eqn-number">(2.1)</span>` badge and the exact
+  `<a href="intro.html#eq-euler" …>Equation&nbsp;1.1</a>` link.
+- **`tarn/` (14 pages, 634 lines; `tarn.rs`, 446 lines, 15 tests) is kept** on the keep
+  rule as written, not on affection. "A golden no unit test can hold" is exactly what it
+  is: a nested part, chapter numbering with no spurious zero, agreement between the
+  rendered number / the TOC row / the resolved ref, an appendix that is unnumbered, a
+  below-`toc:`-gate chapter whose sections still reach the drawer, and a **search index
+  spanning a whole book** with each record carrying its chapter number and heading path.
+  None of that is expressible in `render/tests.rs`, which renders one document. Deleting it
+  leaves `docs/guide` and `docs/internals` as the only book fixtures, which is the dissent's
+  point (the manual becomes the only test of the feature the manual documents), and this
+  wave **just shrank the Internals book by half**, which is the erosion the dissent
+  predicted, happening in the same commit. `corpus.rs` has no floor asserting any book
+  exists. The dissent's own compromise (trim tarn to four chapters, cut `tarn.rs` to ~150
+  lines) was rejected as the worst option available: it costs the rewrite and still destroys
+  the nested part and the spans-the-whole-book search index, which are precisely what the
+  extra chapters buy.
+
+**THE INTERNALS BOOK GOES TO SEVEN CHAPTERS, NOT FIVE, AND THE PLAYBOOK'S REASON FOR
+`extending.tmd` IS FALSE ON THIS TREE.** The plan's rm list names eleven pages, nine of
+which existed. Seven went (`repository`, `sites`, `data-types`, `protocol`, `client`,
+`validation`, `offline-theming`). Two were kept:
+
+- **`extending.tmd` is load-bearing for three gates.** `lsp.rs`'s
+  `the_internals_capability_table_names_every_capability_the_server_advertises` and
+  `the_internals_book_documents_every_taliesin_namespaced_method` read it **by name** and
+  assert every advertised `*Provider` and every `taliesin/…` method has a row in it; wave 10
+  deliberately re-pointed the first at a floor of 7 rather than weakening it.
+  `asset_bundle.rs` locates a fixture by its `TALI-PIN-HOOK` marker. Deleting the page means
+  moving two tables and re-pointing three gates, for a page whose subject survives. And the
+  playbook's stated ground, *"one of whose chapters documents an extension mechanism
+  CLAUDE.md states does not exist"*, **does not describe this page.** What CLAUDE.md says
+  does not exist is the **format**-extension mechanism (`_extensions/` is a theme-CSS lookup);
+  `extending.tmd`'s "two extension points" are declarative shortcodes and
+  `window.taliEnhancers`, both of which exist and both of which ship.
+- **`server.tmd` (142 lines) is kept because CLAUDE.md already says the book covers it.**
+  Its own description of `docs/internals` is "the architecture, the rendering pipeline, the
+  block model, the execution model, **the dev server, and how to extend it**": six subjects
+  plus the index, which is exactly the keep set now. Cutting to five would have made
+  CLAUDE.md wrong in the same commit that cut for anti-drift reasons.
+
+**Seven things that were not true, or that the playbook did not know.** Same genus as
+waves 1 to 11:
+
+1. **FOUR MORE SPENT JUSTIFICATIONS, on top of the four the handoff already named.**
+   `crates/core/tests/include_root_parity.rs` **already contains** the synthetic temp-dir
+   PT-2 pin STEP 1 asks to add (`a_loose_document_is_confined_to_its_own_directory_despite_
+   an_ancestor_checkout`). `section_extents.rs` reads `corpus/layout/**structure**.tmd`, not
+   `dense-output.tmd`, so STEP 5's "verify `section_extents.rs` still passes; adjust its
+   expectations if the anchor moves" had no subject. The "Must survive" list names
+   `corpus/transclude.tmd + corpus/_includes/shared-derivation.tmd` (neither exists) and
+   `corpus/scaffold*/` "guarded by a hard panic at `crates/server/src/cli.rs:1218`", and wave 8
+   took the templates and the goldens both. **Eight spent justifications in one wave is the
+   pattern, not the exception: check the file exists before honouring a "must survive".**
+2. **`three_scene_theme.rs`'s VACUITY FLOOR WOULD HAVE HARD-FAILED, and nothing in the plan
+   mentions it.** `helper_copies()` asserts `copies.len() >= 4`; deleting the duplicated
+   posts took `corpus/_includes/three-scene.tmd` and
+   `corpus/posts/pca-geometry/_includes/three-scene.tmd`, leaving two. Lowered to **2**,
+   which is the honest floor: one copy per variant is the minimum
+   `same_variant_three_scene_copies_stay_byte_identical` needs to stay non-vacuous.
+3. **THE `checked >= 120` PATH-CLAIM FLOOR SURVIVED WITH TWO OF HEADROOM, which is a trap
+   for the next wave.** `shipped_docs_do_not_name_a_file_that_does_not_exist` examined 122
+   backticked path claims after the Internals cut, because the seven deleted chapters were the
+   densest path-claim prose in the tree. It is an anti-vacuity guard (a broken extractor
+   yields ~0, not 60), so it is lowered to **60** with the reason written on it, alongside
+   the `out.len() > 40` → **25** the plan already asked for. A floor two below the live count
+   fails the next docs edit for the wrong reason.
+4. **A NEEDLE TEST WHOSE SUBJECT FILE IS DELETED IS NOT RE-POINTED, IT IS SUBSUMED.**
+   `internals_do_not_describe_the_deleted_shim` read `docs/internals/sites.tmd` by name to
+   assert it no longer mentioned `site/config/quarto.rs`. The page is gone, and the test is
+   deleted rather than re-aimed, because the derived gate three functions below already
+   catches it: `site/config/quarto.rs` is a backticked `.rs` path that resolves to no file,
+   so **any** shipped doc naming it fails. A comment where the test was says so, because
+   "deleted, and here is what covers it" is the thing a later reader needs.
+5. **`tools/ui-audit/` WOULD HAVE SILENTLY LOST ITS ANNOTATIONS, AND NO GATE READS IT.**
+   `make-sweep-index.mjs` parses `corpus/README.md`'s table for what each unit is FOR, with
+   `if (cells.length < 5) continue;`, a four-column shape. The rewritten README is two
+   columns, so **every row would have been skipped** and the sweep index would have rendered
+   with no notes at all, looking exactly like a corpus with nothing worth saying about it.
+   Parser and renderer both adapted (22 notes parse today, verified by running it). Its
+   `DRAFT_ONLY` list also still named `corpus/course/problems.tmd`. This is the fifth wave
+   in a row where the ui-audit sweep found something; it is not clean by default.
+6. **`tools/live-edit-bench` IS A WORKSPACE MEMBER and its regression test reads a deleted
+   corpus doc.** `src/main.rs`, `tests/regression.rs`, `RESULTS.json` and `RESULTS.md` all
+   named `corpus/posts/em-algorithm/index.tmd`. Re-pointed at the surviving tech-blog copy,
+   which is byte-identical (that is what the deleted `twinned_corpus_sources_stay_byte_
+   identical` guaranteed, so the measurement is unchanged by construction).
+   `editor/vscode`'s e2e suite and README named two of the deleted copies too.
+7. **ONE SHIPPED DOC NAMED A FILE INSIDE THE CUT AND THE DERIVED GATE CAUGHT IT, WHICH IS
+   THE GATE EARNING ITS LINES.** `docs/guide/using/theming.tmd` cited
+   `corpus/course/likelihood.svg` as the example of a figure drawn in a both-themes palette.
+   Re-pointed at `corpus/demo-book/structure.svg`, chosen by measurement rather than by name
+   (`#888` strokes, zero `prefers-color-scheme` blocks: the only surviving SVGs with that
+   shape are demo-book's two and single-page-report's three).
+
+**What was given up, stated plainly.**
+
+**The prose record of the protocol, the data types, the client and the validators.** Seven
+Internals chapters, 1,998 lines, and the dissent's objection stands: the author will
+re-derive some of this from code in six months. What is *not* given up is accuracy: every
+deleted chapter's pointer in a surviving chapter was replaced by the file that states the
+same thing precisely (`render/model.rs` for the field shapes, `protocol.rs` for the wire
+messages, `site/xref.rs` for cross-page refs, `web-client/client.js` for applying an op),
+and `index.tmd` now says out loud that the trade was one description that cannot go stale
+over two that can disagree. The Internals book lints clean (`build docs/internals
+--check-only`: *no problems found*), so no chapter links into the hole.
+
+**The course exhibit on the marketing site.** The gallery drops from four projects to
+three. `corpus/analyst` is still the one that executes, `corpus/descent` the interactive
+one and `corpus/tarn` the book, so the "entire projects, not screenshots" claim keeps a
+witness of each shape, but a lecturer looking for lecture notes no longer sees themselves
+on that page.
+
+**`corpus/layout/dense-output.tmd` is 634 lines → 108.** 400 stream lines became 40 and 200
+table rows became 25. All three shapes survive (the scroll-bounded `<pre>`, the bounded
+table, and the scaled-to-fit image), and so does the one that is load-bearing beyond the
+CSS: the raw-HTML root that **opens in one block and closes in a later one**, which
+`render/emit.rs`'s `is_single_root` names this file as its witness for. The document now
+says that in its own prose, so the next person to shorten it knows what not to flatten.
+
+**Two more anti-vacuity floors are lower**, and both are recorded on the assertion itself
+with the count they were measured against. Neither is a content floor; both exist against a
+`read_dir` that silently returns nothing.

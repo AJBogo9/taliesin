@@ -6,10 +6,11 @@ description: "The one-equation core: KL divergence and how the estimates are for
 
 The approach in one display equation:
 
-$$ D_{\mathrm{KL}}(P\,\|\,Q) = \sum_k p_k \log\frac{p_k}{q_k} $$
+$$ D_{\mathrm{KL}}(P\,\|\,Q) = \sum_k p_k \log\frac{p_k}{q_k} $$ {#eq-kl}
 
-The divergence is non-negative, with equality exactly when $P = Q$, so the objective is
-bounded below.
+The divergence is non-negative, with equality exactly when $P = Q$, so the objective in
+@eq-kl is bounded below. Expanding the complex exponential with @eq-euler from the
+previous chapter gives the oscillatory form we use in the appendix.
 
 ## Setup {#sec-setup}
 

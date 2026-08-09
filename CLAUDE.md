@@ -16,6 +16,12 @@ track would render *from* the built HTML, never as a parallel format).
 > corpus document pins it (that pinning is circular and is the very thing the audit
 > disproved).
 >
+> **Wave 12, the last of the twelve planned waves, landed 2026-08-09.** Only wave 13
+> (`taliesin run`) is left, and it is still unadjudicated. The corpus is 83 documents and
+> the Internals book is 7 chapters; a fresh session should read `notes/CUT-PROGRESS.md`
+> before assuming a file named in the playbook still exists, because eight of wave 12's
+> "must survive" justifications named files that had already gone.
+>
 > **Standing directive from the author:** *"always lean towards cutting. I'd rather have
 > a polished lean product, and then add features when I have real users that need them
 > than having a bloated product with features that nobody uses."* When a call is close,
