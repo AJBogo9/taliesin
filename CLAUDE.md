@@ -266,7 +266,7 @@ corpus/          the real .tmd docs (the spec); cargo test renders them all
 cargo run -p taliesin-server -- preview <file.tmd> [port]      # live preview
 cargo run -p taliesin-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
 cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained HTML file (default <name>.html)
-cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
+cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets (+ mermaid.min.js if it has a diagram; the single-file spelling above inlines that instead)
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
 cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH GATE: lint, write nothing, exit non-zero

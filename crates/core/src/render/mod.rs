@@ -109,7 +109,7 @@ use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
     html_page_from_doc_in_site_external, render_doc_to_page, render_doc_to_page_external,
-    title_with_site_suffix,
+    render_doc_to_page_mermaid_file, title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -1838,25 +1838,37 @@ pub(crate) const GENERATOR_BANNER: &str = concat!(
 "##,
 );
 
-// mermaid (pinned) is loaded as a separate script rather than bundled: the library is
-// large (~2.8 MB) and only needed when a diagram is actually present, so it's lazy-loaded
-// by `mermaid.js` (the self-registering enhancer) the first time a `{mermaid}` block
-// appears. It's a client-side presentation layer, so it never affects the block model or
-// the diff. (Syntax highlighting is server-side; KaTeX is bundled
-// offline.)
+// mermaid (pinned) is loaded as a separate script rather than bundled: the library is large
+// and only needed when a diagram is actually present, so it's lazy-loaded by `mermaid.js`
+// (the self-registering enhancer) the first time a `{mermaid}` block appears. It's a
+// client-side presentation layer, so it never affects the block model or the diff. (Syntax
+// highlighting is server-side; KaTeX is bundled offline.)
 //
-// OFFLINE: a static Build with a diagram INLINES the vendored library (`MERMAID_MIN_JS`,
-// ~2.5 MB, content-gated to pages that actually have a `pre.mermaid`), so a `--out` doc /
-// book renders diagrams with zero network. The live Preview points the lazy loader at
-// [`PREVIEW_MERMAID_PATH`], a same-origin route both dev servers serve from that same
-// vendored copy — so preview is offline too, without inlining 2.5 MB into the page shell.
-// `TALIESIN_MERMAID_URL` overrides the loader URL in either mode (e.g. to a self-hosted
-// copy) and is also the loader's never-reached Build fallback if the inlined global somehow
-// isn't present. Either way a load failure is *visible* (a `[data-mermaid-error]` banner),
-// never a silent blank.
+// HOW BIG, MEASURED 2026-08-09 rather than estimated: `MERMAID_MIN_JS` is **3,565,102 B on
+// disk and 971,040 B gzipped**. The three figures this block used to carry (~2.8 MB here,
+// ~2.5 MB twice below) were all wrong, and the gzipped number (the one a reader actually
+// pays) had never been taken at all. It is the largest thing the tool ships by an order of
+// magnitude, which is why every delivery below is a decision about where to put it.
+//
+// OFFLINE, and four deliveries, each content-gated to pages that really have a `pre.mermaid`:
+//   * `build <file.tmd>` INLINES the library, because one self-contained file that renders a
+//     diagram with zero network is that spelling's whole contract.
+//   * `build <file.tmd> --out <dir>` writes it BESIDE the page and links it: that mode
+//     produces a folder, so inlining bought nothing and cost 16.5x the page (measured:
+//     230,751 B → 3,803,736 B for one 2-node diagram). See `AssetMode::Inline`'s field.
+//   * `build <dir>` links one content-hashed `_assets/mermaid.<hash>.js` shared by every
+//     page that has a diagram (`mermaid_bundle_js`).
+//   * the live Preview points the loader at [`PREVIEW_MERMAID_PATH`], a same-origin route
+//     both dev servers serve from that same vendored copy.
+// So every delivery is offline; they differ only in whether the bytes sit in the page, next
+// to it, or on a route. `TALIESIN_MERMAID_URL` overrides the loader URL in all of them (e.g.
+// to a self-hosted copy) and is also the loader's never-reached fallback when the library is
+// inlined and the global is somehow absent. Either way a load failure is *visible* (a
+// `[data-mermaid-error]` banner), never a silent blank.
 //
 // This CDN default is now reached only by a caller that renders in Build mode without
-// inlining (nothing in-tree does) — kept as a last-resort fallback, not a normal path.
+// inlining and without naming a file (nothing in-tree does): a last-resort fallback, not a
+// normal path.
 const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
 
 /// Same-origin path the live preview serves the vendored mermaid library from. Both dev
@@ -1866,7 +1878,7 @@ const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist
 /// had a hole in exactly the mode the author spends all day in (OFF-2/AP12).
 ///
 /// A path rather than an inline blob because the page shell is re-served on every
-/// navigation: inlining would add 2.5 MB to each, while a route is fetched once and then
+/// navigation: inlining would add 3,565,102 B to each, while a route is fetched once and then
 /// sits in the browser cache. It also keeps working when a document *gains* its first
 /// diagram mid-session, which content-gated inlining could not.
 pub const PREVIEW_MERMAID_PATH: &str = "/_taliesin/mermaid.min.js";
@@ -1877,11 +1889,13 @@ pub fn mermaid_min_js() -> &'static str {
 }
 
 /// The URL the lazy mermaid loader fetches the diagram library from. `TALIESIN_MERMAID_URL`
-/// wins when set and non-empty; otherwise Preview uses the same-origin
-/// [`PREVIEW_MERMAID_PATH`] and everything else falls back to the pinned CDN default.
-fn mermaid_url_for(mode: OutputMode) -> String {
+/// wins when set and non-empty; then a `sidecar` href the caller is writing the library to
+/// (`build … --out <dir>`); then Preview's same-origin [`PREVIEW_MERMAID_PATH`]; and
+/// everything else falls back to the pinned CDN default.
+fn mermaid_url_for(mode: OutputMode, sidecar: &str) -> String {
     match std::env::var("TALIESIN_MERMAID_URL") {
         Ok(u) if !u.trim().is_empty() => u,
+        _ if !sidecar.is_empty() => sidecar.to_string(),
         _ if mode == OutputMode::Preview => PREVIEW_MERMAID_PATH.to_string(),
         _ => MERMAID_DEFAULT.to_string(),
     }
@@ -1905,21 +1919,30 @@ pub fn code_scripts() -> String {
 /// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
 /// target DOM is present in a static [`OutputMode::Build`].
 pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
+    code_scripts_in(body, mode, "")
+}
+
+/// [`code_scripts_for`] with the mermaid delivery named. A non-empty `mermaid_src` means the
+/// caller is writing the vendored library to that href beside the page, so the loader fetches
+/// it instead of the page carrying it. See [`AssetMode::Inline`]'s field for the measurement.
+pub(super) fn code_scripts_in(body: &str, mode: OutputMode, mermaid_src: &str) -> String {
     let mermaid_present = body.contains("class=\"mermaid\"");
     // A static Build inlines the vendored mermaid library (it sets `globalThis.mermaid`,
     // which the loader below short-circuits on) so a diagram renders FULLY OFFLINE — no
     // CDN, no external request. Preview keeps just the lean lazy loader (dev-time network
-    // is fine, and inlining 2.5 MB on every save would bloat the payload). The loader's
-    // `{{MERMAID}}` CDN URL stays as a never-reached fallback (window.mermaid is already
-    // set), so a stripped/edited inline still degrades gracefully rather than blank.
-    let mermaid_lib = if mode == OutputMode::Build && mermaid_present {
+    // is fine, and inlining 3,565,102 B on every save would bloat the payload), and so does a
+    // caller that named a `mermaid_src`: it is putting the same bytes next to the page, so
+    // that build is offline too. The loader's `{{MERMAID}}` URL stays as a never-reached
+    // fallback when the library IS inlined (window.mermaid is already set), so a
+    // stripped/edited inline still degrades gracefully rather than blank.
+    let mermaid_lib = if mode == OutputMode::Build && mermaid_present && mermaid_src.is_empty() {
         format!("\n<script>{MERMAID_MIN_JS}</script>")
     } else {
         String::new()
     };
     let mermaid = format!(
         "{mermaid_lib}\n<script>{}</script>",
-        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(mode))
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(mode, mermaid_src))
     );
     // In Preview every gate is open; in Build a gate opens only when the rendered
     // body carries that enhancer's DOM marker.
@@ -2021,9 +2044,11 @@ const CODE_ENHANCE_JS: &str = concat!(
 /// (`if (window.taliEnhancers) return;`), so app.js's bundled copy no-ops on its later run.
 const REGISTRY_JS: &str = include_str!("../../assets/js/code-enhance/01-registry.js");
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
-/// The vendored Mermaid library (pinned mermaid@11.16.0, ~3.5 MB; sets `globalThis.mermaid`).
-/// Inlined into a static Build page that has a diagram so it renders with no CDN; the
-/// live Preview keeps the lazy loader instead (see `code_scripts_for`).
+/// The vendored Mermaid library (pinned mermaid@11.16.0, 3,565,102 B / 971,040 B gzipped;
+/// sets `globalThis.mermaid`). Inlined into a single-file Build page that has a diagram so it
+/// renders with no CDN; a `--out <dir>` build writes it beside the page instead, `build <dir>`
+/// shares one hashed copy, and the live Preview keeps the lazy loader pointed at its own
+/// route. See the delivery list above [`MERMAID_DEFAULT`].
 const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
 
 /// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
@@ -2079,7 +2104,7 @@ pub fn core_enhance_js() -> String {
 pub fn mermaid_bundle_js() -> String {
     format!(
         "{MERMAID_MIN_JS}\n;\n{}",
-        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(OutputMode::Build))
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url_for(OutputMode::Build, ""))
     )
 }
 

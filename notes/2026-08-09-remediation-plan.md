@@ -3,6 +3,11 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development`
 > (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps
 > use checkbox (`- [ ]`) syntax for tracking.
+>
+> **TRUST THE GIT LOG OVER THE CHECKBOXES.** R1 (`7f53bf8a`), R2 (`819b7a7e`), R3 (`57e06a6a`)
+> and R4 (`169b1ca7`) all landed on 2026-08-09 with their boxes still unticked; R5 landed as
+> `17c4bf47` and says so in its own section. Ticking them retroactively would be guesswork
+> about which sub-steps shipped as written, and R5's own header records two that did not.
 
 **Goal:** Close the 17 defects the 2026-08-09 post-cut audit confirmed, close the finish
 gaps the cut left behind, and then remove the residue the campaign did not reach — without
@@ -775,9 +780,15 @@ rulings that needed a wave have landed (`cut/r6-t2-powershell`, `cut/r6-t2-notes
 recorded in their bullets below: mermaid's standalone-inline blow-up (a real, separate wave), and
 its stale byte figures in `render/mod.rs:1842`/`:1849`/`:1871` (one correcting commit).
 
+**Both KEEP residuals are now PAID, 2026-08-09, `fix/r6-t2-mermaid-standalone`**, taken as one
+wave because they are one subject: `build <file.tmd> --out <dir>` links a sibling
+`mermaid.min.js` instead of inlining the library (**3,803,736 B → 238,566 B, −93.7%**), and the
+byte figures the block carried were replaced with measured ones (3,565,102 B on disk, 971,040 B
+gzipped). Full log in `notes/CUT-PROGRESS.md`.
+
 | item | ruling | what it costs the next session |
 |---|---|---|
-| vendored mermaid (~3.5 MB) | **KEEP** | nothing. See the bullet below; the residual standalone-inline defect is a separate wave. |
+| vendored mermaid (~3.5 MB) | **KEEP** | nothing. Both residuals paid; see the bullet below and the wave log. |
 | Atom feeds (602 lines) | **KEEP** | nothing. Reasoning below. |
 | vendored PowerShell grammar (1,557 + LICENSE) | **CUT, LANDED 2026-08-09**, `cut/r6-t2-powershell`, **−1,738 in code** | nothing. See the bullet below for what the wave found. |
 | `notes/`'s 64 July-dated audits (18,454 lines) | **BANNER, LANDED 2026-08-09**, `cut/r6-t2-notes-banner`, **+256** | nothing. **Tier 2 is now fully executed.** See the bullet below. |
@@ -859,6 +870,8 @@ The mermaid split, stated so the decision is a decision:
   re-placed on every edit), Python+graphviz puts a system `dot` binary on the critical path of
   `tools/build-site.sh` with `_freeze` gitignored, and server-side SVG means adopting a layout
   crate *and* rewriting all 18 diagrams into another syntax.
+  **Both residuals below were PAID 2026-08-09** in `fix/r6-t2-mermaid-standalone`; the text is
+  kept as it stood so the wave log can be read against what it was asked to do.
   **The prose is stale where the numbers are:** `render/mod.rs:1842` says "~2.8 MB" and
   `:1849`/`:1871` say "~2.5 MB". Worth one correcting commit.
   **The residual defect, which is a real and separate wave:** the standalone path inlines the

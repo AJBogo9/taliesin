@@ -2606,3 +2606,94 @@ check that the file, flag or verb it names still exists.
 `notes/`; nothing under `tools/` or `.githooks/` reads `notes/` at all. The gated surface of this
 wave is therefore byte-identical to `7cea2292`. The full gate was still run, because "the gate is
 unnecessary here" is the reasoning this campaign has repeatedly recorded as wrong.
+
+### Wave R6 (tier 2, the mermaid residuals), 2026-08-09, `fix/r6-t2-mermaid-standalone`
+
+Tier 2 was closed and fully executed, but its two KEEP rulings each left a recorded residual.
+This wave pays both, taken together because they are one subject: where the vendored mermaid
+library goes, and what the code says it weighs. **A fix, not a cut**, so the reclaim is measured
+in shipped bytes rather than in lines, as R5-2's minification was.
+
+**Gate: 10/10, both canaries `ok`, 81 suites / 1,346 passed / 0 failed / 0 ignored.** Measure the
+next wave against **1,346 and 81 suites**. The rise of exactly 4 over `3dfd15b5`'s 1,342 is the
+four tests this wave adds and nothing else: three in the new `crates/server/tests/out_dir_mermaid.rs`
+(which is the +1 suite) and one in `render/tests.rs`. Two of the three server tests were **green
+from the first run and are meant to be**: they pin the halves that must NOT change (a single-file
+build still inlines, a prose page still gets nothing), so only
+`out_dir_links_the_mermaid_library_instead_of_inlining_it` was red, and it failed on the exact
+assertion the defect predicted.
+
+**THE DEFECT, REPRODUCED BEFORE IT WAS FIXED.** `build <file.tmd> --out <dir>` inlined the whole
+library into `index.html`, although that spelling's contract is a FOLDER (`index.html` plus the
+assets it references) and had always been allowed to put bytes beside the page. Measured with a
+release binary built from the tree at `3dfd15b5` (not from the artefact sitting in `target/`,
+which predated HEAD): one 2-node diagram took the page from **230,751 B to 3,803,736 B, 16.5x**.
+After: **238,566 B**, with the library beside it as `mermaid.min.js`. **−3,565,170 B, −93.7%.**
+A prose page is byte-identical at 230,751 B and gets no library at all.
+
+**The split, and it is the whole design.** Four deliveries now, each content-gated:
+`build doc.tmd` still INLINES (one self-contained file is that spelling's entire contract, so
+this wave deliberately did not touch it); `--out <dir>` writes the sibling; `build <dir>` keeps
+its shared content-hashed `_assets/mermaid.<hash>.js`; preview keeps its same-origin route.
+Every one is offline. They differ only in whether the bytes sit in the page, next to it, or on
+a route.
+
+**The mechanism was already there and is reused rather than invented.** The loader's
+`{{MERMAID}}` placeholder (the CDN fallback, and the hook `TALIESIN_MERMAID_URL` overrides) is
+simply pointed at the sibling, and the inline blob is suppressed. So the new path is the one the
+loader was always written for, and the `[data-mermaid-error]` banner still covers a missing file.
+`AssetMode::Inline` gained one field (`mermaid_src`, `""` = inline), `code_scripts_for` kept its
+signature and delegates to a private `code_scripts_in`, and there is exactly one new public
+function (`render_doc_to_page_mermaid_file`) plus one `const MERMAID_FILE` in `build.rs` that
+names both halves (the href in the page and the file on disk), so they cannot drift.
+
+**VERIFIED IN A REAL BROWSER, ON BOTH ORIGINS, because a sibling fetch is the one thing that
+could have regressed and no automated net covers it** (wave 6 removed the browser tests).
+`file://` was the risky case, since a folder a reader double-clicks is exactly what `--out` is
+for: mermaid loaded, `window.mermaid` is an object, 1 `pre.mermaid` became 1 SVG, **0
+`[data-mermaid-error]` banners**. Over `http://` (a `python3 -m http.server` on the folder):
+**zero console messages**, same result.
+
+**One console error nearly went into the record as a regression, and the comparison was what
+was wrong.** A fresh tab on the `--out` page logs *"Unsafe attempt to load URL … 'file:' URLs
+are treated as unique security origins"*. The baseline single-file page, navigated to from an
+already-open tab, logged nothing, so it read as caused by this change. Opening the **baseline**
+in a fresh tab produces the identical message. It is a `file://` unique-origin artefact of the
+first load in a new tab, present with the library inlined, and unrelated. Reload with
+`ignoreCache` clears it either way. **Compare like with like before believing a delta**, which
+is the browser-side sibling of this campaign's stale-binary rule.
+
+**The byte figures the code carried were all wrong, and the one that matters had never been
+taken.** `render/mod.rs` said "~2.8 MB" once and "~2.5 MB" twice; the const's own doc said
+"~3.5 MB"; a test comment said "2.5 MB". Measured: **3,565,102 B on disk, 971,040 B gzipped**
+(`gzip -9`; `-6` gives 974,921). Every figure in the tree is now the measured byte count, and
+the gzipped number is recorded beside it because it is the one a reader actually pays and no
+version of this comment had ever contained it.
+
+**Four prose surfaces claimed inlining, and NONE of them was newly wrong.** Every one was
+already wrong for `build <dir>`, which has linked a shared `_assets/` file for as long as it has
+existed; this wave only made them wrong for a second mode as well:
+`docs/guide/reference/cli.tmd`'s portable-build section ("A page with
+a `{mermaid}` block gets the ~2.5 MB Mermaid runtime **inlined into the built page itself**",
+written about `--out` builds of "single doc, site, or book"), `troubleshooting.tmd`,
+**`THIRD_PARTY.md`** ("A static build inlines the vendored Mermaid into pages that have a
+diagram"), and the `TALIESIN_MERMAID_URL` row. All four now name where the bytes go per mode.
+`corpus/render-fixes/index.tmd` was fixed too: it told a reader to set `TALIESIN_MERMAID_URL`
+"for a fully offline build", which has not been true since the library was vendored. **Fixing
+three of four copies is how the `scrolly.js` list got into its current state**, so the sweep was
+run to exhaustion rather than to the first hit.
+
+**Deliberately NOT taken, though both were within reach of this diff:** the stale
+`scrolly.js`/`tabset.js`/`walkthrough.js` line at `THIRD_PARTY.md:50` (three lines above a
+paragraph this wave rewrote) and `third_party.rs`'s `OWN_JS`. They are a different subject with
+their own register, R4 already fixed one of their three copies, and fixing a second in a wave
+about mermaid is exactly the prose-inside-behaviour mixing R4 exists to prevent. Still owed,
+with `highlight::known_language`, to R6-12 or a truth sweep.
+
+**What was given up, stated plainly.** A `--out <dir>` folder is now two files instead of one
+where it used to be one, so a reader who moves `index.html` out of the folder and away from its
+sibling loses the diagram (they get the banner and the source, not a blank). That is already
+true of every image the same command copies, and `build doc.tmd` remains the spelling for "one
+file that needs nothing beside it". The `--out` build also now writes the library on **every**
+build of a diagram page rather than embedding it, so the folder is touched where before only
+`index.html` was.

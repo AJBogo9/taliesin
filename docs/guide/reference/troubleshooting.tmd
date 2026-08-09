@@ -105,8 +105,9 @@ hits to clear by hand. Two escape hatches exist if you suspect the cache anyway:
 
 ## Diagrams / `{js}` cells don't render
 
-Both run offline — Mermaid is vendored (inlined into a built page, served same-origin in
-preview) and `{js}` cells have d3 + Plot bundled — so a network is not what is missing.
+Both run offline. Mermaid is vendored (inlined into a single-file build, written into the
+folder a `--out` build produces, served same-origin in preview) and `{js}` cells have
+d3 + Plot bundled, so a network is not what is missing.
 What still needs `http(s)` rather than `file://` is a `{js}` cell that `import()`s a
 relative helper module, because the browser blocks module imports on `file://`. Use
 `preview` (or a deployed/served build). Prose, math, and executed figures render

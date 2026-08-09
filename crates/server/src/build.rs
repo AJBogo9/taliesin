@@ -327,7 +327,14 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // sees it. Outer `Result` = panic; inner = runtime-start I/O failure.
     // `path` as the user typed it is the diagnostic prefix: it round-trips back into their
     // shell and into an editor's "open at line". `stem` stays the freeze key + page title.
-    let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode));
+    //
+    // `--out <dir>` is the one spelling of `build <file.tmd>` whose output is a FOLDER, so
+    // the vendored mermaid library goes beside the page there instead of inside it. The
+    // single-file spellings (`build doc.tmd`, `build doc.tmd out.html`, `--stdout`) keep
+    // inlining: each is one file, and one file that renders a diagram offline is the point.
+    let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
+    let executed =
+        crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
     let (html, problems, diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
@@ -612,12 +619,16 @@ enum BuildResult {
 /// `file_stem()`, which made every single-doc diagnostic read `pca-geometry:12:` — a name no
 /// tool resolves. Swapping `stem` for the path instead would have renamed the freeze entry
 /// and the page title, which is why this is a second parameter and not a substitution.
+///
+/// `mermaid_src` is [`MERMAID_FILE`] on the `--out <dir>` path and `""` everywhere else; see
+/// [`build_dir`], which writes the file this names.
 fn build_page_executing(
     src: &str,
     base: &Path,
     stem: &str,
     label: &str,
     mode: taliesin_core::OutputMode,
+    mermaid_src: &str,
 ) -> std::io::Result<BuildResult> {
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
@@ -734,13 +745,22 @@ fn build_page_executing(
         problems += report_cell_errors(&doc.blocks, label);
         diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
         BuildResult::Page {
-            html: taliesin_core::render_doc_to_page(&doc, stem, mode),
+            html: if mermaid_src.is_empty() {
+                taliesin_core::render_doc_to_page(&doc, stem, mode)
+            } else {
+                taliesin_core::render_doc_to_page_mermaid_file(&doc, stem, mermaid_src)
+            },
             problems,
             diagnostics,
             kernel_failure,
         }
     }))
 }
+
+/// The sibling copy of the vendored mermaid library a `--out <dir>` build writes for a page
+/// with a diagram. One name for both halves (the href handed to the renderer and the file
+/// written here), so the page cannot point at something that was never written.
+const MERMAID_FILE: &str = "mermaid.min.js";
 
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
 /// `href=` value pointing to an existing file under `base`) to the same relative
@@ -753,7 +773,22 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
         log::error(&format!("cannot create {}: {e}", dir.display()));
         return false;
     }
-    let copied = copy_local_assets(html, base, dir);
+    let mut copied = copy_local_assets(html, base, dir);
+    // The mermaid library, for a page that has a diagram. Not reachable through
+    // `copy_local_assets`: its href is a string inside the loader script, not an `src=`
+    // attribute, and it comes from the binary rather than from `base`. Content-gated exactly
+    // as the inline path was, so a prose page gains nothing.
+    if taliesin_core::has_mermaid(html) {
+        let to = dir.join(MERMAID_FILE);
+        match std::fs::write(&to, taliesin_core::mermaid_min_js()) {
+            Ok(()) => copied += 1,
+            Err(e) => {
+                // Not fatal: the page is still written and the loader shows its
+                // `[data-mermaid-error]` banner over the diagram source rather than a blank.
+                log::warn(&format!("cannot write {}: {e}", to.display()));
+            }
+        }
+    }
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));

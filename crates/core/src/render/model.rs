@@ -324,7 +324,19 @@ pub struct RenderedDoc {
 /// (the portable single-file build and the live preview). `External` links to
 /// content-hashed shared files under `_assets/` (the multi-page `build <dir>` path).
 pub enum AssetMode<'a> {
-    Inline,
+    Inline {
+        /// Where the vendored mermaid library lives, when the caller is writing it beside
+        /// the page rather than asking for it inside the page. `""` inlines it, which is
+        /// what a true single-file build needs; a non-empty href is what the lazy loader
+        /// fetches instead, and the caller has undertaken to put the file there.
+        ///
+        /// Only mermaid, and only because of its size: at 3,565,102 B it is an order of
+        /// magnitude larger than everything else a page inlines put together, so a
+        /// `build <file.tmd> --out <dir>` diagram page measured 3,803,736 B against the
+        /// same page's 230,751 B without one. `--out` writes a folder, so the bytes were
+        /// already allowed to sit beside the page.
+        mermaid_src: &'a str,
+    },
     External(ExternalAssets<'a>),
 }
 

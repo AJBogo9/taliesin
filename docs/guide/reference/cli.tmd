@@ -256,11 +256,16 @@ table of contents and its scrollspy), and any `{js}` cells (the
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 
 **Mermaid diagrams are offline too**, which is worth stating because it is the one part
-that looks like it should not be. A page with a `{mermaid}` block gets the ~2.5 MB Mermaid
-runtime **inlined into the built page itself**, and only into the pages that actually
-contain a diagram. Nothing is fetched at view time. (The live preview serves the same
-vendored copy from a same-origin route instead of inlining it, so the dev loop is offline
-without adding 2.5 MB to every page it re-serves.)
+that looks like it should not be. The Mermaid runtime is vendored, never fetched: a
+`--out <dir>` folder carries it **as a file inside the folder** (`mermaid.min.js` beside
+the page for a single document, one shared `_assets/mermaid.<hash>.js` for a site or a
+book), written only when something in the build actually has a diagram. It is 3.5 MB, which is
+why it goes beside the page rather than into it.
+
+The one build that does inline it is `taliesin build doc.tmd`, which produces a single HTML
+file and has nowhere else to put it: expect that file to be large if it has a diagram. (The
+live preview serves the same vendored copy from a same-origin route, so the dev loop is
+offline without adding 3.5 MB to every page it re-serves.)
 
 ## Publishing & sharing
 
@@ -456,7 +461,7 @@ which is where the same findings are already checked before publishing.
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
-| `TALIESIN_MERMAID_URL` | Point the Mermaid loader at a different copy of the library. Builds and previews are already offline without it (inlined and same-origin respectively), so this is for pinning a specific Mermaid version or serving your own copy; on load failure a visible `[data-mermaid-error]` banner shows the diagram source |
+| `TALIESIN_MERMAID_URL` | Point the Mermaid loader at a different copy of the library. Builds and previews are already offline without it (the library is vendored and either inlined, written into the output folder, or served from a same-origin route), so this is for pinning a specific Mermaid version or serving your own copy; on load failure a visible `[data-mermaid-error]` banner shows the diagram source |
 
 Without a kernel, cells render as highlighted source and the preview shows a
 "kernel unavailable" diagnostic rather than failing.

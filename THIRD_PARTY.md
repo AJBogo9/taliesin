@@ -52,12 +52,15 @@ are Taliesin's own, under the project's AGPL-3.0-only license.
 
 ## Loaded at runtime
 
-**Taliesin fetches nothing over the network, in any mode.** A static build inlines the
-vendored Mermaid into pages that have a diagram, and the live preview lazy-loads that same
-vendored copy from a **same-origin** route (`/_taliesin/mermaid.min.js`, served straight out
-of the binary). Preview uses a route rather than inlining because the page shell is
-re-served on every navigation, so a route is fetched once and then cached, and it keeps
-working when a document gains its first diagram mid-session.
+**Taliesin fetches nothing over the network, in any mode.** Every mode uses the same
+vendored copy of Mermaid and differs only in where it puts it: `build doc.tmd` inlines it
+into the single file it writes; `build doc.tmd --out <dir>` writes it beside the page as
+`mermaid.min.js`; `build <dir>` writes one shared `_assets/mermaid.<hash>.js`; and the live
+preview lazy-loads it from a **same-origin** route (`/_taliesin/mermaid.min.js`, served
+straight out of the binary). In every case a page without a diagram gets none of it.
+Preview uses a route rather than inlining because the page shell is re-served on every
+navigation, so a route is fetched once and then cached, and it keeps working when a
+document gains its first diagram mid-session.
 
 - `TALIESIN_MERMAID_URL` overrides that URL if you want the library from somewhere else.
   Setting it to a CDN is the only way to make Taliesin reach the network for its own assets.

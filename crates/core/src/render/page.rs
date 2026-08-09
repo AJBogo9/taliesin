@@ -17,6 +17,31 @@ pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputM
     page_from_doc(doc, fallback_title, mode)
 }
 
+/// Like [`render_doc_to_page`] in [`OutputMode::Build`], but the vendored mermaid library is
+/// fetched from `mermaid_src` beside the page instead of inlined into it. **The caller owns
+/// the href and has undertaken to write that file**, the same contract
+/// [`render_doc_to_page_external`] has for `_assets/`.
+///
+/// The one caller is `build <file.tmd> --out <dir>`, whose contract is a folder rather than a
+/// file. The library was the one inlined blob paying for a guarantee that mode never needed:
+/// measured 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B.
+/// Everything else stays inline there, because this is about mermaid's size and not about
+/// externalizing the framework. Plain `build <file.tmd>` keeps inlining, since one
+/// self-contained file is its whole point.
+pub fn render_doc_to_page_mermaid_file(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    mermaid_src: &str,
+) -> String {
+    html_page_inner(
+        doc,
+        fallback_title,
+        None,
+        OutputMode::Build,
+        AssetMode::Inline { mermaid_src },
+    )
+}
+
 /// Like [`render_doc_to_page`] but links the shared `_assets/` files instead of inlining the
 /// framework. For a chrome-less page emitted *inside* a multi-page build — today only
 /// `404.html`, which is not one of the site's pages and so never passes through
@@ -158,7 +183,7 @@ impl<'a> PageParts<'a> {
             scripts_pre: "",
             scripts_post: "",
             include_after_body: "",
-            assets: AssetMode::Inline,
+            assets: AssetMode::Inline { mermaid_src: "" },
         }
     }
 }
@@ -251,7 +276,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // inline bundle) still no-ops exactly as it did before.
     let enhancer_registry = format!("<script>{REGISTRY_JS}</script>\n");
     let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
-        AssetMode::Inline => {
+        AssetMode::Inline { mermaid_src } => {
             let site_css: &str = if p.with_site_css {
                 &INLINE_SITE_CSS
             } else {
@@ -274,7 +299,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            let framework_scripts = code_scripts_for(p.body, p.mode);
+            let framework_scripts = code_scripts_in(p.body, p.mode, mermaid_src);
             (style_block, katex_block, js_head_html, framework_scripts)
         }
         AssetMode::External(a) => {
@@ -398,7 +423,13 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_inner(doc, fallback_title, None, mode, AssetMode::Inline)
+    html_page_inner(
+        doc,
+        fallback_title,
+        None,
+        mode,
+        AssetMode::Inline { mermaid_src: "" },
+    )
 }
 
 /// Like `html_page_from_doc`, but wraps the page body in the site chrome
@@ -418,7 +449,7 @@ pub fn html_page_from_doc_in_site(
         fallback_title,
         Some(site),
         OutputMode::Build,
-        AssetMode::Inline,
+        AssetMode::Inline { mermaid_src: "" },
     )
 }
 
@@ -542,7 +573,7 @@ fn html_page_inner(
         String::new()
     } else {
         match &assets {
-            AssetMode::Inline => toc_scripts(),
+            AssetMode::Inline { .. } => toc_scripts(),
             // External: the shared toc JS is in app.js.
             AssetMode::External(_) => String::new(),
         }
@@ -563,7 +594,7 @@ fn html_page_inner(
             .unwrap_or_default();
         match &assets {
             // Inline: the per-page index (if any) followed by the palette runtime.
-            AssetMode::Inline => format!("{index}{}", search_scripts()),
+            AssetMode::Inline { .. } => format!("{index}{}", search_scripts()),
             // External: the palette runtime is in app.js; keep only the per-page index.
             AssetMode::External(_) => index,
         }

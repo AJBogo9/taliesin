@@ -16,9 +16,9 @@ alongside `width=`.
 
 ## A mermaid diagram (offline-aware)
 
-The diagram library is lazy-loaded; offline it now shows a visible
-`[data-mermaid-error]` banner instead of failing silently. Set
-`TALIESIN_MERMAID_URL` to self-host it for a fully offline build.
+The diagram library is lazy-loaded from the vendored copy, so every build is already
+offline; if it cannot load at all, the page shows a visible `[data-mermaid-error]` banner
+instead of failing silently. `TALIESIN_MERMAID_URL` points the loader somewhere else.
 
 ```{mermaid}
 %%| label: fig-flow

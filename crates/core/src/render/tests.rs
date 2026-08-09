@@ -632,11 +632,46 @@ fn mermaid_library_inlined_into_build_pages_only() {
         !build_plain.contains("__esbuild_esm_mermaid"),
         "Build must NOT inline mermaid on a diagram-less page"
     );
-    // Preview keeps the lean lazy loader (inlining 2.5 MB on every save would bloat it).
+    // Preview keeps the lean lazy loader (inlining 3,565,102 B on every save would bloat it).
     let preview = code_scripts_for(body, OutputMode::Preview);
     assert!(
         !preview.contains("__esbuild_esm_mermaid") && preview.contains("__taliMermaidLoading"),
         "Preview keeps only the lazy loader, not the inlined library"
+    );
+}
+
+/// The third delivery, between the two above: a Build page whose caller has undertaken to
+/// write the library BESIDE it. `build <file.tmd> --out <dir>` produces a folder whose
+/// contract already permits sibling assets, so inlining there bought nothing and cost 16.5x
+/// the page. The caller owns the href form, exactly as `ExternalAssets` already does for the
+/// multi-page build.
+#[test]
+fn a_named_mermaid_file_is_linked_instead_of_inlined() {
+    let doc = render_document("```mermaid\nflowchart LR\n  A --> B\n```\n");
+    let inlined = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    assert!(
+        inlined.contains("__esbuild_esm_mermaid"),
+        "the single-file build still inlines"
+    );
+
+    let linked = super::render_doc_to_page_mermaid_file(&doc, "stem", "mermaid.min.js");
+    assert!(
+        !linked.contains("__esbuild_esm_mermaid"),
+        "a named sibling file must replace the inlined library, not accompany it"
+    );
+    assert!(
+        linked.contains("s.src = 'mermaid.min.js'"),
+        "the lazy loader must fetch the sibling the caller named"
+    );
+    assert!(
+        linked.contains("__taliMermaidLoading"),
+        "the loader itself still ships (it is what fetches the sibling)"
+    );
+    assert!(
+        linked.len() * 10 < inlined.len(),
+        "linked {} B vs inlined {} B: the library is still in the page",
+        linked.len(),
+        inlined.len()
     );
 }
 
