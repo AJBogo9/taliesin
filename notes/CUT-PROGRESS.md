@@ -185,6 +185,22 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   `html[data-theme="dark"]` block. It read the right value for months by accident. **When a
   test locates its subject by a string that also occurs in prose, editing the prose is a
   code change**, and no gate says so. Same genus as wave 9's derived-classification finding.
+- **A FLAKY TEST CAN ACCUSE THE WRONG SUBSYSTEM, AND THIS ONE ACCUSED THE MOAT. Found on the
+  wave 11 push, 2026-08-09; the defect is PRE-EXISTING and predates the wave.**
+  `exec::tests::an_interrupt_stops_the_whole_run_and_keeps_the_warm_state` cancelled the run
+  300 ms after `control.running_lang()` first went `Some`, on the comment "cell 1 is instant,
+  so this is cell 2". `begin_cell` fires for **every** cell, so the clock starts on cell 1;
+  when the box is loaded enough that cell 1's ZMQ round trip outlasts 300 ms, the cancel lands
+  on `warm = 41` and the run never sets `warm`. The test then fails on its last assertion with
+  *"cell 1's variable did not survive the interrupt, so this was a restart"*, an accusation
+  aimed squarely at the SIGINT path in `kernel.rs`, which was innocent, and which wave 11 had
+  just edited. Diagnosed by making the race deterministic (a 1 s cell 1): the old waiter fails
+  every time, the new one passes every time. **Cell 2 now announces itself by writing a file
+  from inside its own body**, and the waiter cancels on that file plus a live `running_lang`,
+  which has no window at all. Note the shape for later waves: `run_control.rs` was byte-identical
+  across wave 11 and the interrupt canary passed in every gate run, so the diff was the fastest
+  way to establish innocence. **Check what a failing test actually proves before believing the
+  string it prints.**
 - **A VISIBILITY CHANGE CAN DROP A CONST OUT OF A SOURCE-SCANNING GATE. New in wave 11.**
   `every_parsed_flag_is_documented_in_its_subcommand_help` finds `<PREFIX>_FLAGS` by requiring
   the literal `const ` at column 0, so making `BUILD_FLAGS`/`SERVE_FLAGS` `pub(crate)` removed

@@ -1981,6 +1981,8 @@ mod tests {
         // Cell 3's side effect is a FILE, deliberately. A variable would be invisible once
         // the run is abandoned, and "cell 3 did not run" is exactly what this must prove.
         let marker = dir.join("cell3-ran");
+        // Cell 2 announces itself the same way, and that is what the interrupt waits for.
+        let running = dir.join("cell2-running");
 
         let mut ex = Executor::new().in_dir(&dir);
         ex.set_interpreters(crate::interpreter::resolve_python(py.to_str(), &dir));
@@ -1989,24 +1991,42 @@ mod tests {
 
         let blocks = vec![
             python_cell_block_with("b-1", "warm = 41"),
-            python_cell_block_with("b-2", "import time\ntime.sleep(30)"),
+            python_cell_block_with(
+                "b-2",
+                &format!(
+                    "import time\nopen({:?}, 'w').write('2')\ntime.sleep(30)",
+                    running.to_string_lossy()
+                ),
+            ),
             python_cell_block_with(
                 "b-3",
                 &format!("open({:?}, 'w').write('ran')", marker.to_string_lossy()),
             ),
         ];
 
-        // Cancel once cell 2 is actually executing. Polling the control rather than sleeping
-        // a fixed amount: on a cold kernel boot a fixed sleep either fires before anything
-        // runs (testing nothing) or after 30s (testing nothing).
+        // Cancel once cell 2 is *provably* the running cell, which cell 2 says itself by
+        // writing a file from inside its own body before it sleeps.
+        //
+        // Waiting on `running_lang()` plus a fixed 300 ms was not enough, and the failure it
+        // produced accused the wrong thing. `begin_cell` fires for EVERY cell, so the poll
+        // sees cell 1 and starts the 300 ms clock there; when the box is loaded enough that
+        // cell 1's ZMQ round trip outlasts it, the cancel lands on `warm = 41` and the run
+        // never sets `warm` at all. The test then failed on its last assertion with "cell 1's
+        // variable did not survive the interrupt, so this was a restart" — pointing at the
+        // interrupt path, which was innocent. Observed once under `cargo test --workspace`
+        // on 2026-08-09, unreproducible under CPU load alone, and present since the test was
+        // written. A file written from the cell body has no window: once it exists, cell 2
+        // has begun and cell 1 has finished.
         let waiter = {
             let control = control.clone();
+            let running = running.clone();
             tokio::spawn(async move {
                 let deadline = std::time::Instant::now() + Duration::from_secs(60);
                 loop {
-                    if control.running_lang().is_some() {
-                        // In the middle of a cell. Cell 1 is instant, so this is cell 2.
-                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    // Both halves: the file proves cell 2 has begun (so cell 1 is done), and
+                    // `running_lang` proves the executor still has a cell in flight, which is
+                    // the precondition for `cancel` returning the lang the test asserts on.
+                    if running.exists() && control.running_lang().is_some() {
                         return control.cancel();
                     }
                     if std::time::Instant::now() > deadline {
