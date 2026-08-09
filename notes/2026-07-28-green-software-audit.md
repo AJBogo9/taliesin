@@ -1,5 +1,9 @@
 # R13 — green software and carbon intensity
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Date:** 2026-07-28
 **Round:** Optional tail / R13 of the [audit slate](../docs/superpowers/specs/2026-07-27-audit-slate-design.md).
 **Question.** What is the measured efficiency story, and is it a differentiator worth stating?

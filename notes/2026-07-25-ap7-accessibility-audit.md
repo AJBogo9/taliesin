@@ -1,5 +1,9 @@
 # AP7: deep accessibility of the output (2026-07-25)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Perspective:** AP7 from `backlog.md`'s "Audit perspectives". Ruled the pick by the owner on
 2026-07-25 after the backlink-context batch emptied the last buildable band-C bullets.
 **Run solo** against the tip of `backlog/backlink-context-and-resume` (`befcb6c`), release binary,

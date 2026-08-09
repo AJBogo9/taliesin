@@ -1,5 +1,9 @@
 # Path-parity audit (L1) — 2026-07-26
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 > **All three findings SHIPPED 2026-07-26** (`97c1d46` PP-3, `66fafa8` PP-1 + PP-2). Two corrections
 > this document's fix directions needed, kept because they are the transferable part:
 >

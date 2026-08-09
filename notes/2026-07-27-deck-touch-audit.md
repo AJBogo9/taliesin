@@ -1,5 +1,9 @@
 # Deck audit re-run, crossed with touch — 2026-07-27
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 The 07-12 deck round is closed (everything but the deliberately-deferred B3-18), so this is not a
 re-check of its 43 findings. It is the re-run [backlog.md](backlog.md) asked for: the deck surface
 has churned **2,608+/1,213-** across `deck.rs` + `deck.js` + `deck.css` in 49 commits since that

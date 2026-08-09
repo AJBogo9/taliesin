@@ -1,5 +1,9 @@
 # Mutation re-run, `crates/server` half — COMPLETE (the ten files after `lsp_nav.rs`)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Status: finished 2026-07-27, 707 of 707 mutants.** This closes the sweep that
 [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md) left owed.
 That file still stands on its own for `lsp_nav.rs`; this one covers everything else.

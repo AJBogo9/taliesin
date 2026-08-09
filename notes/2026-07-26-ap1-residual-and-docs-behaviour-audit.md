@@ -1,5 +1,9 @@
 # AP1's unchased residuals, and the behavioural half of the docs lens (2026-07-26)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Perspectives:** the last two audit angles left unstarted after 2026-07-25 — **AP1's
 unchased residuals** (kernel RSS drift, multi-hour warm RSS) and the **behavioural half
 of the docs-vs-behaviour lens** (what a key *does*, not whether it exists). Run together,

@@ -1,5 +1,9 @@
 # Mobile audit (2026-07-26)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Lens:** the reader experience on a touch device, measured in a real browser at the recorded
 three-viewport matrix plus the landscape-phone band. Proposed by the author out of real device
 testing ("many of the computer shortcuts are still visible on mobile and there are other small

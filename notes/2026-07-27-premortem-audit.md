@@ -1,5 +1,9 @@
 # Pre-mortem R3 — Taliesin, mid-2027
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 > **Premise, asserted as fact.** It is July 2027. Taliesin was published. It failed. Not
 > "underperformed" — failed: the repository is archived or effectively so, the last
 > substantive commit is months old, the issue tracker holds unanswered reports, and the

@@ -1,5 +1,9 @@
 # Taliesin: machine-facing output audit (2026-07-16)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Lens: audit the surfaces with no viewer.** Every prior audit round was eye-driven (browser
 screenshots at three viewports, the design audit, the deck audit, the UI audits, "does the corpus
 render correctly"). That method covers everything a human eye lands on and structurally misses

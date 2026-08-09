@@ -1,5 +1,9 @@
 # R5: what happens when a user opens a `.tmd` they did not write
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Date: 2026-07-28. Method: source reading plus existing tests. No hostile document was
 executed against a live kernel on this machine, per the brief. Every claim below names the
 file it was derived from and the measurement that would refute it.

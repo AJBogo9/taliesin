@@ -1,5 +1,9 @@
 # Audit: internationalization / Unicode / multibyte-offset correctness (perspective AP5)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Date: 2026-07-22. Perspective: AP5 from the backlog "Audit perspectives" section
 (Unicode / multibyte-sourcepos correctness). Run as a single-perspective, code-read
 session alongside two other live sessions (a feature session on `polish/a11y-holes`

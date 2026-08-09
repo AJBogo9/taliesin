@@ -1,5 +1,9 @@
 # Skimmability audit: making long Taliesin books scannable
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 *2026-07-24. Method: 8 parallel web-research agents (reading science, structured-writing methodology, competitive docs-tooling sweep, e-reader/annotation prior art, typography, search/index/findability, accessibility, build-time derivation) plus 5 codebase-inventory agents (reader affordances, author tooling, book-scale navigation, rendered-HTML ground truth, notes archaeology). Their findings fed 8 ideation lenses; ~95 raw candidates were consolidated to 30; each survivor was then attacked by 3 independent adversarial verifiers (already-shipped, invariant, efficacy) with permission to kill it. 4 candidates were killed outright. A second adversarial pass re-verified the measurements and the prescribed mechanisms, and corrected several of them; those corrections are folded in below.*
 
 **All "measured" numbers in this document were reproduced at commit `5c25d00` unless the line says otherwise, and each carries the command that produced it.** Claims from the research inputs carry their original confidence. One research lens was never run and is named as a gap: publishing and editorial practice for long-form books.

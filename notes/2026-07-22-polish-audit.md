@@ -1,5 +1,9 @@
 # Polish audit (2026-07-22)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 A **wide, deep polish audit** to refill the backlog: every existing surface examined for
 micro-craft, silent holes, inconsistency, and unintuitive implementation, with the goal of
 making the tool feel *extremely* finished. Successor lens to the 2026-07-19 feature-polish

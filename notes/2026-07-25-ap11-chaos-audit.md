@@ -1,5 +1,9 @@
 # AP11: chaos / failure-injection UX (2026-07-25)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Perspective:** AP11 from `backlog.md`'s "Audit perspectives", run at the author's request as the
 third audit of the day. **Run solo** against `e7d6bb9`, release binary, real builds with a real
 warm Python kernel. **Nothing was changed**: findings only.

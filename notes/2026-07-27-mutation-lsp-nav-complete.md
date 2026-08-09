@@ -1,5 +1,9 @@
 # `lsp_nav.rs` measured end to end (item 68)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **2026-07-27.** The last compute the mutation campaign owed: `lsp_nav.rs` was the one file measured
 only in part (338 of 444 on 2026-07-26, banked in
 [2026-07-26-mutation-server-half-partial.md](2026-07-26-mutation-server-half-partial.md)). This run

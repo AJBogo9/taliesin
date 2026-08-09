@@ -1,5 +1,9 @@
 # Website design audit — backlog (2026-07-11)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Full, grindable findings from the 2026-07-11 multi-perspective audit of the **personal blog**
 (`corpus/tech-blog/`, andreasbogossian.com — the priority) and the **marketing site** (`site/`,
 taliesin.dev). Companion to [backlog.md](backlog.md); rendered report artifact:

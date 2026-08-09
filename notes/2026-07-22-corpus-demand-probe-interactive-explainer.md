@@ -1,5 +1,9 @@
 # Corpus demand-probe — interactive-explainer persona (findings)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Persona #3 of 4.** An author of *explorable explanations*: one long, scrollable page
 that teaches a concept by letting the reader poke at it. Built `corpus/descent/` — a
 gradient-descent explainer that stacks the interactive cluster the corpus had only ever

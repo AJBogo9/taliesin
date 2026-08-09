@@ -769,17 +769,20 @@ deleted) against a 2,134 estimate; **−2,489 in code**, excluding `package-lock
   of silently-inert gate `tools/gates.sh` exists for. `editor/vscode/.vscode-test/` (3.1 GB) is
   that gate's fixture, not residue.
 
-**Tier 2 — ALL FOUR ARE NOW RULED (2026-08-09, by the author). None needs another ruling;
-three still need a wave.**
+**Tier 2: CLOSED AND FULLY EXECUTED 2026-08-09.** All four were ruled by the author, and both
+rulings that needed a wave have landed (`cut/r6-t2-powershell`, `cut/r6-t2-notes-banner`).
+**Nothing in tier 2 is owed: no decision, no wave.** The two KEEPs each left one residual defect
+recorded in their bullets below: mermaid's standalone-inline blow-up (a real, separate wave), and
+its stale byte figures in `render/mod.rs:1842`/`:1849`/`:1871` (one correcting commit).
 
 | item | ruling | what it costs the next session |
 |---|---|---|
 | vendored mermaid (~3.5 MB) | **KEEP** | nothing. See the bullet below; the residual standalone-inline defect is a separate wave. |
 | Atom feeds (602 lines) | **KEEP** | nothing. Reasoning below. |
-| vendored PowerShell grammar (1,557 + LICENSE) | **CUT — LANDED 2026-08-09**, `cut/r6-t2-powershell`, **−1,738 in code** | nothing. See the bullet below for what the wave found. |
-| `notes/`'s 64 July-dated audits (18,454 lines) | **BANNER, do not delete** | one sweep. Reasoning below. |
+| vendored PowerShell grammar (1,557 + LICENSE) | **CUT, LANDED 2026-08-09**, `cut/r6-t2-powershell`, **−1,738 in code** | nothing. See the bullet below for what the wave found. |
+| `notes/`'s 64 July-dated audits (18,454 lines) | **BANNER, LANDED 2026-08-09**, `cut/r6-t2-notes-banner`, **+256** | nothing. **Tier 2 is now fully executed.** See the bullet below. |
 
-- **The vendored PowerShell grammar. RULED CUT 2026-08-09 — LANDED the same day** as
+- **The vendored PowerShell grammar. RULED CUT 2026-08-09, LANDED the same day** as
   `cut/r6-t2-powershell`, **−1,738 lines of code** (`+14 / −1,752`, 7 files, 2 deleted) against
   the ~1,650 estimate. Gate green either side (10 gates; 80 suites, 1,342 passed, 0 failed, 0
   ignored — exactly the 5 tests this wave deletes below R6's 1,347). Full log in
@@ -817,7 +820,16 @@ three still need a wave.**
   vocabulary, needs no config, and costs a project that does not want it exactly zero.
   `Site::nav_ordered` stays in `feed.rs` with it.
 
-- **`notes/`'s 64 July-dated audits. RULED BANNER-DO-NOT-DELETE 2026-08-09.** They carry
+- **`notes/`'s 64 July-dated audits. RULED BANNER-DO-NOT-DELETE 2026-08-09, LANDED the same
+  day** as `cut/r6-t2-notes-banner`: **+256 lines, 0 deletions, 64 files**, four lines each, and
+  the diff touches nothing outside `notes/2026-07-*.md`. **The ruling's premise is now measured
+  rather than asserted, and it was understated: 37 of the 64 audits cite at least one repo path
+  that no longer exists, across 112 distinct dead paths**, a floor, since the scan is
+  backticked-only, extension-gated and resolves a token by suffix the way `stale_docs.rs` does.
+  `corpus/deck.tmd` is named by **14** of them. So more than half of the directory points at
+  something gone and nothing in the tree said so. Prose only, exactly as ruled: no gate, no
+  register, no index entry. Full log in `notes/CUT-PROGRESS.md`. The ruling as it stood:
+  They carry
   measurements that cost sessions to acquire, and every byte would survive in git — but the
   reason to act is that their **live cost is demonstrated, not hypothetical**. Wave 12 found
   eight spent justifications in one wave, and wave R6 found a ninth: the playbook's ground for

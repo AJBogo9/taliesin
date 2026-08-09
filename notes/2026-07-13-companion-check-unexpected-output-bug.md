@@ -1,5 +1,9 @@
 # Bug: "check produced unexpected output" on line 1 of every `.tmd` file
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Reported:** 2026-07-13 (opening any `.tmd` in VS Code)
 **Status:** Root cause confirmed. Source already fixed (`b40ec0e`); the **packaged + installed** companion is stale. Remediation = rebuild the vsix and reinstall.
 **Severity:** Cosmetic-but-noisy. Real diagnostics still work; this drowns them under a false line-1 error on every file.

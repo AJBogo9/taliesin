@@ -1,5 +1,9 @@
 # Reduction audit map (Phase 1 output)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 > Produced 2026-07-17 by a 5-way read-only fan-out (render / site / cite+diagnostics /
 > server / client+assets), then orchestrator-verified. Spec:
 > `docs/superpowers/specs/2026-07-17-reduction-and-modularity-pass-design.md`.

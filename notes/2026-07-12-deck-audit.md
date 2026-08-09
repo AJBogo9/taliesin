@@ -1,5 +1,9 @@
 # Deck audit — 2026-07-12
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 A wide, multi-perspective audit of the slide-deck feature (the format the owner has
 spent least time on). Three inputs, merged and de-duplicated here:
 

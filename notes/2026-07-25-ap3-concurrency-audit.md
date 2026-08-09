@@ -1,5 +1,9 @@
 # AP3: concurrency and race conditions (2026-07-25)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Perspective:** AP3 from `backlog.md`'s "Audit perspectives", picked by the owner after AP7 ran
 the same day. **Run solo** against the tip of `backlog/backlink-context-and-resume` (`cca5395`),
 release binary, real `preview` server with a real warm Python kernel. **Nothing was changed**:

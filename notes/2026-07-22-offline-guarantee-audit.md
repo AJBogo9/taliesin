@@ -1,5 +1,9 @@
 # Audit: offline-guarantee verification (perspective AP12)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Date: 2026-07-22. Perspective: AP12 from the backlog "Audit perspectives" section
 (offline-guarantee verification). Run as a single-perspective session alongside two live
 sessions (a feature session on DX17b and a separate audit), so it touches no source,

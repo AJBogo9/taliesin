@@ -1,5 +1,9 @@
 # Research-publishing survey — what to take from the academic-web ecosystem
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **2026-07-31.** Author-raised: "scrape the Academic Project Page Template, see what they do well,
 take inspiration for publishing research." Widened on request to the whole ecosystem of academic
 web-publishing projects that are *actually used*.

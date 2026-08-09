@@ -1,5 +1,9 @@
 # AP6: cross-browser / cross-platform (2026-07-25)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Perspective:** AP6, the last unrun AP slot, run at the author's request as the fourth audit of the
 day. Against `92fc67b`, release-built output served statically. **One repo change**: Playwright
 Firefox was added as a devDependency of `tools/ui-audit` so this round is re-runnable (there was no

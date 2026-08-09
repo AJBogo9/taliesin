@@ -1,5 +1,9 @@
 # Backlog truth sweep, 2026-07-17
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Every open item in [backlog.md](backlog.md) re-derived from today's source, after the file was
 caught advertising already-built work. Verdicts below; the corrections are already applied to
 `backlog.md`, so this file is the **evidence**, not a second to-do list.

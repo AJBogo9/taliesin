@@ -1,5 +1,9 @@
 # Quarto design-decisions catalog: triage (2026-07-16)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Triage of `docs/superpowers/specs/2026-07-03-quarto-design-decisions-catalog.md` (branch
 `quarto-decisions-catalog` @ `535b4e1`, 165 decisions), per backlog §E: rule each by **"is this the
 right design for Taliesin"**, now that the 2026-07-07 repositioning retired Quarto as the reference.

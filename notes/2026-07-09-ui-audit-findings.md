@@ -1,5 +1,9 @@
 # UI-audit findings (2026-07-09)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 Raw output from the `tools/ui-audit` harness over the full corpus (89 pages / 534
 cells, 6-cell matrix at scale 0.5). Pipeline: capture (Puppeteer, free) -> probe
 (free) -> analyze / dedup / verify / report workflow (148 agents, Sonnet, ~9M

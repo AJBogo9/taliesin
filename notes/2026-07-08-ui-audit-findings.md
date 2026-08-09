@@ -1,5 +1,9 @@
 # UI-audit findings (2026-07-08)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 First findings from the `tools/ui-audit` harness (a validation run over a 3-unit
 slice: `corpus/deck.tmd`, `corpus/media/gallery.tmd`, `corpus/reactive/js-error.tmd`).
 Each was investigated to root cause and reproduced (or shown not to reproduce) in

@@ -1,5 +1,9 @@
 # Polish / productivity audit findings (2026-07-09)
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 > **STATUS (2026-07-10): sections 1, 2 (incl. 2a/2b/2c), 3, 7 and 8 have LANDED** as backlog
 > Tier-1 batches A-E (`b2c4a5a`, `48b5d38`, `b5001a6`, `aa7f3c5`, `2bd8194`, `41c164f`,
 > `7c75322`). Do not re-scope them from this file. **Four of this document's own claims were

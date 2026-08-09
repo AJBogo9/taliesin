@@ -2463,7 +2463,7 @@ features nobody uses); **`notes/`'s 64 dated audits are BANNERED, not deleted** 
 line each: dated record, check the file exists before acting). With mermaid already ruled keep,
 **tier 2 is closed** — two waves of work remain in it, no decisions do.
 
-### Wave R6 (tier 2, PowerShell) — 2026-08-09, `cut/r6-t2-powershell`
+### Wave R6 (tier 2, PowerShell), 2026-08-09, `cut/r6-t2-powershell`
 
 The first of tier 2's two waves of work: the vendored PowerShell grammar, ruled CUT the session
 before. **Measured reclaim in code: −1,738 lines** (`+14 / −1,752` over 7 files, **2 deleted**),
@@ -2471,7 +2471,7 @@ against the ~1,650 estimate. `notes/` grew on purpose for this entry and the pla
 the commit body carries the whole-diff total. **5.4% over, where this campaign's waves have run
 49% to 150% over**
 (R6-2/3/9 was 3,180 against 2,134; R6-11 was 959 against ~500; wave 13 was 2.5×), because the
-subject was a genuine leaf — see the zero-cascade note below. Only R6-1 was closer, and that row
+subject was a genuine leaf (see the zero-cascade note below). Only R6-1 was closer, and that row
 had been measured in advance rather than estimated.
 
 **Gate: 10/10, both canaries `ok`, 80 suites / 1,342 passed / 0 failed / 0 ignored.** Measure the
@@ -2494,13 +2494,13 @@ grammar gone the whole source-parsing half of the dependency became unreachable 
 dropped it. **Verified rather than inferred from the byte delta:** `load_from_str`,
 `SyntaxDefinition`, `SyntaxSetBuilder`, `into_builder` and `load_from_folder` now match **nothing**
 under `crates/` or `tools/`, and `highlight.rs` is the only syntect consumer left in the tree.
-**No `Cargo.toml` or feature change was needed or made** — this fell out of deleting the caller.
+**No `Cargo.toml` or feature change was needed or made**: this fell out of deleting the caller.
 Worth knowing for any later wave that removes the last caller of a *format reader* rather than of
 data: the reclaim is the reader, not the file.
 
 One follow-up deliberately declined: syntect is still pulled in as `default-features = false,
 features = ["default-fancy"]`, which carries the now-unused YAML loader. Trimming it would buy
-**zero** binary bytes — the linker has already dropped the code, which is what the −479 KB *is* —
+**zero** binary bytes, because the linker has already dropped the code (which is what the −479 KB *is*),
 so it would only shrink the build graph. That is dependency micro-surgery with a real risk of
 changing what `load_defaults_newlines` returns, and the standing directive is about features
 nobody uses, not about feature flags.
@@ -2512,7 +2512,7 @@ to run; a leaf simply has nothing behind it.
 **The degradation was verified, not assumed**, because the ruling rested on a claim about
 silence. A scratch document with both fences, built by the release binary: **0 `tali-hl-` spans
 in either fence**, the text HTML-escaped and intact, and `build --check-only --no-exec` prints
-*"no problems found"* and exits 0 — **`--strict` too**. So the ruling's ground holds: wave 9's
+*"no problems found"* and exits 0, **`--strict` too**. So the ruling's ground holds: wave 9's
 removal of the generic unknown-fence-language lint means there is no diagnostic to go stale, and
 a `powershell` fence is now exactly as quiet as any other language the tool has no grammar for.
 
@@ -2521,7 +2521,7 @@ loud.** `vendored_syntaxes_are_attributed_and_carry_their_licence` is deleted wi
 directory; its anti-vacuity assertion (`grammars > 0`) meant it would have **hard-failed** rather
 than passed over an empty directory, which is the ordering rule doing its job on a licence gate
 rather than on a corpus pin. In its place, `PowerShell` joins `removed_deps_are_not_listed`'s
-list — the wave-4 `paged.js` precedent — and it is the one entry there that was never a
+list (the wave-4 `paged.js` precedent), and it is the one entry there that was never a
 *dependency*: it was redistributed **source**, so a stale row would be a licence claim about
 bytes this binary no longer carries.
 
@@ -2533,7 +2533,7 @@ therefore recorded **here** rather than in the code: **syntect loads `.sublime-s
 cannot consume a `.tmLanguage` plist as a syntax at any feature level** (`plist-load` covers
 themes and metadata), which is why Microsoft's own `PowerShell/EditorSyntax` was unusable and a
 Sublime-format grammar had to be found instead. `resolve`'s surviving comment says only that
-there is no third tier and when it went — deliberately, because a comment in `resolve` explaining
+there is no third tier and when it went. Deliberately: a comment in `resolve` explaining
 how to vendor a grammar would describe something the code no longer does, which is the exact
 doc-drift genus the post-cut audit found seventeen of. No register entry is owed and none was
 written: a fence language is not a
@@ -2544,7 +2544,7 @@ folding a second prose subject into this diff is what R4 exists to prevent):
 
 1. **`highlight::known_language` is dead workspace-wide, and R4 did not catch it.** Zero callers
    outside its own file and its own two unit tests, verified by grepping every `.rs`/`.ts`/`.js`/
-   `.tmd`/`.md` in the tree. It is `pub` in `taliesin-core`, so **clippy cannot see it** — the
+   `.tmd`/`.md` in the tree. It is `pub` in `taliesin-core`, so **clippy cannot see it**, the
    same blind spot that hid `RenderedDoc::body_text` from R6-11. Its whole purpose was to feed
    the generic unknown-fence-language lint **wave 9 deleted**, and `INTENTIONALLY_PLAIN` exists
    only to serve it. ~30 lines with its two tests. **An R6-12 candidate**, and note it is a
@@ -2554,5 +2554,55 @@ folding a second prose subject into this diff is what R4 exists to prevent):
    left **`THIRD_PARTY.md:50`** (one line naming all three as "Taliesin's own") and
    **`third_party.rs`'s `OWN_JS`** (3 dead exemptions in the list `vendored_js_is_attributed`
    skips). Both files are ones this wave edits, which is how they were found. Harmless in
-   behaviour — the loop skips names with no file — but the first is a factual error in the
+   behaviour (the loop skips names with no file), but the first is a factual error in the
    licence document, which is the one document where being wrong costs something.
+
+### Wave R6 (tier 2, the notes banner), 2026-08-09, `cut/r6-t2-notes-banner`
+
+Tier 2's second and last wave of work, and the one that **adds** rather than removes: one STATUS
+banner at the top of each of `notes/`'s **64** July-dated audits, per the BANNER-DO-NOT-DELETE
+ruling. **+256 lines, 0 deletions, 64 files**: exactly 4 lines each (a three-line blockquote and
+a blank), and the diff touches nothing outside `notes/2026-07-*.md`.
+
+**THE RULING'S PREMISE, NOW MEASURED INSTEAD OF ASSERTED.** The ruling said these audits' live
+cost was "demonstrated, not hypothetical" and cited two anecdotes (wave 12's eight spent
+justifications, wave R6's ninth). The sweep is a chance to count it, so: **37 of the 64 audits
+cite at least one repo path that no longer exists, across 112 distinct dead paths.** That is a
+**floor**, deliberately: the scan takes only backticked tokens containing `/` and ending in a
+known source extension, resolves a token if *any* path in the tree ends with it (`stale_docs.rs`'s
+own suffix rule, so `serve/mod.rs` counts as live), and excludes globs, URLs and `<placeholder>`
+forms. Two false positives found and removed on a second pass took the count from 44 to 37:
+`corpus/**/*.tmd` (a glob) and `/blog.html` (a URL path). The most-cited dead path is
+`corpus/deck.tmd` in **14** audits, followed by `docs/DIAGNOSTICS.md` (4), then
+`crates/server/src/check.rs`, `render/deck.rs`, `docs/guide/demo.tmd`,
+`corpus/reader/hovercards.tmd` and R6-1's own
+`docs/superpowers/specs/2026-07-03-quarto-design-decisions-catalog.md` (3 each). **So more than
+half of this directory names something gone, and nothing in the tree says so**, which is the
+whole case for the banner, and it is stronger than the ruling knew.
+
+**The banner is prose and nothing else**, as ruled: no gate, no register, no index entry, no
+`notes/README.md` change (that table lists the key files, not the dated rounds, and no filename
+moved). The text names the ruling and `CUT-PROGRESS.md` by relative link and asks the reader to
+check that the file, flag or verb it names still exists.
+
+**Three things worth knowing about the mechanics.**
+
+1. **All 64 open with an H1 followed by a blank line**, verified before writing rather than
+   assumed, so the insertion point is uniform. The script **refuses** any file whose shape it did
+   not verify instead of guessing at it; 0 were refused.
+2. **Four audits carry their own `**Status:**` line at line 3 or 4:**
+   `2026-07-23-cad-as-code-research.md` (PARKED), `2026-07-13-companion-check-unexpected-output-bug.md`,
+   and the two mutation-run halves. Inserting *after* the H1 puts the banner above those without
+   clobbering them, and the two statuses read as what they are: one about the campaign, one about
+   the work. Ten files matched a `STATUS:`/`superseded` grep before the sweep and none of them was
+   a supersession banner, which is why the grep was not trusted as the idempotence check.
+3. **The sweep is idempotent on a marker, not on a line count.** Re-running it reports
+   `bannered: 0  already-had-one: 64`, so a later session can run it again over new files without
+   double-bannering the old ones.
+
+**`notes/` is outside every gate's reach, and that was verified rather than reasoned about.**
+`retired_names.rs`'s `SKIP_PATHS` lists `notes`, and its own walk assertion requires that
+`/notes/` never appear in the scanned set; `stale_docs.rs` walks five named files, none in
+`notes/`; nothing under `tools/` or `.githooks/` reads `notes/` at all. The gated surface of this
+wave is therefore byte-identical to `7cea2292`. The full gate was still run, because "the gate is
+unnecessary here" is the reasoning this campaign has repeatedly recorded as wrong.

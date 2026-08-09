@@ -1,5 +1,9 @@
 # AP8 — Determinism / reproducibility audit
 
+> **STATUS: dated record.** Superseded by the [2026-08-08 scope ruling](2026-08-08-scope-ruling.md)
+> and the cut it authorised. True when written, not now. **Before acting on anything here, check
+> that the file, flag or verb it names still exists.** See [CUT-PROGRESS.md](CUT-PROGRESS.md).
+
 **Date:** 2026-07-22
 **Perspective:** AP8 from the "Audit perspectives" menu in `backlog.md`. *Read half fan-out-safe;
 the rebuild-twice check is (lightly) stateful.* Chosen after reading the three concurrent sessions:
