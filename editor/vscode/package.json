@@ -141,18 +141,6 @@
         "category": "Taliesin"
       },
       {
-        "command": "taliesin.runCell",
-        "title": "Run Cell",
-        "category": "Taliesin",
-        "icon": "$(play)"
-      },
-      {
-        "command": "taliesin.runAll",
-        "title": "Run All Cells",
-        "category": "Taliesin",
-        "icon": "$(run-all)"
-      },
-      {
         "command": "taliesin.restartServer",
         "title": "Restart Language Server",
         "category": "Taliesin"
@@ -268,10 +256,9 @@
             "enum": [
               "check",
               "build",
-              "build --out",
-              "run"
+              "build --out"
             ],
-            "description": "Which Taliesin command this task runs: check, build and build --out target the project root; run executes the cell at the cursor."
+            "description": "Which Taliesin command this task runs. All three target the project root."
           }
         }
       }

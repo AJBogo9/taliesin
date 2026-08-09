@@ -1,14 +1,13 @@
-//! `textDocument/codeLens`: Run · Run above · ⚡ cached, above every executable fence.
+//! `textDocument/codeLens`: what a cell will do next time the document runs.
 //!
-//! **Why this is the highest-leverage LSP method for this format.** The execution loop is the
-//! thing a computational document is *for*, and until now it reached the editor through
-//! `editor/vscode/src/runcell.ts` — a code-lens provider written in TypeScript, so Neovim,
-//! Helix and Zed had no Run button at all. Moving the lens into the server puts the loop in
-//! every LSP client with no TypeScript at any of them. The companion keeps the *plumbing*
-//! (`vscode.tasks`, the progress indicator, the completion notification) and loses only the
-//! buttons: a code lens names a command, and running one is the client's job either way.
+//! **Labels, not buttons, since Wave 13 cut `taliesin run`.** This provider used to carry
+//! ▶ Run Cell / Run Above, which named a command the CLI answered; with the verb gone a
+//! button here would name nothing, so only the cache label remains. Execution reaches the
+//! author through `taliesin preview`, which runs the edited cell and everything downstream
+//! against the same warm kernel and writes the same `_freeze/`.
 //!
-//! **The ⚡ label is the 2026-07-18 DX audit's still-open "make caching legible" item.**
+//! **The ⚡ label is the 2026-07-18 DX audit's still-open "make caching legible" item**, and
+//! it is the whole reason this method survives.
 //! `freeze.rs` knows whether a cell's output can be restored without running it, and until now
 //! nothing outside the browser said so — `decorations.ts` explicitly declined to half-build it
 //! on the TypeScript side, because the answer belongs to the execution layer. It is computed
@@ -23,28 +22,16 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// The command a client is expected to implement to run a cell, with `[uri, line]` arguments:
-/// the document, and the **1-based** source line to run *through*.
-///
-/// A code lens carries a command name, never an implementation — the protocol has no way for a
-/// server to run anything in the client. So this is a contract: the companion registers it (it
-/// already did, for its own lens), and it is documented for every other editor in
-/// `docs/guide/reference/cli.tmd`. Namespaced so it can never collide with a client's own.
-pub(crate) const RUN_COMMAND: &str = "taliesin.runCell";
-
 /// Lenses for `blocks`, anchored on each executable cell's fence line.
 ///
 /// `probe` carries the memoized interpreter identity and the page's `_freeze/` file; it is
 /// threaded in rather than built here so a burst of lens requests (the client re-asks on every
 /// edit) costs one probe and one cache read for the session, not one per keystroke.
 pub(crate) fn code_lenses(
-    uri: &lsp_types::Url,
     blocks: &[taliesin_core::Block],
     probe: &mut CacheProbe,
 ) -> Vec<lsp_types::CodeLens> {
-    // The 1-based fence line of each executable cell, in document order. `run --line`
-    // resolves to "the last cell starting at or before this line" (`runspec::resolve`), so a
-    // cell's own start line names that cell exactly.
+    // The 1-based fence line of each executable cell, in document order.
     let keys = crate::exec::cell_cache_keys(blocks, &mut |lang| probe.interp_id(lang));
     let lines: Vec<u32> = keys
         .iter()
@@ -54,7 +41,7 @@ pub(crate) fn code_lenses(
     let mut out = Vec::new();
     for (i, cell) in keys.iter().enumerate() {
         let line = lines[i];
-        // A generated block carries no position, so there is no fence to hang a button over.
+        // A generated block carries no position, so there is no fence to hang a label on.
         if line == 0 {
             continue;
         }
@@ -62,20 +49,6 @@ pub(crate) fn code_lenses(
             lsp_types::Position::new(line - 1, 0),
             lsp_types::Position::new(line - 1, 0),
         );
-        let args = |target: u32| {
-            // The URI as a string, because a code lens's arguments are plain JSON and no
-            // client converts them. Every client that implements the command parses it back.
-            Some(vec![
-                serde_json::Value::String(uri.to_string()),
-                serde_json::Value::from(target),
-            ])
-        };
-        out.push(lens(anchor, "▶ Run Cell", RUN_COMMAND, args(line)));
-        // "Run Above" is only meaningful when there IS something above: on the first cell it
-        // would run nothing, and a button that does nothing reads as a broken one.
-        if i > 0 {
-            out.push(lens(anchor, "Run Above", RUN_COMMAND, args(lines[i - 1])));
-        }
         if let Some(title) = cache_label(cell, probe) {
             // A label, not a button: there is nothing to click, and a command here would
             // put a second meaning on a lens whose whole job is to say what will happen.
@@ -300,70 +273,37 @@ mod tests {
 
     fn lenses_for(src: &str, page: &Path) -> Vec<lsp_types::CodeLens> {
         let doc = render(src);
-        let uri = lsp_types::Url::from_file_path(page).unwrap();
         let mut probe = CacheProbe::new(page, None);
-        code_lenses(&uri, &doc.blocks, &mut probe)
+        code_lenses(&doc.blocks, &mut probe)
     }
 
-    /// `--line` resolves to "the last cell starting at or before this line", so a cell's own
-    /// fence line names that cell and nothing else. An off-by-one here does not fail loudly:
-    /// it runs the cell above the one the author clicked.
-    #[test]
-    fn run_targets_the_cell_the_button_sits_on() {
-        let page = std::env::temp_dir().join(format!("tali-lens-{}-a.tmd", std::process::id()));
-        let found = lenses_for(DOC, &page);
-        let runs: Vec<(u32, i64)> = found
-            .iter()
-            .filter(|l| l.command.as_ref().is_some_and(|c| c.title == "▶ Run Cell"))
-            .map(|l| {
-                let arg = l.command.as_ref().unwrap().arguments.as_ref().unwrap()[1]
-                    .as_i64()
-                    .unwrap();
-                (l.range.start.line, arg)
-            })
-            .collect();
-        assert_eq!(
-            runs,
-            vec![(6, 7), (12, 13)],
-            "one Run per executable cell, anchored on its fence, targeting its own 1-based line"
-        );
-    }
-
-    /// A `{bash}` fence is code and is not runnable. A Run button over one is the exact drift
+    /// A `{bash}` fence is code and is not runnable. A lens over one is the exact drift
     /// `taliesin/cellRegions` was created to prevent, and it must not come back through a
     /// second scanner here.
+    ///
+    /// Driven with `#| cache: false` cells rather than with `DOC`, because a fresh cacheable
+    /// cell is deliberately silent: counting lenses on `DOC` would return zero and pass for
+    /// the wrong reason. `↻ always re-runs` is the one label that fires unconditionally.
     #[test]
-    fn a_non_kernel_fence_gets_no_button() {
+    fn a_non_kernel_fence_gets_no_lens() {
         let page = std::env::temp_dir().join(format!("tali-lens-{}-b.tmd", std::process::id()));
-        let found = lenses_for(DOC, &page);
-        let runs = found
+        let src = "# A\n\n```{python}\n#| cache: false\nx = 1\n```\n\n```bash\nls\n```\n\n```{python}\n#| cache: false\nprint(x)\n```\n";
+        let at: Vec<u32> = lenses_for(src, &page)
             .iter()
-            .filter(|l| l.command.as_ref().is_some_and(|c| c.title == "▶ Run Cell"))
-            .count();
-        assert_eq!(
-            runs, 2,
-            "two `{{python}}` cells, and the `bash` fence is not one"
-        );
-    }
-
-    #[test]
-    fn run_above_is_offered_from_the_second_cell_on() {
-        let page = std::env::temp_dir().join(format!("tali-lens-{}-c.tmd", std::process::id()));
-        let found = lenses_for(DOC, &page);
-        let above: Vec<(u32, i64)> = found
-            .iter()
-            .filter(|l| l.command.as_ref().is_some_and(|c| c.title == "Run Above"))
-            .map(|l| {
-                let arg = l.command.as_ref().unwrap().arguments.as_ref().unwrap()[1]
-                    .as_i64()
-                    .unwrap();
-                (l.range.start.line, arg)
-            })
+            .map(|l| l.range.start.line)
             .collect();
+        // Computed from the source rather than written out, so the expectation cannot drift
+        // away from the document it is about.
+        let want: Vec<u32> = src
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.starts_with("```{python}"))
+            .map(|(i, _)| i as u32)
+            .collect();
+        assert_eq!(want.len(), 2, "the fixture must have two kernel cells");
         assert_eq!(
-            above,
-            vec![(12, 7)],
-            "not on the first cell (it would run nothing), and it targets the cell before"
+            at, want,
+            "a lens belongs on each `{{python}}` fence and on no other fence"
         );
     }
 

@@ -73,22 +73,6 @@ pub(crate) async fn shutdown_signal() {
 
 pub(crate) const IDENTITY_PATH: &str = "/__taliesin";
 
-/// The path a session accepts run requests on (`taliesin run`'s only control seam).
-///
-/// Under `/__taliesin` so it shares the identity endpoint's namespace and can never
-/// collide with a page path: a project is free to have a page called `run`.
-pub(crate) const RUN_PATH: &str = "/__taliesin/run";
-
-/// The path a session accepts interrupt requests on (`taliesin run --interrupt`, and the
-/// Ctrl-C that a run installs for itself). Same namespace as [`RUN_PATH`], same reason.
-pub(crate) const INTERRUPT_PATH: &str = "/__taliesin/interrupt";
-
-/// What an interrupt request carries: which document's run to stop.
-#[derive(serde::Deserialize)]
-pub(crate) struct InterruptReq {
-    pub(crate) file: String,
-}
-
 fn canonical(root: &Path) -> PathBuf {
     std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf())
 }
@@ -121,19 +105,6 @@ struct Incumbent {
     port: u16,
     root: PathBuf,
     pid: i32,
-}
-
-/// Is a live session for `root` listening on `port`?
-///
-/// The proof `taliesin run` requires before sending anything to a port a hint file named.
-/// Deliberately the SAME check `bind_with_fallback` already makes about an incumbent, and
-/// for the same reason: a hint file survives SIGKILL, ports get recycled, and any local
-/// user can bind loopback, so the port holder must both claim this root and be confirmed
-/// by the OS ([`is_sibling_preview`] reads `/proc/<pid>/exe`) to be another instance of
-/// this binary. A pid-liveness check alone would be satisfied by a recycled pid.
-pub(crate) async fn session_owns(port: u16, root: &Path) -> bool {
-    let want = canonical(root);
-    matches!(identify(port).await, Some(i) if i.root == want && is_sibling_preview(i.pid))
 }
 
 /// How long a port holder gets to answer the identity probe. Generous, because a

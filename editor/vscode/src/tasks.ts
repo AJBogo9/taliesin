@@ -12,7 +12,7 @@ import * as vscode from "vscode";
 import { projectRootFor, isSourceFile } from "./paths";
 import { taskSpecs, taskLocation, type TaskSpec } from "./taskspecs";
 
-/** The task type the manifest contributes. Exported so `runcell.ts` cannot spell it twice. */
+/** The task type the manifest contributes, matched against the manifest by `tasks.test.ts`. */
 export const TASK_TYPE = "taliesin";
 
 /** The open workspace folders as plain paths, which is all `taskLocation` needs. */
@@ -80,10 +80,6 @@ export function registerTasks(context: vscode.ExtensionContext): void {
       // Called for a task the user wrote into `tasks.json` by hand, where VS Code hands back
       // the definition and expects the execution filled in. Returning `undefined` for one we
       // do not recognise leaves it to whoever does.
-      //
-      // `run` is in the definition's enum (the Run Cell lens executes one) and is declined
-      // here on purpose: a run names a file and a cursor line, and resolving a hand-written
-      // one would mean guessing a document for it. Run a cell from the lens or the palette.
       resolveTask: (task: vscode.Task) => {
         const command = (task.definition as { command?: string }).command;
         const root = activeRoot();

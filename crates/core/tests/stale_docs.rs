@@ -80,18 +80,44 @@ fn collect_docs(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) {
     }
 }
 
-/// Every backticked token in `text` (what the docs use to name a file, a flag or a key).
+/// Every inline-code token in `text` (what the docs use to name a file, a flag or a key).
+///
+/// **Fenced blocks are removed first, and that is load-bearing, not tidiness.** Pairing
+/// backticks across a whole document makes every span downstream of a fence depend on the
+/// document's running backtick *parity*, so an edit anywhere above shifts which half of the
+/// file the caller reads. Measured when Wave 13 rewrote a section of the CLI reference: the
+/// flag gate went from 55 mentions to 69 and started reporting `rsync -a --delete` as a
+/// Taliesin flag the CLI does not accept, purely because the fence count above it changed.
+/// Its own `checked >= 50` floor passed on both sides, so nothing announced it.
+///
+/// The distinction is also the right one on the merits. An inline span is a *claim* the
+/// author is making about this tool; a fenced block is an example, and an example may
+/// legitimately invoke `rsync` or `cargo`, or name a path the reader is about to create.
+/// (Fenced content was already out of reach in practice — Wave 1 recorded that CLAUDE.md's
+/// fenced tree map reads as one token full of spaces and is discarded — so this makes an
+/// accident into a rule. Measured across the walked docs: the path-claim population is
+/// unchanged at 112.)
 fn backticked(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let mut rest = text;
-    while let Some(open) = rest.find('`') {
-        rest = &rest[open + 1..];
-        match rest.find('`') {
-            Some(close) => {
-                out.push(rest[..close].to_string());
-                rest = &rest[close + 1..];
+    let mut in_fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find('`') {
+            rest = &rest[open + 1..];
+            match rest.find('`') {
+                Some(close) => {
+                    out.push(rest[..close].to_string());
+                    rest = &rest[close + 1..];
+                }
+                None => break,
             }
-            None => break,
         }
     }
     out
@@ -572,8 +598,12 @@ fn documented_cli_flags_exist_in_the_cli() {
     }
     missing.sort();
     missing.dedup();
+    // An ANTI-VACUITY floor, not a content floor: a broken extractor yields ~0, not 25.
+    // Measured at 49 after Wave 13 cut `taliesin run` and its six flag mentions from the
+    // reference (55 before). It sat at 50 with one of headroom, so the cut tripped it, and a
+    // floor that close fails the next docs edit for the wrong reason.
     assert!(
-        checked >= 50,
+        checked >= 25,
         "only {checked} flag mentions examined — the extractor broke"
     );
     assert!(

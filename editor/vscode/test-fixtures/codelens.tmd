@@ -1,11 +1,17 @@
 ---
-title: Run lens fixture
+title: Code lens fixture
 ---
 
 Prose first, deliberately, so the first runnable cell is not at the top of the
 file and an off-by-one in the anchor arithmetic cannot pass by landing on line 0.
 
+Every runnable cell carries `#| cache: false`, which is the one state the lens
+labels unconditionally. A fresh cacheable cell is deliberately silent, so without
+this the provider would correctly answer nothing and every assertion below would
+pass while proving nothing.
+
 ```{python}
+#| cache: false
 a = 1
 ```
 
@@ -20,6 +26,7 @@ echo "a cell block, but no kernel runs bash, so it earns no button"
 ```
 
 ```{python}
+#| cache: false
 b = a + 1
 ```
 
@@ -29,5 +36,6 @@ print("never executed")
 ```
 
 ```{python}
+#| cache: false
 z = 2
 ```

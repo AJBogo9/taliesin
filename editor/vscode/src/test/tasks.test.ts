@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { taskSpecs, taskLocation, runSpec, runOutcome } from "../taskspecs";
+import { taskSpecs, taskLocation } from "../taskspecs";
 
 const EXT_ROOT = path.join(__dirname, "..", "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, "package.json"), "utf8"));
@@ -242,10 +242,10 @@ test("every task the provider offers is declared by the manifest's task type", (
   const taliesin = defs.find((d: { type: string }) => d.type === "taliesin");
   assert.ok(taliesin, "package.json must declare a `taliesin` task type");
   const allowed: string[] = taliesin.properties.command.enum;
-  // Every spec the extension can BUILD, not only the ones `provideTasks` lists: a run task
-  // is executed straight from the Run Cell lens and never offered in the task picker, but
-  // its definition is checked against this same enum.
-  const built = [...taskSpecs("/r").map((s) => s.name), runSpec("/r/a.tmd", 1).name];
+  // Every spec the extension can build. Until Wave 13 this also carried the `run` task,
+  // which was executed straight from the Run Cell lens and never offered in the picker; with
+  // `taliesin run` gone, what the provider offers and what the manifest allows are one set.
+  const built = taskSpecs("/r").map((s) => s.name);
   for (const name of built) {
     assert.ok(allowed.includes(name), `${name} is built but the task definition does not allow it`);
   }
@@ -256,58 +256,3 @@ test("every task the provider offers is declared by the manifest's task type", (
   );
 });
 
-test("the run task points the CLI at one cell, by source line", () => {
-  // The same `--line` the Run Cell lens has always sent: the editor knows the cursor, and an
-  // ordinal computed here would be a second copy of "which fences count".
-  assert.deepStrictEqual(runSpec("/w/post.tmd", 12).args, [
-    "run",
-    "/w/post.tmd",
-    "--line",
-    "12",
-  ]);
-});
-
-test("the run task can ask for the whole document", () => {
-  assert.deepStrictEqual(runSpec("/w/post.tmd", "all").args, ["run", "/w/post.tmd", "--all"]);
-});
-
-test("`run` is not one of the tasks offered for a project", () => {
-  // The task picker offers project-wide work. A run needs a file and a cursor line, so an
-  // entry there would either run the wrong thing or nothing at all.
-  assert.ok(
-    !taskSpecs("/r").some((s) => s.name === "run"),
-    "run must not appear in the project task list"
-  );
-});
-
-test("a quick, successful run says nothing at all", () => {
-  // The terminal already showed it. A toast per keystroke-to-run cycle is the opposite of
-  // the fast iteration the run loop exists for.
-  assert.strictEqual(runOutcome(0, 500).kind, "silent");
-  assert.strictEqual(runOutcome(0, 9_000).kind, "silent");
-});
-
-test("a long run that succeeded announces itself, which is the whole point", () => {
-  // CHI 2020's verbatim want for long-running cells: "when the process is done, it
-  // automatically creates a notification".
-  const out = runOutcome(0, 30_000);
-  assert.strictEqual(out.kind, "info");
-  assert.match(out.message, /30\.0 s/);
-});
-
-test("a long run reports minutes rather than a hundred seconds", () => {
-  assert.match(runOutcome(0, 65_000).message, /1 min 5 s/);
-});
-
-test("a failed run always reports, however fast it failed", () => {
-  const out = runOutcome(1, 200);
-  assert.strictEqual(out.kind, "error");
-  assert.match(out.message, /exit 1/);
-});
-
-test("a run the author stopped is not reported as a failure", () => {
-  // MEASURED: `onDidEndTaskProcess` carries `exitCode: undefined` when the process was
-  // terminated rather than exited. Hitting the terminal's stop button is not an error, and
-  // an error toast for it would train the author to ignore the real ones.
-  assert.strictEqual(runOutcome(undefined, 4_000).kind, "silent");
-});

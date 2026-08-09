@@ -5,7 +5,6 @@ import * as http from "node:http";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { runTask } from "../../runcell";
 import { kernelFailure } from "../../kernelfail";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
@@ -62,10 +61,6 @@ suite("Taliesin companion (integration)", () => {
       "taliesin.doctor",
       "taliesin.insertMathSymbol",
       "taliesin.revealInPreview",
-      // The CodeLens buttons are inert if these are not registered: VS Code renders the
-      // button and reports "command not found" on click.
-      "taliesin.runCell",
-      "taliesin.runAll",
     ]) {
       assert.ok(cmds.includes(id), `${id} should be registered after activation`);
     }
@@ -628,17 +623,22 @@ suite("Taliesin companion (integration)", () => {
     assert.deepStrictEqual(clashes, [], "keybinding clash");
   });
 
-  // The run buttons (item 175(d), first half, shipped in 1b8b3756) had no coverage at all
-  // until these. A unit test over `runcell.ts` could only prove the module builds a lens
-  // array; it could never show that VS Code accepted the provider, asked the language server
-  // for the cell regions, and rendered a button. This repo has been bitten by exactly that
-  // gap twice, so these drive `vscode.executeCodeLensProvider` in a real Extension Host.
+  // The code lens had no coverage at all until these (item 175(d), first half, shipped in
+  // 1b8b3756, when the lens still carried ▶ Run Cell buttons). A unit test over the provider
+  // could only prove it builds a lens array; it could never show that VS Code accepted the
+  // provider, asked the language server, and rendered anything. This repo has been bitten by
+  // exactly that gap twice, so these drive `vscode.executeCodeLensProvider` in a real
+  // Extension Host.
+  //
+  // Wave 13 cut `taliesin run`, so what a lens carries now is a LABEL with no command. The
+  // anchor arithmetic is the same and is still what these pin; what is gone is the argument
+  // round trip, which had nothing left to be an argument to.
   //
   // The fixture is a dedicated file rather than a corpus document because these assert exact
   // line numbers: a corpus doc is edited for unrelated reasons and would drift the arithmetic
   // silently. The corpus keeps its place in the net via the last test here, which asserts
   // against a real document without hardcoding a line.
-  const RUNCELL_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/runcell.tmd");
+  const CODELENS_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/codelens.tmd");
 
   /** The lenses VS Code renders for `uri`, once the server has answered. */
   async function lensesFor(uri: vscode.Uri): Promise<vscode.CodeLens[]> {
@@ -656,189 +656,66 @@ suite("Taliesin companion (integration)", () => {
     return lenses ?? [];
   }
 
-  test("puts Run Cell over every executable fence, anchored on the fence line", async () => {
-    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
-    const runCell = lenses.filter((l) => l.command?.title === "▶ Run Cell");
+  test("labels every executable fence, anchored on the fence line", async () => {
+    const lenses = await lensesFor(vscode.Uri.file(CODELENS_FIXTURE));
 
-    // The fixture has three runnable cells, all `{python}`.
-    assert.strictEqual(runCell.length, 3, "expected one Run Cell button per executable cell");
+    // The fixture has three runnable cells, all `{python}`, all `#| cache: false`.
+    assert.strictEqual(lenses.length, 3, "expected one label per executable cell");
 
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(RUNCELL_FIXTURE));
-    for (const lens of runCell) {
-      // The button must sit ON the fence, not over the cell's first statement: that is the
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(CODELENS_FIXTURE));
+    for (const lens of lenses) {
+      // The label must sit ON the fence, not over the cell's first statement: that is the
       // whole point of the `startLine - 1` in the provider, and the failure it prevents is a
-      // button that covers the author's code.
+      // lens that covers the author's code.
       const anchored = doc.lineAt(lens.range.start.line).text;
       assert.match(
         anchored,
-        /^```\{(python|r)\}/,
-        `a Run Cell button is anchored on "${anchored}", which is not an executable fence`
+        /^```\{python\}/,
+        `a label is anchored on "${anchored}", which is not an executable fence`
       );
+      // A label, not a button: an empty command name is what tells VS Code there is nothing
+      // to click. A name here would be a name nothing implements.
+      assert.strictEqual(lens.command?.command, "", "a lens must not offer a command");
     }
     assert.deepStrictEqual(
-      runCell.map((l) => l.range.start.line + 1).sort((a, b) => a - b),
-      [8, 22, 31],
-      "the three buttons should sit on the fixture's three executable fence lines"
+      lenses.map((l) => l.range.start.line + 1).sort((a, b) => a - b),
+      [13, 28, 38],
+      "the three labels should sit on the fixture's three executable fence lines"
     );
   });
 
-  test("puts no button over a fence no kernel runs", async () => {
+  test("labels no fence a kernel does not run", async () => {
     // Three negatives in one fixture, and each is a different way to not be runnable:
     // a plain ```bash fence, a `{bash}` cell block (a cell, but no kernel runs it), and a
-    // plain ```python fence. A button over any of them is what drift looks like to an
-    // author — it offers to run something that cannot run.
-    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
+    // plain ```python fence. A label over any of them is what drift looks like to an author.
+    const lenses = await lensesFor(vscode.Uri.file(CODELENS_FIXTURE));
     // Without this, the whole test passes vacuously: every `!includes` below is trivially
     // true of an empty list, so a provider that broke completely would look like a provider
-    // that correctly withheld three buttons.
+    // that correctly withheld three labels.
     assert.ok(lenses.length > 0, "no lenses at all, so the negatives below prove nothing");
     const lines = lenses.map((l) => l.range.start.line + 1);
     for (const [line, what] of [
-      [14, "a plain ```bash fence"],
-      [18, "a `{bash}` cell block, which no kernel runs"],
-      [26, "a plain ```python fence"],
+      [20, "a plain ```bash fence"],
+      [24, "a `{bash}` cell block, which no kernel runs"],
+      [33, "a plain ```python fence"],
     ] as [number, string][]) {
-      assert.ok(!lines.includes(line), `a button was placed over ${what} (line ${line})`);
+      assert.ok(!lines.includes(line), `a label was placed over ${what} (line ${line})`);
     }
   });
 
-  test("offers Run Above only where there is something above to run", async () => {
-    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
-    const above = lenses.filter((l) => l.command?.title === "Run Above");
-    // Two, not three: on the first runnable cell the button would run nothing, which reads
-    // as a broken button.
-    assert.deepStrictEqual(
-      above.map((l) => l.range.start.line + 1).sort((a, b) => a - b),
-      [22, 31],
-      "Run Above belongs on every runnable cell except the first"
-    );
-  });
-
-  test("points --line at a line that resolves back to the cell the button sits over", async () => {
-    // The pin that binds the TypeScript anchor arithmetic to what the Rust resolver will do
-    // with it. `runcell.ts` anchors at `startLine - 1` and sends `startLine + 1`, two
-    // different adjustments to one number; if either drifts, every button silently runs the
-    // wrong cell and nothing else in this file would notice.
-    const lenses = await lensesFor(vscode.Uri.file(RUNCELL_FIXTURE));
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(RUNCELL_FIXTURE));
-    const runCell = lenses.filter((l) => l.command?.title === "▶ Run Cell");
-    assert.strictEqual(runCell.length, 3, "fixture regressed");
-
-    for (const lens of runCell) {
-      const [, line] = lens.command!.arguments as [vscode.Uri, number];
-      const fenceLine = lens.range.start.line + 1;
-      // `--line` is 1-based and must land INSIDE the cell body, i.e. strictly after the
-      // fence. `runspec::resolve` reads a line as "the last cell starting at or before it",
-      // so a line landing on or before the fence resolves to the PREVIOUS cell — the
-      // off-by-one that would make every button run its predecessor.
-      assert.strictEqual(
-        line,
-        fenceLine + 1,
-        `the button on the fence at line ${fenceLine} sends --line ${line}, which is not its body`
-      );
-      assert.doesNotMatch(
-        doc.lineAt(line - 1).text,
-        /^```/,
-        `--line ${line} points at a fence, not at code`
-      );
-    }
-  });
-
-  test("a run reports that it ended, and with what exit code", async () => {
-    // The whole of item 218 rests on this one platform fact. `terminal.sendText` could never
-    // learn that a run had ended — no progress, no completion notification, no exit code —
-    // and a task can. Built by the SHIPPED factory, so the definition, the execution kind and
-    // the presentation options under test are the real ones.
-    //
-    // Pointed at `/bin/echo` rather than at `taliesin`: a real `taliesin run` starts a warm
-    // session (`run_cmd.rs` spawns `taliesin preview --session` detached and leaves it
-    // running), which this harness's own leak check would then fail the run for — correctly.
-    const task = runTask(RUNCELL_FIXTURE, 9, os.tmpdir(), "/bin/echo");
-
-    assert.deepStrictEqual(
-      task.definition,
-      { type: "taliesin", command: "run", file: RUNCELL_FIXTURE, target: "9" },
-      "the definition VS Code keys the task's identity off: the file and the target are what " +
-        "keep two runs from colliding, and are how the end of THIS run is recognised"
-    );
-    assert.ok(
-      task.execution instanceof vscode.ProcessExecution,
-      "a ShellExecution would re-split the argv through whichever shell the author uses"
-    );
-    assert.deepStrictEqual((task.execution as vscode.ProcessExecution).args, [
-      "run",
-      RUNCELL_FIXTURE,
-      "--line",
-      "9",
-    ]);
-
-    /** Execute `t` and report the exit code VS Code attributes to that run. */
-    async function endCodeOf(
-      t: vscode.Task
-    ): Promise<{ arrived: boolean; exitCode?: number; definition?: vscode.TaskDefinition }> {
-      let seen: { exitCode: number | undefined; definition: vscode.TaskDefinition } | undefined;
-      // Matched by DEFINITION, exactly as `runcell.ts` does — which is only sound if the
-      // definition survives the trip through the platform unchanged. That round trip is the
-      // contract under test: if it stopped holding, every run would spin a progress
-      // indicator forever and no completion notification would ever arrive.
-      const sub = vscode.tasks.onDidEndTaskProcess((e) => {
-        const d = e.execution.task.definition;
-        if (d.file === t.definition.file && d.target === t.definition.target) {
-          seen = { exitCode: e.exitCode, definition: d };
-        }
-      });
-      await vscode.tasks.executeTask(t);
-      const arrived = await waitFor(() => seen !== undefined, 20000);
-      sub.dispose();
-      return { arrived, exitCode: seen?.exitCode, definition: seen?.definition };
-    }
-
-    // MEASURED, and the reason this test warms up first: the FIRST task executed in a VS Code
-    // window reports `processId: undefined` and `exitCode: undefined`, whatever it is — a task
-    // of a type no extension has registered behaves identically, so it is neither our task
-    // shape nor our provider declining to resolve a run. Every later execution reports a real
-    // pid and a real code. In the editor that costs the first run of a session its completion
-    // notification and nothing else: `runOutcome(undefined, …)` is deliberately silent, since
-    // an undefined code is also what a run the author stopped by hand looks like.
-    const warmup = await endCodeOf(runTask(RUNCELL_FIXTURE, 8, os.tmpdir(), "/bin/echo"));
-    assert.ok(warmup.arrived, "even the warm-up execution must report that it ended");
-
-    const { arrived, exitCode, definition } = await endCodeOf(task);
-    assert.ok(arrived, "the run task never reported a process end");
-    assert.strictEqual(exitCode, 0, "a task that exited 0 must report 0, not undefined");
-    assert.deepStrictEqual(
-      definition,
-      task.definition,
-      "the definition must come back unchanged, since that is what identifies the run"
-    );
-
-    // And the behaviour change this bought, asserted rather than assumed: runs no longer go
-    // to a terminal reused by name. A task terminal is named by VS Code, not by us.
-    assert.strictEqual(
-      vscode.window.terminals.find((t) => t.name === "taliesin run"),
-      undefined,
-      "the old reused-by-name run terminal should be gone"
-    );
-
-    // Leave the workbench as it was found. A run reveals the terminal panel (that is the
-    // point of it), and the typing tests further down depend on keyboard focus being in an
-    // editor — see the retry loop in `pressEnterAfter`, which exists for exactly this class
-    // of interference from an earlier test.
-    await vscode.commands.executeCommand("workbench.action.closePanel");
-    await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
-  });
-
-  test("puts the buttons on a real corpus document too", async () => {
+  test("labels a real corpus document too", async () => {
     // The fixture pins the arithmetic; this keeps the corpus in the regression net. No line
-    // numbers, so editing the post for unrelated reasons cannot break it — it only asserts
-    // that a document the project actually ships gets buttons at all.
+    // numbers, so editing the post for unrelated reasons cannot break it. The corpus post is
+    // ordinarily cacheable, so what it must produce is a `⚡ cached` label after a build has
+    // filled `_freeze/` — or nothing at all before one has. Asserting on the SHAPE rather
+    // than on presence is the only honest test here: a lens that appears must be a label.
     const lenses = await lensesFor(
       vscode.Uri.file(path.join(REPO_ROOT, "corpus/tech-blog/posts/pca-geometry/index.tmd"))
     );
-    assert.ok(
-      lenses.some((l) => l.command?.title === "▶ Run Cell"),
-      "a corpus post full of {python} cells got no Run Cell button"
-    );
+    for (const lens of lenses) {
+      assert.strictEqual(lens.command?.command, "", "a lens on a corpus doc must be a label");
+      assert.match(lens.command!.title, /cached|re-runs/, "and must say what the cell will do");
+    }
   });
 });
 

@@ -438,16 +438,7 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
 
 /// Every long flag `preview` accepts (drives the unknown-flag did-you-mean).
 /// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
-///
-/// [`SESSION_FLAG`] is deliberately absent: it is internal, not offered and not documented.
 pub(crate) const SERVE_FLAGS: &[&str] = &["--open", "--no-exec", "--port"];
-
-/// The hidden flag `taliesin run` passes when it starts a session for itself. Underscore-
-/// prefixed like the `__complete` subcommand, and for the same reason: it is a seam between
-/// two of this binary's own commands, never something a person types. It was `--headless`,
-/// a documented `preview` flag, until Wave 5 — where its whole user-facing life was one
-/// line in one `--help` page and zero invocations.
-pub(crate) const SESSION_FLAG: &str = "--__session";
 
 /// What `preview` parsed out of argv, before any environment or IO.
 #[derive(Debug, PartialEq)]
@@ -456,10 +447,6 @@ pub(crate) struct ServeArgs<'a> {
     pub port: u16,
     pub open: bool,
     pub no_exec: bool,
-    /// Run as a background SESSION: no console chrome, never opens a browser. The server
-    /// is otherwise identical, which is the point — `taliesin run` must not get a
-    /// different executor from the one a preview would use.
-    pub headless: bool,
 }
 
 /// Parse `preview <file.tmd|dir> [port] [--port <N>] [--open] [--no-exec]`.
@@ -472,18 +459,12 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
     let mut positionals: Vec<&str> = Vec::new();
     let mut flag_port: Option<&str> = None;
     let (mut open, mut no_exec) = (false, false);
-    let mut headless = false;
 
     let mut it = args[2..].iter().peekable();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--open" => open = true,
             "--no-exec" => no_exec = true,
-            // A SESSION rather than a preview you are watching. Same server, same kernels,
-            // same `_freeze/`. It just skips the console chrome (screen clear, banner)
-            // that a background process has nobody to show. Passed by `taliesin run` when
-            // no session is up; see [`SESSION_FLAG`].
-            s if s == SESSION_FLAG => headless = true,
             "--port" => {
                 flag_port = Some(
                     it.next()
@@ -510,7 +491,6 @@ pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String>
         port,
         open,
         no_exec,
-        headless,
     })
 }
 
@@ -545,8 +525,7 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     let result = serve_site::run(
         serve_site::Target::at(PathBuf::from(parsed.path)),
         parsed.port,
-        open && !parsed.headless,
-        parsed.headless,
+        open,
     );
     match result {
         Ok(()) => ExitCode::SUCCESS,

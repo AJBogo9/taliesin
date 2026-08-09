@@ -462,19 +462,19 @@ fn folding_ranges_cover_heading_div_fence_and_front_matter() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `textDocument/codeLens` reaches the editor over the real wire, with the command a client
-/// binds to.
+/// `textDocument/codeLens` reaches the editor over the real wire, saying what a cell will do.
 ///
-/// Answered `-32601` when the 2026-08-07 audit probed the release binary. The value asserted
-/// here is the *contract*: a lens is a command name plus arguments, and a client that binds
-/// `taliesin.runCell` to `taliesin run <file> --line <L>` gets the execution loop. Changing
-/// either the name or the argument shape silently unbinds every editor that did.
+/// Answered `-32601` when the 2026-08-07 audit probed the release binary. Until Wave 13 this
+/// pinned a ▶ Run Cell **command**; that verb is gone, so what a lens carries now is a label
+/// with no command, and the contract is where it sits and what it says. Driven with a
+/// `#| cache: false` cell because a fresh cacheable cell is deliberately silent: without it
+/// the provider correctly returns nothing and the test would pass while proving nothing.
 #[test]
-fn code_lens_offers_the_run_command_over_the_wire() {
+fn code_lens_labels_a_cell_over_the_wire() {
     let dir = std::env::temp_dir().join(format!("tali-lsp-lens-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("scratch dir");
     let doc = dir.join("cells.tmd");
-    let text = "---\ntitle: T\n---\n\n# A\n\n```{python}\nx = 1\n```\n\n```bash\nls\n```\n";
+    let text = "---\ntitle: T\n---\n\n# A\n\n```{python}\n#| cache: false\nx = 1\n```\n\n```bash\nls\n```\n";
     std::fs::write(&doc, text).expect("fixture doc");
     let uri = format!("file://{}", doc.display());
 
@@ -511,25 +511,23 @@ fn code_lens_offers_the_run_command_over_the_wire() {
 
     let lenses = response(&stdout, 2);
     let lenses = lenses.as_array().expect("codeLens returns an array");
-    let run: Vec<&serde_json::Value> = lenses
-        .iter()
-        .filter(|l| l["command"]["command"] == "taliesin.runCell")
-        .collect();
     assert_eq!(
-        run.len(),
+        lenses.len(),
         1,
-        "one Run per executable cell, and the `bash` fence is not one: {lenses:?}"
+        "one label per executable cell, and the `bash` fence is not one: {lenses:?}"
     );
-    // Line 6 (0-based) is the ```{python} fence; the argument is its 1-based line, which is
-    // what `run --line` resolves against.
-    assert_eq!(run[0]["range"]["start"]["line"], 6, "{run:?}");
+    // Line 6 (0-based) is the ```{python} fence: the label hangs on the cell it describes.
+    assert_eq!(lenses[0]["range"]["start"]["line"], 6, "{lenses:?}");
     assert_eq!(
-        run[0]["command"]["arguments"][1], 7,
-        "the 1-based line of the cell's own fence: {run:?}"
+        lenses[0]["command"]["command"], "",
+        "a label is not a button: naming a command here would give a client something to \
+         invoke that nothing implements: {lenses:?}"
     );
-    assert_eq!(
-        run[0]["command"]["arguments"][0], uri,
-        "the document, as a string a client can parse back: {run:?}"
+    assert!(
+        lenses[0]["command"]["title"]
+            .as_str()
+            .is_some_and(|t| t.contains("always re-runs")),
+        "the label must say what this cell does next run: {lenses:?}"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

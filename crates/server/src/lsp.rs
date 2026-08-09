@@ -614,11 +614,11 @@ fn handle_request(
                 .get(&uri, text)
                 .map(|doc| {
                     let mut probe = crate::lsp_lens::CacheProbe::new(&path, sites.get(&path));
-                    crate::lsp_lens::code_lenses(&uri, &doc.blocks, &mut probe)
+                    crate::lsp_lens::code_lenses(&doc.blocks, &mut probe)
                 })
                 .unwrap_or_default(),
             // An unsaved buffer has no path, so it has no `_freeze/` and no project to
-            // resolve an interpreter against — and `taliesin run` could not open it either.
+            // resolve an interpreter against, and therefore nothing to say about its cells.
             _ => Vec::new(),
         };
         lsp_server::Response {

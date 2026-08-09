@@ -168,16 +168,11 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 }
 
 /// `cell-state`: per-cell execution state. `state` is one of
-/// "queued" | "running" | "done" | "error" | "skipped". `started_ms`/`duration_ms` are epoch
+/// "queued" | "running" | "done" | "error". `started_ms`/`duration_ms` are epoch
 /// millis / elapsed millis when known; the client ticks the live timer itself.
 /// `cell_id` is the cell's own id (the same id the output block is built from as
 /// `{cell_id}-out`), so the client can target that block. `page` is the source
 /// rel-path for the multi-page server, `None` for the single-doc server.
-///
-/// `state` is `queued` | `running` | `done` | `error` | `skipped`. `skipped` exists only
-/// for a **capped** run (`taliesin run --cell N`): the cell is past the cap, holds no
-/// cached output, and therefore did not run and produced nothing. It is deliberately not
-/// `done`, which would claim an output that does not exist.
 ///
 /// `source` is how a `done` cell reached its output (DX9): `"cache"` = restored
 /// without running (the warm in-memory prefix or the disk `_freeze` tail), `"fresh"`
@@ -187,7 +182,6 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 pub fn cell_state(
     page: Option<&str>,
     cell_id: &str,
-    site: Option<CellSite>,
     state: &str,
     started_ms: Option<u64>,
     duration_ms: Option<u64>,
@@ -195,29 +189,10 @@ pub fn cell_state(
 ) -> String {
     serde_json::json!({
         "type": "cell-state", "page": page, "cell_id": cell_id,
-        "file": site.and_then(|s| s.file), "line": site.map(|s| s.line),
         "state": state, "started_ms": started_ms, "duration_ms": duration_ms,
         "source": source
     })
     .to_string()
-}
-
-/// Where a cell sits in **source**, carried on `cell-state` so a consumer can report a
-/// failure as a place rather than as an ordinal.
-///
-/// `taliesin run` is the reason it exists: it printed `✗ cell 3`, which no problem matcher
-/// can match, so a failed cell could not reach an editor's Problems panel however the task
-/// was configured (`editor/vscode/src/runcell.ts` says exactly this). A location plus a
-/// severity word is a line the existing `$taliesin` matcher already understands.
-///
-/// `file` is the cell's own source file when it came in through an `{{< include >}}` and
-/// `None` when it is the page itself — the same rule `Warning.file` follows, so a spliced-in
-/// cell's failure names the file the author has to edit rather than the one that included it.
-/// `line` is 1-based, or 0 for a generated block that has no source position.
-#[derive(Clone, Copy)]
-pub struct CellSite<'a> {
-    pub file: Option<&'a str>,
-    pub line: u32,
 }
 
 /// `cell-output-append`: one cell output, delivered **while the cell is still
@@ -236,24 +211,6 @@ pub fn cell_output_append(page: Option<&str>, cell_id: &str, op: &str, html: &st
     serde_json::json!({
         "type": "cell-output-append", "page": page, "cell_id": cell_id,
         "op": op, "html": html
-    })
-    .to_string()
-}
-
-/// The terminal message of an explicit `taliesin run`: this run, named by `run_id`, is
-/// over.
-///
-/// Carried on the page's ordinary broadcast rather than a private channel, so a run driven
-/// from the terminal and a browser watching the same page see one event stream and cannot
-/// disagree about what happened. Browsers ignore it (the client's dispatch has no arm for
-/// this type, and no default), which is exactly right: it is addressed to whoever asked.
-///
-/// `status` is `"ok"` or `"error"`. Every path out of a queued run emits exactly one of
-/// these, because a client blocked on it reads a missing message as a hang.
-pub fn run_done(page: Option<&str>, run_id: &str, status: &str, message: Option<&str>) -> String {
-    serde_json::json!({
-        "type": "run-done", "page": page, "runId": run_id,
-        "status": status, "message": message
     })
     .to_string()
 }
@@ -518,15 +475,7 @@ mod tests {
 
     #[test]
     fn cell_state_includes_state_and_optional_timing() {
-        let s = super::cell_state(
-            Some("p.tmd"),
-            "abc",
-            None,
-            "running",
-            Some(1000),
-            None,
-            None,
-        );
+        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None, None);
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "cell-state");
         assert_eq!(v["cell_id"], "abc");
@@ -541,10 +490,10 @@ mod tests {
     fn cell_state_carries_cache_provenance_for_done_cells() {
         // DX9: a cache-restored `done` cell is tagged so the client can render "⚡ cached"
         // instead of the blank "✓" that made a replay indistinguishable from a 0ms run.
-        let cached = super::cell_state(None, "c1", None, "done", None, None, Some("cache"));
+        let cached = super::cell_state(None, "c1", "done", None, None, Some("cache"));
         let v: serde_json::Value = serde_json::from_str(&cached).unwrap();
         assert_eq!(v["source"], "cache");
-        let fresh = super::cell_state(None, "c2", None, "done", Some(1), Some(1200), Some("fresh"));
+        let fresh = super::cell_state(None, "c2", "done", Some(1), Some(1200), Some("fresh"));
         let v: serde_json::Value = serde_json::from_str(&fresh).unwrap();
         assert_eq!(v["source"], "fresh");
         assert_eq!(v["duration_ms"], 1200);

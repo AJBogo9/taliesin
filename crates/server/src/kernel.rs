@@ -1051,32 +1051,21 @@ impl Kernel {
     }
 
     /// Send SIGINT to the kernel process, stopping a runaway cell while the warm kernel
-    /// and prior cell state survive. See [`interrupt_pid`], which this and the explicit
-    /// `taliesin run --interrupt` path share so they cannot drift on what an interrupt is.
+    /// and prior cell state survive. See [`interrupt_pid`] for what an interrupt is.
     fn interrupt(&self) {
         if let Some(pid) = self.proc.id() {
             interrupt_pid(pid);
         }
-    }
-
-    /// The kernel process's PID, for an interrupt that arrives from *outside* the run loop.
-    ///
-    /// `execute_streaming` holds the kernel mutably for a whole cell, so a concurrent
-    /// interrupt request can never reach [`Kernel::interrupt`]. It does not need to: the
-    /// signal only needs a number, and this hands that number to the caller before the
-    /// borrow starts.
-    pub(crate) fn pid(&self) -> Option<u32> {
-        self.proc.id()
     }
 }
 
 /// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
 /// `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both honour it).
 ///
-/// Free-standing, and the single implementation of "interrupt a kernel". Both callers reach
-/// it: the silence/wall-clock cap inside the polling loop, and the explicit interrupt from
-/// the run registry. Two copies of this would be two answers to "does an interrupt kill the
-/// kernel or just the cell", and the whole value of the feature is that it is the latter.
+/// Free-standing, and the single implementation of "interrupt a kernel". Its one caller is
+/// the silence/wall-clock cap inside the polling loop; it stays a named function because the
+/// non-Unix no-op is the part that must not be duplicated, and because the whole value of the
+/// feature is the answer it encodes: an interrupt kills the cell, not the kernel.
 ///
 /// Unix-only; a no-op elsewhere (the cap still ends its own wait).
 pub(crate) fn interrupt_pid(pid: u32) {

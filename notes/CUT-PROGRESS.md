@@ -100,7 +100,7 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 | 10 | LSP long tail | **done** 2026-08-09 | `cut/wave-10-lsp` | **−9,838** (+180 / −10,018, 38 files, 17 deleted) | 16 advertised providers → **7**, custom methods 8 → **3**; every LSP **write path** is gone; binary **−415,712 B**; verbs stay **9** |
 | 11 | Serve layer, opened once | **done** 2026-08-09 | `cut/wave-11-serve` | **−5,015** (+768 / −5,783, 80 files, 5 deleted) | the one wave that opened `exec_pool.rs`, and the LRU is absent from its diff; warm pool, `mounts:`, `--bare` and `--host` all gone; binary **−491,072 B**; a FOURTH CLI register (`RETIRED_FLAGS`); `tools/build-site.sh` is pre-push step 5 |
 | 12 | Justification layer (corpus, docs, tests) | **done** 2026-08-09 | `cut/wave-12-justification` | **−4,627** (+266 / −4,893, 61 files, 30 deleted) | the last planned wave; corpus 93 → **83** docs, Internals 14 → **7** chapters; `corpus/tarn` KEPT and `corpus/course` cut, reasoned below; the wave's stated deliverable was re-specified and then **refuted by its own measurement** |
-| 13 | **`taliesin run`** (unadjudicated, 2,406 lines) | not started | | | needs an adjudication pass first |
+| 13 | **`taliesin run`** (adjudicated in-session: CUT) | **done** 2026-08-09 | `cut/wave-13-run` | **−4,081** (+276 / −4,357, 35 files, 8 deleted) | the campaign's last wave; verbs **8 → 7**; the ruling's "survives regardless" list was **wrong**, so the real cut is 2.5x its estimate; the code lens survives as a LABEL |
 
 ## Open items carried forward
 
@@ -143,11 +143,13 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
   Keyed on the flag alone, not on the verb, and consulted by `unknown_flag_error` **before**
   the did-you-mean. It carries `--bare` and `--host`. One derived test covers the register, so
   a later retirement is one entry and nothing else, the same contract the other three have.
-- **Wave 13 is not planned yet.** `run_cmd.rs` (513), `run_print.rs` (820),
-  `runspec.rs` (328), `run_control.rs` (238), `session.rs` (242), `http1.rs` (265) fell
-  through the bundle partition. `runspec.rs` and `run_control.rs` are **not** run-only
-  (the preview server's Run buttons use them) so they survive regardless. Adjudicate
-  before executing.
+- **Wave 13 is DONE and the campaign is over.** `taliesin run` was adjudicated and cut
+  whole. **The ruling's §6.1 reason for deferring `runspec.rs` and `run_control.rs` was
+  false**: it says "the preview server's Run buttons use them", and the preview has no Run
+  buttons. `web-client/client.js` sends exactly three client-to-server messages
+  (`restart_kernel` twice, `click_block`), and `POST /__taliesin/run` and
+  `/__taliesin/interrupt` had one client each, `run_cmd.rs`. So all six files went, plus a
+  chain of things they alone kept alive. See the wave 13 log entry.
 - **File-to-bundle collisions to resolve before waves 11/12:** `corpus/tarn/` is
   **RESOLVED** — wave 7 REWROTE it (tabsets → `###` subsections, the walkthrough → prose,
   the two `.definition` blocks → titled callouts) and left the project standing, so wave 12
@@ -2159,3 +2161,202 @@ says that in its own prose, so the next person to shorten it knows what not to f
 **Two more anti-vacuity floors are lower**, and both are recorded on the assertion itself
 with the count they were measured against. Neither is a content floor; both exist against a
 `read_dir` that silently returns nothing.
+
+### Wave 13, 2026-08-09, `cut/wave-13-run` — the last wave
+
+**Measured reclaim: −4,081 lines** (`+276 / −4,357` over 35 files, **8 deleted outright**)
+against the ruling's ~2,406 estimate and against the handoff's ~1,597 "run-only tail". Both
+were low for one reason, given below. By area: `crates/server/src` −3,311,
+`editor/vscode` −486, `crates/server/tests` −273, `docs/guide` −48, `web-client` −4,
+`crates/server/Cargo.toml` −3, `docs/internals` 0, `crates/core/tests` **+30** (a rewritten
+extractor, deliberately) and root +14. `notes/` is excluded, as in every figure above.
+
+**`./tools/gates.sh` is GREEN on the committed tree:** **8/8** gates, **2/2** canaries
+(`kernel_executes_state_errors_and_interrupts_runaway_cell` and
+`only_a_textual_sink_becomes_a_live_region` both printed `... ok`), **81 suites / 1,377
+passed / 0 failed / 0 ignored**, exit 0. A bare `cargo test --workspace` gives the same
+figure. The one suite gone from wave 12's 82 is `run_session_discovery`; the 62-test drop
+from 1,439 is that suite plus the run-only blocks in `exec.rs`, `lsp_lens.rs`,
+`protocol.rs`, `lsp_stdio.rs` and the companion's own tests.
+
+**Measured, not asserted.** `cargo build --release -p taliesin-server`, same toolchain:
+**29,885,200 → 29,294,216 bytes, −590,984 (−1.98%)** — the largest binary win of the
+campaign, ahead of wave 11's −491,072.
+
+## THE ADJUDICATION, WHICH WAS THIS WAVE'S ACTUAL DELIVERABLE
+
+The ruling left `taliesin run` unadjudicated: six files that "fell through the bundle
+partition", surviving in `COMMANDS` "by omission, not by decision", with zero corpus
+documents. **Ruled: cut, whole.** The reasoning, on the record the way wave 12 recorded the
+tarn/course call, because a later reader will want to know it was a decision:
+
+1. **It serves none of the three load-bearing goals.** CLAUDE.md's opening sentence names
+   them: click-to-source, block-level incremental updates, no per-edit startup cost.
+   `taliesin run` is a *second front end* onto an execution engine whose first front end
+   already delivers all three. The workflow its module header staked its claim on ("edit a
+   cell, read the result, and by the time you want the HTML there is nothing left to
+   compute, which Quarto structurally cannot offer") is delivered in full by `preview`: the
+   same warm kernel, the same `_freeze/` writer, the same block-level re-run of the edited
+   cell and everything downstream. What `run` added is that the output lands in a terminal
+   instead of a browser. That is a *view* preference, and the doctrine is explicit that the
+   browser is the view.
+2. **Verified rather than asserted, because the whole retirement note rests on it.** A
+   scratch two-cell project, `preview` on a real kernel, one page request; the console
+   printed `exec index.tmd cell 1/2`, `cell 2/2` and `_freeze/index.json` appeared. Then
+   `build` on the same project: `exec index.tmd restored 2 cached cells · 0 re-ran`, and
+   both outputs are in the HTML. (First attempt pointed `TALIESIN_PYTHON` at a nonexistent
+   interpreter to prove no kernel booted; that busts the key **by design** — the interpreter
+   id seeds the cumulative hash — so the honest test is the same interpreter and the
+   `0 re-ran` line.)
+3. **The standing directive**, and the campaign's own precedent. Wave 3 cut the algorithm
+   stepper, which this log calls "the one cut in the whole audit that deletes a
+   differentiator rather than shrinking one". `run` is a smaller call than that one.
+4. **A weak but real usage signal, stated as weak.** There is no `_freeze/figs/` directory
+   anywhere in the tree, though ten `_freeze/` directories exist from builds and previews.
+   Decoding a figure to a file and printing its path is one of `run_print.rs`'s two headline
+   behaviours, and it has produced zero artefacts in this repository. The directory is
+   disposable, so this is suggestive, not conclusive.
+5. **What it cost:** a hint-file discovery protocol proven by an identity handshake against
+   `/proc/<pid>/exe`, a hand-rolled HTTP/1.1 client with three body-framing modes, a
+   detached session spawn with a 45 s readiness timeout, an NDJSON event stream, a per-page
+   cancel-epoch registry, and a terminal renderer of the browser's own protocol. A
+   distributed system inside a single-purpose dev server.
+
+**Verbs: 8 names in `COMMANDS` → 7** (`preview`, `build`, `init`, `new`, `doctor`, `lsp`,
+`help`). Note for the record that this campaign's bookkeeping has said "9 verbs" since wave
+8 while `COMMANDS` has held 8 entries; the ruling's list of nine counted `lint`, which
+shipped as `build --check-only`, a flag. The count that is checkable is `COMMANDS`, and it
+is 7.
+
+**One `RETIRED_COMMANDS` entry, and nothing else**, per the wave 1 contract. Proven by
+running the binary rather than by grepping:
+
+```
+taliesin run x.tmd  →  `run` was removed: `preview <file.tmd>` executes the same cells
+                       against the same warm kernel and writes the same `_freeze/`, so a
+                       later `build` still replays without one            (exit 1)
+```
+
+## SIX THINGS THAT WERE NOT TRUE, OR THAT THE PLAN DID NOT KNOW
+
+Same genus as waves 1 to 12.
+
+1. **THE RULING'S "SURVIVES REGARDLESS" LIST IS WRONG, AND IT IS WHY THIS WAVE IS 2.5x ITS
+   ESTIMATE.** §6.1 says *"`runspec.rs` and `run_control.rs` are **not** run-only, the
+   preview server's Run buttons use them, so they survive regardless."* **The preview has no
+   Run buttons.** `web-client/client.js` sends exactly three client-to-server messages:
+   `restart_kernel` (two call sites) and `click_block`. The Run buttons were always a *code
+   lens* in the editor, which invoked the CLI; the browser never had one. So:
+   - `runspec.rs` (328) is entirely run-only. `RunReq` and `event_stream` are the POST's
+     request and response bodies; `RunScope`/`resolve`/`Resolved` exist to cap a run, and
+     every surviving `RunRequest` was `RunRequest::none()` → `RunScope::All` → never caps.
+     `lsp_lens.rs` names `runspec::resolve` in a **comment**, not a call.
+   - `run_control.rs` (238) is entirely run-only. `cancel()` had two callers: the interrupt
+     handler and one test. The `epoch`/`begin_cell`/`end_cell` wiring in `exec.rs` existed
+     to serve `cancel`.
+   - `session.rs` (242) is entirely run-only. `hinted_port` and `project_root_for` were
+     `run_cmd.rs`'s; `write_hint`/`clear_hint` wrote a file only `run` read. The
+     single-instance probe uses `identify` + `is_sibling_preview` **directly**
+     (`serve/mod.rs`), never the hint.
+   This is the same failure class as wave 12's `extending.tmd` finding — *a plan's stated
+   reason can be false even when the file exists* — and it is now the campaign's second
+   recurrence. **Read the code, not the sentence about it.**
+2. **THE CODE LENS HAS TWO JOBS AND ONLY ONE OF THEM DIED, so `lsp_lens.rs` is kept and
+   trimmed rather than cut.** The handoff flagged the real risk: cutting the verb makes
+   ▶ Run Cell name a command nothing can run, and wave 10 kept this provider on recorded
+   ground (`runcell.ts` records that a TypeScript `CodeLensProvider` existed here and was
+   deleted for the Rust one, so cutting the server lens regrows demonstrated pressure for
+   the duplication CLAUDE.md forbids). The answer is that the two buttons go and the
+   **`⚡ cached` / `↻ always re-runs` label stays**: it is the 2026-07-18 DX audit's
+   still-open "make caching legible" item, computed from `exec::cell_cache_keys` (the
+   executor's own key function, so it cannot claim a hit the executor would miss), and it
+   answers a question nothing else in the editor answers — *will editing this cell cost a
+   re-run?* It survives the verb because the document still runs, via `preview` and `build`.
+   A lens with an empty command name is what tells a client there is nothing to click.
+   `codeLensProvider` therefore stays advertised and **wave 10's seven providers are still
+   seven**, so `the_initialize_handshake_advertises_…` needed no edit.
+3. **A GATE WAS READING A PARITY-DEPENDENT SLICE OF EVERY DOCUMENT, AND EDITING PROSE
+   ELSEWHERE MOVED THE SLICE.** `stale_docs.rs`'s `backticked()` paired backticks across a
+   whole file with no notion of fenced blocks, so which spans it produced downstream of a
+   fence depended on the document's *running backtick parity*. Rewriting one section of the
+   CLI reference took it from **55 flag mentions to 69** and made it report
+   `rsync -a --delete` — a third-party flag inside a ```sh example — as "a flag the CLI does
+   not accept". Its own `checked >= 50` floor passed on both sides, so nothing announced it,
+   and the gate had been reading roughly four fifths of the file by luck for months.
+   `backticked()` is now fence-aware, which is also the right rule on the merits: an inline
+   span is a *claim* about this tool, a fenced block is an example that may legitimately
+   invoke `rsync` or name a path the reader is about to create. Measured: the path-claim
+   population across the walked docs is **unchanged at 112**, and both halves were proven
+   able to fail (a sentinel `--nonesuch` and a sentinel missing path each fail their own
+   assertion). Same genus as wave 11's `:root`-inside-a-comment and wave 9's derived
+   classification: **when a gate locates its subject by a fragile derivation, the derivation
+   is where bugs live silently.**
+4. **THE FLAG-COUNT FLOOR WAS AT 50 WITH ONE OF HEADROOM.** With the extractor made
+   deterministic, the reference carried 55 flag mentions; deleting the `run` row took it to
+   **49** and the floor hard-failed. It is an anti-vacuity guard, not a content floor (a
+   broken extractor yields ~0), so it is lowered to **25** with the count it was measured
+   against written on it — the same treatment wave 12 gave its three. This is the second
+   wave running to trip a floor whose headroom was smaller than the cut.
+5. **THERE IS A FIFTH SUBCOMMAND REGISTRATION SITE AND NOTHING GATES IT.** CLAUDE.md says a
+   new verb has four drift-gated sites in `main.rs`. It also needs a row in
+   `docs/guide/reference/cli.tmd`'s verb table, and no test ties that table to `COMMANDS`.
+   The retired `run` row survived several passes of this wave; what eventually caught it was
+   the flag gate noticing the *flags inside the row*, so **a verb with no flags would have
+   left a documented command the binary does not answer, with every gate green**. Recorded
+   in CLAUDE.md beside the two `--help`-prose holes it belongs with. Not fixed: a fifth gate
+   is machinery this campaign removes, and the honest instruction is to grep.
+6. **THE COMPILER AND ONE DEPENDENCY COMMENT FOUND FOUR MORE ORPHANS.** `Kernel::pid()` was
+   published solely so an interrupt arriving *outside* the run loop could signal the process
+   — the silence/wall-clock cap calls `interrupt_pid` directly from inside the polling loop,
+   so the canary is untouched and `interrupt_pid`'s doc no longer claims two callers.
+   `protocol::CellSite` (the `file`/`line` on every `cell-state`) was `run_print.rs`'s alone;
+   its own doc said so (*"`taliesin run` is the reason it exists"*) and no client reads those
+   fields. The `skipped` cell state existed **only** for a capped run and is gone from the
+   protocol, the client typedef and the badge. And `sha2` was in the server crate for
+   `session.rs`'s digest alone; removing it also removed the comment two lines below it,
+   which described `qrcode`'s feature flags and had outlived that dependency since wave 11
+   by sitting above an unrelated one.
+
+## THE MOAT, CHECKED BY NAME
+
+`git diff main` over the path list: **`crates/core/assets/` and `serve_site/exec_pool.rs`
+are byte-identical**, and so are `freeze.rs` and `diff.rs`. The one standing freeze
+(`MAX_WARM_PAGES` + the deterministic LRU) is absent from this wave's diff entirely. `plan()`
+in `exec.rs` lost **only** the cap clamp: the longest-common-prefix walk, `first_uncacheable`
+and the `cache: false` extension are unchanged, which is the whole of the cache planner.
+`web-client/client.js` is the one shipped-asset change, six lines, and `minify_js` went in
+wave 4 so those bytes ship verbatim.
+
+## WHAT WAS GIVEN UP, STATED PLAINLY
+
+**The browser-free terminal loop.** Someone iterating on a headless box over SSH now needs a
+browser, or a forwarded port, to see what a cell produced. That is the honest cost and it is
+the one an author on a remote GPU box would feel; the answer if it ever bites is a terminal
+client against the preview's existing websocket, which is a smaller thing than the session
+protocol just deleted.
+
+**Interrupting a run in flight, which is a real loss and larger than it looks.** Ctrl-C on a
+`taliesin run` stopped the *run* — the signal ended the executing cell and an epoch flag
+stopped the queued ones — while the warm kernel and every earlier cell's variables survived.
+`taliesin run <file> --interrupt` did the same thing from a second terminal, and because
+`build_page` handed every rebuild the same `RunControl`, it could stop a **preview's**
+rebuild too. Nothing replaces that: a runaway cell in a preview now waits out
+`TALIESIN_CELL_SILENCE` (600 s by default, and the budget resets on every line it prints) or
+is ended by "Restart kernel", which drops all state. The two-part design that went with it
+was hard-won and is recorded in `run_control.rs`'s header for whoever needs it back: a
+boolean is the obvious flag and it is wrong, because runs *queue*, so a cancel has to
+invalidate a run that has been asked for but has not started.
+
+**The companion's Run Cell / Run All commands and their task plumbing**: the progress
+indicator, and the completion notification for a long run that CHI 2020 asked for by name.
+With them goes the e2e test that pinned VS Code's `onDidEndTaskProcess` round trip — the
+measured platform fact that the *first* task executed in a window reports
+`exitCode: undefined` whatever it is. The lens e2e tests are re-pointed at the surviving
+label rather than deleted, and the fixture moved to `test-fixtures/codelens.tmd` with
+`#| cache: false` on each cell, because a fresh cacheable cell is deliberately silent and
+counting lenses on the old fixture would have passed while proving nothing.
+
+**One suite and one wire test's subject.** `crates/server/tests/run_session_discovery.rs`
+(271 lines) pinned both halves of the hint-file discovery bug and is gone with its subject.
+`lsp_stdio.rs`'s `code_lens_offers_the_run_command_over_the_wire` is re-pointed, not deleted:
+it now pins that a lens arrives over real stdio carrying a label and **no** command name.

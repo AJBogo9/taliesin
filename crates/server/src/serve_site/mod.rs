@@ -97,10 +97,6 @@ struct Project {
     dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
-    /// Per-page handles for stopping a run in flight. Lives on the project (not the exec
-    /// pool) because the pool is owned by the build task, and the interrupt endpoint is a
-    /// request handler that must reach a run without waiting on that task's lock.
-    runs: crate::run_control::RunRegistry,
     /// Set when this project is one document previewed on its own (`preview <file.tmd>`
     /// with no ancestor `_site.yml`): the document it is scoped to.
     ///
@@ -139,108 +135,11 @@ fn resolve_page_rel(project: &Project, sub: &str) -> Option<String> {
 enum BuildMsg {
     Build(String),
     Restart(String),
-    /// An explicit run from `taliesin run` (the editor's Run Cell): build this page with
-    /// the executor capped to `scope`, then announce completion on the page's broadcast
-    /// tagged with `run_id` so the requesting client knows its own run finished.
-    ///
-    /// It rides the same queue as an ordinary rebuild rather than jumping it, because the
-    /// queue is what keeps one page's builds totally ordered. A run that overtook a
-    /// pending save would execute stale source.
-    Run {
-        rel: String,
-        scope: crate::runspec::RunScope,
-        run_id: String,
-        /// The [`crate::run_control::RunControl`] epoch when this run was **requested**, not
-        /// when it starts. The build lane is serialized, so a run can wait behind the
-        /// session's own startup pass; a Ctrl-C during that pass must invalidate this
-        /// message too, and only an epoch taken at request time can say so.
-        epoch: u64,
-    },
 }
 
 struct PageState {
     doc: PageDoc,
     tx: broadcast::Sender<String>,
-}
-
-/// How far a build may execute, and who is waiting to hear that it finished.
-///
-/// An ordinary rebuild is [`RunRequest::none`]: uncapped, nobody waiting. A `taliesin run`
-/// carries a cap and a `run_id`, and the difference is confined to this one struct so the
-/// two paths cannot drift into two different builds.
-#[derive(Clone)]
-struct RunRequest {
-    scope: crate::runspec::RunScope,
-    /// `Some` only for an explicit run, i.e. exactly when a client is blocked waiting for
-    /// a terminal `run-done`.
-    run_id: Option<String>,
-    /// The run-control epoch this run was **requested** at; `None` for a rebuild nobody
-    /// asked for (a file save), which is never pre-emptively cancelled.
-    epoch: Option<u64>,
-}
-
-impl RunRequest {
-    /// An ordinary rebuild: whole document, nobody waiting.
-    fn none() -> Self {
-        Self {
-            scope: crate::runspec::RunScope::All,
-            run_id: None,
-            epoch: None,
-        }
-    }
-}
-
-/// Guarantees a waiting `taliesin run` gets exactly one terminal message.
-///
-/// `build_page` has several early returns and can panic; a client blocked on the page
-/// broadcast has no other way to learn the run is over, and a missing terminal message
-/// reads to it as a hang. So the announcement is a drop guard: whatever path leaves the
-/// build, the client is answered. Armed only when a `run_id` is present, so an ordinary
-/// rebuild costs nothing and broadcasts nothing new.
-struct RunAnnounce {
-    project: Arc<Project>,
-    rel: String,
-    run_id: Option<String>,
-}
-
-impl RunAnnounce {
-    fn new(project: &Arc<Project>, rel: &str, run_id: Option<String>) -> Self {
-        Self {
-            project: project.clone(),
-            rel: rel.to_string(),
-            run_id,
-        }
-    }
-
-    /// Announce the outcome and disarm.
-    fn finish(&mut self, status: &str, message: Option<&str>) {
-        let Some(run_id) = self.run_id.take() else {
-            return;
-        };
-        if let Some(ps) = self.project.pages.lock().get(&self.rel) {
-            let _ = ps.tx.send(protocol::run_done(
-                Some(&self.rel),
-                &run_id,
-                status,
-                message,
-            ));
-        }
-    }
-
-    /// Disarm WITHOUT announcing: this pass is handing the run to another lane, which
-    /// will answer instead. Announcing here would tell the client the run finished while
-    /// its cells are still queued.
-    fn defer(&mut self) {
-        self.run_id = None;
-    }
-}
-
-impl Drop for RunAnnounce {
-    fn drop(&mut self) {
-        // Still armed at drop means an exit nobody accounted for (a panic unwinding
-        // through, or a future early return added later). Answer rather than hang.
-        self.finish("error", Some("run ended without completing"));
-    }
 }
 
 /// The live block state of one page (mirrors `serve::DocState`, per page).
@@ -389,8 +288,7 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
 
 impl Resolved {
     /// How this server is known to **other processes**: the root it answers
-    /// [`crate::serve::IDENTITY_PATH`] with, the incumbent it recognizes as itself, and the
-    /// name its session hint is filed under.
+    /// [`crate::serve::IDENTITY_PATH`] with, and the incumbent it recognizes as itself.
     ///
     /// It is *what this server serves*, which for an out-of-project document is that
     /// document — it is a project of just that document — and **not** [`Resolved::root`],
@@ -398,12 +296,11 @@ impl Resolved {
     /// directory may hold unrelated `.tmd` files this server discovered nothing about and
     /// would 404, so answering with it claims pages that are not there.
     ///
-    /// Publishing the directory is what broke `taliesin run` when the single-document
-    /// server was folded in here. That server published the document (`serve/mod.rs`'s
-    /// `app.path`, pre-`e6a99ec4`) and [`crate::run_cmd`] still asks for the document, so a
-    /// run found no hint, started a session, and then could not find that one either: 45
-    /// seconds to report that a live server it had just spawned was not there.
-    /// `crates/server/tests/run_session_discovery.rs` pins both halves.
+    /// Publishing the directory once broke `taliesin run`, which looked a session up by the
+    /// document and found nothing when the single-document server was folded in here. That
+    /// verb went in Wave 13; the rule it exposed did not, because the incumbent check has the
+    /// same shape: two previews of two unrelated loose documents in one directory must not
+    /// recognize each other as the same server.
     ///
     /// `root` stays the filesystem base for serving assets and resolving includes; only
     /// the identity moves.
@@ -435,9 +332,9 @@ fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
 }
 
 /// Entry point for `taliesin preview <dir|file.tmd>`.
-pub fn run(target: Target, port: u16, open: bool, headless: bool) -> std::io::Result<()> {
+pub fn run(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    let result = rt.block_on(serve(target, port, open, headless));
+    let result = rt.block_on(serve(target, port, open));
     // `serve` returns on a shutdown signal (see `crate::serve::shutdown_signal`);
     // force the runtime down so the builder task that owns the kernels is dropped
     // promptly, running its teardown (the kernel SIGKILLs). Bounded so a wedged task
@@ -446,7 +343,7 @@ pub fn run(target: Target, port: u16, open: bool, headless: bool) -> std::io::Re
     result
 }
 
-async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io::Result<()> {
+async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
     // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
@@ -487,7 +384,6 @@ async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io
             dir: root.clone(),
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
-            runs: Default::default(),
             scope: scoped,
         }),
         build_tx,
@@ -503,11 +399,6 @@ async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io
         .route(taliesin_core::PREVIEW_MERMAID_PATH, get(mermaid_lib_js))
         .route("/search-index.js", get(search_index_js))
         .route("/ws", get(ws_handler))
-        .route(crate::serve::RUN_PATH, axum::routing::post(run_handler))
-        .route(
-            crate::serve::INTERRUPT_PATH,
-            axum::routing::post(interrupt_handler),
-        )
         .fallback(page_or_asset)
         .with_state(app.clone());
     let router = with_identity(router, &session_key);
@@ -515,30 +406,17 @@ async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io
 
     let (listener, addr) = bind_with_fallback(port, &session_key).await?;
     let port = addr.port();
-    // Publish where this project's session is listening, so `taliesin run` attaches to
-    // THIS server rather than starting a second one. A second server would mean a second
-    // kernel set and a second `_freeze/` writer for one project, which is how stale output
-    // gets published. Written after the bind, so the port recorded is the port we got
-    // (`bind_with_fallback` may have stepped past a busy one).
-    crate::session::write_hint(&session_key, port);
     let local = format!("http://127.0.0.1:{port}");
 
-    // A session has nobody watching its console: the screen clear, banner and hints are
-    // for a preview you launched and are looking at. Announce one line instead, so
-    // `taliesin run` still leaves something greppable behind if it misbehaves.
-    if headless {
-        crate::log::info(&format!("session listening on {local}"));
-    } else {
-        crate::log::clear_screen();
-        crate::log::banner(taliesin_core::VERSION);
-        crate::log::ready(&local, start.elapsed());
-        crate::log::first_run_notice();
-        crate::log::keys_hint();
-        crate::log::watching(
-            &root.display().to_string(),
-            &format!("site, {page_count} pages"),
-        );
-    }
+    crate::log::clear_screen();
+    crate::log::banner(taliesin_core::VERSION);
+    crate::log::ready(&local, start.elapsed());
+    crate::log::first_run_notice();
+    crate::log::keys_hint();
+    crate::log::watching(
+        &root.display().to_string(),
+        &format!("site, {page_count} pages"),
+    );
     if open {
         // A document target opens at its own page; a project target at its home.
         match &focus {
@@ -561,10 +439,6 @@ async fn serve(target: Target, port: u16, open: bool, headless: bool) -> std::io
             Ok(())
         }
     };
-    // Clean exit: retract the hint so the next `taliesin run` starts a session instead of
-    // dialling a dead port. A SIGKILL skips this, which is exactly why a client proves the
-    // hint with the identity handshake rather than trusting it.
-    crate::session::clear_hint(&session_key);
     outcome
 }
 
@@ -955,132 +829,6 @@ async fn ws_handler(
         .into_response()
 }
 
-/// `POST /__taliesin/run`: execute part of a page and stream the result as NDJSON.
-///
-/// Loopback only, checked on the peer address rather than inherited from the bind. The
-/// server binds loopback anyway, so this is belt-and-braces, but a run is on-demand code
-/// execution, which is the one route where a second, independent check is worth its line.
-/// `taliesin run` is always local, so nothing legitimate is lost.
-async fn run_handler(
-    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
-    State(app): State<Arc<SiteApp>>,
-    axum::Json(req): axum::Json<crate::runspec::RunReq>,
-) -> axum::response::Response {
-    if !peer.ip().is_loopback() {
-        return (
-            axum::http::StatusCode::FORBIDDEN,
-            "runs are accepted from loopback only",
-        )
-            .into_response();
-    }
-    // `--no-exec` means "never run this document's code". A run request is the most
-    // explicit possible ask, and refusing it plainly beats appearing to succeed while
-    // executing nothing.
-    if crate::exec::exec_disabled() {
-        return (
-            axum::http::StatusCode::CONFLICT,
-            "this session was started with --no-exec",
-        )
-            .into_response();
-    }
-
-    let want = std::fs::canonicalize(&req.file).unwrap_or_else(|_| PathBuf::from(&req.file));
-    let Some((project, rel)) = page_for_input(&app, &want) else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("{} is not a page of this session's project", req.file),
-        )
-            .into_response();
-    };
-
-    let scope = req.scope();
-    let run_id = uuid::Uuid::new_v4().to_string();
-
-    // Subscribe BEFORE queueing, or a fast build can finish between the two and the
-    // client waits forever for a `run-done` that was broadcast into an empty room.
-    let rx = {
-        let mut pages = project.pages.lock();
-        pages
-            .entry(rel.clone())
-            .or_insert_with(|| PageState {
-                doc: PageDoc::default(),
-                tx: broadcast::channel(256).0,
-            })
-            .tx
-            .subscribe()
-    };
-    // The exec lane unconditionally: a run request asserts the page has cells, and the
-    // bypass lane owns no executor.
-    let _ = app.build_tx.send(BuildMsg::Run {
-        rel: rel.clone(),
-        scope,
-        run_id: run_id.clone(),
-        epoch: project.runs.control(&rel).epoch(),
-    });
-
-    let body = axum::body::Body::from_stream(crate::runspec::event_stream(rx, Some(rel), run_id));
-    (
-        [(axum::http::header::CONTENT_TYPE, "application/x-ndjson")],
-        body,
-    )
-        .into_response()
-}
-
-/// `POST /__taliesin/interrupt`: stop the run in flight on a page, keeping its kernel.
-///
-/// Loopback only, matching the run endpoint: stopping someone's computation is no more a
-/// visitor's business than starting it. Deliberately **not** gated on `--no-exec` (such a
-/// session has nothing running, so "nothing to interrupt" is the honest answer, and a 409
-/// would read as a failure to stop something) and deliberately not an error when idle: the
-/// author who hits Ctrl-C a second after the last cell finished must see a quiet no-op.
-async fn interrupt_handler(
-    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<SocketAddr>,
-    State(app): State<Arc<SiteApp>>,
-    axum::Json(req): axum::Json<crate::serve::InterruptReq>,
-) -> axum::response::Response {
-    if !peer.ip().is_loopback() {
-        return (
-            axum::http::StatusCode::FORBIDDEN,
-            "interrupts are accepted from loopback only",
-        )
-            .into_response();
-    }
-    let want = std::fs::canonicalize(&req.file).unwrap_or_else(|_| PathBuf::from(&req.file));
-    let Some((project, rel)) = page_for_input(&app, &want) else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("{} is not a page of this session's project", req.file),
-        )
-            .into_response();
-    };
-    let lang = project.runs.existing(&rel).and_then(|c| c.cancel());
-    axum::Json(serde_json::json!({
-        "interrupted": lang.is_some(),
-        "lang": lang,
-    }))
-    .into_response()
-}
-
-/// The project + page rel owning source file `input`, or `None` when no project serves it.
-///
-/// Compares canonicalized paths rather than strings so a symlinked or `..`-laden argument
-/// still finds its page.
-fn page_for_input(app: &Arc<SiteApp>, input: &Path) -> Option<(Arc<Project>, String)> {
-    let project = &app.root;
-    let rel = {
-        let site = project.site.lock();
-        site.pages
-            .iter()
-            .find(|p| {
-                std::fs::canonicalize(&p.input)
-                    .map(|c| c == input)
-                    .unwrap_or(false)
-            })
-            .map(|p| p.rel.clone())
-    }?;
-    Some((project.clone(), rel))
-}
-
 async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     let (mut sink, mut stream) = socket.split();
 
@@ -1218,31 +966,13 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => {
-                    build_page_guarded(&project, &rel, Some(&mut pool), RunRequest::none()).await;
-                }
-                BuildMsg::Run {
-                    rel,
-                    scope,
-                    run_id,
-                    epoch,
-                } => {
-                    build_page_guarded(
-                        &project,
-                        &rel,
-                        Some(&mut pool),
-                        RunRequest {
-                            scope,
-                            run_id: Some(run_id.clone()),
-                            epoch: Some(epoch),
-                        },
-                    )
-                    .await;
+                    build_page_guarded(&project, &rel, Some(&mut pool)).await;
                 }
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes every
                     // cell against the fresh kernel).
                     pool.restart(&rel);
-                    build_page_guarded(&project, &rel, Some(&mut pool), RunRequest::none()).await;
+                    build_page_guarded(&project, &rel, Some(&mut pool)).await;
                     // A fresh kernel means fresh outputs, including any `ojs_define`
                     // values. Reload the page so the `{js}` cells re-bind to the fresh
                     // `tali-define` blobs from a clean module scope.
@@ -1264,42 +994,10 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
 fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         while let Some(msg) = fast_rx.recv().await {
-            // A `Run` never reaches this lane: `run_page` routes it to the exec lane
-            // unconditionally, because a run request is a statement that the page HAS
-            // cells. Matching it here anyway keeps the enum exhaustive rather than
-            // silently dropping a run if that routing ever changes.
-            let (rel, req) = match msg {
-                BuildMsg::Build(rel) | BuildMsg::Restart(rel) => (rel, RunRequest::none()),
-                BuildMsg::Run {
-                    rel,
-                    scope,
-                    run_id,
-                    epoch,
-                } => (
-                    rel,
-                    RunRequest {
-                        scope,
-                        run_id: Some(run_id),
-                        epoch: Some(epoch),
-                    },
-                ),
-            };
+            let (BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = msg;
             let project = app.root.clone();
-            if build_page_guarded(&project, &rel, None, req.clone()).await
-                == BuildOutcome::NeedsKernel
-            {
-                let _ = app.build_tx.send(match req.run_id {
-                    Some(run_id) => BuildMsg::Run {
-                        rel,
-                        scope: req.scope,
-                        run_id,
-                        // Preserve the ORIGINAL request epoch across the re-queue: this is
-                        // the same run, bounced to the exec lane, and re-reading the epoch
-                        // here would launder away a cancel that arrived in between.
-                        epoch: req.epoch.unwrap_or_default(),
-                    },
-                    None => BuildMsg::Build(rel),
-                });
+            if build_page_guarded(&project, &rel, None).await == BuildOutcome::NeedsKernel {
+                let _ = app.build_tx.send(BuildMsg::Build(rel));
             }
         }
     });
@@ -1339,11 +1037,9 @@ async fn build_page_guarded(
     project: &Arc<Project>,
     rel: &str,
     pool: Option<&mut ExecPool>,
-    req: RunRequest,
 ) -> BuildOutcome {
     use futures_util::FutureExt;
-    let run_id = req.run_id.clone();
-    let outcome = std::panic::AssertUnwindSafe(build_page(project, rel, pool, req))
+    let outcome = std::panic::AssertUnwindSafe(build_page(project, rel, pool))
         .catch_unwind()
         .await;
     match outcome {
@@ -1359,17 +1055,6 @@ async fn build_page_guarded(
                 let _ = ps
                     .tx
                     .send(protocol::error(&format!("internal render error: {msg}")));
-                // A panic is the one path where `build_page` cannot have announced the
-                // run itself. Without this the client waits out its whole timeout on a
-                // run that is already over, and reports a hang instead of the panic.
-                if let Some(run_id) = &run_id {
-                    let _ = ps.tx.send(protocol::run_done(
-                        Some(rel),
-                        run_id,
-                        "error",
-                        Some(&format!("internal render error: {msg}")),
-                    ));
-                }
             }
             // A panicked pass says nothing about the page's lane; leave the routing flag
             // where it was rather than bouncing the page between queues.
@@ -1388,15 +1073,9 @@ async fn build_page(
     project: &Arc<Project>,
     rel: &str,
     pool: Option<&mut ExecPool>,
-    req: RunRequest,
 ) -> BuildOutcome {
-    // Every early return below must still answer a waiting `taliesin run`, so the
-    // announcement is a guard that fires on drop rather than a line repeated at each
-    // exit. `finish` disarms it once the real outcome is known.
-    let mut announce = RunAnnounce::new(project, rel, req.run_id.clone());
     let page = { project.site.lock().page(rel).cloned() };
     let Some(page) = page else {
-        announce.finish("error", Some("no such page in this project"));
         return BuildOutcome::Done;
     };
     let Ok(src) = std::fs::read_to_string(&page.input) else {
@@ -1408,10 +1087,6 @@ async fn build_page(
                 page.input.display()
             )));
         }
-        announce.finish(
-            "error",
-            Some(&format!("cannot read {}", page.input.display())),
-        );
         return BuildOutcome::Done;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
@@ -1432,8 +1107,6 @@ async fn build_page(
         if let Some(ps) = project.pages.lock().get_mut(rel) {
             ps.doc.cell_free = false;
         }
-        // The exec lane redoes this pass and answers the client there.
-        announce.defer();
         return BuildOutcome::NeedsKernel;
     }
     let exec = pool.map(|pool| {
@@ -1449,10 +1122,6 @@ async fn build_page(
             }) as std::sync::Arc<dyn Fn(String) + Send + Sync>
         });
         exec.set_progress(sink, Some(rel.to_string()));
-        // Hand this page's executor the same control the interrupt endpoint looks up, so a
-        // cancel raised there is a cancel this run reads. Re-set every build because the
-        // pool may have evicted and rebuilt the executor since the last one.
-        exec.set_run_control(project.runs.control(rel));
         exec
     });
     // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
@@ -1463,25 +1132,9 @@ async fn build_page(
         &base,
         crate::lint::Scope::InSite,
     );
-    // Resolve the run's cap against the RENDERED blocks — the same list the executor is
-    // about to walk — so `--cell 3` and the engine cannot disagree about which fence is
-    // cell 3, and no second parse of the source is needed.
-    let cap = crate::runspec::resolve(req.scope, &doc.blocks);
-    if cap == crate::runspec::Resolved::Unresolvable {
-        // Refuse rather than widen. Silently promoting "no cell there" into a whole-document
-        // run is the worst available answer when a cell takes twenty minutes.
-        announce.finish("error", Some("no code cell at that position"));
-        return BuildOutcome::Done;
-    }
-    let until_block = match cap {
-        crate::runspec::Resolved::Cap(i) => Some(i),
-        _ => None,
-    };
     let mut exec = exec;
     if let Some(exec) = exec.as_mut() {
-        doc.blocks = exec
-            .run_through(std::mem::take(&mut doc.blocks), until_block, req.epoch)
-            .await;
+        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
@@ -1568,10 +1221,6 @@ async fn build_page(
     // NEXT save. Written last, after everything this pass publishes, so a routing decision
     // that sees the new value is always looking at a finished build (AP3-1).
     ps.doc.cell_free = cell_free;
-    // Announced only after this pass has published everything, so a client that exits the
-    // moment it sees `run-done` cannot race ahead of the outputs it was waiting for.
-    drop(pages);
-    announce.finish("ok", None);
     BuildOutcome::Done
 }
 
@@ -2179,7 +1828,6 @@ mod project_tests {
             dir: dir.clone(),
             site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
             pages: parking_lot::Mutex::new(HashMap::new()),
-            runs: Default::default(),
             scope: None,
         };
 
@@ -2295,7 +1943,6 @@ mod project_tests {
             dir,
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),
-            runs: Default::default(),
             scope: None,
         });
         site_page_html(&project, &page)
@@ -2417,14 +2064,15 @@ mod project_tests {
 
 #[cfg(test)]
 mod session_key_tests {
-    //! The two derivations of a session's key, pinned against each other.
+    //! What a server publishes as its identity, for the target forms that differ.
     //!
-    //! [`Resolved::session_key`] is what the server publishes; `session::session_key_for`
-    //! is what `taliesin run` looks up. They live in different modules and run in different
-    //! processes, and when they disagreed the symptom was a run waiting out its full start
-    //! timeout on a session that was up and answering. Nothing but this test connects them,
-    //! so it drives the real production expressions on both sides rather than restating
-    //! either rule.
+    //! [`Resolved::session_key`] is the name a second `preview` of the same project
+    //! recognizes as itself (`bind_with_fallback`'s incumbent check, and the answer on
+    //! [`crate::serve::IDENTITY_PATH`]). The case worth pinning is the loose document: the
+    //! key must be the *document*, not the directory it happens to sit in, or a preview of
+    //! one scratch file would claim every unrelated `.tmd` beside it. This was a two-sided
+    //! pin until Wave 13 cut `taliesin run`, which owned the other derivation; the
+    //! surviving side is the one the server actually publishes.
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
@@ -2449,11 +2097,6 @@ mod session_key_tests {
             "the server must publish the document it serves, not {}",
             dir.display()
         );
-        assert_eq!(
-            crate::session::session_key_for(&doc),
-            served.session_key(),
-            "`taliesin run` would look up a key the server never wrote"
-        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2470,14 +2113,9 @@ mod session_key_tests {
 
         let served = resolve_target(Target::at(ch.clone())).unwrap();
         assert_eq!(served.session_key(), dir, "a page keys on its project root");
-        assert_eq!(
-            crate::session::session_key_for(&ch),
-            served.session_key(),
-            "the run client and the server must name the same session"
-        );
 
         // And the project's own front door lands on that same key, so `preview <dir>` and
-        // `run <dir>/chapters/ch9.tmd` are one session, not two.
+        // `preview <dir>/chapters/ch9.tmd` are one server, not two.
         let whole = resolve_target(Target::at(dir.clone())).unwrap();
         assert_eq!(whole.session_key(), dir);
         let _ = std::fs::remove_dir_all(&dir);

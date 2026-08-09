@@ -10,7 +10,6 @@ mod cli;
 mod doctor;
 mod exec;
 mod freeze;
-mod http1;
 mod interpreter;
 mod kernel;
 mod lint;
@@ -30,14 +29,9 @@ mod minify;
 mod packages;
 mod preview_diag;
 mod protocol;
-mod run_cmd;
-mod run_control;
-mod run_print;
-mod runspec;
 mod runtime_dirs;
 mod serve;
 mod serve_site;
-mod session;
 #[cfg(test)]
 mod testutil;
 
@@ -60,12 +54,6 @@ fn main() -> ExitCode {
         Some("build") => {
             runtime_dirs::sweep_stale_runtime_dirs();
             build::cmd_build(&args)
-        }
-        // `run` needs the same stale-runtime-dir sweep `build`/`preview` do: it may be
-        // the thing that starts the session that owns the kernels.
-        Some("run") => {
-            runtime_dirs::sweep_stale_runtime_dirs();
-            run_cmd::cmd_run(&args)
         }
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("lsp") => lsp::cmd_lsp(&args),
@@ -106,9 +94,7 @@ fn main() -> ExitCode {
 }
 
 /// Every subcommand name, for the unknown-command did-you-mean.
-const COMMANDS: &[&str] = &[
-    "build", "run", "doctor", "lsp", "init", "new", "preview", "help",
-];
+const COMMANDS: &[&str] = &["build", "doctor", "lsp", "init", "new", "preview", "help"];
 
 /// Subcommands that used to exist, and the one line that says what replaced them.
 ///
@@ -177,6 +163,11 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
     (
         "completions",
         "nothing; type the subcommand out, or bind your own shell alias",
+    ),
+    (
+        "run",
+        "`preview <file.tmd>` executes the same cells against the same warm kernel and \
+         writes the same `_freeze/`, so a later `build` still replays without one",
     ),
 ];
 
@@ -249,10 +240,6 @@ Author
                              scaffold one dated post, correct on its first save
 
 Preview & build
-  run <file.tmd> [--cell N | --line L | --all] [--quiet] [--interrupt]
-                             execute code cells in the terminal against this
-                             project's warm session; no browser, outputs cached
-                             so a later build re-executes nothing
   preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]
                              live preview server, on loopback only (a dir previews
                              the whole SITE with nav + hot reload;
@@ -326,40 +313,6 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin preview index.tmd --open\n\
              \x20 taliesin preview . --port 4400\n"
-        }
-        "run" => {
-            "taliesin run <file.tmd> [--cell N | --line L | --all] [--quiet] [--interrupt]\n\
-             \n\
-             Execute the document's code cells and print what they produced, in the\n\
-             terminal, with no browser in the loop. Attaches to this project's warm\n\
-             session (starting one headlessly if none is up), so the kernel and its\n\
-             variables survive between runs: re-running one cell does not re-run the\n\
-             expensive ones above it.\n\
-             \n\
-             Outputs land in `_freeze/` exactly as a preview would write them, so a\n\
-             later `taliesin build` replays them and re-executes nothing.\n\
-             \n\
-             Runs are inclusive and top-down: `--cell 3` means \"make the document true\n\
-             THROUGH cell 3\", running whatever earlier cells the kernel is missing.\n\
-             \n\
-             Flags:\n\
-             \x20 --cell N    run through the Nth executable cell (1-based)\n\
-             \x20 --line L    run through the cell at source line L (what editors send)\n\
-             \x20 --all       run the whole document (the default)\n\
-             \x20 --quiet     only errors and the summary, for scripts\n\
-             \x20 --interrupt stop this document's run, keeping the warm kernel\n\
-             \n\
-             Ctrl-C stops a run: it interrupts the running cell and abandons the rest,\n\
-             leaving the kernel and every earlier cell's variables intact. `--interrupt`\n\
-             is the same thing from another terminal, and says so when nothing is running.\n\
-             \n\
-             Figures are written to `_freeze/figs/` and their paths printed, since a\n\
-             terminal cannot show an image; ctrl-click one to open it.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin run analysis.tmd --cell 5\n\
-             \x20 taliesin run analysis.tmd --all --quiet\n\
-             \x20 taliesin run analysis.tmd --interrupt\n"
         }
         "build" => {
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only]\n\
@@ -712,7 +665,7 @@ mod cli_microcopy_tests {
     /// looked at.
     #[test]
     fn help_verb_with_a_subcommand_resolves_to_that_subcommands_help() {
-        for cmd in ["build", "preview", "run"] {
+        for cmd in ["build", "preview", "new"] {
             assert!(
                 subcommand_help(cmd).is_some(),
                 "`help {cmd}` needs a focused page to resolve to"

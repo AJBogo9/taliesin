@@ -16,7 +16,6 @@ import { registerLanguageClient } from "./client";
 import { registerCommands } from "./commands";
 import { registerTerminalLinks } from "./termlinks";
 import { registerTasks } from "./tasks";
-import { registerRunCell } from "./runcell";
 import { registerDoctorHint } from "./doctorhint";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
@@ -74,7 +73,6 @@ export function activate(context: vscode.ExtensionContext) {
   );
   registerLanguageClient(context);
   registerCommands(context);
-  registerRunCell(context);
   // The smallest surface here: a diagnostic location in the terminal becomes clickable.
   registerTerminalLinks(context);
   // The project lint and `build` as tasks, so project-wide findings reach the Problems panel

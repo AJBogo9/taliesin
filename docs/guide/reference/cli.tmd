@@ -9,7 +9,6 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 |---|---|
 | `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
 | `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
-| `run <file.tmd> [--cell N \| --line L \| --all] [--quiet] [--interrupt]` | Execute code cells **in the terminal**, against this project's warm session. No browser; outputs are cached so a later `build` re-executes nothing. Ctrl-C (or `--interrupt` from elsewhere) stops the run and keeps the kernel |
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
@@ -160,7 +159,7 @@ Taliesin 0.2.0 (cdf0a13)
 
 `--help` / `-h` (or no arguments) prints the
 top-level usage. Putting `--help` / `-h` **after** a subcommand
-(`taliesin build --help`, `taliesin run -h`, …) prints a focused page for just that
+(`taliesin build --help`, `taliesin preview -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
 the default port (or one you pass) is already in use, what happens depends on who holds
 it. A preview of the *same* project is replaced, so re-running `preview` hands back the
@@ -209,83 +208,41 @@ A `build` already content-gates the optional enhancer scripts (mermaid, `{js}`) 
 constructs a page actually uses, so a prose page ships less JavaScript without losing any
 feature.
 
-## `taliesin run`: iterate on code without the HTML
+## Iterating on code: `preview` is the loop
 
-Writing Python or ML code inside a document should not mean thinking about
-publishing. `taliesin run` executes the cells and prints what they produced, in
-your terminal, with no browser anywhere in the loop.
-
-```sh
-taliesin run analysis.tmd --cell 5   # through the 5th code cell
-taliesin run analysis.tmd --line 42  # through the cell at line 42
-taliesin run analysis.tmd --all      # the whole document
-```
-
-```
-▸ cell 2
-  epoch 1  loss 0.412
-  epoch 2  loss 0.308
-✓ cell 2  2.4s
-  → _freeze/figs/cell2-1.png
-1 ran, 1 cached
-```
-
-**It attaches to a warm session rather than running the code itself.** The first
-`run` in a project starts one in the background (this is the slow one: it boots
-the kernel and pre-imports numpy/matplotlib); every run after that reuses it. So
-the kernel's *variables* survive between runs, and re-running one cell does not
-re-run the expensive ones above it. A four-gigabyte load in cell 3 is paid once.
-
-The same session serves `taliesin preview`. Open a preview later and it is
-already showing what you ran; there is only ever one kernel and one cache writer
-per project, which is what stops the terminal and the browser disagreeing.
-
-### Runs are inclusive and top-down
-
-`--cell 3` means *make the document true through cell 3*. It runs whatever
-earlier cells the kernel is missing, then stops. It never runs cell 3 in
-isolation against whatever state happens to be lying around, which is the
-hidden-state bug that makes notebooks irreproducible: what you see is always what
-the document says, read top to bottom.
-
-Cells past the cut are reported as `below the cut, not run` rather than quietly
-counted as cached. They keep their stale output until a later run reaches them.
+Writing Python or ML code inside a document should not mean thinking about publishing.
+Leave `taliesin preview` running and it is the loop: save the file, and only the cell you
+edited and the ones downstream of it re-execute, against a kernel that stays warm between
+saves. The kernel's *variables* survive, so a four-gigabyte load in cell 3 is paid once and
+re-running one cell does not re-run the expensive ones above it.
 
 ### Publishing afterwards executes nothing
 
-Every run writes `_freeze/` exactly as a preview would, so:
+Every preview run writes `_freeze/` as it goes, so:
 
 ```sh
 taliesin build .
 #   exec  index.tmd  restored 3 cached cells · 0 re-ran
 ```
 
-That is the point of iterating this way: by the time you want the HTML, there is
-nothing left to compute.
+That is the point of iterating this way: by the time you want the HTML, there is nothing
+left to compute. The cache is keyed on the cell's own code plus every upstream cell's, so
+there is nothing to clear by hand and no way to get a stale hit.
 
-### Figures
+### There is only ever one kernel per project
 
-A terminal cannot show a plot, so a figure is written to `_freeze/figs/` and its
-path printed. Ctrl-click it in your editor to open it. The file holds the same
-bytes the published page will embed. (Inline terminal images were considered and
-rejected: they need an opt-in setting, GPU acceleration, a non-Windows host and a
-special matplotlib backend, and they look bad for a dense plot.)
+One `preview` per project means one kernel set and one `_freeze/` writer, which is what
+stops two views of a document from disagreeing about what a cell produced. A second
+`preview` of a project that is already open recognizes the incumbent and hands over to it
+rather than starting a second one.
 
-### In the editor
+### Runs are top-down
 
-The VS Code companion puts **▶ Run Cell** and **Run Above** over every executable
-cell, which save the buffer and run the command above. They appear over
-`{python}` only, never over a plain ` ```python ` display block or a
-`{bash}` fence, because the button asks the server which fences a kernel actually
-runs.
-
-### Exit codes
-
-`taliesin run` exits non-zero if any cell errored, if the position named no code
-cell (it refuses rather than widening to a whole-document run), or if the session
-died mid-run. A failing run also prints the session's diagnostics, which for the
-commonest failure (no interpreter) is the only explanation available: the cell
-never ran, so there is no traceback.
+A rebuild makes the document true from the top: it re-executes whatever the kernel is
+missing before the cell you changed, then that cell, then everything downstream. It never
+runs a cell in isolation against whatever state happens to be lying around, which is the
+hidden-state bug that makes notebooks irreproducible. What you see is always what the
+document says, read top to bottom.
 
 ## Portable, offline builds (email the whole thing as a zip)
 
@@ -488,17 +445,12 @@ taliesin build . --check-only
 
 which is where the same findings are already checked before publishing.
 
-**The Run buttons are a code lens, and a lens names a command.** Above every
-`{python}`/`{js}` fence the server offers **▶ Run Cell**, **Run Above**, and a
-**⚡ cached** label when `_freeze/` already holds that cell's output. Clicking one is the
-client's job: it invokes `taliesin.runCell` with `[uri, line]`, so an editor wires that
-command once to
-
-```sh
-taliesin run <file.tmd> --line <L>
-```
-
-and has the whole execution loop. The VS Code companion does this for you.
+**A code lens says what each cell will do next.** Above an executable fence the server
+offers a **⚡ cached** label when `_freeze/` already holds that cell's output, and
+**↻ always re-runs** for a `#| cache: false` cell. Nothing else, and nothing above a cell
+whose answer is the ordinary one, because a label over every fence in a fresh project is
+noise. There is no command to bind: the lens is a label, so any LSP client renders it with
+no wiring at all.
 
 ## Environment
 

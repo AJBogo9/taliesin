@@ -17,9 +17,9 @@ export interface CodedDiagnostic {
  * code that arrived (measured in a real Extension Host) as `{ value, target }` from the
  * language client and as a bare string from a problem matcher, so both shapes had to be
  * understood; the code catalogue is gone and the message is the whole diagnostic now, which
- * removes that fork entirely. `crates/server/src/build.rs`'s `cell_error_message` and
- * `run_print.rs`'s `failure_line` are the two producers, and `src/test/kernelfail.test.ts`
- * is the drift gate that pins these strings against them.
+ * removes that fork entirely. `crates/server/src/build.rs`'s `cell_error_message` is the
+ * producer (`run_print.rs` was the second until Wave 13 cut `taliesin run`), and
+ * `src/test/kernelfail.test.ts` is the drift gate that pins these strings against it.
  */
 export const KERNEL_MESSAGES = ["code cell did not run", "code cell did not complete"] as const;
 

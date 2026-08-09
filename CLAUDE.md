@@ -16,11 +16,16 @@ track would render *from* the built HTML, never as a parallel format).
 > corpus document pins it (that pinning is circular and is the very thing the audit
 > disproved).
 >
-> **Wave 12, the last of the twelve planned waves, landed 2026-08-09.** Only wave 13
-> (`taliesin run`) is left, and it is still unadjudicated. The corpus is 83 documents and
-> the Internals book is 7 chapters; a fresh session should read `notes/CUT-PROGRESS.md`
-> before assuming a file named in the playbook still exists, because eight of wave 12's
-> "must survive" justifications named files that had already gone.
+> **THE CUT IS COMPLETE. Wave 13 landed 2026-08-09 and there is no wave 14.** It
+> adjudicated the one bundle the ruling left open and **cut `taliesin run` entirely**, so the
+> CLI is **7 subcommands**: `preview`, `build`, `init`, `new`, `doctor`, `lsp`, `help`. The
+> corpus is 83 documents and the Internals book is 7 chapters; a fresh session should read
+> `notes/CUT-PROGRESS.md` before assuming a file named in the playbook still exists, because
+> eight of wave 12's "must survive" justifications named files that had already gone.
+>
+> **The campaign is over; its doctrine is not.** The standing directive below still governs,
+> and so do the register rules and the ordering rule. What changes is that there is no next
+> wave to defer a question to: `notes/ROADMAP.md` can be unpaused by the author.
 >
 > **Standing directive from the author:** *"always lean towards cutting. I'd rather have
 > a polished lean product, and then add features when I have real users that need them
@@ -142,7 +147,10 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    nothing else** (`--host` went in Wave 11), so both guards are about a
                    local peer: `ws_origin_ok` is the only thing stopping an open tab
                    sending `restart_kernel`, and `with_host_guard` is the unconditional
-                   DNS-rebinding allowlist
+                   DNS-rebinding allowlist. Wave 13 removed the last two POST routes
+                   (`/__taliesin/run`, `/__taliesin/interrupt`) with `taliesin run`, so the
+                   only write the server accepts from a client is `restart_kernel` over the
+                   websocket
   src/serve_site/  THE dev server — one server for a project and for a single document
                    alike (mod.rs: per-page state/executor, cross-page nav, hot reload;
                    exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze). ONE project
@@ -189,7 +197,9 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    lsp_fold/lsp_lens/lsp_cells/lsp_diag/lsp_project).
                    ALL editor intelligence lives here, and after wave 10 it is **SEVEN
                    read-only providers**: completion, hover, definition, documentSymbol,
-                   codeAction, foldingRange, codeLens, plus pushed `publishDiagnostics`
+                   codeAction, foldingRange, codeLens (a LABEL since wave 13 cut the verb
+                   its ▶ Run Cell button named: it says `⚡ cached` / `↻ always re-runs` and
+                   carries no command), plus pushed `publishDiagnostics`
                    and three namespaced extensions (`taliesin/cellRegions`, `siteMap`,
                    `mathCommands`). **Nothing here writes to a buffer.** The nine that went
                    on 2026-08-08 are named in `the_initialize_handshake_advertises_…`,
@@ -364,7 +374,12 @@ dependency change. Never call one of these verified without its output.
   done — do not write a test for it.**
   A new *subcommand* has four registration sites in `main.rs`, each drift-gated. It cost
   three more until Wave 8 deleted the shell-completion generator, which carried a
-  hand-maintained second copy of every verb's flag set.
+  hand-maintained second copy of every verb's flag set. **There is a FIFTH site and nothing
+  gates it: the verb's row in `docs/guide/reference/cli.tmd`'s table.** Wave 13 left the
+  retired `run` row standing through several edits; what eventually caught it was
+  `documented_cli_flags_exist_in_the_cli` noticing the *flags* inside the row, so a verb
+  with no flags would have left a documented command the binary does not answer, with every
+  gate green. Same genus as the two `--help`-prose holes below: grep, do not trust.
 - **`RETIRED_KEYS` is SCOPED — `(scope, key, note)` — and nothing may flatten it.** The same
   word is retired in one vocabulary and live in another: `toc:`/`theorems:` are gone from
   `_site.yml` but live in front matter, `image:` is gone from `hero:` but live at top level,

@@ -1,9 +1,9 @@
 // When a diagnostic means "the environment could not run this cell", and when to say so.
 //
 // This file is a DRIFT GATE as much as a unit test: the needles below are Rust format
-// strings, written in `crates/server/src/build.rs`'s `cell_error_message` and
-// `run_print.rs`'s `failure_line`. Reword one there and the doctor hint goes silent with
-// every Rust gate still green, which is exactly what this catches.
+// strings, written in `crates/server/src/build.rs`'s `cell_error_message` (`run_print.rs`
+// wrote the same family until Wave 13 cut `taliesin run`). Reword one there and the doctor
+// hint goes silent with every Rust gate still green, which is exactly what this catches.
 import { test } from "node:test";
 import assert from "node:assert";
 import { kernelFailure, KernelPrompt, KERNEL_MESSAGES } from "../kernelfail";
