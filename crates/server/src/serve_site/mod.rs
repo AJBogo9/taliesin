@@ -355,7 +355,7 @@ pub fn run(target: Target, port: u16, open: bool) -> std::io::Result<()> {
 async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
-    // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
+    // them.
     let resolved = resolve_target(target)?;
     let session_key = resolved.session_key();
     let Resolved {

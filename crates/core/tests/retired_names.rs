@@ -6,9 +6,8 @@
 //! of 5 of 1387 tests, 3 of them only block-id hash drift). That blindness is what
 //! let the half-finished rename sit in the tree for a month. This file is the backstop.
 //!
-//! `docs/superpowers/` and `notes/` are deliberately exempt: they are the dated
-//! plan/spec archive and the pre-rename record, and rewriting them would make a
-//! 2026-06 document claim it used names that did not exist yet.
+//! `notes/` is deliberately exempt: it is the pre-rename record, and rewriting it would
+//! make a 2026-06 document claim it used names that did not exist yet.
 
 use std::path::{Path, PathBuf};
 
@@ -48,23 +47,18 @@ const SKIP_DIR_NAMES: &[&str] = &[
     ".venv",
 ];
 
-/// Directories never scanned, matched as a path prefix from the repo root: the dated
-/// plan/spec archive, the pre-rename record, and the gitignored local `.superpowers/`
-/// task-report archive (all three describe the rename as it happened).
+/// Directories never scanned, matched as a path prefix from the repo root: the pre-rename
+/// record and the gitignored local `.superpowers/` task-report archive (both describe the
+/// rename as it happened).
 ///
 /// `.claude/worktrees` is the same category — gitignored local scratch — but it earns its
-/// own line, because it is the one entry that exists to defend the *root-anchored* matching
+/// own entry, because it is the one that exists to defend the *root-anchored* matching
 /// above. A parallel session's worktree is a full second checkout, so it carries its own
 /// `notes/`; `notes` is listed here and still would not cover
 /// `.claude/worktrees/<branch>/notes/`. Without this, any session that opens a worktree turns
 /// the guard red in **every other** session's tree, over files that are neither tracked nor
 /// theirs to edit.
-const SKIP_PATHS: &[&str] = &[
-    "docs/superpowers",
-    "notes",
-    ".superpowers",
-    ".claude/worktrees",
-];
+const SKIP_PATHS: &[&str] = &["notes", ".superpowers", ".claude/worktrees"];
 
 /// Is this one occurrence of the retired token a legitimately-retired NAME rather than
 /// a reintroduction?
@@ -261,8 +255,8 @@ fn the_guard_detects_a_reintroduction() {
     assert!(
         !files
             .iter()
-            .any(|f| f.to_string_lossy().contains("/docs/superpowers/")),
-        "the frozen plan archive must stay out of the scan"
+            .any(|f| f.to_string_lossy().contains("/notes/")),
+        "the pre-rename record must stay out of the scan"
     );
 }
 

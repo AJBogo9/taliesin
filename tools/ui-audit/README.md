@@ -16,8 +16,6 @@ only one of them touches the browser:
    root cause, adversarially verifies the visual ones, and writes a ranked
    report. This is the parallel phase, and the only one that spends tokens.
 
-See the design spec: `docs/superpowers/specs/2026-07-08-ui-audit-harness-design.md`.
-
 ## Requirements
 
 - **Node** (works on v20; puppeteer-core declares v22+, so v20 prints a harmless

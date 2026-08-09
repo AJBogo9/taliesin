@@ -19,11 +19,11 @@ fn read(rel: &str) -> String {
 
 /// The docs a *reader* gets: the two books, the marketing site, the README, the samples.
 ///
-/// `notes/` and `docs/superpowers/` are deliberately excluded and must stay excluded.
-/// They are dated records — a 2026-06 spec correctly describes the tree as it was that
-/// day, and five of the six stale paths the path gate first reported were of exactly that
-/// kind. Rewriting a dated document to match today's tree destroys the record; this is
-/// the difference between prose that *claims* and prose that *remembers*.
+/// `notes/` is deliberately excluded and must stay excluded. It is a dated record — a
+/// 2026-06 audit correctly describes the tree as it was that day, and five of the six
+/// stale paths the path gate first reported were of exactly that kind. Rewriting a dated
+/// document to match today's tree destroys the record; this is the difference between
+/// prose that *claims* and prose that *remembers*.
 ///
 /// `CLAUDE.md` is in the list even though no reader downloads it: every session and every
 /// agent reads it first, so a false claim there is copied forward before anyone checks.

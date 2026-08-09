@@ -360,8 +360,9 @@ branch are enough to find its commits.
   away, and re-running `taliesin build site` alone afterwards puts you back to the broken tree.
   Pinned by `site_build_script.rs`.
 - **2026-07-28 block model + docs gate** (138, 146, 143's path half): every block has exactly one root
-  element; prose is gated against the tree rather than a needle list. **`notes/` and
-  `docs/superpowers/` are excluded from that gate and must stay excluded** — they are dated records.
+  element; prose is gated against the tree rather than a needle list. **`notes/` is excluded from
+  that gate and must stay excluded** — it is a dated record. (`docs/superpowers/` was the other
+  exclusion until R6-1 deleted it on 2026-08-09.)
 - **2026-07-28 deck harness** (112, 125, 113, 111): `deck.js` has a browser test; deck content is
   auditable at 0 violations across 100% of slides. It found **two shipped layout defects on its first
   run**, neither visible to any emission test. The eleven deck shapes 113 listed stay deliberately

@@ -7,8 +7,6 @@
 //! ran.) We
 //! tag each dir with the server's pid, so a later start can identify and reclaim the
 //! ones whose owner is dead. Strictly pid-based: a live process's dir is never touched.
-//!
-//! Design: docs/superpowers/specs/2026-07-19-stale-runtime-dir-sweep-design.md.
 
 use std::path::{Path, PathBuf};
 

@@ -5,7 +5,7 @@
 //!
 //! Returns `protocol::Diagnostic` (the client wire type), using the exact
 //! `Warning -> Diagnostic` mapping both serve paths already inline for render/xref
-//! warnings. See docs/superpowers/specs/2026-07-18-dx1-live-preview-validation-design.md
+//! warnings.
 
 use crate::lint::{Scope, page_static_diagnostics};
 use crate::protocol::Diagnostic;

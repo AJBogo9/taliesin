@@ -647,7 +647,21 @@ documented value gets silence.
 side.** This is the only part of the plan that inherits the cut campaign's discipline
 unchanged, including the ordering rule.
 
-**Before starting R6, add the floor the campaign deferred.** `crates/core/tests/corpus.rs`
+> **The corpus book floor was DISPROVEN 2026-08-09 and must not be built.** The paragraph
+> below claimed deleting `corpus/demo-book` would *silently* vacate three named tests. It
+> does not. Measured by moving the directory aside and running the suite: **four tests in
+> `corpus.rs` alone fail loudly** (`book_discovers_chapters_with_parts_numbering_and_chrome`,
+> `book_chapter_scopes_float_numbers_across_chapters`,
+> `demo_book_logo_brands_both_the_topbar_and_the_chapter_drawer`,
+> `a_site_page_prefers_its_authored_title_then_its_leading_h1`), plus dedicated files in
+> `xref_cell_label_targets.rs`, `search.rs`, `lsp_stdio.rs` and
+> `parallel_build_determinism.rs`. Every other book is hardcoded the same way:
+> `analyst.rs`, `tarn.rs` and `descent.rs` each join their directory by name. The sweeps do
+> iterate, but they are not the only coverage, which is what the premise assumed. **Wave 12's
+> declination stands, for a better reason than it gave:** the floor is not machinery whose
+> only job is to forbid a future cut, it is machinery duplicating a guard that already fires.
+
+**~~Before starting R6, add the floor the campaign deferred.~~** `crates/core/tests/corpus.rs`
 has **no assertion that any book exists**; its sweeps iterate over whatever is there, so
 deleting `corpus/demo-book` would silently vacate three named tests. Wave 12 declined the
 floor because *"a floor whose only job is to forbid a future cut is machinery this campaign
@@ -655,7 +669,7 @@ is removing"* — correct then, expired now that the campaign is over. One asser
 
 | # | What | ~Lines | Note |
 |---|---|---|---|
-| **R6-1** | `docs/superpowers/` — 97 tracked files of dated plans and specs | **35,585** | Design archive for features mostly cut, exempt from every drift gate. Larger than any wave of the campaign except wave 5, and none of it is product. Measured, not estimated. |
+| ~~**R6-1**~~ | ~~`docs/superpowers/`~~ — **LANDED 2026-08-09**, see below | **35,585** | Design archive for features mostly cut, exempt from every drift gate. Larger than any wave of the campaign except wave 5, and none of it is product. Measured, not estimated. |
 | **R6-2** | The codeLens provider, whole | 520 | Half-removed: ships an empty command string on the wire. Deleting it retires an advertised provider, so `the_initialize_handshake_advertises_…` and the `extending.tmd` capability table both move in the same commit. |
 | **R6-3** | The VS Code e2e suite | 1,054 | **Verified: nothing runs it.** `gates.sh` runs `npm test`; the e2e sits behind `test:e2e`, invoked by no script, hook or workflow. `notes/2026-08-02` already recorded this. |
 | **R6-4** | 15 hand-written tombstones in `retired_names.rs` | 429 | Pre-rule stock; wave 1 made retirements derived and these were never converted. |
@@ -668,18 +682,64 @@ is removing"* — correct then, expired now that the campaign is over. One asser
 | **R6-11** | `RenderedDoc::body_text()` and the unreachable half of `render/text.rs` | ~500 | Audit finding 10. **Zero production callers** — the only two callers of `text::project` are `body_text` itself and one inside a `#[cfg(test)]` module. Both consumers its doc comment names are gone: `site/llms.rs` (wave 4) and the `read` verb (wave 2); the Cmd-K index uses the independent `render::indexable_text`. Invisible to clippy because `RenderedDoc` is re-exported from `lib.rs`. **Ordering rule applies:** `crates/core/tests/text_projection.rs`, `tests/snapshots/text-projection.txt` and `corpus/reader/text-projection.tmd` die in the same commit. Keep `decode`/`decode_numeric`/`indexable_text`; `render/mod.rs:2872 strip_tags_block_separated` goes too (its only caller is inside the dead subtree). |
 | **R6-12** | Nine smaller items | ~1,100 | Dead validators, the cgroup-v2 container-memory walk, `csl:`, one of `preview`'s two port spellings, two corpus projects, the Cmd-K palette *actions*, `TALIESIN_CELL_TIMEOUT` (**sequence after R2**, which changes the interrupt story). |
 
+### R6-1 — LANDED 2026-08-09, `cut/r6-1-plan-archive`
+
+97 tracked files (22 plans, 75 specs), **35,585 lines, 2,813,883 bytes**. The 1,129,527-byte
+`2026-07-03-quarto-design-decisions-catalog.md` was 40% of it on its own. Gate green either
+side (10 gates).
+
+- **No shipped document referenced it.** `docs/guide`, `docs/internals`, `site/`, `corpus/`,
+  `README.md` and `CLAUDE.md` are all clean, which is why this is the largest item in the plan
+  and also the lowest-risk.
+- **Six live references were fixed in the same commit**, four of them not named in the plan:
+  `retired_names.rs` (the `SKIP_PATHS` entry, its two doc comments, and the assertion —
+  **retargeted at `notes/`, not deleted**, so the path-prefix exemption keeps a live guard
+  instead of becoming vacuous), `stale_docs.rs`'s exclusion comment, and three source comments
+  citing specs that were about to vanish: `preview_diag.rs`, `serve_site/mod.rs` and
+  **`runtime_dirs.rs`**. That last one was missed on the first sweep because the grep output was
+  truncated at 30 lines — a reminder that `| head` on a fallout survey is how a reference
+  survives its subject.
+- **`notes/`'s 34 remaining references were deliberately NOT rewritten.** They are dated
+  records, and this repo's own rule (`stale_docs.rs`, `retired_names.rs`) is that rewriting a
+  dated document to match today's tree destroys the record. They now point into git history,
+  which is where the archive lives. **Two live lists are affected and are the exception worth
+  knowing about:** `ROADMAP.md` (paused) and `FEATURE-IDEAS.md` carry plan pointers that now
+  resolve only in history — a session unpausing either should expect that.
+- **Backlog item 100 was corrected, not overridden.** Its 2026-07-28 "kept, not purged" ruling
+  listed `docs/superpowers/` as part of the public-flip exhibit. That ruling is about *history
+  rewriting* ("the history IS published"), and a `HEAD` deletion leaves every byte in the
+  record, so it does not conflict. Its own line 172 left pruning open, and its line 175 argued
+  for it. Three stale figures in that item were re-measured: 69 files → **97**,
+  `git grep -Il "/home/bogo"` 21 → **14** (all now in `notes/`), and the catalog's byte count.
+
 **Tier 2 — do not act without an explicit ruling.** `notes/`'s 64 July-dated audits
 (18,454 lines; keep `CUT-PROGRESS.md`, the ruling, the playbook and this plan); vendored
 mermaid (~3.9 MB); the vendored PowerShell grammar (1,557); Atom feeds (545).
 
 The two genuine splits, stated so the decision is a decision:
 
-- **Mermaid.** The cut case counts 16 of 18 diagrams inside the two docs books. The keep
-  case notes that the campaign's own read-set definition *includes* those books, so
-  excluding them applies a stricter filter than the rule and turns 10 witness documents into
-  2. On the site path mermaid is external, deferred and content-hashed on 8 of 108 pages.
-  **Do not apply "when close, cut" here** — that tiebreak resolves close calls, and this one
-  turned on a measurement dispute. Land R5-2 first, then re-measure.
+- **Mermaid. RULED KEEP 2026-08-09 by the author, on the re-measurement this bullet asked
+  for.** The re-measure, post-R5-2: the library is **3,565,102 B on disk, not the 3.9 MB the
+  dispute was argued on**, and **971,040 B gzipped**, which is the number that was never taken
+  and the one a reader actually pays. On the site path it is one deferred, content-hashed,
+  shared asset loaded by the pages that have a diagram (5 of 8 in `docs/internals`, 2 of 20 in
+  `docs/guide`); a docs page is 15 KB gzipped beside it. R5-2 saved 44 KB against mermaid's
+  3,572 KB, so **minification moved the arithmetic by 1.2%** and settled nothing, exactly as
+  predicted. 18 diagrams confirmed, 16 in the two books.
+  Three arguments carried the ruling: the cost was overstated 3.7×; the diagrams are not 18
+  fences but **18 figures** carrying `%%| label: fig-*` and referenced through the xref system,
+  so cutting them unpicks cross-references across both books; and every alternative adds more
+  machinery than mermaid removes — `{js}`/d3 has no graph layout (hand-placed coordinates,
+  re-placed on every edit), Python+graphviz puts a system `dot` binary on the critical path of
+  `tools/build-site.sh` with `_freeze` gitignored, and server-side SVG means adopting a layout
+  crate *and* rewriting all 18 diagrams into another syntax.
+  **The prose is stale where the numbers are:** `render/mod.rs:1842` says "~2.8 MB" and
+  `:1849`/`:1871` say "~2.5 MB". Worth one correcting commit.
+  **The residual defect, which is a real and separate wave:** the standalone path inlines the
+  whole library. Measured, one 2-node diagram takes a page from 230,642 B to **3,803,188 B
+  (16.5×)**, and `build <file.tmd> --out <dir>` inlines it too even though that mode's contract
+  already permits sibling assets. Fixing the `--out <dir>` spelling alone would be contained and
+  would leave true single-file `build page.tmd` self-contained.
 - **Atom feeds.** One witness in 110 documents and zero feeds in the composed deploy, but
   that witness is `corpus/tech-blog`, a mirror of a blog the author actually publishes.
   "When close, cut" adjudicates features nobody uses; this one has a user. If it goes, make

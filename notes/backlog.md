@@ -77,8 +77,8 @@ a thing waiting its turn.
   (`corpus/tech-blog/`) is the forward-facing brand, direction **"Marginalia"**; its 14 explicit KEEPs
   live in that file. Every change stays invariant-safe: no CDN, no preview write-back, no new output
   format, offline bundling, `--tali-*` tokens only.
-- **Working method:** branch per item; brainstorm if there's a fork; spec under
-  `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
+- **Working method:** branch per item; brainstorm if there's a fork; a design note under
+  `notes/` if one is worth keeping; implement TDD; verify (cargo + browser via chrome-devtools, or the
   extension harnesses); fast-forward merge locally; **delete the item here when it lands.** Push to
   `origin/main` only when the author asks. **Review subagents get a git worktree or you commit
   first** (a "read-only" reviewer with `Bash` still writes scratch files to your CWD; one ran
@@ -148,8 +148,10 @@ anything client-side, and **delete the item from this file when it lands.**
      than a bad search name** — if the answer is keep, always publish as "Taliesin — the `.tmd` dev
      server" so the disambiguator travels.
 
-100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** See
-     [2026-07-28-public-flip-audit-design.md](../docs/superpowers/specs/2026-07-28-public-flip-audit-design.md).
+100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** The
+     design spec was deleted with `docs/superpowers/` on 2026-08-09 (R6-1) and lives in git
+     history; the findings it produced are in
+     [2026-07-28-public-flip-audit.md](2026-07-28-public-flip-audit.md).
      The ruling threads the needle both earlier routes missed: **the history IS published** (the
      single-author commit record is the evidence a grant applicant wants), and `git rm` in a new
      commit leaves a file in every commit that ever held it. Mechanism: relocate the purged docs to
@@ -158,8 +160,11 @@ anything client-side, and **delete the item from this file when it lands.**
      `AJBogo9/taliesin` and push the rewritten history there. No force-push, no destructive remote
      op, and the private blobs never reach the public repo at all. Zero forks and never having been
      public is what makes it cheap.
-     **Kept, not purged:** security audits, `.claude/`, `docs/superpowers/`, `AGENTS.md`,
-     `LESSONS.md` — for the stated goal those are the exhibit. **Purged:** money and strategy
+     **Kept, not purged:** security audits, `.claude/`, `LESSONS.md` — for the stated goal those
+     are the exhibit. (`AGENTS.md` and `docs/superpowers/` were on this list and have since been
+     deleted from `HEAD` by the cut campaign — wave 2 and R6-1. That does not reopen the ruling:
+     "kept" meant *not rewritten out of history*, and the history is what gets published.)
+     **Purged:** money and strategy
      documents only (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both git-**tracked**
      while their own headers say they must not be), plus ~11 commit subjects that name them.
      **Execution status: NOT STARTED, and not to be started without a separate instruction.** Phase 1
@@ -169,10 +174,12 @@ anything client-side, and **delete the item from this file when it lands.**
      - The spec's own D-checks, including the provenance check on corpus documents.
      - **Whether tags travel to the new public repo** (five local MIT tags were deleted on
        2026-07-28; none had ever been pushed).
-     - **Whether to prune `notes/` + `docs/superpowers/`.** Scale, measured: `git ls-files notes/` =
-       63, `docs/superpowers` = 69, and the largest is
-       `2026-07-03-quarto-design-decisions-catalog.md` at **1,129,387 bytes** of adversarial
-       self-critique sitting under `docs/`, which a visitor reads as "the manual".
+     - **Whether to prune `notes/`.** Half-answered: `docs/superpowers/` was deleted on 2026-08-09
+       (R6-1, 97 files / 35,585 lines / 2.8 MB), which took the worst of it — the 1,129,527-byte
+       `2026-07-03-quarto-design-decisions-catalog.md`, adversarial self-critique sitting under
+       `docs/`, where a visitor reads it as "the manual". `notes/` is not under `docs/` and has no
+       such misreading, so its 97 tracked files are a separate call. The remediation plan files it
+       as tier 2, needing an explicit ruling.
      - **A procedure collision to fix in the same change:** `***REMOVED***
        (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
        `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
@@ -186,9 +193,10 @@ anything client-side, and **delete the item from this file when it lands.**
        `--invert-paths` than to string-match. D4 (secrets) and D8 (tone) came back **empty**, with
        what was searched enumerated so an empty dimension is distinguishable from an unrun one.
        The reversible half was applied the same day; what is left is the irreversible half only.
-     - **`git grep -Il "/home/bogo"` → 21 files** (re-measured 2026-08-05; the filed 11 was
-       2026-07-28, so it has grown, not shrunk). Concentrated in `docs/superpowers/plans/` and
-       `notes/` audit reports. Low impact (the username is public via git author metadata) but it is
+     - **`git grep -Il "/home/bogo"` → 14 files** (re-measured 2026-08-09 after R6-1; it was 21 on
+       2026-08-05 and 11 on 2026-07-28). All 14 are now in `notes/`, the `docs/superpowers/plans/`
+       half having gone with the archive. Low impact (the username is public via git author
+       metadata) but it is
        the failure mode `LESSONS.md` warns about.
      - **Phase 2's tooling prerequisite is discharged:** `git-filter-repo` 2.47.0 is installed at
        `~/.local/bin/git-filter-repo` (verified 2026-08-05). The audit's prerequisite table and the
