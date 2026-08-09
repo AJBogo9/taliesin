@@ -150,6 +150,44 @@ fn contributing_wires_the_hooks_path_and_points_at_the_gate_script() {
     );
 }
 
+/// `gates.sh` advertises itself as the ONE script that runs every gate, and CLAUDE.md
+/// instructs every session to trust it. Two gates the cut campaign ADDED (wave 9's document
+/// gate, wave 11's composition gate) landed only in `.githooks/pre-push`, so the script was
+/// green while covering 8 of 10. Nothing compared the two lists. This does.
+///
+/// The hook keeps running them too, deliberately: it is the only gate that runs
+/// automatically, and `gates.sh` is manual. So this test pins the pair rather than the
+/// script alone — a command in either file and not the other is the drift it catches.
+#[test]
+fn every_pre_push_command_is_also_run_by_the_gate_script() {
+    let hook = read(".githooks/pre-push");
+    let gates = read("tools/gates.sh");
+
+    // The load-bearing invocations, spelled as they appear in the hook.
+    const REQUIRED: &[&str] = &["--check-only", "build-site.sh"];
+
+    let mut checked = 0usize;
+    for needle in REQUIRED {
+        assert!(
+            hook.contains(needle),
+            "{needle} is no longer in the pre-push hook; if it was deliberately \
+             removed, remove it from REQUIRED here too"
+        );
+        assert!(
+            gates.contains(needle),
+            "`.githooks/pre-push` runs `{needle}` and `tools/gates.sh` does not, \
+             so `gates.sh` reports PASSED while covering less than the hook"
+        );
+        checked += 1;
+    }
+    // Anti-vacuity: measured at 2 on 2026-08-09. A rewrite that empties REQUIRED
+    // must fail here rather than pass silently.
+    assert!(
+        checked >= 2,
+        "the cross-check collected {checked} commands, expected >= 2"
+    );
+}
+
 /// Every canary the script names still exists. The script's proof that (say) the Python
 /// kernel ran is `grep 'test kernel_executes_state_errors_and_interrupts_runaway_cell ...
 /// ok'`; rename that test and the proof becomes an assertion about a name nothing emits.

@@ -332,14 +332,27 @@ where standard runners are free. Do not credit it for a check until then.
 **`./tools/gates.sh` runs every gate in one process and refuses to be green unless
 every one of them actually ran.** That is the point of it: the gates below *skip
 silently* when their interpreter is absent, so a plain `cargo test` can be green and
-mean almost nothing. The script arms all four `TALIESIN_REQUIRE_*` variables, asserts
-by name that each interpreter's canary test printed `... ok`, and treats a single
-ignored test as a failure. Reach for it instead of running these by hand: the
-live-kernel suites (Python and R, via `TALIESIN_REQUIRE_KERNEL` / `TALIESIN_REQUIRE_R`),
-the headless-Chrome reactive-client path (`TALIESIN_REQUIRE_CHROME`), the two `tsc`
-type-checks above, the VS Code companion's offline TextMate grammar test, and
-`cargo audit` / `cargo deny check` (`deny.toml` is still the policy) on any
-dependency change. Never call one of these verified without its output.
+mean almost nothing. The script arms **both** `TALIESIN_REQUIRE_*` variables
+(`TALIESIN_REQUIRE_KERNEL` and `TALIESIN_REQUIRE_NODE` — it armed four until wave 6 cut
+the `{r}` cell language and the headless-Chrome driver, and nothing is left for those two
+to gate), asserts by name that each interpreter's canary test printed `... ok`, and treats
+a single ignored test as a failure. Reach for it instead of running these by hand: the
+live-kernel suite (Python, `TALIESIN_REQUIRE_KERNEL`), the Node-backed reactive
+live-region test (`TALIESIN_REQUIRE_NODE`), the two `tsc` type-checks above, the VS Code
+companion's offline TextMate grammar test, `cargo audit` / `cargo deny check`
+(`deny.toml` is still the policy) on any dependency change, and **the two document gates
+the pre-push hook also runs** (`build docs/guide --check-only` and
+`tools/build-site.sh --check`). Never call one of these verified without its output.
+
+**It runs TEN gates and prints the count.** It ran eight while this paragraph claimed all
+of them, for two waves: the document gate (wave 9) and the composition gate (wave 11) were
+wired into `.githooks/pre-push` and never added here, because neither can *skip* and so
+neither looked like this script's problem. An absent gate hollows out "runs every gate"
+exactly as completely as a skipped one, and more quietly, since there is no `SKIPPED` line
+to read. `gate_script.rs`'s `every_pre_push_command_is_also_run_by_the_gate_script` now
+compares the script's list against the hook's on every run. The hook keeps running both
+too — it is the only gate that runs automatically and this script is manual, so the two
+are a pair, not a move.
 
 ## Conventions
 

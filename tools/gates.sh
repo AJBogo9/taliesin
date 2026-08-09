@@ -13,6 +13,14 @@
 # both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
 # and neither is silently optional — there is nothing left for them to gate.
 #
+# **TEN gates as of 2026-08-09.** It ran eight until then, while claiming all of them:
+# the document gate (wave 9) and the composition gate (wave 11) were wired into
+# `.githooks/pre-push` and never added here, because neither can skip and so neither
+# looked like this script's problem. A gate that is simply ABSENT from the list hollows
+# a "runs every gate" claim out just as completely as a gate that skipped, and it does it
+# more quietly, because there is no SKIPPED line to read. The cross-check that stops the
+# next one lives in `crates/core/tests/gate_script.rs`.
+#
 #   ./tools/gates.sh                  run every gate; a missing prerequisite is a failure
 #   ./tools/gates.sh --allow-missing  run what you can; the verdict is INCOMPLETE, exit 2
 #
@@ -36,8 +44,8 @@
 #
 # `crates/core/tests/gate_script.rs` pins this file against the tree: every
 # TALIESIN_REQUIRE_* variable the Rust sources read must be set here, and every canary
-# test named here must still exist. Renaming a canary breaks that test, not this script
-# silently.
+# test named here must still exist, and every command `.githooks/pre-push` runs must appear
+# here too. Renaming a canary breaks that test, not this script silently.
 
 set -u
 set -o pipefail
@@ -305,6 +313,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 9-10. The two DOCUMENT gates: this project's own manual, and the composed deploy.
+#
+# Neither needs an interpreter, which is the whole reason they went missing here. A
+# gate that cannot skip has nothing to prove to this script, so wave 9 wired the
+# document gate and wave 11 the composition gate straight into `.githooks/pre-push`
+# and neither was added here — after which this script printed PASSED while running
+# 8 of the repo's 10 enforced gates, and CLAUDE.md told every session to trust it.
+# That is the same hollowing-out the header describes, arriving from the opposite
+# direction: not a gate that skipped, but a gate that was never listed.
+# `crates/core/tests/gate_script.rs` now compares the two lists on every run.
+#
+# The hook keeps running both. It is the only gate that runs automatically and this
+# script is manual, so the two are a pair, not a move.
+#
+# DEBUG profile on purpose: the clippy and test gates above have already built the
+# workspace, so these cost a link rather than a second full build (the hook records
+# the same reasoning at its step 4). `--check-only` renders in memory and writes
+# nothing; `--no-exec` is what keeps both of them kernel-free.
+# ---------------------------------------------------------------------------
+run_gate "build docs/guide --check-only" docs-guide.log \
+    cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+
+run_gate "tools/build-site.sh --check" build-site.log ./tools/build-site.sh --check
+
+# ---------------------------------------------------------------------------
 # Verdict
 # ---------------------------------------------------------------------------
 echo
@@ -324,5 +357,8 @@ if [ ${#SKIPPED[@]} -gt 0 ]; then
     yellow "Install the missing prerequisites and re-run without --allow-missing."
     exit 2
 fi
-green "PASSED — every gate ran and passed."
+# The count is part of the verdict, not decoration: this script ran 8 gates while
+# claiming 10 for two waves, and a bare "every gate passed" is exactly as reassuring at
+# either number. Read it against the ten stanzas above.
+green "PASSED — every gate ran and passed (${#PASSED[@]} gates)."
 exit 0
