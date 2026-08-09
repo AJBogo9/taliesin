@@ -45,6 +45,15 @@ struct SiteApp {
     build_tx: mpsc::UnboundedSender<BuildMsg>,
     /// The bypass lane for pages that need no kernel (AP3-1). See [`SiteApp::queue_build`].
     fast_tx: mpsc::UnboundedSender<BuildMsg>,
+    /// The OS pid of the code cell executing right now, or 0 when none is.
+    ///
+    /// Written by the executors the builder's [`ExecPool`] hands out; read here, on the
+    /// websocket task. It exists because those two tasks are not the same task: "Restart
+    /// kernel" arrives while the builder is blocked awaiting the very build it means to
+    /// abort, and the builder is serial, so queueing alone can never reach a running cell
+    /// (audit finding 01). Signalling is [`crate::kernel::interrupt_pid`] — SIGINT, which
+    /// ends the cell and leaves the warm kernel and every prior cell's state alive.
+    interrupt: Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl SiteApp {
@@ -388,6 +397,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         }),
         build_tx,
         fast_tx,
+        interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
     });
 
     spawn_builder(app.clone(), build_rx);
@@ -890,6 +900,16 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                 Some(Ok(Message::Text(t))) => {
                     // The dev menu's "Restart kernel" action restarts this page's kernel.
                     if is_restart_kernel(t.as_str()) {
+                        // SIGINT the running cell BEFORE queueing, or the Restart waits
+                        // behind the very build it is meant to abort: the builder is
+                        // serial and awaits each page to completion, so the queued message
+                        // is not read until the runaway cell has already finished (audit
+                        // finding 01). A pid of 0 means nothing is executing, and the
+                        // queued Restart alone is then the whole action.
+                        let pid = app.interrupt.load(std::sync::atomic::Ordering::SeqCst);
+                        if pid != 0 {
+                            crate::kernel::interrupt_pid(pid);
+                        }
                         let _ = app
                             .build_tx
                             .send(BuildMsg::Restart(rel.clone()));
@@ -962,7 +982,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             let s = project.site.lock();
             crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
         };
-        let mut pool = ExecPool::new(project.dir.join("_freeze"), py);
+        let mut pool = ExecPool::new(project.dir.join("_freeze"), py, app.interrupt.clone());
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => {
@@ -1001,6 +1021,53 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
             }
         }
     });
+}
+
+/// On a page's FIRST build, put the pre-exec body on screen instead of leaving the reader
+/// on a blank one until every cell has finished.
+///
+/// **The defect this closes (audit finding 02).** `build_page` renders the markdown, then
+/// awaits `exec.run` for ALL cells, and only then publishes. A page the websocket reaches
+/// before any build has state allocated by `client_conn` with no blocks in it, so the
+/// opening snapshot is a `full_render` over an empty doc: measured at 20 s of bare navbar
+/// on a page with one 25 s cell, with no spinner and no status, while the prose that needed
+/// no kernel at all sat rendered in memory one statement above the await. Wave 11 recorded
+/// the accepted cost of the warm-pool cut as "a `warming-kernel` state on the first cell";
+/// what shipped was no state at all.
+///
+/// **Only on a first build.** A warm edit already has a body on screen, and a second full
+/// publish there would flash it away and back for nothing.
+///
+/// The cells go out as source, which is exactly what `--no-exec` already publishes, so the
+/// shape is supported end to end. The post-exec publish is untouched, and the diff between
+/// the two is what turns each cell's source into its output — `build_page` bumps the render
+/// generation on that diff, which is the re-mount the client is already told to expect.
+fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks: &[Block]) {
+    if project
+        .pages
+        .lock()
+        .get(rel)
+        .is_some_and(|ps| !ps.doc.blocks.is_empty())
+    {
+        return; // a body is already on screen: this is a rebuild, not a first paint
+    }
+    // Finished exactly as the post-exec publish finishes them (numbering, cross-refs,
+    // listing expansion), so this paint is the `--no-exec` render of the page rather than a
+    // half-resolved one showing raw `@fig-` text. These warnings are recomputed against the
+    // executed blocks below and are discarded here.
+    let mut pre = blocks.to_vec();
+    let mut discarded = Vec::new();
+    {
+        let site = project.site.lock();
+        site.finish_blocks(page, &mut pre, &mut discarded);
+    }
+    let mut pages = project.pages.lock();
+    let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
+        doc: PageDoc::default(),
+        tx: broadcast::channel(256).0,
+    });
+    ps.doc.blocks = pre;
+    let _ = ps.tx.send(full_render_json(&ps.doc));
 }
 
 /// Whether a rendered page needs no kernel, and so belongs on the bypass lane (AP3-1).
@@ -1134,6 +1201,7 @@ async fn build_page(
     );
     let mut exec = exec;
     if let Some(exec) = exec.as_mut() {
+        publish_pre_exec_body(project, rel, &page, &doc.blocks);
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
@@ -1813,6 +1881,108 @@ mod project_tests {
     //! The per-page routing seam, pinned without a `Site`/kernel; the live wiring on top
     //! is browser-verified (no live-HTTP harness).
     use super::*;
+
+    /// A first build must put the page on screen BEFORE it waits for the kernel.
+    ///
+    /// `build_page` renders the markdown, then awaits `exec.run` for ALL cells, and only
+    /// then publishes. A page reached over the websocket has no state yet, so its opening
+    /// snapshot is a `full_render` over an EMPTY doc and the reader watches a bare navbar
+    /// for as long as the slowest cell takes — measured at 20 s on a page with one 25 s
+    /// cell, no spinner, no status, while the prose that needs no kernel at all sat
+    /// rendered in memory (audit finding 02, 2026-08-09).
+    ///
+    /// Driven through the broadcast channel rather than a real socket: the channel IS the
+    /// publish mechanism and the websocket is a pipe onto it, and this crate has no
+    /// live-HTTP harness (backlog item 10; wave 6 removed the browser net). Gated on a
+    /// live kernel, because the defect only exists when a cell actually takes time.
+    #[test]
+    fn a_first_build_publishes_the_body_before_the_cells_finish() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the pre-exec publish; this run did not."
+            );
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-preexec-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        // The sleep must outlast the assertion deadline below by enough that "published
+        // early" and "published at the end" cannot be confused for one another.
+        //
+        // The marker is CONCATENATED in the cell rather than written as one literal: a
+        // pre-exec publish renders the cell as source, so a plain `print('CELL-OUTPUT')`
+        // would put the needle on screen in the very paint that is supposed to prove the
+        // output is absent, and the test would fail against a correct implementation.
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Slow\n---\n\nPROSE-BEFORE-THE-KERNEL\n\n\
+             ```{python}\nimport time\ntime.sleep(8)\nprint('CELL' + '-' + 'OUTPUT')\n```\n",
+        )
+        .unwrap();
+
+        let site = taliesin_core::site::Site::discover(&dir);
+        let (tx, mut rx) = broadcast::channel(256);
+        let mut pages = HashMap::new();
+        // Exactly what `client_conn` allocates for a page the websocket reaches first:
+        // a live channel over a doc with no blocks at all.
+        pages.insert(
+            "index.tmd".to_string(),
+            PageState {
+                doc: PageDoc::default(),
+                tx,
+            },
+        );
+        let project = Arc::new(Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(pages),
+            scope: None,
+        });
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let py = {
+                let s = project.site.lock();
+                crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
+            };
+            let mut pool = ExecPool::new(
+                dir.join("_freeze"),
+                py,
+                Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            );
+            let p = project.clone();
+            let build =
+                tokio::spawn(async move { build_page(&p, "index.tmd", Some(&mut pool)).await });
+
+            let body = tokio::time::timeout(std::time::Duration::from_secs(4), async {
+                loop {
+                    let m = rx.recv().await.expect("the page channel stays open");
+                    if m.contains("PROSE-BEFORE-THE-KERNEL") {
+                        return m;
+                    }
+                }
+            })
+            .await
+            .expect("the body must reach the client before the cell finishes");
+
+            assert!(
+                !body.contains("CELL-OUTPUT"),
+                "this is the PRE-exec publish, so the cell is still source here: {body}"
+            );
+            build.await.unwrap();
+        });
+
+        // …and the finished build still carries the output, so the early publish added a
+        // paint rather than replacing one.
+        let final_body = project.pages.lock()["index.tmd"].doc.body_html();
+        assert!(
+            final_body.contains("CELL-OUTPUT"),
+            "the post-exec publish must still splice the output in: {final_body}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // dos-pages: only a key the site actually resolves may reach the `PageState`
     // allocation. Everything else must come back `None`, which the ws handler refuses —

@@ -409,6 +409,11 @@ pub struct Executor {
     /// onto each `build-state` so a multi-page client knows which page it's about.
     /// `None` for the single-doc server.
     page: Option<String>,
+    /// The OS pid of the kernel running the CURRENT cell, or `0` when no cell is
+    /// executing. Written here around each cell, read by whoever else holds the `Arc` —
+    /// in practice the dev server's websocket task, which is not blocked while this one
+    /// is. See [`Executor::set_interrupt_handle`]. `None` (the default) publishes nothing.
+    interrupt: Option<Arc<std::sync::atomic::AtomicU32>>,
 }
 
 impl Executor {
@@ -457,6 +462,7 @@ impl Executor {
             work_dir: None,
             sink: None,
             page: None,
+            interrupt: None,
         }
     }
 
@@ -471,6 +477,21 @@ impl Executor {
     pub fn set_progress(&mut self, sink: ProgressSink, page: Option<String>) {
         self.sink = sink;
         self.page = page;
+    }
+
+    /// Publish the currently-executing kernel's pid on `handle`, so an interrupt can be
+    /// raised from OUTSIDE the run loop.
+    ///
+    /// The silence cap interrupts from inside its own polling loop and needs no handle;
+    /// this exists for the caller that is not in that loop. The dev menu's "Restart
+    /// kernel" arrives on the websocket task while the builder task is blocked in
+    /// [`Executor::run`], and the builder is serial — so before this, the restart queued
+    /// behind the very build it was meant to abort and did nothing (audit finding 01).
+    ///
+    /// The handle carries `0` whenever no cell is executing. A `&mut self` setter (not a
+    /// consuming builder) so a pooled `&mut Executor` can be given one.
+    pub fn set_interrupt_handle(&mut self, handle: Arc<std::sync::atomic::AtomicU32>) {
+        self.interrupt = Some(handle);
     }
 
     /// Override the interpreters this executor runs, with their
@@ -1205,13 +1226,22 @@ impl Executor {
         page: Option<&str>,
     ) -> String {
         // Cloned before the kernel borrow so the callback can emit while `self` is
-        // mutably borrowed by `execute_streaming`.
+        // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
+        // same reason: it is read back after the borrow ends.
         let sink = self.sink.clone();
+        let interrupt = self.interrupt.clone();
         let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
         let Some(kernel) = self.langs.get_mut(lang).and_then(|s| s.kernel.as_mut()) else {
             return String::new(); // kernel unavailable: cell renders as source
         };
+        // Publish the pid BEFORE the await, clear it after: for the whole window in which
+        // this task is blocked, someone else can find the process to signal. Outside that
+        // window the handle reads 0, so a late request cannot SIGINT a pid the OS has
+        // since recycled onto an unrelated process.
+        if let (Some(h), Some(pid)) = (&interrupt, kernel.running_pid()) {
+            h.store(pid, std::sync::atomic::Ordering::SeqCst);
+        }
         // Mirrors the list the browser is building, so each arriving output becomes
         // either a new element or a redraw of the last one. Same rule the final
         // `render_outputs` applies, by construction: both go through `LiveOutputs`.
@@ -1236,6 +1266,9 @@ impl Executor {
                 );
             })
             .await;
+        if let Some(h) = &interrupt {
+            h.store(0, std::sync::atomic::Ordering::SeqCst);
+        }
         match result {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
@@ -1815,6 +1848,84 @@ mod tests {
         assert!(
             ex.diagnostic().is_none(),
             "no_exec is deliberate, not a kernel failure -> no diagnostic"
+        );
+    }
+
+    /// The dev menu's "Restart kernel" must be able to reach a cell that is ALREADY
+    /// RUNNING. Before this it could not: the request was queued on the build channel
+    /// behind the very build it meant to abort — the builder is serial and awaits each
+    /// page to completion — so it was a no-op in exactly the situation it exists for
+    /// (audit finding 01, 2026-08-09). With `TALIESIN_CELL_SILENCE` at its 600 s default,
+    /// killing the server was the only recovery.
+    ///
+    /// What this pins is the SIDE CHANNEL, not the signal. `interrupt_pid` is already
+    /// proven by the silence cap's canary in `kernel.rs`; what did not exist was any way
+    /// for a running kernel's pid to reach a caller OUTSIDE the task blocked in `run`.
+    ///
+    /// Gated on a live kernel, like every other kernel-exercising test in this module.
+    #[tokio::test]
+    async fn an_interrupt_from_outside_the_run_loop_stops_the_running_cell() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the out-of-loop interrupt; this run did not."
+            );
+            return;
+        }
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        // `std::env::temp_dir()` + pid, the idiom the rest of this crate's in-file tests
+        // use; `tempfile` is not a dev-dependency here and this needs no new one.
+        let marker =
+            std::env::temp_dir().join(format!("tali-interrupt-{}-started", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let interrupt = Arc::new(AtomicU32::new(0));
+
+        let mut ex = Executor::new();
+        ex.set_interrupt_handle(interrupt.clone());
+
+        // Cell 2 announces itself by writing a file from INSIDE its own body, and the
+        // interrupt fires on that file appearing. Deliberately NOT a timer: the sibling
+        // interrupt test was de-flaked on 2026-08-09 (`e5026594`) after a sleep-based
+        // window accused the SIGINT path of a fault that was really test ordering.
+        let blocks = vec![
+            python_cell_block_with("b-1", "warm = 41"),
+            python_cell_block_with(
+                "b-2",
+                &format!(
+                    "open(r'{}', 'w').close()\nimport time\ntime.sleep(120)",
+                    marker.display()
+                ),
+            ),
+        ];
+
+        let run = tokio::spawn(async move { ex.run(blocks).await });
+
+        while !marker.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        // Published by the executor around each cell; 0 means "no cell is executing".
+        let pid = interrupt.load(Ordering::SeqCst);
+        assert_ne!(pid, 0, "the executor must publish the running kernel's pid");
+        crate::kernel::interrupt_pid(pid);
+
+        let out = tokio::time::timeout(std::time::Duration::from_secs(30), run)
+            .await
+            .expect("the interrupt must end the run well inside cell 2's 120 s sleep")
+            .unwrap();
+
+        let _ = std::fs::remove_file(&marker);
+        let html: String = out.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            html.contains("KeyboardInterrupt") || html.contains("interrupt"),
+            "the interrupted cell reports the interrupt: {html}"
+        );
+        // The handle is left clean, so a later request cannot SIGINT a stale pid — which
+        // by then may belong to an unrelated process.
+        assert_eq!(
+            interrupt.load(Ordering::SeqCst),
+            0,
+            "the executor must clear the pid once no cell is running"
         );
     }
 

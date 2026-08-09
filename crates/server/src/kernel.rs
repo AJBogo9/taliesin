@@ -1057,15 +1057,38 @@ impl Kernel {
             interrupt_pid(pid);
         }
     }
+
+    /// This kernel process's OS pid, while it is alive.
+    ///
+    /// Exists so an interrupt can be raised from OUTSIDE the task that owns this kernel.
+    /// [`Kernel::interrupt`] is reachable only from the polling loop, which is precisely
+    /// the code that is blocked for as long as a runaway cell runs — so the one caller
+    /// that most needs to interrupt is the one caller that cannot. The executor publishes
+    /// this pid on an `AtomicU32` around each cell (`Executor::set_interrupt_handle`) and
+    /// the dev server's websocket task reads it there.
+    ///
+    /// An accessor of this shape existed as `Kernel::pid()` until wave 13 deleted it, on
+    /// the correct observation that it then had no caller. This is that caller.
+    pub(crate) fn running_pid(&self) -> Option<u32> {
+        self.proc.id()
+    }
 }
 
 /// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
 /// `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both honour it).
 ///
-/// Free-standing, and the single implementation of "interrupt a kernel". Its one caller is
-/// the silence/wall-clock cap inside the polling loop; it stays a named function because the
-/// non-Unix no-op is the part that must not be duplicated, and because the whole value of the
-/// feature is the answer it encodes: an interrupt kills the cell, not the kernel.
+/// Free-standing, and the single implementation of "interrupt a kernel". It stays a named
+/// function because the non-Unix no-op is the part that must not be duplicated, and because
+/// the whole value of the feature is the answer it encodes: an interrupt kills the cell,
+/// not the kernel.
+///
+/// **Two callers, distinguished by where they are standing.** The silence/wall-clock cap
+/// calls it from INSIDE the polling loop, having watched the cell go quiet, and reaches the
+/// pid through `&self`. The dev server's websocket task calls it from OUTSIDE that loop,
+/// on the reader's "Restart kernel", and cannot reach `&self` at all — the builder task
+/// owns the executor and is blocked in it. That caller reads the pid off the `AtomicU32`
+/// the executor publishes ([`Kernel::running_pid`], `Executor::set_interrupt_handle`).
+/// Both raise the same signal on the same process; only the vantage point differs.
 ///
 /// Unix-only; a no-op elsewhere (the cap still ends its own wait).
 pub(crate) fn interrupt_pid(pid: u32) {

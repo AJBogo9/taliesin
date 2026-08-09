@@ -165,6 +165,13 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 - **The warm pool is GONE (wave 11) and the accepted cost is recorded in that wave's log**:
   a `warming-kernel` state on the first cell of every fresh code-cell page in preview, and
   again on any page evicted past `MAX_WARM_PAGES = 6`.
+  **CORRECTED 2026-08-09 (wave R2): that is not what shipped.** A `warming-kernel` state is
+  a *state on a page*, and on a first build there was no page to put it on — `build_page`
+  published nothing at all until every cell had finished, so a page the websocket reached
+  before its first build showed a bare navbar for the length of its slowest cell (measured:
+  20 s on a 25 s cell, no spinner, no status). The accepted cost was therefore understated:
+  it was not a label on a visible page, it was a blank one. Wave R2 publishes the pre-exec
+  body on a first build, so the cost is now the one this entry describes.
 - **Chrome is GONE from the tree, and there is no automated browser test net at all.**
   Wave 6 deleted `reactive_browser.rs`, `headless_js_feature.rs`, the `headless-js` cargo
   feature and the `chromiumoxide` dependency together. `gates.sh` and `ci.yml` pass no

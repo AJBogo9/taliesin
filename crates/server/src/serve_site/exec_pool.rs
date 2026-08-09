@@ -44,14 +44,25 @@ pub(super) struct ExecPool {
     /// which interpreter runs. `None` (the unit-test `Default`) leaves each executor on
     /// the env/default that `Executor::build` computes, i.e. no override.
     python: Option<crate::interpreter::Resolved>,
+    /// Shared with [`super::SiteApp::interrupt`]: the pid of the cell currently executing
+    /// anywhere in this pool, or 0. Handed to every executor this pool makes, so the
+    /// websocket task can SIGINT a running cell without waiting for the serial builder to
+    /// come back to it. `None` (the unit-test `Default`) publishes nothing.
+    interrupt: Option<Arc<std::sync::atomic::AtomicU32>>,
 }
 
 impl ExecPool {
-    /// A pool whose executors persist their outputs under `freeze_dir`.
-    pub(super) fn new(freeze_dir: PathBuf, python: crate::interpreter::Resolved) -> Self {
+    /// A pool whose executors persist their outputs under `freeze_dir`, publishing the
+    /// running cell's pid on `interrupt`.
+    pub(super) fn new(
+        freeze_dir: PathBuf,
+        python: crate::interpreter::Resolved,
+        interrupt: Arc<std::sync::atomic::AtomicU32>,
+    ) -> Self {
         ExecPool {
             freeze_dir,
             python: Some(python),
+            interrupt: Some(interrupt),
             ..Default::default()
         }
     }
@@ -67,6 +78,9 @@ impl ExecPool {
         let mut ex = ex.in_dir(work_dir);
         if let Some(py) = &self.python {
             ex.set_interpreters(py.clone());
+        }
+        if let Some(h) = &self.interrupt {
+            ex.set_interrupt_handle(h.clone());
         }
         ex
     }
