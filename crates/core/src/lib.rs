@@ -36,7 +36,6 @@ pub mod hash;
 pub mod highlight;
 pub mod includes;
 pub mod math;
-pub mod math_preview;
 mod math_vocab;
 pub mod minify;
 pub mod prose;

@@ -192,15 +192,17 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    no `TAL-*` code catalogue and no `docs/DIAGNOSTICS.md` any more, and a
                    reworded message can no longer silently reclassify a family
   src/lsp*.rs      `taliesin lsp`: the offline, kernel-free LSP server (lsp.rs dispatch +
-                   capabilities; lsp_complete/lsp_nav/lsp_outline/lsp_pos/lsp_memo/
-                   lsp_fold/lsp_lens/lsp_cells/lsp_diag/lsp_project).
-                   ALL editor intelligence lives here, and after wave 10 it is **SEVEN
+                   capabilities; lsp_complete/lsp_nav/lsp_outline/lsp_pos/
+                   lsp_fold/lsp_cells/lsp_diag/lsp_project).
+                   ALL editor intelligence lives here, and since 2026-08-09 it is **SIX
                    read-only providers**: completion, hover, definition, documentSymbol,
-                   codeAction, foldingRange, codeLens (a LABEL since wave 13 cut the verb
-                   its ▶ Run Cell button named: it says `⚡ cached` / `↻ always re-runs` and
-                   carries no command), plus pushed `publishDiagnostics`
-                   and three namespaced extensions (`taliesin/cellRegions`, `siteMap`,
-                   `mathCommands`). **Nothing here writes to a buffer except a code action the author
+                   codeAction, foldingRange, plus pushed `publishDiagnostics`
+                   and two namespaced extensions (`taliesin/cellRegions`, `siteMap`).
+                   `codeLens` was the seventh until wave R6 cut it: wave 13 had already taken
+                   `taliesin run` out from under its ▶ Run Cell button, leaving a bare
+                   `⚡ cached` label shipped as a `Command` with an empty name, and the one
+                   ground on record for keeping it (that `runcell.ts` proved a TypeScript lens
+                   would regrow) was spent — that file had gone with the verb. **Nothing here writes to a buffer except a code action the author
                    explicitly invokes** (`lsp.rs`'s "Change to `X`" quick fix returns a
                    `WorkspaceEdit`, which is the standard LSP contract and is pinned by its
                    own test). The distinction that matters is user-invoked versus
@@ -213,9 +215,10 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    the `diagnostic` pull model gave is `build <dir> --check-only`.
                    stdout is the JSON-RPC wire, so never print to it (use `crate::log`,
                    stderr). `didChange` is COALESCED (a 120 ms window in lsp.rs) because
-                   publishing diagnostics re-walks every page in the project; `lsp_memo`
-                   caches the buffer render keyed on `(uri, text)`, which is why it needs
-                   no invalidation logic. **`$/cancelRequest` is batch-scoped**: the loop
+                   publishing diagnostics re-walks every page in the project. (`lsp_memo`, a
+                   buffer-render cache keyed on `(uri, text)`, went with the code lens in
+                   wave R6: the lens arm was its only consumer, which nothing had noticed.)
+                   **`$/cancelRequest` is batch-scoped**: the loop
                    drains the channel before dispatching, so a request the client withdrew
                    while it was queued is abandoned rather than run; a cancel is matched
                    only against requests in the same batch, and `read_batch` must not read

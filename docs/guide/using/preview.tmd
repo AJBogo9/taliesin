@@ -78,8 +78,6 @@ completion cannot suggest something the validator would reject.
   suggesting it elsewhere would be recommending something that renders no differently.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
-- **Insert Math Symbol** (`Ctrl+Alt+M`) searches the math vocabulary by name, glyph or
-  category, for the symbols you cannot spell well enough to complete.
 - **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
   extension installed. Outside VS Code, wire the same schema up with one comment line
   (see [Configuration](../reference/configuration.tmd)).

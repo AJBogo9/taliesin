@@ -172,10 +172,9 @@ pub(crate) fn interp_identity(lang: &str, program: &Path, version: &str) -> Stri
 }
 
 /// The version line to fold into [`interp_identity`], from a `--version` probe's two streams.
-/// Python prints to stdout, some tools to stderr; take whichever is set. Shared so the
-/// editor's synchronous probe and the executor's async one cannot disagree about the answer
-/// for the same interpreter — which would make the lens report "cached" for keys the
-/// executor would miss on.
+/// Python prints to stdout, some tools to stderr; take whichever is set. This fed the
+/// editor's synchronous interpreter probe as well as the executor's async one until the
+/// cache-status code lens went on 2026-08-09; the executor is the only caller now.
 pub(crate) fn version_line(stdout: &[u8], stderr: &[u8]) -> String {
     let bytes = if stdout.is_empty() { stderr } else { stdout };
     String::from_utf8_lossy(bytes)
@@ -184,58 +183,6 @@ pub(crate) fn version_line(stdout: &[u8], stderr: &[u8]) -> String {
         .unwrap_or("")
         .trim()
         .to_string()
-}
-
-/// One executable cell's freeze key, for a caller that wants to know whether an output
-/// exists without being able to produce one.
-pub(crate) struct CellCacheKey {
-    /// Index into the `blocks` slice this was computed from.
-    pub block_index: usize,
-    pub key: String,
-    /// `#| cache: false` cells are never persisted, so "no entry" is their permanent and
-    /// correct state rather than a cache miss worth reporting.
-    pub cacheable: bool,
-}
-
-/// The freeze key of every executable cell in `blocks`, in document order.
-///
-/// The grouping is the same one [`Executor::run_through`] performs — by [`kernel_lang`], in
-/// document order — and the key is built over the same code with the same
-/// [`freeze::cumulative_hashes`], because the whole value of this function is that its answer
-/// is the executor's answer. `interp_of` is a parameter because the interpreter probe is
-/// async on the execution path and synchronous on the editor's; the *identity format* is
-/// shared through [`interp_identity`] either way.
-pub(crate) fn cell_cache_keys(
-    blocks: &[Block],
-    interp_of: &mut dyn FnMut(&'static str) -> String,
-) -> Vec<CellCacheKey> {
-    let mut by_lang: HashMap<&'static str, Vec<(usize, String, bool)>> = HashMap::new();
-    for (i, b) in blocks.iter().enumerate() {
-        for (cell_block, _) in cells_of(b) {
-            if let Some(c) = &cell_block.cell
-                && let Some(lang) = kernel_lang(&c.lang)
-            {
-                by_lang
-                    .entry(lang)
-                    .or_default()
-                    .push((i, c.code.clone(), c.cache));
-            }
-        }
-    }
-    let mut out = Vec::new();
-    for (lang, cells) in by_lang {
-        let codes: Vec<&str> = cells.iter().map(|(_, code, _)| code.as_str()).collect();
-        let keys = freeze::cumulative_hashes(&interp_of(lang), &codes);
-        for ((block_index, _, cacheable), key) in cells.iter().zip(keys) {
-            out.push(CellCacheKey {
-                block_index: *block_index,
-                key,
-                cacheable: *cacheable,
-            });
-        }
-    }
-    out.sort_by_key(|c| c.block_index);
-    out
 }
 
 /// A code cell pulled out of the block list, with what the engine needs to run
@@ -284,10 +231,10 @@ enum OutTarget {
 /// of its own — but the order is fixed here rather than assumed, so a block that ever
 /// carried both could not reorder a run.
 ///
-/// ONE definition, because two walks have to agree: the executor's, and the editor code
-/// lens's [`cell_cache_keys`]. The freeze key is a cumulative hash over exactly this
-/// sequence, so a lens that enumerated cells differently would confidently report "cached"
-/// for keys the executor would miss on.
+/// ONE definition, and it stays one even though the executor is now its only caller: the
+/// freeze key is a cumulative hash over exactly this sequence, so anything that enumerated
+/// cells differently would key outputs the executor could never restore. The editor code
+/// lens was the second walk this wording was written for, and it went on 2026-08-09.
 fn cells_of(b: &Block) -> impl Iterator<Item = (&Block, OutTarget)> {
     b.cell_blocks().map(move |cb| match cb.id == b.id {
         // The block IS this one: an unfolded top-level cell, whose output becomes its own

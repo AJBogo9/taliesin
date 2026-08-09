@@ -41,7 +41,7 @@ grammar is **AGPL-3.0** and is not used.
 ## Language intelligence: a client over `taliesin lsp`
 
 **The extension implements no language features of its own.** Completion, hover,
-go-to-definition, the outline, folding, the cache-status lens, diagnostics and quick fixes all
+go-to-definition, the outline, folding, diagnostics and quick fixes all
 come from `taliesin lsp`, the offline, kernel-free LSP server built into the binary
 (`crates/server/src/lsp*.rs`) — over stdio. `src/client.ts` is the whole client.
 
@@ -65,9 +65,9 @@ Citation keys are read from the front matter's `bibliography:`.
 unusual reason: KaTeX is *in the binary*, so `math_vocab.rs`'s `every_command_renders` test
 renders every offered command through the same code path a document uses. A command KaTeX
 cannot parse fails the build instead of shipping a suggestion that renders as a red error
-span for the reader. Commands taking arguments insert a snippet (`\frac{$1}{$2}`), and
-**Taliesin: Insert Math Symbol** (`Ctrl+Alt+M`) opens a picker searchable by name, glyph or
-category — because a symbol you cannot spell is not reachable by completion at all.
+span for the reader. Commands taking arguments insert a snippet (`\frac{$1}{$2}`). A
+searchable symbol picker sat beside this until 2026-08-09; what went with it is finding a
+command by its rendered glyph rather than by a prefix of its name.
 
 `contributes.snippets` ships a small set of `.tmd` snippets (`fm`, `cell`, `figcell`, `jscell`,
 `foldcell`, `callout`, `fig`, `include`, `input`). Their bodies are
@@ -82,7 +82,7 @@ Two things the LSP has no concept of:
 - **The live preview + bidirectional source sync** (`server.ts`, `webview.ts`, the
   `openPreview` half of `extension.ts`). It owns a webview, spawns `taliesin preview`, and
   bridges click-to-source.
-- **Editor commands** (`commands.ts`): *Diagnose Setup (doctor)*, *Insert Math Symbol*,
+- **Editor commands** (`commands.ts`): *Diagnose Setup (doctor)*,
   *Restart Language Server*, *Show Language Server Log*.
 
 Plus the parts that are pure manifest: the grammar, the snippets, and
@@ -100,9 +100,9 @@ Plus the parts that are pure manifest: the grammar, the snippets, and
 
 ## Manual verification (the loop the headless tests can't close)
 
-Most of what used to be on this checklist is now covered by `npm run test:e2e`, which drives
-a real Extension Host (see below). What remains is the one thing no headless harness can
-see: the visual round trip *through the live preview iframe*.
+An Extension Host suite covered most of this checklist until 2026-08-09, when it was deleted
+for running under no script, hook or workflow. What is below is the loop that was always
+manual anyway: the visual round trip *through the live preview iframe*.
 
 1. Open `corpus/tech-blog/posts/em-algorithm/index.tmd`. Run **Taliesin: Open Preview**
    (`Ctrl+Shift+K`, the command palette, or the editor-title button).
@@ -131,7 +131,7 @@ preview gestures that mutate the document are not (a drag-to-reorder feature was
 breaking exactly this). See the repo `CLAUDE.md`, "The `.tmd` file is the single editing
 surface".
 
-## Automated verification (three layers)
+## Automated verification (two layers)
 
 1. **Unit + grammar (`npm test`)** — `node:test` for `ports.ts` (free-port pick, HTTP wait),
    `paths.ts` (sourcepos parse, source-file mapping, `isSourceFile`), **`manifest.test.ts`**
@@ -152,21 +152,11 @@ surface".
    same-origin stub iframe so a browser can drive both message directions against the actual
    code (see the script header). Verified: `tali-goto` from the iframe reaches the host;
    `tali-cursor` from the host reaches the iframe.
-3. **Extension Host (`npm run test:e2e`)** — `@vscode/test-electron` downloads a throwaway
-   VS Code and runs `src/e2e/` inside the real Extension Host. This is where the language
-   features are actually proved: a unit test can show the server answers, but only a real
-   host shows VS Code asked it and rendered the reply. It asserts every contributed command
-   registers, that a `.tmd` resolves to the `taliesin` language, that *Open Preview* opens a
-   webview panel, and — all via the language server — that diagnostics arrive located and
-   named, that cell options / div classes / math commands / paths / shortcode names /
-   cell-option values complete (and that math does **not** complete in prose), that an
-   `{{< include >}}` path is painted as a document link and named on hover, and that
-   renaming a cross-reference anchor rewrites its definition and every reference.
-   It needs the locally-built `target/debug/taliesin`. The runner clears
-   `ELECTRON_RUN_AS_NODE` (set in some sandboxes) and passes `--no-sandbox` so VS Code
-   launches headless.
 
-What those three **don't** cover — and what the F5 checklist above is for — is the final
+What neither of those covers — and what the F5 checklist above is for — is the final
 visual round-trip *through the live preview iframe*: cursor-move → the block actually
-highlights, `Ctrl+Alt+J` → the preview scrolls, and Ctrl-click → the editor cursor lands. Layers 2+3 verify each side of
-that bridge independently; F5 confirms them end-to-end in a real editor.
+highlights, `Ctrl+Alt+J` → the preview scrolls, and Ctrl-click → the editor cursor lands.
+An Extension Host suite was a third layer here until 2026-08-09; it proved that VS Code
+really asked the server and rendered the reply, and it went because nothing ran it.
+`@vscode/test-electron` stayed behind: `scripts/ensure-vscode.cjs` is the only thing that uses
+it now, to fetch the VS Code build layer 1 reads its base grammars from.

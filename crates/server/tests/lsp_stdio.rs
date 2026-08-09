@@ -462,76 +462,6 @@ fn folding_ranges_cover_heading_div_fence_and_front_matter() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `textDocument/codeLens` reaches the editor over the real wire, saying what a cell will do.
-///
-/// Answered `-32601` when the 2026-08-07 audit probed the release binary. Until Wave 13 this
-/// pinned a ▶ Run Cell **command**; that verb is gone, so what a lens carries now is a label
-/// with no command, and the contract is where it sits and what it says. Driven with a
-/// `#| cache: false` cell because a fresh cacheable cell is deliberately silent: without it
-/// the provider correctly returns nothing and the test would pass while proving nothing.
-#[test]
-fn code_lens_labels_a_cell_over_the_wire() {
-    let dir = std::env::temp_dir().join(format!("tali-lsp-lens-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("scratch dir");
-    let doc = dir.join("cells.tmd");
-    let text = "---\ntitle: T\n---\n\n# A\n\n```{python}\n#| cache: false\nx = 1\n```\n\n```bash\nls\n```\n";
-    std::fs::write(&doc, text).expect("fixture doc");
-    let uri = format!("file://{}", doc.display());
-
-    let input = format!(
-        "{}{}{}{}{}{}",
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": { "capabilities": {} }
-        })),
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "method": "initialized", "params": {}
-        })),
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "method": "textDocument/didOpen",
-            "params": { "textDocument": {
-                "uri": uri, "languageId": "taliesin", "version": 1, "text": text
-            }}
-        })),
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeLens",
-            "params": { "textDocument": { "uri": uri } }
-        })),
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
-        })),
-        frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
-    );
-    let (code, stdout, stderr) = lsp_session(&input);
-    assert_eq!(code, Some(0), "stderr:\n{stderr}");
-    assert!(
-        !stdout.contains("MethodNotFound"),
-        "codeLens must be handled, not rejected.\nstdout:\n{stdout}"
-    );
-
-    let lenses = response(&stdout, 2);
-    let lenses = lenses.as_array().expect("codeLens returns an array");
-    assert_eq!(
-        lenses.len(),
-        1,
-        "one label per executable cell, and the `bash` fence is not one: {lenses:?}"
-    );
-    // Line 6 (0-based) is the ```{python} fence: the label hangs on the cell it describes.
-    assert_eq!(lenses[0]["range"]["start"]["line"], 6, "{lenses:?}");
-    assert_eq!(
-        lenses[0]["command"]["command"], "",
-        "a label is not a button: naming a command here would give a client something to \
-         invoke that nothing implements: {lenses:?}"
-    );
-    assert!(
-        lenses[0]["command"]["title"]
-            .as_str()
-            .is_some_and(|t| t.contains("always re-runs")),
-        "the label must say what this cell does next run: {lenses:?}"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
 /// A diagnostic reaches the hover over the real wire (backlog item 220).
 ///
 /// The message used to be joined by a catalogued cause + fix for the diagnostic's `TAL-*`
@@ -595,21 +525,20 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     );
 }
 
-/// `taliesin/siteMap` answers where each page of a project is served, and
-/// `taliesin/mathCommands` answers with the symbol picker's table.
+/// `taliesin/siteMap` answers where each page of a project is served.
 ///
-/// Both are Wave 2 re-homings: the companion used to spawn `taliesin map --format json` and
-/// `taliesin vocab` for exactly these two answers, and both verbs went with the
-/// machine-facing cut. The capabilities did not — one decides which chapter the preview
-/// opens at, the other fills the Insert Math Symbol quick-pick — so they moved onto the wire
-/// the companion already holds open. This is what is left of `map_cli.rs`'s coverage, kept
-/// because the answer is load-bearing for the preview and TypeScript must never re-derive it.
+/// A Wave 2 re-homing: the companion used to spawn `taliesin map --format json` for this
+/// answer, and that verb went with the machine-facing cut. The capability did not — it is
+/// what decides which chapter the preview opens at — so it moved onto the wire the companion
+/// already holds open. This is what is left of `map_cli.rs`'s coverage, kept because the
+/// answer is load-bearing for the preview and TypeScript must never re-derive it. It shared
+/// this session with `taliesin/mathCommands` until the symbol picker went on 2026-08-09.
 ///
 /// `corpus/demo-book` pins both halves in one list: `chapters:` fixes the order (the
 /// `.tmd`→`.html` mapping and book numbering that live in Rust), and `appendix.tmd` is
 /// `draft: true`, so a map that leaked it would open the preview at a page no build writes.
 #[test]
-fn site_map_and_math_commands_answer_over_the_wire() {
+fn site_map_answers_over_the_wire() {
     let root = std::fs::canonicalize(format!(
         "{}/../../corpus/demo-book",
         env!("CARGO_MANIFEST_DIR")
@@ -617,7 +546,7 @@ fn site_map_and_math_commands_answer_over_the_wire() {
     .expect("the demo-book fixture exists");
     let uri = format!("file://{}", root.display());
     let input = format!(
-        "{}{}{}{}{}{}",
+        "{}{}{}{}{}",
         frame(serde_json::json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": { "capabilities": {} }
@@ -630,10 +559,7 @@ fn site_map_and_math_commands_answer_over_the_wire() {
             "params": { "uri": uri }
         })),
         frame(serde_json::json!({
-            "jsonrpc": "2.0", "id": 3, "method": "taliesin/mathCommands", "params": null
-        })),
-        frame(serde_json::json!({
-            "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
+            "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null
         })),
         frame(serde_json::json!({ "jsonrpc": "2.0", "method": "exit", "params": null })),
     );
@@ -662,15 +588,5 @@ fn site_map_and_math_commands_answer_over_the_wire() {
             .map(|p| p["url"].clone()),
         Some(serde_json::json!("methods.html")),
         "a chapter's source path must resolve to its url: {map}"
-    );
-
-    let math = response(&stdout, 3);
-    let commands = math.as_array().expect("a mathCommands array");
-    assert!(
-        commands
-            .iter()
-            .any(|c| c["name"] == "\\frac"
-                || c["snippet"].as_str().is_some_and(|s| s.contains("frac"))),
-        "the picker's table came back empty or unrecognizable: {math}"
     );
 }

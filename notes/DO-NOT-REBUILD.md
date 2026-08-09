@@ -151,14 +151,13 @@ branch are enough to find its commits.
     reference is in the list and a just-deleted one is not. Plus `textDocument/selectionRange`
     (`lsp_select.rs`): word → sentence → paragraph → **the folds `foldingRange` already draws** →
     document. Reusing the fold extents is what stops it being a second segmentation.
-  - **217** `textDocument/codeLens` (`lsp_lens.rs`) — ⚡ cached · ↻ always re-runs. The
-    companion's own lens provider is **deleted**. It once carried ▶ Run Cell · Run Above too, and
-    the companion kept the task, the spinner and the completion notice; wave 13 (2026-08-09) cut
-    `taliesin run`, so the buttons named a command nothing could invoke and both they and the
-    companion's task plumbing went with it. What survives is the label, which is the 2026-07-18 DX
-    audit's still-open "make caching legible", computed from `exec::cell_cache_keys` — the
-    executor's own key function, extracted so the lens cannot claim a hit the executor would miss.
-    A lens with an empty command name is how a client is told there is nothing to click.
+  - **217** `textDocument/codeLens` — **CUT WHOLE 2026-08-09 (wave R6); do not rebuild it.** Wave
+    13 cut `taliesin run` out from under its ▶ Run Cell · Run Above buttons, leaving one ⚡ cached
+    label shipped as a `Command` with an empty name, and the ground on record for keeping it —
+    that `runcell.ts` proved a TypeScript lens would regrow in its place — was spent, because that
+    file had already gone with the verb. `exec::cell_cache_keys` was extracted for it and went too.
+    The 2026-07-18 DX audit's "make caching legible" item is **open again**, and the honest place
+    for it is the preview, not the editor.
   - **220** the `check --explain` cause+fix is in the **hover**, merged under the token's own answer.
   - **222** the 3.17 pull model (`lsp_diag.rs`). **Push or pull, never both** — a pull client keeps
     those results in its own collection, so a server doing both doubles every finding. `resultId` is

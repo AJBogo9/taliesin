@@ -19,8 +19,6 @@ mod lsp_cells;
 mod lsp_complete;
 mod lsp_diag;
 mod lsp_fold;
-mod lsp_lens;
-mod lsp_memo;
 mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;

@@ -16,7 +16,7 @@ use std::process::ExitCode;
 
 /// Advertised capabilities: full-text document sync (whole buffer on every change, which maps
 /// 1:1 onto the buffer lint), go-to-definition, document symbols (the heading outline), hover,
-/// completion, quick-fix code actions, folding and code lenses. Seven providers, every one of
+/// completion, quick-fix code actions and folding. Six providers, every one of
 /// them read-only: the `.tmd` file is the single editing surface and the editor is where it is
 /// edited, so nothing here rewrites a buffer on the author's behalf.
 pub(crate) fn server_capabilities() -> ServerCapabilities {
@@ -51,13 +51,6 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ..Default::default()
         }),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
-        // ⚡ cached · ↻ always re-runs, above an executable fence whose answer is not the
-        // ordinary one. A LABEL, carrying no command: wave 13 cut `taliesin run`, and with it
-        // the Run/Run-above actions this lens used to bind. Everything resolves in one pass
-        // (the freeze lookup is a memoized read), so `codeLens/resolve` has nothing to add.
-        code_lens_provider: Some(lsp_types::CodeLensOptions {
-            resolve_provider: Some(false),
-        }),
         ..Default::default()
     }
 }
@@ -213,10 +206,6 @@ fn main_loop(
     let mut docs: std::collections::HashMap<lsp_types::Url, String> =
         std::collections::HashMap::new();
     let mut pending = PendingPublishes::default();
-    // Shared by every request that needs the rendered document (hover's cross-reference
-    // number, inlay hints). Keyed on the buffer text, so it is a hit for as long as the
-    // author is reading rather than typing — which is exactly when these fire in bursts.
-    let mut memo = crate::lsp_memo::RenderMemo::default();
     // Shared by every request that reaches past the open buffer (cross-file definition and
     // hover, workspace symbols, the sidebar's two views). A stat-validated walk, not an index:
     // all of those fire on a user gesture, so re-validating with one `stat` per page is
@@ -323,7 +312,6 @@ fn main_loop(
                     handle_request(
                         connection,
                         &docs,
-                        &mut memo,
                         &mut project,
                         &mut sites,
                         &mut published,
@@ -592,42 +580,18 @@ fn handle_notification(
 fn handle_request(
     connection: &Connection,
     docs: &std::collections::HashMap<lsp_types::Url, String>,
-    memo: &mut crate::lsp_memo::RenderMemo,
     project: &mut crate::lsp_project::ProjectCache,
     sites: &mut crate::lsp_project::SiteCache,
     published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
     req: lsp_server::Request,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use lsp_types::request::{
-        CodeActionRequest, CodeLensRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest,
-        GotoDefinition, HoverRequest, Request as _,
+        CodeActionRequest, Completion, DocumentSymbolRequest, FoldingRangeRequest, GotoDefinition,
+        HoverRequest, Request as _,
     };
     #[cfg(test)]
     assert!(req.method != PANIC_PROBE_METHOD, "injected request panic");
-    let response = if req.method == CodeLensRequest::METHOD {
-        let params: lsp_types::CodeLensParams = serde_json::from_value(req.params)?;
-        let uri = params.text_document.uri;
-        // The rendered block model, from the same memo hover and inlay hints use: the lens
-        // needs to know which fences a kernel runs and what each cell's cache key is, and
-        // both are questions about the rendered document, not about the text.
-        let lenses = match (uri.to_file_path().ok(), docs.get(&uri)) {
-            (Some(path), Some(text)) => memo
-                .get(&uri, text)
-                .map(|doc| {
-                    let mut probe = crate::lsp_lens::CacheProbe::new(&path, sites.get(&path));
-                    crate::lsp_lens::code_lenses(&doc.blocks, &mut probe)
-                })
-                .unwrap_or_default(),
-            // An unsaved buffer has no path, so it has no `_freeze/` and no project to
-            // resolve an interpreter against, and therefore nothing to say about its cells.
-            _ => Vec::new(),
-        };
-        lsp_server::Response {
-            id: req.id,
-            result: Some(serde_json::to_value(lenses)?),
-            error: None,
-        }
-    } else if req.method == FoldingRangeRequest::METHOD {
+    let response = if req.method == FoldingRangeRequest::METHOD {
         let params: lsp_types::FoldingRangeParams = serde_json::from_value(req.params)?;
         let folds = docs
             .get(&params.text_document.uri)
@@ -700,13 +664,6 @@ fn handle_request(
             // the site-aware preview is an *upgrade* on the single-file one, so an
             // unanswerable map costs the author nav and cross-page links, never the preview.
             result: Some(answer.unwrap_or(serde_json::Value::Null)),
-            error: None,
-        }
-    } else if req.method == MATH_COMMANDS_METHOD {
-        // A static table, so there is nothing to key on and no params to parse.
-        lsp_server::Response {
-            id: req.id,
-            result: Some(taliesin_core::vocab::vocab()["mathCommands"].clone()),
             error: None,
         }
     } else if req.method == CELL_REGIONS_METHOD {
@@ -815,8 +772,8 @@ fn resolve_definition(
             }
             hit?
         }
-        // Math has no definition site to jump to; it is a hover-only target.
-        Target::Math { .. } | Target::FrontmatterKey { .. } | Target::None => return None,
+        // A front-matter key has no definition site to jump to; its answer is the hover.
+        Target::FrontmatterKey { .. } | Target::None => return None,
     };
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
@@ -834,13 +791,6 @@ pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
 /// "Preview" open chapter 7 instead of the book's cover — so it moved here rather than
 /// going with the verb, which is the doctrine anyway: editor intelligence lives in the LSP.
 pub(crate) const SITE_MAP_METHOD: &str = "taliesin/siteMap";
-
-/// The math-symbol picker's data: every KaTeX command the renderer supports, with the
-/// category and snippet the quick-pick shows. Namespaced for the same reason.
-///
-/// Also a Wave 2 re-homing — the companion used to spawn `taliesin vocab` and read one key
-/// out of the JSON dump. The dump is gone; the table it was generated from is not.
-pub(crate) const MATH_COMMANDS_METHOD: &str = "taliesin/mathCommands";
 
 /// Hover: the token under the cursor, plus the message of any diagnostic that covers it.
 ///
@@ -1040,43 +990,6 @@ fn token_hover(
                     end,
                 )
             }
-        }
-        // `$…$` → what it renders as. KaTeX is in this binary and memoized, so the preview
-        // is the SAME engine the reader's page goes through, not a second interpretation of
-        // the source. Math KaTeX cannot parse gets no hover: the expression is already
-        // squiggled as a diagnostic, and a preview of a broken parse would contradict it.
-        Target::Math {
-            latex,
-            display,
-            start_line,
-            start_char,
-            end_line,
-            end_char,
-        } => {
-            // A Unicode approximation, which is honest about being one. Typeset math in a
-            // hover would mean rasterizing it in a browser, because VS Code's hover sanitizer
-            // drops the MathML KaTeX emits; the live preview already renders the real thing
-            // continuously, so the tooltip does not need to.
-            let preview = taliesin_core::math_preview::unicode_preview(&latex, display)?;
-            if preview.trim().is_empty() {
-                return None;
-            }
-            let body = format!("### {preview}");
-            let kind = if display { "Display" } else { "Inline" };
-            let to_pos = |l: usize, c: usize| {
-                let lt = crate::lsp_pos::nth_line(text, l);
-                Position::new(l as u32, crate::lsp_pos::char_to_utf16(lt, c) as u32)
-            };
-            Some(Hover {
-                contents: HoverContents::Markup(MarkupContent {
-                    kind: MarkupKind::Markdown,
-                    value: format!("{body}\n\n{kind} math"),
-                }),
-                range: Some(Range::new(
-                    to_pos(start_line, start_char),
-                    to_pos(end_line, end_char),
-                )),
-            })
         }
         Target::None => None,
     }
@@ -3046,46 +2959,6 @@ mod tests {
     }
 
     #[test]
-    fn hover_on_math_previews_what_it_renders_as() {
-        let (server, client) = Connection::memory();
-        let thread = std::thread::spawn(move || run(server));
-        handshake(&client);
-
-        let uri = Url::parse("file:///tmp/tali-lsp-hover-math.tmd").unwrap();
-        let text = "Let $\\alpha + \\beta$ stand.\n".to_string();
-        did_open(&client, &uri, text);
-        let _ = recv_publish(&client);
-
-        // The span opens at char 4; char 8 is inside `\alpha`.
-        let h = hover_at(&client, &uri, 11, 0, 8);
-        let md = hover_markdown(&h);
-        // The hover shows the math, never a description of it — but "the math" has two
-        // legitimate spellings, and which one arrives depends on the build and the host:
-        // a real rasterized render where a browser is available, the Unicode approximation
-        // everywhere else. Asserting only the second would have gone red the moment the
-        // image path started working, which is the wrong direction for a regression to fire.
-        if md.starts_with("![") {
-            assert!(
-                md.contains("](data:image/png;base64,iVBORw0KGgo"),
-                "an image hover must carry a real PNG data URI: {md:.120?}"
-            );
-            assert!(
-                md.contains("![\\alpha + \\beta]"),
-                "the alt text must be the source, so it survives a dropped image: {md:.120?}"
-            );
-        } else {
-            assert!(
-                md.contains("α+β"),
-                "expected the rendered glyphs, got {md:?}"
-            );
-        }
-        assert!(md.ends_with("Inline math"), "got {md:.120?}");
-
-        shutdown(&client);
-        thread.join().unwrap().unwrap();
-    }
-
-    #[test]
     fn hover_on_a_frontmatter_key_shows_its_docs() {
         let (server, client) = Connection::memory();
         let thread = std::thread::spawn(move || run(server));
@@ -3620,10 +3493,6 @@ mod tests {
         assert_eq!(caps["hoverProvider"], true);
         assert_eq!(caps["codeActionProvider"], true);
         assert_eq!(
-            caps["codeLensProvider"]["resolveProvider"], false,
-            "the Run buttons: the whole lens is resolved in one pass"
-        );
-        assert_eq!(
             caps["foldingRangeProvider"], true,
             "without this the editor falls back to indentation folding, which is \
              meaningless for a Markdown-derived format"
@@ -3636,7 +3505,11 @@ mod tests {
         );
         // The write paths went on 2026-08-08: the `.tmd` file is the single editing surface
         // and the editor is what edits it. Advertising one again is a decision, not a detail,
-        // so it fails here rather than arriving unnoticed.
+        // so it fails here rather than arriving unnoticed. `codeLensProvider` joined them on
+        // 2026-08-09 for a different reason: wave 13 cut `taliesin run`, which left the lens
+        // a bare `⚡ cached` label shipping an empty command string, and the one ground on
+        // record for keeping it — that `runcell.ts` proved a TypeScript lens would regrow in
+        // its place — was spent, because that file had already been deleted with the verb.
         for gone in [
             "renameProvider",
             "documentFormattingProvider",
@@ -3647,6 +3520,7 @@ mod tests {
             "selectionRangeProvider",
             "workspaceSymbolProvider",
             "diagnosticProvider",
+            "codeLensProvider",
         ] {
             assert!(
                 caps[gone].is_null(),
@@ -3692,8 +3566,12 @@ mod tests {
             .keys()
             .filter_map(|k| k.strip_suffix("Provider").map(str::to_owned))
             .collect();
+        // An anti-vacuity floor, not a content floor: it exists so a `strip_suffix` that
+        // stopped matching fails here instead of passing over an empty list. Measured at
+        // exactly 6 on 2026-08-09, when the codeLens provider went; it was 7 before that.
+        // A cut that takes another provider lowers this line and records the new count.
         assert!(
-            advertised.len() >= 7,
+            advertised.len() >= 6,
             "only {} providers found — the filter stopped matching, so this test would pass \
              vacuously however stale the table got",
             advertised.len()
@@ -3740,8 +3618,10 @@ mod tests {
             // so documenting it would describe a method no editor can call.
             .filter(|m| *m != PANIC_PROBE_METHOD)
             .collect();
+        // Anti-vacuity, not content: measured at exactly 2 on 2026-08-09, when
+        // `taliesin/mathCommands` went with the symbol picker. It was 3 before that.
         assert!(
-            methods.len() >= 3,
+            methods.len() >= 2,
             "found only {methods:?}; the scan stopped matching, so this test proves nothing"
         );
         for method in methods {
@@ -3863,7 +3743,7 @@ mod tests {
     }
 
     // The window must close on a deadline set by the EDIT, not be reset by every message that
-    // arrives. A client that polls (hovers as the pointer moves, lenses on every scroll) sends
+    // arrives. A client that polls (hovers as the pointer moves, completion as it types) sends
     // a steady stream of requests; if each one pushed the deadline out, the pending diagnostics
     // would be starved for as long as the pointer kept moving.
     #[test]

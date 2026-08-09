@@ -129,7 +129,8 @@ jobs:
   # TextMate grammar tokenization gate (loads the .tmd grammar + the bundled MIT
   # markdown/python/yaml base grammars from a downloaded VS Code build — no Extension Host
   # launch, no display needed). Keeps the .tmd editor syntax highlighting from silently
-  # rotting. The heavier @vscode/test-electron e2e (real Extension Host) stays a local/F5 check.
+  # rotting. A heavier @vscode/test-electron e2e existed here as a local/F5 check until
+  # 2026-08-09, when it went for running under no script, hook or workflow.
   editor-vscode:
     if: github.event.repository.private != true
     runs-on: ubuntu-latest

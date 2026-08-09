@@ -670,14 +670,14 @@ is removing"* — correct then, expired now that the campaign is over. One asser
 | # | What | ~Lines | Note |
 |---|---|---|---|
 | ~~**R6-1**~~ | ~~`docs/superpowers/`~~ — **LANDED 2026-08-09**, see below | **35,585** | Design archive for features mostly cut, exempt from every drift gate. Larger than any wave of the campaign except wave 5, and none of it is product. Measured, not estimated. |
-| **R6-2** | The codeLens provider, whole | 520 | Half-removed: ships an empty command string on the wire. Deleting it retires an advertised provider, so `the_initialize_handshake_advertises_…` and the `extending.tmd` capability table both move in the same commit. |
-| **R6-3** | The VS Code e2e suite | 1,054 | **Verified: nothing runs it.** `gates.sh` runs `npm test`; the e2e sits behind `test:e2e`, invoked by no script, hook or workflow. `notes/2026-08-02` already recorded this. |
+| ~~**R6-2**~~ | ~~The codeLens provider, whole~~ — **LANDED 2026-08-09**, see below | 520 | Half-removed: ships an empty command string on the wire. Deleting it retires an advertised provider, so `the_initialize_handshake_advertises_…` and the `extending.tmd` capability table both move in the same commit. |
+| ~~**R6-3**~~ | ~~The VS Code e2e suite~~ — **LANDED 2026-08-09**, see below | 1,054 | **Verified: nothing runs it.** `gates.sh` runs `npm test`; the e2e sits behind `test:e2e`, invoked by no script, hook or workflow. `notes/2026-08-02` already recorded this. |
 | **R6-4** | 15 hand-written tombstones in `retired_names.rs` | 429 | Pre-rule stock; wave 1 made retirements derived and these were never converted. |
 | **R6-5** | The `_site.yml` JSON Schema, all three copies | 378 | Generator, committed golden, and the VS Code byte-copy CLAUDE.md already flags as drift-prone. |
 | **R6-6** | Project-wide shared bibliography | 543 | Per-page citations survive. |
 | **R6-7** | The structured `author:` form | 360 | Plain `author:` stays. **`AUTHOR_KEYS`' guide rows are ungated** — grep, do not trust. |
 | **R6-8** | `doctor --format json` / `--json` + the package dump | 345 | The ruling sanctioned exactly one machine surface, and it is `build --format json`. |
-| **R6-9** | `math_preview.rs`, the hover math arm, `taliesin/mathCommands` | 560 | Editor-only surface living inside `taliesin-core`. |
+| ~~**R6-9**~~ | ~~`math_preview.rs`, the hover math arm, `taliesin/mathCommands`~~ — **LANDED 2026-08-09**, see below | 560 | Editor-only surface living inside `taliesin-core`. |
 | **R6-10** | `new`'s `<kind>` positional and its two registers | 176 | Wave 8 left one kind; a vocabulary of one needs no register. |
 | ~~**R6-11**~~ | ~~`RenderedDoc::body_text()`~~ — **LANDED 2026-08-09**, see below | ~~~500~~ **959** | Audit finding 10. **Zero production callers** — the only two callers of `text::project` are `body_text` itself and one inside a `#[cfg(test)]` module. Both consumers its doc comment names are gone: `site/llms.rs` (wave 4) and the `read` verb (wave 2); the Cmd-K index uses the independent `render::indexable_text`. Invisible to clippy because `RenderedDoc` is re-exported from `lib.rs`. **Ordering rule applies:** `crates/core/tests/text_projection.rs`, `tests/snapshots/text-projection.txt` and `corpus/reader/text-projection.tmd` die in the same commit. Keep `decode`/`decode_numeric`/`indexable_text`; `render/mod.rs:2872 strip_tags_block_separated` goes too (its only caller is inside the dead subtree). |
 | **R6-12** | Nine smaller items | ~1,100 | Dead validators, the cgroup-v2 container-memory walk, `csl:`, one of `preview`'s two port spellings, two corpus projects, the Cmd-K palette *actions*, `TALIESIN_CELL_TIMEOUT` (**sequence after R2**, which changes the interrupt story). |
@@ -736,11 +736,87 @@ side (10 gates).
   behaviour was covered only through the projection's `visible` tests, which went with it —
   a coverage hole the deletion would otherwise have opened silently.
 
-**Tier 2 — do not act without an explicit ruling.** `notes/`'s 64 July-dated audits
-(18,454 lines; keep `CUT-PROGRESS.md`, the ruling, the playbook and this plan); vendored
-mermaid (~3.9 MB); the vendored PowerShell grammar (1,557); Atom feeds (545).
+### R6-2 + R6-3 + R6-9 — LANDED 2026-08-09, `cut/r6-editor-surface`
 
-The two genuine splits, stated so the decision is a decision:
+Taken as one wave because all three move `the_initialize_handshake_advertises_…`, and moving
+one test three times is how a register drifts. **−3,180 lines** (`+346 / −3,526`, 35 files, 12
+deleted) against a 2,134 estimate; **−2,489 in code**, excluding `package-lock.json` (−861) and
+`notes/` (+169, this entry and the tier-2 rulings). Gate green either side (10 gates; 80 suites,
+1,347 passed, 0 failed, 0 ignored). Full log in `notes/CUT-PROGRESS.md`.
+
+- **R6-2's real justification was not the one the plan gave.** The plan called the lens
+  "half-removed: ships an empty command string on the wire", which is a rendering convention
+  rather than a defect. What decided it: the **one ground on record for keeping it** — that
+  `editor/vscode/src/runcell.ts:9-14` proved a TypeScript `CodeLensProvider` would regrow in
+  its place — names a file **wave 13 had already deleted**. The campaign's most-recurring rule
+  landing on the campaign's own justification.
+- **The cascade was larger than the three roots, and clippy found all of it** (R6-11's method,
+  reused): `lsp_memo` entire (85 lines — the lens arm was its **only** consumer, in a module
+  CLAUDE.md described as part of the `didChange` story), `exec::cell_cache_keys` +
+  `CellCacheKey` (52), `lsp_nav`'s `enclosing_math`, the `Target::Math` variant and two offset
+  helpers, and three of `MathSpan`'s five fields.
+- **The plan's R4 item that said "if you intend to take R6-2, skip this" was right to say so.**
+  The four code-lens prose surfaces it listed are deleted here rather than corrected, which is
+  a wave of R4 never paid.
+- **No coverage hole from the math trim, checked rather than assumed.** The four
+  `classify_target` math tests deleted here pinned fence-awareness and the line-break rule;
+  `lsp_complete` pins both against `scan_math` directly, which is the code that survives.
+- **`@vscode/test-electron` is NOT e2e-only, and only `gates.sh` could tell me.** Deleting it
+  with the suite turned the companion gate red: `scripts/ensure-vscode.cjs` uses it to download
+  the VS Code build whose bundled markdown/python/yaml grammars the **surviving** offline
+  `grammar.test.ts` reads. Restored, with the reason written into the script's header. The local
+  `npm test` was green throughout, because the download was already on disk — exactly the class
+  of silently-inert gate `tools/gates.sh` exists for. `editor/vscode/.vscode-test/` (3.1 GB) is
+  that gate's fixture, not residue.
+
+**Tier 2 — ALL FOUR ARE NOW RULED (2026-08-09, by the author). None needs another ruling;
+three still need a wave.**
+
+| item | ruling | what it costs the next session |
+|---|---|---|
+| vendored mermaid (~3.5 MB) | **KEEP** | nothing. See the bullet below; the residual standalone-inline defect is a separate wave. |
+| Atom feeds (602 lines) | **KEEP** | nothing. Reasoning below. |
+| vendored PowerShell grammar (1,557 + LICENSE) | **CUT** | one wave, ~1,650 lines. Reasoning below. |
+| `notes/`'s 64 July-dated audits (18,454 lines) | **BANNER, do not delete** | one sweep. Reasoning below. |
+
+- **The vendored PowerShell grammar. RULED CUT 2026-08-09.** `crates/core/assets/syntaxes/
+  PowerShell.sublime-syntax` (1,557 lines) plus its LICENSE, `include_str!`-compiled into every
+  shipped binary. **Its only witness anywhere is `corpus/highlight.tmd`** — zero uses in
+  `docs/guide`, `docs/internals`, `site/` or `samples/` — and a corpus-only pin is exactly the
+  circular evidence the scope ruling disproved. It was added on the 2026-07-22 demand probe,
+  whose "user" was a **docs-maintainer persona**, which is the same evidence class. Cutting it
+  costs a `powershell`/`ps1` fence its colours and nothing else: wave 9 removed the generic
+  unknown-fence-language lint, so there is no diagnostic to go stale either.
+  **The wave, and the ordering rule applies to all of it in one commit:** delete the two asset
+  files and the `include_str!` + match arm in `highlight.rs`, the `powershell_highlights_under_
+  both_of_its_tokens` unit test, `highlight_langs.rs`'s two `powershell_*` tests, and the
+  `powershell`/`ps1` sections of `corpus/highlight.tmd`. Check `THIRD_PARTY.md` for its licence
+  row. **No register entry is owed** — a fence language is not a Taliesin vocabulary, so there
+  is no retired name for the tool to answer.
+
+- **Atom feeds. RULED KEEP 2026-08-09.** `feed.rs` (602 lines, not the 545 this plan said) plus
+  the `<link rel="alternate">` autodiscovery in `meta.rs`. It fires only for a project that sets
+  `url:` **and** carries an uncapped listing with at least one dated page, so a fresh `init`
+  (whose `_site.yml` is `title: My site` and nothing else) gets none, and neither does the
+  marketing deploy. The one witness, `corpus/tech-blog`, mirrors a blog the author actually
+  publishes. *"When close, cut"* adjudicates features nobody uses; this one has a user, adds no
+  vocabulary, needs no config, and costs a project that does not want it exactly zero.
+  `Site::nav_ordered` stays in `feed.rs` with it.
+
+- **`notes/`'s 64 July-dated audits. RULED BANNER-DO-NOT-DELETE 2026-08-09.** They carry
+  measurements that cost sessions to acquire, and every byte would survive in git — but the
+  reason to act is that their **live cost is demonstrated, not hypothetical**. Wave 12 found
+  eight spent justifications in one wave, and wave R6 found a ninth: the playbook's ground for
+  keeping the code lens named `editor/vscode/src/runcell.ts`, a file wave 13 had already
+  deleted, and it was two greps from being honoured again.
+  **The wave:** one STATUS line at the top of each dated audit, to the effect of *"dated record.
+  Superseded by the 2026-08-08 scope ruling; before acting on anything here, check that the file
+  it names still exists."* Prose, not machinery — no gate, no register, no index. This is the
+  same call R6-1 made when it left `notes/`'s 34 references pointing into git history rather
+  than rewriting them: **do not rewrite a dated document to match today's tree**; say that it is
+  dated, and let the reader do the check.
+
+The mermaid split, stated so the decision is a decision:
 
 - **Mermaid. RULED KEEP 2026-08-09 by the author, on the re-measurement this bullet asked
   for.** The re-measure, post-R5-2: the library is **3,565,102 B on disk, not the 3.9 MB the

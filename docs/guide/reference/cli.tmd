@@ -384,8 +384,8 @@ works from anywhere.
 
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
 editor gets live `.tmd` diagnostics as you type, the same validators the gate runs, on
-the unsaved buffer, plus completion, hover, go-to-definition, symbols, quick fixes,
-folding and a code lens. Seven capabilities, and every one of them answers a
+the unsaved buffer, plus completion, hover, go-to-definition, symbols, quick fixes and
+folding. Six capabilities, and every one of them answers a
 question: it is parse-only (no kernel, no code execution) and it never edits your source.
 The `.tmd` file is the single editing surface, and your editor is what edits it.
 
@@ -444,13 +444,6 @@ taliesin build . --check-only
 ```
 
 which is where the same findings are already checked before publishing.
-
-**A code lens says what each cell will do next.** Above an executable fence the server
-offers a **⚡ cached** label when `_freeze/` already holds that cell's output, and
-**↻ always re-runs** for a `#| cache: false` cell. Nothing else, and nothing above a cell
-whose answer is the ordinary one, because a label over every fence in a fresh project is
-noise. There is no command to bind: the lens is a label, so any LSP client renders it with
-no wiring at all.
 
 ## Environment
 

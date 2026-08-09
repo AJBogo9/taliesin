@@ -2367,3 +2367,98 @@ counting lenses on the old fixture would have passed while proving nothing.
 (271 lines) pinned both halves of the hint-file discovery bug and is gone with its subject.
 `lsp_stdio.rs`'s `code_lens_offers_the_run_command_over_the_wire` is re-pointed, not deleted:
 it now pins that a lens arrives over real stdio carrying a label and **no** command name.
+
+### Wave R6 (editor surface) — 2026-08-09, `cut/r6-editor-surface`
+
+The remediation plan's R6-2, R6-3 and R6-9 in one wave, because all three move the same LSP
+handshake test and taking them separately would have moved it three times.
+
+**Measured reclaim: −3,180 lines** (`+346 / −3,526` over 35 files, **12 deleted**) against the
+plan's 520 + 1,054 + 560 = **2,134 estimate**. `package-lock.json` is −861 of it (two e2e-only
+dev dependencies); the rest is a cascade the plan did not name, which `clippy -D warnings`
+enumerated, exactly as wave R6-11 recorded the method. **Excluding `notes/` — which grew 169
+lines on purpose, for this entry and the tier-2 rulings — and the lockfile, the code reclaim is
+−2,489** (`+129 / −2,618`). By area: `editor/vscode` −2,105 (−1,244 without the lockfile),
+`crates/server` −855, `crates/core` −380, `docs` −14, `CLAUDE.md`/CI +4.
+
+**Gate: 10/10, both canaries `ok`, 80 suites / 1,347 passed / 0 failed / 0 ignored.** Measure
+the next wave against **1,347 and 80 suites**, not R6-11's figures. Companion `npm test`: 142.
+
+**Six providers, two namespaced methods.** `codeLensProvider` is now in
+`the_initialize_handshake_advertises_…`'s `gone` list beside the nine from wave 10, and the
+floor drops 7 → 6 with the count it was measured against written on it. `taliesin/mathCommands`
+went, so the namespaced-method floor drops 3 → 2 the same way.
+
+**Four things that were not true, or that the plan did not know.**
+
+1. **The one recorded ground for keeping the code lens was already spent, and no one had
+   checked.** Both the playbook (`:942`) and wave 10's log kept `lsp_lens.rs` on the argument
+   that `editor/vscode/src/runcell.ts:9-14` records a TypeScript `CodeLensProvider` having
+   existed and been deleted for the Rust one, so cutting the server lens would regrow pressure
+   for the TS duplication CLAUDE.md forbids. **`runcell.ts` was deleted by wave 13 and
+   `decorations.ts` by wave 9.** The file carrying the record is gone, so the pressure it
+   evidenced is gone with it. This is the campaign's most-recurring rule (*"before honouring a
+   'must survive', check the file exists"*) landing on a justification the campaign itself
+   wrote, twice.
+2. **`lsp_memo` had exactly one consumer, and it was the code lens.** 85 lines, a module
+   CLAUDE.md described as part of the `didChange` coalescing story ("keyed on `(uri, text)`,
+   which is why it needs no invalidation logic"). `RenderMemo` was constructed in `run` and
+   threaded through `handle_request` to one arm. Nothing else in the crate touched it; the
+   `memo` parameter went dead the moment the lens arm did, and clippy said so on the first
+   run. The prose is corrected rather than deleted, because the *reason* the memo existed is
+   still worth knowing.
+3. **`exec::cell_cache_keys` + `CellCacheKey` (52 lines) were the lens's alone.** Extracted so
+   "the lens cannot claim a hit the executor would miss on"; the executor computes its keys on
+   its own path. `cells_of` survives and is still the one walk, and its doc comment now says so
+   for a reason that does not name a second caller that no longer exists. Same for
+   `version_line`'s.
+4. **The math hover took `Target::Math` down with it, and `MathSpan` shrank to two fields.**
+   `lsp_nav::scan_math` survives because completion asks "am I inside math?" — but
+   `enclosing_math` ("*which* expression am I inside?"), the `Target::Math` variant, and
+   `line_char_to_offset`/`offset_to_line_char` were hover's alone. `MathSpan` kept `start` and
+   `closed`; `latex`, `display` and `end` went. **No coverage hole**, and that was checked
+   rather than assumed: the four `classify_target` math tests deleted here pinned fence-
+   awareness and the line-break rule, and `lsp_complete`'s own
+   `a_backslash_in_a_code_cell_offers_nothing` and
+   `display_math_survives_a_line_break_but_inline_math_does_not` pin both against `scan_math`
+   directly.
+
+**What was given up, stated plainly.**
+
+**The cache-status lens was the only place `_freeze/` was legible outside the browser**, and
+the 2026-07-18 DX audit's "make caching legible" item is open again. What it actually shipped
+was one ⚡ label, silent on every ordinary cell, carried by a `Command` with an empty name —
+a client-side rendering convention, not a protocol contract. `DO-NOT-REBUILD.md`'s item 217 now
+says cut-whole and points the reopened item at the preview rather than the editor.
+
+**The Insert Math Symbol picker was the one shape completion cannot serve.** Completion still
+offers every KaTeX command inside `$…$` on `\`, verified by `math_vocab.rs`'s
+`every_command_renders`, so what is lost is finding a command *by its rendered glyph* — you
+have to know that ⊗ is `\otimes` to type a prefix of it. That was the recorded argument for
+`taliesin/mathCommands` in wave 10 and it is still true; it lost to the standing directive.
+
+**The Extension Host suite (1,054 lines, 46 tests) was the only thing proving VS Code asked
+the server and rendered the reply**, as opposed to the server answering. A unit test cannot
+see that gap, and `notes/2026-08-02` had already recorded the suite as run by nothing. It is
+gone with `test-fixtures/`, `mocha` and `@types/mocha`. `glob` stays — `grammar.test.ts`
+uses it.
+
+**And a fifth thing that was not true, found by the gate rather than by reading.**
+`@vscode/test-electron` is **not** e2e-only, and deleting it turned the companion gate red.
+`scripts/ensure-vscode.cjs` calls its `downloadAndUnzipVSCode` to populate
+`editor/vscode/.vscode-test/` with a VS Code build, because the **surviving** offline grammar
+gate (`grammar.test.ts`) loads the bundled MIT markdown/python/yaml base grammars out of a real
+install. The dependency is restored and the script's header now says it is the only consumer,
+so the next cut does not walk into this again. The local `npm test` passed either way — the
+download was already on disk — and only `gates.sh`'s `npm ci` could see it. **Which is the
+whole argument for that script**, landing on this wave. The 3.1 GB in `.vscode-test/` is a test
+fixture, not residue; do not delete it.
+
+**The three open tier-2 questions were ruled in this session** and are recorded in full in
+`notes/2026-08-09-remediation-plan.md`'s tier-2 table. In short: the **vendored PowerShell
+grammar is CUT** (one wave, ~1,650 lines, ordering rule applies — its only witness is
+`corpus/highlight.tmd`, and it was added on a persona-sourced demand probe); **Atom feeds are
+KEPT** (the one witness mirrors a blog the author publishes, and *"when close, cut"* adjudicates
+features nobody uses); **`notes/`'s 64 dated audits are BANNERED, not deleted** (one STATUS
+line each: dated record, check the file exists before acting). With mermaid already ruled keep,
+**tier 2 is closed** — two waves of work remain in it, no decisions do.

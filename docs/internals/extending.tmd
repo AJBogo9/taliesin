@@ -111,26 +111,25 @@ design.
 
 `taliesin lsp` is a synchronous, offline, **kernel-free** LSP server over stdio
 (`crates/server/src/lsp.rs` plus
-`lsp_complete`/`lsp_nav`/`lsp_outline`/`lsp_pos`/`lsp_memo`/`lsp_fold`/`lsp_lens`).
+`lsp_complete`/`lsp_nav`/`lsp_outline`/`lsp_pos`/`lsp_fold`).
 It holds open `.tmd` buffers warm and answers:
 
 | capability | what it gives the author |
 |---|---|
 | `publishDiagnostics` | every static finding, live as you type, located to the token where the validator could name one. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
 | `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
-| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, an include's resolved target, and a `$…$` expression's rendered form |
+| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, and an include's resolved target |
 | `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
 | `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
 | `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
 | `foldingRange` | front matter, each heading down to the next of equal or shallower level, `:::` divs, code fences. Without this an editor folds `.tmd` by *indentation*, which is meaningless in a format where nesting is heading level and fences |
-| `codeLens` | **⚡ cached** (or **↻ always re-runs**) above an executable fence: `_freeze/` answering "this cell restores instead of executing", computed from `exec::cell_cache_keys`, the executor's own key function, so the lens cannot claim a hit the executor would miss on. Silent otherwise, because a label over every fence in a fresh project is noise. It carries no command, so every LSP client renders it with no wiring: it named `taliesin.runCell` until Wave 13 cut the verb behind it. One `<interpreter> --version` per language per session (the key is seeded with it); still no kernel |
 
 Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
 in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the
 `taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
 other editor's filetype produces), so the server is never silently inert.
 
-Three requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
+Two requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
 method. Each exists because the protocol has no way to express what it does, and each is
 answered by the same server:
 
@@ -138,7 +137,6 @@ answered by the same server:
 |---|---|
 | `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
 | `taliesin/siteMap` | where each publishable page of a project is served: `rel` (the source path) paired with `url`. It is what makes "Preview" open at chapter 7 instead of the book's cover, and it has to be answered here because `.tmd`→`.html`, book chapter numbering, `index` handling and the draft exclusion all live in Rust — a client deriving the URL itself is the second implementation this whole rewrite existed to delete |
-| `taliesin/mathCommands` | every KaTeX command the renderer supports, with the category and rendered glyph the Insert Math Symbol picker searches on. A symbol you cannot spell is not reachable by completion — you have to already know that ⊗ is `\otimes` — so the picker needs the whole table at once, which is the one shape completion cannot serve |
 
 **Every one of these answers a question; none of them writes.** Nine capabilities went on
 2026-08-08 (`documentLink`, `rename`, `formatting`, `inlayHint`, `documentHighlight`,
@@ -150,21 +148,19 @@ keystrokes rewrote a `.tmd`, and a preview that never writes beside a language s
 sometimes does is one editing surface with two owners. The whole-book answer the pull model
 gave is `build <dir> --check-only`, from a terminal.
 
+Two more went on 2026-08-09, both read-only and both cut for the same reason: what was left
+of each was smaller than the machinery under it. `codeLens` had been reduced to a single
+**⚡ cached** label when Wave 13 cut `taliesin run` out from under its Run buttons, and it
+shipped that label as a `Command` with an empty name, which is a client-side convention
+rather than a contract. `taliesin/mathCommands` fed the companion's Insert Math Symbol
+picker, the one shape completion could not serve; math commands stay completable inside
+`$…$`, and what went with the picker is searching that table by rendered glyph. The math
+**hover** went with them, and with it the MathML-to-Unicode walk behind it — an editor-only
+surface that had been living in the render crate.
+
 Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
 completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
 module may print to it; all human output goes to `crate::log` on stderr.
-
-The math hover is worth one note, because the obvious implementation does not exist. LaTeX
-Workshop previews math as an image, and it can: MathJax has an SVG output mode. **KaTeX does
-not** — the `katex` crate emits `Html`, `Mathml` or `HtmlAndMathml`, and its HTML is spans
-positioned by the KaTeX stylesheet, which a hover has no way to load. So the preview is
-built from the **MathML half** of the render (`crates/core/src/math_preview.rs`): KaTeX has
-already done the parsing, and its `<mi>`/`<mo>` carry the Unicode glyphs. The walk is
-structure-aware on purpose — flattening `<mfrac>` would preview `\frac{a+1}{b}` as `a+1/b`,
-a different expression, and `<msup>` would render `x^2` as `x2`. Scripts become Unicode
-super/subscripts where they exist and fall back to `^`/`_` where they do not. There is no
-error branch: a failed render emits no `<math>` at all, so "found MathML" already means
-"parsed", and `error_output_carries_no_mathml` is the canary guarding that assumption.
 
 ### The companion: what an LSP cannot do
 
@@ -196,8 +192,7 @@ What is left in the extension is what the protocol has no concept of:
   client last reported via `tali-page`, and a cursor in another chapter sends `tali-navigate`
   first, then the cursor.
 - **Editor commands:** *Open Preview*, *Reveal Cursor in Preview*, *Diagnose Setup*,
-  *Insert Math Symbol* (a picker over the same math vocabulary the completion uses,
-  searchable by glyph), *Restart Language Server*, *Show Language Server Log*.
+  *Restart Language Server*, *Show Language Server Log*.
 - **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
   The last of those carries the `onEnterRules` that continue a list or blockquote on Enter,
   keeping the marker the author chose. Ordered lists are deliberately *not* continued:

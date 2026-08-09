@@ -40,17 +40,6 @@ pub(crate) enum Target {
         start: usize,
         end: usize,
     },
-    /// An enclosing `$…$` / `$$…$$` span. Unlike every other target this one can cross
-    /// lines (display math routinely does), so it carries absolute positions rather than
-    /// the line-relative `start`/`end` the single-line targets use.
-    Math {
-        latex: String,
-        display: bool,
-        start_line: usize,
-        start_char: usize,
-        end_line: usize,
-        end_char: usize,
-    },
 }
 
 fn is_word(c: char) -> bool {
@@ -71,23 +60,24 @@ fn covers(s: usize, e: usize, ch: usize) -> bool {
     ch >= s && ch <= e
 }
 
-/// One `$…$` / `$$…$$` span. `start`/`end` are char offsets into the document and cover the
-/// delimiters; `latex` is what sits between them.
+/// One `$…$` / `$$…$$` span, reduced to what its one caller asks: where it opens, and
+/// whether it ever closed.
+///
+/// It carried the expression itself (`latex`), its `display` flag and its `end` offset for
+/// the math hover, which went with `math_preview.rs` on 2026-08-09. Completion only needs to
+/// know that the cursor is inside an open span.
 pub(crate) struct MathSpan {
-    pub(crate) latex: String,
-    pub(crate) display: bool,
     pub(crate) start: usize,
-    pub(crate) end: usize,
     /// `false` for a span whose closing delimiter has not been typed yet — which is the
-    /// case completion cares about and hover deliberately ignores.
+    /// case completion cares about.
     pub(crate) closed: bool,
 }
 
 /// Every math span in `text`, in document order.
 ///
-/// This is the single owner of Taliesin's `$` delimiter rules, so completion ("am I inside
-/// math?") and hover ("which expression am I inside?") cannot drift apart: a `\` escapes the
-/// next character, a fenced block is code and not math, an inline `$…$` is abandoned at a
+/// This is the single owner of Taliesin's `$` delimiter rules, which is what keeps
+/// completion's "am I inside math?" from becoming a second delimiter scanner: a `\` escapes
+/// the next character, a fenced block is code and not math, an inline `$…$` is abandoned at a
 /// line break (`render::math_close` gives up at `\n`) while `$$…$$` survives one, and an
 /// opening `$` must be followed by a non-space, which is what keeps `$ 5` from opening math.
 ///
@@ -100,12 +90,9 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
     let mut display: Option<usize> = None;
     let mut inline: Option<usize> = None;
     let mut in_code = false;
-    let close = |spans: &mut Vec<MathSpan>, open: usize, delim: usize, at: usize| {
+    let close = |spans: &mut Vec<MathSpan>, open: usize| {
         spans.push(MathSpan {
-            latex: chars[open + delim..at].iter().collect(),
-            display: delim == 2,
             start: open,
-            end: at + delim,
             closed: true,
         });
     };
@@ -140,7 +127,7 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
                     '\\' => j += 2, // an escape consumes the next char, so `\$` is literal
                     '$' if j + 1 < line_end && chars[j + 1] == '$' => {
                         match display.take() {
-                            Some(open) => close(&mut spans, open, 2, j),
+                            Some(open) => close(&mut spans, open),
                             None => display = Some(j),
                         }
                         j += 2;
@@ -148,7 +135,7 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
                     '$' => {
                         match inline.take() {
                             // Closing never checks the guard; only an OPEN needs a non-space.
-                            Some(open) => close(&mut spans, open, 1, j),
+                            Some(open) => close(&mut spans, open),
                             None => {
                                 if chars.get(j + 1).is_some_and(|c| !c.is_whitespace()) {
                                     inline = Some(j);
@@ -167,56 +154,14 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
         i = line_end + 1;
     }
     // Whatever is still open at end-of-input is a span the author is mid-way through typing.
-    for (open, delim) in [(display, 2usize), (inline, 1usize)].into_iter() {
-        if let Some(open) = open {
-            spans.push(MathSpan {
-                latex: chars[(open + delim).min(n)..].iter().collect(),
-                display: delim == 2,
-                start: open,
-                end: n,
-                closed: false,
-            });
-        }
+    for open in [display, inline].into_iter().flatten() {
+        spans.push(MathSpan {
+            start: open,
+            closed: false,
+        });
     }
     spans.sort_by_key(|s| s.start);
     spans
-}
-
-/// The innermost CLOSED math span covering `offset`, delimiters included.
-///
-/// Unclosed spans are skipped on purpose: half-typed math has no complete expression to
-/// preview, and offering one would render whatever fragment exists so far.
-fn enclosing_math(text: &str, offset: usize) -> Option<MathSpan> {
-    scan_math(text)
-        .into_iter()
-        .filter(|s| s.closed && offset >= s.start && offset <= s.end)
-        .min_by_key(|s| s.end - s.start)
-}
-
-/// Char offset of 0-based (`line`, `character`), clamped to the document.
-fn line_char_to_offset(text: &str, line: usize, character: usize) -> usize {
-    let mut offset = 0;
-    for (idx, l) in text.split('\n').enumerate() {
-        let len = l.chars().count();
-        if idx == line {
-            return offset + character.min(len);
-        }
-        offset += len + 1; // + the newline
-    }
-    text.chars().count()
-}
-
-/// The inverse of [`line_char_to_offset`].
-fn offset_to_line_char(text: &str, offset: usize) -> (usize, usize) {
-    let mut seen = 0;
-    for (idx, l) in text.split('\n').enumerate() {
-        let len = l.chars().count();
-        if offset <= seen + len {
-            return (idx, offset - seen);
-        }
-        seen += len + 1;
-    }
-    (0, 0)
 }
 
 /// Classify the token at 0-based (`line`, `character`). Citation `[@k]` wins over xref
@@ -285,21 +230,9 @@ pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Targ
         return t;
     }
 
-    // Math last: every target above is a token that can legitimately appear inside `$…$`
-    // (an `@` or a `[@key]` in a label, say), and the specific answer beats the general one.
-    if let Some(span) = enclosing_math(text, line_char_to_offset(text, line, character)) {
-        let (start_line, start_char) = offset_to_line_char(text, span.start);
-        let (end_line, end_char) = offset_to_line_char(text, span.end);
-        return Target::Math {
-            latex: span.latex,
-            display: span.display,
-            start_line,
-            start_char,
-            end_line,
-            end_char,
-        };
-    }
-
+    // A `$…$` span was classified last here until 2026-08-09, when the math hover went with
+    // `math_preview.rs`. Nothing asks a position what expression encloses it any more;
+    // `scan_math` survives because completion still needs to know it is inside math.
     Target::None
 }
 
@@ -588,64 +521,6 @@ pub(crate) fn frontmatter_bib_paths(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn classifies_inline_math_around_the_cursor() {
-        match classify_target("see $\\alpha + \\beta$ here", 0, 8) {
-            Target::Math {
-                latex,
-                display,
-                start_line,
-                start_char,
-                end_line,
-                end_char,
-            } => {
-                assert_eq!(latex, "\\alpha + \\beta");
-                assert!(!display, "single `$` is inline");
-                // The range covers the delimiters, so the editor highlights the whole span.
-                assert_eq!((start_line, start_char), (0, 4));
-                assert_eq!((end_line, end_char), (0, 20));
-            }
-            other => panic!("expected math, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn display_math_spans_lines_and_reports_a_multi_line_range() {
-        let text = "before\n\n$$\n\\frac{a}{b}\n$$\n\nafter\n";
-        match classify_target(text, 3, 2) {
-            Target::Math {
-                latex,
-                display,
-                start_line,
-                end_line,
-                ..
-            } => {
-                assert_eq!(latex, "\n\\frac{a}{b}\n");
-                assert!(display, "`$$` is display math");
-                assert_eq!(
-                    (start_line, end_line),
-                    (2, 4),
-                    "range covers both delimiters"
-                );
-            }
-            other => panic!("expected display math, got {other:?}"),
-        }
-    }
-
-    // A `$` in a code cell is a shell variable or a regex anchor, not math. Hovering it with
-    // a rendered preview would assert the renderer does something to it that it never does.
-    #[test]
-    fn math_inside_a_code_fence_is_code_not_math() {
-        let text = "```python\ns = \"$x$\"\n```\n";
-        assert_eq!(classify_target(text, 1, 6), Target::None);
-    }
-
-    // Half-typed math has no complete expression to preview.
-    #[test]
-    fn unclosed_math_is_not_hoverable() {
-        assert_eq!(classify_target("half $\\alpha", 0, 8), Target::None);
-    }
 
     #[test]
     fn classifies_an_xref() {
