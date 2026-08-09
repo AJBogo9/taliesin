@@ -12,7 +12,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 /// Where a resolved interpreter path came from, in precedence order. Carried so the
-/// kernel-start log line and `check`'s Environment section can name the source.
+/// kernel-start log line and `doctor`'s Environment section can name the source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provenance {
     /// A `_site.yml` `python:` field (highest precedence).
@@ -66,7 +66,7 @@ pub struct VenvSearch {
 
 impl VenvSearch {
     /// One line naming what the upward walk examined and where it stopped, shared by the
-    /// build failure, `doctor` and `check`. It is the answer to "why didn't it use the
+    /// build failure, `doctor` and `build --check-only`. It is the answer to "why didn't it use the
     /// venv I can see?", which is otherwise unanswerable without reading this file.
     pub fn summary(&self) -> String {
         let looked = if self.examined.is_empty() {
@@ -88,7 +88,7 @@ impl VenvSearch {
 
 /// Every source resolution consulted, in precedence order, recorded by the resolver
 /// itself. This is the material for the "no kernel available" build error and for
-/// `doctor`/`check`; producing it *as the decision is made* is what keeps the report
+/// `doctor` and `build --check-only`; producing it *as the decision is made* keeps the report
 /// from drifting away from the logic it describes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Trail {
@@ -351,7 +351,8 @@ pub struct Probe {
     pub runs: bool,
     /// The `--version` string, trimmed, when `runs`.
     pub version: Option<String>,
-    /// `ipykernel` (Python) / `IRkernel` (R) imported cleanly.
+    /// `ipykernel` imported cleanly. (`{r}` and its `IRkernel` went in wave 6; this is a
+    /// one-interpreter check today, and `doctor` builds exactly one, named `python`.)
     pub kernel_pkg_ok: bool,
     /// The captured failure (spawn error, or the interpreter's stderr on a failed
     /// import), for the human/JSON report. `None` when everything succeeded.
@@ -360,7 +361,7 @@ pub struct Probe {
 
 /// Probe a resolved interpreter: `<bin> --version`, then an import of its Jupyter
 /// kernel package. Tolerates a missing binary / import error (never panics, never
-/// blocks `check`'s exit code).
+/// blocks `build --check-only`'s exit code).
 pub fn probe(resolved: &Resolved) -> Probe {
     use std::process::Command;
     let bin = &resolved.path;

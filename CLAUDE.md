@@ -129,9 +129,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    into one deploy is tools/build-site.sh, parent first (the
                    parent's sweep deletes output it did not itself write)
   assets/          bundled offline: css/ (base, dark, site),
-                   js/ (code-enhance/ fragments, mermaid.js, tali-js.js,
-                   scrolly.js, tabset.js, walkthrough.js + vendored
-                   plot.umd.min.js/d3.min.js for `{js}` cells), katex/
+                   js/ (code-enhance/ fragments, mermaid.js, tali-js.js
+                   + vendored plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
   src/main.rs      the subcommand dispatch + COMMANDS + RETIRED_COMMANDS (a verb that
                    was cut names its replacement instead of a did-you-mean)
@@ -201,7 +200,11 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    its ▶ Run Cell button named: it says `⚡ cached` / `↻ always re-runs` and
                    carries no command), plus pushed `publishDiagnostics`
                    and three namespaced extensions (`taliesin/cellRegions`, `siteMap`,
-                   `mathCommands`). **Nothing here writes to a buffer.** The nine that went
+                   `mathCommands`). **Nothing here writes to a buffer except a code action the author
+                   explicitly invokes** (`lsp.rs`'s "Change to `X`" quick fix returns a
+                   `WorkspaceEdit`, which is the standard LSP contract and is pinned by its
+                   own test). The distinction that matters is user-invoked versus
+                   server-initiated: nothing here rewrites a `.tmd` on its own. The nine that went
                    on 2026-08-08 are named in `the_initialize_handshake_advertises_…`,
                    which fails if one is advertised again: five of them (formatting,
                    rename, `sectionEdit`, `insertEdit`, `renameFileEdits`) were the only

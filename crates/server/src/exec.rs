@@ -581,7 +581,7 @@ impl Executor {
     /// The usual cause is a fine interpreter that's just missing the Jupyter kernel package
     /// (`ipykernel`/`IRkernel`), NOT a wrong interpreter path — so name both and route to
     /// `doctor`, which reports exactly which it is (PL6). No "Restart kernel" clause: the
-    /// message is shared with headless `build`/`read`/CI, where that dev-menu action doesn't
+    /// message is shared with the headless `build` path and CI, where that dev-menu action doesn't
     /// exist (PA-B1); the live preview still surfaces the Restart button in its dev menu.
     fn kernel_unavailable_message(
         lang: &str,
@@ -1187,7 +1187,7 @@ impl Executor {
             Err(e) => {
                 // The one console emission for this failure, on the one path every
                 // command reaches. It used to be a terse line here PLUS the full
-                // `diagnostic()` line at the caller, so `build`/`read` printed the same
+                // `diagnostic()` line at the caller, so `build` printed the same
                 // fact twice and the short form said strictly less; a site build printed
                 // only the short form, once per page, and never the actionable half.
                 // `announce_once` is what makes the per-page repeat one line: the answer
@@ -1620,7 +1620,7 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
 /// runs — `apply_table_captions` numbers and registers `tbl-x` from the *label*, with
 /// no knowledge of what the cell will print — so returning the output untouched left
 /// `@tbl-x` a live link to an id nothing in the document emits, silently and with a
-/// clean `check` (which never executes a cell, so it cannot see this at all). Carry
+/// clean `build --check-only` (which never executes a cell, so it cannot see this). Carry
 /// the caption and the anchor on a wrapper instead, exactly as [`figure_wrap`] has
 /// always done for a figure cell that produced no image. The caption leads, because a
 /// table's caption sits above it.
@@ -1682,7 +1682,7 @@ mod tests {
 
     #[test]
     fn kernel_unavailable_message_is_headless_safe_and_routes_to_doctor() {
-        // Shared with `build`/`read`/CI, where the dev-menu "Restart kernel" action does not
+        // Shared with the headless `build` path and CI, where the dev-menu "Restart kernel" does not
         // exist (PA-B1). It must never tell a headless caller to click it, must route to
         // `taliesin doctor`, and must name the env var to fix.
         for last in [Some("boom"), None] {

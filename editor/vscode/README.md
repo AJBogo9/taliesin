@@ -41,7 +41,7 @@ grammar is **AGPL-3.0** and is not used.
 ## Language intelligence: a client over `taliesin lsp`
 
 **The extension implements no language features of its own.** Completion, hover,
-go-to-definition, the outline, folding, the Run-Cell lens, diagnostics and quick fixes all
+go-to-definition, the outline, folding, the cache-status lens, diagnostics and quick fixes all
 come from `taliesin lsp`, the offline, kernel-free LSP server built into the binary
 (`crates/server/src/lsp*.rs`) — over stdio. `src/client.ts` is the whole client.
 

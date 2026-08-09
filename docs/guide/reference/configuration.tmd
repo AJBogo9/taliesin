@@ -107,7 +107,8 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
 | `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
-| `python`, `r` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
+| `python` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
+| `external-prefixes` | URL prefixes another project supplies when several are composed into one deploy. Links into them are not reported as broken, because this project cannot see those pages. Only useful if you compose projects yourself; a single project never needs it |
 
 **A shared bibliography.** `bibliography:` in `_site.yml` is read by every page, so a
 series of posts citing one reference file declares it once instead of repeating the

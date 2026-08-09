@@ -273,8 +273,8 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
     (
         "front-matter key",
         "datasets",
-        "it was removed on 2026-08-02 and the annotations ride the invocation that uses \
-         them now: `{{< dataset data/x.csv licence=CC0-1.0 source=... >}}`",
+        "it was removed on 2026-08-02, and so was the `dataset` shortcode this note used \
+         to send authors to; nothing replaces it",
     ),
     // --- The academic-publishing cluster, retired 2026-08-03 with the reader-facing
     // cite-this box and the Google Scholar citation meta it fed. Citations themselves are

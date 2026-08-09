@@ -67,16 +67,6 @@ allow = ["AGPL-3.0-only"]
 crate = "option-ext"
 allow = ["MPL-2.0"]
 
-# `libfuzzer-sys` is `(MIT OR Apache-2.0) AND NCSA`, and the NCSA half is what trips the
-# permissive-only policy. It is an **optional** dependency of `rav1e` (the AVIF encoder
-# behind `image`'s `avif` feature, item 169), gated on rav1e's `fuzzing` feature, which
-# nothing here enables — so it appears in `Cargo.lock`, which is feature-agnostic, and is
-# never compiled into any Taliesin binary. Scoped to this one crate rather than allowing
-# NCSA globally, so a NEW NCSA dependency would still be flagged.
-[[licenses.exceptions]]
-crate = "libfuzzer-sys"
-allow = ["NCSA"]
-
 [bans]
 multiple-versions = "warn"
 

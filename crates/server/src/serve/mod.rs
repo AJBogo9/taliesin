@@ -604,7 +604,7 @@ pub(crate) fn panic_msg(payload: &(dyn std::any::Any + Send)) -> String {
 
 /// Run a synchronous `f` under [`std::panic::catch_unwind`], turning a panic into a clean
 /// `Err(message)` (via [`panic_msg`]) instead of aborting the process. The one-shot
-/// commands (`build`/`check`/`render`/`blocks`) call core rendering directly with no
+/// commands (`build`, including `--check-only`) call core rendering directly with no
 /// async rebuild loop to absorb a panic, so without this a malformed doc that panics the
 /// renderer crashes the CLI with a raw backtrace + abort instead of a located error and a
 /// non-zero exit. `AssertUnwindSafe` is sound here: a panic mid-`f` is surfaced and the

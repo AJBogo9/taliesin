@@ -51,9 +51,10 @@ pub(crate) fn server_capabilities() -> ServerCapabilities {
             ..Default::default()
         }),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
-        // Run · Run above · ⚡ cached, above every executable fence — the execution loop, in
-        // every LSP client, from Rust. Everything is resolved in one pass (the freeze lookup
-        // is a memoized read), so there is nothing for a `codeLens/resolve` round trip to add.
+        // ⚡ cached · ↻ always re-runs, above an executable fence whose answer is not the
+        // ordinary one. A LABEL, carrying no command: wave 13 cut `taliesin run`, and with it
+        // the Run/Run-above actions this lens used to bind. Everything resolves in one pass
+        // (the freeze lookup is a memoized read), so `codeLens/resolve` has nothing to add.
         code_lens_provider: Some(lsp_types::CodeLensOptions {
             resolve_provider: Some(false),
         }),

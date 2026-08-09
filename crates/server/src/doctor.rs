@@ -2,7 +2,8 @@
 //! kernel-package probe (`crate::interpreter`) unconditionally for both Python and R, plus
 //! active conda/virtualenv detection and `_site.yml` sanity, with ✓/⚠/✗ status and fix
 //! commands. Answers "is my environment ready to run code cells?" before any document exists
-//! (the probe inside `check` only runs for languages a doc already uses, which is circular).
+//! (a document-scoped lint only sees the languages that document already uses, which is
+//! circular — and wave 9 removed the interpreter probe from that path entirely).
 //!
 //! Pure core (`interpreter_check`/`active_env_check`/`overall_ok`): probe results + env vars
 //! are injected, so the severity logic is unit-tested without spawning or touching process
@@ -290,7 +291,7 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
     }
     let dir = Path::new(&dir);
 
-    // Honour an `_site.yml` python:/r: field + its config sanity, exactly as a build would; a
+    // Honour an `_site.yml` python: field + its config sanity, exactly as a build would; a
     // single-doc project (no `_site.yml`) has no field pins and no config check.
     let site = dir
         .join("_site.yml")

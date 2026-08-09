@@ -940,7 +940,7 @@ mod tests {
         );
         assert_eq!(
             buffer_codes, site_codes,
-            "the editor and `check` disagree about what is wrong with this page"
+            "the editor and `build --check-only` disagree about what is wrong with this page"
         );
         let _ = fs::remove_dir_all(&dir);
     }

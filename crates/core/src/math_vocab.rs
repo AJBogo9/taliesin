@@ -3,7 +3,7 @@
 //!
 //! **Why this can be authoritative rather than a wish list.** Every other vocabulary here is
 //! sourced from the const the validator reads, so a completion cannot offer something
-//! `check` rejects. Math has no such const: the grammar is KaTeX's. But KaTeX is *in the
+//! the validator rejects. Math has no such const: the grammar is KaTeX's. But KaTeX is *in the
 //! binary* (`crate::math`, the `katex` crate), so the equivalent guarantee is available by
 //! construction — [`tests::every_command_renders`] renders each entry's probe through the
 //! same code path a document uses and fails if KaTeX cannot parse it. A command that stops

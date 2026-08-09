@@ -68,6 +68,10 @@ pub struct SiteConfig {
     ///
     /// Empty = no shared bibliography, which is the pre-existing per-document-only world.
     pub bibliography: Vec<String>,
+    /// `external-prefixes:` — URL prefixes another project provides in the composed deploy.
+    /// Link validation treats a target under one of these as satisfied rather than broken.
+    /// See `NATIVE_KEYS` for why this is not `mounts:` coming back.
+    pub external_prefixes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -133,6 +137,19 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     // No `theorems:`. The book-wide numbering policy went with front-matter
     // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
     "bibliography",
+    // `external-prefixes:` — URL prefixes this project LINKS INTO but does not itself
+    // contain, because another project supplies them when the deploy is composed
+    // (`tools/build-site.sh`). Link validation stops at the prefix instead of reporting a
+    // broken link for every one of them.
+    //
+    // This is NOT `mounts:` returning (cut 2026-08-09). That key did three things: served
+    // sub-projects under a prefix in preview, recursed into them on build, and made their
+    // links resolve. The routing layer and the build recursion (with its cycle guard) stay
+    // cut — this is the third part alone, a declaration with no behaviour attached beyond
+    // silencing a check that cannot see the composed tree. `tools/build-site.sh --check`
+    // still resolves every one of these links for real, against the composed output, and
+    // is what pre-push and `tools/gates.sh` run.
+    "external-prefixes",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -302,6 +319,11 @@ fn parse_native(
         chapters,
         python: str_of("python"),
         bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
+        external_prefixes: crate::site::frontmatter::string_list(value.get("external-prefixes"))
+            .into_iter()
+            .map(|p| p.trim_matches('/').to_string())
+            .filter(|p| !p.is_empty())
+            .collect(),
     }
 }
 

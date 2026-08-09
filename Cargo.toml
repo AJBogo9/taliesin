@@ -24,14 +24,6 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
 
-# SHA-256 for dataset provenance (`{{< dataset >}}`), and ONLY for that. The digest is
-# printed on the page for a reader to check with `sha256sum`, so it has to be the
-# algorithm they already have — `crate::hash`'s FNV-1a is a short-string block-id digest
-# and says so in its own header ("not a checksum"). RustCrypto, pure Rust, and it reuses
-# the `digest`/`cpufeatures` crates already in the tree via `sha1`, so the graph grows by
-# one crate.
-sha2 = "0.10"
-
 # Server-side syntax highlighting at render time. We select syntect's pure-Rust
 # fancy-regex backend, but comrak also pulls syntect with its default features,
 # so oniguruma (C) is in the tree and, via Cargo feature unification, is the

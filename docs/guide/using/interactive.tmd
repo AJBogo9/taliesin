@@ -1,14 +1,13 @@
 ---
 title: "Interactive and explorable documents"
-description: "Documents a reader can operate: reactive js cells, inputs without boilerplate, scrollytelling, narrated code walkthroughs, tabbed panels and 3-D."
+description: "Documents a reader can operate: reactive js cells, inputs without boilerplate, and 3-D."
 ---
 
 Taliesin runs `{js}` cells in the browser and wires them into a small reactive
-graph. On top of that graph sit two declarative conveniences, inputs and
-scroll-driven scenes, plus two scroll and tab layouts. Everything here is
-client-side and offline, built from the same block model as the rest of the page,
-and the preview stays read-only: a reader interacts with the output, never the
-source.
+graph. On top of that graph sits one declarative convenience, inputs. Everything
+here is client-side and offline, built from the same block model as the rest of
+the page, and the preview stays read-only: a reader interacts with the output,
+never the source.
 
 The examples below are shown as source listings. Each feature has a runnable
 counterpart in the corpus (`corpus/reactive/`, `corpus/descent/`, `corpus/layout/`).

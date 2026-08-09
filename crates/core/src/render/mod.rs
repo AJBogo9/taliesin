@@ -2060,24 +2060,6 @@ pub fn site_css() -> &'static str {
     SITE_CSS
 }
 
-/// The callout kind vocabulary (`::: {.callout-<kind>}`), for tests outside this crate
-/// that need to assert its size without reaching into `validate` (`pub(crate)`).
-pub fn callout_kinds() -> &'static [&'static str] {
-    CALLOUT_KINDS
-}
-
-/// The retirement note for a `validate::RETIRED_DIV_CLASSES` entry, or `None` if `class`
-/// was never retired. `pub` (rather than widening `RETIRED_DIV_CLASSES` itself) so a test
-/// outside this crate can assert a retired div class is actually registered — the exact
-/// failure mode that produces silence instead of a diagnostic when an entry is missing.
-/// Mirrors [`crate::frontmatter::retired_note`].
-pub fn retired_div_note(class: &str) -> Option<&'static str> {
-    validate::RETIRED_DIV_CLASSES
-        .iter()
-        .find(|(c, _)| *c == class)
-        .map(|(_, note)| *note)
-}
-
 /// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each
 /// piece is separated by a bare `;` on its own line so concatenation is ASI-safe. The
 /// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files), and

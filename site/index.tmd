@@ -104,8 +104,8 @@ very docs are a Taliesin book.
 
 ::: {.feature}
 ### Multi-page websites
-Navbar, footer, listings, an Atom feed, OpenGraph, and Cmd-K search. This whole site is a
-Taliesin website.
+Navbar, footer, OpenGraph, Cmd-K search, and opt-in post listings with an Atom feed per
+dated listing. This whole site is a Taliesin website, built by the same `build` you run.
 
 [How this site is built →](formats.tmd#websites)
 :::

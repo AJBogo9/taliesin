@@ -131,7 +131,7 @@ impl SiteCache {
     /// (`lint::collect_file_diagnostics_in_site`), so that one place decides it: a deck and
     /// a `draft: true` chapter are both inside a project and are both linted standalone.
     ///
-    /// `DraftMode::Exclude` matches `check`, which is the parity this whole path claims.
+    /// `DraftMode::Exclude` matches `build --check-only`, the parity this whole path claims.
     pub(crate) fn get(&mut self, page: &Path) -> Option<&taliesin_core::Site> {
         let root = taliesin_core::site::enclosing_site_root_across_git(page.parent()?)?;
         let stamps = stamps_for(&root);

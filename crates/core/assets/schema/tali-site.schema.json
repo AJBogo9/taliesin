@@ -71,6 +71,7 @@
       "type": "array"
     },
     "description": {},
+    "external-prefixes": {},
     "favicon": {},
     "footer": {},
     "head": {},

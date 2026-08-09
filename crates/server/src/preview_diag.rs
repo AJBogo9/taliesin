@@ -1,6 +1,7 @@
-//! Bridge: run the static validators (the `check` superset) over an already-rendered
-//! preview document and convert them into `protocol::Diagnostic`s for the dev menu, so
-//! the live preview and `check` cannot drift on what counts as a defect.
+//! Bridge: run the static validators (the `build --check-only` superset) over an
+//! already-rendered preview document and convert them into `protocol::Diagnostic`s for the
+//! dev menu, so the live preview and the pre-publish gate cannot drift on what counts as a
+//! defect. (`check` was a verb until wave 9 retired it into that flag.)
 //!
 //! Returns `protocol::Diagnostic` (the client wire type), using the exact
 //! `Warning -> Diagnostic` mapping both serve paths already inline for render/xref

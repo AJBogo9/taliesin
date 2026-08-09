@@ -385,7 +385,7 @@ works from anywhere.
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
 editor gets live `.tmd` diagnostics as you type, the same validators the gate runs, on
 the unsaved buffer, plus completion, hover, go-to-definition, symbols, quick fixes,
-folding and the Run-Cell code lens. Seven capabilities, and every one of them answers a
+folding and a code lens. Seven capabilities, and every one of them answers a
 question: it is parse-only (no kernel, no code execution) and it never edits your source.
 The `.tmd` file is the single editing surface, and your editor is what edits it.
 

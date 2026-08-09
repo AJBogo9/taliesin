@@ -264,7 +264,7 @@ Preview & build
 
 Inspect
   doctor [dir] [--format human|json]  audit the environment for running code cells
-                             (interpreters, ipykernel/IRkernel, active conda/venv)
+                             (the Python interpreter, ipykernel, active conda/venv)
 
 Editor
   lsp                        stdio LSP server: live .tmd diagnostics in any editor
@@ -394,9 +394,9 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
         "doctor" => {
             "taliesin doctor [dir] [--format human|json]\n\
              \n\
-             Audit whether the environment can run code cells: the Python and R interpreter\n\
-             (resolved as a build would: _site.yml python:/r:, a .venv, TALIESIN_PYTHON/R, then\n\
-             the PATH default), whether ipykernel/IRkernel import, the active conda/virtualenv,\n\
+             Audit whether the environment can run code cells: the Python interpreter\n\
+             (resolved as a build would: _site.yml python:, a .venv, TALIESIN_PYTHON, then\n\
+             the PATH default), whether ipykernel imports, the active conda/virtualenv,\n\
              and _site.yml validity. Prints a status line per item with a fix command; exits\n\
              non-zero only if a configured interpreter is broken.\n\
              \n\

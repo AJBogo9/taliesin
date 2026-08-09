@@ -2045,19 +2045,24 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
     swept
 }
 
-/// Unique local `src=`/`href=`/`poster=`/`data-src=` values in `html` (skips external URLs,
+/// Unique local `src=`/`href=`/`poster=` values in `html` (skips external URLs,
 /// protocol-relative refs, data URIs, in-page anchors, and other schemes).
 ///
-/// The last two are media attributes a `{{< video >}}` emits and the first two never carry:
-/// `poster=` is the still, and a theme-adaptive `dark=` pair ships BOTH clips as `data-src`
-/// on purpose so the hidden variant is never fetched (the page shell promotes the visible
-/// one to `src`). Harvesting only `src`/`href` built a folder whose poster and off-theme
-/// clip both 404. `data-src` is a different attribute from the click-to-source
-/// `data-tali-src`, which must stay unharvested — see the whole-attribute guard below.
+/// `poster=` is a media attribute the first two never carry: harvesting only `src`/`href`
+/// built a folder whose `<video>` still 404s. It stays because raw `<video>` HTML is in the
+/// trust model and `diagnostics/media.rs` validates the same attribute.
+///
+/// `data-src=` was harvested here too until 2026-08-09, for a theme-adaptive `dark=` pair
+/// that shipped both clips as `data-src` so the hidden one was never fetched. Wave 7 cut
+/// `{{< video >}}`, which took the page-shell promoter that turned `data-src` into `src`
+/// with it — so nothing emits the attribute and nothing would load a file harvested from
+/// it. Its comment cited `corpus/media/screencast.tmd`, which does not exist either.
+/// **The whole-attribute guard below is unaffected and still load-bearing**: `src="` is a
+/// substring of the click-to-source `data-tali-src="`, which must stay unharvested.
 fn local_refs(html: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let bytes = html.as_bytes();
-    for attr in ["src=\"", "href=\"", "poster=\"", "data-src=\""] {
+    for attr in ["src=\"", "href=\"", "poster=\""] {
         let mut i = 0;
         while let Some(pos) = html[i..].find(attr) {
             let at = i + pos; // first byte of the attribute name
@@ -2701,38 +2706,36 @@ mod mirror_tests {
         let _ = fs::remove_dir_all(&out);
     }
 
-    /// A `{{< video >}}` carrying `poster=` or `dark=` names files through attributes that
-    /// are NOT `src=`/`href=`: the poster rides on `poster="…"`, and a theme-adaptive pair
-    /// deliberately ships `data-src="…"` so the hidden variant is never fetched (the page
-    /// shell promotes it to `src` when its theme becomes visible).
+    /// A `<video>` names its still through `poster="…"`, an attribute that is neither
+    /// `src=` nor `href=`. It was invisible to `local_refs`, so `build --out <dir>` emitted
+    /// a page whose poster 404s — and a poster that fails to load also collapses the
+    /// element to the UA default 150px, because no intrinsic ratio ever arrives.
     ///
-    /// Both were invisible to `local_refs`, so `build --out <dir>` emitted a page whose
-    /// poster 404s and whose off-theme clip 404s — measured on
-    /// `corpus/media/screencast.tmd`, where the poster failing to load also collapsed the
-    /// element to the UA default 150px because no intrinsic ratio ever arrived. No corpus
-    /// document used either argument until 2026-08-07, which is exactly why it shipped.
+    /// This used to cover a `data-src` theme-pair too. Wave 7 cut `{{< video >}}` and with
+    /// it the page-shell promoter that turned `data-src` into `src`, so that half was
+    /// pinning a harvest of an attribute nothing emits and nothing would load; it went with
+    /// the branch on 2026-08-09. `poster=` stays: raw `<video>` HTML is in the trust model,
+    /// and `diagnostics/media.rs` validates this same attribute.
     #[test]
-    fn copy_local_assets_bundles_video_poster_and_theme_pair_sources() {
+    fn copy_local_assets_bundles_the_video_poster() {
         let base = tmp("video-attrs");
         let out = tmp("video-attrs-out");
-        for f in ["clip-light.mp4", "clip-dark.mp4", "still.png"] {
+        for f in ["clip.mp4", "still.png"] {
             fs::write(base.join(f), b"x").unwrap();
         }
-        let html = "<video class=\"tali-video-light\" data-src=\"clip-light.mp4\" \
-                    poster=\"still.png\"></video>\
-                    <video class=\"tali-video-dark\" data-src=\"clip-dark.mp4\" \
-                    poster=\"still.png\"></video>";
+        let html = "<video src=\"clip.mp4\" poster=\"still.png\"></video>\
+                    <video src=\"clip.mp4\" poster=\"still.png\"></video>";
 
         let copied = copy_local_assets(html, &base, &out);
 
-        for f in ["clip-light.mp4", "clip-dark.mp4", "still.png"] {
+        for f in ["clip.mp4", "still.png"] {
             assert!(
                 out.join(f).exists(),
                 "`{f}` must be bundled, got {copied} copies"
             );
         }
         assert_eq!(
-            copied, 3,
+            copied, 2,
             "each file once, deduped across the pair: got {copied}"
         );
 
@@ -2740,10 +2743,16 @@ mod mirror_tests {
         let _ = fs::remove_dir_all(&out);
     }
 
-    /// The `data-src` harvest must not re-open the hole the whole-attribute guard closed:
-    /// `data-tali-src="…"` is click-to-source metadata pointing at a page's `.tmd`
-    /// SOURCE, and harvesting it once published every post's source into `_site/`.
-    /// `data-src` and `data-tali-src` are different attributes and only the first is media.
+    /// `data-tali-src="…"` is click-to-source metadata pointing at a page's `.tmd` SOURCE,
+    /// and harvesting it once published every post's source into `_site/`. `src="` is a
+    /// SUBSTRING of it, so the whole-attribute guard in `local_refs` is the only thing
+    /// standing between the harvest and that leak — this pins the guard, not the harvest.
+    ///
+    /// It used to make the point by contrasting `data-src` (media, harvested) with
+    /// `data-tali-src` (metadata, refused). The `data-src` branch went on 2026-08-09 with
+    /// the `{{< video >}}` promoter that gave it meaning, so the contrast is now plain
+    /// `src=` against `data-tali-src` — which is the pair the guard actually has to
+    /// separate, and always was.
     #[test]
     fn copy_local_assets_still_refuses_the_click_to_source_attribute() {
         let base = tmp("dts");
@@ -2751,11 +2760,11 @@ mod mirror_tests {
         fs::write(base.join("post.tmd"), b"secret source").unwrap();
         fs::write(base.join("clip.mp4"), b"x").unwrap();
         let html = "<a data-tali-src=\"post.tmd\">card</a>\
-                    <video data-src=\"clip.mp4\"></video>";
+                    <video src=\"clip.mp4\"></video>";
 
         let copied = copy_local_assets(html, &base, &out);
 
-        assert!(out.join("clip.mp4").exists(), "media data-src is bundled");
+        assert!(out.join("clip.mp4").exists(), "real media src is bundled");
         assert!(
             !out.join("post.tmd").exists(),
             "click-to-source metadata must NEVER be published: got {copied} copies"

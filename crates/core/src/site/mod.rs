@@ -780,6 +780,22 @@ impl Site {
                     continue;
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
+                    // A prefix another project supplies in the composed deploy
+                    // (`_site.yml`'s `external-prefixes:`). This project cannot see those
+                    // pages and never will; `tools/build-site.sh --check` resolves them for
+                    // real, against the composed output, and is what pre-push and
+                    // `tools/gates.sh` run. Without this the marketing site's own
+                    // pre-publish gate was permanently red on 11 links that all resolve,
+                    // which trains an author to ignore the one command that would catch a
+                    // real one.
+                    if self
+                        .config
+                        .external_prefixes
+                        .iter()
+                        .any(|p| target_url == *p || target_url.starts_with(&format!("{p}/")))
+                    {
+                        continue;
+                    }
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: any source file that exists under the root is a
                     // legitimate target.

@@ -1,9 +1,11 @@
-//! The websocket wire protocol shared by both dev servers: the single-document
-//! [`crate::serve`] server and the multi-page [`crate::serve_site`] server push
-//! the same JSON messages to the preview client, and `web-client/` is the other
-//! end of this contract. Keeping the message shapes here (rather than copied in
-//! each server) means the two servers can't drift apart from each other or from
-//! the client.
+//! The websocket wire protocol the dev server and the preview client agree on:
+//! [`crate::serve_site`] pushes these JSON messages and `web-client/` is the other end
+//! of the contract. Keeping the message shapes here (rather than inline in the server)
+//! means the two ends can't drift apart.
+//!
+//! It said "shared by BOTH dev servers" until 2026-08-09. Wave 1.1 deleted the
+//! single-document server; `crate::serve` is now the shared HTTP/asset layer, not a
+//! server, and there is exactly one.
 
 use taliesin_core::BlockOp;
 
@@ -271,9 +273,9 @@ pub struct Broadcast<'a> {
 }
 
 impl Broadcast<'_> {
-    /// The ordered burst both dev servers push after a rebuild diff. The two servers
-    /// MUST sequence these identically or the incremental invariant drifts between the
-    /// previews, so the ordering lives here once:
+    /// The ordered burst the dev server pushes after a rebuild diff. The sequence is the
+    /// incremental invariant the client relies on, so it lives here once rather than at the
+    /// call site:
     ///
     ///   1. body — one `full_render` when `remount`, otherwise one `op` per block op,
     ///      in diff order;

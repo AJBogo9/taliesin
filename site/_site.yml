@@ -8,6 +8,15 @@ description: "A fast, single-purpose dev server that turns one .tmd file into a 
 url: "https://taliesin.sh"
 favicon: favicon.svg
 
+# The prefixes tools/build-site.sh writes OTHER projects under. This project links into
+# them (the navbar, the gallery cards, every call-to-action) but does not contain them, so
+# `build site --check-only` would otherwise report 11 broken links that all resolve in the
+# real deploy. The script still verifies every one of them against the composed output.
+external-prefixes:
+  - docs/guide
+  - docs/internals
+  - gallery
+
 nav:
   left:
     - { text: "Features", href: features.tmd }

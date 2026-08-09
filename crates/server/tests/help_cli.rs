@@ -39,10 +39,19 @@ fn help_groups_commands_by_purpose() {
     assert!(under("  preview", "Preview & build") < h.find("Inspect").unwrap());
     assert!(under("  doctor", "Inspect") < h.find("Editor").unwrap());
     assert!(h.contains("Editor") && under("  lsp", "Editor") > 0);
-    // No command was dropped in the reorder.
-    for cmd in [
-        "init", "new ", "preview", "build ", "run ", "doctor", "lsp", "help,",
-    ] {
-        assert!(h.contains(cmd), "help dropped `{cmd}`:\n{h}");
+    // No command was dropped in the reorder. ANCHORED to the two-space indent every
+    // command row in `--help` carries: the list used to include the retired `run`, and
+    // passed on the unanchored substring `"run "` matching ENV_HELP's prose "never run code
+    // cells" — so the loop asserted a verb was documented by finding an unrelated sentence.
+    for cmd in ["init", "new", "preview", "build", "doctor", "lsp", "help"] {
+        assert!(
+            h.contains(&format!("  {cmd}")),
+            "help dropped `{cmd}`:\n{h}"
+        );
     }
+    // …and the retired verb is not advertised as if it still existed.
+    assert!(
+        !h.contains("  run "),
+        "`run` was cut in wave 13 but --help still lists it:\n{h}"
+    );
 }

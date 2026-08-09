@@ -86,16 +86,8 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
 /// rename moved the emitter and forgot the consumer".
 const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
     (
-        "data-tali-theorem-kind",
-        "build-time only: render/mod.rs:2188 scans for it as a Rust string needle while numbering theorems",
-    ),
-    (
         "data-tali-xref",
         "build-time only: cite/validate.rs:15 scans for it as a Rust string needle to report unresolved cross-references",
-    ),
-    (
-        "data-slide-anchor",
-        "build-time only: deck.rs:425 reads it via extract_attr while assigning slide ids",
     ),
     (
         "data-section-end",
@@ -115,13 +107,6 @@ const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
          never asks for it: the slot ALSO carries the same `{cell}-out` data-block-id a \
          top-level output block would, which is the name client.js already looks up for \
          streaming output and per-cell state, so a nested cell needs no second lookup path.",
-    ),
-    (
-        "data-scrolly-name",
-        "DEAD as of 2026-07-25: emitted by divs.rs:660 and read by nothing. scrolly.js takes the \
-         name from the hidden input's data-tali-input instead, and no Rust reads it either. Left in \
-         place rather than removed, since deleting an emitted attribute is a behaviour change, not \
-         part of a rename.",
     ),
 ];
 
