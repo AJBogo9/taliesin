@@ -45,7 +45,7 @@ iterate over whatever exists.
 | `callouts/kinds.tmd` | All 3 callout kinds with bundled icons, `appearance=` and `icon="false"`. |
 | `nested-cells.tmd` | One executable cell per container kind (callout, grid column, width escape, two deep), pinning the output slots' order and depth. |
 | `reactive/` | The `{js}` graph: `//\| viewof`/`name`/`input` chains, the `{{< input >}}` control set, and the error box a throwing cell shows. |
-| `reader/` | Read-only reader enhancers: pre-paint theme, display preferences, the TOC scrollspy, the text projection. |
+| `reader/` | Read-only reader enhancers: pre-paint theme, display preferences, the TOC scrollspy. |
 | `highlight.tmd` | Per-language `tali-hl-` scope classes, including the highlighted-but-never-executed languages. Why `ts` and `toml` are the load-bearing cases is in `highlight_langs.rs`. |
 | `native-tmd.tmd` | `.tmd` is the native **and only** source extension: the walker, the lint and the link rewrite recognize it, and a stray `.qmd` is not a source document. |
 | `theme-css/` | `theme: brand.css` read relative to the document, and the `_extensions/<name>/theme.css` bundle branch resolved by bare name. |

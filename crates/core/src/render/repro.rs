@@ -28,13 +28,14 @@ use super::{Block, html_escape};
 
 /// The generated block's id.
 ///
-/// Named once because FOUR consumers must agree to skip it, and they are in three modules:
-/// the text projection (`taliesin read`), the search index, and `llms-full.txt`. Every one
-/// of those turns a page into text, and this box is chrome offering the reader a file, not
-/// something the page says — indexed, every computational page in a project answers a
-/// Cmd-K search for "download" with identical boilerplate. A literal in each place is a
-/// rename that silently un-skips one of them, which is why this is a constant and why
-/// `the_code_download_box_stays_out_of_every_text_projection` checks all three at once.
+/// Named once because a consumer that turns a page into text must agree to skip it: this
+/// box is chrome offering the reader a file, not something the page says — indexed, every
+/// computational page in a project answers a Cmd-K search for "download" with identical
+/// boilerplate. There were three such consumers in three modules; **one is left**, the
+/// search index, after wave 2 took `taliesin read`'s projection, wave 4 took
+/// `llms-full.txt`, and R6-11 took the projection code itself. A literal in each place is a
+/// rename that silently un-skips one, which is why this is still a constant and why
+/// `the_code_download_box_stays_out_of_the_search_index` exercises the real filter.
 pub(crate) const REPRO_BLOCK_ID: &str = "tali-repro";
 
 /// One language's collected source.
@@ -264,30 +265,37 @@ mod tests {
         assert!(!html.contains("cells.js"), "no js download: {html}");
     }
 
-    /// The box is chrome, and every projection that turns a page into text must drop it.
+    /// The box is chrome, and every extractor that turns a page into text must drop it.
     ///
-    /// Checked in ONE test rather than three, because the failure mode is a *partial*
-    /// rename: three modules skip this block by id, and a literal in each is a rename that
-    /// silently un-skips one of them. Two of the three were found only by building a real
-    /// site and grepping the artefacts, not by any test that existed.
+    /// Three modules skipped this block by id, each with its own literal, so the failure
+    /// mode was a *partial* rename that silently un-skips one — which is why this was one
+    /// test rather than three. R6-11 left **one** skipper, the Cmd-K search index
+    /// (`site/search.rs`); the `read`/`skim` projection went with wave 2's verb and
+    /// `llms-full.txt` with wave 4. The test is re-pointed at the survivor rather than
+    /// deleted: one skipper still means one literal that a rename can miss.
     #[test]
-    fn the_code_download_box_stays_out_of_every_text_projection() {
+    fn the_code_download_box_stays_out_of_the_search_index() {
         let doc = render_document("# Title\n\nProse.\n\n```{python}\nx = 1\n```\n");
         assert!(
             doc.blocks.iter().any(|b| b.id == REPRO_BLOCK_ID),
             "the fixture must actually carry the box, or this test proves nothing"
         );
-        // `taliesin read` / `skim` (and the search index + llms-full.txt, whose own
-        // extractors filter on the same constant).
-        let text = crate::render::text::project(&doc.blocks);
+        // The exact filter+extract pair `site/search.rs` runs to build a page's body text.
+        let body: String = doc
+            .blocks
+            .iter()
+            .filter(|b| b.id != REPRO_BLOCK_ID)
+            .map(|b| b.html.as_str())
+            .collect();
+        let text = crate::render::text::indexable_text(&body);
         assert!(
             !text.contains("Download the"),
-            "the download box leaked into the text projection:\n{text}"
+            "the download box leaked into the search index:\n{text}"
         );
         // The cells themselves are still there — the box is dropped, not the content.
         assert!(
             text.contains("x = 1"),
-            "the cell source still projects:\n{text}"
+            "the cell source is still indexed:\n{text}"
         );
     }
 

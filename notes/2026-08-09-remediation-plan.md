@@ -679,7 +679,7 @@ is removing"* — correct then, expired now that the campaign is over. One asser
 | **R6-8** | `doctor --format json` / `--json` + the package dump | 345 | The ruling sanctioned exactly one machine surface, and it is `build --format json`. |
 | **R6-9** | `math_preview.rs`, the hover math arm, `taliesin/mathCommands` | 560 | Editor-only surface living inside `taliesin-core`. |
 | **R6-10** | `new`'s `<kind>` positional and its two registers | 176 | Wave 8 left one kind; a vocabulary of one needs no register. |
-| **R6-11** | `RenderedDoc::body_text()` and the unreachable half of `render/text.rs` | ~500 | Audit finding 10. **Zero production callers** — the only two callers of `text::project` are `body_text` itself and one inside a `#[cfg(test)]` module. Both consumers its doc comment names are gone: `site/llms.rs` (wave 4) and the `read` verb (wave 2); the Cmd-K index uses the independent `render::indexable_text`. Invisible to clippy because `RenderedDoc` is re-exported from `lib.rs`. **Ordering rule applies:** `crates/core/tests/text_projection.rs`, `tests/snapshots/text-projection.txt` and `corpus/reader/text-projection.tmd` die in the same commit. Keep `decode`/`decode_numeric`/`indexable_text`; `render/mod.rs:2872 strip_tags_block_separated` goes too (its only caller is inside the dead subtree). |
+| ~~**R6-11**~~ | ~~`RenderedDoc::body_text()`~~ — **LANDED 2026-08-09**, see below | ~~~500~~ **959** | Audit finding 10. **Zero production callers** — the only two callers of `text::project` are `body_text` itself and one inside a `#[cfg(test)]` module. Both consumers its doc comment names are gone: `site/llms.rs` (wave 4) and the `read` verb (wave 2); the Cmd-K index uses the independent `render::indexable_text`. Invisible to clippy because `RenderedDoc` is re-exported from `lib.rs`. **Ordering rule applies:** `crates/core/tests/text_projection.rs`, `tests/snapshots/text-projection.txt` and `corpus/reader/text-projection.tmd` die in the same commit. Keep `decode`/`decode_numeric`/`indexable_text`; `render/mod.rs:2872 strip_tags_block_separated` goes too (its only caller is inside the dead subtree). |
 | **R6-12** | Nine smaller items | ~1,100 | Dead validators, the cgroup-v2 container-memory walk, `csl:`, one of `preview`'s two port spellings, two corpus projects, the Cmd-K palette *actions*, `TALIESIN_CELL_TIMEOUT` (**sequence after R2**, which changes the interrupt story). |
 
 ### R6-1 — LANDED 2026-08-09, `cut/r6-1-plan-archive`
@@ -711,6 +711,30 @@ side (10 gates).
   record, so it does not conflict. Its own line 172 left pruning open, and its line 175 argued
   for it. Three stale figures in that item were re-measured: 69 files → **97**,
   `git grep -Il "/home/bogo"` 21 → **14** (all now in `notes/`), and the catalog's byte count.
+
+### R6-11 — LANDED 2026-08-09, `cut/r6-11-dead-text-projection`
+
+**959 deletions / 49 insertions**, roughly double the ~500 the row estimated: the row counted
+`text.rs` and missed the cascade behind it. Gate green either side (10 gates).
+
+- **Method worth reusing for the remaining items.** Delete the roots, then let
+  `clippy -D warnings` enumerate the dead cascade instead of hand-tracing 24 functions. It
+  named **23** items, including two the plan did not: the `Separate::NonPhrasing` variant and
+  the `PHRASING` table, which existed only to serve `strip_tags_block_separated`. `text.rs` is
+  now the three survivors the search index needs.
+- **The trap the plan flagged is real and had to be worked around.** A function reached only
+  from a `#[cfg(test)]` module is not dead to `--all-targets`, so the in-file projection tests
+  had to go before clippy could see the truth.
+- **One test re-pointed, not deleted** — same call as R6-1's exemption assertion.
+  `repro.rs`'s `the_code_download_box_stays_out_of_every_text_projection` guarded that the
+  "Run this yourself" box never leaks into text across three consumers that each carried
+  their own `REPRO_BLOCK_ID` literal. **One consumer is left** (the Cmd-K index), so it is now
+  `the_code_download_box_stays_out_of_the_search_index` and runs the exact filter/extract pair
+  `site/search.rs` runs. The constant's doc comment claimed four consumers in three modules
+  and named the old test; both were corrected.
+- **`indexable_text` gained a test it never had.** Its block-boundary and whitespace-collapse
+  behaviour was covered only through the projection's `visible` tests, which went with it —
+  a coverage hole the deletion would otherwise have opened silently.
 
 **Tier 2 — do not act without an explicit ruling.** `notes/`'s 64 July-dated audits
 (18,454 lines; keep `CUT-PROGRESS.md`, the ruling, the playbook and this plan); vendored

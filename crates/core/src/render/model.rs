@@ -405,14 +405,6 @@ impl RenderedDoc {
         }
         s
     }
-
-    /// A deterministic, screen-reader-like plain-text projection of the document: headings,
-    /// resolved "Figure N"/xref numbers, callout kinds, fenced code, display math as raw TeX.
-    /// A VIEW, not an output format. Read by `site/llms.rs` for `llms-full.txt`; the same
-    /// walk backs the Cmd-K search index (`text::indexable_text`). See [`super::text`].
-    pub fn body_text(&self) -> String {
-        super::text::project(&self.blocks)
-    }
 }
 
 #[cfg(test)]

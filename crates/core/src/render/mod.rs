@@ -2850,17 +2850,6 @@ fn strip_tags_separated(html: &str) -> String {
     strip_tags_inner(html, Separate::EveryTag)
 }
 
-/// [`strip_tags`], but with a space at every tag boundary EXCEPT the phrasing elements
-/// that mark up a run of running text ([`PHRASING`]). This is the rule a *single block*
-/// wants: one block's HTML can hold several distinct fields — a listing/title block is a
-/// heading plus a `<span>` date plus a `<span>` reading time — and stripping with no
-/// boundary fuses them ("…alignment.17 March 20263 min read", which is what the real
-/// published `llms-full.txt` carried). Separating at *every* tag instead over-corrects,
-/// splitting `re<em>st</em>art` into "re st art".
-fn strip_tags_block_separated(html: &str) -> String {
-    strip_tags_inner(html, Separate::NonPhrasing)
-}
-
 /// Where [`strip_tags_inner`] leaves a word boundary behind.
 #[derive(Clone, Copy, PartialEq)]
 enum Separate {
@@ -2868,18 +2857,7 @@ enum Separate {
     Never,
     /// At every tag — a run of blocks read as one string (the search index).
     EveryTag,
-    /// At every tag but [`PHRASING`] — one block that may hold several fields.
-    NonPhrasing,
 }
-
-/// HTML phrasing elements that mark up a run of running text, so a boundary inside them
-/// would split a word. Deliberately excludes `span`: Taliesin's title/listing blocks use
-/// `<span>` for *separate fields* (date, reading time), which is precisely the fusion
-/// [`strip_tags_block_separated`] exists to prevent.
-const PHRASING: &[&str] = &[
-    "a", "abbr", "b", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark", "q", "s", "samp",
-    "small", "strong", "sub", "sup", "time", "u", "var",
-];
 
 fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
@@ -2924,7 +2902,6 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             let boundary = match separate {
                 Separate::Never => false,
                 Separate::EveryTag => true,
-                Separate::NonPhrasing => !PHRASING.contains(&name.as_str()),
             };
             // Never double a boundary that is already there. `</span> <span>` carries a
             // real space of its own, and pushing a second one publishes "models.  14 April".
