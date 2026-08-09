@@ -27,7 +27,16 @@ const INIT_SITE_YML: &str = "title: My site\n";
 
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
 /// points the new user at the next steps. `.tmd` is the native extension.
-const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
+///
+/// The `listing:` block is what makes the two scaffolders COMPOSE. Without it, `init` then
+/// `new post` then `build` produced a post whose only appearance on the homepage was the
+/// instruction line below that names the command, reachable by typing its URL and by
+/// nothing else. It renders nothing at all until `posts/` has a document in it, so a fresh
+/// `init` still previews as a clean hello-world page with no empty section. `type:` is
+/// spelled out even though `list` is the default: it is the one knob a new author wants
+/// (swap it for `grid` and the homepage becomes a card grid), and a scaffold is read as an
+/// example.
+const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\nlisting:\n  contents: posts\n  type: list\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\

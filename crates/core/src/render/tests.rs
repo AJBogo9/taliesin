@@ -1640,11 +1640,11 @@ fn headings_get_deduped_anchor_ids() {
 
 #[test]
 fn standalone_image_becomes_a_numbered_figure() {
-    let doc =
-        render_document("![Scree plot](scree.png){#fig-scree width=50% fig-align=\"center\"}\n");
+    let doc = render_document("![Scree plot](scree.png){#fig-scree width=50%}\n");
     let h = &doc.blocks[0].html;
     assert!(h.starts_with("<figure"), "got: {h}");
     assert!(h.contains("id=\"fig-scree\""), "got: {h}");
+    // Centred unconditionally: `fig-align=` was cut on 2026-08-09 (see `emit_figure`).
     assert!(
         h.contains("class=\"tali-figure tali-figure-center\""),
         "got: {h}"
@@ -1830,6 +1830,55 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     assert!(
         !built_prose.contains("requestFullscreen"),
         "a built page that is not a deck must not ship requestFullscreen: {built_prose}"
+    );
+}
+
+/// `build <file.tmd>` inlines the framework stylesheet, and until 2026-08-09 it inlined it
+/// RAW. Measured on a prose page: 274,966 bytes shipped, 244,662 of them stylesheet, and
+/// 41,823 of THAT developer comments addressed to whoever next edits `base.css`. The
+/// multi-page build has run the same constants through [`crate::minify_css`] since it grew a
+/// shared `_assets/` bundle; the single-file path, the verb a first user reaches for, was
+/// simply never pointed at it, so it produced the worse artifact.
+#[test]
+fn a_standalone_page_minifies_the_css_it_inlines() {
+    let page = page_from_doc(
+        &render_document("---\ntitle: Prose\n---\n\nJust prose: no math, no cells.\n"),
+        "doc",
+        OutputMode::Build,
+    );
+    // The largest `<style>` block, not the first: a page with a `theme:` emits its own
+    // small one, and which lands first is a template-ordering detail this test does not own.
+    let css = page
+        .split("<style>")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("</style>").map(|(css, _)| css))
+        .max_by_key(|css| css.len())
+        .expect("a standalone page inlines its framework CSS");
+
+    assert!(
+        !css.contains("/*"),
+        "the inlined stylesheet still carries developer comments"
+    );
+    let raw = format!(
+        "{}{}{}{}{}",
+        super::FONTS_CSS,
+        super::TOKENS_CSS,
+        super::TOKENS_DARK_CSS,
+        super::BASE_CSS,
+        super::DARK_CSS
+    );
+    // Anti-vacuity, and the reason the comment check alone is not enough: most of `raw` is
+    // base64 font payload that no minifier can touch, so the saving has to be asserted in
+    // bytes or a regression that stripped comments and nothing else would read as a pass.
+    // Measured 2026-08-09: 239,499 B raw -> 195,352 B inlined, a 44,147 B saving, almost
+    // all of it the comments (41,823 B). Collapsing whitespace buys only ~2 KB, because the
+    // minifier collapses runs to a single space rather than deleting space around `{:;`.
+    assert!(
+        raw.len() > css.len() + 40_000,
+        "the inlined CSS ({} B) must be materially smaller than the {} B of constants it is \
+         built from",
+        css.len(),
+        raw.len()
     );
 }
 

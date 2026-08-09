@@ -3,6 +3,7 @@
 //! `use super::*` reaches the render pipeline + the bundled-asset accessors.
 
 use super::*;
+use std::sync::LazyLock;
 
 pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     html_page_from_doc(doc, fallback_title, mode)
@@ -162,6 +163,25 @@ impl<'a> PageParts<'a> {
     }
 }
 
+/// The framework stylesheet an [`AssetMode::Inline`] page carries, minified once per
+/// process. The multi-page build has always run these same constants through
+/// [`crate::minify_css`] on its way into `_assets/app.<hash>.css`; the single-file `build`
+/// and the live preview inlined them raw, so a prose page shipped 274,966 bytes with 41,823
+/// of them developer comments. Minifying is byte-identical work either way; what changed is
+/// only that the inline path now does it too.
+///
+/// Split in two (this blob and the site chrome below) rather than one blob per
+/// `with_site_css` value, so the ~186 KB shared half is not held twice. The seam is safe:
+/// the last constant here ends in `}` and a minified stylesheet starts with a selector, so
+/// `minify_css`'s token-fusion rule has nothing to fuse across the join.
+static INLINE_APP_CSS: LazyLock<String> = LazyLock::new(|| {
+    crate::minify_css(&format!(
+        "{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}"
+    ))
+});
+/// The multi-page site chrome (navbar / footer / prev-next), appended when `with_site_css`.
+static INLINE_SITE_CSS: LazyLock<String> = LazyLock::new(|| crate::minify_css(SITE_CSS));
+
 /// Whether this page must carry the vendored `{js}` libraries (d3 + Observable Plot).
 ///
 /// **Unconditional in [`OutputMode::Preview`], content-gated in a static build.** Both call
@@ -232,10 +252,16 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     let enhancer_registry = format!("<script>{REGISTRY_JS}</script>\n");
     let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
         AssetMode::Inline => {
-            let site_css = if p.with_site_css { SITE_CSS } else { "" };
-            let style_block = format!(
-                "<style>{FONTS_CSS}{TOKENS_CSS}{TOKENS_DARK_CSS}{BASE_CSS}{DARK_CSS}{site_css}</style>"
-            );
+            let site_css: &str = if p.with_site_css {
+                &INLINE_SITE_CSS
+            } else {
+                ""
+            };
+            let style_block = format!("<style>{}{site_css}</style>", *INLINE_APP_CSS);
+            // KaTeX is NOT run through the minifier here. It is generated from the
+            // already-minified `katex.min.css` with the fonts inlined as base64, which the
+            // minifier copies verbatim: measured 2026-08-09, minifying it saved 1 byte of
+            // 369,347 and would have cost a second 369 KB resident to hold the result.
             let katex_block = if p.ship_katex {
                 format!("\n<style>{KATEX_CSS}</style>")
             } else {

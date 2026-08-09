@@ -1316,7 +1316,7 @@ impl AssetBundle {
         if used.katex {
             put(
                 &self.katex_css,
-                &crate::minify::minify_css(taliesin_core::katex_css()),
+                &taliesin_core::minify_css(taliesin_core::katex_css()),
             )?;
         }
         // Vendored libs are already minified: write as-is (do not re-minify).
@@ -1376,14 +1376,14 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
     let app_css = named(
         "app",
         "css",
-        &crate::minify::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
+        &taliesin_core::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
     )?;
     let app_js = named("app", "js", &taliesin_core::core_enhance_js())?;
     // Named, not written: see `write_conditional`.
     let katex_css = hashed(
         "katex",
         "css",
-        &crate::minify::minify_css(taliesin_core::katex_css()),
+        &taliesin_core::minify_css(taliesin_core::katex_css()),
     );
     let mermaid_js = hashed("mermaid", "js", &taliesin_core::mermaid_bundle_js());
     let jslibs_js = hashed("jslibs", "js", &taliesin_core::js_cell_libs_js());

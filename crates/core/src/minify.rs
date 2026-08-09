@@ -1,7 +1,15 @@
-//! A conservative, dependency-free CSS minifier for the build-time shared asset bundle.
+//! A conservative, dependency-free CSS minifier for the bundled stylesheets.
 //! Fully UTF-8 correct: it iterates by `char` and copies non-ASCII content (e.g. `·`, `×`,
 //! `…`, `→`, `é`) through untouched, inside strings and out. It collapses whitespace and
 //! strips comments, string- and `url()`-aware.
+//!
+//! **It lives in `taliesin-core` as of 2026-08-09, having spent its life in the server
+//! crate.** It only ever minified core's own `include_str!`-compiled constants, and the
+//! single-file `build` path that inlines those same constants ([`crate::render`]'s
+//! `AssetMode::Inline`) could not reach it from the other side of the crate boundary. So the
+//! verb a first user reaches for shipped 42 KB of developer comments in every page while the
+//! multi-page build shipped none. `taliesin_core::minify_css` is the one entry point;
+//! `build.rs` still calls it directly for the dynamic `_assets/` bundle.
 //!
 //! **The JS half was cut on 2026-08-08 with the rest of the web-platform ops.** It was a
 //! 235-line stateful tokenizer (ASI-safe newline preservation, regex-vs-division

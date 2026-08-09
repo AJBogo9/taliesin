@@ -38,6 +38,7 @@ pub mod includes;
 pub mod math;
 pub mod math_preview;
 mod math_vocab;
+pub mod minify;
 pub mod prose;
 pub mod render;
 pub mod schema;
@@ -47,6 +48,7 @@ pub mod vocab;
 pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::{closest, closest_of};
 pub use includes::single_doc_root;
+pub use minify::minify_css;
 pub use render::Severity;
 /// The built-in shortcodes the renderer dispatches on, re-exported because the LSP's
 /// completion list is a second copy of this set and nothing else ties the two together

@@ -66,14 +66,20 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
 }
 
 /// Render a recognized figure as a numbered `<figure>` carrying the block data
-/// attributes, honoring `width=`, `height=`, and `fig-align=`.
+/// attributes, honoring `width=` and `height=`.
+///
+/// A figure is centred, full stop. `fig-align=` was cut on 2026-08-09: it took three values
+/// and only `right` had a stylesheet rule to its name. `left` emitted `tali-figure-left`,
+/// which no stylesheet has ever defined: it looked right only because left is the inherited
+/// default, so the third documented value was a class that did nothing. Removing just that
+/// value would have been worse than leaving it: the fallthrough is centre, so a figure the
+/// author asked to be left would have silently centred, and a fence attribute has no
+/// validator to say otherwise. Nothing in the corpus, the marketing site or either docs book
+/// ever set `left` or `right`, and no page documented the attribute, so the whole knob went
+/// and the default it was overriding stayed.
 pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> String {
     let id_attr = id_attr(fig.attrs.id.as_deref());
-    let align_class = match fig.attrs.get("fig-align") {
-        Some("left") => " tali-figure-left",
-        Some("right") => " tali-figure-right",
-        _ => " tali-figure-center",
-    };
+    let align_class = " tali-figure-center";
     // Honor `width=` and `height=` (each escaped) in the inline style; either, both,
     // or neither may be present.
     let mut dims = String::new();

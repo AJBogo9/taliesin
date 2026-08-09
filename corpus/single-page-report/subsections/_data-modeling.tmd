@@ -2,7 +2,7 @@ All three models share one observation model — log-latency is normal around a
 region-specific mean — and differ only in where that mean comes from.
 
 ## Hierarchical models
-![Partial pooling: per-region parameters drawn from a common distribution](images/pooling-partial.svg){#fig-model-hierarchical width=50% fig-align="center"}
+![Partial pooling: per-region parameters drawn from a common distribution](images/pooling-partial.svg){#fig-model-hierarchical width=50%}
 
 A hierarchy is a grouping the data already has and the model is allowed to use. Here it
 is the region; in other settings it is the customer, the sensor, or the calendar month.

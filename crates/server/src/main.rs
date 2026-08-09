@@ -25,7 +25,6 @@ mod lsp_nav;
 mod lsp_outline;
 mod lsp_pos;
 mod lsp_project;
-mod minify;
 mod packages;
 mod preview_diag;
 mod protocol;

@@ -63,6 +63,48 @@ fn init_scaffolds_a_check_clean_project() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The two scaffolders must COMPOSE: `init` then `new post` then `build` has to produce a
+/// homepage the post is reachable from. Until 2026-08-09 the post's only appearance in
+/// `index.html` was the literal instruction string `INIT_INDEX_TMD` wrote, so the first
+/// thing a new user creates was unreachable from the first page they see, with the listing
+/// machinery already built and simply not wired into the thing that teaches it.
+#[test]
+fn a_scaffolded_post_is_reachable_from_the_scaffolded_homepage() {
+    let dir = tmp("compose");
+    let (ok, _out, err) = run(&["init", dir.to_str().unwrap()]);
+    assert!(ok, "`init` should succeed; stderr: {err}");
+    let (ok, _out, err) = run(&[
+        "new",
+        "post",
+        "my-first-post",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(ok, "`new post` should succeed; stderr: {err}");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", dir.to_str().unwrap()])
+        .output()
+        .expect("run the build");
+    assert!(
+        out.status.success(),
+        "the scaffolded project must build; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let index = std::fs::read_to_string(dir.join("_site").join("index.html"))
+        .expect("the build writes _site/index.html");
+    // Anchored on the `href`, not on the slug: the instruction line already NAMES
+    // `my-first-post`, so an unanchored needle passes on prose the way `help_cli`'s
+    // "no command was dropped" loop once passed on the word "run" inside a sentence.
+    assert!(
+        index.contains("href=\"posts/my-first-post/index.html\""),
+        "the homepage must LINK the scaffolded post, not just name the command that \
+         creates one:\n{index}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// `init` writes those two files and nothing else. It shipped a `.taliesin/` dot-directory
 /// (a copy of the bundled `_site.yml` schema, wired by a modeline on the config's first
 /// line) into every project it created until Wave 8, and zero such directories existed
