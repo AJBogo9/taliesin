@@ -4185,6 +4185,83 @@ fn js_cell_error_hides_the_stack_trace_in_built_output() {
     );
 }
 
+/// A `{js}` cell added mid-session gets its libraries (audit finding 04).
+///
+/// `assemble_html_page` gated the vendored d3 + Observable Plot on `has_js_cells(p.body)`
+/// in BOTH asset modes, with no reference to `OutputMode`. In a live preview that body is
+/// whatever the page had when the tab loaded, so the edit that adds a page's FIRST `{js}`
+/// cell hot-swaps a cell that calls `Plot.plot(...)` into a document whose head has no
+/// Plot: measured `typeof d3 === "undefined"` on that edit and `"object"` after a manual
+/// reload. `code_scripts_for`'s own doc comment asserted the opposite ("the always-on
+/// KaTeX/d3 in preview"), so the claim was in the tree and only the behaviour was missing.
+///
+/// Preview is a loopback dev server and the bytes are already on disk; the correctness of a
+/// live edit outranks a first-paint saving that only ever applied to a page the author is
+/// in the act of adding a cell to. **Build stays content-gated** — that is the path a
+/// reader pays for, and it is correct there because the body is final.
+///
+/// Asserted on the emitted shell rather than in a browser: wave 6 removed the headless
+/// browser net, so this pins the server-side property the client depends on.
+#[test]
+fn preview_ships_the_js_libs_before_the_page_has_a_js_cell() {
+    const NO_CELLS: &str = "<p data-block-id=\"b-1\">Prose only, no cells at all.</p>";
+    assert!(
+        !has_js_cells(NO_CELLS),
+        "the fixture must have no {{js}} cells, or this test proves nothing"
+    );
+
+    // Preview: the libs ship anyway, so the NEXT edit can add a cell that uses them.
+    let preview = assemble_html_page(&PageParts {
+        mode: OutputMode::Preview,
+        body: NO_CELLS,
+        ..PageParts::defaults()
+    });
+    assert!(
+        preview.contains("d3.min.js") || preview.contains("__d3"),
+        "preview must ship the vendored d3/Plot bundle before a cell needs it"
+    );
+    assert!(
+        preview.contains(&js_cell_head()),
+        "preview must emit js_cell_head() unconditionally"
+    );
+
+    // Build: still content-gated. A reader's page must not carry ~490 KB it cannot use.
+    let build = assemble_html_page(&PageParts {
+        mode: OutputMode::Build,
+        body: NO_CELLS,
+        ..PageParts::defaults()
+    });
+    assert!(
+        !build.contains(&js_cell_head()),
+        "a static build with no {{js}} cell must NOT inline d3 + Plot"
+    );
+
+    // …and a Build page that DOES have a cell still gets them, so the gate still works.
+    //
+    // The body comes from a REAL render, not a hand-written marker. `token_contract.rs`'s
+    // browser-selected census scans every Rust source containing `<script` — this file
+    // among them — and it reads raw text, so writing one of those attribute names in a
+    // fixture (or even naming the family in a comment) enters it into the vocabulary the
+    // browser is pinned against and fails a census that has nothing to do with `{js}`
+    // assets. Same trap as `gate_script.rs`'s scan of the interpreter-gate names.
+    // Rendering the cell also tests the marker the emitter really produces rather than
+    // this test's guess at it.
+    let cell_body = render_document("```{js}\nreturn 1;\n```\n").body_html();
+    assert!(
+        has_js_cells(&cell_body),
+        "the rendered fixture must contain a {{js}} cell: {cell_body}"
+    );
+    let with_cell = assemble_html_page(&PageParts {
+        mode: OutputMode::Build,
+        body: &cell_body,
+        ..PageParts::defaults()
+    });
+    assert!(
+        with_cell.contains(&js_cell_head()),
+        "the Build content-gate must still fire on a page that has a {{js}} cell"
+    );
+}
+
 #[test]
 fn mermaid_and_jslibs_bundles_carry_their_libs() {
     assert!(

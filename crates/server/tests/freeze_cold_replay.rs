@@ -205,6 +205,97 @@ fn editing_the_cell_spawns_a_kernel_again() {
     );
 }
 
+/// One `taliesin build <dir> --out <dest>`: the whole project, cache enabled.
+fn build_project(dir: &Path, dest: &Path, py: &Path) {
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .arg("build")
+        .arg(dir)
+        .arg("--out")
+        .arg(dest)
+        .env("TALIESIN_PYTHON", py)
+        .env_remove("TALIESIN_NO_CACHE")
+        .output()
+        .expect("run project build");
+    assert!(
+        out.status.success(),
+        "project build failed: {}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// Addressing ONE page of a project by its path replays that project's cache.
+///
+/// **The defect (audit finding 03).** `cmd_build` branched only on `is_dir()`, so the
+/// single-file path rooted the freeze cache at the FILE's own parent with no project
+/// resolution at all. Meanwhile `preview <file.tmd>` resolves the file to its enclosing
+/// `_site.yml` project (wave 1.1). The two disagreed about what document this even is:
+///
+///   build <project>              -> <project>/_freeze/posts/p.json
+///   build <project>/posts/p.tmd  -> <project>/posts/_freeze/p.json   (a SECOND cache)
+///
+/// So it re-executed every time, and dropped a stray `_freeze/` in a project subdirectory
+/// that nothing sweeps. That also made wave 13's `run` retirement note false where it
+/// promises "a later `build` still replays without one" — the note the campaign shipped as
+/// its justification for cutting the verb.
+///
+/// Kernel launches are the observable, exactly as in the tests above: a replay spawns none.
+#[test]
+fn building_one_page_of_a_project_by_path_replays_the_projects_cache() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let tmp = tmp_dir("single-in-project");
+    let log = tmp.join("launches.log");
+    let py = recording_python(&tmp, &real_py, &log);
+
+    // The project sits BESIDE the recording wrapper, not around it: `build <dir>` sweeps
+    // its output directory and copies loose files as assets, and neither should be asked
+    // to reason about the instrument measuring it.
+    let proj = tmp.join("proj");
+    fs::create_dir_all(proj.join("posts")).unwrap();
+    fs::write(proj.join("_site.yml"), "title: P\n").unwrap();
+    fs::write(proj.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+    let page = proj.join("posts/p.tmd");
+    fs::write(
+        &page,
+        "---\ntitle: Post\n---\n\n```{python}\nprint(1729)\n```\n",
+    )
+    .unwrap();
+
+    // Build 1: the whole project. Executes, and writes the cache at the project root.
+    build_project(&proj, &tmp.join("site-out"), &py);
+    let after_project = launches(&log);
+    assert!(
+        after_project >= 1,
+        "the project build spawned no kernel, so this test cannot observe a later replay"
+    );
+    assert!(
+        proj.join("_freeze/posts/p.json").is_file(),
+        "the project build did not write <project>/_freeze/posts/p.json, so there is \
+         nothing for the single-page build to replay from"
+    );
+
+    // Build 2: the SAME page, addressed by path. Must replay rather than re-execute.
+    let html = build(&page, &tmp.join("p.html"), &py);
+    assert!(
+        String::from_utf8_lossy(&html).contains("1729"),
+        "the single-page build lost the cell output entirely"
+    );
+    assert_eq!(
+        launches(&log),
+        after_project,
+        "`build <project>/posts/p.tmd` spawned a kernel for a page the project build had \
+         already cached: the single-file path is not rooting the freeze cache at the \
+         enclosing project"
+    );
+    assert!(
+        !proj.join("posts/_freeze").exists(),
+        "a SECOND freeze cache was written inside the project at posts/_freeze/, which no \
+         sweep removes and no later build reads"
+    );
+}
+
 /// Editing an **upstream** cell busts the cells below it, whose own source never changed.
 ///
 /// This is the property the cumulative hash exists for, and the one a per-cell cache would

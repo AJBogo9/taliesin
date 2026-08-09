@@ -1968,16 +1968,22 @@ pub fn search_scripts() -> String {
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
-// cells draw with, shipped only when a page has `{js}` cells. The small enhancer (`tali-js.js`)
-// ships unconditionally in `code_scripts()` (it registers and no-ops without cells,
-// like mermaid); only these heavy libs are gated on `has_js_cells`.
+// cells draw with. The small enhancer (`tali-js.js`) ships unconditionally in
+// `code_scripts()` (it registers and no-ops without cells, like mermaid); these heavy libs
+// are gated on `has_js_cells` in a static BUILD only, and ride unconditionally in a
+// preview — see `page::needs_js_libs`.
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
 const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
 const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 
-/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit only when
-/// a page actually has `{js}` cells (gated on [`has_js_cells`]). The enhancer itself rides
-/// in [`code_scripts`].
+/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. The enhancer
+/// itself rides in [`code_scripts`].
+///
+/// **When to emit is not this function's decision** — `page::needs_js_libs` owns it:
+/// unconditional in a preview (a doc can gain its first `{js}` cell on any edit, and the
+/// head cannot be swapped under a live page), content-gated on [`has_js_cells`] in a static
+/// build. This doc comment used to say "emit only when a page actually has `{js}` cells",
+/// which described the build and silently mis-described the preview it was breaking.
 pub(crate) fn js_cell_head() -> String {
     format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
 }

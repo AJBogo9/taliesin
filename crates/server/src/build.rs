@@ -680,12 +680,46 @@ fn build_page_executing(
             diagnostics.push(crate::lint::diag_from(w, label));
         }
         problems += crate::lint::blocking(&statics);
-        // Persistent execution cache keyed off the doc's stem, beside the source.
-        let mut ex = exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), stem))
-            .in_dir(base);
-        // Single-file build: no _site.yml, so resolve from the doc's own dir
-        // (.venv / env / default), the same set_interpreters path the site build uses.
-        ex.set_interpreters(crate::interpreter::resolve_python(None, base));
+        // Persistent execution cache, rooted at the ENCLOSING PROJECT when there is one.
+        //
+        // This used to be `base.join("_freeze")` keyed on the doc's stem, unconditionally —
+        // `cmd_build` branches only on `is_dir()`, so the single-file path did no project
+        // resolution at all. `preview <file.tmd>` has resolved a file to its enclosing
+        // `_site.yml` since wave 1.1, so the two disagreed about what document this is:
+        //
+        //   build <project>              -> <project>/_freeze/posts/p.json
+        //   build <project>/posts/p.tmd  -> <project>/posts/_freeze/p.json  (a SECOND cache)
+        //
+        // which re-executed every time and left a stray `_freeze/` in a project
+        // subdirectory that no sweep removes (audit finding 03). It also made wave 13's
+        // `run` retirement note false where it promises "a later `build` still replays
+        // without one".
+        //
+        // The interpreter moves with the root for the same reason: its identity seeds every
+        // cumulative key, so resolving a project `.venv` from `posts/` instead of the
+        // project root would bust the cache on the axis the freeze path just fixed. A file
+        // with no ancestor `_site.yml` keeps exactly the old behaviour.
+        let project_root = taliesin_core::site::enclosing_site_root(base);
+        let (freeze_file, interp_dir) = match &project_root {
+            Some(root) => {
+                // The key must be the page's path RELATIVE TO THE PROJECT, because that is
+                // what the site build writes (`page_path(freeze_dir, &page.rel)`). Both
+                // sides are canonical here — `enclosing_site_root` canonicalizes as it
+                // climbs — so the strip cannot miss on a `..` or a symlink.
+                let rel = Path::new(label)
+                    .canonicalize()
+                    .ok()
+                    .and_then(|abs| abs.strip_prefix(root).ok().map(Path::to_path_buf))
+                    .unwrap_or_else(|| Path::new(stem).to_path_buf());
+                (
+                    freeze::page_path(&root.join("_freeze"), &rel.to_string_lossy()),
+                    root.as_path(),
+                )
+            }
+            None => (freeze::page_path(&base.join("_freeze"), stem), base),
+        };
+        let mut ex = exec::Executor::with_freeze(freeze_file).in_dir(base);
+        ex.set_interpreters(crate::interpreter::resolve_python(None, interp_dir));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         // Executable cells that could not execute: fatal, not a warning (see
         // `kernel_failure_report`). Carried out rather than reported here so the page is

@@ -222,12 +222,30 @@ fn js_page_ships_libs_when_cells_present() {
         "the Observable runtime must be gone"
     );
 
-    // A doc with no live cells must not pay for the (large) libs.
-    let prose =
-        taliesin_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
+    // A doc with no live cells must not pay for the (large) libs — asserted on the STATIC
+    // BUILD, which is the page a reader downloads and the only place the weight is a cost.
+    //
+    // This used to ask `render_html_page`, which is an `OutputMode::Preview` API ("the
+    // in-process full-page API ships everything, like a preview"). The `{js}` libs were the
+    // one asset that ignored that distinction and content-gated in both modes, which is the
+    // defect audit finding 04 recorded: in a live preview the gate reads the body the tab
+    // loaded with, so the edit adding a page's FIRST `{js}` cell produced a cell calling
+    // `Plot.plot(...)` against a head with no Plot. Preview now ships them unconditionally
+    // like every other enhancer, so the weight claim moves to the mode that makes it.
+    let doc = taliesin_core::render_document("---\ntitle: x\n---\n\nJust prose, no cells.\n");
+    let built = taliesin_core::render_doc_to_page(&doc, "p", taliesin_core::OutputMode::Build);
     assert!(
-        !prose.contains("@observablehq/plot"),
-        "Plot shipped on a doc with no cells"
+        !built.contains("@observablehq/plot"),
+        "Plot shipped in a static build of a doc with no cells"
+    );
+
+    // The preview counterpart, stated so the asymmetry is deliberate rather than a gap.
+    let previewed =
+        taliesin_core::render_doc_to_page(&doc, "p", taliesin_core::OutputMode::Preview);
+    assert!(
+        previewed.contains("@observablehq/plot"),
+        "preview must ship Plot before a cell exists, or the edit that adds the first \
+         {{js}} cell renders against a head with no Plot"
     );
 }
 

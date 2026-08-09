@@ -162,6 +162,25 @@ impl<'a> PageParts<'a> {
     }
 }
 
+/// Whether this page must carry the vendored `{js}` libraries (d3 + Observable Plot).
+///
+/// **Unconditional in [`OutputMode::Preview`], content-gated in a static build.** Both call
+/// sites used to ask `has_js_cells(p.body)` alone, and in a live preview that body is
+/// whatever the page had when the tab loaded — so the edit that adds a page's FIRST `{js}`
+/// cell hot-swapped a cell calling `Plot.plot(...)` into a document whose head had no Plot.
+/// Measured: `typeof d3` was `"undefined"` on that edit and `"object"` only after a manual
+/// reload (audit finding 04). It is the same reasoning [`code_scripts_for`] already applies
+/// to the enhancers, and the same reasoning behind always-on KaTeX in preview: a document
+/// can gain any construct on an edit, and gating races the live mount.
+///
+/// The cost is bounded and lands on the right side. Preview is a loopback dev server, the
+/// ~490 KB is already on disk and inlined from the binary, and it buys correctness on the
+/// one edit that most needs it. A static [`OutputMode::Build`] stays gated: that is the
+/// page a reader downloads, and the gate is sound there because the body is final.
+fn needs_js_libs(body: &str, mode: OutputMode) -> bool {
+    matches!(mode, OutputMode::Preview) || has_js_cells(body)
+}
+
 /// Assemble a complete HTML page from its parts: the single source of truth for
 /// the page skeleton (`<!DOCTYPE>`, the `<head>` ordering, the body frame, the
 /// shared enhancer scripts) shared by the static build and both live-preview
@@ -223,9 +242,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
-            // enhancer itself rides in code_scripts(). Gated on the rendered body (no
-            // PageParts flag).
-            let js_head_html = if has_js_cells(p.body) {
+            // enhancer itself rides in code_scripts().
+            let js_head_html = if needs_js_libs(p.body, p.mode) {
                 js_cell_head()
             } else {
                 String::new()
@@ -256,7 +274,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            let js_head_html = if has_js_cells(p.body) {
+            let js_head_html = if needs_js_libs(p.body, p.mode) {
                 format!("<script src=\"{}\" defer></script>", a.jslibs_js)
             } else {
                 String::new()
