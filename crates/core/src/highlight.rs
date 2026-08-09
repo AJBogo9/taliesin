@@ -22,10 +22,6 @@ use syntect::util::LinesWithEndings;
 /// are easy to target (`.tali-hl-keyword`, `.tali-hl-string`, …).
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "tali-hl-" };
 
-/// The vendored PowerShell grammar (MIT; attributed in `THIRD_PARTY.md`), compiled in
-/// like every other bundled asset so the binary stays offline and self-contained.
-const POWERSHELL_SYNTAX: &str = include_str!("../assets/syntaxes/PowerShell.sublime-syntax");
-
 /// syntect's bundled syntaxes. `_newlines` is the variant the line-based
 /// `ClassedHTMLGenerator` expects.
 fn bundled() -> &'static SyntaxSet {
@@ -46,53 +42,19 @@ fn extras() -> &'static SyntaxSet {
     SS.get_or_init(two_face::syntax::extra_newlines)
 }
 
-/// The PowerShell grammar, vendored because **neither set above has one**: enumerated
-/// rather than grepped, syntect's bundled set is 75 syntaxes and `two-face`'s is 199,
-/// and `powershell`/`ps1` resolve in neither. So a PowerShell block rendered as
-/// unstyled plain text and drew a `TAL-CODE-LANG` warning on correct input.
-///
-/// It is `SublimeText/PowerShell`'s `.sublime-syntax` (MIT; see `THIRD_PARTY.md`), and
-/// the format matters: syntect loads **only** `.sublime-syntax`. The obvious upstream,
-/// `PowerShell/EditorSyntax`, ships a `.tmLanguage` plist, which syntect cannot consume
-/// at all — its `plist-load` feature covers themes and metadata, not syntax definitions.
-///
-/// Parsed lazily from the vendored source rather than a precompiled dump: a dump would
-/// have to be regenerated on every syntect bump and would drift silently, and this costs
-/// nothing on a document with no PowerShell in it.
-fn vendored() -> &'static SyntaxSet {
-    static SS: OnceLock<SyntaxSet> = OnceLock::new();
-    SS.get_or_init(|| {
-        let mut builder = SyntaxSet::new().into_builder();
-        // The vendored grammar is a compile-time constant, so a parse failure is a build
-        // defect rather than an input error: skip the syntax instead of failing the
-        // render, and the `powershell_highlights` test fails loudly if that ever happens.
-        if let Ok(syntax) = syntect::parsing::SyntaxDefinition::load_from_str(
-            POWERSHELL_SYNTAX,
-            true, // lines include newlines, matching `*_newlines` above
-            Some("PowerShell"),
-        ) {
-            builder.add(syntax);
-        }
-        builder.build()
-    })
-}
-
 /// Resolve a token to its syntax **and the set that owns it** (the generator must be
 /// given the owning set, since a `SyntaxReference` indexes into it).
 ///
-/// Order is load-bearing and is the same rule the `extras` comment states: an earlier
+/// Order is load-bearing and is the same rule the `extras` comment states: the bundled
 /// set always wins, so adding a later one can never re-highlight a language that already
-/// resolved. `vendored` is last because it exists only to fill a hole both others have.
+/// resolved. A token neither set carries resolves to nothing and renders as plain escaped
+/// text; there is no third, vendored tier (one was carried for PowerShell until
+/// 2026-08-09 and nothing outside the corpus ever used it).
 fn resolve(token: &str) -> Option<(&'static SyntaxReference, &'static SyntaxSet)> {
     if let Some(s) = bundled().find_syntax_by_token(token) {
         return Some((s, bundled()));
     }
-    if let Some(s) = extras().find_syntax_by_token(token) {
-        return Some((s, extras()));
-    }
-    vendored()
-        .find_syntax_by_token(token)
-        .map(|s| (s, vendored()))
+    extras().find_syntax_by_token(token).map(|s| (s, extras()))
 }
 
 /// Map a markdown language token to a token the syntax sets know.
@@ -152,45 +114,6 @@ mod tests {
         );
         // the keyword `def` should be wrapped as a keyword scope
         assert!(html.contains("tali-hl-keyword"), "keyword not highlighted");
-    }
-
-    /// The vendored grammar, end to end: it parses, it resolves under both tokens, and
-    /// it produces real scopes rather than one undifferentiated span. Before it was
-    /// vendored, a PowerShell block rendered as unstyled plain text and `check` warned
-    /// `TAL-CODE-LANG` on correct input.
-    #[test]
-    fn powershell_highlights_under_both_of_its_tokens() {
-        for token in ["powershell", "ps1"] {
-            let html = highlight(
-                "$items = Get-ChildItem -Path \"C:\\logs\"\nforeach ($f in $items) { }\n",
-                Some(token),
-            );
-            for scope in ["tali-hl-keyword", "tali-hl-string", "tali-hl-variable"] {
-                assert!(
-                    html.contains(scope),
-                    "`{token}` should emit {scope}; if the grammar failed to parse the \
-                     whole set falls back to plain text: {html}"
-                );
-            }
-        }
-    }
-
-    /// The vendored set is consulted LAST, so adding it cannot re-highlight a language
-    /// that already resolved. Stated as a test because the failure is silent: `bash`
-    /// would still highlight, just with different scope spans on every existing page.
-    #[test]
-    fn the_vendored_set_only_fills_holes_the_others_leave() {
-        assert!(
-            vendored().find_syntax_by_token("bash").is_none(),
-            "the vendored set must carry nothing the bundled/extra sets already own"
-        );
-        for token in ["python", "rust", "bash", "json"] {
-            let (_, owner) = resolve(token).expect("a core language must resolve");
-            assert!(
-                !std::ptr::eq(owner, vendored()),
-                "`{token}` resolved to the vendored set, which would change its scopes"
-            );
-        }
     }
 
     #[test]

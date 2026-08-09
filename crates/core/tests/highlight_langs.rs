@@ -62,36 +62,6 @@ fn typescript_emits_scopes_the_stylesheet_colours() {
     }
 }
 
-/// The third tier: a language *neither* set carries, filled by a grammar vendored into
-/// the repo. Both of its tokens are pinned, because `ps1` reaches the syntax through the
-/// grammar's own `file_extensions` rather than through `alias()`, so the two can break
-/// independently.
-#[test]
-fn powershell_highlights_from_the_vendored_grammar() {
-    let html = doc_html();
-    for lang in ["powershell", "ps1"] {
-        assert!(
-            scope_spans(&html, lang) > 0,
-            "`{lang}` degraded to plain text; the vendored PowerShell grammar is not \
-             loaded (it is `.sublime-syntax` — syntect cannot read a `.tmLanguage`)"
-        );
-    }
-}
-
-/// Same rule as TypeScript's: scopes the stylesheet does not colour are worthless. The
-/// palette is small and scope-name-based, so a grammar can parse perfectly and still
-/// render as one flat colour.
-#[test]
-fn powershell_emits_scopes_the_stylesheet_colours() {
-    let body = code_body(&doc_html(), "powershell");
-    for scope in ["tali-hl-comment", "tali-hl-keyword", "tali-hl-variable"] {
-        assert!(
-            body.contains(scope),
-            "powershell is missing `{scope}`: {body}"
-        );
-    }
-}
-
 #[test]
 fn intentionally_plain_fences_emit_no_scopes() {
     let html = doc_html();

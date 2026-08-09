@@ -776,10 +776,24 @@ three still need a wave.**
 |---|---|---|
 | vendored mermaid (~3.5 MB) | **KEEP** | nothing. See the bullet below; the residual standalone-inline defect is a separate wave. |
 | Atom feeds (602 lines) | **KEEP** | nothing. Reasoning below. |
-| vendored PowerShell grammar (1,557 + LICENSE) | **CUT** | one wave, ~1,650 lines. Reasoning below. |
+| vendored PowerShell grammar (1,557 + LICENSE) | **CUT — LANDED 2026-08-09**, `cut/r6-t2-powershell`, **−1,738 in code** | nothing. See the bullet below for what the wave found. |
 | `notes/`'s 64 July-dated audits (18,454 lines) | **BANNER, do not delete** | one sweep. Reasoning below. |
 
-- **The vendored PowerShell grammar. RULED CUT 2026-08-09.** `crates/core/assets/syntaxes/
+- **The vendored PowerShell grammar. RULED CUT 2026-08-09 — LANDED the same day** as
+  `cut/r6-t2-powershell`, **−1,738 lines of code** (`+14 / −1,752`, 7 files, 2 deleted) against
+  the ~1,650 estimate. Gate green either side (10 gates; 80 suites, 1,342 passed, 0 failed, 0
+  ignored — exactly the 5 tests this wave deletes below R6's 1,347). Full log in
+  `notes/CUT-PROGRESS.md`. **Three things the ruling below did not know:** the release binary
+  shrank **−479,104 B** for a **50,804 B** asset, because `vendored()` was the only reachable
+  caller of syntect's `.sublime-syntax` *source parser* (everything else loads a precompiled
+  dump), so the reclaim was the format reader rather than the file; `clippy -D warnings` found
+  **zero** cascade, unlike every other R6 item; and the silence claim was verified rather than
+  assumed (both fences, 0 scope spans, `--check-only` and `--strict` both clean, exit 0). Two
+  adjacent findings were surfaced and left for a later wave: **`highlight::known_language` is
+  dead workspace-wide** (invisible to clippy because it is `pub`; an R6-12 candidate), and the
+  stale `scrolly.js`/`tabset.js`/`walkthrough.js` list has **three copies of which R4 fixed
+  one**. The ruling as it stood:
+  `crates/core/assets/syntaxes/
   PowerShell.sublime-syntax` (1,557 lines) plus its LICENSE, `include_str!`-compiled into every
   shipped binary. **Its only witness anywhere is `corpus/highlight.tmd`** — zero uses in
   `docs/guide`, `docs/internals`, `site/` or `samples/` — and a corpus-only pin is exactly the

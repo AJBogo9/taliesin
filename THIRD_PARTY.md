@@ -15,8 +15,7 @@ The verbatim texts therefore ship beside the files they cover:
 [`crates/core/assets/js/LICENSES.md`](crates/core/assets/js/LICENSES.md) (d3, Observable
 Plot, Mermaid + the dependencies Mermaid inlines) and
 [`crates/core/assets/katex/LICENSE`](crates/core/assets/katex/LICENSE) (KaTeX).
-Fonts and syntax definitions already carried theirs
-(`assets/fonts/newsreader-OFL-fontsource.txt`, `assets/syntaxes/PowerShell.LICENSE.txt`).
+The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
 
 - **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
   The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
@@ -93,18 +92,7 @@ than only linking code:
   per-syntax attribution listing ships with the crate and is reachable at runtime
   via `two_face::acknowledgement::listing()`.
 
-One syntax definition is vendored directly, because neither set above has one
-(enumerated, not grepped: syntect's bundled set is 75 syntaxes and two-face's is
-199, and `powershell`/`ps1` resolve in neither):
-
-- **PowerShell.sublime-syntax** (MIT), from
-  [SublimeText/PowerShell](https://github.com/SublimeText/PowerShell), copyright
-  2011-2015 Guillermo López-Anglada and 2020-2025 Michael Lyons. Vendored at
-  `crates/core/assets/syntaxes/`, with the upstream licence text alongside it as
-  `PowerShell.LICENSE.txt`, and `include_str!`-compiled into the binary like every
-  other bundled asset. The **format** is why this source rather than the more
-  obvious `PowerShell/EditorSyntax` (also MIT, Microsoft): syntect loads
-  `.sublime-syntax` only, and EditorSyntax ships a `.tmLanguage` plist, which
-  syntect cannot consume as a syntax at all — its `plist-load` feature covers
-  themes and metadata.
+Those two sets are the whole of the highlighting coverage: **no syntax definition is
+vendored as source**, and a fence in a language neither set carries renders as plain
+escaped text rather than reaching for a third grammar.
 

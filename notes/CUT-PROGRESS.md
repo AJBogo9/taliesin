@@ -2462,3 +2462,97 @@ KEPT** (the one witness mirrors a blog the author publishes, and *"when close, c
 features nobody uses); **`notes/`'s 64 dated audits are BANNERED, not deleted** (one STATUS
 line each: dated record, check the file exists before acting). With mermaid already ruled keep,
 **tier 2 is closed** — two waves of work remain in it, no decisions do.
+
+### Wave R6 (tier 2, PowerShell) — 2026-08-09, `cut/r6-t2-powershell`
+
+The first of tier 2's two waves of work: the vendored PowerShell grammar, ruled CUT the session
+before. **Measured reclaim in code: −1,738 lines** (`+14 / −1,752` over 7 files, **2 deleted**),
+against the ~1,650 estimate. `notes/` grew on purpose for this entry and the plan's tier-2 row;
+the commit body carries the whole-diff total. **5.4% over, where this campaign's waves have run
+49% to 150% over**
+(R6-2/3/9 was 3,180 against 2,134; R6-11 was 959 against ~500; wave 13 was 2.5×), because the
+subject was a genuine leaf — see the zero-cascade note below. Only R6-1 was closer, and that row
+had been measured in advance rather than estimated.
+
+**Gate: 10/10, both canaries `ok`, 80 suites / 1,342 passed / 0 failed / 0 ignored.** Measure the
+next wave against **1,342 and 80 suites**. The drop of exactly 5 from R6's 1,347 is the five
+tests this wave deletes and nothing else, which is the cheapest possible check that no test went
+vacuous instead of going away: two unit tests in `highlight.rs`
+(`powershell_highlights_under_both_of_its_tokens`,
+`the_vendored_set_only_fills_holes_the_others_leave`), two in `highlight_langs.rs`, and
+`third_party.rs`'s `vendored_syntaxes_are_attributed_and_carry_their_licence`. No suite
+disappeared, so the count is 80 either side.
+
+**THE BINARY SHRANK BY 9.4× THE ASSET'S OWN WEIGHT, AND THAT IS THE FINDING.** Measured both
+ways with a release build on each tree (the baseline built from a stashed tree at `32cd69ff`, not
+from a stale artefact): **29,222,672 B → 28,743,568 B, −479,104 B**, for an `include_str!` asset
+of **50,804 B**. The other ~428 KB is **syntect's `.sublime-syntax` *source* parser**:
+`SyntaxDefinition::load_from_str` plus `SyntaxSetBuilder`, whose only reachable caller in this
+workspace was `vendored()`. Every other syntax set in the tool loads a **precompiled dump**
+(`SyntaxSet::load_defaults_newlines`, `two_face::syntax::extra_newlines`), so with the one
+grammar gone the whole source-parsing half of the dependency became unreachable and the linker
+dropped it. **Verified rather than inferred from the byte delta:** `load_from_str`,
+`SyntaxDefinition`, `SyntaxSetBuilder`, `into_builder` and `load_from_folder` now match **nothing**
+under `crates/` or `tools/`, and `highlight.rs` is the only syntect consumer left in the tree.
+**No `Cargo.toml` or feature change was needed or made** — this fell out of deleting the caller.
+Worth knowing for any later wave that removes the last caller of a *format reader* rather than of
+data: the reclaim is the reader, not the file.
+
+One follow-up deliberately declined: syntect is still pulled in as `default-features = false,
+features = ["default-fancy"]`, which carries the now-unused YAML loader. Trimming it would buy
+**zero** binary bytes — the linker has already dropped the code, which is what the −479 KB *is* —
+so it would only shrink the build graph. That is dependency micro-surgery with a real risk of
+changing what `load_defaults_newlines` returns, and the standing directive is about features
+nobody uses, not about feature flags.
+
+**Zero cascade.** `clippy -D warnings` was clean on the first run, which is the opposite of
+R6-11 (23 dead items) and R6-2/3/9 (`lsp_memo` entire). R6-11's method was still the right thing
+to run; a leaf simply has nothing behind it.
+
+**The degradation was verified, not assumed**, because the ruling rested on a claim about
+silence. A scratch document with both fences, built by the release binary: **0 `tali-hl-` spans
+in either fence**, the text HTML-escaped and intact, and `build --check-only --no-exec` prints
+*"no problems found"* and exits 0 — **`--strict` too**. So the ruling's ground holds: wave 9's
+removal of the generic unknown-fence-language lint means there is no diagnostic to go stale, and
+a `powershell` fence is now exactly as quiet as any other language the tool has no grammar for.
+
+**`third_party.rs` lost a gate and gained a needle, and the gate's own floor is why the loss was
+loud.** `vendored_syntaxes_are_attributed_and_carry_their_licence` is deleted with its subject
+directory; its anti-vacuity assertion (`grammars > 0`) meant it would have **hard-failed** rather
+than passed over an empty directory, which is the ordering rule doing its job on a licence gate
+rather than on a corpus pin. In its place, `PowerShell` joins `removed_deps_are_not_listed`'s
+list — the wave-4 `paged.js` precedent — and it is the one entry there that was never a
+*dependency*: it was redistributed **source**, so a stale row would be a licence claim about
+bytes this binary no longer carries.
+
+**What was given up, stated plainly.** A `powershell`/`ps1` fence renders as plain escaped text
+instead of coloured, and **the third-tier mechanism itself is gone**, not just its one occupant:
+`resolve` is two sets now, so the next language neither syntect nor `bat` carries costs a
+re-vendor *and* a re-derivation of the format constraint, which is the expensive part and is
+therefore recorded **here** rather than in the code: **syntect loads `.sublime-syntax` only, and
+cannot consume a `.tmLanguage` plist as a syntax at any feature level** (`plist-load` covers
+themes and metadata), which is why Microsoft's own `PowerShell/EditorSyntax` was unusable and a
+Sublime-format grammar had to be found instead. `resolve`'s surviving comment says only that
+there is no third tier and when it went — deliberately, because a comment in `resolve` explaining
+how to vendor a grammar would describe something the code no longer does, which is the exact
+doc-drift genus the post-cut audit found seventeen of. No register entry is owed and none was
+written: a fence language is not a
+Taliesin vocabulary, so there is no retired name for the tool to answer.
+
+**Two adjacent findings, surfaced and deliberately NOT fixed here** (both are R4's genus, and
+folding a second prose subject into this diff is what R4 exists to prevent):
+
+1. **`highlight::known_language` is dead workspace-wide, and R4 did not catch it.** Zero callers
+   outside its own file and its own two unit tests, verified by grepping every `.rs`/`.ts`/`.js`/
+   `.tmd`/`.md` in the tree. It is `pub` in `taliesin-core`, so **clippy cannot see it** — the
+   same blind spot that hid `RenderedDoc::body_text` from R6-11. Its whole purpose was to feed
+   the generic unknown-fence-language lint **wave 9 deleted**, and `INTENTIONALLY_PLAIN` exists
+   only to serve it. ~30 lines with its two tests. **An R6-12 candidate**, and note it is a
+   `pub` API removal, not an internal one.
+2. **The stale bundled-JS list has THREE copies and R4 fixed one.** `scrolly.js`, `tabset.js`
+   and `walkthrough.js` went in wave 7. R4 corrected `CLAUDE.md`'s fenced map (0 hits now) and
+   left **`THIRD_PARTY.md:50`** (one line naming all three as "Taliesin's own") and
+   **`third_party.rs`'s `OWN_JS`** (3 dead exemptions in the list `vendored_js_is_attributed`
+   skips). Both files are ones this wave edits, which is how they were found. Harmless in
+   behaviour — the loop skips names with no file — but the first is a factual error in the
+   licence document, which is the one document where being wrong costs something.
