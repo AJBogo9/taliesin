@@ -42,6 +42,9 @@ fn shipped_docs() -> Vec<(String, String)> {
         "CONTRIBUTING.md",
         "CLAUDE.md",
         "samples/README.md",
+        // The two licence documents joined on 2026-08-10; see the gate below.
+        "THIRD_PARTY.md",
+        "LICENSE-OUTPUT-EXCEPTION.md",
     ] {
         out.push((rel.to_string(), read(rel)));
     }
@@ -340,6 +343,14 @@ fn is_repo_path_claim(tok: &str) -> bool {
 /// `serve_site.rs`, `cite.rs` and `diagnostics.rs` had all become module *directories*,
 /// `code-enhance.js` had been split into `code-enhance/` fragments, and a test table named
 /// `extensions.rs`, which is `theme_css.rs`.
+///
+/// `THIRD_PARTY.md` and `LICENSE-OUTPUT-EXCEPTION.md` joined the scanned set on 2026-08-10:
+/// they were outside every gate in the tree, and a stale path in a licence document is a
+/// claim about bytes this repository redistributes, read by a downstream party before
+/// anything else. Note what this still does NOT catch there — `is_repo_path_claim` needs a
+/// top-level root or a `.rs` suffix, so a bare unanchored script name in prose slips past.
+/// That half is guarded from the other side, in `crates/core/tests/third_party.rs`, which
+/// requires every name it exempts from attribution to still be a file.
 #[test]
 fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
     let known = claimable_paths();

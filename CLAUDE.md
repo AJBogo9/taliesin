@@ -274,7 +274,7 @@ cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH
 ./tools/build-site.sh [--check]                                # compose the marketing-site deploy (site + docs books + gallery)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
-cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
+cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js + mermaid.js, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
 ```
 
 A `taliesin` launcher on `PATH` (`~/.local/bin/taliesin`) rebuilds the release

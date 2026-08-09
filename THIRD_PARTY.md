@@ -33,8 +33,9 @@ The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
   lazy-loads this same vendored copy from a same-origin route. License:
   <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
-  glyph paths are embedded directly in source — the copy/check button in
-  `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
+  glyph paths are embedded directly in source — the copy/check button in the
+  `code-enhance/` fragments and the callout-kind icons in
+  `crates/core/src/render/divs.rs`.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
 - **Newsreader** (SIL Open Font License 1.1, Copyright 2020 The Newsreader
@@ -46,9 +47,8 @@ The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
   `crates/core/assets/fonts/newsreader-OFL-fontsource.txt`. License:
   <https://github.com/productiontype/Newsreader>.
 
-The other scripts under `crates/core/assets/js/` (the `code-enhance/` fragments,
-`mermaid.js`, `tali-js.js`, `walkthrough.js`, `tabset.js`, `scrolly.js`)
-are Taliesin's own, under the project's AGPL-3.0-only license.
+The other scripts under `crates/core/assets/js/` (`mermaid.js`, `tali-js.js`, and the
+`code-enhance/` fragments) are Taliesin's own, under the project's AGPL-3.0-only license.
 
 ## Loaded at runtime
 
@@ -70,10 +70,16 @@ document gains its first diagram mid-session.
   library's default happens to be, so an upgrade cannot silently loosen the sanitiser.
 
 Note that **author content can introduce its own CDN dependencies** outside
-Taliesin's control: a `{js}` cell may `import` from a CDN (e.g. the corpus
-`three-scene` demo imports `three` from esm.sh), and a project's `_site.yml` may add
-its own `<link rel="preconnect">` or `<script>`. Those are the author's choices, not
-shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
+Taliesin's control: a `{js}` cell may `import` from a CDN, and a project's `_site.yml`
+may add its own `<link rel="preconnect">` or `<script>`. The `three-scene` include does
+the first of those, importing `three` from esm.sh, and it is not confined to the corpus
+— this repository's own marketing site and guide use it too
+(`site/_includes/three-scene.tmd`, `corpus/tech-blog/_includes/three-scene.tmd`,
+`docs/guide/using/code.tmd`, `docs/guide/using/interactive.tmd`). Those are the author's
+choices, not shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
+No three.js bytes are redistributed under `crates/core/assets/`, which is why there is
+no attribution row for it above: nothing here is a copy, so no notice obligation
+attaches.
 
 ## Build dependencies
 

@@ -77,7 +77,21 @@ jobs:
           stage="taliesin-$TAG-$TARGET"
           mkdir "$stage"
           cp "target/$TARGET/release/taliesin" "$stage/"
-          cp LICENSE THIRD_PARTY.md README.md "$stage/"
+          cp LICENSE LICENSE-OUTPUT-EXCEPTION.md THIRD_PARTY.md README.md "$stage/"
+          # The binary embeds d3, Observable Plot and Mermaid via `include_str!` and KaTeX's
+          # CSS via `build.rs`. MIT and ISC both require the PERMISSION NOTICE — not just the
+          # copyright line — to accompany a copy, and THIRD_PARTY.md carries copyright lines
+          # and URLs only, which that file's own standard says is not a notice. So the
+          # verbatim texts travel too, at their repository paths, so THIRD_PARTY.md's own
+          # relative links resolve inside the tarball. NOT `cp --parents`: the matrix builds
+          # on macos-latest and macos-13, whose BSD `cp` has no such flag.
+          # `crates/core/tests/third_party.rs` asserts this list against the tree.
+          for f in crates/core/assets/js/LICENSES.md \
+                   crates/core/assets/katex/LICENSE \
+                   crates/core/assets/fonts/newsreader-OFL-fontsource.txt; do
+            mkdir -p "$stage/$(dirname "$f")"
+            cp "$f" "$stage/$f"
+          done
           tar czf "$stage.tar.gz" "$stage"
           shasum -a 256 "$stage.tar.gz" > "$stage.tar.gz.sha256"
       - name: Upload

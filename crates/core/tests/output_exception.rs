@@ -53,7 +53,11 @@ fn the_output_exception_exists_and_grants_what_it_claims() {
         "under terms of your choice",
         "No notice is required in your output",
         "does not, by itself, engage AGPL section 13",
-        "`build`, `render`, `preview`, or `publish`",
+        // The verb list narrowed on 2026-08-10: `render` is retired and `publish` was never
+        // a command, so the instrument was naming two routes a reader cannot take. This
+        // needle is what held the falsehood in place, which is why the document and the
+        // needle move together or not at all.
+        "`build` or `preview`",
     ] {
         assert!(
             text.contains(needle),

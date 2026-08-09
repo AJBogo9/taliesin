@@ -2940,21 +2940,14 @@ fn build_mode_content_gates_separate_enhancers() {
 fn site_build_path_content_gates_enhancers() {
     // The in-site page builder hardcodes OutputMode::Build, so a site/book build
     // content-gates the separate enhancers just like a single-doc build (this pins
-    // the spec's "site builds get Phase-1 gating too" claim). Markers are each
-    // script's distinctive comment (absent from base.css, unlike "walkthrough").
-    let doc = render_document("# A chapter\n\nProse only — no tabset, mermaid, or scrolly.\n");
+    // the spec's "site builds get Phase-1 gating too" claim). Each marker is that
+    // script's own distinctive comment rather than its filename, so a string that also
+    // occurs in base.css cannot make the negative assertion pass for the wrong reason.
+    let doc = render_document("# A chapter\n\nProse only — no mermaid diagram.\n");
     let page = html_page_from_doc_in_site(&doc, "chapter", &SiteCtx::default());
     assert!(
         page.contains("taliInitReaderMenu"),
         "a site page still ships code-enhance.js (reader menu + a11y)"
-    );
-    assert!(
-        !page.contains("Tabbed panels: the interaction"),
-        "no tabset.js on a prose site page"
-    );
-    assert!(
-        !page.contains("Scrollytelling: scroll-driven"),
-        "no scrolly.js on a prose site page"
     );
     assert!(
         !page.contains("self-contained enhancer module"),

@@ -4,6 +4,13 @@
 
 Version 1.0, 2026-07-29. Copyright © 2026 Andreas Bogossian.
 
+*Editorial correction, 2026-08-10: the last bullet of "The grant" listed `render` and
+`publish`, neither of which is a Taliesin command; it now reads `build` or `preview`.
+The version is unchanged and no notice is required, because that list is introduced by
+"In particular, and without limiting the above" — it illustrates a grant that already
+covers all output, so removing two examples removes nothing from it. Nothing has been
+distributed under Version 1.0.*
+
 ## Why this exists
 
 Taliesin builds a self-contained HTML document. To do that it copies parts of its
@@ -39,8 +46,8 @@ In particular, and without limiting the above:
   exception, the AGPL, a copyright line, or an offer of source in a page you build.
 - **Serving a built page is not a trigger.** Publishing or hosting output that
   contains Runtime Assets does not, by itself, engage AGPL section 13.
-- **This holds however the output was produced** — `build`, `render`, `preview`, or
-  `publish` — and whether or not you modified the document afterwards.
+- **This holds however the output was produced** — `build` or `preview` — and whether
+  or not you modified the document afterwards.
 
 ## What this exception does *not* do
 
