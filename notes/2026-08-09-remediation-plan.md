@@ -562,6 +562,30 @@ Grep, do not trust.**
 
 **Branch:** `fix/r5-finish`
 
+> **LANDED 2026-08-09 as `17c4bf47`.** Gate green either side (10 gates; 81 suites, 1,384
+> passed, 0 failed, 0 ignored). Two tasks shipped differently from the text below, both
+> because the text was measured wrong; the commit body carries the numbers.
+>
+> - **R5-2 needed a crate move, not a call.** `minify_css` lived in `taliesin-server` and the
+>   `AssetMode::Inline` arm lives in `taliesin-core`, which cannot depend on the server crate.
+>   It now lives at `crates/core/src/minify.rs`, `build.rs`'s three call sites go through
+>   `taliesin_core::minify_css`, and the inline path minifies once per process behind two
+>   `LazyLock`s. **KaTeX is deliberately excluded**: it arrives already minified, so running it
+>   through saved 1 byte of 369,347 and would have cost a second 369 KB resident. Measured, a
+>   prose page 274,966 → 230,775 B (−16.1%); a math page 648,761 → 604,570 B (−6.8%).
+>   **This moves the mermaid arithmetic far less than R6 assumes** — ~164 KB of what remains is
+>   base64 font payload no minifier can touch.
+> - **R5-3 cut `fig-align=` whole**, not just its `left` value. `left` was not a rendering
+>   no-op: `figure.tali-figure` sets no `text-align`, so the undefined class inherited left and
+>   looked correct. Deleting only that arm drops it to the `_` fallthrough, which is *centre*,
+>   so a figure the author asked to be left would have silently centred with no validator to
+>   say otherwise. Zero uses of `left` or `right` in `corpus/`, `site/` or either docs book,
+>   no page documents the attribute, and `notes/2026-08-02-final-scope-audit.md:226` had
+>   already ruled it a cut (author 0 / manual 0 / pin 1). Ruled by the author before landing.
+>
+> Also worth carrying into R6: the plan's R5-3 text claimed a "docs row" for `fig-align`.
+> There was none anywhere outside `docs/superpowers/`, which R6-1 deletes.
+
 ### Task R5-1: The scaffolders compose
 
 **The gap.** `init myblog` → `new post my-first-post` → `build .` produces a post that is
