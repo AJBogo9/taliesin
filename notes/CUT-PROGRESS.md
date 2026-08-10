@@ -2697,3 +2697,39 @@ true of every image the same command copies, and `build doc.tmd` remains the spe
 file that needs nothing beside it". The `--out` build also now writes the library on **every**
 build of a diagram page rather than embedding it, so the folder is touched where before only
 `index.html` was.
+
+---
+
+## After the campaign — the MVP publish path, 2026-08-10
+
+**The cut is over and this is not a wave.** Eight commits of repair, one per item, each
+fast-forward merged to `main` on a green gate. Full record, including what was dropped and
+on what evidence: **`notes/2026-08-10-mvp-publish-session.md`**. Read that before
+`notes/mvp-waves/`, which now holds only the six waves that were **not** taken, each
+bannered as stale.
+
+`5f25b356` W2 workflows · `9da62c2b` W4 manual truth sweep · `37cb9e0b` P1 `new post` ·
+`727859c9` P2 error streams · `781b0a1c` P4 residue · `1ffd2aae` P3 `--check-only` honesty ·
+`0178e403` P5 `doctor`'s `env` row · `17bb5f93` W1 published measurements ·
+`315d67db` W11 release mechanics.
+
+**Three durable state changes a fresh session must know:**
+
+- **The version is `0.3.0`** (`Cargo.toml`), and `CHANGELOG.md` has a released
+  `## [0.3.0] - 2026-08-10` section describing the campaign, with every retired verb and its
+  replacement lifted from `RETIRED_COMMANDS`. Nothing is tagged: `git tag` still holds only
+  `interpreter-resolution-fix` and `pre-cut`, so `release.yml` has never fired.
+- **`./tools/gates.sh` runs ELEVEN gates.** The eleventh is
+  `python3 tools/portability-census.py --verify`. **This makes the corpus census
+  load-bearing:** adding or removing any `corpus/**/*.tmd` now requires re-running the
+  census and rewriting the figures in `README.md` and `docs/guide/using/choosing.tmd` in the
+  same commit, or the gate goes red. **`notes/mvp-waves/W7-dead-code-sweep.md` deletes three
+  corpus documents and is the first thing this will bite.**
+- **The corpus is 82 documents, not 83**, and the Internals book is six chapters plus an
+  index. Both were wrong in `CLAUDE.md` and are now measured there.
+
+**Closed from "Open items carried forward":** the stale
+`scrolly.js`/`tabset.js`/`walkthrough.js` list owed "to R6-12 or a truth sweep" was resolved
+by W5 in all three copies (`THIRD_PARTY.md`, `third_party.rs`'s `OWN_JS`, `CLAUDE.md`), so
+W4 dropped that step as spent rather than re-fixing it. `.githooks/pre-push`'s "a clean
+python env / **R**" prerequisite, which no wave owned, went with W4.
