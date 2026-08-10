@@ -61,7 +61,7 @@ fn helper_copies() -> Vec<(String, String)> {
 }
 
 /// Every `.tmd` under `corpus/`, `site/`, and `docs/`: the documents that can call the
-/// helper. Skips `_freeze/` (generated) and anything unreadable.
+/// helper. Skips build output (`_freeze/`, `_site/`, `_book/`) and anything unreadable.
 fn all_docs() -> Vec<(String, String)> {
     fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
         let Ok(rd) = fs::read_dir(dir) else { return };
@@ -71,7 +71,12 @@ fn all_docs() -> Vec<(String, String)> {
             let p = e.path();
             let name = e.file_name().to_string_lossy().to_string();
             if p.is_dir() {
-                if name != "_freeze" && name != "_site" {
+                // `_book` belongs here beside the other two. It is build output exactly as
+                // they are, and every other walker in the tree already lists all three
+                // (`serve/mod.rs`'s SKIP_DIRS, `stale_docs.rs`, `retired_names.rs`,
+                // `svg_assets_render.rs`, `parallel_build_determinism.rs`). This one was
+                // short, harmless only because `_book` holds no `.tmd` today.
+                if name != "_freeze" && name != "_site" && name != "_book" {
                     walk(&p, out);
                 }
             } else if p.extension().is_some_and(|x| x == "tmd")

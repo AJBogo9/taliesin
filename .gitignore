@@ -13,6 +13,11 @@ node_modules/
 dist/
 out/
 
+# Python bytecode from the scripts under tools/. `tools/portability-census.py` leaves
+# `tools/__pycache__/` behind on every run, and nothing covered it — so the tree was dirty
+# on this machine and would be dirty in any clone that ran the script.
+__pycache__/
+
 # Built multi-page sites (taliesin build <dir> default output)
 _site/
 _book/
