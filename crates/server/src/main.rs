@@ -261,7 +261,9 @@ Preview & build
                              --stdout writes the page to stdout instead of a file;
                              --check-only lints and writes nothing (the
                              pre-publish gate); --strict exits non-zero on a
-                             cell error or located warning; --jobs <N> caps
+                             located warning, and on a cell error when cells
+                             actually run (they never do under --check-only,
+                             which is static); --jobs <N> caps
                              parallel page renders (site build); --no-exec
                              renders code cells as source
                              (executable cells with no kernel otherwise FAIL)
@@ -334,8 +336,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20              diagnostic, exit non-zero if any of them gates. The pre-publish\n\
              \x20              gate. Never starts a kernel, so --no-exec is implied, and it\n\
              \x20              refuses --out/--stdout/--jobs (nothing is written)\n\
-             \x20 --strict     exit non-zero on a cell error or located warning (CI gate);\n\
-             \x20              with --check-only, also fail on advice (suggestions)\n\
+             \x20 --strict     exit non-zero on any located warning, and on a cell error\n\
+             \x20              (CI gate). A --check-only run is STATIC and starts no kernel,\n\
+             \x20              so there it can only be the warning half — and it additionally\n\
+             \x20              fails on advice (suggestions)\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
              \x20 --no-exec    render code cells as source instead of running them. A build\n\

@@ -51,6 +51,12 @@ no `.html`, no `_freeze/` entry. It never starts a kernel either, so `--no-exec`
 rather than needed, and it refuses `--out` / `--stdout` / `--jobs` instead of
 accepting a flag that describes output it will not produce.
 
+**It is a static check, and its clean verdict says so.** A project with executable cells
+gets `no static problems found · N code cells not run` rather than a bare "no problems
+found", because a gate that never starts a kernel cannot promise those cells run — the
+publish `build` is what proves that, and the two-stage
+`taliesin build . --check-only && taliesin build . --strict` below is how you get both.
+
 It reports unknown front-matter / `_site.yml` / cell-option / container keys (with
 did-you-mean), unknown callout kinds, broken `@xref` cross-references, unknown shortcodes, a
 missing `bibliography:`, duplicate heading `{#id}`s, broken in-page `#anchor` links, and

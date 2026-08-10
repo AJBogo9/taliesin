@@ -165,16 +165,37 @@ pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
 /// Render `path` (a file or a project directory) in memory and return every located
 /// diagnostic. No code execution, no output written. `Err` for an unreadable file or
 /// an empty project.
-fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+///
+/// `kernel_cells` is set to how many cells `build` WOULD execute, which is what the caller
+/// needs to say what this run did not check.
+///
+/// The count rides out of the walk that already happened rather than costing a second one:
+/// every page is rendered here anyway, and `Block::cell_blocks` is the one definition of
+/// "which cells does this document have" (reading `block.cell` directly is the bug it
+/// exists to close — it forgets every cell inside a callout or a container).
+///
+/// Only [`crate::exec::kernel_lang`] languages count. That is the same question `build` asks
+/// before it demands an interpreter, so the number is exactly the work `--check-only` did
+/// not do.
+fn collect_diagnostics(path: &Path, kernel_cells: &mut usize) -> Result<Vec<Diagnostic>, String> {
     if path.is_dir() {
-        collect_site_diagnostics(path)
+        collect_site_diagnostics(path, kernel_cells)
     } else {
         // Site-aware when the file is a page of a project, so `--check-only` on a file and on
         // its project answer the same question about that page.
         let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
         let site = enclosing_site_of(path);
-        collect_file_diagnostics_in_site(path, &src, site.as_ref())
+        collect_file_diagnostics_in_site(path, &src, site.as_ref(), kernel_cells)
     }
+}
+
+/// How many of a rendered document's cells `build` would run against a kernel.
+fn kernel_cell_count(blocks: &[taliesin_core::Block]) -> usize {
+    blocks
+        .iter()
+        .flat_map(taliesin_core::render::Block::cells)
+        .filter(|c| crate::exec::kernel_lang(&c.lang).is_some())
+        .count()
 }
 
 /// Whether the document being validated is a page of a multi-page site, which changes two
@@ -291,9 +312,11 @@ fn collect_file_diagnostics_in_site(
     path: &Path,
     src: &str,
     site: Option<&taliesin_core::Site>,
+    kernel_cells: &mut usize,
 ) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_single_doc(src, base);
+    *kernel_cells += kernel_cell_count(&doc.blocks);
     let path_str = path.display().to_string();
     // A document inside a site project may legitimately refer across its pages, so
     // resolve what the project defines before calling anything broken: this path is the
@@ -359,7 +382,9 @@ pub(crate) fn buffer_diagnostics_in_site(
     src: &str,
     site: Option<&taliesin_core::Site>,
 ) -> Vec<Diagnostic> {
-    match collect_file_diagnostics_in_site(path, src, site) {
+    // The LSP publishes diagnostics, not a summary line, so the cell count has no reader
+    // here and is discarded.
+    match collect_file_diagnostics_in_site(path, src, site, &mut 0) {
         Ok(diags) => diags,
         Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
     }
@@ -371,7 +396,10 @@ pub(crate) fn buffer_diagnostics_in_site(
 /// `render_defaults()` and chapter scoping, or it reports diagnostics for a document nobody
 /// ships (a page inheriting the project `bibliography:` looked uncited) and prints numbers no
 /// reader sees ("Theorem 2.3").
-fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
+fn collect_site_diagnostics(
+    root: &Path,
+    kernel_cells: &mut usize,
+) -> Result<Vec<Diagnostic>, String> {
     let site = taliesin_core::Site::discover(root);
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
@@ -411,6 +439,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             site.chapter_for(page),
             Some(&defaults),
         );
+        *kernel_cells += kernel_cell_count(&doc.blocks);
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
         for w in &page_static_diagnostics(&src, &doc.blocks, base, Scope::InSite) {
@@ -522,10 +551,30 @@ fn format_human(diags: &[Diagnostic], color: bool, root: Option<&Path>) -> Strin
 /// The summary line printed after the per-diagnostic block: a per-severity breakdown
 /// (`3 problems (1 error, 2 warnings)`) keeping the leading `N problem(s)` token so existing
 /// greps still match. Pure, so the split is unit-testable.
-fn human_summary(diags: &[Diagnostic]) -> String {
+fn human_summary(diags: &[Diagnostic], kernel_cells: usize) -> String {
     let plural = |n: usize| if n == 1 { "" } else { "s" };
     if diags.is_empty() {
-        return "no problems found\n".to_string();
+        // `--check-only` is the pre-publish gate, and it is STATIC: it never starts a
+        // kernel. On a project whose `build` exits 1 for want of an interpreter, a bare
+        // "no problems found" told the author the project was clean and then the publish
+        // build failed. The static superset is right — wave 9 removed the interpreter probe
+        // deliberately and this does not put it back — so the sentence is what moves: it
+        // stops claiming completeness and names the command that does the rest.
+        //
+        // Only cells `build` would actually run are counted. A `{js}`/`{mermaid}` cell runs
+        // in the reader's browser, so calling it skipped work would be its own false claim.
+        //
+        // With nothing executable the message is byte-identical to what it always was: a
+        // prose-only project must not gain noise it cannot act on.
+        return match kernel_cells {
+            0 => "no problems found\n".to_string(),
+            n => format!(
+                "no static problems found  ·  {n} code cell{} not run \
+                 (build without --check-only to execute {})\n",
+                plural(n),
+                if n == 1 { "it" } else { "them" }
+            ),
+        };
     }
     let count = |s: Severity| diags.iter().filter(|d| d.severity == s).count();
     let errors = count(Severity::Error);
@@ -582,7 +631,8 @@ pub(crate) fn cmd_check_only(target: &Path, format: &str, strict: bool) -> ExitC
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
-    let collected = crate::serve::guarded(|| collect_diagnostics(target))
+    let mut kernel_cells = 0usize;
+    let collected = crate::serve::guarded(|| collect_diagnostics(target, &mut kernel_cells))
         .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
         .and_then(|r| r);
     let diags = match collected {
@@ -609,7 +659,7 @@ pub(crate) fn cmd_check_only(target: &Path, format: &str, strict: bool) -> ExitC
         let color = std::io::IsTerminal::is_terminal(&std::io::stderr())
             && std::env::var_os("NO_COLOR").is_none();
         eprint!("{}", format_human(&diags, color, human_root(target)));
-        eprint!("{}", human_summary(&diags));
+        eprint!("{}", human_summary(&diags, kernel_cells));
     }
     if gating(&diags, strict) == 0 {
         ExitCode::SUCCESS
@@ -921,7 +971,7 @@ mod tests {
                 .trim()
                 .to_string()
         };
-        let mut site_codes: Vec<String> = collect_diagnostics(&dir)
+        let mut site_codes: Vec<String> = collect_diagnostics(&dir, &mut 0)
             .expect("site ok")
             .iter()
             .filter(|d| d.file.contains("page.tmd"))
@@ -1115,7 +1165,7 @@ mod tests {
         let dir = tmp("check-file");
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: T\ntitel: oops\n---\n\nSee @fig-nope.\n").unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
+        let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "front-matter typo: {diags:?}"
@@ -1157,7 +1207,7 @@ mod tests {
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
-        let diags = collect_file_diagnostics_in_site(&f, buffer, None).expect("ok");
+        let diags = collect_file_diagnostics_in_site(&f, buffer, None, &mut 0).expect("ok");
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
@@ -1178,7 +1228,7 @@ mod tests {
         let f = dir.join("doc.tmd");
         // Unterminated double-quoted scalar -> serde_yaml parse error.
         fs::write(&f, "---\ntitle: \"unterminated\nauthor: A\n---\n\nBody.\n").unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
+        let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         assert!(
             diags
                 .iter()
@@ -1198,7 +1248,7 @@ mod tests {
             "---\ntitle: T\n---\n\n## A {#dup}\n\n## B {#dup}\n\nSee [bad](#nope) and ![x](missing.png) and [@key2020].\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
+        let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("duplicate heading id"), "dup id: {diags:?}");
         assert!(has("#nope"), "broken anchor: {diags:?}");
@@ -1222,7 +1272,7 @@ mod tests {
             "---\ntitle: P\n---\n\n## A {#dup}\n\n## B {#dup}\n\nA missing ![x](nope.png).\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&dir).expect("site ok");
+        let diags = collect_diagnostics(&dir, &mut 0).expect("site ok");
         assert!(
             diags
                 .iter()
@@ -1292,7 +1342,7 @@ mod tests {
             &mut targets,
         );
         for t in &targets {
-            let diags = collect_diagnostics(t).unwrap_or_default();
+            let diags = collect_diagnostics(t, &mut 0).unwrap_or_default();
             for d in &diags {
                 for c in new_checks {
                     assert!(
@@ -1324,7 +1374,7 @@ mod tests {
              ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
+        let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("broken link: `missing.tmd`"), "broken link: {diags:?}");
         assert!(has("local video not found"), "missing video: {diags:?}");
@@ -1368,7 +1418,7 @@ mod tests {
              #### Skips a level\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&f).expect("ok");
+        let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
@@ -1401,7 +1451,7 @@ mod tests {
         // guard) must fire every surviving a11y rule through the real `collect_diagnostics`
         // flow, not only through a unit test over hand-written HTML.
         let doc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/a11y.tmd");
-        let diags = collect_diagnostics(&doc).expect("pin doc lints");
+        let diags = collect_diagnostics(&doc, &mut 0).expect("pin doc lints");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
@@ -1439,7 +1489,7 @@ mod tests {
              a [good anchor](about.tmd#team), a [bad anchor](about.tmd#nope).\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&dir).expect("site ok");
+        let diags = collect_diagnostics(&dir, &mut 0).expect("site ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         // `ghost.tmd` -> `ghost.html`, no such page.
         assert!(
@@ -1474,7 +1524,7 @@ mod tests {
         let dir = tmp("check-clean");
         let f = dir.join("ok.tmd");
         fs::write(&f, "---\ntitle: T\n---\n\nJust clean prose.\n").unwrap();
-        assert!(collect_diagnostics(&f).expect("ok").is_empty());
+        assert!(collect_diagnostics(&f, &mut 0).expect("ok").is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1488,7 +1538,7 @@ mod tests {
             "---\ntitle: Home\n---\n\nClean prose.\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&dir).expect("a bare page directory is a site");
+        let diags = collect_diagnostics(&dir, &mut 0).expect("a bare page directory is a site");
         assert!(
             diags.is_empty(),
             "a missing _site.yml is an advisory, not a problem: {diags:?}"
@@ -1496,7 +1546,7 @@ mod tests {
 
         // A *malformed* `_site.yml` is still a real problem, and still counted.
         fs::write(dir.join("_site.yml"), "title: \"unterminated\n").unwrap();
-        let diags = collect_diagnostics(&dir).expect("still discoverable");
+        let diags = collect_diagnostics(&dir, &mut 0).expect("still discoverable");
         assert!(
             diags.iter().any(|d| d.message.contains("not valid YAML")),
             "malformed config must still be reported: {diags:?}"
@@ -1508,7 +1558,10 @@ mod tests {
     fn collect_diagnostics_empty_site_is_err() {
         let dir = tmp("check-emptysite");
         fs::write(dir.join("_site.yml"), "title: Empty\n").unwrap();
-        assert!(collect_diagnostics(&dir).is_err(), "empty site -> Err");
+        assert!(
+            collect_diagnostics(&dir, &mut 0).is_err(),
+            "empty site -> Err"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -1632,7 +1685,7 @@ mod tests {
         // Mixed set: a broken xref (error) + an unknown front-matter key (warning). The summary
         // keeps the leading `N problem(s)` token a grep matches, and breaks it out per severity.
         let diags = vec![error_diag(), warning_diag()];
-        let s = human_summary(&diags);
+        let s = human_summary(&diags, 0);
         assert!(s.contains("2 problems"), "leading count kept: {s}");
         assert!(
             s.contains("(1 error, 1 warning)"),
@@ -1642,9 +1695,9 @@ mod tests {
         // nothing to look a code up in, so pointing at one would be a dead end.
         assert!(!s.contains("--explain"), "no dead footer: {s}");
         // A single warning pluralizes correctly.
-        let one = human_summary(std::slice::from_ref(&diags[1]));
+        let one = human_summary(std::slice::from_ref(&diags[1]), 0);
         assert!(one.contains("1 problem (1 warning)"), "singular: {one}");
-        let none = human_summary(&[]);
+        let none = human_summary(&[], 0);
         assert_eq!(none, "no problems found\n");
     }
 
@@ -1678,7 +1731,7 @@ mod tests {
         let dir = tmp("legacy-config-only");
         fs::write(dir.join("_quarto.yml"), "project:\n  type: website\n").unwrap();
 
-        let err = collect_diagnostics(&dir).expect_err("a page-less dir is an error");
+        let err = collect_diagnostics(&dir, &mut 0).expect_err("a page-less dir is an error");
         assert!(
             !err.to_lowercase().contains("quarto"),
             "no Quarto breadcrumb should remain: {err}"
@@ -1741,13 +1794,85 @@ mod tests {
         assert_eq!(gating(&advice, false), 0);
         assert_eq!(gating(&advice, true), 2);
         // …and the summary says so rather than calling advice a "problem" beside an exit 0.
-        let s = human_summary(&advice);
+        let s = human_summary(&advice, 0);
         assert!(s.contains("2 suggestions"), "counts the advice: {s}");
         assert!(
             s.contains("nothing here fails the run"),
             "explains the exit code: {s}"
         );
         assert!(!s.contains("problem"), "advice is not a problem: {s}");
+    }
+
+    /// A clean run on a document with executable cells must not claim more than it checked.
+    ///
+    /// Measured on a fresh `init` project with one `{python}` cell and no `ipykernel`:
+    ///
+    /// ```text
+    /// build .                        exit=1   "no python kernel available, …"
+    /// build . --check-only           exit=0   "no problems found"
+    /// build . --check-only --strict  exit=0   "no problems found"
+    /// ```
+    ///
+    /// `CLAUDE.md` and the User Guide both call `--check-only` **the pre-publish gate**, so
+    /// an author runs it, is told the project is clean, and the publish build fails. The
+    /// static superset is correct — wave 9 removed the interpreter probe on purpose, and
+    /// this does NOT put it back. The lie is in the sentence, so the sentence is what moves.
+    #[test]
+    fn a_clean_run_names_the_cells_it_did_not_execute() {
+        // Nothing executable: the message must not gain noise a prose project cannot act on.
+        assert_eq!(human_summary(&[], 0), "no problems found\n");
+
+        let one = human_summary(&[], 1);
+        assert!(
+            one.contains("no static problems found"),
+            "it stops claiming completeness: {one}"
+        );
+        assert!(
+            one.contains("1 code cell not run"),
+            "it names what it skipped, singular: {one}"
+        );
+        assert!(
+            one.contains("--check-only"),
+            "it names the command that does execute them: {one}"
+        );
+        assert!(
+            human_summary(&[], 4).contains("4 code cells not run"),
+            "plural"
+        );
+
+        // A run that DID find something already says what it found; the qualifier is for the
+        // success path, where "no problems found" is the whole message.
+        let with_problems = human_summary(std::slice::from_ref(&error_diag()), 3);
+        assert!(
+            with_problems.contains("1 problem"),
+            "unchanged: {with_problems}"
+        );
+    }
+
+    /// The count is of cells `build` would EXECUTE, not of every fenced cell: a `{js}` or
+    /// `{mermaid}` cell runs in the reader's browser, so `build` does not run it either and
+    /// naming it as skipped work would be its own false statement.
+    #[test]
+    fn only_kernel_language_cells_are_counted_as_not_run() {
+        let dir = tmp("check-cellcount");
+        let f = dir.join("doc.tmd");
+        fs::write(
+            &f,
+            "---\ntitle: T\n---\n\n\
+             ```{python}\nprint(1)\n```\n\n\
+             ```{js}\nreturn 1;\n```\n\n\
+             ```{mermaid}\ngraph TD; a-->b;\n```\n\n\
+             ```python\nnot a cell, just a fence\n```\n",
+        )
+        .unwrap();
+        let mut cells = 0;
+        let diags = collect_diagnostics(&f, &mut cells).expect("ok");
+        assert!(diags.is_empty(), "the fixture is clean: {diags:?}");
+        assert_eq!(
+            cells, 1,
+            "only the `{{python}}` cell is work `build` would do"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// Every direct `Diagnostic::new` call site is a hard failure the tool found outside a
