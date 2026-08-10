@@ -49,7 +49,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-13
+          # `macos-15-intel`, not `macos-13`: GitHub retired the macos-13 image (it keeps
+          # only the latest two macOS versions), so this row named a runner label that no
+          # longer resolves — on a workflow no tag has ever fired, so nothing could have
+          # caught it. Intel macOS is still a standard runner, free for public repos, under
+          # the `-intel` labels. Checked against actions/runner-images on 2026-08-10.
+          - os: macos-15-intel
             target: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
@@ -86,7 +91,7 @@ jobs:
           # and URLs only, which that file's own standard says is not a notice. So the
           # verbatim texts travel too, at their repository paths, so THIRD_PARTY.md's own
           # relative links resolve inside the tarball. NOT `cp --parents`: the matrix builds
-          # on macos-latest and macos-13, whose BSD `cp` has no such flag.
+          # on macos-latest and macos-15-intel, whose BSD `cp` has no such flag.
           # `crates/core/tests/third_party.rs` asserts this list against the tree.
           for f in crates/core/assets/js/LICENSES.md \
                    crates/core/assets/katex/LICENSE \

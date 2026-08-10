@@ -88,6 +88,31 @@ Two things the LSP has no concept of:
 Plus the parts that are pure manifest: the grammar, the snippets, and
 `language-configuration.json`.
 
+## Install it
+
+**It is not on the VS Code Marketplace, and this project does not publish it there.** The
+`"publisher": "taliesin"` in `package.json` is a local identity that has never been
+published to. Build the `.vsix` and install it yourself:
+
+```sh
+cd editor/vscode
+npm install
+npm run build
+npx vsce package                 # → taliesin-companion-<version>.vsix
+code --install-extension taliesin-companion-<version>.vsix
+```
+
+Then put the `taliesin` binary on your `PATH`, or point the `taliesin.path` setting at it
+(e.g. `target/release/taliesin`) — the extension shells out to it for the preview and runs
+`taliesin lsp` for every language feature.
+
+**The companion versions independently of the tool.** `package.json`'s version is its own;
+it does not track the workspace `Cargo.toml`. It is a separate MIT package with its own VS
+Code `engines` constraint and its own reasons to ship, and the thing it actually has to
+agree with is the binary's LSP surface, not the tool's release number. So a companion at
+0.1.0 beside a tool at 0.3.0 is not drift, and this sentence is here so it stops reading
+like it.
+
 ## Develop / run
 
 1. `cd editor/vscode && npm install && npm run build`

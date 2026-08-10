@@ -33,6 +33,18 @@ on Mac) any block to open its exact source line in your editor** (including acro
 add cursor sync without forking anything. The in-repo **VS Code companion**
 (`editor/vscode/`) is exactly that host.
 
+**Getting the companion.** It is **not on the VS Code Marketplace**; you build the `.vsix`
+from this repository and install it yourself:
+
+```sh
+cd editor/vscode && npm install && npm run build && npx vsce package
+code --install-extension taliesin-companion-<version>.vsix
+```
+
+Then make sure the `taliesin` binary is on your `PATH`, or point the extension's
+`taliesin.path` setting at it. The companion versions independently of the tool, so its
+number will not match `taliesin --version`; `editor/vscode/README.md` says why.
+
 **A chapter of a book previews as the book.** Open the preview on any page that lives
 under a `_site.yml` and the companion serves the whole project and opens it at that
 page's URL, so you get the nav, the breadcrumb and working cross-page links instead of an

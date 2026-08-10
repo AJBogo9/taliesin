@@ -8,6 +8,13 @@ output) are kept stable.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-10
+
+The scope-reduction release: eighteen CLI verbs become seven, and the document
+feature set is cut roughly in half. Breaking, and deliberately so — the goal was a
+surface small enough to polish before release. Every retired verb still answers
+with the one line that says what replaced it.
+
 ### Changed
 
 - **Relicensed from MIT to AGPL-3.0-only.** The Affero copyleft closes the

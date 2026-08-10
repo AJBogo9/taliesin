@@ -57,9 +57,9 @@ web-client/     browser preview client (vanilla JS), the only client
 
 ## Install & prerequisites
 
-**Build from source.** This is the only way to install Taliesin today, and it is the
-whole of it: Taliesin is a Rust workspace (edition 2024), so a recent stable toolchain
-(via [rustup](https://rustup.rs)) is all you need:
+**Build from source**, which is always supported and is the whole of it: Taliesin is a Rust
+workspace (edition 2024), so a recent stable toolchain (via [rustup](https://rustup.rs)) is
+all you need:
 
 ```sh
 git clone https://github.com/AJBogo9/taliesin && cd taliesin
@@ -70,9 +70,11 @@ cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 **Platforms.** Linux x86-64 (`x86_64-unknown-linux-gnu`) and macOS on both Apple silicon
 and Intel (`aarch64-apple-darwin`, `x86_64-apple-darwin`) are supported targets. Windows
 is **not supported**: never built, never tested, no gate covers it, and the process and
-kernel layer is Unix-only. There are no prebuilt binaries yet; when a release is tagged
-it will attach a `.tar.gz` per target with a `.sha256` beside it, holding the binary plus
-`LICENSE` and `THIRD_PARTY.md`.
+kernel layer is Unix-only. **Prebuilt binaries come from tags:** each `v*` tag attaches a
+`.tar.gz` per target with a `.sha256` beside it, holding the binary plus `LICENSE`,
+`THIRD_PARTY.md` and the bundled dependencies' licence notices. If
+[the releases page](https://github.com/AJBogo9/taliesin/releases) is empty, no tag has been
+cut yet and building from source is the way in.
 
 **What that costs, measured 2026-08-10, so it is not a surprise:** a cold release build
 compiles **257 crates in about 1m 43s** at `-j3`, and produces a single ~32 MB self-contained

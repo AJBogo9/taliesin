@@ -3,7 +3,10 @@ resolver = "3"
 members = ["crates/core", "crates/server", "tools/live-edit-bench"]
 
 [workspace.package]
-version = "0.2.0"
+# 0.3.0, not 0.2.1: the scope-reduction campaign removed eleven CLI verbs and about half
+# the document feature set, which is breaking under any reading. Pre-1.0, so a minor
+# carries breaking changes — CHANGELOG.md's own stated policy.
+version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]
