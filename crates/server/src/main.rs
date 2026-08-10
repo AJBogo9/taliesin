@@ -362,6 +362,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              `build --check-only` passes on it with no diagnostics. It lands in\n\
              posts/<slug>/index.tmd, dated today. Refuses to overwrite an existing file.\n\
              \n\
+             Run it inside a project: with no --dir, a current directory that no _site.yml\n\
+             encloses is refused rather than scaffolded into, since nothing would ever find\n\
+             the page. --dir says where the project is, and is obeyed as written.\n\
+             \n\
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\

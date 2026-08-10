@@ -40,6 +40,22 @@ fn run(args: &[&str]) -> (bool, String, String) {
     )
 }
 
+/// The same, from a chosen working directory. `new` with no `--dir` scaffolds relative to
+/// the CWD, so the CWD is the input under test and cannot be left to whatever the harness
+/// happens to run in.
+fn run_in(cwd: &Path, args: &[&str]) -> (bool, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .expect("run taliesin new");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
 fn check_is_clean(path: &Path) -> (bool, String) {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .args(["build", path.to_str().unwrap(), "--check-only"])
@@ -274,4 +290,45 @@ fn a_scaffold_keeps_the_plain_preview_advice() {
     );
     let _ = std::fs::remove_dir_all(&loose);
     let _ = std::fs::remove_dir_all(&site);
+}
+
+/// `new post` with no `--dir`, run where no project encloses the CWD, refuses instead of
+/// writing an orphan.
+///
+/// This is the sequence the tool teaches itself, and it did not compose: `taliesin init
+/// myblog` leaves you in the parent, and the homepage it writes says "Scaffold a dated post
+/// with `taliesin new post my-first-post`" — with no `cd` and no `--dir`. Typed there, that
+/// wrote `./posts/my-first-post/index.tmd` *beside* `myblog/`, in a directory with no
+/// `_site.yml`, printed `built …` and exited 0. The post was invisible to the site, absent
+/// from its listing, and the only way to notice was to look at the filesystem.
+#[test]
+fn new_post_outside_a_project_refuses_instead_of_writing_an_orphan() {
+    let parent = tmp("orphan-parent");
+    let project = parent.join("myblog");
+    let (ok, ..) = run(&["init", project.to_str().unwrap()]);
+    assert!(ok, "`init` should succeed");
+
+    // Exactly what a new user types: the homepage's own instruction, from where `init`
+    // left them.
+    let (ok, stdout, stderr) = run_in(&parent, &["new", "post", "my-first-post"]);
+    assert!(
+        !ok,
+        "scaffolding outside any project must fail, not exit 0:\nstdout: {stdout}"
+    );
+    assert!(
+        !parent.join("posts").exists(),
+        "no orphan directory may be written beside the project"
+    );
+    assert!(stderr.contains("no _site.yml"), "it says why: {stderr}");
+    assert!(
+        stderr.contains("--dir"),
+        "it names the way forward: {stderr}"
+    );
+
+    // Inside the project, the same command still works.
+    let (ok, _, stderr) = run_in(&project, &["new", "post", "my-first-post"]);
+    assert!(ok, "`new post` inside a project still works: {stderr}");
+    assert!(project.join("posts/my-first-post/index.tmd").exists());
+
+    let _ = std::fs::remove_dir_all(&parent);
 }

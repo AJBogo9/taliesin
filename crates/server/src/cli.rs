@@ -119,7 +119,18 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                 for f in &written {
                     log::built(&f.display().to_string());
                 }
-                println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
+                // The next step ends INSIDE the project when `init` was given a directory.
+                // It used to print `taliesin preview myblog`, which previews correctly but
+                // leaves the author in the parent — where the homepage's own next bullet,
+                // `taliesin new post my-first-post`, has no project to scaffold into. The
+                // two commands the tool teaches have to compose.
+                if where_ == "." {
+                    println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview .");
+                } else {
+                    println!(
+                        "Scaffolded a Taliesin site. Preview it:\n  cd {where_}\n  taliesin preview ."
+                    );
+                }
             }
             ExitCode::SUCCESS
         }
@@ -320,6 +331,10 @@ fn new_files(slug: &str, today: &str, opts: NewOpts) -> Vec<(PathBuf, String)> {
 pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
     let mut root = ".".to_string();
+    // Whether the author *named* a root, as opposed to inheriting the default `.`. An
+    // explicit `--dir` is an instruction and is obeyed as written; the implicit default is
+    // the one that has to be checked, because nothing about it was chosen.
+    let mut dir_given = false;
     let mut json = false;
     let mut opts = NewOpts::default();
     let mut it = args[2..].iter();
@@ -330,6 +345,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             "--dir" => {
                 if let Some(v) = it.next() {
                     root = v.clone();
+                    dir_given = true;
                 }
             }
             // `--json` prints `{kind, slug, created, preview}` (pure JSON to stdout), so an
@@ -377,6 +393,10 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let root = Path::new(&root);
+    if !dir_given && let Err(e) = refuse_scaffold_outside_a_project(root, &slug) {
+        log::error(&e);
+        return ExitCode::FAILURE;
+    }
     match write_new(root, &slug, opts) {
         Ok(written) => {
             if json {
@@ -427,6 +447,47 @@ fn new_json(slug: &str, written: &[PathBuf]) -> String {
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
 const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft"];
+
+/// Refuse to scaffold into a directory no project encloses.
+///
+/// `new` writes `posts/<slug>/index.tmd` relative to its root, and with no `--dir` that root
+/// is the CWD. Outside a project that produced a page nothing would ever see: no `_site.yml`
+/// means no page walker, so the post is absent from the site, absent from its listing, and
+/// announced with `built …` and exit 0. The only way to notice was to look at the
+/// filesystem.
+///
+/// It is the sequence the tool teaches itself that walked into it. `init myblog` leaves the
+/// author in the parent, and the homepage `init` writes says "Scaffold a dated post with
+/// `taliesin new post my-first-post`" — so the second command a new user types wrote its
+/// output beside the project it was meant for.
+///
+/// **No `--force`.** The escape hatch is `--dir`, which already exists and already means
+/// "scaffold here, I mean it"; a second knob for the same job is what the near-perfect-
+/// default rule forbids.
+fn refuse_scaffold_outside_a_project(root: &Path, slug: &str) -> Result<(), String> {
+    if taliesin_core::site::enclosing_site_root(root).is_some() {
+        return Ok(());
+    }
+    // Show the directory as the author sees it, not as `.`: canonicalize when we can, and
+    // fall back to what was typed when we cannot (a CWD that was deleted out from under us).
+    let shown = root
+        .canonicalize()
+        .unwrap_or_else(|_| root.to_path_buf())
+        .display()
+        .to_string();
+    let label1 = "to scaffold into an existing project:";
+    let label2 = "to start one here:";
+    let width = label1.chars().count().max(label2.chars().count());
+    // Same two-way shape `build`/`preview` print for the same mistake
+    // (`serve::not_a_project_error`), and hung under `log`'s 10-column tag gutter for the
+    // same reason: a multi-line error should read as one block.
+    let body = format!(
+        "{shown} has no _site.yml, so it is not a project.\n\
+         {label1:<width$} taliesin new post {slug} --dir <project>\n\
+         {label2:<width$} taliesin init"
+    );
+    Err(body.replace('\n', "\n          "))
+}
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).
