@@ -1,13 +1,21 @@
-//! `taliesin doctor`: a standalone environment self-audit. Surfaces the interpreter +
-//! kernel-package probe (`crate::interpreter`) unconditionally for both Python and R, plus
-//! active conda/virtualenv detection and `_site.yml` sanity, with ✓/⚠/✗ status and fix
-//! commands. Answers "is my environment ready to run code cells?" before any document exists
-//! (a document-scoped lint only sees the languages that document already uses, which is
-//! circular — and wave 9 removed the interpreter probe from that path entirely).
+//! `taliesin doctor`: a standalone environment self-audit. Surfaces the Python interpreter +
+//! kernel-package probe (`crate::interpreter`) unconditionally, plus `_site.yml` sanity, with
+//! ✓/⚠/✗ status and fix commands. Answers "is my environment ready to run code cells?" before
+//! any document exists (a document-scoped lint only sees the languages that document already
+//! uses, which is circular — and wave 9 removed the interpreter probe from that path
+//! entirely).
 //!
-//! Pure core (`interpreter_check`/`active_env_check`/`overall_ok`): probe results + env vars
-//! are injected, so the severity logic is unit-tested without spawning or touching process
-//! env. `cmd_doctor` is the thin I/O wrapper. Never executes the user's document.
+//! **Every row here can fail.** A separate `env` row printed the active conda/virtualenv at a
+//! hard-coded `Status::Ok`, so it was a green ✓ that no environment could ever change — and
+//! against the sentence "no active virtual/conda env" it read as "fine" while meaning
+//! "nothing is configured". It also contradicted the row above it, which reports the resolved
+//! interpreter's provenance (`(.venv)`) and its search trail, which is where that information
+//! actually belongs. Deleted 2026-08-10; a tick that cannot vary teaches a reader to stop
+//! reading ticks.
+//!
+//! Pure core (`interpreter_check`/`overall_ok`): probe results are injected, so the severity
+//! logic is unit-tested without spawning or touching process env. `cmd_doctor` is the thin
+//! I/O wrapper. Never executes the user's document.
 
 use crate::interpreter::{Probe, Provenance, Resolved};
 use std::io::IsTerminal;
@@ -160,39 +168,6 @@ fn interpreter_check(r: &Resolved, p: &Probe) -> Check {
     }
 }
 
-/// The active conda/virtualenv line (pure; env injected). Informational (always ✓): it never
-/// gates the exit, it just answers "which env is active / did you forget to activate one?".
-fn active_env_check(
-    venv: Option<&str>,
-    conda_prefix: Option<&str>,
-    conda_name: Option<&str>,
-) -> Check {
-    let detail = if let Some(prefix) = conda_prefix.filter(|s| !s.is_empty()) {
-        let name = conda_name
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                Path::new(prefix)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(prefix)
-                    .to_string()
-            });
-        format!("active conda env: {name}")
-    } else if let Some(v) = venv.filter(|s| !s.is_empty()) {
-        format!("active virtualenv: {v}")
-    } else {
-        "no active virtual/conda env (using the system PATH)".to_string()
-    };
-    Check {
-        name: "env",
-        status: Status::Ok,
-        detail,
-        fix: None,
-        executes: None,
-    }
-}
-
 /// The audit passes (exit 0) unless a configured interpreter is broken (a `Status::Error`).
 fn overall_ok(checks: &[Check]) -> bool {
     !checks.iter().any(|c| c.status == Status::Error)
@@ -303,18 +278,7 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
     );
     let py_probe = crate::interpreter::probe(&py);
 
-    let venv = std::env::var("VIRTUAL_ENV").ok();
-    let conda_prefix = std::env::var("CONDA_PREFIX").ok();
-    let conda_name = std::env::var("CONDA_DEFAULT_ENV").ok();
-
-    let mut checks = vec![
-        interpreter_check(&py, &py_probe),
-        active_env_check(
-            venv.as_deref(),
-            conda_prefix.as_deref(),
-            conda_name.as_deref(),
-        ),
-    ];
+    let mut checks = vec![interpreter_check(&py, &py_probe)];
     if let Some(site) = &site {
         let bad = site
             .warnings
@@ -492,51 +456,12 @@ mod tests {
         assert!(c.fix.as_deref().unwrap().contains("ipykernel"));
     }
 
-    #[test]
-    fn active_env_names_conda_then_venv_then_none() {
-        assert!(
-            active_env_check(None, Some("/opt/conda/envs/proj"), Some("proj"))
-                .detail
-                .contains("conda env: proj")
-        );
-        // conda prefix with no explicit name -> basename of the prefix.
-        assert!(
-            active_env_check(None, Some("/opt/conda/envs/proj"), None)
-                .detail
-                .contains("proj")
-        );
-        assert!(
-            active_env_check(Some("/home/u/.venv"), None, None)
-                .detail
-                .contains("virtualenv: /home/u/.venv")
-        );
-        assert!(
-            active_env_check(None, None, None)
-                .detail
-                .contains("no active")
-        );
-        // An EMPTY variable is not an active environment. Shells export `CONDA_PREFIX=` and
-        // `VIRTUAL_ENV=` on deactivate rather than unsetting them, so "set" and "set to
-        // something" are different questions and only the second one means anything here —
-        // otherwise a deactivated shell is told it is inside an env with no name.
-        assert!(
-            active_env_check(Some(""), Some(""), Some(""))
-                .detail
-                .contains("no active"),
-            "empty env vars are not an active environment"
-        );
-        assert!(
-            active_env_check(Some("/home/u/.venv"), Some(""), None)
-                .detail
-                .contains("virtualenv: /home/u/.venv"),
-            "an empty conda prefix must not shadow a real virtualenv"
-        );
-    }
-
     /// The readiness summary reads each language's verdict off **that language's** check. It
     /// is the one line most readers act on, and with two checks in the list a lookup that
-    /// picks the wrong one still produces a plausible sentence — so the two must disagree
-    /// for the assertion to mean anything.
+    /// picks the wrong one still produces a plausible sentence — so a second, non-language
+    /// check has to be present for the assertion to mean anything. That second row is
+    /// `config`; it was `env` until that row was deleted on 2026-08-10 for being a ✓ that
+    /// could never be anything else.
     ///
     /// Changed with the interpreter-resolution work: the verdict is now read off
     /// `executes`, not off `status`. A working-but-unselected interpreter is a ⚠ that
@@ -553,7 +478,7 @@ mod tests {
             executes,
         };
         assert_eq!(
-            summary(&[check("python", Some(true)), check("env", None)]),
+            summary(&[check("python", Some(true)), check("config", None)]),
             "python cells will execute."
         );
         // The other direction, so a summary that ignored `executes` altogether — or read
@@ -561,7 +486,7 @@ mod tests {
         // its kernel package renders as source, and saying otherwise promises execution
         // that will not happen.
         assert_eq!(
-            summary(&[check("python", Some(false)), check("env", None)]),
+            summary(&[check("python", Some(false)), check("config", None)]),
             "python cells will render as source."
         );
     }
@@ -576,7 +501,7 @@ mod tests {
             executes: None,
         };
         let warn = Check {
-            name: "env",
+            name: "config",
             status: Status::Warn,
             detail: String::new(),
             fix: None,

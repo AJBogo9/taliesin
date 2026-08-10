@@ -15,10 +15,14 @@ fn tmp(name: &str) -> std::path::PathBuf {
     d
 }
 
-/// The audit reports the Python + R interpreter and the active-env line, unconditionally
-/// (no document needed). Run in a clean dir with the kernel env vars removed for determinism.
+/// The audit reports the Python interpreter unconditionally (no document needed). Run in a
+/// clean dir with the kernel env vars removed for determinism.
+///
+/// It asserted a third line, `env`, until 2026-08-10: that row printed the active
+/// conda/virtualenv at a hard-coded ✓ no environment could change, and its content is already
+/// in the python line's provenance and `.venv` search trail.
 #[test]
-fn doctor_reports_interpreters_and_active_env() {
+fn doctor_reports_the_interpreter_unconditionally() {
     let dir = tmp("basic");
     let out = taliesin()
         .arg("doctor")
@@ -34,10 +38,6 @@ fn doctor_reports_interpreters_and_active_env() {
     assert!(
         stdout.contains("ipykernel"),
         "names the python kernel pkg (present / MISSING / install fix):\n{stdout}"
-    );
-    assert!(
-        stdout.contains("env"),
-        "reports the active-env line:\n{stdout}"
     );
     assert!(
         stdout.contains("cells will"),
@@ -60,27 +60,24 @@ fn doctor_json_lists_the_checks() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stdout is valid JSON");
     assert!(v["ok"].is_boolean(), "has a top-level ok: {v}");
     let checks = v["checks"].as_array().expect("checks array");
-    for name in ["python", "env"] {
-        assert!(
-            checks.iter().any(|c| c["name"] == name),
-            "json has a `{name}` check: {v}"
-        );
-    }
+    assert!(
+        checks.iter().any(|c| c["name"] == "python"),
+        "json has a `python` check: {v}"
+    );
     // `status` is the field an agent branches on, so it has to be the agreed vocabulary and
-    // not merely present. The env line is always ready, which makes it the one check whose
-    // exact value is knowable here.
+    // not merely present. Asserted across every row rather than pinning one row's exact
+    // value: the only row whose value was knowable in advance here was `env`, and it was
+    // knowable precisely because it could never be anything but "ok" — which is why that row
+    // was deleted on 2026-08-10. What an agent needs is that every status it reads is one of
+    // the three it knows how to branch on.
     for c in checks {
+        assert!(c["name"].is_string(), "every check is named: {c}");
         let status = c["status"].as_str().unwrap_or("");
         assert!(
             matches!(status, "ok" | "warn" | "error"),
             "unknown status {status:?} in {c}"
         );
     }
-    let env = checks
-        .iter()
-        .find(|c| c["name"] == "env")
-        .expect("the env check");
-    assert_eq!(env["status"], "ok", "the active-env line is informational");
     // `ok` is the exit code in JSON form: it must agree with the process's own verdict.
     assert_eq!(
         v["ok"].as_bool(),
@@ -104,9 +101,12 @@ fn the_human_report_is_glyph_marked_and_uncoloured_when_piped() {
         .output()
         .expect("run doctor");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // The active-env line is always Ok, so a ✓ is always present.
+    // Any of the three, not specifically ✓. This asserted a ✓ and passed only because the
+    // deleted `env` row was hard-coded to one; with that row gone the surviving rows depend
+    // on the machine, and pinning ✓ would make the test assert "this box has a working
+    // ipykernel" instead of "the report is glyph-marked", which is the property.
     assert!(
-        stdout.contains('✓'),
+        stdout.contains('✓') || stdout.contains('⚠') || stdout.contains('✗'),
         "every line carries its status glyph:\n{stdout}"
     );
     assert!(
