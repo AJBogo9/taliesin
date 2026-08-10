@@ -13,6 +13,19 @@ fn help() -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
+/// `(exit ok, stdout, stderr)` for an arbitrary argument list.
+fn run(args: &[&str]) -> (bool, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(args)
+        .output()
+        .expect("run taliesin");
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
 #[test]
 fn help_groups_commands_by_purpose() {
     let h = help();
@@ -54,4 +67,52 @@ fn help_groups_commands_by_purpose() {
         !h.contains("  run "),
         "`run` was cut in wave 13 but --help still lists it:\n{h}"
     );
+}
+
+/// An error path writes to **stderr and nothing else**.
+///
+/// `taliesin buidl .` printed 56 lines of help to stdout and one line of error to stderr,
+/// so `taliesin buidl . 2>/dev/null` showed a wall of help and *lost the error entirely*,
+/// and `taliesin buidl . | head` showed help with no error at all. The one line that
+/// answers the question scrolled off the top of any terminal shorter than 57 rows. The
+/// tool already got this right one function away: an unknown *flag* prints one line to
+/// stderr and nothing to stdout.
+#[test]
+fn an_error_writes_to_stderr_and_nothing_to_stdout() {
+    // An unknown command…
+    let (ok, stdout, stderr) = run(&["buidl", "."]);
+    assert!(!ok, "an unknown command exits non-zero");
+    assert!(
+        stdout.is_empty(),
+        "an error path must write nothing to stdout, got {} lines:\n{stdout}",
+        stdout.lines().count()
+    );
+    assert!(
+        stderr.contains("build"),
+        "the did-you-mean goes to stderr: {stderr}"
+    );
+
+    // …and a retired one, which carries its own note instead of a did-you-mean.
+    let (ok, stdout, stderr) = run(&["run", "."]);
+    assert!(!ok, "a retired command exits non-zero");
+    assert!(
+        stdout.is_empty(),
+        "a retired verb must write nothing to stdout, got {} lines:\n{stdout}",
+        stdout.lines().count()
+    );
+    assert!(
+        stderr.contains("was removed"),
+        "the retirement note goes to stderr: {stderr}"
+    );
+
+    // The success paths must not move: help is what those are FOR, and it belongs on
+    // stdout so it can be piped.
+    for args in [vec!["help"], vec!["--help"], vec![]] {
+        let (ok, stdout, _) = run(&args);
+        assert!(ok, "`taliesin {args:?}` succeeds");
+        assert!(
+            stdout.contains("Preview & build"),
+            "`taliesin {args:?}` still prints the full help to stdout"
+        );
+    }
 }

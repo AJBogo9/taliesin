@@ -82,9 +82,16 @@ fn main() -> ExitCode {
         }
         // An unrecognized command is an error (non-zero), not a silent success.
         // Suggest the nearest valid command (reusing core's Levenshtein helper).
+        //
+        // **A pointer, not the whole help, and on stderr.** This arm used to call `usage()`,
+        // which is built from `println!` — so an error printed one line to stderr and 56 to
+        // stdout, and `taliesin buidl . 2>/dev/null` showed a wall of help with the error
+        // gone. The did-you-mean plus a pointer is the whole useful content on an error
+        // path; the other 55 lines are noise, and they are one `taliesin help` away. The
+        // unknown-*flag* path next door already worked this way.
         Some(other) => {
             log::error(&unknown_command_message(other));
-            usage();
+            eprintln!("          run `taliesin help` for the full list of commands");
             ExitCode::FAILURE
         }
     }
