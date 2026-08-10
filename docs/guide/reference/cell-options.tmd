@@ -76,15 +76,15 @@ An option marked `(none)` in the **Default** column does nothing unless you set 
 
 | Option | Languages | Default | Effect |
 |---|---|---|---|
-| `echo` | `python`, `r` | `true` | `false` hides the source listing; the cell still runs and its output still shows |
-| `include` | `python`, `r` | `true` | `false` hides **both** source and output; the cell still runs (kernel state is kept) |
-| `cache` | `python`, `r` | `true` | `false` opts the cell out of the `_freeze/` cache, so it always re-executes |
-| `label` | `python`, `r`, `mermaid`, `js` | (none) | `fig-X` / `lst-X` / `tbl-X` makes the cell a numbered, cross-referenceable figure / listing / table (resolve with `@fig-X` etc.) |
-| `fig-cap` | `python`, `r`, `mermaid`, `js` | (none) | A caption for the output; also turns the output into a numbered `<figure>` |
-| `lst-cap` | `python`, `r` | (none) | A caption for the **source listing**, making it a numbered listing |
-| `tbl-cap` | `python`, `r` | (none) | A caption for the output **table**, making it a numbered table |
-| `code-fold` | `python`, `r` | (none) | `true` collapses the listing into a closed `<details>`; `show` folds it but starts open |
-| `code-summary` | `python`, `r` | `"Code"` | The summary label for a `code-fold` listing |
+| `echo` | `python` | `true` | `false` hides the source listing; the cell still runs and its output still shows |
+| `include` | `python` | `true` | `false` hides **both** source and output; the cell still runs (kernel state is kept) |
+| `cache` | `python` | `true` | `false` opts the cell out of the `_freeze/` cache, so it always re-executes |
+| `label` | `python`, `mermaid`, `js` | (none) | `fig-X` / `lst-X` / `tbl-X` makes the cell a numbered, cross-referenceable figure / listing / table (resolve with `@fig-X` etc.) |
+| `fig-cap` | `python`, `mermaid`, `js` | (none) | A caption for the output; also turns the output into a numbered `<figure>` |
+| `lst-cap` | `python` | (none) | A caption for the **source listing**, making it a numbered listing |
+| `tbl-cap` | `python` | (none) | A caption for the output **table**, making it a numbered table |
+| `code-fold` | `python` | (none) | `true` collapses the listing into a closed `<details>`; `show` folds it but starts open |
+| `code-summary` | `python` | `"Code"` | The summary label for a `code-fold` listing |
 | `name` | `js` | (none) | Publish the cell's return value into the reactive scope under this name (a helper other `{js}` cells read) |
 | `viewof` | `js` | (none) | The cell returns a DOM input; its value is registered under this name for other cells to consume |
 | `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `define` value changes |

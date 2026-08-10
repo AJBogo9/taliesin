@@ -17,6 +17,7 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml` and an `index.tmd`, and nothing else; refuses to overwrite |
 | `new post <slug>` | Scaffold one dated post, correct on its first save; refuses to overwrite |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
+| `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and how (`_site.yml` `python:`, a `.venv`, `TALIESIN_PYTHON`, then `PATH`), whether `ipykernel` imports, the active conda/virtualenv, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
 
 A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
 directory a project (see [Configuration](configuration.tmd)). Point `preview` or

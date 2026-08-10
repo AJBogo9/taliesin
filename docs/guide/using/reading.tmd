@@ -35,7 +35,7 @@ removed: two themes cover the two conditions that actually differ, a lit room an
 one, and each is tuned to clear its contrast floors. A third palette is a third of
 everything, every rule and every contrast measurement, for a preference the reader can
 get from their own system or browser. An author who wants a warm page ships it as a
-custom theme through the usual extension or `css:` route.
+custom `theme:` — a `.css`/`.scss` file, or an `_extensions/` theme bundle.
 
 There is deliberately no text-size, width, or spacing knob. Taliesin tunes those defaults
 once, for every reader, rather than shipping a comfort panel of sliders: the browser

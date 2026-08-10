@@ -93,17 +93,16 @@ just carries a `data-tali-input="NAME"` attribute that the runtime registers.
 | Argument | Required | Default | Effect |
 |---|---|---|---|
 | `name=` | warns if omitted | (none) | The reactive node's name (what a consuming cell reads). Omitting it warns (the control still renders, but it can't feed the reactive graph). |
-| `type=` | no | `slider` | One of `slider`, `range`, `number`, `checkbox`, `text`, `select`. An unknown type warns with a did-you-mean. |
+| `type=` | no | `slider` | One of `slider`, `number`, `checkbox`, `text`, `select`. An unknown type warns with a did-you-mean. |
 | `label=` | no | the `name` | The visible label text. |
 | `value=` | no | (none) | The initial value. A `checkbox` is pre-checked only when `value` is the literal `true`; a `select`'s value must exactly string-match one of the `options` to pre-select it. |
-| `min=` `max=` `step=` | no | (none) | Numeric bounds for `slider`, `range`, and `number`. |
+| `min=` `max=` `step=` | no | (none) | Numeric bounds for `slider` and `number`. |
 | `options=` | for `select` | (none) | A comma-separated option list. **Required** for `type="select"`; omitting it warns. |
 
-`slider` and `range` are aliases: both render the same `<input type="range">`
-with a live `<output>` readout beside it (only `number` differs, dropping the
-readout for a numeric field). `tali.value()` hands a consuming cell the right type:
-a number for `slider`, `range`, and `number`; a boolean for `checkbox`; a string
-for `text` and `select`.
+`slider` renders an `<input type="range">` with a live `<output>` readout beside
+it; `number` is the same value without the readout, as a numeric field.
+`tali.value()` hands a consuming cell the right type: a number for `slider` and
+`number`; a boolean for `checkbox`; a string for `text` and `select`.
 
 The preview stays read-only: a reader moves the control to explore the output, but
 the control never writes back to the source. For the full reactive model (how a

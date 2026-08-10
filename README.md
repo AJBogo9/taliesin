@@ -178,7 +178,7 @@ books, authored in `.tmd` and built with Taliesin itself.
 
 **Previewing a `.tmd` runs it.** `{python}` cells execute against a Jupyter
 kernel with your permissions, a `{js}` cell runs in your browser, and raw HTML (plus
-anything a document injects through `include-in-header` / `css:`) passes through
+anything the project injects through `_site.yml`'s `head:`) passes through
 verbatim — so opening a document someone sent you is the same kind of decision as
 running a script they sent you. `--no-exec` stops the code cells, both kinds, but it is
 **not** a sanitizer. Taliesin says this plainly rather than implying a sandbox it does

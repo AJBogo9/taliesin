@@ -1,7 +1,8 @@
 title: "Journal of Examples"
 url: https://example.org
-# A site-level author: JSON-LD's author chain falls back to this when a page sets no
-# author: of its own, and stops at the site-title byline below that.
+# A site-level author: read by the Atom feed a dated listing writes, which RFC 4287
+# requires to carry one. It is NOT a byline fallback — a page with no author: of its own
+# renders no byline (see note.tmd).
 author: "Ada Lovelace"
 nav:
   - { text: Home, href: index.tmd }

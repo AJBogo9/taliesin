@@ -24,11 +24,12 @@ by nothing at all.
 ```
 
 This is the single command that runs everything: fmt, clippy, the workspace suite, both
-`tsc` type-checks, the VS Code companion's grammar test, and
-`cargo audit` / `cargo deny`. **A plain `cargo test` is not enough.** The live-kernel,
-Node and headless-Chrome cases *skip silently* when their interpreter is missing, so a
-green `cargo test` on a machine without Python, R, Node or Chrome can be nearly empty of
-meaning. `gates.sh` arms all four `TALIESIN_REQUIRE_*` variables, checks each canary test
+`tsc` type-checks, the VS Code companion's grammar test, `cargo audit` / `cargo deny`,
+and the two document gates — `build docs/guide --check-only` and
+`tools/build-site.sh --check`, which the pre-push hook also runs. **A plain `cargo test`
+is not enough.** The live-kernel and Node cases *skip silently* when their interpreter is
+missing, so a green `cargo test` on a machine without Python or Node can be nearly empty
+of meaning. `gates.sh` arms both `TALIESIN_REQUIRE_*` variables, checks each canary test
 by name, and treats one ignored test as a failure. It prints `PASSED`, `FAILED`, or
 `INCOMPLETE` (exit 2) — and `INCOMPLETE` means a gate never ran, so it certifies nothing.
 Install what it says is missing rather than reaching for `--allow-missing`.
@@ -40,8 +41,10 @@ Install what it says is missing rather than reaching for `--allow-missing`.
   live-state preservation all key off it.
 - **A test that fails without your fix.** Verify it by mutation: put the bug back and
   watch the named test fail. A test that passes both ways is not a test.
-- **A corpus document for a new capability.** `corpus/` is the regression net; a feature
-  with nothing under `corpus/` exercising it is unowned.
+- **A feature witness in `crates/core/src/render/tests.rs`.** That is where a capability
+  is pinned. `corpus/` is still the regression net, but a corpus document earns its place
+  by being something a person wanted to read, or a golden no unit test can hold — the old
+  "one corpus document per capability" rule was retired as circular evidence.
 
 ## Licensing of contributions
 

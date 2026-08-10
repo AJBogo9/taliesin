@@ -657,6 +657,87 @@ mod cli_microcopy_tests {
         );
     }
 
+    /// Every subcommand has a row in the CLI reference's command table, and every row names
+    /// a subcommand the binary answers.
+    ///
+    /// **This is the fifth registration site, and it was the only ungated one.** A new verb
+    /// already trips [`COMMANDS`], `COMMANDS_HELP`, `subcommand_help` and the usage page;
+    /// the row in `docs/guide/reference/cli.tmd`'s table was maintained by hand, and
+    /// `doctor` — a shipped verb with four VS Code wirings — reached this gate's writing
+    /// with no row at all, discoverable only from one subordinate clause 100 lines down.
+    /// The reverse direction matters just as much: wave 13 left the retired `run` row
+    /// standing through several edits, and what eventually caught it was
+    /// `documented_cli_flags_exist_in_the_cli` noticing the *flags* inside the row — so a
+    /// retired verb with no flags would have left a documented command the binary refuses,
+    /// with every gate green.
+    #[test]
+    fn every_subcommand_has_a_row_in_the_cli_reference() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/guide/reference/cli.tmd");
+        let guide = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let table = guide
+            .split_once("| Command | Effect |")
+            .expect("cli.tmd has a command table")
+            .1;
+
+        let mut documented: Vec<String> = Vec::new();
+        for line in table.lines().skip(1) {
+            if !line.starts_with('|') {
+                break;
+            }
+            // The `|---|---|` separator is the first row after the header and is not a
+            // command; without this it lands in the set as `---|---|` and fails the
+            // reverse assertion.
+            if line
+                .chars()
+                .all(|c| matches!(c, '|' | '-' | ':' | ' ' | '\t'))
+            {
+                continue;
+            }
+            let cell = line.trim_start_matches('|').trim();
+            let verb: String = cell
+                .trim_start_matches('`')
+                // Stop at the first space OR backtick: `lsp` ends at the backtick, and
+                // `build <file.tmd\|dir> --check-only` must stop at the space rather than
+                // at the escaped pipe inside its argument.
+                .chars()
+                .take_while(|c| *c != ' ' && *c != '`')
+                .collect();
+            if !verb.is_empty() {
+                documented.push(verb);
+            }
+        }
+
+        assert!(
+            documented.len() >= 5,
+            "parsed only {} rows out of {}'s command table — the parse broke, not the docs",
+            documented.len(),
+            path.display()
+        );
+
+        // `help` is the usage page itself, not a row in the table it prints.
+        let missing: Vec<&&str> = COMMANDS
+            .iter()
+            .filter(|c| **c != "help" && !documented.iter().any(|d| d == *c))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "shipped subcommand with no row in {}'s command table: {missing:?}",
+            path.display()
+        );
+
+        let unknown: Vec<&String> = documented
+            .iter()
+            .filter(|d| !COMMANDS.contains(&d.as_str()))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "{} documents a command the binary does not answer: {unknown:?}",
+            path.display()
+        );
+    }
+
     /// `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`. It used to
     /// print top-level usage, because the `help` verb matched before the subcommand was
     /// looked at.

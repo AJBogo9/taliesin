@@ -8,7 +8,7 @@
 # nothing and certifies nothing today, and the jobs it alone would run are manual.
 # Deliberately still NOT gated here, because each needs an environment this hook cannot
 # assume:
-#   - live-kernel tests   (need a clean python env / R; also timing-sensitive)
+#   - live-kernel tests   (need a clean python env; also timing-sensitive)
 #   - JS typecheck + VS Code grammar  (need node)
 #   - cargo audit / cargo deny advisory scan  (need the tools + network; run them on
 #                                              any dependency change)

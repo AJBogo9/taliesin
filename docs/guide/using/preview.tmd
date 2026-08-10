@@ -73,9 +73,9 @@ completion cannot suggest something the validator would reject.
   languages, div classes, cross-references, citations, shortcode names, anchor ids, math
   commands, and file paths anywhere a path is legal.
 - **Div attributes, narrowed to the class you wrote.** `::: {.callout-note ` offers
-  `title=`, `collapse=`, `icon=` and `appearance=`; a plain div offers `layout-ncol=`.
-  A `.lemma` is *not* offered `collapse=`, because only `proof` has a collapse branch and
-  suggesting it elsewhere would be recommending something that renders no differently.
+  `title=`, `collapse=`, `icon=` and `appearance=` — the four a callout reads. A plain
+  div offers `layout-ncol=` and none of those four, because a `collapse=` outside a
+  callout would be recommending something that renders no differently.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
 - **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML

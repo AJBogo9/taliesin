@@ -28,8 +28,9 @@ flowchart TB
    expanded inline, and a `Vec<LineOrigin>` source map records, for every line of
    the expanded text, which file + line it came from. Cycles are detected and left
    in place. This is what makes click-to-source work *across files*.
-2. **Shortcode expansion** (`render/extension/`). `{{< name args >}}` tags
-   declared by the active format extension expand to their HTML templates. It is
+2. **Shortcode expansion** (`render/extension/`). The built-in `{{< input >}}` tag
+   expands to its HTML template — it is the only shortcode that expands here, since
+   `{{< include >}}` was resolved a pass earlier. It is
    **line-preserving** (each tag opens and closes on one line, the template's
    newlines collapsed) so the source map from stage 1 stays valid.
 3. **Fenced-div scan + preprocess** (`render/divs.rs`). The `:::` fenced divs aren't
@@ -53,8 +54,7 @@ flowchart TB
    `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id** and a
    `data-sourcepos` mapped back through the source map. A `` ```{lang} `` fence is
    recognised as an executable **cell** and recorded for the server to run later. The
-   front-matter node is where metadata, the theme, and a format extension's includes
-   are resolved.
+   front-matter node is where metadata and the theme are resolved.
 6. **Regroup divs** (`render/divs.rs`). The flat blocks are wrapped back into
    callout / layout-grid / generic container blocks using the spans from stage 3.
    Inner blocks keep their own ids and sourcepos, so click-to-source works inside a

@@ -38,7 +38,7 @@ or `{ file: … }` map, or a list of those.
 |---|---|---|
 | `title` | string | The document title. Drives `<title>`, the title block, OpenGraph/social meta, and the nav/listing label |
 | `subtitle` | string | A secondary line shown under the title in the title block |
-| `author` | string, list, or list of maps | Author name(s). A string or list of strings is a plain byline; the [structured form](#sec-authors) adds affiliations, ORCIDs and links |
+| `author` | string, list, or list of maps | Author name(s). A string or list of strings is a plain byline; the [structured form](#sec-authors) adds affiliations and links |
 | `date` | string | Publication date (shown in the title block; sorts a `listing:`) |
 | `description` | string | Summary used for the `<meta name="description">` and the `og:description` a shared link unfurls with |
 | `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
@@ -49,7 +49,6 @@ or `{ file: … }` map, or a list of those.
 | Key | Type | Meaning |
 |---|---|---|
 | `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified (or any custom theme) follows the OS via `prefers-color-scheme`, falling back to light; only an explicit `light` (or `default`)/`dark` forces that mode |
-| `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
 | `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`** — an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
@@ -255,17 +254,13 @@ unknown key is within edit distance 2 of a known one, so `treme: dark` is caught
 nudged toward `theme:`. The same closed-vocabulary check covers the immediate
 children of `execute:`, `listing:` and `hero:` (including each `actions:` entry).
 
-Two deliberate exceptions:
+One deliberate exception:
 
-- **`format:` sub-keys are not linted.** A format extension may add its own format
-  options, so Taliesin leaves everything under `format:` alone rather than guess at a
-  vocabulary it does not own.
 - **`csl:` is recognized but not supported.** There is no CSL engine: references always
   render in the single built-in IEEE style. The build warns on the key (it is not offered
   as a completion either), so the no-op is visible rather than silent. It stays in the
-  known set on purpose: `css` is one edit away from `csl`, so dropping it would make the
-  did-you-mean answer a citation-style key with "did you mean `css`?", which is worse
-  advice than none.
+  known set on purpose: `csl` names a real thing you brought from another tool, and
+  "recognized, not honoured" is a better answer than either silence or a rename hint.
 
 ## Editor autocomplete
 

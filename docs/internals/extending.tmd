@@ -257,11 +257,11 @@ exact source line. So adding one is two steps, in order.
 
 2. **Read it where cells are processed.** The key is now *allowed* but still *inert*. Two
    places consume options depending on what the option does:
-   - **Render-time** options (presentation: `code-fold`, `code-summary`,
-     `code-line-numbers`, `label`, `fig-cap`) are read in the render pipeline as the cell's
-     HTML is emitted (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the
-     code-fold / line-number wrappers). Add your read there if the option only changes how
-     the cell or its output looks.
+   - **Render-time** options (presentation: `code-fold`, `code-summary`, `label`,
+     `fig-cap`) are read in the render pipeline as the cell's HTML is emitted
+     (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the code-fold
+     wrapper). Add your read there if the option only changes how the cell or its output
+     looks.
    - **Execution-time** options (`echo`, `include`, `cache`) are read in
      `server/exec.rs`, where each is captured onto the per-cell `CellRef` before the run
      and consulted while planning what re-runs. Add your read there if the option changes
@@ -269,8 +269,8 @@ exact source line. So adding one is two steps, in order.
 
 A render-only option needs no kernel and shows up immediately in `build`; an
 execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
-option with a corpus document that uses it (the corpus is the spec), and the lint will keep
-it from regressing into an unknown-key warning.
+option with a witness in `crates/core/src/render/tests.rs`, which is where a feature
+witness belongs, and the lint will keep it from regressing into an unknown-key warning.
 
 ::: {.callout-note}
 The parser only reads the **leading contiguous** `#|` block: the first non-option line
@@ -287,12 +287,19 @@ cargo clippy --workspace --all-targets -- -D warnings
 cd web-client && npx -y -p typescript tsc -p jsconfig.json   # type-check client.js
 ```
 
-### The corpus is the spec
+### The corpus records; it does not lead
 
 There is no exhaustive feature checklist. The contract is that the real documents
 under `corpus/` render correctly; `crates/core/tests/corpus.rs` asserts the block
-invariants across all of them. Add a representative document to the corpus when you
-add a feature.
+invariants across all of them.
+
+The rule used to be that each new capability shipped pinned by a corpus document added
+in the same change. That is retired, because it made the corpus circular as evidence: a
+scan of every feature against the corpus reported nothing unused, which is guaranteed by
+construction and therefore says nothing. Pointed at the documents written to be *read*,
+the same instrument reported 32 features used by nothing anywhere. **A corpus document
+now earns its place by being something a person wanted to read, or by being a golden no
+unit test can hold. A feature witness belongs in `crates/core/src/render/tests.rs`.**
 
 ### Byte-identity for refactors
 

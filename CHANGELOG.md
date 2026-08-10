@@ -31,6 +31,45 @@ output) are kept stable.
   before it is signalled, so answering the probe cannot get an unrelated process
   terminated.
 
+### Removed
+
+- **Eighteen CLI subcommands became seven**, across a thirteen-wave scope-reduction
+  campaign (2026-08-08 → 2026-08-09) that also cut the document feature set roughly in
+  half. What ships is `preview`, `build`, `init`, `new`, `doctor`, `lsp` and `help`. The
+  goal was a surface small enough to polish before release; features come back when real
+  users need them.
+
+  Every retired verb is still *recognized* when typed exactly — `taliesin <verb>` answers
+  with the line below rather than a did-you-mean over the survivors, because a wrong
+  suggestion is worse than none when the person typing it is following an older page:
+
+  | Removed | What replaces it |
+  |---|---|
+  | `check` | `build <file\|dir> --check-only` lints without writing, and takes `--strict` and `--format json` the same way |
+  | `render` | `build <file.tmd> --stdout --no-exec` writes the same page to stdout |
+  | `run` | `preview <file.tmd>` executes the same cells against the same warm kernel and writes the same `_freeze/`, so a later `build` still replays without one |
+  | `publish` | `build <dir> --out <dir>` writes a plain folder any static host serves (Netlify, GitHub Pages, Cloudflare Pages, rsync) |
+  | `serve` | use `preview` |
+  | `dev` | use `preview` |
+  | `blocks` | `taliesin lsp` publishes the block model now |
+  | `symbols` | `taliesin lsp` completes cross-reference targets after `@` |
+  | `vocab` | `taliesin lsp` serves the same vocabulary as completions |
+  | `map` | nothing on the CLI; `taliesin lsp` answers `taliesin/siteMap` for your editor |
+  | `schema` | nothing on the CLI; the VS Code companion bundles the `_site.yml` schema |
+  | `features` | `build <dir> --check-only --format json` is the machine surface |
+  | `mcp` | `build <dir> --check-only --format json`, run from your agent |
+  | `skim` | nothing; read the `.tmd` source |
+  | `read` | nothing; read the `.tmd` source |
+  | `pdf` | nothing; print the built HTML to PDF from your browser |
+  | `completions` | nothing; type the subcommand out, or bind your own shell alias |
+
+  The table is the same data the binary answers from (`RETIRED_COMMANDS` in
+  `crates/server/src/main.rs`), so the reader who wonders where `check` went gets the
+  same sentence here and at the prompt.
+
+- **The `{r}` cell language, and the R kernel behind it.** `{python}` is the only
+  executable kernel language. `TALIESIN_R` and `TALIESIN_REQUIRE_R` are gone with it.
+
 ### Fixed
 
 - **The symlink containment check no longer fails open on a bare filename.**
@@ -161,9 +200,11 @@ publishable.**
 
 > **All four are resolved since this release** and are kept only as the record of
 > what 0.2.0 shipped with. Current state: the `_extensions/` showcase no longer
-> exists in the tree; there is no CI at all (the workflow was deleted 2026-07-26,
-> leaving `.githooks/pre-push` as the only automatic gate, which does not run
-> `cargo-deny`); Mermaid is vendored and inlined, so nothing fetches it; warm
+> exists in the tree; `.github/workflows/` holds `ci.yml` and `release.yml`, restored
+> 2026-07-28, but every `ci.yml` job is guarded on `repository.private != true`, so
+> while this repository is private CI is inert and `.githooks/pre-push` is the only
+> gate that runs automatically (`./tools/gates.sh` runs everything, by hand);
+> Mermaid is vendored and inlined, so nothing fetches it; warm
 > pages are evicted by a `MAX_WARM_PAGES` LRU, and a book has no sidebar to stack
 > — navigation is a sticky topbar plus an off-canvas drawer.
 

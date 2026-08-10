@@ -46,7 +46,7 @@ The following are by design:
   folder yourself.
 - **The preview is a read-only view.** It never writes back to your source;
   click-to-source only navigates the editor.
-- **Symlinks inside your checkout are followed.** A `{{< include >}}`, `css:`,
+- **Symlinks inside your checkout are followed.** A `{{< include >}}`,
   `bibliography:` or other resource path may resolve through a symlink to anywhere
   in the enclosing repository (the nearest ancestor holding `.git`), so sibling
   project directories can share one file. The document *text* is held to a narrower
