@@ -239,6 +239,171 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
     }
 }
 
+/// Every token in `text` shaped like a relative file path: a run of path characters
+/// holding a `/`, whose last segment carries an extension.
+///
+/// The extension anchor is deliberate, and it is why this does not see
+/// `crates/core/assets/katex/LICENSE` in the release workflow's `cp`. Dropping the anchor
+/// would first have to tell that file apart from `actions/checkout@v4`,
+/// `dtolnay/rust-toolchain@stable` and every other `owner/repo@ref` action reference,
+/// which are exactly the same shape and name nothing in this repo. The three verbatim
+/// notices are guarded by name from the other side instead, in
+/// `crates/core/tests/third_party.rs`, which also fails if the `Package` step disappears.
+fn path_like_tokens(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for run in text.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
+        // A leading `/` is not part of the claim (`//host/path` in a URL, an absolute
+        // path in prose); a trailing `.` or `-` is punctuation, not the name.
+        let tok = run
+            .trim_start_matches('/')
+            .trim_end_matches(|c: char| !c.is_ascii_alphanumeric());
+        let Some((dir, file)) = tok.rsplit_once('/') else {
+            continue;
+        };
+        if dir.is_empty() || !file.contains('.') {
+            continue;
+        }
+        out.push(tok.to_string());
+    }
+    out
+}
+
+/// The `target: <triple>` entries of the release workflow's build matrix.
+fn released_targets() -> Vec<String> {
+    read(".github/workflows/release.yml")
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("target: "))
+        // `targets: ${{ matrix.target }}` on the toolchain step is an expression, not a
+        // triple; the matrix entries are literal.
+        .filter(|t| !t.contains("${{"))
+        .map(|t| t.trim().to_string())
+        .collect()
+}
+
+/// Neither workflow is run by anything today — every job carries the visibility guard the
+/// test above pins — so a path that stops resolving inside one costs nothing until the
+/// repo is made public, and then costs a red X on the launch commit, in front of every
+/// first visitor and every would-be contributor. `cargo test --workspace` was green on
+/// these two files with three dead paths in them: a `run:` target under
+/// `crates/server/src/` for a node test deleted with the `publish` verb, the passcode
+/// middleware that step claimed to guard, and `crates/core/tests/release_targets.rs`,
+/// named by the release workflow as the assertion binding its build matrix to the README
+/// and deleted in wave 1 of the cut.
+///
+/// **This is the narrow exception to "grep, do not gate".** For a shipped doc a stale path
+/// costs a reader one confusing sentence, and the author is looking at the file while
+/// editing it. For a workflow nobody runs, nobody is looking at all — not on any push, not
+/// on any green suite — until publication, when it is too late to be quiet about. There is
+/// direct precedent one file over: `gate_script.rs`'s
+/// `every_canary_the_gate_script_names_still_exists` guards the identical failure, a
+/// script asserting on a name nothing emits.
+///
+/// Both halves are derived, not listed: the walk finds the workflow files (so a third one
+/// cannot arrive unguarded) and the matrix is read out of the workflow that actually
+/// produces the artifacts. The README half is the substance of the deleted
+/// `release_targets.rs`, restored here rather than as a file of its own, and its two
+/// directions fail differently: a target built but not documented is invisible, while a
+/// target documented but not built is a promise — the reader downloads nothing and
+/// concludes the project is abandoned.
+#[test]
+fn workflows_do_not_name_a_path_that_does_not_exist() {
+    let root = repo();
+    let dir = root.join(".github/workflows");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .expect(".github/workflows is missing: the workflow was restored on 2026-07-28")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "yml" || x == "yaml"))
+        .collect();
+    files.sort();
+    assert!(
+        !files.is_empty(),
+        "no workflows found under {}",
+        dir.display()
+    );
+
+    let mut checked = 0usize;
+    let mut missing = Vec::new();
+    for f in &files {
+        let name = f
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let text = std::fs::read_to_string(f).unwrap();
+        // The repo root, plus every `working-directory:` this file declares. The allowance
+        // is load-bearing, not defensive: the companion job runs
+        // `node scripts/ensure-vscode.cjs` under `working-directory: editor/vscode`, and a
+        // root-only check reports that real file as missing.
+        let bases: Vec<PathBuf> = std::iter::once(root.clone())
+            .chain(
+                text.lines()
+                    .filter_map(|l| l.trim().strip_prefix("working-directory:"))
+                    .map(|d| root.join(d.trim())),
+            )
+            .collect();
+        for tok in path_like_tokens(&text) {
+            checked += 1;
+            if !bases.iter().any(|b| b.join(&tok).exists()) {
+                missing.push(format!("{name}: {tok}"));
+            }
+        }
+    }
+    // Anti-vacuity, the same reasoning as the shipped-docs path gate below: a scanner that
+    // stopped matching yields ~0, and an empty gate passes forever. Measured at 11 on
+    // 2026-08-10, of which FOUR sit in an executable `run:`/`cp` line and the other seven
+    // are comments citing the test or config that justifies a step. Floored at the
+    // executable four: the comment half is prose and may legitimately be rewritten away,
+    // and a floor just under the live count would fail the next comment edit for the
+    // wrong reason.
+    assert!(
+        checked >= 4,
+        "only {checked} workflow path(s) examined: the scanner stopped matching, so this \
+         gate is now green for the wrong reason"
+    );
+    assert!(
+        missing.is_empty(),
+        "{} path(s) named in .github/workflows/ do not exist. A `run:` target is a hard \
+         failure on the first public run; a comment naming a deleted file is a lie told to \
+         the next reader:\n{}",
+        missing.len(),
+        missing.join("\n")
+    );
+
+    // The README's platform matrix and the build matrix are one claim written twice.
+    let targets = released_targets();
+    assert!(
+        targets.len() >= 2,
+        "parsed {targets:?} from the release workflow's matrix — the parser broke, or the \
+         release workflow stopped shipping binaries"
+    );
+    let readme = read("README.md");
+    for t in &targets {
+        assert!(
+            readme.contains(&format!("`{t}`")),
+            "the release workflow builds `{t}` but README.md's platform matrix never \
+             names it, so nobody knows the binary exists (workflow builds {targets:?})"
+        );
+    }
+    for line in readme.lines() {
+        for word in line.split('`') {
+            let looks_like_a_triple = word.matches('-').count() >= 2
+                && (word.ends_with("-gnu")
+                    || word.ends_with("-musl")
+                    || word.ends_with("-darwin")
+                    || word.ends_with("-msvc"));
+            if looks_like_a_triple {
+                assert!(
+                    targets.contains(&word.to_string()),
+                    "README.md advertises the target `{word}` but the release workflow \
+                     builds only {targets:?} — that is a promise of a download that will \
+                     not be there"
+                );
+            }
+        }
+    }
+}
+
 /// Every file in the repo, plus every suffix a doc might reasonably name it by.
 ///
 /// A doc writes `serve/mod.rs`, `server/exec.rs` or `tests/regression.rs` — a suffix of

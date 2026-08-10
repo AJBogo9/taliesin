@@ -5,8 +5,10 @@ name: Release
 # launch attention is one-shot.
 #
 # The platform matrix here is the ONE source of truth for it. `README.md` repeats it for
-# humans and `crates/core/tests/release_targets.rs` asserts the two agree, so adding a
-# target without documenting it (or promising one this never builds) fails the suite.
+# humans and `crates/core/tests/stale_docs.rs` asserts the two agree, so adding a target
+# without documenting it (or promising one this never builds) fails the suite. That same
+# test resolves every path either workflow names, because nothing else does: no job here
+# runs while the repo is private, so a dead path is invisible until the launch commit.
 #
 # Guarded on repository visibility for the same reason as ci.yml: this file has to be
 # committed before publication so the published history carries it, and until then it must
@@ -61,8 +63,8 @@ jobs:
       # path calls the browser driver at all: `read --run-js` went in Wave 2 and `pdf` in
       # Wave 4, leaving only the `deck_browser` / `reactive_browser` TEST binaries, which a
       # release never builds. Turning it on here would cost 24% of every cross-build for a
-      # dependency the binary cannot reach. `ci.yml` still passes it, because that is where
-      # the tests that need it run.
+      # dependency the binary cannot reach. Nowhere else passes it either: the feature
+      # itself no longer exists in any `Cargo.toml`.
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server
       # The tarball carries the licence and the third-party notices next to the binary:

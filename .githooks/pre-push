@@ -2,10 +2,12 @@
 # Pre-push gate. Runs the fast, environment-independent checks LOCALLY before a push
 # reaches origin, so a break is caught here instead of after it has landed on main.
 #
-# As of 2026-07-26 this is the ONLY automatic gate in the repo: the GitHub Actions
-# workflow was deleted (it billed Actions minutes on this private repo), so the jobs it
-# alone ran now run nowhere and are manual. Deliberately still NOT gated here, because
-# each needs an environment this hook cannot assume:
+# This is still the ONLY automatic gate in the repo. `.github/workflows/ci.yml` was
+# restored on 2026-07-28, but every job in it is guarded on `repository.private != true`
+# so that it bills no Actions minutes until this repo is public — which means it runs
+# nothing and certifies nothing today, and the jobs it alone would run are manual.
+# Deliberately still NOT gated here, because each needs an environment this hook cannot
+# assume:
 #   - live-kernel tests   (need a clean python env / R; also timing-sensitive)
 #   - JS typecheck + VS Code grammar  (need node)
 #   - cargo audit / cargo deny advisory scan  (need the tools + network; run them on
@@ -88,7 +90,7 @@ echo "  [4/5] cargo run -q -p taliesin-server -- build docs/guide --check-only -
 cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
 
 # The gate that replaces `mounts:` (cut 2026-08-09). The marketing site links into the two
-# docs books and the four gallery exhibits; the config key used to make those links resolve
+# docs books and the three gallery exhibits; the config key used to make those links resolve
 # by construction, and now a shell script composes them instead. build.rs recorded that the
 # script alternative had already shipped this project's call-to-action with a 404 once,
 # because the script was not run. So it is run here: `--check` builds the whole composition

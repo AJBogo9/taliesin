@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the composed taliesin.sh deploy: the marketing site, with the two docs books and
-# the four gallery exhibits written underneath it.
+# the three gallery exhibits written underneath it.
 #
 # This script replaces the `mounts:` key that `site/_site.yml` used to carry (cut
 # 2026-08-09). That key made `preview` serve the sub-projects under a URL prefix and made

@@ -155,13 +155,21 @@ fn contributing_wires_the_hooks_path_and_points_at_the_gate_script() {
 /// gate, wave 11's composition gate) landed only in `.githooks/pre-push`, so the script was
 /// green while covering 8 of 10. Nothing compared the two lists. This does.
 ///
-/// The hook keeps running them too, deliberately: it is the only gate that runs
-/// automatically, and `gates.sh` is manual. So this test pins the pair rather than the
-/// script alone — a command in either file and not the other is the drift it catches.
+/// The check is THREE-WAY as of 2026-08-10. `.github/workflows/ci.yml` opens by promising
+/// that it and `gates.sh` "must not drift: a gate added here belongs there, and vice
+/// versa", and it was missing both of those same two gates — the identical omission, in
+/// the one file where nobody can see it, because every job there is guarded on repository
+/// visibility and none has ever run.
+///
+/// All three keep running them, deliberately: the hook is the only gate that runs
+/// automatically, `gates.sh` is manual, and CI is the only one that sees a fresh clone or
+/// an outside contributor's PR. So this test pins the trio rather than any one of them — a
+/// command in one file and not the others is the drift it catches.
 #[test]
 fn every_pre_push_command_is_also_run_by_the_gate_script() {
     let hook = read(".githooks/pre-push");
     let gates = read("tools/gates.sh");
+    let ci = read(".github/workflows/ci.yml");
 
     // The load-bearing invocations, spelled as they appear in the hook.
     const REQUIRED: &[&str] = &["--check-only", "build-site.sh"];
@@ -177,6 +185,13 @@ fn every_pre_push_command_is_also_run_by_the_gate_script() {
             gates.contains(needle),
             "`.githooks/pre-push` runs `{needle}` and `tools/gates.sh` does not, \
              so `gates.sh` reports PASSED while covering less than the hook"
+        );
+        assert!(
+            ci.contains(needle),
+            "`.githooks/pre-push` runs `{needle}` and `.github/workflows/ci.yml` does \
+             not, so CI covers less than the local gates while its own header promises \
+             the two sets never drift — and no job there runs today, so the gap would \
+             first be visible on the commit that makes this repo public"
         );
         checked += 1;
     }

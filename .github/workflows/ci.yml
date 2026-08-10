@@ -42,13 +42,12 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      # The hand-rolled JS minifier's equivalence guard shells out to Node to compare
-      # acorn token streams (Node's OWN bundled acorn — no network, no dependency).
-      # `node --check` cannot see that bug class: a nested-template or regex-context slip
-      # rewrites a token's VALUE with the count unchanged, so the output parses clean and
-      # is silently wrong. TALIESIN_REQUIRE_NODE=1 makes a missing Node a HARD FAIL rather
-      # than a skip, mirroring TALIESIN_REQUIRE_KERNEL below, so this can never quietly
-      # regress to zero coverage.
+      # `crates/core/tests/reactive_live_region.rs` slices `markLiveIfTextual` out of the
+      # SHIPPED bundle and runs it in Node against stand-in containers, so the rule that
+      # decides which `//| input:` sinks announce themselves is pinned against the code
+      # that actually ships. TALIESIN_REQUIRE_NODE=1 makes a missing Node a HARD FAIL
+      # rather than a skip, mirroring TALIESIN_REQUIRE_KERNEL below, so this can never
+      # quietly regress to zero coverage.
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -64,6 +63,16 @@ jobs:
         run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # The two gates the parity promise at the top of this file was missing. Both are
+      # STEPS on this job, not new jobs: they reuse the debug build `cargo test` just
+      # produced, so they cost a link rather than a second workspace build, and a new job
+      # would need its own visibility guard to satisfy `crates/core/tests/stale_docs.rs`.
+      # `--check-only` renders in memory and writes nothing; `--no-exec` is what keeps
+      # both kernel-free. `.githooks/pre-push` runs the same two, as its steps 4 and 5.
+      - name: Document gate (the manual is a shipped document)
+        run: cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+      - name: Composition gate (every cross-project link resolves)
+        run: ./tools/build-site.sh --check
 
   # Exercise the live execution stack (kernel.rs / exec.rs) against a REAL ipykernel —
   # the `test` job above cannot, because TALIESIN_PYTHON is unset there so every kernel
@@ -80,9 +89,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # numpy is one of the warm-pool's forkserver preload candidates (`numpy`,
-      # `matplotlib`, `torch`, each preloaded only if importable); the pool test asserts a
-      # forked kernel inherits the preloaded `numpy` via copy-on-write, so it must be present.
+      # numpy is required by `crates/server/tests/figure_theme_recolour.rs`, which drives
+      # the shipped `_tali_recolour` preamble through a REAL kernel against a numpy-backed
+      # heatmap and reads the recoloured annotation back; without it the cell errors.
       # matplotlib is required by the fig-export concurrency test
       # (`concurrent_pages_with_same_relative_export_do_not_clobber`), which exercises the
       # inline-Figure export hook; without it the cell errors and no PDF is written.
@@ -113,17 +122,14 @@ jobs:
           node-version: "20"
       - name: Type-check the client JS
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
-      # The bundled browser scripts (the code-enhance/ fragments, deck.js, tali-js.js,
-      # mermaid/scrolly/tabset/walkthrough) ship to every page and had no type gate;
-      # this keeps them at strict-zero the same way the client JS is kept honest.
+      # The bundled browser scripts (the code-enhance/ fragments, tali-js.js, mermaid.js)
+      # ship to every page and had no type gate; this keeps them at strict-zero the same
+      # way the client JS is kept honest. The set is GLOBBED, not listed: the config at
+      # `crates/core/assets/js/jsconfig.json` takes every `.js` here and under
+      # `code-enhance/` and excludes the minified vendored ones, and its own note records
+      # that a hand-written list rotted before.
       - name: Type-check the bundled assets JS
         run: cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json
-      # The publish passcode gate (functions/_middleware.js) is security-critical and its
-      # only functional test is this dependency-free node:test file. Run it here (Node is
-      # already set up) so an auth-logic regression (e.g. a broken fail-closed default)
-      # can never ship green.
-      - name: Test the publish passcode gate
-        run: node --test crates/server/src/assets/_middleware.test.mjs
 
   # The VS Code companion: build the extension, type-check its TS, and run the OFFLINE
   # TextMate grammar tokenization gate (loads the .tmd grammar + the bundled MIT
