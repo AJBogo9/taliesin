@@ -24,7 +24,8 @@ the deliverable as the table. Nothing here is claimed on the strength of an inte
 **Report date:** 2026-07-28.
 
 **Evaluation methods.** Automated conformance testing (Lighthouse, which embeds axe-core)
-over built output: 54 pages across three projects, desktop and mobile, in **both** the
+over built output: 54 pages across three projects **as they stood at the report date**,
+desktop and mobile, in **both** the
 light and dark themes. Plus the project's own static rule set
 (`crates/core/src/diagnostics/a11y.rs`) and a manual audit pass on 2026-07-25.
 
@@ -40,7 +41,7 @@ or placeholder `alt`, and a heading-level skip) on every build and through
 | Criterion | Conformance | Remarks |
 |---|---|---|
 | 1.1.1 Non-text Content | **Partially supports** | Tool chrome supplies an accessible name for every control it emits. Author images are linted for a missing or placeholder `alt` but cannot be enforced |
-| 1.3.1 Info and Relationships | Supports | Semantic landmarks, `<section>` extents and a real heading hierarchy; verified across 54 pages |
+| 1.3.1 Info and Relationships | Supports | Semantic landmarks, `<section>` extents and a real heading hierarchy; verified across those 54 pages |
 | 1.4.3 Contrast (Minimum) | Supports | Zero contrast violations in **both** themes, desktop and mobile |
 | 1.4.10 Reflow | Supports | No horizontal overflow at mobile widths (measured 2026-07-26) |
 | 1.4.11 Non-text Contrast | Supports | No violations |

@@ -19,7 +19,7 @@ track would render *from* the built HTML, never as a parallel format).
 > **THE CUT IS COMPLETE. Wave 13 landed 2026-08-09 and there is no wave 14.** It
 > adjudicated the one bundle the ruling left open and **cut `taliesin run` entirely**, so the
 > CLI is **7 subcommands**: `preview`, `build`, `init`, `new`, `doctor`, `lsp`, `help`. The
-> corpus is 83 documents and the Internals book is 7 chapters; a fresh session should read
+> corpus is 82 documents and the Internals book is six chapters plus an index; a fresh session should read
 > `notes/CUT-PROGRESS.md` before assuming a file named in the playbook still exists, because
 > eight of wave 12's "must survive" justifications named files that had already gone.
 >
@@ -350,7 +350,7 @@ companion's offline TextMate grammar test, `cargo audit` / `cargo deny check`
 the pre-push hook also runs** (`build docs/guide --check-only` and
 `tools/build-site.sh --check`). Never call one of these verified without its output.
 
-**It runs TEN gates and prints the count.** It ran eight while this paragraph claimed all
+**It runs ELEVEN gates and prints the count.** It ran eight while this paragraph claimed all
 of them, for two waves: the document gate (wave 9) and the composition gate (wave 11) were
 wired into `.githooks/pre-push` and never added here, because neither can *skip* and so
 neither looked like this script's problem. An absent gate hollows out "runs every gate"
@@ -358,12 +358,23 @@ exactly as completely as a skipped one, and more quietly, since there is no `SKI
 to read. `gate_script.rs`'s `every_pre_push_command_is_also_run_by_the_gate_script` now
 compares the script's list against the hook's on every run. The hook keeps running both
 too — it is the only gate that runs automatically and this script is manual, so the two
-are a pair, not a move.
+are a pair, not a move. The eleventh is the census gate (below). **Take the count from the
+script's own verdict line; never increment the one written here.**
 
 ## Conventions
 
 - Rust edition 2024, workspace resolver 3. Shared deps go in the root
   `[workspace.dependencies]` so versions stay centralized.
+- **Never publish a number about this tool that has no committed instrument.** A number
+  without one carries its measured-on date and is re-measured before a release tag. The
+  census is gated (`tools/portability-census.py --verify`, gate 11) because the page hands
+  the reader the command, which makes a mismatch self-refuting rather than merely stale; it
+  had already rotted twice, the second time within six days of the script being committed as
+  the fix for the first. Wall clocks, binary size and crate count are NOT gated — they
+  measure the machine, so they carry a date instead. The evidence for the split is in the
+  tree: every republished `tools/live-edit-bench` figure is still exact because a committed
+  `RESULTS.json` plus `regression.rs` holds it, while every ungated number in the same two
+  paragraphs was false.
 - Every emitted block carries `data-block-id` (content-hash) + `data-sourcepos`;
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so

@@ -18,10 +18,10 @@ Otherwise it builds from source with a Rust toolchain. From the repo:
 cargo build --release
 ```
 
-That compiles 268 crates in roughly two minutes on four cores and peaks around
-2.6 GB of memory; the result is one ~40 MB binary with KaTeX, its fonts, the
-syntax definitions and every bundled script inside it, so nothing is fetched at
-runtime.
+That compiles 257 crates in about 1m 43s at `-j3`; the result is one ~32 MB
+binary with KaTeX, its fonts, the syntax definitions and every bundled script
+inside it, so nothing is fetched at runtime. (Measured 2026-08-10, cold, on one
+machine — the same figures `README.md` gives, because there is only one build.)
 
 The binary is `target/release/taliesin`. Put it on your `PATH` (a symlink, or a
 small wrapper script that rebuilds on source changes before running it) so you

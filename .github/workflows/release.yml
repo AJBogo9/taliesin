@@ -1,7 +1,7 @@
 name: Release
 
 # Attach a prebuilt binary to every `v*` tag, because the alternative is what shipped
-# before: every verifiable claim about this tool sat behind a 343-crate release build, and
+# before: every verifiable claim about this tool sat behind a 257-crate release build, and
 # launch attention is one-shot.
 #
 # The platform matrix here is the ONE source of truth for it. `README.md` repeats it for

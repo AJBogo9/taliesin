@@ -13,13 +13,15 @@
 # both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
 # and neither is silently optional — there is nothing left for them to gate.
 #
-# **TEN gates as of 2026-08-09.** It ran eight until then, while claiming all of them:
-# the document gate (wave 9) and the composition gate (wave 11) were wired into
-# `.githooks/pre-push` and never added here, because neither can skip and so neither
-# looked like this script's problem. A gate that is simply ABSENT from the list hollows
-# a "runs every gate" claim out just as completely as a gate that skipped, and it does it
-# more quietly, because there is no SKIPPED line to read. The cross-check that stops the
-# next one lives in `crates/core/tests/gate_script.rs`.
+# **ELEVEN gates as of 2026-08-10** (the census gate is the eleventh). It ran eight while
+# claiming ten for two waves: the document gate (wave 9) and the composition gate (wave 11)
+# were wired into `.githooks/pre-push` and never added here, because neither can skip and so
+# neither looked like this script's problem. A gate that is simply ABSENT from the list
+# hollows a "runs every gate" claim out just as completely as a gate that skipped, and it
+# does it more quietly, because there is no SKIPPED line to read. The cross-check that stops
+# the next one lives in `crates/core/tests/gate_script.rs`.
+#
+# **Take this number from the script's own verdict line, never by incrementing this one.**
 #
 #   ./tools/gates.sh                  run every gate; a missing prerequisite is a failure
 #   ./tools/gates.sh --allow-missing  run what you can; the verdict is INCOMPLETE, exit 2
@@ -338,6 +340,31 @@ run_gate "build docs/guide --check-only" docs-guide.log \
 run_gate "tools/build-site.sh --check" build-site.log ./tools/build-site.sh --check
 
 # ---------------------------------------------------------------------------
+# 11. The published census still reproduces.
+#
+# `README.md` and `docs/guide/using/choosing.tmd` open with "measured rather than asserted"
+# and then hand the reader the command: `python3 tools/portability-census.py`. That makes a
+# mismatch self-refuting rather than merely stale — the one claim in the read set where the
+# instrument is in the reader's hands.
+#
+# It has now rotted TWICE. The script was committed on 2026-08-03 precisely as the remedy
+# for the first rot, and choosing.tmd still carries the footnote saying so; six days later
+# eight cut waves had removed ~40% of the corpus and every figure was wrong again, by
+# 133/11,534/7.1% published against 82/7157/7.0% measured. A doc-comment is not a control.
+#
+# It is gated where the build times are not because it is the only figure here that is
+# MACHINE-INDEPENDENT: a deterministic sub-second pass over tracked files. Wall clocks and
+# binary sizes vary by machine and are labelled indicative; gating those would gate the box.
+#
+# No new prerequisite: this script already hard-requires Python, so no TALIESIN_REQUIRE_*
+# appears and `gate_script.rs::the_gate_script_arms_every_require_gate_in_the_tree` is
+# untouched. Not added to `.githooks/pre-push` either —
+# `every_pre_push_command_is_also_run_by_the_gate_script` constrains hook ⊆ script, not the
+# reverse.
+# ---------------------------------------------------------------------------
+run_gate "portability census --verify" census.log python3 tools/portability-census.py --verify
+
+# ---------------------------------------------------------------------------
 # Verdict
 # ---------------------------------------------------------------------------
 echo
@@ -359,6 +386,6 @@ if [ ${#SKIPPED[@]} -gt 0 ]; then
 fi
 # The count is part of the verdict, not decoration: this script ran 8 gates while
 # claiming 10 for two waves, and a bare "every gate passed" is exactly as reassuring at
-# either number. Read it against the ten stanzas above.
+# either number. Read it against the eleven stanzas above.
 green "PASSED — every gate ran and passed (${#PASSED[@]} gates)."
 exit 0

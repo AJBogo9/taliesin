@@ -13,20 +13,20 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **133 `.tmd` documents** in Taliesin's own corpus — **11,534 lines** of real
-writing, the largest sample that exists — **823 lines, 7.1%, carry any construct beyond
-plain CommonMark.** The other 92.9% is Markdown, and any Markdown tool reads it.
+Across the **82 `.tmd` documents** in Taliesin's own corpus — **7,157 lines** of real
+writing, the largest sample that exists — **498 lines, 7.0%, carry any construct beyond
+plain CommonMark.** The other 93.0% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
-| Fenced div (`::: {.callout-note}`) | 238 | 2.1% |
-| Executable fence (` ```{python} `) | 161 | 1.4% |
-| Citation / cross-reference (`[@key]`, `@fig-x`) | 132 | 1.1% |
-| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 131 | 1.1% |
-| Cell option (`#\| label: fig-x`) | 114 | 1.0% |
-| Shortcode (`{{< include … >}}`) | 47 | 0.4% |
+| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 108 | 1.5% |
+| Executable fence (` ```{python} `) | 103 | 1.4% |
+| Fenced div (`::: {.callout-note}`) | 92 | 1.3% |
+| Citation / cross-reference (`[@key]`, `@fig-x`) | 91 | 1.3% |
+| Cell option (`#\| label: fig-x`) | 80 | 1.1% |
+| Shortcode (`{{< include … >}}`) | 24 | 0.3% |
 
-*(Measured 2026-08-03 over `corpus/**/*.tmd`; a line using two constructs is counted once
+*(Measured 2026-08-10 over `corpus/**/*.tmd`; a line using two constructs is counted once
 in the total and once per family, so the family rows sum to more than the total.
 **Reproduce it with `python3 tools/portability-census.py`**, which is where these numbers
 come from and which spells out each family's definition. The script is committed for a
@@ -35,7 +35,7 @@ the script that measured it was not, and by August its document and line counts 
 reproduced.)*
 
 **None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
-predates Taliesin, which means the 7.3% is not stranded either — it is the same syntax
+predates Taliesin, which means the 7.0% is not stranded either — it is the same syntax
 another Pandoc-family tool already parses. `.tmd` is a file extension, not a format, and
 the same argument runs backwards: a project arriving from Quarto brings its sentences,
 fenced cells, `#|` options, `:::` divs, math, citations and cross-references across
@@ -60,17 +60,20 @@ appears here.
 
 | Measurement | Value | What it covers |
 |---|---:|---|
-| Whole-project build, `docs/internals` (15 pages) | **0.25 s** | 16.7 ms/page: parse, render, highlight, math, search index, assets |
-| Whole-project build, this guide (23 pages) | **0.44 s** | 19.1 ms/page, including executed cells replayed from `_freeze/` |
-| Whole-project build, `corpus/tech-blog` (19 pages) | **0.56 s** | 29.5 ms/page, the heaviest project in the tree |
-| `preview` time-to-ready, single document | **1–5 ms** | Process start to a serving socket |
-| `preview` time-to-ready, 23-page book | **≈200 ms** | Discovery, nav, cross-reference registry, first render |
+| Whole-project build, `docs/internals` (7 pages) | **0.13 s** | 18.1 ms/page: parse, render, highlight, math, search index, assets |
+| Whole-project build, this guide (19 pages) | **0.25 s** | 13.3 ms/page, including executed cells replayed from `_freeze/` |
+| Whole-project build, `corpus/tech-blog` (17 pages) | **0.58 s** | 34.1 ms/page, the heaviest project in the tree |
+| `preview` time-to-ready, single document | **3–8 ms** | Process start to a serving socket |
+| `preview` time-to-ready, 19-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
 | Warm edit: diff only | **0.75 ms** | The block diff for one keystroke-sized edit |
 | Warm edit: re-render + diff | **13 ms** | Against a 135 ms cold render of the same document |
 | Warm-edit payload | **32 KB** | Versus a 292 KB full page a reload would refetch |
 
-*(Build and ready figures measured 2026-07-29, best of three, release build, warm
-`_freeze/` cache. The warm-edit rows come from `tools/live-edit-bench`, re-measured
+*(Build and ready figures measured 2026-08-10, best of three, release build, warm
+`_freeze/` cache. Each build figure is the duration the build prints for itself, and each
+page count is the one it reports — `find … -name '*.html'` is not the page count, since a
+project may ship its own `404.html` and `_`-prefixed files are never pages. The warm-edit
+rows come from `tools/live-edit-bench`, re-measured
 2026-08-02, best of twelve, release build; its committed `RESULTS.md` labels them
 indicative (the numbers vary by machine). The **structural** rows it also records, the op
 counts and payload bytes, are deterministic and gated by a regression test.)*
@@ -79,9 +82,10 @@ The number that matters is not any single row: it is that the warm edit is a **d
 its cost tracks what you changed rather than how large the document is.
 
 That payload row deserves its detail, because the average hides the shape. The edit emits
-55 operations, and 54 of them (every shifted paragraph, heading, figure and code cell)
-are metadata-only patches that together weigh about **3.2 KB** and never touch a DOM node,
-so anything live in those blocks keeps running. The remaining 29 KB is a *single*
+55 operations. **53** of them — every shifted paragraph, heading, figure and code cell —
+are metadata-only patches that never touch a DOM node, so anything live in those blocks
+keeps running; together with the one `insert` for the newly typed paragraph they weigh
+about **3.2 KB**. The remaining 29 KB is a *single*
 operation: one `::: {.callout-note collapse="true"}` fenced div, which re-renders in full
 because its inner blocks each carry their own source position and those have to stay
 accurate for Ctrl-click. One block shape costs 90% of the payload; every other block shape
@@ -134,7 +138,7 @@ project stops.
 
 What *does not* stop:
 
-- **Your source is Markdown**, 92.7% of it plain CommonMark, all of it in your repository.
+- **Your source is Markdown**, 93.0% of it plain CommonMark, all of it in your repository.
 - **Pages you already built keep working** — they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
@@ -145,8 +149,8 @@ and it is bounded by the table in [Your source stays yours](#sec-portability).
 
 The mitigation the project actually offers is dogfooding rather than a promise:
 **everything the author writes goes through this tool.** Both books of this manual, the
-public website and the regression corpus are `.tmd` rendered by Taliesin — **179 tracked
-`.tmd` files, 22,252 lines**, of which the 125-document corpus is re-rendered by every
+public website and the regression corpus are `.tmd` rendered by Taliesin — **118 tracked
+`.tmd` files, 14,244 lines**, of which the 82-document corpus is re-rendered by every
 `cargo test` run. The manual you are reading is not a description of the tool; it is
 output from it. A defect that breaks a page breaks the documentation for that page in the
 same commit.

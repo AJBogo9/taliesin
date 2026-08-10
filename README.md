@@ -25,18 +25,19 @@ and block model).
 Three things a stranger should know, each measured rather than asserted. The long version,
 with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosing.tmd).
 
-- **Your source stays yours.** Across the 133 documents / 11,534 lines of the project's own
-  corpus, **7.1% of lines carry any construct beyond plain CommonMark** — and all six of
+- **Your source stays yours.** Across the 82 documents / 7,157 lines of the project's own
+  corpus, **7.0% of lines carry any construct beyond plain CommonMark** — and all six of
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is
   Markdown in your repository, and built pages are static HTML that needs no runtime.
-- **Speed, in absolutes and with no multiplier.** A 15-page book builds in **0.25 s**
-  (16.7 ms/page); `preview` is serving in **1–5 ms** for a single document and **≈200 ms**
-  for a 23-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **32 KB**
-  patch instead of a 292 KB page reload, and 54 of its 55 ops are metadata-only patches
-  totalling ~3.2 KB that never touch a DOM node, which is why live state survives the
-  edit. These measure Taliesin's work only — a batch compiler doing a cold Pandoc pass is
-  doing different work, so no ratio is quoted.
+- **Speed, in absolutes and with no multiplier.** A 7-page book builds in **0.13 s**
+  (18.1 ms/page); `preview` is serving in **3–8 ms** for a single document and **≈130 ms**
+  for a 19-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **32 KB**
+  patch instead of a 292 KB page reload, and **53** of its 55 ops are metadata-only patches
+  that never touch a DOM node — those 53 plus the one `insert` for the newly typed
+  paragraph total ~3.2 KB — which is why live state survives the edit. These measure
+  Taliesin's work only — a batch compiler doing a cold Pandoc pass is doing different work,
+  so no ratio is quoted.
 - **One maintainer, pre-1.0.** No support contract, no release cadence, no bus factor above
   one. What that risk is bounded by: Markdown source you already hold, built HTML with no
   dependency on this tool, and an AGPL-3.0 licence that makes a fork always available.
@@ -73,8 +74,8 @@ kernel layer is Unix-only. There are no prebuilt binaries yet; when a release is
 it will attach a `.tar.gz` per target with a `.sha256` beside it, holding the binary plus
 `LICENSE` and `THIRD_PARTY.md`.
 
-**What that costs, measured 2026-08-03, so it is not a surprise:** a cold release build
-compiles **305 crates in about 2m 34s** at `-j3`, and produces a single ~38 MB self-contained
+**What that costs, measured 2026-08-10, so it is not a surprise:** a cold release build
+compiles **257 crates in about 1m 43s** at `-j3`, and produces a single ~32 MB self-contained
 binary (it embeds KaTeX with its fonts, the syntax-highlighting definitions, and every
 bundled stylesheet and script, which is why rendered pages need no network). Nothing is
 fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your
