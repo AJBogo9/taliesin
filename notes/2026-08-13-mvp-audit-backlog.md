@@ -85,96 +85,6 @@ here, not the finder's original.
 
 ---
 
-# BATCH 9: CLI and correctness miscellany
-
-## A26 [V] MEDIUM: a single-dash token becomes the output path
-
-`crates/server/src/build.rs:183`, guard at `:177`. `parse_build_args` rejects unknown flags
-only when they start with `--`, so a single-dash token falls through to
-`positionals.push(s)`.
-
-```sh
-$ taliesin build index.tmd -o out.html
-  built   -o  ·  2ms
-EXIT=0
-$ ls
-index.tmd  -o          # out.html silently discarded
-```
-
-`-o` is the output flag in essentially every other renderer, so it is a likely typo, and the
-resulting dash-named file resists `rm`/`cat` without `--`.
-
-`notes/CUT-PROGRESS.md:253-256` states this rule explicitly and it was walked into anyway.
-
-**One finder claim is false:** a dash-prefixed path *can* be built via `./-weird.tmd`; only
-the `--` sentinel is unsupported.
-
-## A27 [A] MEDIUM: `doctor`'s `config` row prints "`_site.yml` is valid" on a file `--check-only` rejects
-
-`crates/server/src/doctor.rs:286` filters `site.warnings` with `is_malformed_config_warning`
-only (a YAML parse failure), so unknown or typo'd keys and the scheme-less `url:` warning all
-leave a green tick.
-
-`titel: My Site` plus `navbar:` gives `✓ config _site.yml is valid`, exit 0, while
-`build . --check-only` on the same file reports two errors and exits 1. The site title
-silently falls back to a default.
-
-**The wave P5 `env`-row analogy is imprecise:** that row was hard-coded `Status::Ok` and could
-never vary. This row *can* vary. The defect is an overclaiming detail string, not a frozen
-tick.
-
-## A28 [A] MEDIUM: a `.tmd?query` link publishes the raw source, leaking draft content
-
-`crates/core/src/site/links.rs:39`. `tmd_href` splits on `#` only, never on `?`, so
-`strip_source_ext("post.tmd?v=2")` returns None and the link round-trips unrewritten. The
-surviving `.tmd` href then drives `deploy_referenced_sources` (`build.rs:857-888`) to copy
-the raw markdown into the deploy, because `.tmd` is in `SKIP_EXT`.
-
-`--check-only --strict` exits 0, because `manual_local_links` (`links.rs:270`) deliberately
-strips the query and resolves to the real page.
-
-**Raised severity by the refuter:** this leaks `draft:` content. Proven with
-`[secret](secret.tmd?v=2)` where `secret.tmd` has `draft: true`: the build writes no
-`secret.html` but does write `secret.tmd`, containing the unpublished text.
-
-## A29 [A] MEDIUM: `expand_shortcodes` tracks fences with a boolean toggle
-
-`crates/core/src/render/extension/mod.rs:30` flips `in_code` on any line starting with
-` ``` ` or `~~~`, with no fence character and no run length. An inner fence inside a longer
-outer fence closes the region early, so a shortcode documented inside a nested code sample is
-expanded into live markup and draws a spurious diagnostic.
-
-**Second, worse, silent failure mode the finder missed:** the desync runs both ways. When the
-mis-classified region has an odd number of inner fence lines, `in_code` sticks **true** for
-the rest of the document and a genuine shortcode is silently not expanded.
-
-**The correct helper already exists twice in the same crate** and is used by the two other
-line-scanning passes over the same buffer: `includes.rs:281` `next_code_state` (with
-`code_fence` at `:266` capturing `(char, usize)`) and a copy at `render/divs.rs:155`.
-`extension/mod.rs` is the one pass that did not adopt it. **Reuse, do not write a third.**
-
-## A30 [A] MEDIUM: the VS Code `input` snippet writes the type positionally
-
-`editor/vscode/snippets/tmd.json:66` emits `{{< input number name=x ... >}}` instead of
-`type=number`. `input_shortcode` reads only `shortcode_named(args, "type")`
-(`render/extension/mod.rs:185`) and falls back to `"slider"`, and unknown positional args
-draw no diagnostic.
-
-Picking `number`, `checkbox`, `text` or `select` from the snippet's choice list yields a
-range slider, silently. Wave 6 hand-edited this very line to drop `range` from the choices
-without noticing the syntax.
-
-**Narrower than stated:** the default (first) choice is `slider`, which is correct, so only
-an author who actively picks another is bitten, and the preview visibly shows the wrong
-control (the *diagnostic* is what is silent). No source in the repo is affected.
-
-**Fix:** `type=${1|slider,number,checkbox,text,select|}`.
-`editor/vscode/src/test/manifest.test.ts` gates snippet callout kinds, div classes, cell
-options and xref prefixes against the Rust consts but never `INPUT_TYPES` or the argument
-form; extending it is the durable fix.
-
----
-
 # BATCH 10: the shipping surface
 
 Under 30 lines of edits, and it clears every product-facing incoherence the audit found.
@@ -234,8 +144,9 @@ with dated posts, i.e. explicitly a blog, which is the one shape that wants a fe
 publish-adjacent surface is off by default and the build summary simply omits it.
 
 One commented line (`url: "https://example.com"  # set this to publish a feed + sitemap`).
-No new knob. **Fix A25 first or the author's experience of the feed is silence when off and
-false alarms when on.**
+No new knob. (The other half of that experience — the false offline warnings the generated
+feed tag drew once `url:` *was* set — was A25, fixed in batch 8, so only the silence-when-off
+half is left.)
 
 ## S7 [A] MAJOR: the shipped screencast teaches the wrong click-to-source gesture
 

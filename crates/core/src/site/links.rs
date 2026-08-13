@@ -34,17 +34,21 @@ pub(super) fn resolve_href(href: &str, up: &str) -> String {
     format!("{up}{}", tmd_href(href))
 }
 
-/// `.tmd`→`.html` on an href, preserving any `#fragment`.
+/// `.tmd`→`.html` on an href, preserving any `?query` and `#fragment`.
+///
+/// **Both suffixes, not just the fragment.** A `post.tmd?v=2` failed `strip_source_ext`,
+/// so the href round-tripped unrewritten — and a surviving `.tmd` href is what drives the
+/// build's `deploy_referenced_sources` to copy the raw markdown into the deploy (`.tmd` is
+/// in its `SKIP_EXT` source set). With a `draft: true` target that published the
+/// unpublished source, under a green `--check-only --strict`, because `manual_local_links`
+/// strips the query before resolving and so saw a link that was fine. `href_matches_page`
+/// already split on both characters for the same reason.
 pub(super) fn tmd_href(href: &str) -> String {
-    let (path, frag) = match href.split_once('#') {
-        Some((p, f)) => (p, Some(f)),
-        None => (href, None),
+    let (path, suffix) = match href.find(['#', '?']) {
+        Some(i) => (&href[..i], &href[i..]),
+        None => (href, ""),
     };
-    let mapped = tmd_to_html(path);
-    match frag {
-        Some(f) => format!("{mapped}#{f}"),
-        None => mapped,
-    }
+    format!("{}{suffix}", tmd_to_html(path))
 }
 
 /// Whether a navbar `href` points at `page` (so the item renders active).
@@ -313,6 +317,23 @@ mod tests {
             "external untouched"
         );
         assert!(out.contains("href=\"#local\""), "anchor untouched");
+    }
+
+    /// A `?query` on a source href must not defeat the rewrite. It did until 2026-08-13
+    /// (only `#` was split off), and the surviving `.tmd` href then drove the build's
+    /// `deploy_referenced_sources` to copy the raw markdown into the deploy — publishing a
+    /// `draft: true` page's unpublished source, under a green `--check-only --strict`.
+    #[test]
+    fn a_query_string_does_not_defeat_the_tmd_rewrite() {
+        assert_eq!(tmd_href("post.tmd?v=2"), "post.html?v=2");
+        assert_eq!(tmd_href("post.tmd?v=2#sec-x"), "post.html?v=2#sec-x");
+        // A `?` inside the fragment belongs to the fragment; the earliest delimiter wins.
+        assert_eq!(tmd_href("post.tmd#sec-x?y"), "post.html#sec-x?y");
+        // A non-source path with a query still round-trips unchanged.
+        assert_eq!(tmd_href("style.css?v=2"), "style.css?v=2");
+        let out = rewrite_tmd_links(r##"<a href="secret.tmd?v=2">s</a>"##);
+        assert!(out.contains("href=\"secret.html?v=2\""), "{out}");
+        assert_eq!(resolve_href("blog.tmd?v=2", "../"), "../blog.html?v=2");
     }
 
     #[test]

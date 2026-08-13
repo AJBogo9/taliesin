@@ -168,6 +168,46 @@ fn interpreter_check(r: &Resolved, p: &Probe) -> Check {
     }
 }
 
+/// The `config` row, from every diagnostic `_site.yml` itself produced.
+///
+/// **Every one of them, not only the YAML parse failure.** The row asked
+/// `is_malformed_config_warning` and so printed a green `✓ _site.yml is valid` on a file
+/// `build --check-only` rejected with two errors: an unknown or typo'd key is read, then
+/// dropped, so the site's `title:` silently falls back to a default. A ✓ that means "the
+/// YAML parsed" while saying "the config is valid" is the same overclaim the `env` row was
+/// deleted for on 2026-08-10, except this one can vary and so looked like it was working.
+///
+/// Still a ⚠ rather than a ✗ (`doctor` exits non-zero only on a broken *interpreter*): the
+/// pre-publish gate for a project is `build <dir> --check-only`, which reports all of these
+/// with their line numbers, and the fix line says so rather than repeating the list here.
+fn config_check(warnings: &[String]) -> Check {
+    // The "no `_site.yml` here" advisory is benign and cannot reach this row anyway (the
+    // caller only builds a `Site` when the file exists); filtered so it never could.
+    let mut bad = warnings
+        .iter()
+        .filter(|w| !taliesin_core::site::is_missing_config_warning(w));
+    let Some(first) = bad.next() else {
+        return Check {
+            name: "config",
+            status: Status::Ok,
+            detail: "_site.yml is valid".to_string(),
+            fix: None,
+            executes: None,
+        };
+    };
+    let more = match bad.count() {
+        0 => String::new(),
+        n => format!("\n(+{n} more)"),
+    };
+    Check {
+        name: "config",
+        status: Status::Warn,
+        detail: format!("_site.yml: {first}{more}"),
+        fix: Some("run `taliesin build <dir> --check-only` for the located list".to_string()),
+        executes: None,
+    }
+}
+
 /// The audit passes (exit 0) unless a configured interpreter is broken (a `Status::Error`).
 fn overall_ok(checks: &[Check]) -> bool {
     !checks.iter().any(|c| c.status == Status::Error)
@@ -280,26 +320,7 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
 
     let mut checks = vec![interpreter_check(&py, &py_probe)];
     if let Some(site) = &site {
-        let bad = site
-            .warnings
-            .iter()
-            .find(|w| taliesin_core::site::is_malformed_config_warning(w));
-        checks.push(match bad {
-            None => Check {
-                name: "config",
-                status: Status::Ok,
-                detail: "_site.yml is valid".to_string(),
-                fix: None,
-                executes: None,
-            },
-            Some(w) => Check {
-                name: "config",
-                status: Status::Warn,
-                detail: format!("_site.yml: {w}"),
-                fix: Some("fix the YAML in _site.yml".to_string()),
-                executes: None,
-            },
-        });
+        checks.push(config_check(site.config_warnings()));
     }
 
     // Which packages, not just which interpreter. `doctor` reported "ipykernel MISSING" and
@@ -489,6 +510,50 @@ mod tests {
             summary(&[check("python", Some(false)), check("config", None)]),
             "python cells will render as source."
         );
+    }
+
+    /// The row must not be greener than `build --check-only`. It reported only the YAML
+    /// parse failure, so a `titel:` typo — which is *read*, dropped, and silently defaults
+    /// the site title — came back `✓ _site.yml is valid` while `--check-only` on the same
+    /// file exited 1 with two errors.
+    #[test]
+    fn the_config_row_reports_every_site_yml_diagnostic_not_only_bad_yaml() {
+        let clean = config_check(&[]);
+        assert_eq!(clean.status, Status::Ok);
+        assert_eq!(clean.detail, "_site.yml is valid");
+
+        // A typo'd key: no YAML parse failure anywhere in the message.
+        let typo = config_check(&[
+            "_site.yml:1: unknown config key `titel` (did you mean `title`?)".to_string(),
+        ]);
+        assert_eq!(typo.status, Status::Warn, "detail: {}", typo.detail);
+        assert!(typo.detail.contains("titel"), "{}", typo.detail);
+        assert!(
+            !typo.detail.contains("is valid"),
+            "must not also claim validity: {}",
+            typo.detail
+        );
+        assert!(
+            typo.fix.as_deref().unwrap().contains("--check-only"),
+            "the fix points at the gate that lists them all: {:?}",
+            typo.fix
+        );
+
+        // The scheme-less `url:` warning is the one no text filter could have caught: it
+        // carries neither the malformed-YAML prefix nor an `_site.yml` prefix at all.
+        let url = config_check(&["url: `ex.com` has no scheme — sitemap, robots.txt, feed \
+                                  and og:url need an absolute URL"
+            .to_string()]);
+        assert_eq!(url.status, Status::Warn, "detail: {}", url.detail);
+
+        // Several are summarised, not dumped: the located list belongs to `--check-only`.
+        let many = config_check(&["one".to_string(), "two".to_string(), "three".to_string()]);
+        assert!(many.detail.contains("one"), "{}", many.detail);
+        assert!(many.detail.contains("(+2 more)"), "{}", many.detail);
+
+        // The benign "no _site.yml here" advisory is not a config defect.
+        let missing = config_check(&[format!("{} .", taliesin_core::site::MISSING_CONFIG_PREFIX)]);
+        assert_eq!(missing.status, Status::Ok, "detail: {}", missing.detail);
     }
 
     #[test]

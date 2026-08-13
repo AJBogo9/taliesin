@@ -277,6 +277,7 @@ const names = (list: string[]) => list;
 const vocab = {
   calloutKinds: rustStrList(VALIDATE_RS, "CALLOUT_KINDS"),
   cellOptions: rustStrList(VALIDATE_RS, "CELL_OPTION_KEYS"),
+  inputTypes: rustStrList(VALIDATE_RS, "INPUT_TYPES"),
   divClasses: rustStrList("crates/core/src/vocab.rs", "DIV_CLASS_NAMES"),
   // `XREF_LABELS` is `&[(prefix, label)]`, so the pair list is read whole and the retired
   // prefixes subtracted — the same filter `vocab::xref_prefixes` applies.
@@ -385,6 +386,23 @@ test("the callout snippet offers exactly the vocabulary's kinds, in order", () =
     found.some((s) => s.body.includes(expected)),
     `a callout snippet must offer the vocabulary's kinds in order: ${expected}`
   );
+});
+
+test("the input snippet offers exactly the vocabulary's types, as a named `type=` argument", () => {
+  // Both halves matter, and the second is why this test exists. The snippet wrote its type
+  // POSITIONALLY (`{{< input ${1|slider,number,…|} name=x >}}`) while `input_shortcode`
+  // reads only `shortcode_named(args, "type")` and falls back to `"slider"` — so picking
+  // `number`, `checkbox`, `text` or `select` from the choice list silently produced a range
+  // slider, and the stray positional drew no diagnostic. The vocabulary half is the same
+  // forcing function the callout snippet has: change `INPUT_TYPES` in Rust and this fails
+  // until the snippet is updated. Wave 6 hand-edited this very line to drop `range` from the
+  // choices without noticing the argument form.
+  const expected = `type=\${1|${names(vocab.inputTypes).join(",")}|}`;
+  const found = snippetBodies().filter((s) => s.body.includes("{{< input"));
+  assert.ok(found.length > 0, "an input snippet exists");
+  for (const { name, body } of found) {
+    assert.ok(body.includes(expected), `${name}: the input snippet must write \`${expected}\``);
+  }
 });
 
 // The `_site.yml` schema is shipped as a COPY, because `contributes.yamlValidation` needs a

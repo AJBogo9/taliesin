@@ -148,7 +148,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             // writing `<stem>.html` to an unexpected place. (`--out` = output dir; the
             // undocumented `--dir` alias was dropped — `--dir` is the scaffold-input flag.)
             "--out" => match it.next().map(|s| s.as_str()) {
-                Some(v) if !v.starts_with("--") => out_dir = Some(v),
+                Some(v) if !v.starts_with('-') => out_dir = Some(v),
                 _ => {
                     return Err(format!(
                         "error: {a} requires a directory value (e.g. {a} site)"
@@ -172,9 +172,16 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             // `--check-only`: lint, write nothing. Never executes a cell, so it needs no
             // `--no-exec` (and accepts one, which agrees with it rather than contradicting it).
             "--check-only" => check_only = true,
-            // An unrecognized `--flag` is a hard error with a did-you-mean, not silently
+            // An unrecognized flag is a hard error with a did-you-mean, not silently
             // dropped (a typo'd `--stict` would otherwise build without the intended flag).
-            s if s.starts_with("--") => {
+            // **Any leading dash counts, not just `--`.** `-o` is the output flag in most
+            // other renderers, so it is a likely typo here; with only `--` rejected it fell
+            // through to the positionals and became the output *path*, writing a file named
+            // `-o` that then resists `rm`/`cat` without a `--` sentinel. Same rule
+            // `init`/`new` adopted in wave 8, and the one `notes/CUT-PROGRESS.md` states for
+            // any parser that takes bare positionals. A genuinely dash-named source file is
+            // still buildable, as `./-weird.tmd`.
+            s if s.starts_with('-') => {
                 return Err(format!(
                     "error: {}",
                     crate::serve::unknown_flag_error(s, BUILD_FLAGS)
@@ -2920,6 +2927,29 @@ mod mirror_tests {
         assert!(!err.contains("did you mean"), "no wild guess: {err}");
         // The real flags still parse (no regression).
         assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--strict"])).is_ok());
+    }
+
+    /// A SINGLE-dash token is a flag too, not a path. `-o` is the output flag in most other
+    /// renderers, so `build index.tmd -o out.html` is a plausible typo; with only `--`
+    /// rejected it fell through to the positionals and `-o` became the *output file*, with
+    /// `out.html` silently discarded and exit 0. Same reclassification `init`/`new` took in
+    /// wave 8 when `-y` was removed.
+    #[test]
+    fn a_single_dash_token_is_a_flag_error_not_the_output_path() {
+        let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "-o", "out.html"]))
+            .expect_err("-o must error rather than becoming the output path");
+        assert!(err.contains("-o"), "names the bad token: {err}");
+        // `--out` must not swallow one as its directory value either — same defect, one
+        // token later (`--out -o` used to write a *directory* called `-o`).
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--out", "-o"]))
+            .expect_err("--out must not take a flag as its directory");
+        assert!(err.contains("--out") && err.contains("requires"), "{err}");
+        // The one short flag `build` really does take still parses.
+        assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "-j", "2"])).is_ok());
+        // A genuinely dash-named source file is still buildable, spelled portably.
+        let a = argv(&["taliesin", "build", "./-weird.tmd"]);
+        assert_eq!(parse_build_args(&a).unwrap().path, "./-weird.tmd");
     }
 
     fn tmp(name: &str) -> PathBuf {

@@ -151,8 +151,11 @@ fn code_fence(line: &str) -> Option<(char, usize)> {
 
 /// Advance the fenced-code state machine by one line: outside a code block a fence
 /// opens one; inside, a bare same-char fence of at least the opening length closes
-/// it. Keeps `preprocess` and `scan_div_spans` agreeing on what is "inside code".
-fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
+/// it. Keeps `preprocess`, `scan_div_spans` and `extension::expand_shortcodes`
+/// agreeing on what is "inside code" — the shortcode pass tracked it with a bare
+/// boolean toggle until 2026-08-13, which an inner fence inside a longer outer one
+/// desynced in both directions.
+pub(super) fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
     match state {
         Some((ch, run)) => match code_fence(line) {
             // A closing fence carries no info string (only the fence chars + space).

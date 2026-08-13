@@ -132,6 +132,9 @@ pub struct Site {
     /// Warnings gathered during discovery (bad config, etc.), surfaced by the
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
+    /// How many of the leading entries in `warnings` came from parsing `_site.yml`
+    /// itself, rather than from page discovery. See [`config_warnings`](Self::config_warnings).
+    config_warning_count: usize,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Assembled
     /// from `search_sections`; the dev server rebuilds it whole whenever a cross-reference
@@ -266,6 +269,19 @@ struct PageLinkFacts {
 }
 
 impl Site {
+    /// The diagnostics `_site.yml` itself produced, in order — the subset of
+    /// [`warnings`](Self::warnings) a caller may report as "the config is wrong".
+    ///
+    /// It exists because `doctor`'s `config` row asked the question by message text, with
+    /// [`is_malformed_config_warning`], and so printed `✓ _site.yml is valid` on a file
+    /// `build --check-only` rejected with two errors: an unknown key, a typo'd key and the
+    /// scheme-less `url:` warning are all config defects that are not YAML parse failures.
+    /// The whole-project answer is still `build <dir> --check-only`; this is only the
+    /// narrower question of whether the *config file* is clean.
+    pub fn config_warnings(&self) -> &[String] {
+        &self.warnings[..self.config_warning_count]
+    }
+
     /// Discover the site rooted at `root` (published view): parse `_site.yml`, enumerate
     /// input `.tmd` pages, and compute their output URLs + ordering. `draft: true` pages
     /// are excluded and recorded in [`Site::excluded_drafts`]. Used by build/publish/
@@ -301,6 +317,12 @@ impl Site {
         let mut warnings = Vec::new();
         let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
+        // Everything `load_config` just pushed is a diagnostic about `_site.yml` itself, and
+        // it runs first, so the config warnings are exactly this prefix of `warnings`. Kept
+        // as a length because a caller that wants only those (`doctor`'s `config` row) had
+        // no way to ask: filtering by message text misses `validate_url`'s scheme-less-`url:`
+        // warning, which carries no `_site.yml` prefix. See `config_warnings`.
+        let config_warning_count = warnings.len();
 
         // A book takes its page set + order from the explicit `chapters:` list;
         // a website discovers every `.tmd` and orders by path.
@@ -365,6 +387,7 @@ impl Site {
             includes,
             bibliography,
             warnings,
+            config_warning_count,
             // Both are built below, once the registry's numbers exist: the search index
             // READS `xref_targets`, so building it here (as it used to) indexed every
             // cross-page `@fig-` before a single number had been harvested.

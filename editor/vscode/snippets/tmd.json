@@ -63,7 +63,7 @@
     "prefix": "input",
     "description": "A reader-facing control whose value {js} cells can read.",
     "body": [
-      "{{< input ${1|slider,number,checkbox,text,select|} name=${2:x} min=${3:0} max=${4:10} value=${5:5} >}}",
+      "{{< input type=${1|slider,number,checkbox,text,select|} name=${2:x} min=${3:0} max=${4:10} value=${5:5} >}}",
       "",
       "$0"
     ]

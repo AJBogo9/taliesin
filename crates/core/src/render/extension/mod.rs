@@ -16,7 +16,14 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
         return (src.to_string(), warnings);
     }
     let mut out = String::with_capacity(src.len());
-    let mut in_code = false;
+    // The fence state is `(fence_char, run_len)`, not a boolean: a `` ``` `` line inside a
+    // longer ```` ```` ```` sample is not a closing fence, and a boolean toggle read it as
+    // one. That desynced both ways — a shortcode shown inside a nested code sample got
+    // expanded into live markup, and an odd number of inner fence lines left the flag stuck
+    // "inside code" for the rest of the document, so a real control below silently vanished.
+    // `divs::next_code_state` is the helper the other two line-scanning passes over this
+    // same buffer already share.
+    let mut in_code: Option<(char, usize)> = None;
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
     // bind the same reactive name get distinct DOM ids (`tali-in-rate`, `tali-in-rate-1`). Threaded
     // here (not per line) because the id must be name-based, not line-based — see
@@ -26,15 +33,14 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
         if i > 0 {
             out.push('\n');
         }
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            out.push_str(line);
-        } else if in_code {
-            out.push_str(line); // literal inside a code block (it's an example)
+        let next = super::divs::next_code_state(in_code, line);
+        // Literal on the fence marker itself (either end) and on every line between.
+        if in_code.is_some() || next.is_some() {
+            out.push_str(line); // it's an example, not an invocation
         } else {
             out.push_str(&expand_in_line(line, i + 1, &mut warnings, &mut input_ids));
         }
+        in_code = next;
     }
     if src.ends_with('\n') {
         out.push('\n');
@@ -331,6 +337,34 @@ mod unknown_shortcode_tests {
         // must not reach around that.
         assert!(warn_msgs("```\n{{< sidebar x >}}\n```\n").is_empty());
         assert!(warn_msgs("see `{{< sidebar x >}}` here\n").is_empty());
+    }
+
+    /// A nested fence must not end the outer sample. The pass tracked fences with a bare
+    /// boolean toggle until 2026-08-13, so an inner ``` inside a longer ```` sample closed
+    /// the region early — and the desync ran both ways.
+    #[test]
+    fn a_nested_code_fence_does_not_desync_the_shortcode_pass() {
+        // Forwards: the shortcode inside the nested sample is an example, so it stays
+        // literal. The toggle expanded it into live markup (and diagnosed it).
+        let src = "````markdown\n```\n{{< input type=number name=inner >}}\n```\n````\n";
+        let (html, warnings) = expand_shortcodes(src);
+        assert!(
+            html.contains("{{< input type=number name=inner >}}"),
+            "{html}"
+        );
+        assert!(!html.contains("data-tali-input"), "not expanded: {html}");
+        assert!(warnings.is_empty(), "{warnings:?}");
+
+        // Backwards, and this is the silent one: an ODD number of fence lines in the
+        // mis-classified region left the flag stuck "inside code" for the whole rest of the
+        // document, so a genuine control below was never expanded and never diagnosed.
+        let src = "````markdown\n```\nunclosed inner sample\n````\n\n{{< input type=number name=real >}}\n";
+        let (html, warnings) = expand_shortcodes(src);
+        assert!(
+            html.contains("data-tali-input=\"real\""),
+            "the control after the sample must still expand: {html}"
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
     }
 
     #[test]
