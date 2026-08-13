@@ -97,7 +97,11 @@ recursive-watch model added an inotify descriptor per directory, including
 kill hot reload outright.
 
 Skipping `_freeze` matters: the executor writes its own cache there on every run, and
-without the skip each write would kick a redundant rebuild. The filter as a whole keeps
+without the skip each write would kick a redundant rebuild. The skip list is matched
+against the path *relative to the project root*, never the whole path: the watcher deals
+in absolute event paths, and a project can perfectly well live under a directory someone
+else called `_site` or `.git`. Scanning the whole path vetoed every event in such a
+project, which is hot reload dead, silently, with each page still serving 200. The filter as a whole keeps
 an unrelated save (an editor swap file, a build-output write) from triggering a wasteful
 0-op rebuild. A burst of saves is debounced so several files coalesce into one rebuild.
 

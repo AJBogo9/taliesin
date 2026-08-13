@@ -517,7 +517,18 @@ pub(crate) fn code_frame(src: &str, line: u32) -> String {
 
 const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
 
-pub(crate) fn relevant_path(p: &Path) -> bool {
+/// Whether a file event under `root` should trigger a rebuild: a source-ish extension,
+/// outside the generated/VCS trees.
+///
+/// **The skip-dir scan runs on the path RELATIVE to `root`**, and that is load-bearing.
+/// The watcher hands this absolute event paths, so a whole-path scan asked whether any
+/// *ancestor* of the project happened to be called `_site`/`_book`/`_freeze`/`.git`/
+/// `node_modules` — and vetoed every event in a project that merely lived under one, which
+/// is hot reload dead for that project, silently, with the page still serving 200. Inside a
+/// normally-located project the two readings agree, which is why it went unseen.
+/// A path that is not under `root` keeps the whole-path scan, so a caller with no
+/// meaningful root loses no vetting.
+pub(crate) fn relevant_path(p: &Path, root: &Path) -> bool {
     const EXTS: &[&str] = &[
         "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
         "png", "jpg", "jpeg", "webp", "gif",
@@ -526,7 +537,7 @@ pub(crate) fn relevant_path(p: &Path) -> bool {
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
-    let in_skip_dir = p.components().any(|c| {
+    let in_skip_dir = p.strip_prefix(root).unwrap_or(p).components().any(|c| {
         c.as_os_str()
             .to_str()
             .is_some_and(|s| SKIP_DIRS.contains(&s))
@@ -584,7 +595,8 @@ pub(crate) fn subtree_relevant_files(root: &Path) -> Vec<PathBuf> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) && relevant_path(&path) {
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) && relevant_path(&path, root)
+            {
                 out.push(path);
             }
         }
@@ -819,10 +831,39 @@ mod protocol_contract {
     fn relevant_path_watches_tmd_edits() {
         // `.tmd` is the native (and only) source extension; a watcher blind to it would
         // silently never rebuild on a `.tmd` edit — the core edit loop would be broken.
-        assert!(relevant_path(Path::new("/tmp/doc.tmd")));
+        let root = Path::new("/tmp");
+        assert!(relevant_path(Path::new("/tmp/doc.tmd"), root));
         // `.qmd` is no longer a source extension: a `.qmd` edit must not trigger a rebuild.
-        assert!(!relevant_path(Path::new("/tmp/doc.qmd")));
-        assert!(!relevant_path(Path::new("/tmp/doc.txt")));
+        assert!(!relevant_path(Path::new("/tmp/doc.qmd"), root));
+        assert!(!relevant_path(Path::new("/tmp/doc.txt"), root));
+        // The generated/VCS trees are still vetoed — that is what keeps the executor's own
+        // `_freeze/` writes from rebuilding every run.
+        assert!(!relevant_path(Path::new("/tmp/_freeze/doc.tmd"), root));
+        assert!(!relevant_path(
+            Path::new("/tmp/sub/node_modules/a.js"),
+            root
+        ));
+    }
+
+    #[test]
+    fn the_skip_dir_scan_is_relative_to_the_project_root() {
+        // The scan walked the WHOLE path, while the watcher hands it an absolute event
+        // path. A project that merely lives under a directory named `_site`/`_book`/
+        // `_freeze`/`.git`/`node_modules` therefore had every one of its own events
+        // vetoed: watches were registered, events arrived, and hot reload never fired
+        // again — total and silent, with the page still serving 200.
+        let root = Path::new("/home/me/_site/blog");
+        assert!(
+            relevant_path(&root.join("post.tmd"), root),
+            "an ancestor's name is not this project's business"
+        );
+        assert!(relevant_path(&root.join("sub/post.tmd"), root));
+        // Inside the project the veto still stands, on the same names.
+        assert!(!relevant_path(&root.join("_freeze/post.tmd"), root));
+        assert!(!relevant_path(&root.join(".git/COMMIT_EDITMSG.md"), root));
+        // A path from outside the project keeps the whole-path scan (nothing to be
+        // relative to), so an unrooted caller loses no vetting.
+        assert!(!relevant_path(Path::new("/elsewhere/_site/post.tmd"), root));
     }
 
     #[test]

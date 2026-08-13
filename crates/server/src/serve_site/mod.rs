@@ -53,6 +53,10 @@ struct SiteApp {
     /// abort, and the builder is serial, so queueing alone can never reach a running cell
     /// (audit finding 01). Signalling is [`crate::kernel::interrupt_pid`] — SIGINT, which
     /// ends the cell and leaves the warm kernel and every prior cell's state alive.
+    ///
+    /// It is one pid for the whole pool, so the cell it names may belong to a page other
+    /// than the one asking. That is deliberate and cannot be narrowed; what the page that
+    /// loses the cell is told about it is [`ExecLane`]'s job (A17).
     interrupt: Arc<std::sync::atomic::AtomicU32>,
 }
 
@@ -106,6 +110,9 @@ struct Project {
     dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
+    /// Who the serial exec lane is running cells for, and who lost a cell to someone
+    /// else's kernel restart. See [`ExecLane`].
+    exec_lane: Mutex<ExecLane>,
     /// Set when this project is one document previewed on its own (`preview <file.tmd>`
     /// with no ancestor `_site.yml`): the document it is scoped to.
     ///
@@ -137,6 +144,62 @@ impl Project {
 /// so the entry could only ever hold an empty document.
 fn resolve_page_rel(project: &Project, sub: &str) -> Option<String> {
     project.site.lock().page(sub).map(|p| p.rel.clone())
+}
+
+/// What the serial exec lane is doing, as the websocket task needs to see it.
+///
+/// **Why it exists (A17).** [`SiteApp::interrupt`] is one pool-wide pid, so the
+/// `restart_kernel` arm SIGINTs whatever cell is executing *anywhere* in the project. That
+/// is deliberate: the exec lane is serial, so a page's own Restart is queued behind the
+/// runaway build it is meant to abort, and the server-wide SIGINT is the only thing that
+/// can reach it. Scoping the interrupt to the requesting page would restore that wedge for
+/// every page except the one that owns the runaway cell, so it is not the fix.
+///
+/// What was wrong was the silence. The page that lost its cell was left holding a
+/// `KeyboardInterrupt` traceback with nothing, anywhere, saying where it came from. So the
+/// lane publishes whose cell is running, and a restart that takes someone else's says so
+/// on that page.
+///
+/// The victim is deliberately **not** re-queued: its cell would simply run again and, if it
+/// is the runaway that made the restart necessary, wedge the lane again. Re-running it is
+/// the author's call, and the notice says how.
+#[derive(Default)]
+struct ExecLane {
+    /// The page the exec builder is running cells for, empty when the lane is idle.
+    page: String,
+    /// `(victim, requester)`: a page whose running cell was SIGINTed so another page's
+    /// kernel restart could go through, and the page that asked for that restart.
+    interrupted_by: Option<(String, String)>,
+}
+
+impl ExecLane {
+    /// The page whose kernel restart took `rel`'s running cell, if that is what happened,
+    /// clearing it so it is reported once. Consumed by the victim's in-flight build, which
+    /// is the build that shows the traceback.
+    fn take_interrupt_for(&mut self, rel: &str) -> Option<String> {
+        if self.interrupted_by.as_ref().is_some_and(|(v, _)| v == rel) {
+            return self.interrupted_by.take().map(|(_, by)| by);
+        }
+        None
+    }
+}
+
+/// The page a `restart_kernel` from `requester` is about to take a running cell from, when
+/// that page is not the requester itself. `None` for the ordinary cases: nothing is
+/// executing (`pid` 0), the lane is idle, or the requester's own cell is the one running —
+/// aborting that is precisely what restarting your kernel means.
+fn cross_page_victim(requester: &str, running: &str, pid: u32) -> Option<String> {
+    (pid != 0 && !running.is_empty() && running != requester).then(|| running.to_string())
+}
+
+/// What the page that lost a cell to `by`'s kernel restart says about it, next to the
+/// traceback the interrupt left behind.
+fn interrupted_notice(by: &str) -> String {
+    format!(
+        "a cell here was interrupted so the kernel restart requested on {by} could go \
+         through — the dev server runs one page's cells at a time. Edit this page, or \
+         restart its kernel, to run it again."
+    )
 }
 
 /// A job for the executor worker: rebuild a page, or restart its kernel first
@@ -393,6 +456,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             dir: root.clone(),
             site: Mutex::new(site),
             pages: Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
             scope: scoped,
         }),
         build_tx,
@@ -812,10 +876,28 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     })
 }
 
-/// Minimal query-value encoding for a page rel in the ws URL (spaces only; `/`
-/// and `-` are query-safe).
+/// Percent-encode a page rel as the `?page=` value of the ws URL: everything outside the
+/// RFC 3986 unreserved set, keeping `/` (query-safe, and it is what makes a multi-page rel
+/// readable in the url).
+///
+/// It encoded the space alone until 2026-08-13, and a doc comment claimed that was the
+/// whole unsafe alphabet. It is not, and every miss is silent: `&` ends the parameter (axum
+/// hands `client_conn` a truncated key), `+` decodes back as a space, `#` truncates the url
+/// at the fragment, `%` starts an escape. A key that names no page is refused, so the page
+/// renders at 200 with a green status pill while the client reconnects every second
+/// forever. Non-ASCII goes out as its UTF-8 bytes rather than riding on the browser's own
+/// normalisation, so the value on the wire is the same one this server built.
 fn encode_query(s: &str) -> String {
-    s.replace(' ', "%20")
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
+                out.push(b as char);
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 // --- WebSocket ----------------------------------------------------------
@@ -906,9 +988,28 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                         // is not read until the runaway cell has already finished (audit
                         // finding 01). A pid of 0 means nothing is executing, and the
                         // queued Restart alone is then the whole action.
+                        //
+                        // The pid is pool-wide, so it may belong to ANOTHER page (A17).
+                        // Decide that first and record it under the same lock that
+                        // publishes it, so the victim's own in-flight build can say where
+                        // its `KeyboardInterrupt` came from instead of just showing one.
                         let pid = app.interrupt.load(std::sync::atomic::Ordering::SeqCst);
+                        let victim = {
+                            let mut lane = app.root.exec_lane.lock();
+                            let victim = cross_page_victim(&rel, &lane.page, pid);
+                            if let Some(v) = &victim {
+                                lane.interrupted_by = Some((v.clone(), rel.clone()));
+                            }
+                            victim
+                        };
                         if pid != 0 {
                             crate::kernel::interrupt_pid(pid);
+                        }
+                        if let Some(v) = victim {
+                            crate::log::kernel(&format!(
+                                "interrupted the cell running on {v} so the kernel restart \
+                                 requested on {rel} could go through"
+                            ));
                         }
                         let _ = app
                             .build_tx
@@ -986,13 +1087,13 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => {
-                    build_page_guarded(&project, &rel, Some(&mut pool)).await;
+                    build_on_exec_lane(&project, &rel, &mut pool).await;
                 }
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes every
                     // cell against the fresh kernel).
                     pool.restart(&rel);
-                    build_page_guarded(&project, &rel, Some(&mut pool)).await;
+                    build_on_exec_lane(&project, &rel, &mut pool).await;
                     // A fresh kernel means fresh outputs, including any `ojs_define`
                     // values. Reload the page so the `{js}` cells re-bind to the fresh
                     // `tali-define` blobs from a clean module scope.
@@ -1003,6 +1104,27 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             }
         }
     });
+}
+
+/// Build `rel` on the exec lane, publishing which page the lane is running cells for while
+/// it does (A17). The websocket task reads that to tell whose cell the pool-wide interrupt
+/// pid belongs to; see [`ExecLane`].
+///
+/// The clear afterwards also drops an interrupt notice this build never picked up — only
+/// possible when the build returned before its diagnostics (an unresolvable or unreadable
+/// page). A notice that outlived its build would surface on some later, unrelated rebuild
+/// of that page, which is a worse lie than the silence it replaces.
+async fn build_on_exec_lane(
+    project: &Arc<Project>,
+    rel: &str,
+    pool: &mut ExecPool,
+) -> BuildOutcome {
+    project.exec_lane.lock().page = rel.to_string();
+    let outcome = build_page_guarded(project, rel, Some(pool)).await;
+    let mut lane = project.exec_lane.lock();
+    lane.page.clear();
+    lane.take_interrupt_for(rel);
+    outcome
 }
 
 /// The bypass lane (AP3-1): rebuilds for pages whose last build found no kernel cell.
@@ -1219,6 +1341,13 @@ async fn build_page(
         )
     };
     let mut diags = page_diagnostics(&page.input, exec.as_deref());
+    // A cell of this page's may have been SIGINTed to let another page's kernel restart
+    // through (A17). Read AFTER `exec.run`, which is what the interrupt aborts, so this is
+    // the very build that shows the traceback — and the page says where it came from
+    // instead of just showing one.
+    if let Some(by) = project.exec_lane.lock().take_interrupt_for(rel) {
+        diags.push(Diagnostic::warn(interrupted_notice(&by)));
+    }
     diags.extend(static_diags);
     // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
     // re-renders the whole site (~27 ms), so scope the site lock tightly.
@@ -1409,8 +1538,10 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                     }
                 }
                 // Ignore generated/VCS noise (esp. the executor's own `_freeze/` writes,
-                // which would otherwise rebuild every run).
-                if crate::serve::relevant_path(p) {
+                // which would otherwise rebuild every run). Judged relative to the project
+                // root: these are absolute event paths, and a project living under a
+                // directory that happens to be called `_site` is not generated noise.
+                if roots.iter().any(|r| crate::serve::relevant_path(p, r)) {
                     let _ = sig_tx.send(Change {
                         path: p.clone(),
                         structural,
@@ -1874,6 +2005,42 @@ mod protocol_contract {
 
         assert_eq!(parse(protocol::reload())["type"], "reload");
     }
+
+    #[test]
+    fn a_page_rel_survives_the_ws_query_intact() {
+        // The ws url is the ONLY thing that tells the socket which page it is for, and a
+        // rel that arrives changed names no page: `client_conn` refuses the key and
+        // `client.js` reconnects every second forever behind a page that rendered 200 with
+        // a green pill. So the encoding must be lossless for every character a filename
+        // can hold, not for the space alone.
+        //
+        // Each of these is a distinct failure mode of the space-only encoding: `&` ends
+        // the query parameter (axum sees `page=q`), `+` decodes back as a space, `#`
+        // truncates the url at the fragment, and a bare `%` either eats the next two
+        // characters or is malformed.
+        for rel in [
+            "q&a.tmd",
+            "c++ notes.tmd",
+            "100% done.tmd",
+            "a#b.tmd",
+            "posts/q&a/index.tmd",
+            "café.tmd",
+        ] {
+            let encoded = encode_query(rel);
+            assert!(
+                !encoded.contains(['&', '+', '#', '?', ' ', '"', '<']),
+                "`{rel}` still carries a character that changes the url: {encoded}"
+            );
+            assert_eq!(
+                crate::serve::percent_decode(&encoded),
+                rel,
+                "`{rel}` must survive the round trip through the query"
+            );
+        }
+        // A rel's own separators stay readable — they are query-safe and appear in every
+        // multi-page url.
+        assert_eq!(encode_query("posts/my-post.tmd"), "posts/my-post.tmd");
+    }
 }
 
 #[cfg(test)]
@@ -1881,6 +2048,73 @@ mod project_tests {
     //! The per-page routing seam, pinned without a `Site`/kernel; the live wiring on top
     //! is browser-verified (no live-HTTP harness).
     use super::*;
+
+    /// A17. `SiteApp::interrupt` is ONE pool-wide pid, and the `restart_kernel` arm SIGINTs
+    /// whatever it holds. That is deliberate and load-bearing — the exec lane is serial, so
+    /// when page A's runaway cell wedges the queue, page B's own Restart is queued behind
+    /// that same build and only the server-wide SIGINT can unwedge it — but it means a
+    /// restart on B can kill a cell running on A. Reproduced live: A's 45 s cell died with
+    /// `KeyboardInterrupt` about 1 s after B sent `restart_kernel`, and A was left holding
+    /// the traceback with nothing anywhere saying why.
+    ///
+    /// So the fix is not a page-equality check (that would restore the wedge): it is to
+    /// name the collateral. This is the decision that separates "I aborted my own cell,
+    /// which is what restart means" from "I took someone else's".
+    #[test]
+    fn a_restart_reports_only_a_cell_it_took_from_another_page() {
+        assert_eq!(
+            cross_page_victim("b.tmd", "a.tmd", 4242).as_deref(),
+            Some("a.tmd"),
+            "another page's cell died for this restart, and that must be said"
+        );
+        assert_eq!(
+            cross_page_victim("a.tmd", "a.tmd", 4242),
+            None,
+            "aborting your OWN running cell is exactly what restarting your kernel means"
+        );
+        assert_eq!(
+            cross_page_victim("b.tmd", "a.tmd", 0),
+            None,
+            "a pid of 0 means nothing was executing, so nothing was taken"
+        );
+        assert_eq!(
+            cross_page_victim("b.tmd", "", 4242),
+            None,
+            "the exec lane is idle: the pid is stale, not another page's"
+        );
+    }
+
+    /// The notice has to reach the page that lost the cell, on the very build that shows
+    /// the traceback — and never on some later, unrelated rebuild of it.
+    #[test]
+    fn an_interrupt_notice_reaches_the_page_it_names_exactly_once() {
+        let mut lane = ExecLane {
+            page: "a.tmd".into(),
+            interrupted_by: Some(("a.tmd".into(), "b.tmd".into())),
+        };
+        assert_eq!(
+            lane.take_interrupt_for("c.tmd"),
+            None,
+            "a bystander page must not eat the notice"
+        );
+        assert_eq!(lane.take_interrupt_for("a.tmd").as_deref(), Some("b.tmd"));
+        assert_eq!(
+            lane.take_interrupt_for("a.tmd"),
+            None,
+            "and it is delivered once, not on every later build"
+        );
+        // The reader has to be able to act on it, so it names who took the cell and what
+        // brings the output back.
+        let notice = interrupted_notice("b.tmd");
+        assert!(
+            notice.contains("b.tmd"),
+            "names the page that asked: {notice}"
+        );
+        assert!(
+            notice.contains("restart"),
+            "names what took the cell: {notice}"
+        );
+    }
 
     /// A first build must put the page on screen BEFORE it waits for the kernel.
     ///
@@ -1938,6 +2172,7 @@ mod project_tests {
             dir: dir.clone(),
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),
+            exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
         });
 
@@ -1998,6 +2233,7 @@ mod project_tests {
             dir: dir.clone(),
             site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
             pages: parking_lot::Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
         };
 
@@ -2113,6 +2349,7 @@ mod project_tests {
             dir,
             site: parking_lot::Mutex::new(site),
             pages: parking_lot::Mutex::new(pages),
+            exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
         });
         site_page_html(&project, &page)

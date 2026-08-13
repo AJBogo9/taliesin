@@ -23,8 +23,11 @@ pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
     if Some(authority) == host {
         return true; // same origin
     }
-    let host_only = authority.split(':').next().unwrap_or("");
-    matches!(host_only, "localhost" | "127.0.0.1" | "::1" | "[::1]")
+    // Same extraction as the `Host` check below — one spelling of "the host part of an
+    // authority", so the two guards cannot disagree about what loopback is. A hand-rolled
+    // `split(':').next()` lived here and could never return a string containing a colon,
+    // which made the `::1` arm unreachable for every input: `[::1]:9999` came out as `"["`.
+    matches!(host_name(authority), "localhost" | "127.0.0.1" | "::1")
 }
 
 /// Apply [`origin_allowed`] to a request's headers; the websocket handler gates the
@@ -126,6 +129,26 @@ mod tests {
         ));
         // A `null` origin (sandboxed iframe / file://) can't control the server.
         assert!(!origin_allowed(Some("null"), Some("localhost:4388")));
+    }
+
+    #[test]
+    fn the_origin_check_reads_a_bracketed_ipv6_authority_like_the_host_check_does() {
+        // `authority.split(':').next()` can never yield a string containing a colon, so
+        // the loopback allowlist's `::1` arm was unreachable for EVERY input, IPv6 or
+        // not: `[::1]:9999` came out as `"["`. Both guards now extract the host the same
+        // way (`host_name`), so "a loopback origin is trusted" is true as written and
+        // there is only one spelling of "the host part of an authority" in this file.
+        assert!(origin_allowed(
+            Some("http://[::1]:9999"),
+            Some("localhost:4388")
+        ));
+        assert!(origin_allowed(Some("http://[::1]"), Some("localhost:4388")));
+        // And a non-loopback IPv6 literal is still refused — the bracket must not become
+        // a blanket pass.
+        assert!(!origin_allowed(
+            Some("http://[2001:db8::1]:9999"),
+            Some("localhost:4388")
+        ));
     }
 
     #[test]
