@@ -8,18 +8,63 @@
 //! occupy two UTF-16 code units but one scalar. These two helpers convert per line at the
 //! server boundary: UTF-16 in on incoming positions, UTF-16 out on emitted `Position`s.
 
-/// The 0-based line `line` (a `\n`-split buffer, 0-based) of `text`, or `""` past the end.
-/// The server splits on `\n` everywhere positions are computed (`lsp_nav::classify_target`,
-/// completion, `to_lsp`), so per-line conversion must split the same way.
+/// The lines of `text`, ended the way **CommonMark** ends a line — at `\r\n`, at `\n`, or at a
+/// lone `\r` — with the terminator excluded. The one line model the whole LSP counts in.
 ///
-/// A trailing `\r` is **not** part of the line. An editor treats CRLF as one terminator, so
-/// a column the client sends never counts the `\r` and a column we emit must not either;
-/// leaving it on made every end-of-line position in a CRLF buffer one column too long.
-pub(crate) fn nth_line(text: &str, line: usize) -> &str {
-    line_content(text.split('\n').nth(line).unwrap_or(""))
+/// It has to be this one because the line number in a diagnostic is comrak's, and comrak
+/// follows CommonMark. `text.split('\n')` was the instrument at seven sites until 2026-08-13,
+/// and it agrees with comrak on every buffer with no lone `\r` and disagrees on every buffer
+/// that has one — pasted terminal output is the realistic source. One stray CR desynced the
+/// two indexes for the rest of the file: F12 landed on the wrong line, hover answered about a
+/// neighbour, and a whole-line squiggle whose line number ran past the shorter `\n`-split
+/// clamped to the last line and collapsed to zero width. The client agrees with CommonMark
+/// too (VS Code's text model and `vscode-languageserver-textdocument` both end a line at a
+/// lone `\r`), so this is the model all three sides already shared and only we did not.
+///
+/// Trailing behaviour is `str::split`'s, **not** `str::lines`': a buffer ending in a
+/// terminator yields a final empty line. That line is one the editor's cursor can sit on, and
+/// every `last`/`line_count` clamp in the server is written against its being there.
+pub(crate) fn lines(text: &str) -> Lines<'_> {
+    Lines { rest: Some(text) }
 }
 
-/// One line of a `\n`-split buffer, minus the `\r` of a CRLF terminator. See [`nth_line`].
+/// The iterator [`lines`] returns.
+pub(crate) struct Lines<'a> {
+    /// The text after the last terminator consumed, or `None` once the final line was yielded.
+    rest: Option<&'a str>,
+}
+
+impl<'a> Iterator for Lines<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<&'a str> {
+        let rest = self.rest?;
+        match rest.find(['\n', '\r']) {
+            Some(i) => {
+                // CRLF is one terminator, so it must not yield an empty line between the two.
+                let skip = if rest[i..].starts_with("\r\n") { 2 } else { 1 };
+                self.rest = Some(&rest[i + skip..]);
+                Some(&rest[..i])
+            }
+            None => {
+                self.rest = None;
+                Some(rest)
+            }
+        }
+    }
+}
+
+/// The 0-based line `line` of `text` (see [`lines`]), or `""` past the end.
+pub(crate) fn nth_line(text: &str, line: usize) -> &str {
+    lines(text).nth(line).unwrap_or("")
+}
+
+/// One line minus the `\r` of a CRLF terminator, for a line obtained without [`lines`] (which
+/// excludes it already).
+///
+/// An editor treats CRLF as one terminator, so a column the client sends never counts the
+/// `\r` and a column we emit must not either; leaving it on made every end-of-line position
+/// in a CRLF buffer one column too long.
 pub(crate) fn line_content(line: &str) -> &str {
     line.strip_suffix('\r').unwrap_or(line)
 }
@@ -115,5 +160,41 @@ mod tests {
     fn nth_line_splits_on_newline() {
         assert_eq!(nth_line("a\n😀b\nc", 1), "😀b");
         assert_eq!(nth_line("a\nb", 9), "");
+    }
+
+    fn split(text: &str) -> Vec<&str> {
+        lines(text).collect()
+    }
+
+    /// The defect this helper exists for: comrak ends a line at a lone `\r` and
+    /// `text.split('\n')` does not, so one pasted CR desynced every later line index.
+    #[test]
+    fn a_lone_cr_ends_a_line() {
+        assert_eq!(split("para one\rpara two"), ["para one", "para two"]);
+        assert_eq!(split("a\r\rb"), ["a", "", "b"]);
+        assert_eq!(nth_line("a\rb\rc", 2), "c");
+    }
+
+    #[test]
+    fn crlf_is_one_terminator_and_is_not_part_of_the_line() {
+        assert_eq!(split("a\r\nb\r\n"), ["a", "b", ""]);
+        assert_eq!(nth_line("# H\r\n\r\ntext\r\n", 0), "# H");
+        assert_eq!(line_end_utf16(nth_line("# H\r\n", 0)), 3);
+    }
+
+    /// Every buffer with no lone `\r` must index exactly as `split('\n')` did, including the
+    /// empty line a trailing terminator leaves behind: the `last`/`line_count` clamps at the
+    /// call sites are all written against that line being counted.
+    #[test]
+    fn without_a_lone_cr_it_is_the_old_newline_split_exactly() {
+        for text in ["", "a", "a\n", "a\nb", "a\n\nb\n", "\n", "a\r\n"] {
+            let old: Vec<&str> = text.split('\n').map(line_content).collect();
+            assert_eq!(split(text), old, "line model changed for {text:?}");
+        }
+    }
+
+    #[test]
+    fn mixed_terminators_in_one_buffer_each_end_one_line() {
+        assert_eq!(split("a\r\nb\nc\rd"), ["a", "b", "c", "d"]);
     }
 }

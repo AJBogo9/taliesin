@@ -18,7 +18,14 @@ use lsp_types::{FoldingRange, FoldingRangeKind};
 /// An unterminated construct folds to the last line rather than being dropped: a half-typed
 /// div is the normal case for a provider that fires while the author types.
 pub(crate) fn folding_ranges(text: &str) -> Vec<FoldingRange> {
-    let lines: Vec<&str> = text.lines().collect();
+    // CommonMark line endings, so a lone `\r` cannot collapse the buffer to one unfoldable
+    // line — but minus the empty line a final terminator leaves behind, which `str::lines`
+    // (what this was) also drops. `last` is where an unterminated construct folds to, and the
+    // end of the document an author means is their last line of text, not the blank after it.
+    let mut lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
+    if lines.last() == Some(&"") {
+        lines.pop();
+    }
     let last = lines.len().saturating_sub(1) as u32;
     let mut out = Vec::new();
     // (start_line, heading_level) for each heading still open.
@@ -232,6 +239,26 @@ inside
         assert!(
             !regions.iter().any(|&(s, _)| s == 5),
             "the comment inside the fence must not open a section: {regions:?}"
+        );
+    }
+
+    // A lone `\r` ends a line for CommonMark and for the editor, and `str::lines` (what this
+    // read the buffer with) does not see one at all: a buffer using them was one long line, so
+    // every fold in it disappeared. The terminator must not change the answer.
+    #[test]
+    fn a_lone_cr_ends_a_line_here_too() {
+        let kind = Some(lsp_types::FoldingRangeKind::Region);
+        let lf = "# One\n\na\n\n## Two\n\nb\n";
+        let folds = lines_of(lf, kind.clone());
+        assert_eq!(
+            lines_of(&lf.replace('\n', "\r"), kind),
+            folds,
+            "the same document with CR terminators must fold identically"
+        );
+        assert_eq!(
+            folds,
+            vec![(0, 6), (4, 6)],
+            "the fixture must fold at all, or the comparison above proves nothing"
         );
     }
 

@@ -75,7 +75,7 @@ pub(crate) fn atx_heading(line: &str) -> Option<(u8, &str)> {
 
 /// The ATX headings in reading order, skipping fenced code and a leading `---` block.
 fn headings(text: &str) -> Vec<Flat> {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let mut out = Vec::new();
     let mut in_fence = false;
     let mut fence = ' ';
@@ -132,7 +132,7 @@ pub(crate) struct Section {
 /// Every heading with its section's extent, in reading order.
 pub(crate) fn sections(text: &str) -> Vec<Section> {
     let flat = headings(text);
-    let line_count = text.split('\n').count().max(1);
+    let line_count = crate::lsp_pos::lines(text).count().max(1);
     let mut out: Vec<Section> = flat
         .into_iter()
         .map(|f| Section {

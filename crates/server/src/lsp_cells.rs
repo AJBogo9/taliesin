@@ -27,7 +27,7 @@ pub(crate) struct CellRegion {
 /// display block). Editor intelligence is useful in both, and the difference — whether the
 /// kernel runs it — is not a difference in what the code *means*.
 pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {

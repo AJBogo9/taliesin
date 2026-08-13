@@ -85,51 +85,6 @@ here, not the finder's original.
 
 ---
 
-# BATCH 7: the LSP
-
-## A19 [A] MEDIUM: a lone `\r` desyncs every LSP line index
-
-`crates/server/src/lsp_pos.rs:19` and six other sites split on `'\n'` only
-(`lsp_nav::classify_target:170`, `lsp_diag::diagnose_file:49`, `lsp_outline::headings:78`,
-`lsp_cells::cell_regions:30`, `lsp.rs:1082`), while comrak treats a bare CR as a line ending
-per CommonMark. Confirmed independently of the LSP: `para one\rpara two` emits
-`data-sourcepos="5:1-6:8"`, two lines, while `text.split('\n')` sees one.
-
-`Diagnostic::to_lsp` (`crates/server/src/lint.rs:87-107`) mixes both models in one function:
-the line number comes from comrak, the line *text* used to size the range comes from the
-`\n` split. After one lone CR (pasted terminal output is the realistic source) F12 lands on
-an empty line, hover answers about a neighbour, and whole-line squiggles collapse to zero
-width.
-
-## A20 [A] MEDIUM: the every-keystroke diagnostic publish runs outside the panic guard
-
-`crates/server/src/lsp.rs:241`. Commit `5f2fc9fc` moved the didChange publish out of
-`handle_notification` (wrapped in `crate::serve::guarded` at `:352-364`) into `main_loop`'s
-`Batch::Timeout` arm, where it calls `publish(...)?` unwrapped. The identical call arriving
-via `didOpen` at `:523` is caught and logged.
-
-A panic under `render_single_doc` (`lint.rs:318`) or a validator on a half-typed buffer would
-now take the whole language server down mid-session, and an `Err` is fatal here
-(`?` to `ExitCode::FAILURE`) but merely logged on the `didOpen` path.
-
-**Latent hardening regression plus a stale test comment**, not a live crash: no panic is
-known. The comment at `lsp.rs:2149-2151` asserts coverage that no longer exists, so fix the
-comment in the same commit.
-
-## A21 [A] LOW: a transport read error exits 1 with nothing on stderr
-
-`crates/server/src/lsp.rs:67`. `if io_threads.join().is_err() { return ExitCode::FAILURE }`
-discards the `io::Error`. It is the only error path in `cmd_lsp` that does not call
-`crate::log::error` (contrast `:63-65`), and it contradicts the function's own doc comment
-at `:58-59` ("logs any error to stderr").
-
-Triggered by a header not terminated with `\r\n`, a non-UTF-8 or non-JSON body, or a
-truncated body from a miscounted Content-Length. The author sees the server die repeatedly
-with no message, and `lsp.rs:274-283` already reasons that a non-zero exit counts toward VS
-Code's "server crashed 5 times" cutoff. Diagnostic-only. One-line fix.
-
----
-
 # BATCH 8: diagnostics that lie
 
 The project's stated standard is that a diagnostic names a defect the author cannot see in

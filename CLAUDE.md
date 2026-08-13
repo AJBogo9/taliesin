@@ -223,8 +223,15 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    single-editing-surface rule is one owner, not two. The whole-book answer
                    the `diagnostic` pull model gave is `build <dir> --check-only`.
                    stdout is the JSON-RPC wire, so never print to it (use `crate::log`,
-                   stderr). `didChange` is COALESCED (a 120 ms window in lsp.rs) because
-                   publishing diagnostics re-walks every page in the project. (`lsp_memo`, a
+                   stderr). **Split a buffer into lines with `lsp_pos::lines` and never with
+                   `split('\n')` or `str::lines`**: a diagnostic's line number is comrak's and
+                   CommonMark ends a line at a lone `\r` too, so the `\n`-only split at seven
+                   sites desynced every index after the first stray CR until 2026-08-13 (F12
+                   on the wrong line, zero-width squiggles). Nothing gates the eighth site.
+                   `didChange` is COALESCED (a 120 ms window in lsp.rs) because
+                   publishing diagnostics re-walks every page in the project — and its publish
+                   runs in `main_loop`'s timeout arm, so **that arm needs its own `guarded`**;
+                   the notification guard does not cover the every-keystroke path. (`lsp_memo`, a
                    buffer-render cache keyed on `(uri, text)`, went with the code lens in
                    wave R6: the lens arm was its only consumer, which nothing had noticed.)
                    **`$/cancelRequest` is batch-scoped**: the loop

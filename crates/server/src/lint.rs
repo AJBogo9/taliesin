@@ -80,10 +80,12 @@ impl Diagnostic {
         }
     }
 
-    /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split
-    /// on `\n` (needed to clamp the line and to bound a whole-line span). 1-based line →
-    /// 0-based, clamped to the buffer; a precise 1-based `[col, end_col)` → 0-based when
-    /// present, else the whole line.
+    /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split by
+    /// [`crate::lsp_pos::lines`] (needed to clamp the line and to bound a whole-line span),
+    /// and it must be that splitter and not `split('\n')`: `self.line` is comrak's line
+    /// number, so an index that disagrees with comrak about where a line ends puts the
+    /// squiggle on the wrong line. 1-based line → 0-based, clamped to the buffer; a precise
+    /// 1-based `[col, end_col)` → 0-based when present, else the whole line.
     pub(crate) fn to_lsp(&self, lines: &[&str]) -> lsp_types::Diagnostic {
         use lsp_types::{DiagnosticSeverity, Position, Range};
         let last = lines.len().saturating_sub(1) as u32;

@@ -64,7 +64,14 @@ pub(crate) fn cmd_lsp(_args: &[String]) -> ExitCode {
         crate::log::error(&format!("lsp: {e}"));
         return ExitCode::FAILURE;
     }
-    if io_threads.join().is_err() {
+    // A transport-level failure: a header with no `\r\n`, a non-UTF-8 or non-JSON body, a body
+    // truncated by a miscounted Content-Length. It exits non-zero like the arm above, and a
+    // non-zero exit is what VS Code counts toward the "server crashed 5 times" cutoff that
+    // stops restarting us (see `main_loop`) — so saying nothing left the author watching the
+    // server die repeatedly with no reason anywhere, the one error path in this function that
+    // contradicted the doc comment above.
+    if let Err(e) = io_threads.join() {
+        crate::log::error(&format!("lsp: transport: {e}"));
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
@@ -235,10 +242,27 @@ fn main_loop(
                 }
                 // The window closed with no further edit: publish the latest text of every
                 // buffer that is owed.
+                //
+                // Guarded and logged, exactly as the `didOpen` publish is on the notification
+                // path below, and for the same reason: this is the every-keystroke path, so a
+                // panic in a validator reading a half-typed buffer would take the whole
+                // session down. Coalescing moved this call out from under the notification
+                // guard in `5f2fc9fc` and left the identical call on `didOpen` caught — the
+                // busier of the two ended up the unprotected one.
                 Batch::Timeout => {
                     for uri in pending.take() {
                         if let Some(text) = docs.get(&uri) {
-                            publish(connection, &mut sites, &mut published, &uri, text)?;
+                            match crate::serve::guarded(|| {
+                                publish(connection, &mut sites, &mut published, &uri, text)
+                            }) {
+                                Ok(Ok(())) => {}
+                                Ok(Err(e)) => crate::log::error(&format!(
+                                    "lsp: publishing diagnostics for {uri}: {e}"
+                                )),
+                                Err(panic) => crate::log::error(&format!(
+                                    "lsp: panic publishing diagnostics for {uri}: {panic}"
+                                )),
+                            }
                         }
                     }
                     continue;
@@ -485,6 +509,13 @@ fn cancel_target(msg: &Message) -> Option<lsp_server::RequestId> {
 /// panic surface, not for a known repro. `#[cfg(test)]`, so it is absent from the binary.
 #[cfg(test)]
 pub(crate) const PANIC_PROBE_METHOD: &str = "taliesin/testPanic";
+
+/// The same probe for the path a method name cannot reach: the COALESCED publish, which no
+/// notification dispatches — the main loop runs it once the debounce window closes, on
+/// whatever text the buffer holds by then. A buffer containing this line panics inside
+/// `publish`. `#[cfg(test)]`, so it is absent from the binary.
+#[cfg(test)]
+pub(crate) const PANIC_PROBE_TEXT: &str = "taliesin-test-panic-in-publish";
 
 /// Dispatch a text-document notification: keep the open-buffer store current and
 /// (re)publish diagnostics for the affected buffer.
@@ -1079,7 +1110,7 @@ fn resolve_completion(
 
     // Char-based line prefix (line start → cursor) and document prefix (doc start → cursor).
     // The incoming column is UTF-16; convert to a scalar index before slicing by `chars()`.
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let line = lines.get(pos.line as usize).copied().unwrap_or("");
     let cursor_char = crate::lsp_pos::utf16_to_char(line, pos.character as usize);
     let line_prefix: String = line.chars().take(cursor_char).collect();
@@ -1610,7 +1641,7 @@ fn document_symbols(
     uri: &lsp_types::Url,
 ) -> Option<lsp_types::DocumentSymbolResponse> {
     let text = docs.get(uri)?;
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let symbols = crate::lsp_outline::outline(text)
         .iter()
         .map(|n| to_document_symbol(n, &lines))
@@ -1707,6 +1738,8 @@ fn publish(
     uri: &lsp_types::Url,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    #[cfg(test)]
+    assert!(!text.contains(PANIC_PROBE_TEXT), "injected publish panic");
     let path = uri
         .to_file_path()
         .unwrap_or_else(|_| std::path::PathBuf::from("untitled.tmd"));
@@ -2146,8 +2179,11 @@ mod tests {
             .expect("a panicking request must be answered with an error, not silence");
         assert_eq!(err.code, -32603, "JSON-RPC InternalError");
 
-        // (2) A panicking NOTIFICATION is skipped, and the buffer store still works after —
-        // this is the every-keystroke path (`publish` → `buffer_diagnostics`).
+        // (2) A panicking NOTIFICATION is skipped, and the buffer store still works after.
+        // (The every-keystroke path is no longer this one: `didChange` only records what is
+        // owed and the main loop publishes once the window closes, so its panic boundary is a
+        // different arm and has its own test —
+        // `a_panic_in_the_coalesced_publish_does_not_kill_the_session`.)
         client
             .sender
             .send(Message::Notification(Notification {
@@ -3740,6 +3776,57 @@ mod tests {
 
         shutdown(&client);
         handle.join().unwrap().unwrap();
+    }
+
+    // HEALTH-1's other half, and the one the coalescing change took away without anyone
+    // noticing: the publish `didChange` owes runs in the main loop's timeout arm, not under
+    // the notification dispatch's guard, so from `5f2fc9fc` until 2026-08-13 a panic on the
+    // BUSIEST path in the server — a validator reading a half-typed buffer — unwound out of
+    // `main_loop` and ended the session. Mutation check: drop the `guarded` in the `Timeout`
+    // arm and this test fails on the recv below.
+    #[test]
+    fn a_panic_in_the_coalesced_publish_does_not_kill_the_session() {
+        let (server, client) = Connection::memory();
+        let prior = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let handle =
+            std::thread::spawn(move || run_with_debounce(server, Duration::from_millis(120)));
+        handshake(&client);
+
+        let uri = Url::parse("file:///tmp/tali-publish-panic.tmd").unwrap();
+        did_open(&client, &uri, typo_doc("tittle"));
+        let _ = recv_publish(&client);
+
+        // The edit that panics reaches `publish` only through the coalesced arm.
+        did_change(&client, &uri, 2, &format!("{}\n", PANIC_PROBE_TEXT));
+        // Nothing is published for it, and nothing may be published for it: the point is only
+        // that the session survives to answer the edit after it.
+        assert!(
+            client
+                .receiver
+                .recv_timeout(Duration::from_millis(400))
+                .is_err(),
+            "a panicking publish sends nothing"
+        );
+
+        did_change(&client, &uri, 3, &typo_doc("recovered"));
+        let after = recv_publish(&client);
+        assert!(
+            after
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("recovered")),
+            "the session must still publish after the panic, got: {:?}",
+            after
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+
+        shutdown(&client);
+        handle.join().unwrap().unwrap();
+        std::panic::set_hook(prior);
     }
 
     // The window must close on a deadline set by the EDIT, not be reset by every message that

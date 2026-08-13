@@ -167,7 +167,7 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
 /// Classify the token at 0-based (`line`, `character`). Citation `[@k]` wins over xref
 /// `@k`; a front-matter key is recognized only inside the `---` body, on the key token.
 pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Target {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let lt: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
     let n = lt.len();
 
@@ -966,6 +966,24 @@ mod tests {
             classify_target("{{< video clip.mp4 >}}", 0, 12),
             Target::None
         );
+    }
+
+    /// The client counts lines the way CommonMark does, so a lone `\r` in the buffer starts a
+    /// new line for it and used to start nothing for us: the position it sent read past the
+    /// end of a `\n`-split shorter by every CR in the file, and go-to-definition and hover
+    /// answered `None` on a token plainly under the cursor.
+    #[test]
+    fn a_lone_cr_does_not_hide_the_token_under_the_cursor() {
+        let cr = "para one\rSee [@smith2020] here.";
+        assert_eq!(
+            classify_target(cr, 1, 6),
+            classify_target(&cr.replace('\r', "\n"), 1, 6),
+            "the terminator must not change what is under the cursor"
+        );
+        match classify_target(cr, 1, 6) {
+            Target::Cite { key, .. } => assert_eq!(key, "smith2020"),
+            other => panic!("expected the citation on the line after the CR, got {other:?}"),
+        }
     }
 
     fn bib_offset(bib: &str, key: &str) -> Option<usize> {

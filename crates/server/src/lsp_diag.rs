@@ -46,7 +46,7 @@ pub(crate) fn diagnose_file(
     path: &Path,
     text: &str,
 ) -> Vec<lsp_types::Diagnostic> {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let site = sites.get(path);
     crate::lint::buffer_diagnostics_in_site(path, text, site)
         .iter()
@@ -88,5 +88,35 @@ mod tests {
     #[test]
     fn a_position_outside_every_range_anchors_nothing() {
         assert!(narrowest_range_at(&[diag(3, 0, 5)], Position::new(0, 2)).is_none());
+    }
+
+    /// The line a squiggle lands on is comrak's line number read against **our** index of the
+    /// buffer, so the two have to count lines the same way. CommonMark ends a line at a lone
+    /// `\r` and `text.split('\n')` did not: in the buffer below (three CommonMark lines, not
+    /// one `\n` in it) the cross-reference error is on line 3, the split saw a single line,
+    /// and `to_lsp` clamped the squiggle onto the empty tail of the buffer at zero width.
+    #[test]
+    fn a_lone_cr_does_not_move_the_line_a_diagnostic_lands_on() {
+        let mut sites = crate::lsp_project::SiteCache::new();
+        // No `_site.yml` above it, so the buffer is linted standalone and nothing is read
+        // from disk; the path only has to be a `.tmd` somewhere.
+        let path = std::env::temp_dir().join(format!("tali-lspcr-{}.tmd", std::process::id()));
+        let text = "para one\r\rSee @fig-nope for details.\n";
+        let diags = diagnose_file(&mut sites, &path, text);
+        let d = diags
+            .first()
+            .expect("the broken cross-reference is the diagnostic under test");
+        assert_eq!(
+            (d.range.start.line, d.range.end.line),
+            (2, 2),
+            "0-based line of `See @fig-nope …`, got {:?} for {:?}",
+            d.range,
+            d.message
+        );
+        assert!(
+            d.range.end.character > d.range.start.character,
+            "a squiggle the author can see, got {:?}",
+            d.range
+        );
     }
 }
