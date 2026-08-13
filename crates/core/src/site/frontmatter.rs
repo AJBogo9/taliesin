@@ -174,9 +174,6 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
     // `contents` is what makes a listing renderable; without it there's nothing
     // to list (and we only support a single directory string for now).
     let contents = scalar(v.get("contents"))?;
-    let sort_desc = scalar(v.get("sort"))
-        .map(|s| !s.contains("asc"))
-        .unwrap_or(true);
     let max_items = v
         .get("max-items")
         .and_then(serde_yaml::Value::as_u64)
@@ -187,7 +184,6 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
         contents,
         grid: ty.as_deref() == Some("grid"),
         with_image: matches!(ty.as_deref(), Some("grid") | Some("list")),
-        sort_desc,
         max_items,
     })
 }

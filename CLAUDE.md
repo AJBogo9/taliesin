@@ -454,6 +454,16 @@ here.**
   `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`,
   which DERIVES the tombstone from the register. **Add the register entry and you are
   done — do not write a test for it.**
+  **What the one line buys is the DIAGNOSTIC, and nothing stops the parser going on reading
+  the key.** `listing: sort:` answered "newest first is the only order now, so delete the
+  key" for eleven days while `parse_listing_spec` still honoured it, so `sort: "date asc"`
+  really did reverse the cards — and the Atom feed with them, since `feed_hosts` calls the
+  same `collection`. Deleting the read is the other half of a retirement, no gate derives
+  it, and the only thing that can say it happened is a parser-side pin
+  (`parse_hero_ignores_the_retired_image_keys`,
+  `a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed`). That is not the tombstone
+  the rule above forbids: a tombstone re-states the register, this states the half the
+  register cannot.
   A new *subcommand* has four registration sites in `main.rs`, each drift-gated. It cost
   three more until Wave 8 deleted the shell-completion generator, which carried a
   hand-maintained second copy of every verb's flag set. **There is a FIFTH site and nothing

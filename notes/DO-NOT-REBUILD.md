@@ -29,6 +29,17 @@ session to rediscover.
   server-initiated, and is pinned by its own test; it does **not** breach the single-editing-surface
   rule. Confirmed findings from that round are the live queue in
   [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md).
+- **A derived "a retirement note's advice names a live construct" gate was considered on 2026-08-13
+  and declined; do not re-file.** Measured across `RETIRED_KEYS` + `RETIRED_DIV_CLASSES` +
+  `RETIRED_CELL_LANGS`: nine notes name another retired name, and eight are legitimate
+  *removed-alongside* context (`.step` ↔ `.scrolly` ↔ `.code-walkthrough`, `.columns` ↔ `.column`,
+  `.fade-out`/`.highlight` → `.fragment`) that no wording rule separates from advice — the notes have
+  no machine-readable boundary between "removed with X" and "use X instead", and adding a fourth
+  field to carry one would raise a retirement above its one line. The ninth (`include`'s
+  `#| echo: false`) is a scope collision only a *flattened* register could see, which `CLAUDE.md`
+  forbids. So the exception list would be as long as the register it guards, for a class of change
+  the finished cut will not produce again. A23, the one real instance (`code-line-numbers`
+  recommending `.code-walkthrough`, retired the same day), was fixed by hand instead.
 - **The recorded "10 unused offered vocabulary names" tail is stale by eight; do not re-derive it.**
   Re-measured 2026-08-13: `vocab.rs:351-355` filters `UNSUPPORTED_KEYS` (removing `csl`) and
   `:316-324` filters `RETIRED_XREF_PREFIXES` (the seven theorem prefixes), so the real tail is

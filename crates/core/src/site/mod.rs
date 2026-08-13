@@ -106,8 +106,6 @@ pub struct ListingSpec {
     /// `default`. Lets a reading-first `list` keep the figure thumbnails while a
     /// formal text listing (e.g. a CV's projects) stays image-free.
     pub with_image: bool,
-    /// Newest-first when true (`sort: "date desc"`, the default).
-    pub sort_desc: bool,
     /// `max-items:` cap, if any.
     pub max_items: Option<usize>,
 }
@@ -1286,7 +1284,10 @@ impl Site {
     }
 
     /// The pages a listing covers: those under its `contents:` directory (relative
-    /// to the hosting page), newest-first (or oldest-first), capped by `max-items`.
+    /// to the hosting page), **always newest-first**, capped by `max-items`. There is no
+    /// order to configure: `sort:` was retired on 2026-08-02 and both the reference page
+    /// and the register say so, so the one boolean it used to set is gone too — an Atom
+    /// feed's order is not a document's to choose (`feed_hosts` calls this).
     fn collection(
         &self,
         host: &Page,
@@ -1313,11 +1314,10 @@ impl Site {
             }
             items.push(p);
         }
-        // Order by date (string-ISO sorts chronologically), tiebreak on rel.
+        // Order by date (string-ISO sorts chronologically), tiebreak on rel, then reverse:
+        // newest first, unconditionally.
         items.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
-        if spec.sort_desc {
-            items.reverse();
-        }
+        items.reverse();
         if let Some(n) = spec.max_items {
             items.truncate(n);
         }
@@ -1880,6 +1880,67 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(pparts, vec!["Ghost".to_string(), "Real".to_string()]);
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `listing: sort:` was retired on 2026-08-02 and the register answers a leftover with
+    /// "newest first is the only order now, so delete the key" — but `parse_listing_spec`
+    /// went on reading it until 2026-08-13, so `sort: "date asc"` really did reverse the
+    /// cards while the tool said the key did not exist. The register entry cannot say the
+    /// parser stopped consuming it; this does (the sibling of
+    /// `parse_hero_ignores_the_retired_image_keys`).
+    ///
+    /// Both surfaces, because `feed_hosts` calls the same `collection`: a document claim is
+    /// at least the author's to make, but the Atom feed's order is not, and it was coming
+    /// out oldest-first too.
+    #[test]
+    fn a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed() {
+        let root = write_site(
+            "listsort",
+            &[
+                ("_site.yml", "title: T\nurl: https://example.com\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date asc\"\n---\n\nx\n",
+                ),
+                (
+                    "posts/old.tmd",
+                    "---\ntitle: Older\ndate: 2026-01-01\n---\nx\n",
+                ),
+                (
+                    "posts/new.tmd",
+                    "---\ntitle: Newer\ndate: 2026-06-01\n---\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let host = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
+        let spec = host.listings.first().expect("the listing parses");
+        let mut sink = Vec::new();
+        let titles: Vec<&str> = site
+            .collection(host, spec, &mut sink)
+            .iter()
+            .map(|p| p.title.as_deref().unwrap_or(""))
+            .collect();
+        assert_eq!(
+            titles,
+            vec!["Newer", "Older"],
+            "newest first is the only order; a retired `sort:` must not reverse it"
+        );
+        let feeds = site.feed_hosts();
+        let (_, _, dated) = feeds.first().expect("the dated listing gets a feed");
+        assert_eq!(
+            dated
+                .iter()
+                .map(|p| p.title.as_deref().unwrap_or(""))
+                .collect::<Vec<_>>(),
+            vec!["Newer", "Older"],
+            "the Atom feed is newest-first regardless of any front-matter key"
+        );
+        assert!(
+            !format!("{spec:?}").contains("asc"),
+            "a retired `sort:` must not reach ListingSpec: {spec:?}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

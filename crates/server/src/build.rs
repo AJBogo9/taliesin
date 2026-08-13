@@ -2473,6 +2473,58 @@ fn dynamic_import_specifiers(src: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// The `<link rel=>` values whose `href` the browser really fetches while rendering the page,
+/// which is the only kind that can make a `--out` build non-self-contained. Everything else a
+/// `<link>` can say — `alternate` (the tool's own Atom autodiscovery), `canonical`, `me`,
+/// `author`, `license`, `next`/`prev` — is metadata the browser never requests, so flagging it
+/// tells the author about a fetch that does not happen, in a file that does not contain it.
+/// `preconnect`/`dns-prefetch` are deliberately absent: they open a connection, fetch no
+/// resource, and cost an offline reader nothing.
+const FETCHING_LINK_RELS: &[&str] = &[
+    "stylesheet",
+    "preload",
+    "modulepreload",
+    "prefetch",
+    "prerender",
+    "icon",
+    "apple-touch-icon",
+    "mask-icon",
+    "manifest",
+];
+
+/// Whether the `<link>` enclosing the `href=` at `attr_at` is one the browser fetches, per
+/// [`FETCHING_LINK_RELS`]. Reads the whole tag rather than the text before `href`, because
+/// `rel=` may come on either side of it. A `<link>` with no `rel` at all does nothing, so it
+/// is not a fetch either.
+fn link_rel_fetches(html: &str, attr_at: usize) -> bool {
+    let Some(lt) = html[..attr_at].rfind('<') else {
+        return false;
+    };
+    let tag = match html[lt..].find('>') {
+        Some(gt) => &html[lt..lt + gt],
+        None => &html[lt..],
+    };
+    let bytes = tag.as_bytes();
+    let mut i = 0;
+    while let Some(pos) = tag[i..].find("rel=") {
+        let at = i + pos;
+        i = at + "rel=".len();
+        // Must begin an attribute name, so another attribute merely ending in `rel=` misses.
+        if at == 0 || !bytes[at - 1].is_ascii_whitespace() {
+            continue;
+        }
+        let rest = &tag[i..];
+        let value = match rest.chars().next() {
+            Some(q @ ('"' | '\'')) => rest[1..].split(q).next().unwrap_or(""),
+            _ => rest.split_ascii_whitespace().next().unwrap_or(""),
+        };
+        return value
+            .split_ascii_whitespace()
+            .any(|t| FETCHING_LINK_RELS.iter().any(|r| t.eq_ignore_ascii_case(r)));
+    }
+    false
+}
+
 /// Every external (network-fetched-at-view-time) reference left verbatim in built `html`: a
 /// resource `src=` (img/script/iframe/audio/video/…), a `<link href=>` stylesheet/preload, and
 /// a remote or bare `{js}` `import()` specifier. These keep a `--out` build from being
@@ -2510,8 +2562,12 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
             if !is_external_fetch(val) {
                 continue;
             }
-            // `href=` fetches only on `<link>`; an `<a>`/`<area>`/`<base>` href is not a fetch.
-            if attr == "href=\"" && !tag_named_before(html, at, "link") {
+            // `href=` fetches only on a `<link>` — an `<a>`/`<area>`/`<base>` href is not one —
+            // and only for a `rel` that really fetches (the tool's own `rel="alternate"` feed
+            // autodiscovery is the one every page of a published site carries).
+            if attr == "href=\""
+                && !(tag_named_before(html, at, "link") && link_rel_fetches(html, at))
+            {
                 continue;
             }
             push(val, at, &mut out);
@@ -2605,6 +2661,52 @@ mod mirror_tests {
             Some(3),
             "located to the enclosing block's sourcepos"
         );
+    }
+
+    /// A `<link>` `href` is only a view-time fetch for the rel values that make it one.
+    /// The tool emits its OWN absolute `<link rel="alternate" type="application/atom+xml">`
+    /// on every page of a site with `url:` set (`site::meta::feed_head`), and until
+    /// 2026-08-13 every one of them drew "the build will fetch it at view time, so the
+    /// output is not self-contained" — false (a browser does not fetch a feed
+    /// autodiscovery link), unfixable by the author, and located to source files
+    /// containing nothing of the kind. Measured on `corpus/tech-blog`: 34 of the build's
+    /// 50 warn lines, burying the 16 real ones 2:1, and only once `url:` is set — the step
+    /// an author takes to publish.
+    #[test]
+    fn external_refs_reads_a_link_rel_and_skips_the_ones_that_never_fetch() {
+        let html = concat!(
+            // The tool's own feed autodiscovery, exactly as `feed_head` emits it.
+            "<link rel=\"alternate\" type=\"application/atom+xml\" title=\"Blog\" ",
+            "href=\"https://example.com/blog.xml\">",
+            // Author-written head metadata that is also not a fetch.
+            "<link rel=\"canonical\" href=\"https://example.com/post.html\">",
+            "<link rel=\"me\" href=\"https://mastodon.test/@a\">",
+            // …and the ones that really are.
+            "<link rel=\"stylesheet\" href=\"https://cdn.test/x.css\">",
+            "<link rel=\"shortcut icon\" href=\"https://cdn.test/f.ico\">",
+            "<link rel=\"preload\" as=\"font\" href=\"https://cdn.test/f.woff2\" crossorigin>",
+        );
+        let urls: Vec<String> = external_refs(html).into_iter().map(|r| r.url).collect();
+        for skipped in [
+            "https://example.com/blog.xml",
+            "https://example.com/post.html",
+            "https://mastodon.test/@a",
+        ] {
+            assert!(
+                !urls.iter().any(|u| u == skipped),
+                "`{skipped}` is not fetched at view time, so warning about it is a lie: {urls:?}"
+            );
+        }
+        for flagged in [
+            "https://cdn.test/x.css",
+            "https://cdn.test/f.ico",
+            "https://cdn.test/f.woff2",
+        ] {
+            assert!(
+                urls.iter().any(|u| u == flagged),
+                "`{flagged}` IS fetched at view time and must still be flagged: {urls:?}"
+            );
+        }
     }
 
     #[test]

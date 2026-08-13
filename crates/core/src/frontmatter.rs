@@ -144,8 +144,8 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "it was removed on 2026-08-08 with the slide-deck engine, which was the only thing \
          that stepped through the marked ranges — in BOTH spellings, so a fence attribute \
          `{.python code-line-numbers=\"1|2\"}` is inert too (fence attributes have no \
-         validator, so that one is silent); a `.code-walkthrough` marks lines from its own \
-         `.step lines=` and needs no cell option",
+         validator, so that one is silent); nothing marks lines now, so show the code \
+         block once and write the narration as ordinary prose around it",
     ),
     (
         "front-matter key",
@@ -338,6 +338,14 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "callout kind",
         "caution",
         "it was removed on 2026-08-03: use `warning`",
+    ),
+    // --- Surfaces with no user, retired 2026-08-03.
+    (
+        "cell option",
+        "fig-export",
+        "it was removed on 2026-08-03: it was one instance of a cell writing a file, so \
+         call `savefig(\"figures/x.pdf\")` (or the equivalent) in the cell body — a \
+         relative write lands next to the document either way",
     ),
 ];
 
