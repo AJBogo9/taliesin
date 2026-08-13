@@ -494,8 +494,9 @@ fn build_container(
 ) -> Block {
     let attrs = parse_attrs(&span.attrs);
     let id = make_id(&format!("div:{}", span.attrs), counts);
-    let (file, open_line) = map_origin(origins, span.open);
-    let (_, close_line) = map_origin(origins, span.close);
+    // One range, one file: a `:::` opened in a partial and closed in the parent would
+    // otherwise mix the two files' numbering into one `L:C-L:C` (see `map_span`).
+    let (file, open_line, close_line) = map_span(origins, span.open, span.close);
     let sourcepos = format!("{open_line}:1-{close_line}:3");
     let file_attr = source_file_attr(file.as_deref());
     let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");

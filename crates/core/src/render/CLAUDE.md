@@ -21,4 +21,12 @@ Conventions:
 - Every emitted block carries `data-block-id` (content hash) + `data-sourcepos`; preserve
   them — the incremental block-swap, click-to-source, and corpus invariants depend on it
   (`tests.rs` + `crates/core/tests/corpus.rs`).
+- **Two line coordinate systems; never pair them.** `buf_start` is the post-include BUFFER
+  line (what `group_divs` matches `:::` spans in); `map_origin`/`map_span` give the line in
+  the file the author wrote. A `source_file` goes with a MAPPED line only, and a block's
+  `data-sourcepos` range must stay inside one file's numbering — `map_span` clamps a block
+  that comrak merged across an include boundary back to the file it starts in.
+- `dedup_element_ids` runs LAST of the id-assigning passes and is the only thing standing
+  between a repeated author-written `{#id}` and two elements sharing it. It renames the
+  repeat; the first keeps the author's spelling.
 - Bundled assets (`KATEX_CSS`, `BASE_CSS`, `code-enhance.js`, …) are `include_str!`'d in `mod.rs`.

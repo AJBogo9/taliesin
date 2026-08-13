@@ -4638,3 +4638,235 @@ fn collapsible_callouts_carry_a_disclosure_caret() {
         "open state must rotate the caret down"
     );
 }
+
+/// A scratch directory for a test that needs a real partial on disk to include.
+fn source_map_tmpdir(tag: &str) -> std::path::PathBuf {
+    let uniq = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let d = std::env::temp_dir().join(format!("tali-srcmap-{tag}-{uniq}"));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+#[test]
+fn a_warning_after_an_include_carries_the_authors_own_line_not_the_buffer_line() {
+    // Item A8. The per-block tuple bound the POST-INCLUDE buffer line while binding
+    // `source_file` to the MAPPED origin file, and ten warning sites then emitted the pair.
+    // Both halves are wrong, and the parent half is the worse one: `source_file` is None
+    // there, so the diagnostic carries a real, openable path with a line that is off by
+    // however much the include expanded above it, and nothing signals it.
+
+    // Half one: the PARENT's own warning, after an include. `part.tmd` expands 5 lines in
+    // place of 1, so the buffer line runs 4 ahead of the line the author is looking at.
+    let d = source_map_tmpdir("a8-parent");
+    std::fs::write(
+        d.join("part.tmd"),
+        "Partial one.\n\nPartial two.\n\nPartial three.\n",
+    )
+    .unwrap();
+    //                     1   2         3    4  5                          6   7
+    let src =
+        "---\ntitle: X\n---\n\n{{< include part.tmd >}}\n\n## Dup {#same}\n\n## Dup {#same}\n";
+    //                                                              8   9
+    assert_eq!(
+        src.lines().nth(8),
+        Some("## Dup {#same}"),
+        "line 9 is the duplicate"
+    );
+    let doc = render_document_with_includes(src, &d);
+    let dup = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("duplicate heading id"))
+        .unwrap_or_else(|| panic!("no duplicate-heading warning: {:?}", doc.warnings));
+    assert_eq!(dup.file, None, "the duplicate is in the parent document");
+    assert_eq!(
+        dup.line,
+        Some(9),
+        "must be the parent's own line 9, not the buffer's 13: {dup:?}"
+    );
+
+    // Half two: a warning INSIDE the partial. `part.tmd` is 5 lines long, so the buffer
+    // line (17) does not exist in the file the diagnostic names at all.
+    let d2 = source_map_tmpdir("a8-partial");
+    let part = "Partial one.\n\n## Dup {#same}\n\n## Dup {#same}\n";
+    std::fs::write(d2.join("part.tmd"), part).unwrap();
+    let src2 = "---\ntitle: X\n---\n\nlead\n\nmore\n\nmore\n\nmore\n\n{{< include part.tmd >}}\n";
+    let doc2 = render_document_with_includes(src2, &d2);
+    let dup2 = doc2
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("duplicate heading id"))
+        .unwrap_or_else(|| panic!("no duplicate-heading warning: {:?}", doc2.warnings));
+    assert_eq!(dup2.file.as_deref(), Some("part.tmd"));
+    assert_eq!(
+        dup2.line,
+        Some(5),
+        "must be part.tmd's own line 5, not the buffer's 17: {dup2:?}"
+    );
+    assert!(
+        dup2.line.unwrap() as usize <= part.lines().count(),
+        "a diagnostic may never point past the end of the file it names"
+    );
+}
+
+#[test]
+fn a_block_straddling_an_include_boundary_stays_inside_one_files_line_numbering() {
+    // Item A9. `map_origin` was applied independently to the start and end lines while only
+    // the START's file was kept for `data-source-file`, so a paragraph comrak merged across
+    // the boundary (partial's last line non-blank, parent's next line non-blank) emitted a
+    // range mixing two files' numbering. With the partial longer than the parent's prefix
+    // the range comes out INVERTED, which violates `tests/corpus.rs`'s own `sl <= el` and
+    // makes `client.js`'s `highlightAtLine` skip the block outright.
+    let d = source_map_tmpdir("a9");
+    let mut part = String::new();
+    for i in 1..=19 {
+        part.push_str(&format!("filler {i}\n\n"));
+    }
+    part.push_str("tail-a\ntail-b\n"); // partial lines 39 and 40
+    let part_lines = part.lines().count();
+    assert_eq!(part_lines, 40);
+    std::fs::write(d.join("part.tmd"), &part).unwrap();
+    // The include sits at parent line 5 and the parent's own tail at line 6, with no blank
+    // between: comrak merges partial:39-40 with parent:6 into one paragraph.
+    let doc = render_document_with_includes(
+        "---\ntitle: X\n---\n\n{{< include part.tmd >}}\nparent tail line\n",
+        &d,
+    );
+    let straddler = doc
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("tail-a"))
+        .expect("the merged paragraph");
+    assert_eq!(
+        straddler.source_file.as_deref(),
+        Some("part.tmd"),
+        "the block is attributed to the file it starts in"
+    );
+    assert_eq!(
+        straddler.sourcepos, "39:1-40:16",
+        "the range must stay inside part.tmd, not end on the parent's line 6"
+    );
+    let (sl, el) = straddler
+        .sourcepos
+        .split_once('-')
+        .map(|(a, b)| {
+            (
+                a.split(':').next().unwrap().parse::<usize>().unwrap(),
+                b.split(':').next().unwrap().parse::<usize>().unwrap(),
+            )
+        })
+        .unwrap();
+    assert!(sl <= el, "inverted sourcepos: {}", straddler.sourcepos);
+    assert!(
+        el <= part_lines,
+        "the range runs past the end of {:?}: {}",
+        straddler.source_file,
+        straddler.sourcepos
+    );
+
+    // The positive control: every block that does NOT straddle keeps the exact range it had
+    // before the clamp, so this did not buy `sl <= el` by flattening every block.
+    let first = doc
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("filler 1<"))
+        .expect("the first filler paragraph");
+    assert_eq!(first.sourcepos, "1:1-1:8");
+}
+
+#[test]
+fn a_repeated_explicit_id_is_deduped_and_reported_wherever_it_is_written() {
+    // Item A10. Only headings deduped an explicit `{#id}`; every other construct wrote the
+    // author's id straight into the element, so one shared partial included twice emitted
+    // `<h2 id="sec-shared">` + `<h2 id="sec-shared-1">` correctly beside two identical
+    // `<figure id="fig-shared">`. The ruling is RENAME, not refuse: the first definition
+    // keeps the author's spelling so their links still resolve, and the duplicate is an
+    // error-severity, located diagnostic rather than silently invalid HTML.
+    let doc = render_document_with_includes(
+        "---\ntitle: X\n---\n\n\
+         ![Cap](a.png){#fig-shared}\n\n\
+         ![Cap](a.png){#fig-shared}\n\n\
+         ::: {#dup-div}\nbody\n:::\n\n\
+         ::: {#dup-div}\nbody two\n:::\n",
+        std::path::Path::new("."),
+    );
+    let ids: Vec<&str> = doc
+        .blocks
+        .iter()
+        .filter_map(|b| {
+            let i = b.html.find(" id=\"")? + 5;
+            let rest = &b.html[i..];
+            Some(&rest[..rest.find('"')?])
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        vec!["fig-shared", "fig-shared-1", "dup-div", "dup-div-1"],
+        "the FIRST of each pair keeps the author's own spelling"
+    );
+
+    let dups: Vec<&Warning> = doc
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("duplicate element id"))
+        .collect();
+    assert_eq!(dups.len(), 2, "one per duplicate: {:?}", doc.warnings);
+    assert!(
+        dups.iter().all(|w| w.severity == Severity::Error),
+        "a duplicate id is invalid HTML, not advice: {dups:?}"
+    );
+    // Located at the SECOND definition, like the duplicate-heading warning beside it: that
+    // is the one the author has to change.
+    assert_eq!(dups[0].line, Some(7), "the second figure: {:?}", dups[0]);
+    assert_eq!(dups[1].line, Some(13), "the second div: {:?}", dups[1]);
+    // The div pair is the half that had NO diagnostic at all before: a figure at least drew
+    // `register_xref`'s duplicate-label error, a plain `{#id}` drew silence.
+    assert!(dups[1].message.contains("dup-div-1"), "{:?}", dups[1]);
+
+    // A hand-written `-1` already on the page must not be handed out a second time.
+    let clash = render_document_with_includes(
+        "---\ntitle: X\n---\n\n\
+         ![A](a.png){#fig-plot-1}\n\n![B](a.png){#fig-plot}\n\n![C](a.png){#fig-plot}\n",
+        std::path::Path::new("."),
+    );
+    let clash_ids: Vec<&str> = clash
+        .blocks
+        .iter()
+        .filter_map(|b| {
+            let i = b.html.find(" id=\"")? + 5;
+            let rest = &b.html[i..];
+            Some(&rest[..rest.find('"')?])
+        })
+        .collect();
+    assert_eq!(clash_ids, vec!["fig-plot-1", "fig-plot", "fig-plot-2"]);
+
+    // The positive control: a page with no collision is untouched and silent, so the pass
+    // cannot be passing the assertions above by renaming everything it sees.
+    let clean = render_document_with_includes(
+        "---\ntitle: X\n---\n\n## One {#sec-one}\n\n![Cap](a.png){#fig-one}\n\n::: {#note}\nbody\n:::\n",
+        std::path::Path::new("."),
+    );
+    assert!(
+        clean
+            .blocks
+            .iter()
+            .any(|b| b.html.contains("id=\"fig-one\"")),
+        "the lone figure keeps its id"
+    );
+    assert!(
+        !clean
+            .warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate element id")),
+        "no collision, no warning: {:?}",
+        clean.warnings
+    );
+}

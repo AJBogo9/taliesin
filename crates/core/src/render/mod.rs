@@ -555,8 +555,7 @@ fn render_internal_impl(
             // document end, but its sourcepos still points at where the author wrote it,
             // which is the line click-to-source must land on.
             let sp = data.sourcepos;
-            let (file, start_line) = map_origin(origins, sp.start.line);
-            let (_, end_line) = map_origin(origins, sp.end.line);
+            let (file, start_line, end_line) = map_span(origins, sp.start.line, sp.end.line);
             Some((
                 fd.name.clone(),
                 FootnoteDef {
@@ -627,8 +626,18 @@ fn render_internal_impl(
             })
             .filter(|(name, _)| footnote_defs.contains_key(name))
             .collect();
+        // TWO coordinate systems, and they are not interchangeable. `buf_start` is the line
+        // in the post-include BUFFER, which is what the `:::` span matching in `group_divs`
+        // is expressed in; `src_line` is the same block's line in the file it was actually
+        // written in, which is the only coordinate `source_file` may ever be paired with.
+        // Every warning below takes `(source_file, src_line)`: pairing the mapped file with
+        // the buffer line sent click-to-source (and the LSP squiggle it drives) past the end
+        // of an included partial, and — because any include shifts every later buffer line —
+        // put the PARENT document's own later warnings N lines off in a real, openable file
+        // with nothing signalling it.
         let (
             buf_start,
+            src_line,
             sourcepos,
             source_file,
             block_src,
@@ -680,8 +689,7 @@ fn render_internal_impl(
             }
             let sp = data.sourcepos;
             // Translate the buffer line range back to the originating file/line.
-            let (file, start_line) = map_origin(origins, sp.start.line);
-            let (_, end_line) = map_origin(origins, sp.end.line);
+            let (file, start_line, end_line) = map_span(origins, sp.start.line, sp.end.line);
             let sourcepos = format!(
                 "{}:{}-{}:{}",
                 start_line, sp.start.column, end_line, sp.end.column
@@ -759,6 +767,7 @@ fn render_internal_impl(
             }
             (
                 sp.start.line,
+                start_line,
                 sourcepos,
                 file,
                 slice_lines(&lines, sp.start.line, sp.end.line),
@@ -819,7 +828,7 @@ fn render_internal_impl(
                 id,
                 number,
                 source_file.as_deref(),
-                buf_start as u32,
+                src_line as u32,
             );
         }
         let id_attr = match heading_level {
@@ -838,7 +847,7 @@ fn render_internal_impl(
                                 Warning::new(format!(
                                     "duplicate heading id \u{201c}{id}\u{201d} (using \u{201c}{deduped}\u{201d}; in-page links to \u{201c}{id}\u{201d} may not resolve)"
                                 ))
-                                .at(source_file.clone(), buf_start as u32)
+                                .at(source_file.clone(), src_line as u32)
                                 .severity(Severity::Error),
                             );
                         }
@@ -881,7 +890,7 @@ fn render_internal_impl(
                 &anchor,
                 eq_num.clone(),
                 source_file.as_deref(),
-                buf_start as u32,
+                src_line as u32,
             );
             html.push_str(&emit_equation(&latex, &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
@@ -896,7 +905,7 @@ fn render_internal_impl(
                     fid,
                     fig_num.clone(),
                     source_file.as_deref(),
-                    buf_start as u32,
+                    src_line as u32,
                 );
             }
             html.push_str(&emit_figure(&fig, &attrs, &fig_num));
@@ -940,14 +949,14 @@ fn render_internal_impl(
                                     a,
                                     &lang,
                                     source_file.clone(),
-                                    buf_start,
+                                    src_line,
                                 )
                             } else {
                                 unreferenceable_hidden_label(
                                     "figure",
                                     a,
                                     source_file.clone(),
-                                    buf_start,
+                                    src_line,
                                 )
                             });
                         }
@@ -970,7 +979,7 @@ fn render_internal_impl(
                                 a,
                                 fig_num.clone(),
                                 source_file.as_deref(),
-                                buf_start as u32,
+                                src_line as u32,
                             );
                         }
                         match lang.as_str() {
@@ -1036,7 +1045,7 @@ fn render_internal_impl(
                                 a,
                                 lst_num.clone(),
                                 source_file.as_deref(),
-                                buf_start as u32,
+                                src_line as u32,
                             );
                         }
                         html.push_str(&emit_code_listing(
@@ -1086,14 +1095,14 @@ fn render_internal_impl(
                                     a,
                                     &lang,
                                     source_file.clone(),
-                                    buf_start,
+                                    src_line,
                                 )
                             } else {
                                 unreferenceable_hidden_label(
                                     "table",
                                     a,
                                     source_file.clone(),
-                                    buf_start,
+                                    src_line,
                                 )
                             });
                         }
@@ -1206,6 +1215,10 @@ fn render_internal_impl(
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings, chapter);
+    // LAST of the id-assigning passes, so it sees every element id the page will carry:
+    // the walk's headings and figures, `group_divs`'s containers, and the `<table>` id
+    // `apply_table_captions` just folded in.
+    dedup_element_ids(&mut blocks, &mut warnings);
     let bib_line = crate::frontmatter::bibliography_line(src);
     let bib = load_bibliography(
         &bib_paths,
@@ -1721,10 +1734,46 @@ pub(crate) fn id_attr(id: Option<&str>) -> String {
 /// Map a 1-based buffer line to its (origin file, origin line). Without a
 /// source map, the file is the primary document and the line is unchanged.
 fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<String>, usize) {
-    match origins.and_then(|o| o.get(buffer_line.saturating_sub(1))) {
+    match origin_at(origins, buffer_line) {
         Some(origin) => (origin.file.clone(), origin.line),
         None => (None, buffer_line),
     }
+}
+
+/// The source map's entry for a 1-based buffer line: `None` when there is no map at all
+/// (the whole buffer is the primary document) or the line is past its end.
+fn origin_at(origins: Option<&[LineOrigin]>, buffer_line: usize) -> Option<&LineOrigin> {
+    origins.and_then(|o| o.get(buffer_line.saturating_sub(1)))
+}
+
+/// Map a buffer line RANGE back to ONE origin file: the file the range starts in, plus
+/// that file's own first and last line for it.
+///
+/// A block can straddle an include boundary — the partial's last line non-blank and the
+/// parent's next line non-blank, so comrak merges the two into a single paragraph — and its
+/// two ends then live in different files. `data-source-file` names exactly one file, so the
+/// range is clamped to the START's: walk the end back to the last buffer line whose origin
+/// file still agrees. Mapping the two ends independently mixed two files' numbering into one
+/// range, which comes out INVERTED whenever the partial is longer than the parent's prefix
+/// (measured `39:1-6:25`, violating `tests/corpus.rs`'s own `sl <= el`) and otherwise runs
+/// silently past the partial's EOF. `client.js`'s `highlightAtLine` matches
+/// `^(\d+):\d+-(\d+):\d+$` and skips any block it cannot use, so reverse cursor-sync goes
+/// dead on exactly that block.
+///
+/// With no source map every line maps to itself, so the walk never moves and nothing about a
+/// document with no includes changes.
+fn map_span(
+    origins: Option<&[LineOrigin]>,
+    start: usize,
+    end: usize,
+) -> (Option<String>, usize, usize) {
+    let start_file = origin_at(origins, start).and_then(|o| o.file.as_deref());
+    let mut last = end;
+    while last > start && origin_at(origins, last).and_then(|o| o.file.as_deref()) != start_file {
+        last -= 1;
+    }
+    let (file, start_line) = map_origin(origins, start);
+    (file, start_line, map_origin(origins, last).1)
 }
 
 /// Render a complete, viewable HTML page (used by the one-shot CLI). The
@@ -2549,6 +2598,99 @@ fn apply_table_captions(
         }
         i += 1;
     }
+}
+
+/// Rename every element id a later element repeats, so a page never ships two elements
+/// carrying the same `id` (invalid HTML: every in-page link, `@ref` and `getElementById`
+/// silently resolves to the first).
+///
+/// Until 2026-08-13 ONLY headings deduped, because only headings get an id the author never
+/// asked for. Every other construct wrote the author's explicit id straight into the element
+/// — `emit_figure`, `emit_mermaid_figure`, `emit_client_figure`, `emit_code_listing`, the
+/// generic-div arm in `divs.rs` and the `<table>` id folded in by `apply_table_captions`, all
+/// six through `id_attr` — so one partial included twice (the use the shortcodes page
+/// advertises) emitted `<h2 id="sec-shared">` + `<h2 id="sec-shared-1">` correctly beside
+/// `<figure id="fig-shared">` twice.
+///
+/// **Renaming rather than refusing the build** is the ruling the heading path already made
+/// and wrote down at its `id_attr` site: the FIRST definition keeps the author's own
+/// spelling, so every link and cross-reference they wrote still resolves, and the duplicate
+/// is reported at error severity with its own location instead of being shipped as invalid
+/// HTML. Refusing would invent a hard-fail path that no other error-severity diagnostic in
+/// this tool has, and it would leave the preview rendering the invalid page regardless.
+///
+/// Two known limits, both deliberate. A `fig-`/`lst-`/`tbl-` duplicate also draws
+/// `register_xref`'s "duplicate cross-reference label", so those report twice; the two name
+/// genuinely different consequences (which element the number belongs to, and which element
+/// the anchor lands on) and suppressing one would couple this pass to the xref registry. And
+/// ids inside an executed cell's OUTPUT arrive after render, so they are outside this pass;
+/// a labelled output's anchor is already covered by `register_xref`.
+fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for b in blocks.iter_mut() {
+        // A container's inner blocks are inlined into its own `html` (`divs.rs` concatenates
+        // them), so walking the top level reaches every emitted element exactly once.
+        let (html, renamed) = rename_repeated_ids(&b.html, &mut counts, &mut seen);
+        if renamed.is_empty() {
+            continue;
+        }
+        b.html = html;
+        for (original, new) in renamed {
+            let w = Warning::new(format!(
+                "duplicate element id \u{201c}{original}\u{201d}: an earlier element on this page \
+                 already uses it, so in-page links and cross-references jump to the first \
+                 \u{2014} this one was renamed to \u{201c}{new}\u{201d}"
+            ))
+            .severity(Severity::Error);
+            warnings.push(match sourcepos_start_line(&b.sourcepos) {
+                0 => w,
+                line => w.at(b.source_file.clone(), line),
+            });
+        }
+    }
+}
+
+/// Rewrite each ` id="…"` in `html` whose value is already in `seen`, returning the new html
+/// and one `(original, renamed)` pair per rewrite. The attribute is matched WITH its leading
+/// space, which is what keeps `data-block-id="…"` from false-matching (the same
+/// discriminator `diagnostics::headings::heading_id` uses).
+fn rename_repeated_ids(
+    html: &str,
+    counts: &mut HashMap<String, u32>,
+    seen: &mut std::collections::HashSet<String>,
+) -> (String, Vec<(String, String)>) {
+    const ATTR: &str = " id=\"";
+    let mut out = String::with_capacity(html.len());
+    let mut renamed: Vec<(String, String)> = Vec::new();
+    let mut rest = html;
+    while let Some(pos) = rest.find(ATTR) {
+        let value_at = pos + ATTR.len();
+        let Some(len) = rest[value_at..].find('"') else {
+            break; // an unterminated attribute: leave the remainder untouched
+        };
+        let id = rest[value_at..value_at + len].to_string();
+        out.push_str(&rest[..value_at]);
+        if seen.insert(id.clone()) {
+            // First sighting. Seed the counter as `dedup_with_suffix` would have, so the
+            // next repeat comes out `id-1` and not `id` again.
+            counts.entry(id.clone()).or_insert(1);
+            out.push_str(&id);
+        } else {
+            // Keep bumping until the suffixed form is itself unused: a page can hold a
+            // hand-written `fig-plot-1` as well as two `fig-plot`s, and `dedup_with_suffix`
+            // alone would hand the second `fig-plot` an id that is already taken.
+            let mut candidate = dedup_with_suffix(id.clone(), counts);
+            while !seen.insert(candidate.clone()) {
+                candidate = dedup_with_suffix(id.clone(), counts);
+            }
+            out.push_str(&candidate);
+            renamed.push((id, candidate));
+        }
+        rest = &rest[value_at + len..];
+    }
+    out.push_str(rest);
+    (out, renamed)
 }
 
 /// Parse a table-caption paragraph (`<p ...>: caption {#tbl-x}</p>`): returns the

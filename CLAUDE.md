@@ -393,6 +393,28 @@ here.**
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
+- **There are TWO line coordinate systems in `render/mod.rs` and pairing them is the
+  bug that keeps happening.** `buf_start` is the line in the post-include BUFFER (what
+  `group_divs` matches `:::` spans in); the mapped line from `map_origin`/`map_span` is
+  the line in the file the author actually wrote. **A `source_file` may only ever be
+  paired with a mapped line.** Ten warning sites paired it with the buffer line until
+  2026-08-13, which put a diagnostic past the end of an included partial — and, because
+  any include shifts every later buffer line, put the *parent* document's own later
+  warnings N lines off in a real openable file with nothing signalling it. For the same
+  reason a block's `data-sourcepos` range must stay inside ONE file's numbering: mapping
+  the two ends independently emitted `39:1-6:25` on a paragraph comrak merged across an
+  include boundary, which `client.js`'s `highlightAtLine` skips outright. `map_span` is
+  the single answer to both ends, used by the block walk, the footnote pre-pass and the
+  div container.
+- **A duplicate element id is RENAMED, never refused** (`dedup_element_ids`, the last
+  id-assigning pass). The first definition keeps the author's own spelling, so every link
+  and `@ref` they wrote still resolves; the duplicate draws an error-severity located
+  diagnostic. Until 2026-08-13 only headings deduped, because only headings get an id the
+  author never asked for, so one partial included twice emitted `<h2 id="sec-shared">` +
+  `<h2 id="sec-shared-1">` correctly beside two identical `<figure id="fig-shared">` (and a
+  repeated `::: {#id}` drew no diagnostic at all). Refusing the build would invent a
+  hard-fail path no other error-severity diagnostic has and would leave the preview
+  rendering the invalid page anyway.
 - **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** After wave 7
   the two agree for div classes (`DIV_CLASS_NAMES` and `render::DIV_FEATURE_CLASSES` are
   both the same **3** width escapes, and a test pins the subset relation), but `vocab`
