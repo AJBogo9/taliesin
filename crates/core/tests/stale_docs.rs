@@ -41,7 +41,6 @@ fn shipped_docs() -> Vec<(String, String)> {
         "SECURITY.md",
         "CONTRIBUTING.md",
         "CLAUDE.md",
-        "samples/README.md",
         // The two licence documents joined on 2026-08-10; see the gate below.
         "THIRD_PARTY.md",
         "LICENSE-OUTPUT-EXCEPTION.md",
@@ -476,7 +475,6 @@ fn is_repo_path_claim(tok: &str) -> bool {
         "corpus/",
         "site/",
         "docs/",
-        "samples/",
     ];
     // Build output and tool caches: named in the docs (correctly), absent from a fresh
     // clone. `.github/` is not a ROOT for the same reason in reverse — the guide's

@@ -38,7 +38,7 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
 /// After a failed kernel start, wait at least this long before retrying — long
 /// enough that a genuinely missing/bad interpreter doesn't re-hang every save,
-/// short enough that fixing `TALIESIN_PYTHON`/`TALIESIN_R` self-heals within a few
+/// short enough that fixing `TALIESIN_PYTHON` self-heals within a few
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
@@ -552,7 +552,7 @@ impl Executor {
 
     /// Drop every language's kernel and clear the failure backoff, so the next run
     /// starts fresh kernels immediately. Backs the dev-menu "Restart kernel" action
-    /// and recovery after fixing `TALIESIN_PYTHON`/`TALIESIN_R`. (Dropping a kernel
+    /// and recovery after fixing `TALIESIN_PYTHON`. (Dropping a kernel
     /// kills its child process.) Also forces the next run to re-execute every cell
     /// (ignoring disk-cache hits), so "Restart kernel" actually re-runs against the
     /// fresh kernel instead of replaying cached outputs.

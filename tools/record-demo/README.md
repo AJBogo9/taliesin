@@ -23,7 +23,7 @@ node record.mjs demos/sample.mjs  # → out/sample.mp4 + out/sample.gif
 
 Requirements: Node 18+, `ffmpeg`, Google Chrome, and a built `taliesin` binary
 (found automatically at `target/release|debug/Taliesin`, or set `TALIESIN=<path>`).
-Pass `TALIESIN_PYTHON` / `TALIESIN_R` through the env if the demo doc runs cells.
+Pass `TALIESIN_PYTHON` through the env if the demo doc runs cells.
 
 ## Writing a demo
 

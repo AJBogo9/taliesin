@@ -90,74 +90,55 @@ here, not the finder's original.
 The cut stopped at the code's edge. These are the author's own untaken waves, re-verified at
 `aceb566b`: not a line has moved.
 
-## S10 [V] MAJOR: `tools/ui-audit` + `tools/record-demo` + `samples`, 3,755 tracked lines read by nothing
+## S11 [A] MAJOR (CORRECTED, NOT LANDED): the W7 dead-code sweep, about 1,050 lines
 
-`grep -n 'ui-audit\|record-demo\|samples' tools/gates.sh .githooks/pre-push tools/build-site.sh .github/workflows/*.yml`
-exits 1. Measured at HEAD: `tools/ui-audit` 16 files / 3,026 lines, `tools/record-demo` 11
-files / 471 lines, `samples` 4 files / 258 lines.
-
-**Correction to the source wave (W6):** it prices this as "382 MB". **Only 212 KB is
-tracked**; the 382 MB is gitignored capture output. Do not publish the 382 MB figure.
-
-**`samples/` is not a free delete:** `crates/core/tests/stale_docs.rs:44` and `:479` both
-read it, so removing it is a gate edit in the same commit.
-
-Three other tracked references, all trivial: `crates/core/tests/retired_names.rs:40` (a
-comment above a `.work` skip entry), `site/README.md:74`, and one more.
-**Interacts with S7**: if the screencasts are re-recorded rather than cut, `record-demo`
-stays.
-
-## S11 [A] MAJOR: the W7 dead-code sweep is 100% unspent, about 1,050 lines
-
-Re-verified at HEAD, five subjects:
+Re-verified at `b98ef8cc`. **Subject 2 as filed is wrong and would delete a drift gate --
+do not act on it as written.**
 
 1. `crates/core/tests/retired_names.rs` is 855 lines / 21 tests, of which **18 tests / 562
-   lines** are hand-written UI tombstones with no register behind them, which
-   `CLAUDE.md`'s own register rule says not to write. The file's charter is lines 1-293.
-2. `crates/core/src/schema.rs`, 146 lines, `SITE_SCHEMA` read only inside its own
-   `#[cfg(test)]` module (`grep -rn 'schema::' --include='*.rs' crates | grep -v src/schema.rs`
-   exits 1), and `crates/core/assets/schema/tali-site.schema.json` is **byte-identical** to
-   `editor/vscode/schema/tali-site.schema.json` (`cmp` exits 0).
+   lines** are hand-written UI tombstones with no register behind them, which `CLAUDE.md`'s
+   own register rule says not to write. The file's charter is lines 1-293. **Still the real
+   win here, and it needs a careful read rather than a sweep**: the charter half is live and
+   earning its keep (its filesystem walk caught a regression on 2026-08-13 when a `SKIP_PATHS`
+   entry was removed).
+2. ~~`crates/core/src/schema.rs`, 146 lines, `SITE_SCHEMA` read only inside its own
+   `#[cfg(test)]`~~ **REFUTED 2026-08-13.** The *const* has no external reader, which is what
+   the finder measured, but the module is not dead: its `#[cfg(test)] mod generate` is the
+   generator **and the drift gate** that keeps `assets/schema/tali-site.schema.json` in sync
+   with `site::NATIVE_KEYS`, and that file is byte-identical to
+   `editor/vscode/schema/tali-site.schema.json`, which the companion actually ships
+   (`editor/vscode/package.json:93` wires it through `yamlValidation`). Deleting the file
+   removes a gate `CLAUDE.md` names as one of the four a new `_site.yml` key trips. The most
+   that is available here is making the const private, which saves nothing.
 3. `$/cancelRequest` batching, which its own doc comment retires.
-4. `render/model.rs:372` `after_body` (`doc_includes.rs:22` confirms only `in_header` is
-   populated).
-5. `lsp.rs:1153` and `:1172` index a `vocab` key that does not exist.
+4. `render/model.rs:372` `after_body`. **Narrower than filed:** it is never *populated*
+   (`doc_includes.rs:22` says so), but it IS read -- `page.rs:716` passes it to
+   `include_after_body`. So this is a real refactor of a live slot, not a dead-field delete.
+5. `lsp.rs` indexes a `vocab` key that does not exist (line numbers have moved; grep the
+   `vocab["..."]` indexes against `vocab.rs`'s own keys).
 
-**Related:** `crates/core/src/render/mod.rs:2078` `pub fn base_css()` and `:2084`
-`pub fn site_css()` are `pub` in `taliesin-core` with **every caller a test**, most of them
-in the tombstones above. They go with them.
+**Related:** `render/mod.rs`'s `pub fn base_css()` / `site_css()` have every caller a test,
+most of them in the tombstones in (1). They go with them.
 
-## S12 [A] MAJOR: `notes/` is 36,315 lines across 104 files, larger than `crates/core/src`
+## S12 [A] MAJOR (PART LANDED): `notes/` is still the largest thing nobody gates
 
-Nothing gates it (`retired_names.rs:61` `SKIP_PATHS` names `"notes"`; `stale_docs.rs`'s
-`ROOTS` excludes it; `gate_script.rs:51` walks only `crates/`), and it is the first thing
-`CLAUDE.md` tells a fresh session to read. It grew 7 files / 2,274 lines since 2026-08-10.
+**Landed 2026-08-13:** the three deletable subjects are gone (1,683 lines):
+`notes/retired/diagnostics-explanations.rs` (1,222, byte-identical to
+`git show pre-cut:crates/core/src/diagnostics/codes.rs` and carrying no header saying it was
+dead), plus `notes/ap2-fuzz-harness` and `notes/ap8-determinism-harness` (461). Both
+misleading banners are rewritten: `ROADMAP.md`'s expired pause no longer reads as permission
+to grow, and `FEATURE-IDEAS.md` no longer states the corpus-pin graduation rule `CLAUDE.md`
+retired as circular.
 
-Deletable outright, about 1,683 lines:
-- `notes/retired/diagnostics-explanations.rs`, 1,222 lines, **byte-identical** to
-  `git show pre-cut:crates/core/src/diagnostics/codes.rs`, and carrying **no header saying
-  it is dead**. Its module doc opens by describing a verb cut in wave 9. Every drift guard is
-  blanket-exempt from `notes/`, so this unmarked copy of the pre-cut vocabulary is invisible
-  to all of them (`grep -c` inside it: scrolly 8, panel-tabset 4, theorem 20, publish 11,
-  prose-lint 5).
-- `notes/ap2-fuzz-harness` + `notes/ap8-determinism-harness`, 461 lines.
+**What is left is the bulk and it is a judgement call, not a sweep.** `notes/` is still
+~34,600 lines across ~99 files, gated by nothing (`retired_names.rs`'s `SKIP_PATHS` names
+`"notes"`, `stale_docs.rs`'s `ROOTS` excludes it, `gate_script.rs` walks only `crates/`), and
+it is still the first thing `CLAUDE.md` tells a fresh session to read. Nothing else in it is
+deletable *outright* -- every remaining file is either durable state (`CUT-PROGRESS.md`,
+`DO-NOT-REBUILD.md`, `LESSONS.md`) or an audit whose findings may not all have landed.
+Deciding which audits are spent needs the author, and S17's purge set overlaps it.
 
-Two banner edits, both worse than inert:
-- `notes/ROADMAP.md:3-7`'s pause banner is expired and **now reads as permission to grow**.
-- `notes/FEATURE-IDEAS.md:3-6` (1,181 lines) still tells its reader an idea "graduates to
-  the roadmap only when it earns a corpus pin doc", a rule `CLAUDE.md` explicitly retired as
-  circular.
-
-**This file is part of the problem it describes.** Delete it when it is empty.
-
-## S14 [A] MINOR: cut-wave residue in production source comments
-
-`stale_docs.rs` walks only `.md`/`.tmd`, so a source comment can name a cut feature forever
-with every gate green. Live examples: `TALIESIN_R` presented as a current fix in
-`build.rs:528` and `exec.rs:41,555` (and in two READMEs and
-`.claude/agents/corpus-verifier.md:28`); `render/mod.rs:99` says the text projection is
-"reached via `RenderedDoc::body_text()`" with **no such function anywhere in the tree**, and
-labels the module "Text projection (`taliesin read`)" after that verb was cut.
+**This file is part of the problem it describes. Delete it when it is empty.**
 
 ## S15 [A] DECIDE: the retired vocabulary is now the same size as the live vocabulary
 
@@ -206,17 +187,6 @@ as step 2, and **flipping visibility publishes the whole history, not HEAD**.
 `notes/STARTUP-PLAN.md:111-127` records a contrary already-made decision (a fresh
 no-history repo). **Two live documents disagree on the publish step, and getting it wrong is
 irreversible.** Also: `git grep -Il "/home/bogo"` matches 16 files.
-
-## S18 [V] MINOR: `notes/backlog.md`'s standing constraints are stale
-
-It names `taliesin features` ("exists, so do not re-derive an adoption table by grep") which
-wave 2 cut; "four gates" and `TALIESIN_REQUIRE_..._R`/`_CHROME` when there are eleven gates
-and two runtimes; "FIVE drift gates; a RETIRED one trips EIGHT" when `CLAUDE.md` now says
-four and one; and owes "the four-projection sweep" to `taliesin read`, `skim.rs` and
-`llms-full.txt`, all three cut. A session that reads it for orientation is misdirected on
-every count.
-
----
 
 # Refuted: do not re-file
 

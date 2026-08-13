@@ -37,7 +37,11 @@ const SKIP_DIR_NAMES: &[&str] = &[
     "_freeze",
     "node_modules",
     ".vscode-test",
-    // The ui-audit harness's gitignored scratch build (`tools/ui-audit/.work/`).
+    // Any gitignored scratch build. `tools/ui-audit/` owned the only one and went on
+    // 2026-08-13, but this walk reads the FILESYSTEM rather than the index, so a working
+    // copy that still has the harness's untracked `.work/` output (it is not small) would
+    // fail this gate on captured HTML nobody ships. Deleting the tracked tool cannot
+    // delete that, so the skip outlives it.
     ".work",
     // Gitignored Python kernel virtualenvs (`.venv-audit/` for local audits;
     // `.venv/` is what the interpreter resolver finds on its own). Skipped because

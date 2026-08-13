@@ -1,9 +1,14 @@
 # Taliesin: feature ideation & product audit
 
-> A research-backed pool of feature ideas and product critiques that **feeds**
-> `ROADMAP.md` (the committed roadmap). This file is the upstream brainstorm;
-> the roadmap is the downstream, sequenced, corpus-pinned plan. An idea here is not a
-> commitment. It graduates to the roadmap only when it earns a corpus pin doc.
+> A research-backed pool of feature ideas and product critiques that **fed**
+> `ROADMAP.md`, which is itself paused. This file is the upstream brainstorm; an idea
+> here is not a commitment and most of them are now against the project's direction.
+>
+> **The graduation rule this banner used to state is retired.** It read "an idea
+> graduates to the roadmap only when it earns a corpus pin doc", and `CLAUDE.md`
+> explicitly retired that rule as circular: pinning a feature with a document written
+> to exercise it makes the corpus vouch for itself. Nothing here graduates on its own;
+> a real user asking for it is what promotes an idea now.
 >
 > **Session 1: 2026-06-25.** Method: deep research across five tool lineages (5 parallel
 > research agents), each grounded in Taliesin's actual capabilities + invariants, then

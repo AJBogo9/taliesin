@@ -95,8 +95,10 @@ use image_meta::ImageAnnotator;
 mod repro;
 // The id four consumers must agree to skip when turning a page into text.
 pub(crate) use repro::REPRO_BLOCK_ID;
-// Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
-// format. Crate-internal; reached via `RenderedDoc::body_text()`.
+// Text projection: a plain-text VIEW of the block model, not an output format. Named for
+// the `read` verb until wave 9 cut it, and documented as reached via a
+// `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its one live
+// consumer is `indexable_text` below.
 mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
@@ -1236,8 +1238,9 @@ fn render_internal_impl(
     ));
     // No gathered endnote section: each note renders beside its own reference (see the
     // splice in the walk above). Keeping a trailing list as well would put every note's
-    // text in the DOM twice, which Ctrl-F and all four text projections (`taliesin read`,
-    // `skim.rs`, the search index, `llms-full.txt`) would each report twice.
+    // text in the DOM twice, which Ctrl-F and the search index would each report twice.
+    // (There were four text projections when this was written; `taliesin read`, `skim.rs`
+    // and `llms-full.txt` have all since been cut, leaving the index.)
     // A visible title block. It is a generated block (no sourcepos), so it rides the
     // block model + diff like the References section.
     // A dated document is an article (a post), which gates both the reading-time estimate and

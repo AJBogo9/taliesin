@@ -79,3 +79,8 @@ Thumbs.db
 # and step 4 (ancestor .venv, which walks up to this repo root and stops at .git), so
 # one venv here serves every corpus document with no TALIESIN_PYTHON to remember.
 .venv/
+
+# Leftover scratch output from the deleted `tools/ui-audit` harness (340 MB of
+# generated pages). The directory carried its own .gitignore until that harness was
+# removed on 2026-08-13; deleting it un-ignored the tree.
+.work/

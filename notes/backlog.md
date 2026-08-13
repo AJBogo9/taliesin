@@ -35,10 +35,10 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 > is about correctness, this one is about shipping.
 
 **Everything below this line predates the 2026-08-08 scope reduction and is stale in places** — its
-"Standing constraints" section names `taliesin features` (cut in wave 2), "four gates" (there are
-eleven), "FIVE drift gates; a RETIRED one trips EIGHT" (`CLAUDE.md` now says four and one), and owes a
-four-projection sweep to `taliesin read`, `skim.rs` and `llms-full.txt`, all three cut. Filed as S18
-in the audit queue. Trust `CLAUDE.md` over this file on any of those.
+"Standing constraints" section was corrected on 2026-08-13 (it had named `taliesin features`,
+"four gates", "FIVE drift gates / EIGHT for a retired key", and a four-projection sweep, all of
+them cut or superseded). **`CLAUDE.md` remains the authority on any count**; take a gate count
+from `./tools/gates.sh`'s own verdict line and never from prose here.
 
 **The whole file is now one sequence: ship the thing.** The five items below are ordered, and the
 order is the plan, not a ranking. 103 → 100 → 148 → 149 → 170.
@@ -78,9 +78,10 @@ a thing waiting its turn.
   across sessions and may be built from another branch — check `taliesin --version` against your own
   HEAD before trusting any CLI number. (2) A table-shaped probe whose every cell is negative is a
   **broken probe** until proven otherwise; carry a known-positive row.
-- **`taliesin features <dir>` exists, so do not re-derive an adoption table by grep.** It reads the
-  validator consts, not `vocab.rs` (which is the *offered-completions* subset and would report a
-  live feature as unused), and it prints zero rows on purpose.
+- **There is no adoption-table instrument any more.** `taliesin features` was cut in wave 2, so
+  answer "what does the tool support" from the **validator consts** directly, never from
+  `vocab.rs` (which is the *offered-completions* subset and under-reports: it offers 5 of the 12
+  `XREF_LABELS`).
 - **Nothing is owed by the author except item 103.**
 
 ## Standing constraints (read before working)
@@ -100,13 +101,13 @@ a thing waiting its turn.
   `origin/main` only when the author asks. **Review subagents get a git worktree or you commit
   first** (a "read-only" reviewer with `Bash` still writes scratch files to your CWD; one ran
   `cat > Cargo.toml` in the repo root and destroyed the workspace manifest).
-- **Tests: four gates, or the suite silently under-tests itself.** Run `./tools/gates.sh`, which arms
-  `TALIESIN_REQUIRE_KERNEL` / `_R` / `_NODE` / `_CHROME`, asserts each canary printed `... ok` and
-  refuses to be green when one skipped. It needs `TALIESIN_PYTHON=$HOME/.local/share/qmd-venv/bin/python`
-  or it declines to start (exit **2**; a failed gate is exit **1**). Run the workspace suite
-  `-- --test-threads=1` as it does: several tests own process-global state (`CHROME_PATH`), so at
-  full parallelism a browser test fails in a way that reads exactly like a regression. `cargo test`
-  aborts the remaining binaries at the first failure, so re-run before trusting a total.
+- **Run `./tools/gates.sh`, or the suite silently under-tests itself.** It arms
+  `TALIESIN_REQUIRE_KERNEL` and `TALIESIN_REQUIRE_NODE` (the `_R` and `_CHROME` runtimes went with
+  the `{r}` cell language and the headless-Chrome driver in wave 6), asserts each canary printed
+  `... ok`, and refuses to be green when one skipped. **Take the gate count from its own verdict
+  line**, never from prose. It needs `TALIESIN_PYTHON="$PWD/.venv/bin/python"` or it declines to
+  start (exit **2**; a failed gate is exit **1**). `cargo test` aborts the remaining binaries at the
+  first failure, so use `--no-fail-fast` before trusting a total.
 - **Derive, don't declare.** Every proposed front-matter key must first answer *what on the page
   already implies this?* A key is the highest fixed cost per feature anywhere in the tool, so the bar
   is that the value is genuinely underivable, not merely convenient to state. Proven precedents:
@@ -115,16 +116,18 @@ a thing waiting its turn.
   **Underivable is not the same as belonging in front matter**: `datasets:` passed the derive test
   and was still retired, because an annotation that describes one invocation belongs *on* that
   invocation.
-- **A new front-matter key trips FIVE drift gates; a RETIRED one trips EIGHT.** `CLAUDE.md` names all
-  eight and is the current count (this file said SEVEN until 2026-08-07, having missed
-  `editor/vscode/schema/tali-site.schema.json`, a bundled copy gated only by the companion's own
-  `node --test`). **Two of the eight live outside `taliesin-core`**, so `cargo test --workspace` can
-  be green while both are stale; only `./tools/gates.sh` catches them. Four of the five bless with
-  `TALIESIN_BLESS=1`; the guide one wants prose. Five gates *come back* when a key is removed. That
-  cost is the standing argument for "derive, don't declare" above.
-- **Any new generated block owes the four-projection sweep** — `taliesin read`, `skim.rs`, the search
-  index and `llms-full.txt` — or its text leaks into the search index. Four projections in three
-  modules; two known leaks were found only by building a real site and grepping the artefacts.
+- **A new front-matter key trips FOUR drift gates; a RETIREMENT costs ONE line.** `CLAUDE.md` names
+  them and is the current count. **One of the four lives outside `taliesin-core`**
+  (`editor/vscode/schema/tali-site.schema.json`, a bundled copy gated only by the companion's own
+  `node --test`), so `cargo test --workspace` can be green while it is stale; only
+  `./tools/gates.sh` catches it. Retiring is now the cheap direction: add the `RETIRED_KEYS` entry
+  and stop — **do not write a tombstone test**, the register derives it. What the register cannot
+  derive is the *parser* still reading the key, which is the other half of a retirement and wants a
+  parser-side pin. That asymmetry is the standing argument for "derive, don't declare" above.
+- **Any new generated block owes the search-index sweep** or its text leaks into Cmd-K results.
+  This was a *four*-projection sweep until `taliesin read`, `skim.rs` and `llms-full.txt` were all
+  cut; the search index is the one that is left. Two known leaks were found only by building a real
+  site and grepping the artefacts, so grep the built output, not the source.
 - **A new `data-*` attribute or `--tali-*` token in browser code trips a census test**
   (`token_contract.rs`): expected, one sorted line to fix, and it is also the prompt to namespace the
   attribute. An invented `--tali-*` name renders **nothing** (the browser drops the whole

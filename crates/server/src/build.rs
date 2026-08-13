@@ -598,7 +598,7 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
 /// Two different things land here and they must not be described the same way: a cell that
 /// RAN and raised (its traceback is baked into the page, and the fix is in the author's
 /// code), and a cell that never ran at all because the executor could not reach a kernel
-/// (the fix is `TALIESIN_PYTHON`/`TALIESIN_R` or the environment). The executor marks the
+/// (the fix is `TALIESIN_PYTHON` or the environment). The executor marks the
 /// diagnostics it writes itself with [`crate::exec::NOT_RUN_ATTR`]; asking that marker is
 /// the source of truth, since the two share an HTML shape on purpose.
 fn cell_error_message(page_label: &str, b: &taliesin_core::Block) -> String {

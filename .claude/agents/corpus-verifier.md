@@ -25,7 +25,7 @@ evidence — never claim green without command output to back it.
 - Do not "fix" anything. Surface the failure precisely so the caller can decide.
 
 ## Notes
-- Code-cell execution needs a matching Jupyter kernel (`TALIESIN_PYTHON`, `TALIESIN_R`).
+- Code-cell execution needs a matching Jupyter kernel (`TALIESIN_PYTHON`).
   Outputs cache in `_freeze/` keyed by cumulative content hash; `TALIESIN_NO_CACHE`
   ignores it. Absence of a kernel is a known, non-fatal state — report it, don't panic.
 - Builds can be slow on a cold target; prefer the narrowest command that proves the point.
