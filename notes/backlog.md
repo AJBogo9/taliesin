@@ -23,6 +23,23 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
+> **⚠ THE DEFECT QUEUE IS NOT IN THIS FILE. It is
+> [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md)**, the post-cut audit's 29
+> confirmed defects plus 18 shipping-surface items, in 12 branchable batches, each carrying its own
+> reproduction command and done-condition. **Batch 1 is data loss** (`build --out <dir>` deletes
+> files in the output directory and exits 0) and should be taken before anything else in either file.
+> That file also records what NOT to do: the audit found the scope itself sound and the document
+> vocabulary fully witnessed, so **do not cut another feature**.
+>
+> **This file stays the release critical path.** The two sequences are independent; the audit queue
+> is about correctness, this one is about shipping.
+
+**Everything below this line predates the 2026-08-08 scope reduction and is stale in places** — its
+"Standing constraints" section names `taliesin features` (cut in wave 2), "four gates" (there are
+eleven), "FIVE drift gates; a RETIRED one trips EIGHT" (`CLAUDE.md` now says four and one), and owes a
+four-projection sweep to `taliesin read`, `skim.rs` and `llms-full.txt`, all three cut. Filed as S18
+in the audit queue. Trust `CLAUDE.md` over this file on any of those.
+
 **The whole file is now one sequence: ship the thing.** The five items below are ordered, and the
 order is the plan, not a ranking. 103 → 100 → 148 → 149 → 170.
 

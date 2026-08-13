@@ -21,6 +21,24 @@ are about to add a paragraph here, it belongs in one of those files instead.
 Each of these was filed as a backlog item and is not a task. Kept because deleting them costs a
 session to rediscover.
 
+- **Two 2026-08-13 audit findings were refuted and must not be re-filed.** (1) "A block containing a
+  `{{< input >}}` reports an end column past the end of its own source line"
+  (`render/extension/mod.rs`). (2) "`codeAction`'s quick fix builds a buffer-rewriting
+  `WorkspaceEdit` from client-supplied data with no cross-check" (`lsp.rs`) — the "Change to `X`" fix
+  returning a `WorkspaceEdit` is the standard LSP contract, is user-invoked rather than
+  server-initiated, and is pinned by its own test; it does **not** breach the single-editing-surface
+  rule. Confirmed findings from that round are the live queue in
+  [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md).
+- **The recorded "10 unused offered vocabulary names" tail is stale by eight; do not re-derive it.**
+  Re-measured 2026-08-13: `vocab.rs:351-355` filters `UNSUPPORTED_KEYS` (removing `csl`) and
+  `:316-324` filters `RETIRED_XREF_PREFIXES` (the seven theorem prefixes), so the real tail is
+  **two** — `_site.yml`'s `head:` and `python:`. Every other offered name in `CELL_OPTION_KEYS`,
+  `CALLOUT_KINDS`, `INPUT_TYPES`, `DIV_FEATURE_CLASSES`, `LISTING_KEYS` and `HERO_KEYS` is witnessed
+  by the shipped read set. **There is no feature tail left to cut.**
+- **`corpus/tarn` is NOT cuttable, despite reading as a synthetic persona fixture.**
+  `tools/build-site.sh:41-43` composes it into the marketing deploy (so deleting it 404s a published
+  page and trips gate 5), and its 16 tests are the only golden for cross-page `@sec-` numbering by
+  chapter. Re-confirmed 2026-08-13.
 - **The cold-build cliff (3,981 ms vs 789 ms warm) is correct as-is.** Kernel *variable* state is
   never cached — the property that makes the freeze cache trustworthy — so a cold start genuinely
   cannot skip work unless the whole document is unchanged. **The waste is inherent to a correctness
