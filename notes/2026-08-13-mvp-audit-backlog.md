@@ -4,7 +4,7 @@ Durable state for the post-cut defect sweep. **This file is the handoff.** A fre
 needs only this file: every item carries its own anchor, its own reproduction command and
 its own done-condition, so none of them requires the conversation that produced it.
 
-Produced by a 48-agent audit at `aceb566b` (5 scope lenses + 8 subsystem bug finders, one
+Batch 10 (S1-S9) and S13 landed 2026-08-13. Produced by a 48-agent audit at `aceb566b` (5 scope lenses + 8 subsystem bug finders, one
 adversarial refuter per finding). 34 candidate defects, **2 refuted** (recorded in
 [DO-NOT-REBUILD.md](DO-NOT-REBUILD.md), do not re-file), 32 confirmed, **29 distinct**
 after removing three cross-area duplicates. Plus 36 scope findings, of which 16 survived
@@ -30,7 +30,7 @@ features the README advertises, and every gate is green.
 | | |
 |---|---|
 | `cargo test --workspace` | **81 suites, 1,352 passed, 0 failed, 0 ignored, exit 0** (measured 2026-08-13, with `TALIESIN_PYTHON="$PWD/.venv/bin/python"`) |
-| `./tools/gates.sh` | **NOT RUN for this audit.** It was held back so the eleven gates would not take the cargo lock while agents worked. Run it before the first batch to establish the real baseline. |
+| `./tools/gates.sh` | **12 gates, all pass** (measured 2026-08-13 on `d0b4bcdf`, with `TALIESIN_PYTHON="$PWD/.venv/bin/python"`). The audit had held it back so the gates would not take the cargo lock while agents worked. |
 | Working tree | clean, untouched by the audit |
 
 **Every defect below exists in a tree where those 1,352 tests pass.** That is the finding
@@ -82,112 +82,6 @@ not add coverage where the *remaining* surface became load-bearing.
 
 Where a refuter narrowed or widened a finding, the corrected statement is what is written
 here, not the finder's original.
-
----
-
-# BATCH 10: the shipping surface
-
-Under 30 lines of edits, and it clears every product-facing incoherence the audit found.
-Nothing here is a code change. **No gate reads any of it**, which is why it drifted:
-`stale_docs.rs`'s `documented_cli_flags_exist_in_the_cli` is deliberately scoped to
-`docs/guide/reference/cli.tmd`, and `shipped_docs_do_not_use_a_retired_front_matter_key`
-matches a retired key only at column 0.
-
-## S1 [V] BLOCKING: `README.md:157-165` advertises four removed features
-
-| Advertised | Reality |
-|---|---|
-| `@thm-` cross-references (`:158`) | in `RETIRED_XREF_PREFIXES` (`cite/render.rs:54`); no target can be defined |
-| `#| fig-export: x.pdf`, a headline bullet with two lines of prose (`:160-162`) | retired; the only mention in `crates/` is a test comment calling it retired |
-| "a figure lightbox" (`:163`) | `crates/core/tests/retired_names.rs:294` is `the_lightbox_is_gone_from_the_client_bundle` |
-| "mobile TOC pull-up sheet" (`:164-165`) | zero hits; `render/tests.rs:3515` records both it and the lightbox as deleted |
-
-`.github/workflows/release.yml` copies `README.md` into every release tarball, so this ships
-with the binary. Delete about 9 lines.
-
-## S2 [V] MAJOR: `README.md:5-6` promises a `tali` alias no build produces
-
-`crates/server/Cargo.toml:10-12` declares one `[[bin]] name = "taliesin"`; `release.yml`
-packages only that; nothing creates a symlink. The only `tali` on this machine is an
-uncommitted hand-made symlink from 2026-07-02. A reader who types the shorter spelling the
-README just taught them gets command-not-found on their first command. Delete 1 line, or
-ship the alias.
-
-## S3 [V] MAJOR: three shipped pages advertise R cells
-
-`site/features.tmd:77` ("Python and R cells run against the warm kernel"),
-`site/index.tmd:91` ("executable Python/R cells"), `docs/guide/index.tmd:98` ("Python/R
-cells"). `{r}` was cut in wave 6 and is in `RETIRED_CELL_LANGS`; a reader who follows the
-copy gets a warning and an unexecuted block. About 3 lines.
-
-## S4 [A] MAJOR: the guide promises prebuilt tarballs unconditionally
-
-`docs/guide/using/getting-started.tmd:10-13` opens Install with "Every tagged release
-attaches a prebuilt `.tar.gz` ... Unpack it, put the `taliesin` binary on your `PATH`, and
-skip the rest of this section." No tag has ever existed and `release.yml` has never run on
-any repo state. `README.md:73-77` was fixed in W1 to carry the caveat; the guide's copy was
-not, and the guide is where the README's "Getting started" link lands. About 2 lines.
-
-## S5 [A] MEDIUM: `docs/guide/reference/cli.tmd` still teaches the retired `prose-lint:` family
-
-Four mentions, not three: `:63`, `:102` (the headline example of the `suggestion` severity),
-`:141` (a dedicated row in the "everything the lint looks at" table), and `:109`'s sample
-output ("weasel word `simply`"). Retired 2026-08-02; the binary now warns and
-`--check-only` exits 1. The stale-doc gate cannot see it because all mentions are
-inline-backticked inside prose and table cells.
-
-## S6 [A] MINOR: `init`'s scaffold omits `url:`
-
-The scaffold writes `_site.yml` = `title: My site` and an `index.tmd` carrying `listing:`
-with dated posts, i.e. explicitly a blog, which is the one shape that wants a feed. Feeds,
-`sitemap.xml` and `robots.txt` are all gated on `canonical_base()`, so the entire
-publish-adjacent surface is off by default and the build summary simply omits it.
-
-One commented line (`url: "https://example.com"  # set this to publish a feed + sitemap`).
-No new knob. (The other half of that experience — the false offline warnings the generated
-feed tag drew once `url:` *was* set — was A25, fixed in batch 8, so only the silence-when-off
-half is left.)
-
-## S7 [A] MAJOR: the shipped screencast teaches the wrong click-to-source gesture
-
-`site/assets/live-edit-dark.mp4` is embedded on `site/index.tmd:77` and
-`site/features.tmd:15`. A frame reads "Double-click any block in the preview and the editor
-jumps to the exact line it came from". Double-click does nothing:
-`web-client/client.js:1485` returns unless `ctrlKey || metaKey`. The gesture changed
-2026-07-28 (`0ef2f509`); the videos are dated Jun 19.
-
-Every *text* surface is correct (`README.md:12`, `site/features.tmd:40`,
-`docs/guide/using/preview.tmd:29`, `editor/vscode/README.md:7`), so this is the one wrong
-instruction, on the shop window, for load-bearing goal #1, in a binary asset no gate can
-grep.
-
-**Re-recording reproduces the bug:** `tools/record-demo/demos/live-edit.tmd:40` and
-`sample.tmd:43` both still say "Double-click". Fix those in the same commit, or cut the
-embeds (about 4 lines). **Interacts with S9**, which proposes deleting `tools/record-demo`.
-
-## S8 [A] DECIDE: click-to-source is hard-coded to `vscode://`
-
-`web-client/client.js:1415` and `:1461` do
-`window.location.href = "vscode://file" + ...` unconditionally, with no config key, no env
-var and no fallback. Meanwhile `taliesin lsp --help` sells "any LSP editor (Neovim, Helix,
-Zed, VS Code)", `docs/guide/reference/cli.tmd:410` ships a Helix `languages.toml` snippet,
-and the companion is not on the Marketplace.
-
-So the day-one story for a non-VS-Code user is: the LSP works, the preview works, and the
-feature the README numbers `1.` fails silently.
-
-**The recommendation is one documentation sentence in `docs/guide/using/preview.tmd:29`, not
-a knob.** "Minimal config: perfect the default before adding a knob" plus zero users decides
-it. Recorded here because it is the sharpest MVP-boundary tension the audit found and the
-author may disagree.
-
-## S9 [A] NOTE: `build` prints an error-severity diagnostic as `warn` and exits 0
-
-Unparseable YAML front matter is `error:` + exit 1 under `--check-only` and `warn` + exit 0
-under plain `build`, which still writes the HTML. A first user who never learns about
-`--check-only` publishes a page whose `title:`, `bibliography:` and `listing:` were silently
-dropped, having seen "built" and a zero exit. The gate catches it, which is why this is a
-note. Leave, or align the severity.
 
 ---
 
@@ -255,18 +149,6 @@ Two banner edits, both worse than inert:
   circular.
 
 **This file is part of the problem it describes.** Delete it when it is empty.
-
-## S13 [A] MINOR: `init --json` and `new post --json` falsify the manual
-
-`docs/guide/reference/cli.tmd:78` states that `build --check-only --format json` "is the
-tool's one machine-readable surface". There are four: `build`, `doctor`, `init`, `new`.
-`grep -rn '\-\-json' docs --include='*.tmd'` returns nothing, so neither flag appears
-anywhere in the manual, including its own row in cli.tmd's command table. Each also accepts
-`--format human|json` where `human` is a pure no-op, and each carries its own
-`bad_format_error` branch.
-
-About 90 lines across `cli.rs:63,70-120,338-360,430-449`. **Deleting them makes the manual
-true**, which is the cheaper direction.
 
 ## S14 [A] MINOR: cut-wave residue in production source comments
 

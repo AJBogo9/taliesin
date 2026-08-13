@@ -342,13 +342,14 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
     let executed =
         crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
-    let (html, problems, diagnostics, kernel_failure) = match executed {
+    let (html, problems, unparseable, diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
             problems,
+            unparseable,
             diagnostics,
             kernel_failure,
-        })) => (html, problems, diagnostics, kernel_failure),
+        })) => (html, problems, unparseable, diagnostics, kernel_failure),
         Ok(Err(e)) => {
             log::error(&format!("cannot start runtime: {e}"));
             return ExitCode::FAILURE;
@@ -383,11 +384,23 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // so the HTML pipes cleanly.
     if stdout {
         print!("{html}");
-        return finalize_build(true, strict, problems, kernel_failure.as_deref());
+        return finalize_build(
+            true,
+            strict,
+            problems,
+            unparseable,
+            kernel_failure.as_deref(),
+        );
     }
     if let Some(dir) = out_dir {
         let wrote = build_dir(&html, base, Path::new(dir), started);
-        return finalize_build(wrote, strict, problems, kernel_failure.as_deref());
+        return finalize_build(
+            wrote,
+            strict,
+            problems,
+            unparseable,
+            kernel_failure.as_deref(),
+        );
     }
     let out: PathBuf = out_html
         .map(PathBuf::from)
@@ -400,7 +413,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&format!("{}{}", out.display(), elapsed_note(started)));
-            finalize_build(true, strict, problems, kernel_failure.as_deref())
+            finalize_build(
+                true,
+                strict,
+                problems,
+                unparseable,
+                kernel_failure.as_deref(),
+            )
         }
         Err(e) => {
             log::error(&format!("cannot write {}: {e}", out.display()));
@@ -420,6 +439,22 @@ fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
     }
 }
 
+/// Print one located diagnostic at the severity its validator gave it.
+///
+/// Every one of these sites called [`log::warn`] unconditionally until 2026-08-13, which
+/// printed an `error` as `warn` and so made `build` disagree with `--check-only` about the
+/// same diagnostic on the same document. Severity is a field on `render::Warning`, set by
+/// the validator that found the defect, so `build` and `--check-only` can no longer
+/// deciding what fails the run — so a reporting channel that discards it is the channel
+/// that has to be fixed, not the exit code alone.
+fn log_located(w: &taliesin_core::render::Warning, fallback: &str) {
+    let line = locate(w, fallback);
+    match w.severity {
+        taliesin_core::Severity::Error => log::error(&line),
+        _ => log::warn(&line),
+    }
+}
+
 /// A `  ·  412ms` / `  ·  1.34s` suffix for a build summary. `preview` has always printed
 /// how long startup took; a build printed nothing, so a cold kernel boot or a slow page was
 /// invisible without wrapping the command in `time`.
@@ -432,15 +467,26 @@ fn elapsed_note(started: std::time::Instant) -> String {
     }
 }
 
-/// Final exit for a single-doc build. `--strict` turns problems into a failure (the page
-/// is still written, but CI gets a non-zero exit); otherwise a non-strict build that
-/// shipped with problems prints a closing tally so the silent degradation is visible
+/// Final exit for a single-doc build. An **unparseable** YAML block (front matter or
+/// `_site.yml`) fails unconditionally; `--strict` widens the failure to every other problem.
+/// Either way the page is still written, but CI gets a non-zero exit. A non-strict build
+/// that shipped with problems prints a closing tally so the silent degradation is visible
 /// (DX12). `wrote` is false only on a write/create error, which already failed and
-/// reported itself, so neither summary applies.
+/// reported itself, so no summary applies.
+///
+/// **Only unparseable YAML is unconditional, and the line is deliberate.** A broken
+/// cross-reference or a dead link is `error` severity too, but the tool has always shipped
+/// a page carrying one and left the exit to `--strict`. Widening this to all of severity
+/// `error` also fails `--no-exec`, where an unexecuted `{js}` figure's own `@fig-` ref is
+/// broken *by the flag* rather than by the document -- and `--no-exec` is what the
+/// pre-push gate and `tools/build-site.sh --check` run. An unparseable block is different
+/// in kind: nothing in it was read, so the page silently lost its `title:`,
+/// `bibliography:` and `listing:` while reporting success.
 fn finalize_build(
     wrote: bool,
     strict: bool,
     problems: usize,
+    unparseable: usize,
     kernel_failure: Option<&str>,
 ) -> ExitCode {
     if !wrote {
@@ -450,6 +496,13 @@ fn finalize_build(
     // the actionable one. A document whose whole value is executed output, shipped with
     // every cell stripped back to source, is not a build that succeeded.
     if report_kernel_failure(kernel_failure) {
+        return ExitCode::FAILURE;
+    }
+    // Before `--strict` for the same reason: "this block did not parse" is the more
+    // specific report, and naming `--strict` in its message would be a lie -- the flag is
+    // not what failed this build and turning it off will not un-fail it.
+    if unparseable > 0 {
+        warn_unparseable(unparseable);
         return ExitCode::FAILURE;
     }
     if strict && problems > 0 {
@@ -475,6 +528,19 @@ fn report_kernel_failure(kernel_failure: Option<&str>) -> bool {
         }
         None => false,
     }
+}
+
+/// Log the unconditional unparseable-YAML failure summary (shared by both build paths).
+///
+/// Deliberately does not mention `--strict`: that flag neither caused this failure nor can
+/// suppress it, and the non-strict tally's "run with --strict to fail the build" line right
+/// beside it would read as the opposite advice.
+fn warn_unparseable(unparseable: usize) {
+    log::error(&format!(
+        "{unparseable} unparseable YAML block{}; failing the build. Every key in it was \
+         dropped, so the output was written without it.",
+        if unparseable == 1 { "" } else { "s" }
+    ));
 }
 
 /// Log the `--strict` failure summary (shared by the single-doc and site build paths).
@@ -608,6 +674,10 @@ enum BuildResult {
     Page {
         html: String,
         problems: usize,
+        /// The `error`-severity subset of `problems`: diagnostics saying the document is
+        /// *wrong* rather than merely degraded. These fail the build with no `--strict`.
+        /// A crashed code cell is counted in `problems` but never here.
+        unparseable: usize,
         /// The located diagnostics, structured, for `--format json`. Same set the human
         /// log emits, in the same order.
         diagnostics: Vec<crate::lint::Diagnostic>,
@@ -642,20 +712,29 @@ fn build_page_executing(
         // `problems` is what `--strict` fails on: located render warnings, broken
         // cross-refs, and crashed code cells — each already logged below.
         let mut problems = 0usize;
+        // The `error`-severity subset of `problems`, which fails the build with no
+        // `--strict`. Counted here rather than off `diagnostics` because
+        // `Diagnostic::new` hard-codes `Severity::Error` and the cell-error diagnostics
+        // added at the end of this function are deliberately NOT build failures.
+        let mut unparseable = 0usize;
         // The same diagnostics, structured, for `--format json` — collected in the exact
         // order they are logged so the two channels agree.
         let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
         // Malformed front-matter YAML: the live servers + `check` report this, but a
         // single-doc `build` used to skip it, so a typo'd `---` block built clean and
-        // even passed `--strict`. Surface it (located) and count it toward --strict.
+        // even passed `--strict`. Surface it (located) and fail on it: every key in the
+        // block is dropped, so the page ships without the `title:`, `bibliography:` or
+        // `listing:` the author wrote. It has no `render::Warning` behind it to carry a
+        // severity, so the classification is made here.
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
-            log::warn(&format!("{label}:{line}: {message}"));
+            log::error(&format!("{label}:{line}: {message}"));
             diagnostics.push(crate::lint::Diagnostic::new(
                 label.to_string(),
                 Some(line),
                 message,
             ));
             problems += 1;
+            unparseable += 1;
         }
         // Single-document build: confine includes/resources to the document's own project
         // (its nearest `_site.yml`, else its own directory), so this emits the same
@@ -667,7 +746,7 @@ fn build_page_executing(
         // are logged here so a `build` never ships a silently dropped include.
         for w in &doc.warnings {
             // Located, as `check` reports them: a `--strict` failure should name the line.
-            log::warn(&locate(w, label));
+            log_located(w, label);
             diagnostics.push(crate::lint::diag_from(w, label));
         }
         // Advice (severity `suggestion`) is reported but never blocks: a rule that suggests
@@ -678,7 +757,7 @@ fn build_page_executing(
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
-            log::warn(&locate(w, label));
+            log_located(w, label);
             diagnostics.push(crate::lint::diag_from(w, label));
         }
         problems += xrefs.len();
@@ -694,7 +773,7 @@ fn build_page_executing(
             crate::lint::Scope::Standalone,
         );
         for w in &statics {
-            log::warn(&locate(w, label));
+            log_located(w, label);
             diagnostics.push(crate::lint::diag_from(w, label));
         }
         problems += crate::lint::blocking(&statics);
@@ -790,6 +869,7 @@ fn build_page_executing(
                 taliesin_core::render_doc_to_page_mermaid_file(&doc, stem, mermaid_src)
             },
             problems,
+            unparseable,
             diagnostics,
             kernel_failure,
         }
@@ -1206,12 +1286,21 @@ const _: fn() = || {
 /// `_freeze/<rel>.json`), so concurrent pages never race on the same path. The caller
 /// replays everything in `site.pages` order, making the whole build deterministic.
 struct PageOutcome {
-    /// Warn lines, in the exact order the sequential build emitted them (cell errors
+    /// Log lines, in the exact order the sequential build emitted them (cell errors
     /// first, then render/cross-ref warnings), replayed by the caller in page order.
-    warnings: Vec<String>,
+    ///
+    /// Each carries the severity its validator set, because the caller has to print it at
+    /// that severity. Flattening these to plain strings and replaying them all through
+    /// `log::warn` is what let a site build report an `error` as `warn` — and once an
+    /// error-severity diagnostic fails the build, a failure whose every printed line said
+    /// `warn` would name nothing the author could act on.
+    warnings: Vec<(taliesin_core::Severity, String)>,
     /// The same findings, structured, for `--format json` — in the same order as `warnings`.
     diagnostics: Vec<crate::lint::Diagnostic>,
     problems: usize,
+    /// The `error`-severity subset of `problems`, folded across pages into the build's
+    /// unconditional failure. A crashed cell is in `problems` but never here.
+    unparseable: usize,
     /// Set when this page has executable cells whose kernel could not start: the full
     /// "here is everything I searched" report. Folded across the build into one fatal
     /// error (the interpreter cannot differ between pages of one build, so the first is
@@ -1245,11 +1334,12 @@ async fn build_one_page(
             None,
             msg.clone(),
         ));
-        warnings.push(msg);
+        warnings.push((taliesin_core::Severity::Error, msg));
         return PageOutcome {
             warnings,
             diagnostics,
             problems: 0,
+            unparseable: 0,
             kernel_failure: None,
             written: false,
             used: AssetUse::default(),
@@ -1263,11 +1353,16 @@ async fn build_one_page(
         Some(&site.render_defaults()),
     );
     let mut problems = 0usize;
+    let mut unparseable = 0usize;
     // Malformed front-matter YAML: the lenient line-parser silently mis-extracts fields, so
     // the page builds with the wrong title/format. `check` reports it; the site build did not.
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
         problems += 1;
-        warnings.push(format!("{}:{line}: {message}", page.rel));
+        unparseable += 1;
+        warnings.push((
+            taliesin_core::Severity::Error,
+            format!("{}:{line}: {message}", page.rel),
+        ));
         diagnostics.push(crate::lint::Diagnostic::new(
             page.rel.clone(),
             Some(line),
@@ -1282,7 +1377,7 @@ async fn build_one_page(
         crate::lint::page_static_diagnostics(&src, &doc.blocks, base, crate::lint::Scope::InSite);
     problems += crate::lint::blocking(&statics);
     for w in &statics {
-        warnings.push(locate(w, &page.rel));
+        warnings.push((w.severity, locate(w, &page.rel)));
         diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
     let mut exec =
@@ -1309,7 +1404,7 @@ async fn build_one_page(
                 None,
                 msg.clone(),
             ));
-            warnings.push(msg);
+            warnings.push((taliesin_core::Severity::Warning, msg));
         }
     }
     // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
@@ -1334,7 +1429,7 @@ async fn build_one_page(
     for w in &render_warnings {
         // Located, the way `check` reports them. These carry a file + line and were being
         // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
-        warnings.push(locate(w, &page.rel));
+        warnings.push((w.severity, locate(w, &page.rel)));
         diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
     problems += crate::lint::blocking(&render_warnings);
@@ -1342,7 +1437,7 @@ async fn build_one_page(
     // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
     // Informational — deferred into the page's warnings, never counted in `problems`/`--strict`.
     for w in offline_ref_warnings(&html, &page.rel) {
-        warnings.push(w);
+        warnings.push((taliesin_core::Severity::Warning, w));
     }
     // Which conditional blobs this page linked, read off the finished HTML (item 137). Taken
     // BEFORE the write, which moves `html`.
@@ -1360,7 +1455,7 @@ async fn build_one_page(
                 None,
                 msg.clone(),
             ));
-            warnings.push(msg);
+            warnings.push((taliesin_core::Severity::Error, msg));
             false
         }
     };
@@ -1368,6 +1463,7 @@ async fn build_one_page(
         warnings,
         diagnostics,
         problems,
+        unparseable,
         kernel_failure,
         written,
         used,
@@ -1660,14 +1756,21 @@ async fn build_site_async(
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
+    // ...and the same finding is error-severity: with the config unparsed the site has no
+    // title, no nav and no `url:`, so the feed/sitemap surface silently vanishes. Every
+    // other `site.warnings` entry (a missing config, a benign notice) stays advice.
+    let mut config_errors = 0usize;
     for w in &site.warnings {
         if taliesin_core::site::is_malformed_config_warning(w) {
             config_problems += 1;
+            config_errors += 1;
             diagnostics.push(crate::lint::Diagnostic::new(
                 "_site.yml".to_string(),
                 None,
                 w.clone(),
             ));
+            log::error(w);
+            continue;
         }
         log::warn(w);
     }
@@ -1855,6 +1958,7 @@ async fn build_site_async(
     // located warnings, broken cross-refs, crashed cells, and page-task panics (each
     // already logged where it occurs).
     let mut problems = config_problems;
+    let mut unparseable = config_errors;
 
     // Build into a slot per page (indexed by page order) so results aggregate
     // deterministically regardless of completion order. A `Semaphore` of size
@@ -1911,11 +2015,15 @@ async fn build_site_async(
     // reaches the same set whichever order the concurrent builds completed in.
     let mut used = AssetUse::default();
     for outcome in outcomes.into_iter().flatten() {
-        for w in &outcome.warnings {
-            log::warn(w);
+        for (sev, w) in &outcome.warnings {
+            match sev {
+                taliesin_core::Severity::Error => log::error(w),
+                _ => log::warn(w),
+            }
         }
         diagnostics.extend(outcome.diagnostics);
         problems += outcome.problems;
+        unparseable += outcome.unparseable;
         kernel_failure = kernel_failure.or(outcome.kernel_failure);
         used.merge(outcome.used);
         if outcome.written {
@@ -2045,19 +2153,19 @@ async fn build_site_async(
     // deploy with exit 0.
     for (rel, w) in site.validate_cross_page_links() {
         problems += 1;
-        log::warn(&locate(&w, &rel));
+        log_located(&w, &rel);
         diagnostics.push(crate::lint::diag_from(&w, &rel));
     }
     // The `_site.yml` chrome's own hrefs, which no page body carries and so no page-body
     // harvest could ever see. Same registry, same rules; site-wide blast radius.
     for w in site.validate_chrome_links() {
         problems += 1;
-        log::warn(&locate(&w, "_site.yml"));
+        log_located(&w, "_site.yml");
         diagnostics.push(crate::lint::diag_from(&w, "_site.yml"));
     }
     for w in site.validate_shared_bibliography() {
         problems += 1;
-        log::warn(&locate(&w, "_site.yml"));
+        log_located(&w, "_site.yml");
         diagnostics.push(crate::lint::diag_from(&w, "_site.yml"));
     }
 
@@ -2082,16 +2190,23 @@ async fn build_site_async(
     // successful build of a book whose value is its executed output. `--no-exec` is the
     // way to ask for source-only rendering on purpose.
     let kernel_fail = report_kernel_failure(kernel_failure.as_deref());
+    // An `error`-severity diagnostic fails the site build with no `--strict`, on the same
+    // rule the single-doc path uses: a malformed `_site.yml` drops the title, the nav and
+    // the `url:` that gates the whole feed/sitemap surface, and a page whose front matter
+    // did not parse lost its own `title:`/`listing:`. Both used to ship green.
+    let unparseable = unparseable;
     let strict_fail = strict && problems > 0;
     if kernel_fail {
         // The kernel error is the actionable one; don't bury it under a second tally.
+    } else if unparseable > 0 {
+        warn_unparseable(unparseable);
     } else if strict_fail {
         warn_strict(problems);
     } else {
         warn_nonstrict_problems(problems);
     }
     SiteBuildOutcome {
-        ok: !strict_fail && !kernel_fail,
+        ok: unparseable == 0 && !strict_fail && !kernel_fail,
         diagnostics,
     }
 }

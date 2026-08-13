@@ -73,12 +73,6 @@ See more, with the source beside each, on [the showcase](showcase.tmd).
 taliesin preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
 ```
 
-<figure class="tali-figure">
-<video src="assets/live-edit-dark.mp4" controls muted loop playsinline preload="metadata"
-       aria-label="Screencast"></video>
-<figcaption>Save the file, and only the block you touched re-renders in place, with scroll and live state preserved.</figcaption>
-</figure>
-
 ## One source, many outputs
 
 Write once in plain text and choose the output in the front matter. Every format
@@ -88,7 +82,7 @@ loop, so anything you learn for one carries to the rest.
 ::: {.feature-grid}
 ::: {.feature}
 ### Blog posts & papers
-Prose, math, figures, citations, and cross-references, with executable Python/R
+Prose, math, figures, citations, and cross-references, with executable Python
 cells and live interactive graphics.
 
 [See an example →](formats.tmd#blog-posts)

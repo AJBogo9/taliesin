@@ -121,37 +121,40 @@ fn a_retired_kind_says_what_to_do_instead() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `--json` prints a machine receipt (`{kind, slug, created, preview}`) and nothing else on
-/// stdout, so an agent knows exactly what it made and where.
+/// `new` accepts no `--json`/`--format`: both went on 2026-08-13.
+///
+/// They printed a `{kind, slug, created, preview}` receipt, appeared nowhere in the manual
+/// (`grep -rn -- --json docs --include='*.tmd'` returned nothing, including `new`'s own row
+/// in cli.tmd's command table), and `human` was a pure no-op. Meanwhile cli.tmd states that
+/// `build --check-only --format json` is "the tool's one machine-readable surface" — there
+/// were four. Deleting these made the manual true, which was the cheaper direction.
+///
+/// Not in `RETIRED_FLAGS`: that register is unscoped and `a_retired_flag_names_what_
+/// happened_instead_of_guessing` asserts a retired flag is offered by NO live parser, while
+/// `--json`/`--format` are still `build`'s and `doctor`'s. So this is a plain unknown flag,
+/// and this test is what records the removal instead of a register entry.
 #[test]
-fn new_json_reports_what_it_made() {
+fn new_rejects_the_retired_json_flags() {
     let dir = tmp("json");
-    let (ok, stdout, stderr) = run(&[
-        "new",
-        "post",
-        "my-post",
-        "--dir",
-        dir.to_str().unwrap(),
-        "--json",
-    ]);
-    assert!(ok, "stderr: {stderr}");
-    let parsed: serde_json::Value =
-        serde_json::from_str(stdout.trim()).expect("stdout is pure JSON");
-    assert_eq!(parsed["kind"], "post");
-    assert_eq!(parsed["slug"], "my-post");
-    let created = parsed["created"].as_array().expect("created array");
-    assert_eq!(created.len(), 1, "a post creates one index.tmd");
-    assert!(
-        created[0].as_str().unwrap().ends_with("index.tmd"),
-        "created names the file: {stdout}"
-    );
-    assert!(
-        parsed["preview"]
-            .as_str()
-            .unwrap()
-            .contains("taliesin preview"),
-        "preview command present: {stdout}"
-    );
+    for flag in ["--json", "--format"] {
+        let (ok, stdout, stderr) = run(&[
+            "new",
+            "post",
+            "my-post",
+            "--dir",
+            dir.to_str().unwrap(),
+            flag,
+        ]);
+        assert!(!ok, "`new {flag}` must fail, not be silently dropped");
+        assert!(
+            stderr.contains(flag),
+            "the error names the flag typed: {stderr}"
+        );
+        assert!(
+            stdout.trim().is_empty(),
+            "a rejected flag writes no receipt to stdout: {stdout}"
+        );
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
 

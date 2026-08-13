@@ -11,12 +11,6 @@ hero:
     - { text: "Read the docs", href: "docs/guide/" }
 ---
 
-<figure class="tali-figure">
-<video src="assets/live-edit-dark.mp4" controls muted loop playsinline preload="metadata"
-       aria-label="Screencast"></video>
-<figcaption>One save. Only the changed block re-renders, in place.</figcaption>
-</figure>
-
 ## The edit loop
 
 A long-running Rust server watches the file, re-renders on save, and pushes only
@@ -74,7 +68,7 @@ automatically when you toggle light and dark.
 
 ::: {.feature}
 ### Executable code
-Python and R cells run against the warm kernel; their output (text and matplotlib
+Python cells run against the warm kernel; their output (text and matplotlib
 figures alike) is spliced back into the page as real blocks.
 :::
 

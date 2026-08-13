@@ -95,7 +95,7 @@ predictable.
 :::
 
 The rest of this guide tours what you can put on a page: [the live preview
-loop](using/preview.tmd), [executable content](using/code.tmd) (Python/R cells,
+loop](using/preview.tmd), [executable content](using/code.tmd) (Python cells,
 `{js}` cells, 3D graphics), [rich writing](using/writing.tmd) (math, diagrams,
 figures, citations), and [books and sites](using/formats.tmd). For how
 Taliesin works inside, read the companion [Internals](../internals/) book.

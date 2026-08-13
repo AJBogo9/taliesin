@@ -31,7 +31,11 @@ fn malformed_site_yml_fails_strict_build() {
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
     let out = dir.join("_site");
 
-    // Without --strict the build still writes (degraded), exit 0.
+    // Without --strict the build still WRITES the degraded site, but no longer exits 0:
+    // since 2026-08-13 an unparseable YAML block fails unconditionally, because nothing in
+    // it was read (no title, no nav, no `url:` and so no feed or sitemap) and the old exit
+    // 0 was the one outcome CI reads as "fine". `--strict` is what escalates every *other*
+    // problem; it is not what decides this one.
     let lenient = taliesin()
         .arg("build")
         .arg(&dir)
@@ -41,12 +45,16 @@ fn malformed_site_yml_fails_strict_build() {
         .expect("run lenient build");
     let lenient_err = String::from_utf8_lossy(&lenient.stderr);
     assert!(
-        lenient.status.success(),
-        "a malformed config without --strict still builds (degraded): {lenient_err}"
+        !lenient.status.success(),
+        "an unparseable _site.yml fails with no --strict: {lenient_err}"
     );
     assert!(
         lenient_err.contains("not valid YAML"),
         "the malformed config is still reported: {lenient_err}"
+    );
+    assert!(
+        out.join("index.html").exists(),
+        "the degraded site is still written; only the exit code changes"
     );
 
     // With --strict the same malformed config must fail the build (non-zero exit).
@@ -64,9 +72,12 @@ fn malformed_site_yml_fails_strict_build() {
         !strict.status.success(),
         "a malformed _site.yml must fail --strict, stderr was:\n{strict_err}"
     );
+    // Deliberately NOT the `--strict` tally: the unparseable-YAML failure takes precedence
+    // and does not name the flag, because `--strict` neither caused this failure nor can
+    // suppress it. Pointing at it here would read as "turn this off to make it pass".
     assert!(
-        strict_err.contains("--strict") && strict_err.contains("problem"),
-        "the strict failure names the problem count: {strict_err}"
+        strict_err.contains("unparseable YAML block"),
+        "the failure names the unparseable block, not --strict: {strict_err}"
     );
 }
 
@@ -105,15 +116,23 @@ fn single_doc_malformed_front_matter_fails_strict() {
     // `bad: : x` is a YAML syntax error (a mapping value that is itself a bare colon).
     fs::write(&doc, "---\ntitle: OK\nbad: : x\n---\n\nProse.\n").unwrap();
 
-    // Lenient: still builds (degraded), exit 0, but reports the error.
+    // Lenient: still WRITES the degraded page, but fails since 2026-08-13. Every key in an
+    // unparseable block is dropped, so this page shipped without the `title:` it declares
+    // -- and with a `bibliography:`/`listing:` silently gone -- having printed `built` and
+    // exited 0. An author who never learns `--check-only` publishes that.
     let lenient = taliesin()
         .arg("build")
         .arg(&doc)
         .output()
         .expect("lenient build");
+    let lenient_err = String::from_utf8_lossy(&lenient.stderr);
     assert!(
-        lenient.status.success(),
-        "a malformed front-matter without --strict still builds"
+        !lenient.status.success(),
+        "unparseable front matter fails with no --strict: {lenient_err}"
+    );
+    assert!(
+        dir.join("post.html").exists(),
+        "the degraded page is still written; only the exit code changes"
     );
 
     let strict = taliesin()
@@ -293,12 +312,22 @@ fn nonstrict_build_summarizes_problems() {
 
 #[test]
 fn nonstrict_site_build_summarizes_problems() {
-    // DX12, site path: a malformed `_site.yml` degrades the whole site to defaults (a
-    // real problem), but a non-strict build ships it green. It must print the same
-    // closing tally as the single-doc path, pointing at `--strict`.
+    // DX12, site path: a build that ships with problems must print the same closing tally
+    // as the single-doc path, pointing at `--strict`, rather than a wordless green exit
+    // after pages of scrolled-past warnings.
+    //
+    // The fixture is a *warning*-severity problem (a missing local image) and not the
+    // malformed `_site.yml` it used to be: since 2026-08-13 an unparseable YAML block
+    // fails unconditionally, so that fixture would exercise the failure path and this
+    // assertion -- that a problem can ship green with a tally -- would test nothing.
+    // `malformed_site_yml_fails_strict_build` covers the unparseable case.
     let dir = tmp_dir("nonstrict-site-summary");
-    fs::write(dir.join("_site.yml"), "title: \"unterminated\nfoo: bar\n").unwrap();
-    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+    fs::write(dir.join("_site.yml"), "title: Fine\n").unwrap();
+    fs::write(
+        dir.join("index.tmd"),
+        "---\ntitle: Home\n---\n\n![a chart](missing.png)\n",
+    )
+    .unwrap();
     let out = dir.join("_site");
     let res = taliesin()
         .arg("build")

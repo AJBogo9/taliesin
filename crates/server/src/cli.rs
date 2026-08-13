@@ -16,14 +16,23 @@ use crate::{log, serve, serve_site};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// `_site.yml` for the scaffold: the minimal flat-native config, just a title.
+/// `_site.yml` for the scaffold: the minimal flat-native config, just a title and a
+/// commented-out `url:`.
 ///
 /// It carried a `# yaml-language-server: $schema=` modeline until Wave 8, pointing at a
 /// copy of the bundled schema that `init` wrote into a `.taliesin/` dot-directory. Both are
 /// gone: the VS Code companion already ships that schema and wires it through
 /// `yamlValidation`, and a project acquiring an unexplained dot-directory to serve every
 /// *other* editor was the wrong trade for the one config file `taliesin lsp` does not serve.
-const INIT_SITE_YML: &str = "title: My site\n";
+///
+/// `url:` is commented rather than absent because the scaffolded `index.tmd` carries a
+/// `listing:` of dated posts — explicitly a blog, the one shape that wants a feed. Atom
+/// feeds, `sitemap.xml` and `robots.txt` are all gated on `canonical_base()`, so with no
+/// `url:` the entire publish-adjacent surface is off and the build summary simply omits it.
+/// Commented-out, it is a knob the author *discovers* on first read of their own config
+/// instead of a default that invents a hostname for them.
+const INIT_SITE_YML: &str =
+    "title: My site\n# url: \"https://example.com\"  # set this to publish a feed + sitemap\n";
 
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
 /// points the new user at the next steps. `.tmd` is the native extension.
@@ -59,29 +68,22 @@ fn init_files() -> Vec<(PathBuf, String)> {
         .collect()
 }
 
-/// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
-const INIT_FLAGS: &[&str] = &["--json", "--format"];
+/// Every long flag `init` accepts, i.e. none: it drives the unknown-flag did-you-mean, and
+/// an empty set means any `-flag` gets a bare "unknown flag" (or a retirement note).
+const INIT_FLAGS: &[&str] = &[];
 
-/// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
-/// the current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint
-/// (or, with `--json`, a `{created, preview}` receipt).
+/// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
+/// current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint.
+///
+/// It took `--json`/`--format` until 2026-08-13, printing a `{created, preview}` receipt.
+/// Neither appeared anywhere in the manual, `human` was a pure no-op, and
+/// `docs/guide/reference/cli.tmd` states that `build --check-only --format json` is the
+/// tool's one machine-readable surface -- which deleting these makes true.
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
-    let mut json = false;
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
+    let it = args[2..].iter();
+    for a in it {
         match a.as_str() {
-            "--json" => json = true,
-            // `--format json` / `--format human`: accept the long spelling too (json is the
-            // shorthand), so `init --format json` doesn't dead-end.
-            "--format" => match it.next().map(|s| s.as_str()) {
-                Some("json") => json = true,
-                Some("human") => json = false,
-                other => {
-                    log::error(&serve::bad_format_error(other));
-                    return ExitCode::FAILURE;
-                }
-            },
             // Any leading dash is a flag, not a directory name. `--` alone would be enough
             // if `-y` had never existed; it did until Wave 8, and a leftover `taliesin init
             // -y` must not scaffold a project into a directory called `-y`.
@@ -104,18 +106,7 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     };
     match scaffold_init(dir) {
         Ok(written) => {
-            if json {
-                let created: Vec<String> =
-                    written.iter().map(|p| p.display().to_string()).collect();
-                let payload = serde_json::json!({
-                    "created": created,
-                    "preview": format!("taliesin preview {where_}"),
-                });
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
-                );
-            } else {
+            {
                 for f in &written {
                     log::built(&f.display().to_string());
                 }
@@ -335,7 +326,6 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     // explicit `--dir` is an instruction and is obeyed as written; the implicit default is
     // the one that has to be checked, because nothing about it was chosen.
     let mut dir_given = false;
-    let mut json = false;
     let mut opts = NewOpts::default();
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -348,19 +338,6 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
                     dir_given = true;
                 }
             }
-            // `--json` prints `{kind, slug, created, preview}` (pure JSON to stdout), so an
-            // agent knows exactly what it made and where. Suppresses the human hints.
-            "--json" => json = true,
-            // `--format json` / `--format human`: accept the long spelling too (json is the
-            // shorthand), so `new --format json` doesn't dead-end.
-            "--format" => match it.next().map(|s| s.as_str()) {
-                Some("json") => json = true,
-                Some("human") => json = false,
-                other => {
-                    log::error(&serve::bad_format_error(other));
-                    return ExitCode::FAILURE;
-                }
-            },
             // `--draft` marks the scaffold `draft: true` (held out of the published build).
             "--draft" => opts.draft = true,
             // Any leading dash is a flag, not a kind or a slug. `--` alone would be enough
@@ -399,14 +376,10 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     }
     match write_new(root, &slug, opts) {
         Ok(written) => {
-            if json {
-                println!("{}", new_json(&slug, &written));
-            } else {
-                for f in &written {
-                    log::built(&f.display().to_string());
-                }
-                println!("{}", new_next_steps(&written[0]));
+            for f in &written {
+                log::built(&f.display().to_string());
             }
+            println!("{}", new_next_steps(&written[0]));
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -427,26 +400,8 @@ fn new_usage() -> ExitCode {
     crate::usage_error("new")
 }
 
-/// The `--json` receipt for a scaffold: `{kind, slug, created:[...], preview}` as pretty
-/// JSON. `kind` stays in the payload with one kind left, because a receipt an agent already
-/// parses should not change shape for a reason the agent cannot see.
-fn new_json(slug: &str, written: &[PathBuf]) -> String {
-    let created: Vec<String> = written.iter().map(|p| p.display().to_string()).collect();
-    let preview = written
-        .first()
-        .map(|p| format!("taliesin preview {}", p.display()))
-        .unwrap_or_default();
-    let payload = serde_json::json!({
-        "kind": NEW_KINDS[0],
-        "slug": slug,
-        "created": created,
-        "preview": preview,
-    });
-    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
-}
-
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft"];
+const NEW_FLAGS: &[&str] = &["--dir", "--draft"];
 
 /// Refuse to scaffold into a directory no project encloses.
 ///

@@ -33,6 +33,16 @@ on Mac) any block to open its exact source line in your editor** (including acro
 add cursor sync without forking anything. The in-repo **VS Code companion**
 (`editor/vscode/`) is exactly that host.
 
+::: {.callout-note}
+## Click-to-source is VS Code only
+
+The deep link is `vscode://` and there is no configuration key for it, so Ctrl-click does
+nothing in Neovim, Helix or Zed. Those editors get everything `taliesin lsp` serves
+(completion, hover, go-to-definition, outline, folding, diagnostics) and the live preview
+itself; it is the browser→editor jump that has one target. An editor that hosts the preview
+and speaks the `tali-goto` `postMessage` protocol gets the jump without the deep link.
+:::
+
 **Getting the companion.** It is **not on the VS Code Marketplace**; you build the `.vsix`
 from this repository and install it yourself:
 

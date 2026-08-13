@@ -2,8 +2,7 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-> The native (and only) source extension is `.tmd`; the CLI is `taliesin`
-> (with `tali` as a shorter alias).
+> The native (and only) source extension is `.tmd`; the CLI is `taliesin`.
 
 A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
 files: blog posts, papers, books, and **multi-page websites**. Built for
@@ -155,15 +154,12 @@ with `data-block-id` + `data-sourcepos` on every block.
   click-to-source jumps into the included file.
 - Callouts, `layout-ncol` grids, attributed `.btn` links, raw `{=html}` passthrough.
 - Citations (`[@key]`) + an auto-generated References section, and cross-references
-  (e.g. `@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`/`@thm-`) into numbered, labelled
-  anchor links.
-- **Print/LaTeX figure export.** Inline matplotlib figures are web-themed without
-  tainting global `rcParams`, so `savefig` stays print-clean; `#| fig-export: x.pdf`
-  writes the figure to a vector/raster file (black-on-white) for `\includegraphics`.
+  (`@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`) into numbered, labelled anchor links.
+- **Print-clean matplotlib.** Inline figures are web-themed without tainting global
+  `rcParams`, so a `savefig` inside the same cell stays black-on-white.
 - Live **`{js}`** cells (a tiny native enhancer with vendored d3 + Observable Plot,
-  no Observable runtime), **mermaid** diagrams, a figure lightbox, themes
-  (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
-  print stylesheet).
+  no Observable runtime), **mermaid** diagrams, themes (light/dark + custom), and a
+  responsive reading layout (print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
   a redesigned navbar/footer + book chapter prev/next, `.tmd`→`.html` link rewriting,
   `listing:` post-card indexes, and `hero:` landing banners. Live preview navigates

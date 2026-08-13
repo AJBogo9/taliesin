@@ -158,7 +158,8 @@ pub(crate) fn blocking(warnings: &[taliesin_core::render::Warning]) -> usize {
 }
 
 /// Serialize just the diagnostics as `{ "diagnostics": [...] }`: the shape `build` emits
-/// under `--format json`, and the tool's one machine-readable surface.
+/// under `--format json`: the machine-readable surface for documents (`doctor --format
+/// json`, which reports on the environment rather than the prose, is the other one).
 pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
     let payload = serde_json::json!({ "diagnostics": diags });
     serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{\"diagnostics\":[]}".to_string())

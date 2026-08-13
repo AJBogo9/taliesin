@@ -240,7 +240,7 @@ COMMANDS:
 Author
   init   [dir]               scaffold a starter site you can preview right away
                              (writes _site.yml + index.tmd; default: current dir)
-  new post <slug> [--dir <root>] [--draft] [--json]
+  new post <slug> [--dir <root>] [--draft]
                              scaffold one dated post, correct on its first save
 
 Preview & build
@@ -367,7 +367,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
         "new" => {
-            "taliesin new post <slug> [--dir <root>] [--draft] [--json]\n\
+            "taliesin new post <slug> [--dir <root>] [--draft]\n\
              \n\
              Scaffold one dated blog post that is correct on its first save: it renders, and\n\
              `build --check-only` passes on it with no diagnostics. It lands in\n\
@@ -380,22 +380,16 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
-             \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
-             \x20 --format human|json  the long spelling of --json\n\
              \n\
              Example:\n\
              \x20 taliesin new post my-first-post --draft\n"
         }
         "init" => {
-            "taliesin init [dir] [--json]\n\
+            "taliesin init [dir]\n\
              \n\
              Scaffold a starter project into dir (default the current directory) and print\n\
              the preview hint: a `_site.yml` holding the title and an `index.tmd` you can\n\
              preview immediately, and nothing else. Refuses to overwrite existing files.\n\
-             \n\
-             Flags:\n\
-             \x20 --json         print a {created, preview} receipt instead of the hint\n\
-             \x20 --format human|json  the long spelling of --json\n\
              \n\
              Add pages by dropping more .tmd files beside index.tmd; make it a book by\n\
              listing them under chapters: in _site.yml.\n\
@@ -943,8 +937,17 @@ mod cli_microcopy_tests {
         // Collected, not asserted per flag: the first miss would otherwise hide the rest, and
         // the whole point is to see the drift as one list.
         let mut undocumented: Vec<String> = Vec::new();
+        // A verb that genuinely accepts no flags. `init` took `--json`/`--format` until
+        // 2026-08-13; it now takes a directory and nothing else, so its const is `&[]` on
+        // purpose rather than because the scan lost its contents. The scanner-integrity
+        // job this assertion shares is carried by the `lists.len() >= 5` floor above, which
+        // is why the const stays declared instead of being deleted.
+        const FLAGLESS: &[&str] = &["init"];
         for (cmd, flags) in lists {
-            assert!(!flags.is_empty(), "`{cmd}`'s flag const parsed as empty");
+            assert!(
+                !flags.is_empty() || FLAGLESS.contains(&cmd.as_str()),
+                "`{cmd}`'s flag const parsed as empty"
+            );
             let help =
                 subcommand_help(&cmd).unwrap_or_else(|| panic!("`{cmd}` has no focused help"));
             for f in flags {
