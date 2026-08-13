@@ -160,33 +160,52 @@ keeping through 1.0 and revisiting when real users exist.**
 
 # BATCH 12: publish-path decisions (the author's, not code)
 
-## S16 [A] BLOCKING: there is no publish path for the manual
+**Re-verified 2026-08-13 at `442603ad`. Every fact below was re-measured, not inherited.**
+S18 landed. S16 and S17 are decisions and are left for the author; a recommendation is
+recorded for each because leaving none is how they get answered by accident.
 
-`gh repo view` says private; `gh release list` is empty; `git tag` holds no `v*`. So every
-README link (clone URL, releases page, the `Docs:` URL `taliesin help` prints) 404s.
-`.github/workflows/ci.yml` has six jobs and **no deploy step**; `tools/build-site.sh`
-composes the deploy but is run only by hand and by `--check`; `site/_site.yml:8` declares
-`url: "https://taliesin.sh"`, which **has no DNS record** and which `seo.rs`/`meta.rs` bake
-into `sitemap.xml`, `robots.txt` and `og:url`.
+## S16 [V] BLOCKING: there is no publish path for the manual
 
-`notes/2026-08-10-mvp-publish-session.md:74-88` lists four steps to a tag and does not
-mention hosting at all. This is a decision, not lines.
+Re-measured: `gh repo view` -> `isPrivate: true`; `gh release list` -> empty; `git tag`
+holds no `v*`; `.github/workflows/ci.yml` has **no deploy step**; `taliesin.sh` resolves to
+**no DNS record**, and `site/_site.yml:8` bakes it into `sitemap.xml`, `robots.txt` and
+`og:url` via `seo.rs`/`meta.rs`. So every README link (clone URL, releases page, the `Docs:`
+URL `taliesin help` prints) 404s today, and `tools/build-site.sh` composes a deploy that is
+run only by hand and by `--check`.
 
-## S17 [A] BLOCKING: the purge set versus "make the repository public"
+**Recommendation: decide hosting BEFORE the first tag, not after.** A tag is what makes
+`release.yml` attach the tarballs the README now correctly caveats, and a tag with no
+reachable docs URL publishes a binary whose `--help` points nowhere. The cheapest coherent
+order is: point a DNS record at a static host (or change `url:` to whatever the real host
+is), wire `tools/build-site.sh` into a deploy job, confirm the built site loads, *then* tag.
+Nothing here is code the audit can write.
 
-`.githooks/pre-push:36-41` defines a register of files that must never be published, and its
-own comment explains it matches only `--diff-filter=A` "because the purge set is still
-tracked today, so a check against the whole tree would refuse every push". **All seven are
-tracked at HEAD**, 3,061 lines: `notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md`,
-`2026-07-18-pmf-audit.md`, `2026-07-27-due-diligence-audit.md`,
+## S17 [V] BLOCKING: the purge set versus "make the repository public"
+
+Re-measured: **all seven files are tracked at HEAD, 3,061 lines** -- `notes/STARTUP-PLAN.md`,
+`notes/FUNDING-RESEARCH.md`, `2026-07-18-pmf-audit.md`, `2026-07-27-due-diligence-audit.md`,
 `2026-07-28-demand-positioning-audit.md`, `2026-07-28-launch-critique.md`,
-`2026-07-27-adoption-friction-audit.md`. Two instruct their own removal in their own text.
+`2026-07-27-adoption-friction-audit.md`. `.githooks/pre-push:36-41` matches only
+`--diff-filter=A` and its own comment says why: "the purge set is still tracked today, so a
+check against the whole tree would refuse every push". So the guard stops a *new* one
+arriving and cannot remove the seven already there. `git grep -Il "/home/bogo"` matches
+**15** files.
 
-Meanwhile `notes/2026-08-10-mvp-publish-session.md:77-80` lists "make the repository public"
-as step 2, and **flipping visibility publishes the whole history, not HEAD**.
+**Two live documents still disagree, and this is the irreversible one.**
+`notes/2026-08-10-mvp-publish-session.md:77-80` lists "make the repository public" as step 2;
 `notes/STARTUP-PLAN.md:111-127` records a contrary already-made decision (a fresh
-no-history repo). **Two live documents disagree on the publish step, and getting it wrong is
-irreversible.** Also: `git grep -Il "/home/bogo"` matches 16 files.
+no-history repo). **Flipping visibility publishes the whole history, not HEAD** -- every one
+of the seven, in every commit that ever carried it, plus the absolute paths.
+
+**Recommendation: the fresh no-history repo, and treat the flip as unavailable.** The
+disagreement resolves on cost asymmetry rather than taste: a wrong flip cannot be undone
+(the history is cloned, cached and indexed within minutes), while a fresh repo costs only
+the loss of commit history on a project with zero external contributors and no issues or PRs
+to preserve. `git-filter-repo` is installed and the rewrite was rehearsed, so the third
+option (rewrite then flip) exists -- but it leaves the same one-way door open on a tree
+whose guard is explicitly incapable of checking it. **Whichever is chosen, do it before
+S16's tag**, and delete `notes/2026-08-10-mvp-publish-session.md`'s step 2 or
+`STARTUP-PLAN.md:111-127` in the same commit so the next session finds one answer.
 
 # Refuted: do not re-file
 
