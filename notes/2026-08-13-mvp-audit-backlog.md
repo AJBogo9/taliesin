@@ -90,35 +90,33 @@ here, not the finder's original.
 The cut stopped at the code's edge. These are the author's own untaken waves, re-verified at
 `aceb566b`: not a line has moved.
 
-## S11 [A] MAJOR (CORRECTED, NOT LANDED): the W7 dead-code sweep, about 1,050 lines
+## S11 [A] MAJOR (PART LANDED, TWO SUBJECTS REFUTED): the W7 dead-code sweep
 
-Re-verified at `b98ef8cc`. **Subject 2 as filed is wrong and would delete a drift gate --
-do not act on it as written.**
+**Landed 2026-08-13:** subject 1 (the tombstone sweep) and subject 5 (the dead `vocab`
+index). `retired_names.rs` went 21 tests / 859 lines -> 8 tests / 547 lines, and
+`lsp.rs`'s two `vocab["theoremKinds"]` indexes are gone (that key has not existed since
+wave 8; serde_json's Index returns `Null` for a missing key, so both were silent no-ops).
 
-1. `crates/core/tests/retired_names.rs` is 855 lines / 21 tests, of which **18 tests / 562
-   lines** are hand-written UI tombstones with no register behind them, which `CLAUDE.md`'s
-   own register rule says not to write. The file's charter is lines 1-293. **Still the real
-   win here, and it needs a careful read rather than a sweep**: the charter half is live and
-   earning its keep (its filesystem walk caught a regression on 2026-08-13 when a `SKIP_PATHS`
-   entry was removed).
-2. ~~`crates/core/src/schema.rs`, 146 lines, `SITE_SCHEMA` read only inside its own
-   `#[cfg(test)]`~~ **REFUTED 2026-08-13.** The *const* has no external reader, which is what
-   the finder measured, but the module is not dead: its `#[cfg(test)] mod generate` is the
-   generator **and the drift gate** that keeps `assets/schema/tali-site.schema.json` in sync
-   with `site::NATIVE_KEYS`, and that file is byte-identical to
-   `editor/vscode/schema/tali-site.schema.json`, which the companion actually ships
-   (`editor/vscode/package.json:93` wires it through `yamlValidation`). Deleting the file
-   removes a gate `CLAUDE.md` names as one of the four a new `_site.yml` key trips. The most
-   that is available here is making the const private, which saves nothing.
-3. `$/cancelRequest` batching, which its own doc comment retires.
-4. `render/model.rs:372` `after_body`. **Narrower than filed:** it is never *populated*
-   (`doc_includes.rs:22` says so), but it IS read -- `page.rs:716` passes it to
-   `include_after_body`. So this is a real refactor of a live slot, not a dead-field delete.
-5. `lsp.rs` indexes a `vocab` key that does not exist (line numbers have moved; grep the
-   `vocab["..."]` indexes against `vocab.rs`'s own keys).
+**Two of the five subjects are REFUTED and must not be acted on as filed.**
 
-**Related:** `render/mod.rs`'s `pub fn base_css()` / `site_css()` have every caller a test,
-most of them in the tombstones in (1). They go with them.
+2. ~~`crates/core/src/schema.rs`, 146 lines~~ **REFUTED.** The *const* has no external
+   reader, which is what the finder measured, but the module is not dead: its
+   `#[cfg(test)] mod generate` is the generator **and drift gate** keeping
+   `assets/schema/tali-site.schema.json` in sync with `site::NATIVE_KEYS`, and that file is
+   byte-identical to `editor/vscode/schema/tali-site.schema.json`, which the companion
+   ships (`editor/vscode/package.json:93` wires it through `yamlValidation`). Deleting it
+   removes one of the four gates `CLAUDE.md` says a new `_site.yml` key trips.
+4. `render/model.rs` `after_body` -- **narrower than filed.** Never *populated*
+   (`doc_includes.rs:22` says so), but it IS read: `page.rs:716` passes it to
+   `include_after_body`. A refactor of a live slot, not a dead-field delete.
+
+~~**Related:** `base_css()`/`site_css()` have every caller a test, so they go with the
+tombstones.~~ **Also refuted.** Every caller is a test, but the surviving ones are
+*integration* tests in `crates/core/tests/` (`tech_blog.rs:368` calls `site_css`,
+`retired_names.rs` calls `base_css`), which are separate crates and genuinely need `pub`.
+Neither can be demoted.
+
+**Still open:** subject 3, `$/cancelRequest` batching, which its own doc comment retires.
 
 ## S12 [A] MAJOR (PART LANDED): `notes/` is still the largest thing nobody gates
 

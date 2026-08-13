@@ -1180,10 +1180,10 @@ fn resolve_completion(
                     }
                 }
             }
-            out.extend(from_named(
-                &vocab["theoremKinds"],
-                CompletionItemKind::CLASS,
-            ));
+            // No `theoremKinds` here: theorem environments went in wave 8 and `vocab.rs`
+            // has never emitted that key since, so indexing it yielded `Value::Null` and
+            // `from_named` returned an empty list. A silent no-op, because serde_json's
+            // Index returns Null for a missing key rather than panicking.
             out.extend(from_named(&vocab["divClasses"], CompletionItemKind::CLASS));
             out
         }
@@ -1200,7 +1200,6 @@ fn resolve_completion(
             };
             let is_feature_class = |c: &str| {
                 names_in("divClasses", c)
-                    || names_in("theoremKinds", c)
                     || c == "columns"
                     || c == "column"
                     || vocab["calloutKinds"].as_array().is_some_and(|a| {

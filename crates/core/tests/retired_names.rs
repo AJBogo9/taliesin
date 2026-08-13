@@ -291,102 +291,6 @@ fn no_q_prefixed_identifier_ships_in_emitted_markup() {
     }
 }
 
-/// The figure lightbox was deleted 2026-08-03 (visual minimalism pass): browsers
-/// open images in a new tab and pinch-zoom natively, and the viewer cost a
-/// permanently-armed capture-phase click handler on every figure.
-#[test]
-fn the_lightbox_is_gone_from_the_client_bundle() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in ["taliInitLightbox", "tali-lightbox", "__taliLightbox"] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships in the client bundle; the lightbox was deleted"
-        );
-    }
-}
-
-/// Reading-position resume, the "Continue reading" pill, and the TOC read
-/// checkmarks were deleted 2026-08-03. This finishes the deletion begun on
-/// 2026-08-02, when the ambient top progress bar went for duplicating the
-/// native scrollbar: browsers restore scroll on reload and back-navigation.
-#[test]
-fn the_reading_position_features_are_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in ["taliInitReadingProgress", "__taliProgress", "tali-resume"] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; reading-position tracking was deleted"
-        );
-    }
-    // The TOC read checkmarks lived in toc-spy.js, not the code-enhance bundle: the
-    // scrollspy that file also carries (`tali-toc-active`) SURVIVES this pass (item T2,
-    // structural), so this checks the specific script rather than folding it into the
-    // `js` bundle check above, which never contained toc-spy.js in the first place and
-    // would pass vacuously either way.
-    assert!(
-        !taliesin_core::render::TOC_SPY_JS.contains("tali-toc-read"),
-        "the TOC read-tracking class still ships in toc-spy.js"
-    );
-    let css = taliesin_core::render::base_css();
-    for needle in ["tali-resume", "tali-toc-read"] {
-        assert!(!css.contains(needle), "`{needle}` CSS survives in base.css");
-    }
-    // The Continue-reading pill's server-emitted slot lived in `site.css` (book chrome),
-    // not `base.css` (reader chrome) — a different stylesheet the checks above never
-    // reach, which is exactly how its `.tali-book-continue*` rules survived one fix round
-    // as dead CSS after the emitter that used them was deleted.
-    assert!(
-        !taliesin_core::render::site_css().contains("tali-book-continue"),
-        "the Continue-reading pill's CSS survives in site.css"
-    );
-}
-
-/// The floating mobile "Contents" pill was deleted 2026-08-03: it duplicated
-/// the topbar, which is already sticky and already carries Chapters. It went as a
-/// whole feature, not just the button: the pull-up sheet it opened (backdrop, drag
-/// gestures, `tali-toc-sheet`/`tali-toc-open` body-class wiring) had nothing else to
-/// drive it, so `#TOC` reverts to its in-flow mobile layout unconditionally.
-#[test]
-fn the_mobile_contents_pill_is_gone() {
-    let page = taliesin_core::render::render_html_page(
-        "---\ntitle: T\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
-        "f",
-    );
-    for needle in [
-        "tali-toc-handle",
-        "tali-toc-backdrop",
-        "tali-toc-sheet",
-        "tali-toc-open",
-        "tali-toc-cur",
-    ] {
-        assert!(
-            !page.contains(needle),
-            "the mobile Contents pill's `{needle}` still ships in the page shell"
-        );
-    }
-    // `code_scripts()` never bundled toc-spy.js (it is inlined separately, only on TOC
-    // pages), so a needle against it would pass vacuously whether or not the pill's
-    // leftover chip-write/scroll-hook code was cut from the file. Pin the script itself.
-    for needle in ["taliTocScrollHook", "tali-toc-cur"] {
-        assert!(
-            !taliesin_core::render::TOC_SPY_JS.contains(needle),
-            "`{needle}` still ships in toc-spy.js; the mobile pill's leftover hook survives \
-             in the scrollspy it was deleted out of"
-        );
-    }
-    let css = taliesin_core::render::base_css();
-    for needle in [
-        "tali-toc-handle",
-        "tali-toc-backdrop",
-        "tali-toc-sheet",
-        "tali-toc-open",
-        "tali-toc-cur",
-        "tali-show-label",
-    ] {
-        assert!(!css.contains(needle), "`{needle}` CSS survives in base.css");
-    }
-}
-
 /// Inverse search moved to Ctrl/Cmd-click on 2026-07-28; the modifier it used before is
 /// retired. This asserts the old spelling stays gone.
 ///
@@ -438,160 +342,6 @@ fn the_alt_click_gesture_stays_retired() {
     );
 }
 
-/// Hover cross-reference cards were deleted 2026-08-03: they fired on passive
-/// mouse movement, uninvited, over every citation and cross-reference.
-#[test]
-fn hover_preview_cards_are_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in [
-        "taliInitLinkPreview",
-        "__taliLinkPreview",
-        "TALIESIN_HOVER_INDEX",
-    ] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; hover cards were deleted"
-        );
-    }
-}
-
-/// Heading/figure `#` anchor links were deleted 2026-08-03. The TOC already
-/// emits deep links, and the fragment's own justification cited a "selection
-/// toolbar's text-fragment Share" that does not exist anywhere in the tree.
-#[test]
-fn heading_anchor_links_are_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in ["taliInitAnchorLinks", "tali-anchor", "__taliAnchorLive"] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; anchor links were deleted"
-        );
-    }
-}
-
-/// Video hover-play (pointerenter/focusin play, pointerleave/focusout pause, plus the
-/// document-level single-active-player coordinator) was deleted 2026-08-03: playing on
-/// passive pointerenter is motion the reader did not request (WCAG 2.2.2 territory).
-/// The figure lightbox (the touch play path) was already deleted the same day, so
-/// native `controls` is now the ONLY way a reader can start a `{{< video >}}` clip —
-/// it must ship on by default.
-#[test]
-fn video_hover_play_is_gone_and_controls_default_on() {
-    let js = taliesin_core::render::code_scripts();
-    // Needles unique to 18-media.js (checked against every other bundled script):
-    // function/attribute names, not the generic pointer-event names that
-    // plot.umd.min.js also carries.
-    for needle in ["reduceMotion", "visibleVideo", "data-media-wired"] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; the video hover-play enhancer (18-media.js) survives"
-        );
-    }
-
-    // The shortcode that once wired the hover-play went with `{{< video >}}` on
-    // 2026-08-08, so the only surviving half of this retirement is the client bundle: a
-    // hand-written `<video>` carries whatever attributes the author wrote and nothing
-    // reaches in to add behaviour.
-}
-
-/// The reader show/hide-code toggle was deleted 2026-08-03. The author already
-/// decides per cell with `#| echo:`; a reader override of that presentation
-/// decision cost a permanent row in the Settings menu.
-#[test]
-fn the_code_visibility_toggle_is_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in [
-        "taliInitCodeVisibility",
-        "taliSetCodeHidden",
-        "taliGetCodeHidden",
-    ] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; the toggle was deleted"
-        );
-    }
-}
-
-/// The toggle's needles above only prove the UI fragment is gone: `taliSetCodeHidden`/
-/// `taliGetCodeHidden` were STRINGS in that fragment (it merely referenced the pre-paint
-/// API by name), not their definition site. The definitions lived in `theme.rs`'s
-/// pre-paint bootstrap, which ships in every rendered page's `<head>`, not in
-/// `code_scripts()` — so this checks the actual page output and guards the half the
-/// fragment-only test above cannot see. The theme half of the same bootstrap
-/// (`taliSetTheme`/`taliGetThemeChoice`) must still be present: it is a separate
-/// feature and survives this pass untouched.
-#[test]
-fn the_code_visibility_pre_paint_api_is_gone_and_theme_survives() {
-    let doc = taliesin_core::render::render_document("hello\n");
-    let html = taliesin_core::render::render_doc_to_page(
-        &doc,
-        "t",
-        taliesin_core::render::OutputMode::Build,
-    );
-    for needle in [
-        "taliSetCodeHidden",
-        "taliGetCodeHidden",
-        "tali-code-hidden",
-        "tali:codevisibility",
-    ] {
-        assert!(
-            !html.contains(needle),
-            "`{needle}` still ships in the page's pre-paint bootstrap; the toggle was deleted"
-        );
-    }
-    for needle in ["taliSetTheme", "taliGetThemeChoice", "tali-theme"] {
-        assert!(
-            html.contains(needle),
-            "`{needle}` must survive — the theme picker is untouched by this pass"
-        );
-    }
-}
-
-/// The "Referenced by" backlink line was deleted 2026-08-04: it injected a
-/// reverse-reference into a target block that a linear reader never asked for.
-/// `sentences.rs` went with it — `backlinks.rs` was its only consumer.
-#[test]
-fn referenced_by_backlinks_are_gone() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/site");
-    for gone in ["backlinks.rs", "sentences.rs"] {
-        assert!(
-            !dir.join(gone).exists(),
-            "site/{gone} should have been deleted"
-        );
-    }
-    let css = taliesin_core::render::site_css();
-    assert!(
-        !css.contains("tali-backref"),
-        "the backref line's CSS (`.tali-backrefs`/`.tali-backref`/`.tali-backref-cite`) \
-         survives in site.css"
-    );
-}
-
-/// The listing category-filter chips were deleted 2026-08-04 (visual minimalism pass):
-/// they paid off only on a blog with many posts AND disciplined category vocabulary. Only
-/// the `listing.categories` sub-key is retired (see `frontmatter.rs`'s own pin for the
-/// retirement message) — page-level `categories:` front matter and the per-card badges
-/// (`tali-cat` / `data-cat`, checked by `token_contract.rs`) survive untouched.
-#[test]
-fn the_category_filter_chips_are_gone_from_the_client_bundle() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in ["taliInitCategoryFilter", "tali-cat-filter", "tali-cat-chip"] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; the category-filter chips were deleted"
-        );
-    }
-    let css = taliesin_core::render::site_css();
-    for needle in [
-        "tali-cat-filter",
-        "tali-cat-chip",
-        "tali-cat-count",
-        "tali-cat-on",
-    ] {
-        assert!(!css.contains(needle), "`{needle}` CSS survives in site.css");
-    }
-}
-
 /// The backlink line is the REVERSE of cross-references (a target -> its referrers);
 /// `xref.rs` is the FORWARD direction (a `@thm-kl` -> its target) and must survive this
 /// deletion untouched. Rendered on the real `demo-book` fixture, where `results.tmd`
@@ -618,55 +368,6 @@ fn forward_xrefs_survive_the_backlink_deletion() {
             "<a href=\"methods.html#fig-pipeline\" class=\"tali-xref\">Figure&nbsp;2.1</a>"
         ),
         "the forward cross-reference to fig-pipeline must still resolve: {results}"
-    );
-}
-
-/// The per-chapter outline disclosures in the book drawer were deleted 2026-08-04
-/// (visual minimalism pass, task 10): a second navigation layer inside a drawer that is
-/// already a navigation layer, justified against a 60-chapter book when the largest real
-/// book in the tree (docs/guide) has 25 chapters. The drawer's OWN flat chapter list
-/// (`.tali-book-chapter`, `.tali-book-chapters`, `.tali-chap-num`, `.tali-chap-words`) and
-/// the shared `search-index.js` both survive untouched — Cmd-K search reads the same
-/// index and is a keeper of this whole pass.
-#[test]
-fn the_book_drawer_outline_is_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in [
-        "taliInitBookOutline",
-        "taliBookOutline",
-        "taliBookMarkSection",
-    ] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships in the client bundle"
-        );
-    }
-    let css = taliesin_core::render::site_css();
-    for needle in [
-        "tali-book-expand",
-        "tali-book-sections",
-        "tali-book-section",
-        "tali-book-section-active",
-        "tali-book-sd2",
-        "tali-book-sd3",
-        "tali-book-sd4",
-        "tali-book-row",
-    ] {
-        assert!(!css.contains(needle), "`{needle}` CSS survives in site.css");
-    }
-}
-
-/// The book topbar's offline-download button was deleted 2026-08-04 (visual minimalism
-/// pass, task 11): one more permanent control in the topbar for an action a reader rarely
-/// wants. The archive it linked outlived it by four days as a file nothing pointed at, and
-/// was deleted on 2026-08-08 with the whole ZIP writer. The built pages are self-contained,
-/// so a reader who wants the book offline copies the output directory.
-#[test]
-fn the_book_download_button_is_gone() {
-    let css = taliesin_core::render::site_css();
-    assert!(
-        !css.contains("tali-book-download"),
-        "its CSS survives in site.css"
     );
 }
 
@@ -722,47 +423,6 @@ fn the_cut_theorem_kinds_keep_their_xref_prefixes_so_a_stray_reference_errors_lo
     assert!(
         !css.contains(".tali-thm-style-remark"),
         "`.tali-thm-style-remark` selector rule survives in base.css"
-    );
-}
-
-/// The `?` and `/` character-key shortcuts were deleted 2026-08-04 (visual minimalism
-/// pass, task 15), and with them the WCAG 2.1.4 off-switch they forced into the
-/// Settings menu: `taliShortcutsOn`/`taliSetShortcuts` (code-enhance/01-registry.js),
-/// storage key `tali-shortcuts`, and the "Keyboard shortcuts" section 07-keyboard.js
-/// mounted (its `.tali-keys-list` cheatsheet). Esc and the arrow keys are not
-/// character keys, so they stay live with no control needed.
-#[test]
-fn character_key_shortcuts_and_their_offswitch_are_gone() {
-    let js = taliesin_core::render::code_scripts();
-    for needle in [
-        "taliShortcutsOn",
-        "taliSetShortcuts",
-        "tali-shortcuts",
-        "Keyboard shortcuts",
-        "tali-keys-list",
-    ] {
-        assert!(
-            !js.contains(needle),
-            "`{needle}` still ships; the character-key shortcuts and their WCAG 2.1.4 \
-             off-switch were deleted together"
-        );
-    }
-    assert!(
-        js.contains("ArrowLeft") || js.contains("ArrowRight"),
-        "the arrow-key chapter nav must SURVIVE, it is not a character key"
-    );
-
-    let css = taliesin_core::render::base_css();
-    assert!(
-        !css.contains(".tali-keys-list"),
-        "the shortcuts cheatsheet's CSS survives in base.css"
-    );
-
-    // The generic `window.taliReaderMenu.addSection(...)` mounting API (13-reader-menu.js)
-    // survives untouched: Theme (14-reader-prefs.js) is its one remaining live caller.
-    assert!(
-        js.contains("addSection"),
-        "the Settings menu's generic section-mounting API must survive; Theme still uses it"
     );
 }
 
@@ -830,30 +490,63 @@ fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
         1,
         "exactly one warning per withdrawn cell: {ws:?}"
     );
-}
-
-/// The runtime's bytes, its enhancer and its corpus pin must all be gone from the tree,
-/// not merely unreferenced. 15.7 MiB of vendored WASM that no code path can reach is the
-/// failure shape this catches: `cargo test` stays green while the payload still ships.
-#[test]
-fn the_vendored_browser_python_runtime_is_gone_from_the_tree() {
-    let core = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let lang = format!("{}{}", "pyo", "dide");
-    for gone in [
-        core.join(format!("assets/{lang}")),
-        core.join(format!("assets/js/{lang}.js")),
-        core.join(format!("src/render/{lang}.rs")),
-        repo_root().join(format!("corpus/reactive/{lang}.tmd")),
-    ] {
-        assert!(
-            !gone.exists(),
-            "`{}` survives the withdrawal",
-            gone.display()
-        );
-    }
-    // The language is out of the registry, so no emitter can produce a live wrapper for it.
+    // Kept from the deleted `the_vendored_browser_python_runtime_is_gone_from_the_tree`
+    // tombstone: its file-existence half asserted paths that no longer exist and could only
+    // fail if someone deliberately re-vendored a 15.7 MiB WASM runtime, but THIS half is a
+    // live invariant -- the language must stay out of the client-language registry, or an
+    // emitter could produce a wrapper for a runtime that ships no bytes.
     assert!(
         taliesin_core::render::client_lang(&lang).is_none(),
         "`{lang}` is still a registered client language"
     );
+}
+
+/// The client-side APIs that must SHIP, held positively.
+///
+/// This is what is left of the UI tombstones deleted on 2026-08-13. Fourteen tests asserted
+/// that a withdrawn feature's identifiers were absent from the bundle -- `taliInitLightbox`,
+/// `taliInitBookOutline`, `tali-cat-chip` and the rest. None of them had a register behind
+/// it (there is no `RETIRED_JS_FEATURES`, and `CLAUDE.md`'s register rule says not to
+/// hand-write a tombstone), and none could fail unless someone re-introduced a dead
+/// identifier by its exact name, which nothing would do by accident.
+///
+/// Three of those tests carried a positive assertion among the absences, and those are the
+/// half worth keeping: a deletion pass that took the theme picker, the arrow-key chapter
+/// nav or the Settings-menu mounting API with it would break a reader, and an absence test
+/// cannot notice that. Asserting what must ship catches the over-cut; asserting what must
+/// not ship catches nothing.
+#[test]
+fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
+    let js = taliesin_core::render::code_scripts();
+
+    // Arrow keys are not character keys, so the chapter nav survived the 2026-08-04
+    // deletion of the `?` and `/` shortcuts and their WCAG 2.1.4 off-switch.
+    assert!(
+        js.contains("ArrowLeft") || js.contains("ArrowRight"),
+        "the arrow-key chapter nav must survive; it is not a character key"
+    );
+    // The generic `window.taliReaderMenu.addSection(...)` mounting API (13-reader-menu.js)
+    // outlived every section but one: Theme (14-reader-prefs.js) is its last live caller,
+    // so this is the assertion standing between that menu and being dead code.
+    assert!(
+        js.contains("addSection"),
+        "the Settings menu's generic section-mounting API must survive; Theme still uses it"
+    );
+
+    // The theme half of `theme.rs`'s pre-paint bootstrap, which ships in every rendered
+    // page's <head> rather than in `code_scripts()`. The code-visibility half was deleted
+    // out of the same bootstrap on 2026-08-03, which is exactly why this is checked against
+    // real page output: a fragment-level test cannot see either half.
+    let doc = taliesin_core::render::render_document("hello\n");
+    let html = taliesin_core::render::render_doc_to_page(
+        &doc,
+        "t",
+        taliesin_core::render::OutputMode::Build,
+    );
+    for needle in ["taliSetTheme", "taliGetThemeChoice", "tali-theme"] {
+        assert!(
+            html.contains(needle),
+            "`{needle}` must ship in every page's pre-paint bootstrap"
+        );
+    }
 }
