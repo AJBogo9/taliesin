@@ -305,6 +305,14 @@ Pick whichever fits how you already work:
 - **Your own server / object storage.** `rsync -a _site/ you@host:/var/www/mybook/`, or
   `aws s3 sync _site s3://your-bucket` behind a CDN. It's just files.
 
+**`--out` wants a folder of its own.** The output folder is a mirror of what the build
+produced, so a build deletes anything under it that it did not write (that is how a
+renamed or deleted page stops lingering in your deploy). For that reason it refuses a
+folder holding files it did not produce, and names them, instead of sweeping them away:
+point `--out` somewhere new or empty. Deploy metadata is exempt either way — a `.git`
+worktree, `.nojekyll` and `_headers` are the dot/underscore names the sweep never touches,
+so publishing straight from the folder keeps working.
+
 Whichever you pick, wrap it in a two-line script and stop thinking about it:
 
 ```sh

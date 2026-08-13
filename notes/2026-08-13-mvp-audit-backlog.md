@@ -85,58 +85,6 @@ here, not the finder's original.
 
 ---
 
-# BATCH 1: data loss. Do this one first, alone.
-
-## A1 [V] CRITICAL: `build --out <dir>` deletes files in the output directory, exit 0
-
-`crates/server/src/build.rs:1625` (guard) and `:2049` (`sweep_stale`)
-
-Two independent gaps. The build-in-place guard tests only `root == out`, so an `out` that
-*contains* the source passes; and `sweep_stale` has no notion of "this directory was ever a
-Taliesin output dir", so it recursively deletes everything in `out` it did not itself write
-and prunes the emptied directories. Only `.`- and `_`-prefixed names survive, which makes
-the loss look partial and recoverable when it is not.
-
-**The ordinary case is the dangerous one.** Reproduced:
-
-```sh
-# public/ held CNAME, thesis.txt, photos/cat.jpg
-$ taliesin build blog --out public
-EXIT=0
-$ find public -type f
-public/404.html  public/index.html  public/search-index.js  public/_assets/...
-```
-
-All three user files gone, `photos/` pruned. `CNAME` is exactly what a GitHub Pages user
-keeps in their output directory.
-
-The ancestor spelling is worse. `taliesin build myblog --out .` (the natural
-deploy-to-repo-root spelling) reports `info swept 4 stale files no longer produced`, exits
-0, and deletes `README.md`, `src/main.rs` and **both `.tmd` sources**, leaving only
-`_site.yml`.
-
-**Repro:**
-```sh
-mkdir -p /tmp/dl/blog /tmp/dl/public && printf 'title: B\n' > /tmp/dl/blog/_site.yml \
-  && printf -- '---\ntitle: H\n---\n\nHi.\n' > /tmp/dl/blog/index.tmd \
-  && printf 'thesis\n' > /tmp/dl/public/thesis.txt && printf 'CNAME\n' > /tmp/dl/public/CNAME \
-  && ./target/release/taliesin build /tmp/dl/blog --out /tmp/dl/public && find /tmp/dl/public -type f
-```
-
-**Fix direction:** the guard must refuse when `out` contains `root` or `root` contains
-`out`, not only when they are equal. Separately, `sweep_stale` should refuse to sweep a
-directory it cannot positively identify as its own prior output (a marker file it writes and
-reads, or sweeping only paths in a recorded manifest from the previous build). Consider
-whether an unrecognised non-empty `--out` should require confirmation at all: the standing
-"minimal config" doctrine argues against a `--force` knob, so prefer refusing with a message
-naming what it found.
-
-**Done when:** the two reproductions above leave every user file intact and exit non-zero
-with an actionable message, and a test pins both the ancestor and the unrelated-non-empty-dir
-cases. There is no existing test for either.
-
----
-
 # BATCH 2: the pre-publish gate is not a gate
 
 `build <dir> --check-only` is the one thing between the author and a broken published site.

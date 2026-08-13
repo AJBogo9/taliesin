@@ -1618,15 +1618,62 @@ async fn build_site_async(
     }
     let out = out.canonicalize().unwrap_or(out);
 
-    // Refuse to build into the source directory: `mirror_assets` and the page writes
-    // would copy files onto themselves, and `fs::copy` truncates the destination
-    // first — silently zeroing the user's own assets. (Triggered by `output-dir: .`
-    // or `--out <root>`.)
-    if root.canonicalize().is_ok_and(|r| r == out) {
+    // Refuse to build into the source directory *or any directory above it*. Equal:
+    // `mirror_assets` and the page writes would copy files onto themselves, and
+    // `fs::copy` truncates the destination first — silently zeroing the user's own
+    // assets. Above: worse, because `sweep_stale` then walks *down* into the source and
+    // deletes it. `build myblog --out .` (the natural deploy-to-repo-root spelling) used
+    // to report "swept 4 stale files", exit 0, and leave `_site.yml` alone in a directory
+    // that had held the `.tmd` sources, the README and `src/`. Testing equality only was
+    // the whole gap: `starts_with` is component-wise on canonical paths, so a sibling
+    // named `myblog2` is not caught by the prefix.
+    // Canonical, so both halves of the message below are in the same spelling: `out` is
+    // already canonical, and printing it beside a relative `myblog` reads as if the two
+    // were unrelated.
+    let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    if canon_root.starts_with(&out) {
+        let msg = if canon_root == out {
+            format!(
+                "output directory is the source directory ({}); refusing to build in place \
+                 (it would overwrite/truncate your source files). Use a different `output-dir:` or `--out <dir>`.",
+                out.display()
+            )
+        } else {
+            format!(
+                "output directory ({}) contains the source directory ({}); refusing to build \
+                 (the stale-file sweep would delete your sources). Use a different `output-dir:` \
+                 or `--out <dir>` outside the project.",
+                out.display(),
+                canon_root.display()
+            )
+        };
+        log::error(&msg);
+        diagnostics.push(crate::lint::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
+        ));
+        return SiteBuildOutcome {
+            ok: false,
+            diagnostics,
+        };
+    }
+
+    // The build owns its output directory: it mirrors the source into it and sweeps
+    // everything under it that this build did not write. So it may only write into a
+    // directory it created or previously claimed. `--out public` on a GitHub Pages
+    // folder deleted `CNAME`, the author's `thesis.txt` and their `photos/` tree, and
+    // exited 0. Refusing (rather than a `--force` knob) is the "perfect the default"
+    // answer: there is one safe directory to name and the message names the files that
+    // stopped it.
+    if let Some(found) = unowned_output_entries(&out) {
         let msg = format!(
-            "output directory is the source directory ({}); refusing to build in place \
-             (it would overwrite/truncate your source files). Use a different `output-dir:` or `--out <dir>`.",
-            out.display()
+            "output directory ({}) is not a Taliesin build directory: it holds {}, which \
+             this build did not produce. `build` deletes everything under its output that \
+             it did not write, so point `--out` at a new or empty directory, or empty this \
+             one first.",
+            out.display(),
+            found.join(", ")
         );
         log::error(&msg);
         diagnostics.push(crate::lint::Diagnostic::new(
@@ -1639,6 +1686,7 @@ async fn build_site_async(
             diagnostics,
         };
     }
+    claim_output(&out);
 
     // Persistent execution cache, rooted at the project source (not the build
     // output), so a `build` and the `preview` server share it and it survives a
@@ -2035,6 +2083,89 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
     (copied, skipped)
 }
 
+/// The marker `build` writes into its output directory and reads back to recognise that
+/// directory as its own on the next run. Dot-prefixed, so [`mirror_assets`] never copies
+/// one into a nested deploy and [`sweep_stale`] never deletes it — which is also what
+/// lets a composed deploy (`tools/build-site.sh`, parent first) survive the parent's
+/// sweep and rebuild each sub-project into its own prefix.
+const OUTPUT_MARKER: &str = ".taliesin-build";
+
+const OUTPUT_MARKER_BODY: &str = "\
+Taliesin build output. `taliesin build` deletes files under this directory that it did
+not produce. Delete this file to make it refuse to write here again.
+";
+
+/// Is `out` a directory this build already owns? Two pieces of evidence for one question.
+/// [`OUTPUT_MARKER`] is the authoritative one: it is written before the first byte of the
+/// build, so it identifies even a run that died half-way through mirroring assets. The
+/// `_assets/app.<hash>.css` bundle is the fallback, and it is what lets an output
+/// directory written by an EARLIER binary keep working — nothing but [`write_asset_bundle`]
+/// produces that name, and without this clause every `_site/` and every live deploy folder
+/// in existence would be refused once, for bookkeeping the build had not started keeping
+/// yet.
+fn is_taliesin_output(out: &Path) -> bool {
+    if out.join(OUTPUT_MARKER).is_file() {
+        return true;
+    }
+    std::fs::read_dir(out.join("_assets")).is_ok_and(|mut entries| {
+        entries.any(|e| {
+            e.is_ok_and(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with("app.") && name.ends_with(".css")
+            })
+        })
+    })
+}
+
+/// Entries under `out` that this build does not own, or `None` when `out` is the build's
+/// to write into: it is empty, or [`is_taliesin_output`] recognises it, or everything in
+/// it is the dot/underscore deploy metadata [`sweep_stale`] already promises never to
+/// touch (`.git`, `.nojekyll`, `_headers`). That last case is the whole reason the test is
+/// "what could the sweep delete" rather than "is the directory empty": a `gh-pages`
+/// worktree with a `.nojekyll` in it is the ordinary deploy target, and nothing in it is
+/// at risk.
+///
+/// At most three names are returned, so a directory full of a stranger's files does not
+/// print a wall of text at them.
+fn unowned_output_entries(out: &Path) -> Option<Vec<String>> {
+    if is_taliesin_output(out) {
+        return None;
+    }
+    let mut found: Vec<String> = std::fs::read_dir(out)
+        .ok()?
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            (!name.starts_with('.') && !name.starts_with('_')).then_some(name)
+        })
+        .collect();
+    if found.is_empty() {
+        return None;
+    }
+    found.sort();
+    let more = found.len().saturating_sub(3);
+    found.truncate(3);
+    if more > 0 {
+        found.push(format!("and {more} more"));
+    }
+    Some(found)
+}
+
+/// Claim `out` as this build's output so the next build recognises it. Not fatal on
+/// failure — every later write into `out` fails the build with its own error — but not
+/// silent either: an unwritten marker makes the *next* build refuse a directory that is
+/// in fact its own.
+fn claim_output(out: &Path) {
+    let marker = out.join(OUTPUT_MARKER);
+    if let Err(e) = std::fs::write(&marker, OUTPUT_MARKER_BODY) {
+        log::warn(&format!(
+            "cannot write {}: {e} (the next build will not recognise this output directory)",
+            marker.display()
+        ));
+    }
+}
+
 /// Delete files under `out` that this build did not produce, so a page or asset removed
 /// or renamed in the source doesn't linger in the deploy across rebuilds. `keep` holds
 /// every out-relative path the build wrote (pages, decks, mirrored assets, the index /
@@ -2046,6 +2177,11 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
 /// author's deliberate mount (e.g. a large shared media dir linked in) — following it
 /// would delete *through* the link into their content and risk a cycle. Directories left
 /// empty by the sweep are pruned. Returns the number of files swept.
+///
+/// **Precondition: `out` is a directory this build owns.** Nothing here can tell a stale
+/// page from a stranger's file, so the ownership question is settled once, before the
+/// first write, by [`unowned_output_entries`] + [`claim_output`]. Deleting was never the
+/// bug: sweeping somewhere the build had no business writing was.
 fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
     fn walk(dir: &Path, out: &Path, keep: &std::collections::HashSet<PathBuf>, swept: &mut usize) {
         let Ok(entries) = std::fs::read_dir(dir) else {
