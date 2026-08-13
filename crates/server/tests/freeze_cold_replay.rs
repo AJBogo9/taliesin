@@ -351,3 +351,197 @@ fn editing_an_upstream_cell_re_executes_the_cells_below_it() {
         "the stale downstream output survived alongside the new one"
     );
 }
+
+/// One `taliesin build <src> <dest>` returning the whole `Output`, so a test can read
+/// stderr (where the human log lives) and tolerate a document containing a cell error.
+fn build_capturing(src: &Path, dest: &Path, py: &Path) -> std::process::Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
+    cmd.arg("build").arg(src).arg(dest);
+    cmd.env("TALIESIN_PYTHON", py);
+    cmd.env_remove("TALIESIN_NO_CACHE");
+    cmd.output().expect("run build")
+}
+
+/// The one `_freeze/*.json` under `dir`.
+fn freeze_file(dir: &Path) -> PathBuf {
+    let freeze = dir.join("_freeze");
+    let mut found: Vec<PathBuf> = fs::read_dir(&freeze)
+        .unwrap_or_else(|e| panic!("read {}: {e}", freeze.display()))
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    assert_eq!(found.len(), 1, "expected one freeze file, found {found:?}");
+    found.pop().unwrap()
+}
+
+/// Deleting a `#| cache: false` line must not leave a page that contradicts itself for ever.
+///
+/// **The defect (audit A6).** `strip_cell_options` drops `#|` lines before hashing, so
+/// `cache:` is a field and never part of the cumulative key. Cells *downstream* of a
+/// `cache: false` cell were therefore persisted under a key asserting "this output follows
+/// from this upstream code" — about a cell whose entire point is that its output does not
+/// follow from its code. Those entries were already false when written; `plan` forcing
+/// `run_end = len` while the directive is present was only a runtime mask over them.
+///
+/// Remove the directive and the mask goes with it: the upstream cell has no entry (it was
+/// never cacheable) so it re-runs, while the downstream cell restores a disk entry computed
+/// from a *different* upstream value. The page then reads `upstream x = 3` above
+/// `downstream sees x = 2`, and stays that way across every later rebuild.
+///
+/// The upstream cell counts a file rather than rolling a die, so a failure is deterministic
+/// rather than one collision away from passing.
+#[test]
+fn deleting_a_cache_false_directive_leaves_a_self_consistent_page() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("cache-false-deleted");
+    let log = dir.join("launches.log");
+    let py = recording_python(&dir, &real_py, &log);
+    let counter = dir.join("counter.txt");
+    let src = dir.join("doc.tmd");
+
+    // Cell A is uncacheable and yields a different value every run; cell B reads A's
+    // variable, so a correct page always shows the same number twice.
+    let doc = |directive: &str| {
+        format!(
+            "---\ntitle: C\n---\n\n\
+             ```{{python}}\n{directive}from pathlib import Path\n\
+             p = Path(r\"{counter}\")\n\
+             x = int(p.read_text()) + 1 if p.exists() else 1\n\
+             p.write_text(str(x))\n\
+             print(f\"upstream x = {{x}}\")\n```\n\n\
+             ```{{python}}\nprint(f\"downstream sees x = {{x}}\")\n```\n",
+            counter = counter.display()
+        )
+    };
+    // `rfind`, not `find`: the page echoes each cell's SOURCE above its output, so the
+    // first match is the `print(f"upstream x = {x}")` literal, whose next character is `{`.
+    fn reading(html: &str, label: &str) -> String {
+        let at = html
+            .rfind(label)
+            .unwrap_or_else(|| panic!("`{label}` missing from the page:\n{html}"));
+        html[at + label.len()..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect()
+    }
+    fn both(html: &[u8]) -> (String, String) {
+        let html = String::from_utf8_lossy(html).into_owned();
+        (
+            reading(&html, "upstream x = "),
+            reading(&html, "downstream sees x = "),
+        )
+    }
+
+    // Two builds WITH the directive. Both are self-consistent today; they are the control,
+    // and they are also what writes the false downstream entry.
+    fs::write(&src, doc("#| cache: false\n")).unwrap();
+    let (up1, down1) = both(&build(&src, &dir.join("a.html"), &py));
+    assert_eq!(up1, down1, "first build disagrees with itself");
+    let (up2, down2) = both(&build(&src, &dir.join("b.html"), &py));
+    assert_eq!(up2, down2, "second build disagrees with itself");
+    assert_ne!(
+        up1, up2,
+        "the uncacheable cell replayed instead of re-running, so this test is not \
+         exercising non-determinism at all"
+    );
+
+    // Delete ONLY the directive. No code changes, so no cumulative key changes.
+    fs::write(&src, doc("")).unwrap();
+    let (up3, down3) = both(&build(&src, &dir.join("c.html"), &py));
+    assert_eq!(
+        up3, down3,
+        "the page contradicts itself: the downstream cell restored an output computed \
+         from a different upstream value"
+    );
+    assert_ne!(up2, up3, "the formerly-uncacheable cell did not re-run");
+
+    // And the cache still works once the directive is gone: nothing re-runs, and the page
+    // is unchanged. (A fix that merely stopped persisting would pass everything above.)
+    let after = launches(&log);
+    let (up4, down4) = both(&build(&src, &dir.join("d.html"), &py));
+    assert_eq!((up3, down3), (up4, down4), "the replay changed the page");
+    assert_eq!(
+        launches(&log),
+        after,
+        "an all-cacheable document re-executed instead of replaying from disk"
+    );
+}
+
+/// A replay that crossed a package change says so.
+///
+/// **The defect (audit A7).** `stamp_packages` wrote the current digest into the cache
+/// *before* `warn_if_packages_moved` read it back, and `packages::manifest` is memoized
+/// process-wide, so `crossed(recorded, now)` compared the digest against itself and was
+/// false by construction. The one axis the cumulative key structurally cannot see had a
+/// warning that could never fire.
+///
+/// The package set is moved by rewriting the digest the cache recorded rather than by
+/// installing anything: that is exactly the state a `pip install --upgrade` leaves behind
+/// (same interpreter, same `--version`, same keys, different packages), and it does not
+/// require the test to mutate the machine it runs on.
+///
+/// The mixed run needs a disk-restored tail *after* the last executed cell, so cell 1 fails
+/// (an error is never persisted, so its key is always unknown) and cell 2 does not.
+#[test]
+fn a_replay_that_crossed_a_package_change_is_announced() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("packages-moved");
+    let log = dir.join("launches.log");
+    let py = recording_python(&dir, &real_py, &log);
+    let src = dir.join("doc.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: P\n---\n\n```{python}\nraise ValueError(\"boom\")\n```\n\n\
+         ```{python}\nprint(2718)\n```\n",
+    )
+    .unwrap();
+    const ANNOUNCEMENT: &str = "produced under a different package set";
+
+    // Build 1: cell 1 errors (never persisted), cell 2 succeeds (persisted + stamped).
+    let first = build_capturing(&src, &dir.join("a.html"), &py);
+    assert!(
+        first.status.success(),
+        "a cell error is baked into the page, not a build failure: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    // The negative control, and it is the half that matters: an unmoved package set must
+    // stay silent, or an always-firing warning would pass the assertion below.
+    let quiet = build_capturing(&src, &dir.join("b.html"), &py);
+    let quiet_err = String::from_utf8_lossy(&quiet.stderr);
+    assert!(
+        !quiet_err.contains(ANNOUNCEMENT),
+        "nothing moved, so nothing should be announced:\n{quiet_err}"
+    );
+
+    // Move it: the outputs on disk were produced under a package set that is not the one
+    // installed now.
+    let file = freeze_file(&dir);
+    let text = fs::read_to_string(&file).expect("freeze json");
+    let mut cache: serde_json::Value = serde_json::from_str(&text).expect("freeze json parses");
+    let packages = cache
+        .get_mut("packages")
+        .and_then(|p| p.as_object_mut())
+        .expect("the cache recorded a package digest");
+    assert!(
+        packages.contains_key("python"),
+        "no python digest recorded, so this test would assert nothing: {text}"
+    );
+    packages.insert(
+        "python".to_string(),
+        serde_json::Value::String("0000000000000000".to_string()),
+    );
+    fs::write(&file, serde_json::to_string(&cache).unwrap()).unwrap();
+
+    let moved = build_capturing(&src, &dir.join("c.html"), &py);
+    let moved_err = String::from_utf8_lossy(&moved.stderr);
+    assert!(
+        moved_err.contains(ANNOUNCEMENT),
+        "a restore that crossed a package change said nothing:\n{moved_err}"
+    );
+}

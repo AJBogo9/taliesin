@@ -85,57 +85,6 @@ here, not the finder's original.
 
 ---
 
-# BATCH 3: the freeze cache can publish a wrong number
-
-Highest consequence in the tree, because the page looks fine. Read
-`notes/CUT-PROGRESS.md`'s wave 11 entry before touching `exec.rs`: a flaky test there once
-accused `kernel.rs`'s SIGINT path, which was innocent.
-
-## A6 [A] HIGH: deleting a `#| cache: false` line permanently freezes a self-contradictory page
-
-Root cause is the persist loop at `crates/server/src/exec.rs:931`, **not** `plan`'s
-`run_end` extension at `:1283` (the finder anchored the mask, the refuter found the write).
-
-`strip_cell_options` (`crates/core/src/render/cell_extract.rs:138`) drops `#|` lines before
-hashing, so `cache:` is a field and never part of the hashed code. Cells downstream of a
-`cache: false` cell are therefore persisted under a cumulative key asserting "this output
-follows from this upstream code" while the upstream value was never hashed. Those entries
-are already false when written; `plan`'s extension is only a runtime mask over them, valid
-exactly as long as the directive is present.
-
-**Reproduced:** cell A is `#| cache: false` + `x = random.randint(...)` + print; cell B
-prints `x`. Build twice, self-consistent both times. Delete only the `#| cache: false` line,
-no code change. Build again: A re-runs (never persisted) while B restores a disk entry from
-a different upstream value. The page reads `upstream x = 451379` and
-`downstream sees x = 837111`, and stays that way across rebuilds.
-
-**Fix direction:** the `cache` flag must participate in the cumulative key of every
-downstream cell, or downstream outputs of an uncacheable cell must not be persisted at all.
-The second is simpler and matches the existing "errors are never persisted" rule.
-
-**Done when:** the reproduction above produces a self-consistent page after the directive is
-deleted, pinned by a test in the `freeze_cold_replay.rs` family.
-
-## A7 [A] HIGH: the package-change warning can never fire on a mixed run
-
-`crates/server/src/exec.rs:938` calls `stamp_packages` (which writes the current digest)
-before `:997` calls `warn_if_packages_moved` (which reads it), so
-`packages::crossed(recorded, now)` compares the digest against itself. `packages::manifest`
-is memoized process-wide, so the two strings are identical by construction.
-
-The recorded digest is the **one axis the freeze key cannot see**, which is the entire
-reason `packages.rs` exists. A replay that crossed a `pip install --upgrade` says nothing.
-
-**Trigger is narrower than "any mixed run":** the disk-restored tail must lie after the last
-executed cell, which in practice needs an upstream cell whose output was never persisted (an
-error, or a truncated output via `is_uncacheable` at `exec.rs:1311`) sitting before at least
-one disk-cached cell. A `#| cache: false` cell does **not** trigger it, because
-`exec.rs:1283-1285` forces `run_end = hashes.len()`.
-
-**Fix:** move the stamp after the comparison, or pass the pre-stamp digest to the warning.
-
----
-
 # BATCH 4: source mapping, load-bearing goal #1
 
 ## A8 [A] HIGH: render warnings carry the expanded-buffer line, not the file's own

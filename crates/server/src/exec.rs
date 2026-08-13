@@ -926,8 +926,30 @@ impl Executor {
         // Persist freshly executed, cacheable, non-error outputs (only ones a live
         // kernel actually produced). Errors and `cache: false` cells are never
         // stored, so a transient failure or a nondeterministic cell never sticks.
+        //
+        // Nor is anything DOWNSTREAM of a `cache: false` cell. The cumulative key folds in
+        // that cell's *code*, never its value, so an entry written below it asserts "this
+        // output follows from this upstream code" about the one cell in the document whose
+        // whole point is that it does not. Those entries were already false when written;
+        // `plan` extending the run to the document end only masked them at runtime, for
+        // exactly as long as the directive was there to read. Delete the line — no code
+        // change, so no key changes — and the mask lifted while the lie stayed: the
+        // upstream cell re-ran (it had never been persisted) and the downstream one
+        // restored an output computed from a different upstream value, permanently.
+        let uncacheable_at = first_uncacheable(cells.len(), |i| cells[i].cache);
+        // The digest on record BEFORE this run stamps its own. Read here, not at the
+        // warning below, because `stamp_packages` overwrites it in between: the warning
+        // asks what the DISK-RESTORED tail was produced under, and reading after the stamp
+        // asked what *this* run was produced under, i.e. it compared the digest with
+        // itself. `packages::manifest` is memoized process-wide, so the two strings were
+        // identical by construction and the one axis the cumulative key structurally
+        // cannot see had a warning that could never fire.
+        let packages_on_entry = self.freeze.recorded_packages(lang).map(str::to_string);
         if has_kernel {
             for i in shared..run_end {
+                if i > uncacheable_at {
+                    continue;
+                }
                 if cells[i].cache && !is_uncacheable(&outputs[i]) {
                     self.freeze.put(hashes[i].clone(), outputs[i].clone());
                 }
@@ -995,7 +1017,7 @@ impl Executor {
         // restored from DISK: the warm in-memory prefix was produced by the kernel running
         // in this process, so it cannot predate a package change this process could see.
         if cells.len() > run_end {
-            self.warn_if_packages_moved(lang);
+            self.warn_if_packages_moved(lang, packages_on_entry.as_deref());
         }
         (
             outputs,
@@ -1038,8 +1060,13 @@ impl Executor {
     /// recorded (likewise), and a matching digest. Announced once per process per language,
     /// through the same `announce_once` the kernel failure uses, because a preview rebuilds
     /// on every keystroke.
-    fn warn_if_packages_moved(&self, lang: &'static str) {
-        let was = self.freeze.recorded_packages(lang);
+    ///
+    /// `was` is the digest on record when the run STARTED, and it is a parameter rather than
+    /// a read of `self.freeze` for one reason: by the time this runs, `stamp_packages` has
+    /// already written this run's own digest over it, so reading it here compared the digest
+    /// against itself — and `packages::manifest` is memoized process-wide, making the two
+    /// identical by construction.
+    fn warn_if_packages_moved(&self, lang: &'static str, was: Option<&str>) {
         let now = self.packages_now(lang);
         if !crate::packages::crossed(was, now.as_ref().map(|m| m.digest.as_str())) {
             return;
@@ -1250,6 +1277,18 @@ impl Executor {
 /// replay, kernel never booted); a cold start with any change runs from the first
 /// cell whose state the kernel lacks (kernel variable state is never faked). Pure,
 /// so the granularity is unit-testable without a kernel.
+/// Index of the first `#| cache: false` cell, or `len` when there is none.
+///
+/// **One definition, because two rules turn on it and they must not disagree.** [`plan`]
+/// keeps that cell and everything after it out of the warm prefix and re-runs the whole
+/// tail; the persist loop in [`Executor::execute_lang`] refuses to write any of that tail
+/// to disk. The second rule was missing, so `plan`'s re-run was a runtime *mask* over disk
+/// entries that were already false when written — and deleting the directive lifted the
+/// mask and published the contradiction.
+fn first_uncacheable(len: usize, cacheable: impl Fn(usize) -> bool) -> usize {
+    (0..len).find(|&i| !cacheable(i)).unwrap_or(len)
+}
+
 fn plan(
     ran: &[String],
     hashes: &[String],
@@ -1262,9 +1301,7 @@ fn plan(
     // A `#| cache: false` cell always re-executes, so the warm prefix can't include
     // it (or anything after it): otherwise an unchanged non-deterministic cell would
     // be replayed from the kernel's prior in-memory output instead of re-run.
-    let first_uncacheable = (0..hashes.len())
-        .find(|&i| !cacheable(i))
-        .unwrap_or(hashes.len());
+    let first_uncacheable = first_uncacheable(hashes.len(), cacheable);
     let shared = lcp.min(first_uncacheable);
     let mut run_end = shared;
     for i in shared..hashes.len() {

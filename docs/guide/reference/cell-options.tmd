@@ -129,7 +129,9 @@ The crucial distinctions:
   that made it.
 - **`cache: false` always re-executes.** The cell never restores from the
   `_freeze/` cache and its output is never written there, and everything downstream
-  of it re-runs too. Reach for it whenever a cell's result depends on something
+  of it re-runs too and is likewise never written there (a downstream output follows
+  from this cell's *value*, which the cache key cannot see — only its code).
+  Reach for it whenever a cell's result depends on something
   that is not the cell's own code: a data file it reads, an environment variable, a
   network resource, the clock, or a sample without a fixed seed. Everything else
   caches by default, keyed by a cumulative content hash, so an unchanged cell

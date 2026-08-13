@@ -304,7 +304,12 @@ Cell outputs persist in `_freeze/` (gitignored), keyed by a cumulative content h
 to a cell or anything upstream busts it and everything downstream, with no stale
 hits and nothing to clear by hand. An unchanged doc replays from disk on the next
 `build`/preview without booting the kernel; a warm preview still re-runs only the
-edited cell + downstream. Errors and `#| cache: false` cells are never persisted.
+edited cell + downstream. Errors, `#| cache: false` cells **and everything downstream of
+one** are never persisted: a downstream entry would assert "this output follows from this
+upstream code" about the one cell whose output does not follow from its code, and deleting
+the directive later published that contradiction (a page reading `upstream x = 3` above
+`downstream sees x = 2`, stably, across rebuilds). `exec.rs`'s `first_uncacheable` is the
+single definition both that rule and `plan`'s re-run range turn on.
 `TALIESIN_NO_CACHE` ignores + skips writing the cache; "Restart kernel" forces a
 fresh re-run. (Kernel *variable* state is never cached, which is what makes a naive
 per-cell `cache` fragile, so a cold start can only skip work when the whole
