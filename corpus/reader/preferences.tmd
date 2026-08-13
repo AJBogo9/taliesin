@@ -1,27 +1,27 @@
 ---
-title: "Reading settings"
+title: "Reading surface"
 ---
 
-This page is a reading surface. The **Settings** gear (top-right of the built page) lets a
-reader pick a theme (light or dark). The choice is stored in the reader's own browser
-and applied before the next page paints, so it never flashes and never touches the author's
-source.
+This page is a reading surface. It is lit by the reader's own device: a phone set to dark
+renders it dark, a laptop set to light renders it light, and it keeps following that setting
+live if the reader changes it mid-read. There is no control to find and nothing to configure.
 
-## Why a reader theme
+## Why the device decides
 
 A document is read far more often than it is written, on screens the author never saw: a
-phone in bright sun, a wide monitor at night, a room lit only by the screen. Reader settings
-move that last decision, *how the page is lit*, from the author to the reader, where it
-belongs: a bright page or a dark one, chosen per reader.
+phone in bright sun, a wide monitor at night, a room lit only by the screen. The reader has
+already answered that question once, in their operating system, and every other page they
+read that day honours it. A per-site picker asks them to answer it again, in a place only
+this site keeps it, and then disagrees with the rest of their screen.
 
-The text below is here to look right in every theme.
+The text below is here to look right under both.
 
 ## A paragraph of running prose
 
 The gap between a comfortable read and an uncomfortable one is small and entirely mechanical:
 the size of the type, the length of the line, and the contrast of the page. Set the measure
 too wide and the eye loses the start of the next line; too narrow and the rhythm breaks every
-few words. Two themes cover the two conditions that matter, a lit room and a dark one, and each
+few words. Two palettes cover the two conditions that matter, a lit room and a dark one, and each
 is tuned to clear its contrast floors rather than offered as a third of a slider. None of this
 is decoration. It is the difference between finishing the chapter and closing the tab.
 
@@ -29,7 +29,7 @@ is decoration. It is the difference between finishing the chapter and closing th
 
 ![A calm reading column.](fit-a.png){#fig-reading}
 
-@fig-reading should keep its caption and numbering in every theme.
+@fig-reading should keep its caption and numbering under both palettes.
 
 ## Some code and a little math
 
@@ -38,14 +38,15 @@ def comfortable(width_ch: int) -> bool:
     return 45 <= width_ch <= 75
 ```
 
-Inline math like $e^{i\pi} + 1 = 0$ and a display equation should both stay crisp in every
-theme:
+Inline math like $e^{i\pi} + 1 = 0$ and a display equation should both stay crisp under
+both palettes:
 
 $$ \text{measure} \approx \frac{\text{line length}}{\text{character width}} $$
 
 ## A callout
 
 ::: {.callout-note}
-The reader's theme choice is reader-local and read-only. It never writes back to the `.tmd`,
-adds no output format, and ships offline, so it sits cleanly inside Taliesin's invariants.
+Both palettes ship in every page and one is selected at paint time from the device, so this
+costs no rebuild and no round trip. It writes nothing back to the `.tmd`, adds no output
+format, and works offline, so it sits cleanly inside Taliesin's invariants.
 :::

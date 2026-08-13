@@ -1,34 +1,29 @@
 ---
 title: "The reader experience"
-description: "What a built page gives its reader: theme and keyboard access, plus a record of the reader chrome that was tried and then cut."
+description: "What a built page gives its reader: a page lit by their own device, keyboard access, and a record of the reader chrome that was tried and then cut."
 ---
 
-A Taliesin page is not just rendered HTML, it is a reading surface. Every built
-page carries a small suite of reader tools behind a single **Settings** gear in the
-top-right corner. They need no author configuration: they appear on every article
-automatically.
+A Taliesin page is not just rendered HTML, it is a reading surface. What it gives a reader
+needs no author configuration and, as of 2026-08-13, no reader configuration either.
 
-One principle holds for everything on this page:
-
-- **Reader-side and read-only.** Each tool stores its state in the *reader's own*
-  browser `localStorage`, keyed by the page path. Nothing is written back to your
-  `.tmd` source, and nothing leaves the browser. This is the single-editing-surface
-  rule applied to the output: the reader owns a reading of the document, the
-  document stays authoritative.
-
-## The Settings menu
-
-The **Settings** gear opens a light-dismiss popover (not a modal: it never covers or
-inerts the page). On a website it lives in the navbar; on a book, in the topbar; on a
-standalone page it floats in the top-right corner. It hosts Theme. Close it with Esc, a
-click outside, or the gear again.
+One principle holds for everything on this page: **reader-side and read-only.** Nothing here
+is written back to your `.tmd` source and nothing leaves the browser. This is the
+single-editing-surface rule applied to the output: the reader owns a reading of the
+document, the document stays authoritative.
 
 ## Theme
 
-The **Theme** section is a single segmented control: Auto, Light, or Dark. The choice
-persists in the reader's `localStorage` and is applied *before the page paints*, so a
-returning reader never sees a flash of the wrong theme. Auto follows the operating
-system's own light/dark setting and keeps following it, live.
+**The page is lit by the reader's device, and there is no control.** A phone set to dark
+renders the page dark; a laptop set to light renders it light; flipping that setting mid-read
+flips the page live. Both palettes ship inside every page and one is selected *before the
+page paints*, so there is no flash of the wrong theme and no round trip.
+
+There was a Settings gear in the top-right corner offering Auto / Light / Dark, and it was
+removed. The reader had already answered the question once, in their operating system, and
+every other page they read that day honoured that answer. A per-site picker asks them to
+answer it a second time, stores that answer where only this site can see it, and then
+disagrees with the rest of their screen. Auto was the default and was what almost everyone
+kept.
 
 **Two themes, not three.** A warm low-contrast "sepia" mode shipped for a while and was
 removed: two themes cover the two conditions that actually differ, a lit room and a dark
@@ -75,7 +70,7 @@ nothing they could feel, while costing them their navigation and two controls to
 
 A book made the point plainly. Once a chapter's right-rail TOC was removed, focus mode
 had literally nothing left to hide there: the sticky topbar was never in its hide list,
-so the toggle was a no-op that still occupied a row in the Settings menu.
+so the toggle was a no-op that still occupied a row in the Settings menu of the day.
 
 Nothing replaced it: the browser's own fullscreen (F11) is one key away and belongs
 to the reader, not to the document.
@@ -111,11 +106,17 @@ before asking for one of them back:
 - **The show/hide-code toggle.** A reader-side switch used to collapse every executed
   cell's source. The author already decides per cell with `#| echo:`; a reader override of
   that decision is real but rare, and it cost a permanent row in the Settings menu.
+- **The theme picker, and the Settings gear that held it.** A segmented Auto / Light / Dark
+  control, described above. Removing it emptied the gear, so the gear went too, and with it
+  the last reader-facing control on a built page. A third door had to close in the same
+  change: the Cmd-K palette carried a "Toggle light / dark theme" command that gated on a
+  global every page ships, so unlike its neighbours it appeared on static builds as well.
 - **Listing category-filter chips.** A filter row used to sit above a listing's cards. It
   paid off only on a large archive with a disciplined category vocabulary; page-level
   `categories:` and the card badges on each listing still work.
-- **The `?` and `/` character-key shortcuts.** Bare-letter shortcuts used to open Settings
-  and search, which under WCAG 2.1.4 legally required a switch to turn them off. Removing
+- **The `?` and `/` character-key shortcuts.** Bare-letter shortcuts used to open the
+  settings menu and search, which under WCAG 2.1.4 legally required a switch to turn them
+  off. Removing
   two rarely used shortcuts removed the obligation rather than adding the switch; `Esc`
   and the arrow keys below are not character keys and stay live with no control needed.
 
@@ -133,24 +134,18 @@ dialog is open):
 
 None of these is a character-key shortcut (a single key fired with no modifier), so
 WCAG 2.1.4's requirement to make character-key shortcuts switchable off does not apply,
-and there is no such control in Settings.
+and no off-switch is owed.
 
-Keyboard focus is always visible: every interactive control (links, buttons, tabs,
-and the Settings controls) shares one consistent focus ring,
-shown only for keyboard or assistive-technology focus and never on a mouse click. The
-ring is a single theme token, so it follows the active theme (including the
-high-contrast modes below).
+Keyboard focus is always visible: every interactive control (links, buttons, and tabs)
+shares one consistent focus ring, shown only for keyboard or assistive-technology focus and
+never on a mouse click. The ring is a single theme token, so it follows the active palette
+(including the high-contrast modes below).
 
 **Landmarks and dialogs.** Each `<nav>` on a page carries a distinguishing accessible
 name (the table of contents announces as "Table of contents", separate from the
 navbar and the prev/next pager), so a screen reader's landmark list is navigable.
 The one modal overlay, the **search palette**, moves focus into itself on open, traps
-Tab while open, and restores focus to whatever opened it on close. The
-**Settings** menu is a light-dismiss popover: it moves focus to its first control on open and
-returns it to the gear when you press Esc, but it never traps Tab, so you can always leave it
-by tabbing or by clicking away. (It moves focus because the panel is not adjacent to its gear
-in the page's source order, so without the move a keyboard reader would be stranded far from
-the menu they just opened.)
+Tab while open, and restores focus to whatever opened it on close.
 
 **High contrast.** In Windows High Contrast / `forced-colors` mode, and under
 `prefers-contrast: more`, borders, focus rings, separators, and the active-item

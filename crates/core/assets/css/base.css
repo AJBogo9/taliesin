@@ -4,50 +4,6 @@
      declared exactly once. See tokens.css. */
   html { scroll-behavior: smooth; }
 
-  /* Settings menu: one gear launcher (top-right) + the popover panel and its sections
-     (taliInitReaderMenu; the theme / focus / keyboard enhancers add sections). The segmented
-     controls further down are reused inside it. */
-  .tali-rmenu-toggle {
-    position: fixed; right: 1rem; top: 1rem; z-index: 2147481500;
-    width: 2.4rem; height: 2.4rem; border-radius: 50%;
-    border: 1px solid var(--tali-border-strong); background: var(--tali-bg); color: var(--tali-fg);
-    box-shadow: var(--tali-shadow-md); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; }
-  .tali-rmenu-toggle:hover { border-color: var(--tali-accent); color: var(--tali-link); }
-  /* border-box, and a cap that subtracts the same `right: 1rem` inset from both sides:
-     under content-box the 2rem of padding and 2px of border sat OUTSIDE the
-     `min(18rem, 92vw)` width, so the panel's box ran off the left edge of the screen, 
-     18px at a 320px viewport, 72px once a reader doubles the text size (WCAG 1.4.4
-     content loss). The inset is rem-based, so a vw-only cap could never account for it. */
-  .tali-rmenu-panel {
-    position: fixed; right: 1rem; top: 4rem; z-index: 2147481600;
-    box-sizing: border-box; width: min(18rem, calc(100vw - 2rem));
-    max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
-    background: var(--tali-bg); color: var(--tali-fg);
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg);
-    box-shadow: var(--tali-shadow-lg); font: var(--tali-font-head); }
-  .tali-rmenu-panel[hidden] { display: none; }
-  .tali-rmenu-section { padding: .6rem 0; }
-  .tali-rmenu-section + .tali-rmenu-section { border-top: 1px solid var(--tali-border); }
-  /* flex-wrap, not a breakpoint: at 200% text a doubled label + a 4-button Theme seg cannot
-     share one line, and the panel's `overflow: auto` would turn that into a horizontal scroll
-     (WCAG 1.4.4 / 1.4.10). Wrapping keys off real available space, so it needs no tuned
-     threshold and handles page zoom and text-only zoom the same way. `space-between` is
-     unaffected when everything fits: flex lines distribute independently. */
-  .tali-reader-row { display: flex; flex-wrap: wrap; align-items: center;
-    justify-content: space-between; gap: .5rem; margin: 0 0 .7rem; }
-  .tali-reader-row > span { font-size: .82rem; color: var(--tali-muted); }
-  .tali-reader-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--tali-border-strong);
-    border-radius: var(--tali-radius-md); overflow: hidden; }
-  /* WCAG 2.5.8 (Target Size, Minimum): .28rem of padding on a .8rem/1 label makes a
-     21.8px-tall button. The vertical padding brings every segment to >= 24px. */
-  .tali-reader-seg button {
-    border: 0; border-left: 1px solid var(--tali-border-strong); background: transparent;
-    color: var(--tali-fg); cursor: pointer; padding: .4rem .55rem; min-height: 24px;
-    font: inherit; font-size: .8rem; line-height: 1; }
-  .tali-reader-seg button:first-child { border-left: 0; }
-  .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
@@ -220,12 +176,6 @@
   h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; }
   .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
   .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
-  /* Clear the floating settings gear. It is `position: fixed` in the top-right (2.4rem wide,
-     1rem inset) so it reserves no space and paints opaquely over whatever is beneath it, and
-     a title line running the full measure collides with it on a narrow viewport. The gear
-     only floats on a chrome-less single doc; sites and books dock it in their nav bar, hence
-     the `:has()` scope. Browsers without `:has()` simply skip the rule. */
-  body:has(> .tali-rmenu-toggle) .tali-title-block .title { padding-right: 3.4rem; }
   .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--tali-muted); font-weight: 400; }
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
@@ -878,11 +828,9 @@
     .callout, blockquote, table, .tali-figure figure, pre {
       border: 1px solid CanvasText;
     }
-    /* Only the pressed seg button opts out: it pins a bg+fg PAIR, so forced colors would
-       otherwise drop the pressed state entirely. The nav markers must NOT opt out: they pin a
-       fg with no bg, which under an opposite-polarity theme paints "you are here" invisible.
-       Their marker survives without it (site.css underlines the active item). */
-    .tali-reader-seg button[aria-pressed="true"] { forced-color-adjust: none; }
+    /* The nav markers must NOT opt out of forced colors: they pin a fg with no bg, which
+       under an opposite-polarity theme paints "you are here" invisible. Their marker
+       survives without it (site.css underlines the active item). */
   }
   /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast.
      `:root:root` (0,2,0), not `:root` (0,1,0) or `html[data-theme="dark"]` (0,1,1): dark.css

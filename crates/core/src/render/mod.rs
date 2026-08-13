@@ -115,7 +115,7 @@ pub use page::{
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
-use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
+use theme::{detect_theme, resolve_theme, theme_style};
 
 /// Render a `.tmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
@@ -1321,7 +1321,6 @@ fn render_internal_impl(
     // by now (References, footnotes, the title block), so a section's end is final.
     mark_section_extents(&mut blocks);
     let theme_css = resolve_theme(theme.as_deref(), base_dir, include_root, &mut warnings);
-    let theme_default = theme_default_mode(theme.as_deref()).to_string();
     let theme_is_custom = !theme_css.trim().is_empty();
     RenderedDoc {
         title,
@@ -1334,7 +1333,6 @@ fn render_internal_impl(
         toc: toc_explicit.unwrap_or(false),
         toc_explicit,
         theme_css,
-        theme_default,
         theme_is_custom,
         includes,
         warnings,
@@ -2083,8 +2081,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/07-keyboard.js"),
     include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
     include_str!("../../assets/js/code-enhance/09-register.js"),
-    include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
-    include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
 );
 /// The enhancer registry (`window.taliEnhancers` + `taliEnhanceCode`) on its own, so the

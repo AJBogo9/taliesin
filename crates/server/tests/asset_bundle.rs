@@ -11,7 +11,7 @@ fn bin() -> &'static str {
 // The base.css marker literal (confirmed present via grep; see render/tests.rs's own
 // comment on this same literal): a framework rule that must never be inlined into a page
 // under `AssetMode::External`.
-const MARKER_BASE: &str = ".tali-reader-seg";
+const MARKER_BASE: &str = ".tali-title-block";
 
 #[test]
 fn site_build_externalizes_shared_assets() {

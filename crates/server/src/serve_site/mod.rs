@@ -232,7 +232,6 @@ struct PageDoc {
     tab_title: String,
     toc: bool,
     theme_css: String,
-    theme_default: String,
     /// The page's own front-matter `include-*`/`css` (merged after the site's).
     includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
@@ -687,7 +686,6 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         tab_title,
         toc,
         theme_css: doc.theme_css,
-        theme_default: doc.theme_default,
         includes: doc.includes,
         blocks: doc.blocks,
         diagnostics,
@@ -707,7 +705,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body and no theme either), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, theme_css, theme_default, body, page_includes, generation) = {
+    let (tab_title, toc, theme_css, body, page_includes, generation) = {
         let pages = project.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
@@ -715,7 +713,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
                 ps.doc.tab_title.clone(),
                 ps.doc.toc,
                 ps.doc.theme_css.clone(),
-                ps.doc.theme_default.clone(),
                 ps.doc.body_html(),
                 ps.doc.includes.clone(),
                 ps.doc.generation,
@@ -723,7 +720,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
             None => (
                 String::new(),
                 false,
-                String::new(),
                 String::new(),
                 String::new(),
                 Default::default(),
@@ -859,7 +855,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         // page's front-matter `lang:` via the core page builder.
         lang: "en",
         favicon: &favicon,
-        theme_default: &theme_default,
         theme_css: &theme_css,
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
@@ -1381,7 +1376,6 @@ async fn build_page(
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
     ps.doc.theme_css = doc.theme_css;
-    ps.doc.theme_default = doc.theme_default;
     ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
     // client that server-rendered this page pre-exec re-mounts to pick up the outputs.

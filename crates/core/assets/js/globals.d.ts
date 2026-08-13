@@ -12,19 +12,6 @@
 // globals authored under `assets/js/` that web-client does not itself reference.
 
 interface Window {
-  // --- code-enhance registry aliases + reader surfaces -----------------------
-  /** Reader menu controller (code-enhance/13-reader-menu.js): opens/closes the
-   *  reading-tools sheet and lets other fragments dock a section into it. */
-  taliReaderMenu?: {
-    /** Dock a section (its content node, an onOpen sync hook) into the sheet. The menu
-     *  holds exactly one section (Theme) today, so there is no title and no
-     *  show/hide handle — see 13-reader-menu.js. */
-    addSection: (node: Element, onOpen?: () => void) => void;
-    open: () => void;
-    close: () => void;
-    toggle: () => void;
-  };
-
   // --- {js} reactive runtime (tali-js.js) -------------------------------------
   /** Internal per-page state bag for the `{js}` runtime (cell registry, teardown
    *  handles, observers). Private to tali-js.js; typed loosely. */

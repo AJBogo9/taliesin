@@ -53,21 +53,6 @@ fn search_button() -> String {
     )
 }
 
-/// A cog — the reader Settings gear glyph (Feather "settings"). Single-quoted attrs so it can
-/// also live verbatim in the floating-launcher copy in `code-enhance/13-reader-menu.js`.
-const SETTINGS_ICON: &str = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/></svg>";
-
-/// The reader Settings gear that docks in the navbar / book topbar. `taliInitReaderMenu`
-/// (code-enhance) wires it via `[data-tali-settings]` click delegation and mounts the
-/// Theme / Focus / Keyboard popover it opens; on a chrome-less single doc the same enhancer
-/// instead creates a floating copy. Server-rendered so the icon shows before JS runs.
-fn settings_button() -> String {
-    format!(
-        "<button class='tali-nav-settings' type='button' data-tali-settings \
-         aria-label='Settings' aria-expanded='false'>{SETTINGS_ICON}</button>"
-    )
-}
-
 /// Resolve a `_site.yml` asset path (`logo:` and `favicon:`) for a page whose depth prefix
 /// is `up`. A project-relative path gets the `../` climb back to the site root; a
 /// site-absolute (`/brand.svg`) or external (`https://…`, `//cdn/…`) source is left exactly
@@ -164,9 +149,6 @@ impl Site {
         // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
         s.push_str(&search_button());
         s.push_str("</div>");
-        // The reader Settings gear (theme / focus) sits OUTSIDE the collapsing
-        // links so it stays visible top-right at every width, beside the burger on mobile.
-        s.push_str(&settings_button());
         s.push_str("</nav></header>");
         // Wire the burger button: toggle `aria-expanded` + a `.tali-nav-open` class
         // the CSS shows the menu on, and close on Escape / link click. Idempotent
@@ -470,10 +452,10 @@ impl Site {
         );
         s.push_str(&self.book_brand_html(book.title.as_ref(), &up));
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
-        // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
-        // focus). The gear replaces the old light/dark toggle that lived here.
+        // A search button, opening the same Cmd-K palette. The light/dark toggle that used
+        // to sit here became the reader Settings gear, and the gear was removed on
+        // 2026-08-13: a page follows the reader's device and offers no override.
         s.push_str(&search_button());
-        s.push_str(&settings_button());
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
         s.push_str(

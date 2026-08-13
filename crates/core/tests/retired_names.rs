@@ -511,10 +511,11 @@ fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
 /// identifier by its exact name, which nothing would do by accident.
 ///
 /// Three of those tests carried a positive assertion among the absences, and those are the
-/// half worth keeping: a deletion pass that took the theme picker, the arrow-key chapter
-/// nav or the Settings-menu mounting API with it would break a reader, and an absence test
-/// cannot notice that. Asserting what must ship catches the over-cut; asserting what must
-/// not ship catches nothing.
+/// half worth keeping: a deletion pass that took the arrow-key chapter nav or the pre-paint
+/// theme bootstrap with it would break a reader, and an absence test cannot notice that.
+/// Asserting what must ship catches the over-cut; asserting what must not ship catches
+/// nothing. (The third subject, the Settings menu's mounting API, was itself removed on
+/// 2026-08-13 with the theme picker it hosted: a page follows the reader's device.)
 #[test]
 fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
     let js = taliesin_core::render::code_scripts();
@@ -525,14 +526,6 @@ fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
         js.contains("ArrowLeft") || js.contains("ArrowRight"),
         "the arrow-key chapter nav must survive; it is not a character key"
     );
-    // The generic `window.taliReaderMenu.addSection(...)` mounting API (13-reader-menu.js)
-    // outlived every section but one: Theme (14-reader-prefs.js) is its last live caller,
-    // so this is the assertion standing between that menu and being dead code.
-    assert!(
-        js.contains("addSection"),
-        "the Settings menu's generic section-mounting API must survive; Theme still uses it"
-    );
-
     // The theme half of `theme.rs`'s pre-paint bootstrap, which ships in every rendered
     // page's <head> rather than in `code_scripts()`. The code-visibility half was deleted
     // out of the same bootstrap on 2026-08-03, which is exactly why this is checked against
@@ -543,7 +536,7 @@ fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
         "t",
         taliesin_core::render::OutputMode::Build,
     );
-    for needle in ["taliSetTheme", "taliGetThemeChoice", "tali-theme"] {
+    for needle in ["taliSetTheme", "tali-theme"] {
         assert!(
             html.contains(needle),
             "`{needle}` must ship in every page's pre-paint bootstrap"

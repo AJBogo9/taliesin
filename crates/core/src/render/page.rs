@@ -130,8 +130,6 @@ pub struct PageParts<'a> {
     pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
     pub favicon: &'a str,
-    /// `light`/`dark`/… default for the no-flash theme bootstrap script.
-    pub theme_default: &'a str,
     /// Extension / site theme CSS, raw (wrapped in `<style>` only when non-empty).
     pub theme_css: &'a str,
     /// Also ship the multi-page site chrome CSS (navbar / footer / prev-next).
@@ -171,7 +169,6 @@ impl<'a> PageParts<'a> {
             title: "",
             lang: "en",
             favicon: "",
-            theme_default: "",
             theme_css: "",
             with_site_css: false,
             ship_katex: false,
@@ -232,7 +229,7 @@ fn needs_js_libs(body: &str, mode: OutputMode) -> bool {
 /// servers. Keeping it here means a new meta tag, a bundled stylesheet, or a head
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
-    let theme_init = theme_head(p.theme_default);
+    let theme_init = theme_head();
     let scripts_pre = p.scripts_pre;
     let scripts_post = p.scripts_post;
     // Skip-to-content link: the first focusable thing in the body, so a keyboard /
@@ -699,7 +696,6 @@ fn html_page_inner(
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: &favicon,
-        theme_default: &doc.theme_default,
         theme_css: &doc.theme_css,
         with_site_css: site.is_some(),
         ship_katex,
@@ -755,7 +751,7 @@ mod tests {
     use super::*;
 
     // Same base.css marker literal Task 1 confirmed present (see render/tests.rs).
-    const MARKER_BASE: &str = ".tali-reader-seg";
+    const MARKER_BASE: &str = ".tali-title-block";
     // A literal unique to tali-js.js (the `{js}`-cell runtime); its presence in the page
     // proves the runtime shipped INLINE (in External mode all other framework JS is a
     // `<script src=...>` link, so raw runtime text in the page == an inline `<script>`).
@@ -789,7 +785,6 @@ mod tests {
                 title: "T",
                 lang: "en",
                 favicon: "",
-                theme_default: "dark",
                 theme_css: "",
                 with_site_css: true,
                 ship_katex: false,
@@ -857,7 +852,6 @@ mod tests {
             title: "T",
             lang: "en",
             favicon: "",
-            theme_default: "dark",
             theme_css: "",
             with_site_css: true,
             ship_katex: true,
@@ -899,7 +893,6 @@ mod tests {
             title: "T",
             lang: "en",
             favicon: "",
-            theme_default: "dark",
             theme_css: "",
             with_site_css: true,
             ship_katex: false,

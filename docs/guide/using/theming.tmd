@@ -1,56 +1,48 @@
 ---
 title: "Theming"
-description: "Restyling a document by overriding a handful of variables, and where the reader's own preference outranks the author's."
+description: "Restyling a document by overriding a handful of variables, and why the light/dark choice belongs to the reader's device rather than to either of you."
 ---
 
 A theme in Taliesin is not a stylesheet you wrestle with, it is a small set of CSS
 custom properties (`--tali-*`). The whole document, the navbar, footer, callouts,
 diagrams, figures, and syntax-highlighted code all read those variables, so
-retuning one value restyles everything at once, and the light/dark toggle is just
+retuning one value restyles everything at once, and the light/dark switch is just
 a swap of the values: nothing re-renders.
 
 ## The built-in themes
 
 Two themes ship in the binary and need no files:
 
-- **`light`** (the default) is the base `:root` palette: a white page with dark ink.
+- **`light`** is the base `:root` palette: a white page with dark ink.
 - **`dark`** overrides the colour variables for a near-black page with light ink.
 
-Select one in the front matter:
+**Neither is selected in front matter, and there is no key for it.** Both ship in every
+page and the reader's device decides which one paints, following the OS
+`prefers-color-scheme` and falling back to light when the OS expresses no preference.
 
-```yaml
----
-title: "My post"
-theme: dark
----
-```
-
-Only `theme: dark` forces dark and only `theme: light` (or `theme: default`) forces
-light; everything else, including no `theme:` at all, resolves to "auto", which the
-pre-paint script follows the OS `prefers-color-scheme` and falls back to **light**
-when the OS has no dark preference. Either way the reader can still flip the page
-from the **Settings** gear (top-right of every page, or the dev menu on a single
-doc), and the choice persists in their browser (checked first, ahead of both the
-front-matter mode and the OS preference). A page with a *custom* CSS theme that
-doesn't name a built-in mode is one of those "auto" cases too.
+`theme: dark`, `theme: light` and `theme: default` were retired on 2026-08-13; writing one
+now draws a warning and changes nothing. `theme:` itself is very much alive, for the custom
+`.css`/`.scss` files and `_extensions/` bundles described below.
 
 ::: {.callout-note}
-## Two built-in palettes, and the reader picks between them
+## Two built-in palettes, and the device picks between them
 
 Light and Dark are the whole built-in set. A warm low-contrast "sepia" palette
 shipped for a while and was removed: a third palette is a third of every rule and
 every contrast measurement, for a preference a reader can already get from their
-system. Which of the two a reader sees is theirs to choose, from the **Settings**
-gear (top-right); see [The reader experience](reading.tmd) for the rest of that menu.
+system. Which of the two a reader sees follows their device and nothing else; see
+[The reader experience](reading.tmd) for why the picker that used to sit in the
+top-right corner went away.
 :::
 
-## How the toggle works
+## How the switch works
 
-The toggle changes one attribute, `data-theme` on `<html>`, and CSS does the rest.
+It comes down to one attribute, `data-theme` on `<html>`, and CSS does the rest.
 The base palette lives in a `:root` block and `html[data-theme="dark"]` supplies
 override values for the same `--tali-*` names.
-A pre-paint `<head>` script reads the saved choice from `localStorage` before the
-first frame, so a returning reader never sees a flash of the wrong theme. Crucially,
+A pre-paint `<head>` script reads the device preference before the first frame and sets
+that attribute, so a reader never sees a flash of the wrong palette, and it keeps listening
+so a mid-read change to the OS setting flips the page live. Crucially,
 **syntax highlighting recolours with no re-highlight**: code is highlighted once,
 server-side, into scope classes (`tali-hl-keyword`, `tali-hl-string`, …), and the dark
 theme simply restyles those classes, so a toggle is pure CSS with nothing to
@@ -58,8 +50,8 @@ recompute. The same holds for math, figures (a light/dark image swap), and callo
 all **fully offline**, the colours baked into the page, no CDN and no client re-run.
 
 **Diagrams are the one exception.** Mermaid bakes its colours into the rendered SVG, so
-a diagram cannot be recoloured by CSS alone: it listens for the theme toggle (the
-`tali:themechange` event) and re-runs from its stashed source under the new theme. The
+a diagram cannot be recoloured by CSS alone: it listens for the theme change (the
+`tali:themechange` event) and re-runs from its stashed source under the new palette. The
 library itself is vendored like everything else, so this costs no network either.
 
 ## The variable reference
@@ -194,19 +186,11 @@ a malformed SVG still serves with a `200` and still copies into the build while 
 as nothing. Escape them, or keep the CSS free of those characters.
 :::
 
-## Four ways to customize
+## Three ways to customize
 
 From lightest touch to a full bundle.
 
-### a. Pick a built-in mode
-
-```yaml
-theme: light   # or dark
-```
-
-Nothing to write or ship. This is the right answer most of the time.
-
-### b. Override a few variables for a whole project
+### a. Override a few variables for a whole project
 
 Put a `:root` block in your project's `_site.yml` `head:`. Because the overrides land
 *after* the base stylesheet, they win:
@@ -224,7 +208,7 @@ There is no per-document `css:` key. It was removed on 2026-08-02 (nothing used 
 the two remaining routes are better shaped for the job: `head:` for a project-wide tweak,
 and `theme:` below for anything longer than a couple of lines.
 
-### c. Point `theme:` at a `.css` or `.scss` file
+### b. Point `theme:` at a `.css` or `.scss` file
 
 For more than a couple of lines, keep the overrides in a file beside the document
 and name it in `theme:`. The file is inlined after the base stylesheet, and on a
@@ -260,7 +244,7 @@ There is no Sass compiler. A `.scss` file is read and inlined verbatim inside a
 works: real SCSS syntax (nesting, `$variables`, `@mixin`, `@use`) will not parse. The
 `.scss` extension is accepted only so a file named that way is still found and inlined.
 
-### d. Ship a `_extensions/<name>/` theme bundle
+### c. Ship a `_extensions/<name>/` theme bundle
 
 To reuse a theme across documents, a whole book, or a site, package it as a theme
 extension: a folder `_extensions/<name>/` whose `theme.css` holds the palette.
@@ -303,12 +287,11 @@ theme: brand.css
 
 Now links, the focus ring, and the active markers are orange, the body sets in
 Charter, and both themes stay contrast-safe. Nothing else in the document needed
-touching, and the toggle still swaps light and dark instantly.
+touching, and the page still swaps light and dark instantly.
 
-## The reader's theme is their own
+## Which palette a reader sees is not yours to set
 
-The variable values above are the *author's* theme. On top of them, each reader can
-pick their own theme, Auto, Light or Dark, from the **Settings** gear (top-right).
-That choice **persists per reader** in their browser `localStorage`, never touching your
-source, and is applied before the page paints, so a returning reader never sees a flash of
-the wrong theme. See [The reader experience](reading.tmd) for the rest of the Settings menu.
+The variable values above are the *author's* theme: they define what light and dark each
+look like. Which of the two a given reader gets is decided by that reader's device, and
+neither you nor they can override it from the page. Tune both, and check both. See
+[The reader experience](reading.tmd) for why it works that way.

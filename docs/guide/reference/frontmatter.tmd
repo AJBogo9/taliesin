@@ -286,7 +286,7 @@ lang: en                                          # <html lang> (default en)
 categories: [machine-learning, training]          # listing tags -> card badges
 
 # --- Output / format / theme ---
-theme: dark                                        # light / dark / file / extension (unspecified follows the OS)
+theme: brand.css                                   # a .css/.scss file or an _extensions/ bundle (light/dark follow the reader's device)
 page-layout: full                                 # widen the column (default: reading width)
 
 # --- Social / images ---

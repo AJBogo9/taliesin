@@ -299,9 +299,6 @@ pub struct RenderedDoc {
     /// Resolved custom theme CSS (`.css`/`_extensions/`), empty for the built-in
     /// light/dark themes. Inlined after the base stylesheet.
     pub theme_css: String,
-    /// Default theme mode for the resolver script: `"dark"`/`"light"` force it,
-    /// `"auto"` follows the OS `prefers-color-scheme`.
-    pub theme_default: String,
     /// Whether a custom `theme:` (a CSS file or bundle) owns this doc's colours.
     pub theme_is_custom: bool,
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +

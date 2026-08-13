@@ -21,9 +21,19 @@ pub(super) fn resolve_theme(
         return String::new();
     };
     match name {
-        // Built-in light/dark are always shipped (DARK_CSS) and selected at
-        // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
-        "light" | "default" | "dark" => String::new(),
+        // The three built-in mode names, retired 2026-08-13. They never carried override
+        // CSS (both palettes always ship and are selected at runtime via `data-theme`), so
+        // all that is left to say is that they no longer select. `theme:` itself stays
+        // live for `.css` files and `_extensions/` bundles, which is why this is not a
+        // `RETIRED_KEYS` entry: all three registers key on the KEY, and what retired here
+        // is two of its values.
+        "light" | "default" | "dark" => {
+            warnings.push(Warning::new(format!(
+                "`theme: {name}` no longer selects a mode: the page follows the reader's \
+                 device setting, so delete the key"
+            )));
+            String::new()
+        }
         // A named `.css`/`.scss` that can't be read is a typo worth flagging.
         // `try_join_in` refuses an absolute path or one escaping the project root, and
         // keeps the reason: a refused theme whose file plainly exists must not be
@@ -101,54 +111,38 @@ fn refused_theme(named: &str, reason: crate::includes::Refused) -> String {
         ),
     }
 }
-/// The default theme mode for the resolver script: an explicit `dark`/`light`
-/// from front matter forces that mode; anything else returns `"auto"`, which the
-/// pre-paint head script resolves by following the OS `prefers-color-scheme`,
-/// falling back to **light** when the OS expresses no dark preference (see
-/// [`theme_head`]). Custom CSS themes don't force a built-in mode.
-pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
-    match theme {
-        Some("dark") => "dark",
-        Some("light") | Some("default") => "light",
-        _ => "auto",
-    }
-}
-/// Inline `<head>` script (runs before paint, so no flash): set
-/// `<html data-theme>` from the saved choice, else the front-matter default,
-/// else the OS `prefers-color-scheme`. Also defines
-/// `taliSetTheme`/`taliGetThemePref`/`taliGetThemeChoice` for the preview toggle
-/// and the Settings picker, and keeps `auto` in sync with OS changes.
+/// Inline `<head>` script (runs before paint, so no flash): set `<html data-theme>` from the
+/// reader's DEVICE (`prefers-color-scheme`), falling back to light when it expresses no
+/// preference, and keep following it live. Also defines `taliSetTheme` / `taliToggleTheme` /
+/// `taliWireThemeToggles` for the preview dev menu's quick toggle — the only theme control
+/// left anywhere, and one that never ships in a build.
 ///
-/// Two values, deliberately distinct: the **choice** is what the reader picked
-/// (`auto`/`light`/`dark`), the **mode** is what actually paints
-/// (`light`/`dark`, never `auto`). A picker has to render the choice, or
-/// its `auto` option can never read as selected; everything else wants the mode.
+/// **It takes no argument, and that is the point.** A `default_mode` parameter carried the
+/// front-matter `theme: light|dark` forcing until 2026-08-13. With no per-document input
+/// there is no door a forced mode can come through, so "the page follows the device" is a
+/// property of the signature rather than a claim every call site has to keep.
 ///
-/// The allowed list here is also the **migration** for a mode that is withdrawn: a stored
-/// choice is validated against it and anything else reads as `auto`, so a reader whose
-/// localStorage still says `sepia` (removed 2026-08-02, item 200) degrades to following the
-/// OS rather than to a `data-theme` nothing paints. That is why there is no migration code.
-pub fn theme_head(default_mode: &str) -> String {
+/// The stored choice survives for the dev toggle alone, and a value that is neither `light`
+/// nor `dark` reads as "follow the device". That is also the migration for any mode ever
+/// withdrawn: a reader whose localStorage still says `sepia` (removed 2026-08-02) degrades
+/// to the device rather than to a `data-theme` nothing paints, with no migration code.
+pub fn theme_head() -> String {
     format!(
         r#"<script>
 (function(){{
-  // Resolution order for the active mode: a saved reader choice (tali-theme) always
-  // wins; else a front-matter-forced "light"/"dark" mode; else (an unspecified or
-  // `darkly`-style default, i.e. "auto") follow the OS `prefers-color-scheme`,
-  // falling back to light when the OS expresses no dark preference. DEFAULT is a
-  // function (not a constant) so the auto fallback re-reads the OS on every call —
-  // the toggle, video sync, and the OS-change listener all see the live value.
-  var MODE = "{default_mode}";
-  function DEFAULT(){{
-    if (MODE === "light" || MODE === "dark") return MODE;
+  // The reader's DEVICE decides the mode. DEVICE is a function (not a constant) so it
+  // re-reads the OS on every call — the dev toggle and the OS-change listener both see
+  // the live value. Falls back to light when the OS expresses no dark preference.
+  function DEVICE(){{
     try {{
       if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return "dark";
     }} catch(e) {{}}
     return "light";
   }}
-  // The reader's stored CHOICE. Absent or unrecognized reads as "auto", so clearing
-  // the key is what returns a page to following the OS — and so does a choice that no
-  // longer exists, which is what makes withdrawing one safe with no migration step.
+  // The one stored override, written ONLY by the preview dev menu's quick toggle
+  // (web-client/client.js), which never ships in a build — so on a built page this is
+  // always absent and the device always wins. Absent or unrecognized reads as "auto",
+  // which is also why withdrawing a mode needs no migration step.
   function choice(){{
     var v = null;
     try {{ v = localStorage.getItem("tali-theme"); }} catch(e) {{}}
@@ -157,7 +151,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // The MODE that actually paints: never "auto".
   function pref(){{
     var c = choice();
-    return c === "auto" ? DEFAULT() : c;
+    return c === "auto" ? DEVICE() : c;
   }}
   var BG = {{ dark: '#16181d', light: '#ffffff' }};
   function apply(){{
@@ -181,25 +175,28 @@ pub fn theme_head(default_mode: &str) -> String {
       if (mc) mc.setAttribute("content", BG[mode] || '#ffffff');
     }} catch(e) {{}}
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
-    // render time) re-render on a toggle, and let the Settings picker re-sync its
-    // pressed state: which tracks the choice, not the mode.
-    try {{ window.dispatchEvent(new CustomEvent("tali:themechange", {{ detail: {{ mode: mode, choice: choice() }} }})); }} catch(e) {{}}
+    // render time) re-render when the mode changes. The detail carried a `choice` field
+    // until 2026-08-13, for the Settings picker's pressed state alone; no listener reads
+    // anything but `mode`.
+    try {{ window.dispatchEvent(new CustomEvent("tali:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
   }}
   apply();
-  // Keep an "auto" page reactive to OS theme flips: re-apply only while the choice
-  // is auto, so a reader who explicitly picked a theme is never overridden by the
-  // OS. (Older Safari exposes addListener instead of addEventListener; guard for it
-  // the way the rest of the code guards matchMedia.)
+  // Follow OS theme flips live. The listener is registered UNCONDITIONALLY: it used to
+  // be skipped whenever front matter forced a mode, and that state no longer exists, so
+  // a surviving guard would be a branch nothing can take. It still re-applies only while
+  // the choice is auto, so the dev toggle is not fought by the OS mid-preview. (Older
+  // Safari exposes addListener instead of addEventListener; guard for it the way the
+  // rest of the code guards matchMedia.)
   try {{
-    if (MODE !== "light" && MODE !== "dark" && window.matchMedia) {{
+    if (window.matchMedia) {{
       var osDark = window.matchMedia('(prefers-color-scheme: dark)');
       var onOsChange = function(){{ if (choice() === "auto") apply(); }};
       if (osDark.addEventListener) osDark.addEventListener('change', onOsChange);
       else if (osDark.addListener) osDark.addListener(onOsChange);
     }}
   }} catch(e) {{}}
-  // Picking "auto" REMOVES the key rather than storing "auto": a reader who never
-  // touched the picker and one who explicitly chose auto are the same state, and the
+  // Passing anything that is not "light"/"dark" REMOVES the key rather than storing it:
+  // "following the device" and "never touched the toggle" are the same state, and the
   // OS listener above keys off exactly that.
   window.taliSetTheme = function(p){{
     try {{
@@ -208,8 +205,6 @@ pub fn theme_head(default_mode: &str) -> String {
     }} catch(e) {{}}
     apply();
   }};
-  window.taliGetThemePref = function(){{ return pref(); }};
-  window.taliGetThemeChoice = function(){{ return choice(); }};
   // Paper is white. dark.css recolours the syntax scopes with untokenised literals (a
   // dark-mode string is #a5d6ff: 1.6:1 on paper), so the print stylesheet's token reset
   // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach

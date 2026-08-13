@@ -71,7 +71,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-out",
     "data-tali-ran",
     "data-tali-search",
-    "data-tali-settings",
     "data-tali-src",
     "data-tali-theme-toggle",
     "data-tali-xref",
@@ -171,7 +170,19 @@ fn scan_data_attrs(text: &str, mode: Scan, out: &mut BTreeSet<String>) {
         if end > 0 && in_attr_position {
             out.insert(format!("data-{}", &rest[..end]));
         }
-        i = start + 5 + end.max(1);
+        // When `end == 0` the byte after `data-` starts no attribute name, so step over
+        // that WHOLE character. Stepping one byte (`end.max(1)`) put `i` inside a
+        // multi-byte char and panicked on the next slice — reachable from any source in
+        // the scanned set that writes `data-` before one, an ellipsis in a comment being
+        // the case that found it. An empty `rest` advances by 0, which is already
+        // `text.len()`, so the next `find` ends the loop rather than slicing out of range.
+        i = start
+            + 5
+            + if end == 0 {
+                rest.chars().next().map_or(0, |c| c.len_utf8())
+            } else {
+                end
+            };
     }
 }
 

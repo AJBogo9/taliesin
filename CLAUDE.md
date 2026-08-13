@@ -96,10 +96,18 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      here; `{{< include >}}` is resolved a pass earlier). NOT `_extensions/`, which is a theme-CSS lookup
                      in `theme.rs` and nothing else: there is no format-extension
                      mechanism, and no `format:` key either — HTML is the only output
-    theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes).
-                     The storage key is `tali-theme` and the event is
-                     `tali:themechange`; `crates/core/tests/retired_names.rs` keeps the
-                     retired `q`-prefix spelling out of the tree
+    theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes) +
+                     `theme_head`, the pre-paint script. **Which palette paints is the
+                     reader's DEVICE and nothing else** (2026-08-13): `theme_head()` takes
+                     NO argument, which is what makes that structural rather than a promise
+                     each call site keeps, and `theme: light|dark|default` is a retired
+                     VALUE of a live key (no register models that, so it warns in
+                     `resolve_theme` and is pinned parser-side). Both palettes always ship;
+                     `html[data-theme]` selects one at paint. The storage key `tali-theme`
+                     and the event `tali:themechange` survive for the preview dev menu's
+                     toggle, the only theme control left and never in a build;
+                     `crates/core/tests/retired_names.rs` keeps the retired `q`-prefix
+                     spelling out of the tree
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
                      favicon): RenderedDoc → standalone page for build + in-process render
   src/diff.rs      block-level diff (BlockOp) for incremental updates
@@ -161,7 +169,7 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    project, opened at that page; with no ancestor `_site.yml` it is a
                    project of just that document (`Site::discover_single`). That
                    synthesized one-page project renders no navbar and no footer (the
-                   theme toggle still shows), so for a file with **no ancestor
+                   preview dev menu still shows), so for a file with **no ancestor
                    `_site.yml`** `preview <file>` and `build <file>` agree on page chrome
                    — **including the table of contents since 2026-08-13**, which was the
                    one piece left out: the single-file build is the only page path that
@@ -493,6 +501,11 @@ here.**
 - Minimal config: perfect the default before adding a knob. Aim for a
   near-perfect default experience so the user does not *need* to configure;
   only explore configuration once the defaults are perfected, and prefer a
-  better default over a new option. Reader-local a11y preferences (theme, text
-  size, spacing) are exempt, they are personal, not document config. This is the
-  deciding lens for any new user-facing control.
+  better default over a new option. This is the deciding lens for any new user-facing
+  control. **The reader-local a11y exemption was withdrawn on 2026-08-13** and the
+  theme picker went with it: a reader-local preference is still personal rather than
+  document config, but "personal" is an argument for honouring the answer they already
+  gave their OS, not for asking them again per site and then disagreeing with the rest
+  of their screen. Text size and spacing had already gone the same way (the browser's
+  own zoom outranks a comfort panel). Ship no reader-facing control without new
+  evidence that the device answer is wrong for someone.

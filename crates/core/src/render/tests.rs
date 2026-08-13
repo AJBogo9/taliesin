@@ -1767,59 +1767,70 @@ fn inline_image_in_a_sentence_stays_inline() {
 }
 
 #[test]
-fn assembled_page_ships_theme_picker() {
+fn a_built_page_ships_no_reader_facing_theme_control() {
+    // The device decides the theme and nothing a reader can reach may override it. THREE
+    // controls used to, each through a different door, which is why this pins all three at
+    // once rather than trusting any one deletion: the Settings gear (server-rendered by
+    // `site::chrome`), its floating fallback plus the Theme row (two code-enhance
+    // fragments), and the Cmd-K palette's "Toggle light / dark theme" action — that last
+    // one self-gated on a global `theme_head` ships in every page, so it was offered on
+    // every static build, and removing only the gear would have left it standing.
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
-    // The theme-picker enhancer (the Settings gear's Theme row) ships on every built page via
-    // code_scripts(), so a reader can choose auto / light / dark.
+    // The gear's attribute is JOINED from parts that are not themselves attribute names.
+    // `token_contract.rs`'s browser census scans every Rust source containing `<script`,
+    // which includes this file, so any `data-…` literal here lands back in the
+    // browser-selected set — on a test whose whole point is that the attribute is gone.
+    // Interpolating the last segment into a prefix is NOT enough, and that mistake is why
+    // this comment spells nothing out: the scanner keeps a trailing `-` on purpose, to
+    // catch exactly that kind of concatenation-built name, so the prefix alone registers.
+    // Every segment here is therefore inert on its own.
+    let gear = ["data", "tali", "settings"].join("-");
+    for gone in [
+        gear.as_str(),
+        "tali-rmenu",
+        "taliInitReaderMenu",
+        "taliInitReaderPrefs",
+        "taliGetThemeChoice",
+    ] {
+        assert!(
+            !page.contains(gone),
+            "a built page must carry no reader theme control, found `{gone}`"
+        );
+    }
+    // The CALL form, not the bare identifier: the comment in search.js explaining why the
+    // action was removed names the global, and a bare-name needle matched that prose.
     assert!(
-        page.contains("taliInitReaderPrefs"),
-        "theme-picker enhancer not shipped in the assembled page"
+        !super::SEARCH_JS.contains("window.taliToggleTheme"),
+        "the Cmd-K palette's theme action is offered on every static build; it must be gone"
     );
-    // The pre-paint head script applies the reader's saved theme before paint (no flash),
-    // so it must reference the theme preference key.
     assert!(
-        page.contains("tali-theme"),
-        "pre-paint theme apply missing from the page head"
-    );
-}
-
-#[test]
-fn theme_head_separates_the_reader_choice_from_the_resolved_mode() {
-    // A reader who once toggled could never return to following the OS: the only saved
-    // values were light and dark, and nothing cleared the key. The head script must
-    // therefore expose the RAW choice (which can be "auto") alongside the resolved mode
-    // (which never is), and selecting "auto" must CLEAR the key so `hasSaved()` goes false
-    // and the `prefers-color-scheme` listener resumes driving the page.
-    let head = theme_head("auto");
-    assert!(
-        head.contains("taliGetThemeChoice"),
-        "head script must expose the raw reader choice, not just the resolved mode"
-    );
-    assert!(
-        head.contains("removeItem"),
-        "choosing `auto` must clear tali-theme, not store an unrecognized value"
-    );
-    // The change event has to carry the choice too, or the picker cannot re-sync
-    // its pressed state after an OS flip.
-    assert!(
-        head.contains("choice: choice()"),
-        "tali:themechange must report the choice alongside the mode"
+        !super::SEARCH_JS.contains(r#"id: "theme""#),
+        "no palette action may toggle the theme"
     );
 }
 
 #[test]
-fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
-    // The picker's segmented control marks the pressed option by comparing each option's
-    // value against the current one. Comparing against the RESOLVED mode means an "Auto"
-    // button can never read as pressed (the mode is always light or dark), so it must
-    // compare against the stored choice.
+fn the_pre_paint_script_follows_the_device_and_nothing_can_force_it() {
+    // The device is the only input to the resolved mode. The OS-change listener is
+    // registered UNCONDITIONALLY: it used to be skipped whenever front matter forced a
+    // mode, and that state is exactly what no longer exists, so a surviving guard would
+    // be a branch that can never be taken.
+    let head = theme_head();
     assert!(
-        CODE_ENHANCE_JS.contains("['auto', 'Auto'"),
-        "the Theme row must offer an Auto (follow the OS) option"
+        head.contains("prefers-color-scheme"),
+        "the pre-paint script must resolve the mode from the device"
     );
+    // The picker's read-backs. `taliGetThemePref` had NO consumer anywhere in the tree even
+    // before this change; `taliGetThemeChoice` had exactly one, the Theme row.
+    for dead in ["taliGetThemePref", "taliGetThemeChoice"] {
+        assert!(
+            !head.contains(dead),
+            "`{dead}` existed only for the picker's read-back and must not survive it"
+        );
+    }
     assert!(
-        CODE_ENHANCE_JS.contains("taliGetThemeChoice"),
-        "the Theme row must sync its pressed state against the stored choice, not the resolved mode"
+        !head.contains("choice: choice()"),
+        "the tali:themechange detail carried `choice` only so the picker could re-sync"
     );
 }
 
@@ -1918,13 +1929,36 @@ fn a_standalone_page_minifies_the_css_it_inlines() {
 }
 
 #[test]
-fn assembled_page_ships_reader_menu() {
-    let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // The reader-menu host consolidates the reader controls into one launcher + menu.
-    assert!(
-        page.contains("taliInitReaderMenu") && page.contains("taliReaderMenu"),
-        "reader-menu host not shipped in the assembled page"
-    );
+fn a_retired_theme_mode_cannot_still_force_the_page() {
+    // `theme:` stays live for `.css` files and `_extensions/` bundles, so what retired here
+    // is two of its VALUES — which no register models, since all three key on the key and
+    // not on the value. That leaves the half a register could never derive: the parser
+    // still honouring the value. `listing: sort:` answered "deleted" for eleven days while
+    // `parse_listing_spec` went on reversing the cards, so this pins the BEHAVIOUR (the
+    // page still resolves from the device) and not merely the message.
+    for mode in ["dark", "light"] {
+        let doc = render_document(&format!("---\ntheme: {mode}\n---\n\nProse.\n"));
+        assert!(
+            doc.warnings
+                .iter()
+                .any(|w| w.message.contains("follows the reader's device")),
+            "`theme: {mode}` must say it no longer forces a mode"
+        );
+        assert!(
+            doc.theme_css.trim().is_empty(),
+            "`theme: {mode}` must not inject override CSS"
+        );
+    }
+    // And the page it produces embeds the SAME pre-paint script as a page with no `theme:`
+    // at all. `theme_head()` takes no argument now, so this is what "nothing can force it"
+    // reduces to: there is no per-document input left for a mode to enter through.
+    let script = theme_head();
+    for src in ["---\ntheme: dark\n---\n\nProse.\n", "Prose.\n"] {
+        assert!(
+            render_html_page(src, "doc").contains(&script),
+            "every page must embed the one unforced pre-paint script"
+        );
+    }
 }
 
 #[test]
@@ -1983,12 +2017,13 @@ fn search_js_locks_the_background_scroller_while_the_palette_is_modal() {
 
 #[test]
 fn theme_head_ships_a_toggle_theme_global() {
-    // The palette's "Toggle theme" action calls window.taliToggleTheme, defined in theme_head
-    // so it ships on every page (build + preview) — that's why the theme action is always
-    // available. The dev-menu button reuses the same global (no duplicated toggle logic).
+    // The preview dev menu's quick toggle calls window.taliToggleTheme. It is defined here
+    // rather than in the preview client so the button has one implementation and no
+    // duplicated flip logic. The Cmd-K palette shared it until 2026-08-13, which is what
+    // made a reader-facing override outlive the Settings gear on every static build.
     assert!(
-        theme_head("auto").contains("window.taliToggleTheme"),
-        "theme_head must define window.taliToggleTheme for the command palette"
+        theme_head().contains("window.taliToggleTheme"),
+        "theme_head must define window.taliToggleTheme for the dev menu's toggle"
     );
 }
 
@@ -2289,46 +2324,32 @@ fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
 }
 
 #[test]
-fn theme_dark_default_drives_data_theme_resolver() {
-    // Built-in dark no longer inlines a per-page override; it sets the default
-    // mode, and the always-shipped dark CSS is selected at runtime by data-theme.
-    let dark = render_document("---\ntheme: dark\n---\n\nx\n");
-    assert!(
-        dark.theme_css.is_empty(),
-        "built-in dark should not inline override CSS"
-    );
-    assert_eq!(dark.theme_default, "dark");
-
-    let page = render_html_page("---\ntheme: dark\n---\n\nx\n", "fb");
+fn both_palettes_ship_on_every_page_and_are_selected_by_data_theme() {
+    // Neither built-in palette is ever a per-page override: both ship in every page and the
+    // pre-paint script picks one by setting `data-theme`. That is what makes following the
+    // device a runtime decision with no rebuild, and it is why removing the picker could
+    // not have changed which colours a page carries.
+    let page = render_html_page("# T\n\nx\n", "fb");
     assert!(
         page.contains("html[data-theme=\"dark\"]"),
         "scoped dark CSS not shipped"
     );
     assert!(page.contains("--tali-bg: #16181d"), "dark vars missing");
-    // The resolver threads the forced mode in as `var MODE = "dark"`; with no saved choice
-    // its DEFAULT() returns that mode (an unspecified `MODE` would instead follow the OS).
     assert!(
-        page.contains("var MODE = \"dark\""),
-        "resolver default should be dark"
-    );
-
-    // No theme -> auto (follow OS); light -> light. No inlined override either way.
-    let plain = render_document("---\ntitle: x\n---\n\nx\n");
-    assert!(plain.theme_css.is_empty());
-    assert_eq!(plain.theme_default, "auto");
-    assert_eq!(
-        render_document("---\ntheme: light\n---\n\nx\n").theme_default,
-        "light"
+        render_document("---\ntitle: x\n---\n\nx\n")
+            .theme_css
+            .is_empty(),
+        "a page with no custom theme must inline no override CSS"
     );
 }
 
 #[test]
 fn theme_list_takes_first_entry() {
-    // `theme: [dark, custom.scss]` (list form) selects the base.
-    let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
+    // `theme: [brand.css, extra.scss]` (list form) selects the base; the rest are layers.
     assert_eq!(
-        d.theme_default, "dark",
-        "first list entry (dark) should win"
+        detect_theme("theme: [brand.css, extra.scss]\n").as_deref(),
+        Some("brand.css"),
+        "first list entry should win"
     );
 }
 
@@ -2900,7 +2921,7 @@ fn build_mode_content_gates_separate_enhancers() {
     // that every page benefits from) but drops the DOM-specific enhancers it can't use.
     let prose = code_scripts_for("<p>Just prose.</p>", OutputMode::Build);
     assert!(
-        prose.contains("taliInitReaderMenu"),
+        prose.contains("function taliCopyText"),
         "build keeps code-enhance.js"
     );
     assert!(
@@ -2946,8 +2967,8 @@ fn site_build_path_content_gates_enhancers() {
     let doc = render_document("# A chapter\n\nProse only — no mermaid diagram.\n");
     let page = html_page_from_doc_in_site(&doc, "chapter", &SiteCtx::default());
     assert!(
-        page.contains("taliInitReaderMenu"),
-        "a site page still ships code-enhance.js (reader menu + a11y)"
+        page.contains("function taliCopyText"),
+        "a site page still ships code-enhance.js (the copy buttons + a11y layer)"
     );
     assert!(
         !page.contains("self-contained enhancer module"),
@@ -3066,7 +3087,7 @@ fn token_hex_in(css: &str, selector: &str, token: &str) -> String {
 /// the bug the script exists to prevent.
 #[test]
 fn the_pre_paint_canvas_map_tracks_the_theme_tokens() {
-    let head = super::theme::theme_head("light");
+    let head = super::theme::theme_head();
     // Each row names the selector its OWN file keys the palette on. `tokens-dark.css` has
     // no `:root` block: it is `html[data-theme="dark"]` throughout, and naming `:root` here
     // matched a mention inside a comment that happened to sit directly above the real
@@ -3112,9 +3133,9 @@ fn sepia_is_gone_from_every_theme_surface() {
         "the dark palette survives"
     );
 
-    // The reader's picker and the persisted-choice validator: a stored `sepia` must fall
-    // back to `auto` rather than name a mode nothing paints.
-    let head = super::theme::theme_head("light");
+    // The persisted-choice validator: a stored `sepia` must fall back to following the
+    // device rather than name a mode nothing paints.
+    let head = super::theme::theme_head();
     assert!(
         !head.to_ascii_lowercase().contains("sepia"),
         "the head theme script still knows sepia: {head}"
@@ -3666,7 +3687,7 @@ fn printing_forces_the_light_theme_even_from_dark() {
     // Swapping `data-theme` to light for the duration of the print job neutralises them: the
     // same trick deck.js already uses. (The diagnostic boxes are now token-derived, so the
     // token reset already reaches those.)
-    let head = theme_head("auto");
+    let head = theme_head();
     assert!(
         head.contains("beforeprint"),
         "the page must drop to the light theme while printing"
@@ -3996,33 +4017,6 @@ fn the_palette_jumps_to_the_list_ends_only_when_the_caret_has_no_work() {
     );
 }
 
-/// PA-B15: the reader settings menu closed on Esc and on click-away but stayed open behind a
-/// keyboard reader who Tabbed past it — and the panel is appended to `<body>`, so "past it"
-/// is a whole page away from its gear. A
-/// null `relatedTarget` (window blur) must NOT dismiss, or switching apps drops the menu.
-/// The needles are each popover's OWN dismissal test, not the bare word `focusout`: three
-/// other enhancer fragments already listen for it, so `CODE_ENHANCE_JS.contains("focusout")`
-/// passed with this fix deleted (caught by mutation, not by the green suite).
-#[test]
-fn a_light_dismiss_popover_closes_when_focus_tabs_out() {
-    let (js, what) = (CODE_ENHANCE_JS, "the reader settings menu");
-    // Element-scoped, so it cannot be satisfied by another fragment's focusout listener,
-    // and BOTH halves are pinned: renaming the event alone left a body-only needle passing.
-    assert!(
-        js.contains("panel.addEventListener('focusout'"),
-        "{what} must listen for focus leaving it, not only Esc + click-away"
-    );
-    assert!(
-        js.contains("to.closest('[data-tali-settings]')"),
-        "{what}'s dismissal must exempt its own launcher"
-    );
-    // A null relatedTarget is focus leaving the document (window blur), never a dismissal.
-    assert!(
-        js.contains("if (!to ||"),
-        "{what} must treat a null relatedTarget as \"not a dismissal\""
-    );
-}
-
 #[test]
 fn the_palette_relaxes_and_for_content_but_never_for_actions() {
     // One mistyped word used to annihilate the result set (`else return 0`). Content now
@@ -4204,7 +4198,7 @@ fn body_uses_the_inlined_newsreader_face() {
 }
 
 // Marker literals below are each confirmed present via grep before use (see the Task 1
-// report): base.css -> ".tali-reader-seg", dark.css -> the dark-theme mermaid override
+// report): base.css -> ".tali-title-block", dark.css -> the dark-theme mermaid override
 // selector, site.css -> ".tali-book-topbar" (site-only chrome), the code-enhance bundle
 // -> "function taliCopyText" (defined in 01-registry.js), search.js -> "function
 // buildIndex", mermaid.min.js -> the esbuild wrapper var, d3.min.js -> its source-map
@@ -4213,7 +4207,7 @@ fn body_uses_the_inlined_newsreader_face() {
 #[test]
 fn shared_site_css_bundles_the_framework_sheets() {
     let css = shared_site_css();
-    assert!(css.contains(".tali-reader-seg"), "base.css missing");
+    assert!(css.contains(".tali-title-block"), "base.css missing");
     assert!(
         css.contains("html[data-theme=\"dark\"] pre.mermaid"),
         "dark.css missing"

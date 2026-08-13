@@ -123,20 +123,18 @@
 
   // --- command-palette actions -----------------------------------------------------
   // Cmd-K runs commands too, not just search. Each action self-gates on a capability
-  // global: `taliToggleTheme` ships on every page (theme_head), so the theme action is
-  // always offered; `taliRestartKernel` / `taliOpenPageSource` ship only in the preview
-  // client (client.js), so those appear only in a live preview, never a static build.
+  // global: `taliRestartKernel` / `taliOpenPageSource` ship only in the preview client
+  // (client.js), so they appear only in a live preview, never a static build.
   // Matched by the same score() as content, over the title + keyword synonyms.
+  //
+  // A "Toggle light / dark theme" action lived here until 2026-08-13. It gated on
+  // `taliToggleTheme`, which `theme_head` ships in EVERY page, so unlike its two
+  // neighbours it was offered on every static build — which made it a reader-facing
+  // theme override that survived the removal of the Settings gear. A page follows the
+  // reader's device; the dev menu's own toggle is the author's, and is preview-only.
   /** @typedef {{ id: string, title: string, keywords: string, run: () => void, available: () => boolean }} PaletteAction */
   /** @type {PaletteAction[]} */
   var ACTIONS = [
-    {
-      id: "theme",
-      title: "Toggle light / dark theme",
-      keywords: "theme dark light mode appearance colour color",
-      available: function () { return typeof window.taliToggleTheme === "function"; },
-      run: function () { if (window.taliToggleTheme) window.taliToggleTheme(); },
-    },
     {
       id: "kernel",
       title: "Restart kernel",
