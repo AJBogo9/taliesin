@@ -334,8 +334,13 @@ fi
 # the same reasoning at its step 4). `--check-only` renders in memory and writes
 # nothing; `--no-exec` is what keeps both of them kernel-free.
 # ---------------------------------------------------------------------------
+# BOTH books. Wave 9 wired the guide and covered one of two already-separate books;
+# `gate_script.rs` derives the list from the tree, so a third book cannot slip through.
 run_gate "build docs/guide --check-only" docs-guide.log \
     cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+
+run_gate "build docs/internals --check-only" docs-internals.log \
+    cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
 
 run_gate "tools/build-site.sh --check" build-site.log ./tools/build-site.sh --check
 

@@ -83,7 +83,7 @@ impl Site {
     /// different directories each still get one. Shared by `atom_feeds` (builds XML) and
     /// `feed_index` (head autodiscovery) so a page never advertises a feed the build
     /// won't write. Empty without `url:`.
-    fn feed_hosts(&self) -> Vec<(&Page, String, Vec<&Page>)> {
+    pub(super) fn feed_hosts(&self) -> Vec<(&Page, String, Vec<&Page>)> {
         if self.canonical_base().is_none() {
             return Vec::new();
         }

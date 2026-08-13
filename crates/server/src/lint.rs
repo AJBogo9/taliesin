@@ -179,6 +179,18 @@ pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
 /// not do.
 fn collect_diagnostics(path: &Path, kernel_cells: &mut usize) -> Result<Vec<Diagnostic>, String> {
     if path.is_dir() {
+        // A project is what `_site.yml` declares, and `build` refuses a directory without
+        // one. **The gate has to refuse it in the same breath**: a pre-publish check that
+        // passes on a tree the publish step rejects is not a gate — CI runs the documented
+        // command, gets "no problems found" and exit 0, and the build behind it dies. It
+        // is refused here rather than at the `--check-only` dispatch so `--format json`
+        // still gets an `{"error": …}` object instead of a bare stderr line and empty
+        // stdout. Second consequence closed with it: without the guard,
+        // `collect_site_diagnostics` treated ANY directory as its own project, including a
+        // subdirectory of a real one.
+        if !path.join("_site.yml").is_file() {
+            return Err(crate::serve::not_a_project_error(path, "build"));
+        }
         collect_site_diagnostics(path, kernel_cells)
     } else {
         // Site-aware when the file is a page of a project, so `--check-only` on a file and on
@@ -410,13 +422,14 @@ fn collect_site_diagnostics(
     if let Some(line) = crate::build::draft_report_line(&site.excluded_drafts) {
         log::info(&line);
     }
-    // A bare directory of `.tmd` pages is a legitimate project, so a missing `_site.yml` is
-    // an advisory, not a defect: reporting it printed "1 problem" and exited 1 on a
-    // perfectly good tree, while `build` had always declined to count it.
+    // No filter for the "no `_site.yml`" advisory: `collect_diagnostics` has already
+    // refused a directory that has none, so `discover` cannot raise it here. It used to be
+    // filtered out on the grounds that a bare directory of pages was a legitimate project
+    // — the pre-wave-13 stance, and the second half of why the gate passed on a tree
+    // `build` refuses.
     let mut out: Vec<Diagnostic> = site
         .warnings
         .iter()
-        .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
         .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
         .collect();
     let defaults = site.render_defaults();
@@ -455,6 +468,13 @@ fn collect_site_diagnostics(
     // link rewrites to its built `.html` and only the registry knows the real urls).
     for (page_rel, w) in site.validate_cross_page_links() {
         out.push(diag_from(&w, &page_rel));
+    }
+    // The `_site.yml` chrome's own hrefs. The loop above harvests links out of rendered
+    // page *bodies*, and a `nav:`/`footer:` href never passes through one — it goes
+    // straight from the config onto every page, so a typo there was the one broken link
+    // class nothing checked and the one that ships site-wide.
+    for w in site.validate_chrome_links() {
+        out.push(diag_from(&w, "_site.yml"));
     }
     // Hygiene for the project-wide `bibliography:`, reported against `_site.yml` because
     // that is where it is declared. Unused-entry is site-wide by necessity: a shared entry
@@ -1529,22 +1549,28 @@ mod tests {
     }
 
     #[test]
-    fn a_directory_without_site_yml_is_advisory_not_a_problem() {
-        // `check` counted the benign "no _site.yml" note as a problem and exited 1 on a
-        // clean bare directory of pages, disagreeing with `build`, which never counted it.
+    fn a_directory_without_site_yml_is_refused_exactly_as_build_refuses_it() {
+        // The gate has one job: fail on what the publish step would fail on. It used to
+        // treat a bare directory of pages as its own project and print "no problems
+        // found" on a tree `build` flatly refuses, so CI went green and the deploy died.
+        // (This test asserted the opposite until 2026-08-13. Its premise — "a bare page
+        // directory is a legitimate project" — was the pre-wave-13 stance, reversed in
+        // `build` and never propagated here.)
         let dir = tmp("check-nositeyml");
         fs::write(
             dir.join("index.tmd"),
             "---\ntitle: Home\n---\n\nClean prose.\n",
         )
         .unwrap();
-        let diags = collect_diagnostics(&dir, &mut 0).expect("a bare page directory is a site");
+        let err = collect_diagnostics(&dir, &mut 0)
+            .expect_err("a directory with no _site.yml is not a project");
         assert!(
-            diags.is_empty(),
-            "a missing _site.yml is an advisory, not a problem: {diags:?}"
+            err.contains("no _site.yml"),
+            "and says so in the same words `build` uses: {err}"
         );
 
-        // A *malformed* `_site.yml` is still a real problem, and still counted.
+        // A *malformed* `_site.yml` is a real problem, and still counted rather than
+        // turned into the refusal above: the file is there, it is the content that is wrong.
         fs::write(dir.join("_site.yml"), "title: \"unterminated\n").unwrap();
         let diags = collect_diagnostics(&dir, &mut 0).expect("still discoverable");
         assert!(
@@ -1722,8 +1748,8 @@ mod tests {
     }
 
     /// The Quarto migration breadcrumb is shed: a directory carrying only a `_quarto.yml`
-    /// (no native `_site.yml`, no `.tmd` pages) falls through to the normal site-walker
-    /// diagnostic — a generic "no pages" message that never names Quarto.
+    /// (no native `_site.yml`, no `.tmd` pages) gets the ordinary not-a-project refusal,
+    /// which never names Quarto.
     #[test]
     fn quarto_only_dir_gets_generic_diagnostic_not_a_breadcrumb() {
         // Neutral dir name: the diagnostic echoes the path, so a "quarto" in the dir name
@@ -1736,9 +1762,13 @@ mod tests {
             !err.to_lowercase().contains("quarto"),
             "no Quarto breadcrumb should remain: {err}"
         );
+        // It used to be the site-walker's "no .tmd pages", which is the second thing
+        // wrong with this directory; the first is that it is not a project at all. That
+        // branch is still exercised, by `collect_diagnostics_empty_site_is_err` — a
+        // `_site.yml` with no pages beside it.
         assert!(
-            err.contains("no .tmd pages"),
-            "expected the generic no-pages diagnostic: {err}"
+            err.contains("no _site.yml"),
+            "expected the not-a-project refusal: {err}"
         );
 
         let _ = fs::remove_dir_all(&dir);

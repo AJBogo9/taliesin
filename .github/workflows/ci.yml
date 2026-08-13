@@ -69,8 +69,11 @@ jobs:
       # would need its own visibility guard to satisfy `crates/core/tests/stale_docs.rs`.
       # `--check-only` renders in memory and writes nothing; `--no-exec` is what keeps
       # both kernel-free. `.githooks/pre-push` runs the same two, as its steps 4 and 5.
+      # Both books: wave 9 wired the guide and covered one of two already-separate books.
       - name: Document gate (the manual is a shipped document)
-        run: cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+        run: |
+          cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+          cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
       - name: Composition gate (every cross-project link resolves)
         run: ./tools/build-site.sh --check
 

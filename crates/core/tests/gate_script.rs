@@ -203,6 +203,48 @@ fn every_pre_push_command_is_also_run_by_the_gate_script() {
     );
 }
 
+/// Every book under `docs/` is linted, by all three gate files.
+///
+/// The substring cross-check above cannot do this job: `--check-only` is present whichever
+/// book is named, so wave 9 wired the document gate for `docs/guide`, covered one of two
+/// already-separate books, and left every gate green. `docs/internals` was built by
+/// `tools/build-site.sh` — a plain `build … --out`, which exits 0 on any number of errors
+/// — and linted by nothing for four days.
+///
+/// So compare SETS, derived from the tree: the `_site.yml` projects that exist under
+/// `docs/` against the ones each gate names. A third book added later cannot slip through
+/// the same hole, which a hand-maintained list of two would let it do.
+#[test]
+fn every_docs_book_is_linted_by_every_gate_file() {
+    let mut books: Vec<String> = std::fs::read_dir(repo_root().join("docs"))
+        .expect("read docs/")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.join("_site.yml").is_file())
+        .filter_map(|p| p.file_name()?.to_str().map(|n| format!("docs/{n}")))
+        .collect();
+    books.sort();
+    // `docs/` itself is just a container; the books are siblings inside it.
+    assert!(
+        books.len() >= 2,
+        "expected at least the guide and the internals book, found {books:?}"
+    );
+
+    for (file, text) in [
+        (".githooks/pre-push", read(".githooks/pre-push")),
+        ("tools/gates.sh", read("tools/gates.sh")),
+        (".github/workflows/ci.yml", read(".github/workflows/ci.yml")),
+    ] {
+        for book in &books {
+            assert!(
+                text.contains(&format!("build {book} --check-only")),
+                "`{book}` is a shipped book with a `_site.yml`, and `{file}` never lints \
+                 it — a broken cross-reference in it reaches a reader with every gate green"
+            );
+        }
+    }
+}
+
 /// Every canary the script names still exists. The script's proof that (say) the Python
 /// kernel ran is `grep 'test kernel_executes_state_errors_and_interrupts_runaway_cell ...
 /// ok'`; rename that test and the proof becomes an assertion about a name nothing emits.

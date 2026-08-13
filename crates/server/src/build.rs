@@ -1944,6 +1944,13 @@ async fn build_site_async(
         log::warn(&locate(&w, &rel));
         diagnostics.push(crate::lint::diag_from(&w, &rel));
     }
+    // The `_site.yml` chrome's own hrefs, which no page body carries and so no page-body
+    // harvest could ever see. Same registry, same rules; site-wide blast radius.
+    for w in site.validate_chrome_links() {
+        problems += 1;
+        log::warn(&locate(&w, "_site.yml"));
+        diagnostics.push(crate::lint::diag_from(&w, "_site.yml"));
+    }
     for w in site.validate_shared_bibliography() {
         problems += 1;
         log::warn(&locate(&w, "_site.yml"));

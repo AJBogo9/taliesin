@@ -317,10 +317,15 @@ hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-cl
 **`.githooks/pre-push` is the only gate that runs automatically today.** It is wired
 via `core.hooksPath`, so it is invisible in `.git/hooks`: a push that includes `main`
 runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-warnings`, `cargo test --workspace`, `build docs/guide --check-only --no-exec` (new in
-wave 9) and `tools/build-site.sh --check` (new in wave 11) first, and a WIP-branch push
+warnings`, `cargo test --workspace`, `build docs/{guide,internals} --check-only --no-exec`
+(the guide in wave 9, the internals book on 2026-08-13) and `tools/build-site.sh --check`
+(new in wave 11) first, and a WIP-branch push
 skips it. Step 4 is the DOCUMENT gate the `check` verb never had wired anywhere: a broken
 cross-reference in this project's own manual used to reach a reader with every gate green.
+It names **both** books, because wave 9 wired one of two and the substring drift-check
+could not tell (`--check-only` is present either way); `gate_script.rs`'s
+`every_docs_book_is_linted_by_every_gate_file` now derives the list from the tree, so a
+third book cannot inherit the hole.
 Step 5 is what replaced `mounts:`: it composes the whole deploy with `--no-exec` into a
 temp dir and refuses the push if any cross-project link in `site/` has nothing behind it,
 because a composition script nobody runs is how this project's own call-to-action shipped
@@ -346,11 +351,12 @@ a single ignored test as a failure. Reach for it instead of running these by han
 live-kernel suite (Python, `TALIESIN_REQUIRE_KERNEL`), the Node-backed reactive
 live-region test (`TALIESIN_REQUIRE_NODE`), the two `tsc` type-checks above, the VS Code
 companion's offline TextMate grammar test, `cargo audit` / `cargo deny check`
-(`deny.toml` is still the policy) on any dependency change, and **the two document gates
-the pre-push hook also runs** (`build docs/guide --check-only` and
-`tools/build-site.sh --check`). Never call one of these verified without its output.
+(`deny.toml` is still the policy) on any dependency change, and **the document gates the
+pre-push hook also runs** (`build docs/guide --check-only`, `build docs/internals
+--check-only` and `tools/build-site.sh --check`). Never call one of these verified without
+its output.
 
-**It runs ELEVEN gates and prints the count.** It ran eight while this paragraph claimed all
+**It runs TWELVE gates and prints the count.** It ran eight while this paragraph claimed all
 of them, for two waves: the document gate (wave 9) and the composition gate (wave 11) were
 wired into `.githooks/pre-push` and never added here, because neither can *skip* and so
 neither looked like this script's problem. An absent gate hollows out "runs every gate"
@@ -358,8 +364,11 @@ exactly as completely as a skipped one, and more quietly, since there is no `SKI
 to read. `gate_script.rs`'s `every_pre_push_command_is_also_run_by_the_gate_script` now
 compares the script's list against the hook's on every run. The hook keeps running both
 too — it is the only gate that runs automatically and this script is manual, so the two
-are a pair, not a move. The eleventh is the census gate (below). **Take the count from the
-script's own verdict line; never increment the one written here.**
+are a pair, not a move. The eleventh is the census gate (below); the twelfth is
+`docs/internals`, which was built by `tools/build-site.sh` and linted by nothing until
+2026-08-13, because that same substring cross-check cannot see *which* book is named.
+**Take the count from the script's own verdict line; never increment the one written
+here.**
 
 ## Conventions
 

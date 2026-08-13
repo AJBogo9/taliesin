@@ -77,17 +77,23 @@ cargo clippy --workspace --all-targets -- -D warnings
 echo "  [3/5] cargo test --workspace"
 cargo test --workspace
 
-# The document gate the `check` verb never had wired anywhere. `docs/guide` is this
-# project's own manual, authored in `.tmd`, so a broken cross-reference or a dead link in
-# it ships to a reader the same way a bug ships to a user, and until 2026-08-08 nothing
-# automatic looked. `--check-only` renders in memory and writes NOTHING, so the hook leaves
-# no `_site/` behind; `--no-exec` is redundant with it and passed anyway, because a hook
-# that silently gained a kernel dependency would start failing for the wrong reason.
+# The document gate the `check` verb never had wired anywhere. The two books under `docs/`
+# are this project's own manual, authored in `.tmd`, so a broken cross-reference or a dead
+# link in either ships to a reader the same way a bug ships to a user, and until 2026-08-08
+# nothing automatic looked. `--check-only` renders in memory and writes NOTHING, so the hook
+# leaves no `_site/` behind; `--no-exec` is redundant with it and passed anyway, because a
+# hook that silently gained a kernel dependency would start failing for the wrong reason.
 # `--strict` is deliberately absent: advice must not block a push.
 #
+# BOTH books, because wave 9 wired only the guide and covered one of two. `docs/internals`
+# was built by tools/build-site.sh (a plain `build … --out`, which exits 0 on any number of
+# errors) and linted by nothing. `gate_script.rs` now derives the book list from the tree
+# and fails if any `_site.yml` project under `docs/` is missing from this file.
+#
 # Built with the same profile the tests just used, so this costs a link and not a rebuild.
-echo "  [4/5] cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec"
+echo "  [4/5] cargo run -q -p taliesin-server -- build docs/{guide,internals} --check-only --no-exec"
 cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
+cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
 
 # The gate that replaces `mounts:` (cut 2026-08-09). The marketing site links into the two
 # docs books and the three gallery exhibits; the config key used to make those links resolve

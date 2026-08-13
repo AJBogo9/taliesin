@@ -797,13 +797,41 @@ impl Site {
                         continue;
                     }
                     // A target outside the page registry is only "broken" if nothing
-                    // on disk backs it: any source file that exists under the root is a
-                    // legitimate target.
-                    if self.root.join(&target_url).is_file()
-                        || html_to_tmd(&target_url)
-                            .iter()
-                            .any(|p| self.root.join(p).is_file())
+                    // on disk backs it: a raw source file that exists under the root
+                    // (`notes.md`, `data.csv`) is a legitimate target, and the build ships
+                    // it via `deploy_referenced_sources`.
+                    if self.root.join(&target_url).is_file() {
+                        continue;
+                    }
+                    // What must NOT excuse it: the *source* of a page discovery held back.
+                    // This arm used to accept any target whose `.tmd` sat on disk, and a
+                    // draft's `.tmd` sits on disk by definition — so the one link class
+                    // guaranteed to 404 in the deploy was the one the gate waved through,
+                    // silently, under `--strict`. It can only ever fire for an unpublished
+                    // page: a published one is in `ids_by_url` and never reaches here.
+                    // The reason is named, because the author is looking at a file that
+                    // exists and would otherwise read "no page in this site" as a bug in
+                    // the tool.
+                    if let Some(src) = html_to_tmd(&target_url)
+                        .into_iter()
+                        .find(|p| self.root.join(p).is_file())
                     {
+                        let why = if self.excluded_drafts.contains(&src) {
+                            format!("`{src}` is a draft, so no page is built for it")
+                        } else {
+                            format!("this project does not publish `{src}`")
+                        };
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` resolves to `{target_url}`, but {why}"
+                        ))
+                        .severity(Severity::Error);
+                        out.push((
+                            rel.clone(),
+                            match line {
+                                Some(l) => w.at(source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
                         continue;
                     }
                     // The registry already knows the answer for the commonest broken link
@@ -1683,6 +1711,83 @@ pub(crate) mod tests {
         assert!(
             preview.excluded_drafts.is_empty(),
             "Include excludes nothing"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A link to a page discovery held back is a 404 in the deploy, and it was the one
+    /// broken link the gate excused: `resolve_link_warnings` accepted any target whose
+    /// `.tmd` sat on disk, and a draft's `.tmd` sits on disk by definition.
+    #[test]
+    fn a_link_to_an_unpublished_page_is_broken() {
+        let root = write_site(
+            "unpublished-link",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[the post](posts/a.tmd) and [a note](notes.md).\n",
+                ),
+                (
+                    "posts/a.tmd",
+                    "---\ntitle: A\ndraft: true\n---\n\nSecret.\n",
+                ),
+                ("notes.md", "raw source, deliberately shipped\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        let joined = msgs.join("\n");
+
+        let hit = msgs
+            .iter()
+            .find(|m| m.contains("posts/a.tmd"))
+            .unwrap_or_else(|| panic!("a link to a draft must be reported:\n{joined}"));
+        assert!(
+            hit.contains("draft"),
+            "and must say WHY, since the file the author linked is right there on disk: {hit}"
+        );
+        assert!(
+            !joined.contains("notes.md"),
+            "a raw source file on disk is still a legitimate target:\n{joined}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same hatch, strictly worse: a book publishes only what `chapters:` lists, and an
+    /// unlisted `.tmd` beside it produces no "N drafts not published" line either, so
+    /// nothing anywhere told the author the link was dead.
+    #[test]
+    fn a_link_to_a_page_no_chapter_list_names_is_broken() {
+        let root = write_site(
+            "unlisted-link",
+            &[
+                ("_site.yml", "title: B\nchapters:\n  - index.tmd\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\n[stray](stray.tmd)\n"),
+                ("stray.tmd", "---\ntitle: Stray\n---\n\nNot listed.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        let joined = msgs.join("\n");
+
+        let hit = msgs
+            .iter()
+            .find(|m| m.contains("stray.tmd"))
+            .unwrap_or_else(|| panic!("a link to an unlisted page must be reported:\n{joined}"));
+        assert!(
+            hit.contains("does not publish"),
+            "the reason is the chapter list, not a missing file: {hit}"
         );
 
         let _ = std::fs::remove_dir_all(&root);

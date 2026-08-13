@@ -217,6 +217,101 @@ impl Site {
         )
     }
 
+    /// Resolve every `nav:` / `footer:` `href` in `_site.yml` against the page registry,
+    /// the way [`Site::validate_cross_page_links`] resolves the links in a page body.
+    ///
+    /// **This is the highest-leverage broken link a project can have and it was the only
+    /// class no validator saw**: cross-page validation harvests links out of rendered page
+    /// *bodies* (`page_link_facts_from_src`), and chrome hrefs never pass through a page
+    /// body — `chrome.rs` emits them straight from the config, onto every page. A single
+    /// typo shipped site-wide with `--check-only --strict` green.
+    ///
+    /// The two collection sites are [`Self::nav_link`] and [`Self::footer_html`]'s group
+    /// closure, and this walks the same items they render, so it judges what actually
+    /// ships: an item with no `href` is skipped (nav drops it, the footer renders a
+    /// `<span>`), and a local `.xml` in the FOOTER is skipped when no feed is generated
+    /// because the footer drops that too. The navbar has no such drop rule, which is why a
+    /// feed link there is reported when `url:` is unset — nothing else would have said so.
+    ///
+    /// Located to `_site.yml`, which is the file the author has to edit.
+    pub fn validate_chrome_links(&self) -> Vec<Warning> {
+        let published: std::collections::HashSet<&str> =
+            self.pages.iter().map(|p| p.url.as_str()).collect();
+        // Feeds are generated, not pages. `feed_hosts` is the same source `atom_feeds`
+        // writes from, so this set is exactly what the build emits (empty without `url:`).
+        let feeds: std::collections::HashSet<String> = self
+            .feed_hosts()
+            .into_iter()
+            .map(|(_, path, _)| path)
+            .collect();
+
+        let nav = self.config.nav.left.iter().chain(&self.config.nav.right);
+        let footer = self
+            .config
+            .footer
+            .iter()
+            .flat_map(|f| f.left.iter().chain(&f.center).chain(&f.right));
+
+        let mut out = Vec::new();
+        for (item, in_footer) in nav.map(|i| (i, false)).chain(footer.map(|i| (i, true))) {
+            // No href: nav_link returns "" and footer_html renders a <span>. Nothing links.
+            let Some(href) = item.href.as_deref() else {
+                continue;
+            };
+            // Exactly what `resolve_href` passes through untouched — not this site's to
+            // resolve, and never fetched (a network probe would make the gate
+            // nondeterministic).
+            if href.starts_with('#')
+                || href.starts_with("//")
+                || href.contains("://")
+                || href.starts_with("mailto:")
+                || href.starts_with("tel:")
+            {
+                continue;
+            }
+            let path = href.split('#').next().unwrap_or(href);
+            if path.is_empty() {
+                continue;
+            }
+            // A site-absolute `/about.tmd` and a relative `about.tmd` name the same page:
+            // chrome hrefs are written from the site root, and `resolve_href` supplies each
+            // page's own `../` climb.
+            let rooted = path.strip_prefix('/').unwrap_or(path);
+            let Some(target) = self.link_target_url("index.html", rooted) else {
+                continue; // climbs above the root; unresolvable offline, as for body links
+            };
+            if published.contains(target.as_str()) || feeds.contains(&target) {
+                continue;
+            }
+            // The footer drops a local `.xml` when no feed is generated, so there is no
+            // link on the page to be broken.
+            if in_footer && target.ends_with(".xml") {
+                continue;
+            }
+            // A prefix another project supplies in the composed deploy, and a raw file on
+            // disk: both are the same judgements the body-link resolver makes.
+            if self
+                .config
+                .external_prefixes
+                .iter()
+                .any(|p| target == *p || target.starts_with(&format!("{p}/")))
+                || self.root.join(&target).is_file()
+            {
+                continue;
+            }
+            let where_ = if in_footer { "footer" } else { "nav" };
+            out.push(
+                Warning::new(format!(
+                    "broken {where_} link: `{href}` resolves to `{target}`, which is no page \
+                     in this site — and `_site.yml` chrome ships on every page"
+                ))
+                .severity(Severity::Error)
+                .at(Some("_site.yml".to_string()), 1),
+            );
+        }
+        out
+    }
+
     /// The slim site footer. Footer item text is treated as raw HTML (icon SVGs),
     /// per the trusted-source model. A configured local `.xml` link is dropped
     /// (this build generates no RSS feed).
@@ -1000,6 +1095,123 @@ mod tests {
         assert!(
             js.contains("documentElement.style.overflow=o?'hidden':''"),
             "the drawer sets no scroll lock, so the page scrolls behind it:\n{js}"
+        );
+    }
+
+    /// A `_site.yml` href is emitted on EVERY page, so a broken one is the highest-leverage
+    /// broken link a project can have — and it was the only link class no validator saw,
+    /// because cross-page validation harvests links from rendered page bodies.
+    #[test]
+    fn a_broken_nav_or_footer_href_is_reported() {
+        let root = write_site(
+            "chromelinks",
+            &[
+                (
+                    "_site.yml",
+                    "title: Site\nnav:\n  left:\n    - { text: Gone, href: missing.tmd }\n\
+                     footer:\n  right:\n    - { text: Nope, href: nope.tmd }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let ws = site.validate_chrome_links();
+        let joined = ws
+            .iter()
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        assert!(joined.contains("missing.tmd"), "nav href: {joined}");
+        assert!(joined.contains("nope.tmd"), "footer href: {joined}");
+        assert_eq!(ws.len(), 2, "one per broken href: {joined}");
+        assert!(
+            ws.iter().all(|w| w.file.as_deref() == Some("_site.yml")),
+            "located to the file the author must edit: {ws:?}"
+        );
+    }
+
+    /// The four ways a chrome href is legitimately not a page. Each of these shipped in a
+    /// real `_site.yml` before the validator existed, so each is a false positive the
+    /// validator would otherwise invent.
+    #[test]
+    fn a_working_nav_or_footer_href_is_not_reported() {
+        let root = write_site(
+            "chromelinks-ok",
+            &[
+                (
+                    "_site.yml",
+                    "title: Site\nurl: https://ex.com\nexternal-prefixes:\n  - docs/guide\n\
+                     nav:\n  left:\n    - { text: About, href: about.tmd }\n\
+                     \x20   - { text: Guide, href: \"docs/guide/\" }\n\
+                     \x20   - { text: Code, href: \"https://github.com/x/y\" }\n\
+                     \x20   - { text: Mail, href: \"mailto:a@b.c\" }\n\
+                     \x20   - { text: Top, href: \"#top\" }\n\
+                     \x20   - { text: Data, href: data.csv }\n\
+                     \x20   - { text: NoHref }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+                ("about.tmd", "---\ntitle: About\n---\n\nx\n"),
+                ("data.csv", "a,b\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let ws = site.validate_chrome_links();
+        assert!(
+            ws.is_empty(),
+            "a real page, an external-prefix project, an absolute URL, a mailto, a bare \
+             fragment, a raw asset on disk and an href-less item are all fine: {ws:?}"
+        );
+    }
+
+    /// Feeds are generated, not pages, so a feed link resolves against what the build
+    /// emits. With no `url:` no feed is written at all — and the navbar, unlike the
+    /// footer, has no drop rule, so it ships a link to a file that will not exist.
+    #[test]
+    fn a_feed_href_is_judged_against_the_feeds_the_build_writes() {
+        let files = |cfg: &str| {
+            vec![
+                ("_site.yml".to_string(), cfg.to_string()),
+                (
+                    "index.tmd".to_string(),
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  feed: true\n---\n\nx\n"
+                        .to_string(),
+                ),
+                (
+                    "posts/a.tmd".to_string(),
+                    "---\ntitle: A\ndate: 2026-01-01\n---\n\nx\n".to_string(),
+                ),
+            ]
+        };
+        fn borrow(v: &[(String, String)]) -> Vec<(&str, &str)> {
+            v.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect()
+        }
+
+        let with_url = files(
+            "title: Blog\nurl: https://ex.com\nnav:\n  left:\n    - { text: RSS, href: index.xml }\n",
+        );
+        let root = write_site("chromefeed-on", &borrow(&with_url));
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert!(ws.is_empty(), "the build writes index.xml: {ws:?}");
+
+        let no_url = files("title: Blog\nnav:\n  left:\n    - { text: RSS, href: index.xml }\n");
+        let root = write_site("chromefeed-off", &borrow(&no_url));
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert_eq!(
+            ws.len(),
+            1,
+            "without `url:` no feed is written, so the nav link 404s: {ws:?}"
+        );
+
+        // The footer DROPS a local `.xml` when no feed is generated, so there is nothing
+        // to report there — flagging it would name a link the page does not carry.
+        let footer =
+            files("title: Blog\nfooter:\n  right:\n    - { icon: rss, href: index.xml }\n");
+        let root = write_site("chromefeed-footer", &borrow(&footer));
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert!(
+            ws.is_empty(),
+            "the footer drops it, so it is not broken: {ws:?}"
         );
     }
 }
