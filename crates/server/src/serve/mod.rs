@@ -900,6 +900,15 @@ mod protocol_contract {
     /// third level in the preview only — the author tunes navigation against a TOC readers
     /// never see, and the suite is green either way.
     ///
+    /// **The rule has TWO halves and only the level window was pinned here.** The other is
+    /// WHICH headings are candidates at all: `toc_items` iterates the block list, so a
+    /// heading folded into a `:::` container block (one block whose html happens to contain
+    /// headings) is not a candidate, while the client's `querySelectorAll` descended into it
+    /// and listed it. Measured 2026-08-13: a `## Inside a width escape` inside a
+    /// `.column-page` gave the preview 4 entries against the build's 3. The client now takes
+    /// `root`'s element children, which IS the block list (`<main id="tali-root">{blocks}
+    /// </main>`, and every op appends/replaces at that level).
+    ///
     /// Pinned as a needle pair, not as an equivalence test: `buildToc` closes over `root` and
     /// `tocEl` inside client.js's single IIFE, so it cannot be called from Node without
     /// splitting the bundle (which `js-modularization` deliberately did not do). The Rust
@@ -916,8 +925,13 @@ mod protocol_contract {
             "the preview must filter to two levels below the shallowest anchored heading"
         );
         assert!(
-            CLIENT_JS.contains("h4[id],h5[id],h6[id]"),
-            "…which needs the deeper headings selected in the first place"
+            CLIENT_JS.contains("/^H[1-6]$/.test(h.tagName)"),
+            "…which needs every heading level a candidate in the first place"
+        );
+        assert!(
+            CLIENT_JS.contains("[...root.children]"),
+            "and TOP-LEVEL blocks only, or a heading inside a `:::` container is in the \
+             preview's TOC and absent from the build's"
         );
     }
 

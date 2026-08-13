@@ -175,8 +175,25 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
 - **Chrome is GONE from the tree, and there is no automated browser test net at all.**
   Wave 6 deleted `reactive_browser.rs`, `headless_js_feature.rs`, the `headless-js` cargo
   feature and the `chromiumoxide` dependency together. `gates.sh` and `ci.yml` pass no
-  feature flag any more — the default-feature build IS the whole workspace. **Nothing tests
-  that a `{js}` cell's teardown runs on a block diff**; see the open hedge below.
+  feature flag any more — the default-feature build IS the whole workspace.
+  **DECIDED 2026-08-13 (MVP audit batch 5): no browser smoke test, and the decision is
+  evidence, not preference.** The batch fixed four defects in exactly this uncovered
+  layer, and **a smoke test would have caught none of them**: the `tali.onInput` teardown
+  leak (A11) left the cell count correct, the page correct and the console clean; the
+  horizontal-scroll reset (A12) needs a document that scrolls sideways, which the tool's
+  own CSS clamps; the TOC divergence (A13) needs a heading inside a `:::` container *and*
+  a build to compare against. What a smoke test does catch — the client failing to mount
+  at all — is the one client failure the author cannot miss, because `preview` is the
+  daily loop. What would have caught these is a browser *harness* with per-defect
+  assertions: a driver, a `TALIESIN_REQUIRE_*` arm, a thirteenth gate and the flake budget
+  that comes with them. That is a wave, not a hedge, and with zero users the standing
+  directive says not yet. **The cost is real and is accepted, so write it down:** every
+  behaviour in `web-client/client.js` and `assets/js/tali-js.js` — all three load-bearing
+  goals among them — is verified by driving Chrome BY HAND and by nothing else. A change
+  there is not covered by `./tools/gates.sh` no matter how green it is. (The wave-6 hedge
+  this replaces asked specifically whether anything tests that a `{js}` cell's teardown
+  runs on a block diff. Nothing does — but the behaviour itself was exercised and is
+  correct: mounts 1 → 2, teardowns 0 → 1, clean console.)
 - **`gate_script.rs`'s REQUIRE scan reads raw source text, including its own file.** Naming
   a retired `TALIESIN_REQUIRE_*` variable in full, even inside a comment explaining that it
   is retired, puts it straight back into the scanned set and fails the arming loop on a gate
@@ -274,9 +291,6 @@ Target: ~69,000 lines removed, 9 verbs, ~55 features, 7 providers, 2 runtimes.
       attribute was always silent, so this is a pre-existing hole a retirement walked into
       rather than a new one — but a later wave retiring a fence-attribute vocabulary should
       know it is retiring into silence.
-- [ ] Decide whether to keep one browser smoke test. After wave 6 there is no automated
-      browser test net at all, and nothing tests that a `{js}` cell's teardown runs on a
-      block diff.
 
 ## Log
 

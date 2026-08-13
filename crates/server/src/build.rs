@@ -744,6 +744,38 @@ fn build_page_executing(
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, label);
         diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
+        // The AUTO table-of-contents gate. It lives on `Site` (`Site::page_toc`), and the
+        // single-file build is the one page path that never constructs a `Site`, so it kept
+        // `render`'s standalone default — `toc: toc_explicit.unwrap_or(false)`, a TOC only
+        // when the front matter said so in as many words. `preview <file.tmd>` has resolved
+        // a lone file through `Site::discover_single` since wave 1.1 and therefore DID
+        // auto-gate, so the same three-heading paper listed two entries in the preview and
+        // none in the build, and `docs/guide/reference/frontmatter.tmd` documented the
+        // preview's answer ("leave it out and it is automatic") for both. Wave 13 aligned the
+        // two verbs on the navbar and the footer through this same call and did not finish
+        // the job; this is the rest of it.
+        //
+        // Only the auto case: an explicit `toc:` already decided and this path already
+        // honours it, so asking the site would be re-deciding a settled question (and a book
+        // root would answer `false` for a chapter built on its own, which has no chapter nav
+        // to make up for it). Run after execution, exactly as the site path does, so a
+        // heading a cell emitted is counted the same way on both sides.
+        //
+        // CANONICALIZED FIRST, exactly as `preview` does before its own `discover_single`
+        // (`serve_site::resolve`): `discover_single` roots its page walk at `file.parent()`,
+        // and `Path::new("paper.tmd").parent()` is `Some("")` — not `None`, so the `"."`
+        // fallback inside it never fires — which walks nothing and finds no page at all.
+        // Handing it the path as typed would therefore have left the gate silently dead for
+        // `taliesin build paper.tmd` run from the file's own directory, which is the
+        // commonest spelling of the command.
+        if doc.toc_explicit.is_none() {
+            let file = Path::new(label);
+            let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+            let single = taliesin_core::Site::discover_single(&file);
+            if let Some(page) = single.pages.first() {
+                doc.toc = single.page_toc(page, None, &doc.blocks);
+            }
+        }
         BuildResult::Page {
             html: if mermaid_src.is_empty() {
                 taliesin_core::render_doc_to_page(&doc, stem, mode)
@@ -755,6 +787,71 @@ fn build_page_executing(
             kernel_failure,
         }
     }))
+}
+
+#[cfg(test)]
+mod single_doc_toc_tests {
+    use super::*;
+
+    /// Build one standalone document the way `cmd_build` does and return its page HTML.
+    fn build_one(dir: &Path, name: &str, src: &str) -> String {
+        let file = dir.join(name);
+        std::fs::write(&file, src).expect("write doc");
+        let stem = name.strip_suffix(".tmd").unwrap_or(name);
+        let BuildResult::Page { html, .. } = build_page_executing(
+            src,
+            dir,
+            stem,
+            file.to_str().expect("utf-8 path"),
+            taliesin_core::OutputMode::Build,
+            "",
+        )
+        .expect("runtime");
+        html
+    }
+
+    fn doc(front: &str, headings: usize) -> String {
+        let mut s = format!("---\ntitle: \"T\"\n{front}---\n\nAn opening paragraph.\n");
+        for i in 0..headings {
+            s.push_str(&format!("\n## Section {i}\n\nProse under it.\n"));
+        }
+        s
+    }
+
+    /// `build <file.tmd>` and `preview <file.tmd>` must answer the same question about a
+    /// table of contents. The build was the only page path that never built a `Site`, so
+    /// `Site::page_toc`'s auto-gate never ran for it: the same three-heading paper listed
+    /// entries in the preview and none in the build, and the manual documented the
+    /// preview's answer for both. The explicit cases are the control — they passed before
+    /// this and must keep passing, or the fix has replaced one divergence with another.
+    #[test]
+    fn a_single_file_build_auto_gates_its_toc_exactly_as_the_preview_does() {
+        let dir =
+            std::env::temp_dir().join(format!("tali-build-{}-single-doc-toc", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let toc = |html: &str| html.contains("<nav id=\"TOC\"");
+
+        // Auto: at/above MIN_TOC_HEADINGS it earns one, below it does not.
+        assert!(
+            toc(&build_one(&dir, "long.tmd", &doc("", 3))),
+            "a 3-heading page with no `toc:` earns the automatic TOC the preview renders"
+        );
+        assert!(
+            !toc(&build_one(&dir, "short.tmd", &doc("", 2))),
+            "the auto-gate still gates: a 2-heading page reads as one column"
+        );
+        // Explicit: unchanged either way.
+        assert!(
+            !toc(&build_one(&dir, "off.tmd", &doc("toc: false\n", 3))),
+            "an explicit `toc: false` suppresses it regardless of length"
+        );
+        assert!(
+            toc(&build_one(&dir, "on.tmd", &doc("toc: true\n", 1))),
+            "an explicit `toc: true` forces it on regardless of length"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// The sibling copy of the vendored mermaid library a `--out <dir>` build writes for a page

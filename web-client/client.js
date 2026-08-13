@@ -945,13 +945,25 @@
   const tocEl = window.TALIESIN_TOC === true ? document.getElementById("TOC") : null;
   const buildToc = () => {
     if (!tocEl) return;
-    // Match the build's `render::toc_items` exactly: every ANCHORED heading, then a
-    // window of two levels below the shallowest one present. Selecting `h1,h2,h3` by tag
-    // instead dropped the third level from any page whose sections start below `<h1>` —
-    // a title-block page (sections at h2) listed h2/h3 in the preview and h2/h3/h4 in the
-    // build, so the author was tuning navigation against a TOC no reader ever sees.
+    // Match the build's `render::toc_items` exactly: every ANCHORED TOP-LEVEL heading,
+    // then a window of two levels below the shallowest one present. Selecting `h1,h2,h3`
+    // by tag instead dropped the third level from any page whose sections start below
+    // `<h1>` — a title-block page (sections at h2) listed h2/h3 in the preview and h2/h3/h4
+    // in the build, so the author was tuning navigation against a TOC no reader ever sees.
+    //
+    // TOP-LEVEL is the other half of that same agreement, and `querySelectorAll` gets it
+    // wrong by default: `toc_items` iterates the block list, so a heading folded into a
+    // `:::` container block (which is ONE block whose html happens to contain headings) is
+    // not in it, while a descendant search finds it. Measured: a `## Inside a width escape`
+    // in a `.column-page` listed 4 entries in the preview against the build's 3. Top-level
+    // blocks are exactly `root`'s element children (`<main id="tali-root">{blocks}</main>`,
+    // and every op appends/replaces at that level), so the children are the block list.
+    // Callout divs never showed it — a callout consumes its headings into its title and
+    // they never get an id.
     const lvl = (/** @type {Element} */ h) => +h.tagName[1];
-    const anchored = [...root.querySelectorAll("h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]")];
+    const anchored = [...root.children].filter(
+      (h) => /^H[1-6]$/.test(h.tagName) && h.id,
+    );
     tocEl.textContent = "";
     if (!anchored.length) return;
     const base = Math.min(...anchored.map(lvl));
@@ -1019,10 +1031,18 @@
 
   // Apply a mutation while keeping the scroll position pinned. `instant` overrides
   // the page's smooth scroll-behavior so live re-renders never animate the restore.
+  //
+  // BOTH axes: the restore was `left: 0` for every caller, so any block op snapped a
+  // horizontally scrolled page back to the left margin while faithfully preserving the
+  // vertical position — the one half of "scroll position survives edits" that is easy to
+  // forget because Taliesin's own CSS clamps the document width. It is reachable through
+  // raw HTML with an explicit oversized width, a width-escape div, or a narrow / zoomed
+  // viewport, and there it fought the author on every save.
   const keepScroll = (/** @type {() => void} */ fn) => {
     const y = window.scrollY;
+    const x = window.scrollX;
     fn();
-    window.scrollTo({ top: y, left: 0, behavior: "instant" });
+    window.scrollTo({ top: y, left: x, behavior: "instant" });
   };
 
   const FOCUSABLE =

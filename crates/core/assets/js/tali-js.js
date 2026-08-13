@@ -55,6 +55,7 @@
    * @property {string[]} inputs
    * @property {HTMLElement} container
    * @property {() => void} dispose
+   * @property {{name: string, cb: () => void}[]} listeners
    */
   /**
    * @typedef {Object} TaliJsGraph
@@ -183,10 +184,16 @@
   }
 
   /**
+   * `owned` is the calling cell's own registration list: every `onInput` callback is
+   * recorded on it as well as in the shared `r.listeners` map, so `teardownIn` can take
+   * the cell's callbacks back out again. Without that record the two are indistinguishable
+   * — a Set of anonymous closures says nothing about which cell put them there — and a
+   * torn-down cell's callback fired forever against detached DOM (one more copy per edit).
    * @param {TaliJsRuntime} r @param {HTMLElement} container
    * @param {() => (Promise<void> | null)} getInv
+   * @param {{name: string, cb: () => void}[]} owned
    */
-  function makeApi(r, container, getInv) {
+  function makeApi(r, container, getInv, owned) {
     return {
       /** @param {string} n */
       get: function (n) { return r.scope[n]; },
@@ -201,6 +208,7 @@
       onInput: function (names, cb) {
         (Array.isArray(names) ? names : [names]).forEach(function (n) {
           (r.listeners[n] = r.listeners[n] || new Set()).add(cb);
+          owned.push({ name: n, cb: cb });
         });
       },
       container: container,
@@ -280,7 +288,9 @@
       currentInv = new Promise(function (res) { resolveInv = res; });
       return currentInv;
     }
-    var api = makeApi(r, container, function () { return currentInv; });
+    /** @type {{name: string, cb: () => void}[]} */
+    var listeners = [];
+    var api = makeApi(r, container, function () { return currentInv; }, listeners);
     // Hand the source to the registered language. `setup` is where a language does its
     // one-time work — compiling the author's JS into an AsyncFunction, linking a shader
     // program — so it is the first thing that can fail, and a failure here used to escape
@@ -362,6 +372,9 @@
       defines: name || viewof,
       inputs: inputs,
       container: container,
+      // Every `tali.onInput` callback this cell registered, so teardown can take them
+      // back out of the shared `r.listeners` map (see `makeApi`).
+      listeners: listeners,
       // Resolve the outstanding `invalidation` (running the author's
       // `invalidation.then(() => renderer.dispose())` teardown) so the cell can be
       // dropped, then let the LANGUAGE tear down whatever the author cannot see (a WebGL
@@ -380,8 +393,18 @@
   // `invalidation` so author cleanup runs (renderer.dispose / cancelAnimationFrame /
   // removeEventListener), then splice it out of `r.cells` so the push-only list can't
   // accumulate stale cells across edits. Also unregister any input the cell published,
-  // so a re-mount re-registers a live element rather than firing a detached one. Called
-  // by the client BEFORE it detaches an outgoing block (Update/Remove).
+  // so a re-mount re-registers a live element rather than firing a detached one, and drop
+  // the `tali.onInput` callbacks it registered. Called by the client BEFORE it detaches an
+  // outgoing block (Update/Remove).
+  //
+  // The callbacks are the half that has no other owner. `r.cells` and `r.inputs` are both
+  // keyed by something teardown can find again; `r.listeners` is a name -> Set-of-closures
+  // map that nothing else indexes, so before the cell recorded its own registrations
+  // (`makeApi`) there was no way to tell which of them belonged to the block going away.
+  // Measured before this: three edits to a `{js}` cell that calls `tali.onInput` left
+  // `cells.length` correctly at 2 and `listeners.k.size` at 4, so one slider event ran the
+  // callback four times, three of them painting DOM that was no longer in the document.
+  // The cost was permanent for the session and grew with every edit.
   /** @param {Node | null} node */
   function teardownIn(node) {
     if (!node || !window.__talijs) return;
@@ -392,6 +415,14 @@
       var inside = c.container && (c.container === node || (node.contains && node.contains(c.container)));
       if (inside) {
         try { if (c.dispose) c.dispose(); } catch (e) { console.error("tali-js: cell teardown failed", e); }
+        (c.listeners || []).forEach(function (l) {
+          var set = r.listeners[l.name];
+          if (!set) return;
+          set.delete(l.cb);
+          // An emptied name would otherwise sit in the map forever, keyed by an input the
+          // edit may have deleted along with the cell.
+          if (!set.size) delete r.listeners[l.name];
+        });
         if (c.defines && r.inputs[c.defines] && c.container.contains(r.inputs[c.defines])) {
           delete r.inputs[c.defines];
         }

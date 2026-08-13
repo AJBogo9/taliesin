@@ -161,14 +161,23 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    project, opened at that page; with no ancestor `_site.yml` it is a
                    project of just that document (`Site::discover_single`). That
                    synthesized one-page project renders no navbar and no footer (the
-                   theme toggle still shows), so `preview <file>` and `build <file>`
-                   now agree on page chrome; the table of contents does not share that
-                   agreement: `preview` auto-detects and renders one, `build` does
-                   not. A directory with no `_site.yml` is refused by both verbs, with
-                   guidance to build or preview one page inside it, or add a
-                   `_site.yml`. Previewing a file alone would be an orphan (no
-                   cross-page nav, dead cross-page links), which is why the companion
-                   already resolved to the project (item 150)
+                   theme toggle still shows), so for a file with **no ancestor
+                   `_site.yml`** `preview <file>` and `build <file>` agree on page chrome
+                   — **including the table of contents since 2026-08-13**, which was the
+                   one piece left out: the single-file build is the only page path that
+                   never constructs a `Site`, so `Site::page_toc`'s auto-gate never ran
+                   and a three-heading paper got a TOC in the preview and none in the
+                   build, against a manual that documents the automatic behaviour.
+                   `build.rs` now asks the same `page_toc` when — and only when — the
+                   front matter left `toc:` out. **Inside a project the two verbs still
+                   part company by design**: `preview p3.tmd` opens the whole project at
+                   that page (site nav, cross-page links), while `build p3.tmd` writes one
+                   self-contained file, and a navbar linking to `.html` siblings the build
+                   never wrote would be broken chrome. A directory with no `_site.yml` is
+                   refused by both verbs, with guidance to build or preview one page
+                   inside it, or add a `_site.yml`. Previewing a file alone would be an
+                   orphan (no cross-page nav, dead cross-page links), which is why the
+                   companion already resolved to the project (item 150)
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans
                    what re-runs via cumulative-hash keys (warm reuse + cold replay)
   src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell
