@@ -190,8 +190,15 @@
      multi-author list wraps as a unit and never interleaves with the date — the names
      stay together and the separators stay with them. An author's name is authored text,
      not the machine speaking, so it overrides the meta line's machine voice back to the
-     serif, upright and untracked; the date beside it stays on the mono. */
-  .tali-title-block .tali-byline { display: inline; font-family: var(--tali-font-body-family);
+     serif, upright and untracked; the date beside it stays on the mono. Reads the family
+     through the `font` shorthand (`--tali-font-body`), not a family-only token: a second
+     token holding the same family list is a second source of truth nothing keeps in sync,
+     so a theme overriding only `--tali-font-body` would silently miss the byline. The
+     shorthand resets size/weight/leading too, so this stays small (the secondary register
+     carried by size) by re-declaring them AFTER it, at the values the meta line otherwise
+     inherits from `.tali-title-meta`. */
+  .tali-title-block .tali-byline { display: inline;
+    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3;
     text-transform: none; letter-spacing: normal; }
   .tali-title-block .tali-author { white-space: nowrap; }
   /* A name that carries a `url:` reads as a name, not as a link in a sentence: the
@@ -208,9 +215,10 @@
      keeps two or three institutions on one quiet line instead of a stacked block that
      would out-weigh the title it sits under. An institution's name is authored text too,
      so it is the serif, upright and untracked, kept small and muted (the secondary
-     register carried by size, not by the machine voice). */
-  .tali-affiliations { margin: .35rem 0 0; font-family: var(--tali-font-body-family);
-    font-size: .78rem; line-height: 1.3; color: var(--tali-muted); }
+     register carried by size, not by the machine voice) — via the `font` shorthand, same
+     reasoning as `.tali-byline` above. */
+  .tali-affiliations { margin: .35rem 0 0; color: var(--tali-muted);
+    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3; }
   /* `list-style: none` because the number is emitted as CONTENT, not drawn by the
      marker: an inline `<li>` has no marker at all, so relying on it silently dropped
      every number while the superscripts beside the names kept referring to them. */

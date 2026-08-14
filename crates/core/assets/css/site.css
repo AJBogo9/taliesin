@@ -26,15 +26,20 @@
     padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   /* Authored text (the site's `title:`), not the machine speaking: stays on the serif and
-     upright even though it sits inside `.tali-nav-inner`'s machine-voice bar. `letter-spacing`
-     is an inherited property, so leaving it unset here would NOT read as "no tracking" — it
-     would compute the ancestor's `.053em` tracking (relative to the ANCESTOR's own smaller
-     font-size, since that is where the em resolves) and inherit that pixel value down, same
-     defect as leaving the family unset. Caught on a live page, not by reading the CSS: the
-     wordmark measured 0.66px of tracking with no local override. */
-  .tali-nav-brand { color: var(--tali-fg); font-family: var(--tali-font-body-family);
-    font-weight: 700; font-size: 1.02rem; text-decoration: none; text-transform: none;
-    letter-spacing: normal; white-space: nowrap; }
+     upright even though it sits inside `.tali-nav-inner`'s machine-voice bar. Reads the
+     family through the `font` SHORTHAND (`--tali-font-body`) rather than a family-only
+     token: a second token holding the same family list would be a second source of truth
+     that nothing keeps in sync with the first, so a theme overriding only `--tali-font-body`
+     (the shipped guide's own worked example) would silently leave the wordmark on the old
+     face. `font-size`/`font-weight` MUST come after the shorthand — it resets both. Same for
+     `letter-spacing`: it is an inherited property (not part of the shorthand), so leaving it
+     unset here would NOT read as "no tracking" — it would compute the ancestor's `.053em`
+     tracking (relative to the ANCESTOR's own smaller font-size, since that is where the em
+     resolves) and inherit that pixel value down. Caught on a live page, not by reading the
+     CSS: the wordmark once measured 0.66px of tracking with no local override. */
+  .tali-nav-brand { color: var(--tali-fg); text-decoration: none; white-space: nowrap;
+    font: var(--tali-font-body); font-size: 1.02rem; font-weight: 700;
+    text-transform: none; letter-spacing: normal; }
   .tali-nav-brand:hover { color: var(--tali-link); }
   /* `logo:` in `_site.yml` — the brand image that replaces the wordmark, in the website
      navbar and in BOTH book brand slots (topbar + drawer head). Sizing lives here, not in
@@ -345,9 +350,12 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
   gap: .5rem; margin: 0 0 1.1rem; }
 /* Authored text (the book's `title:`), not the machine speaking: stays on the serif and
-   upright even though `.tali-book-topbar-inner` around it is the machine-voice bar. */
-.tali-book-brand { display: block; font-family: var(--tali-font-body-family); font-weight: 700;
-  font-size: 1.02rem; line-height: 1.25; color: var(--tali-fg); text-decoration: none;
+   upright even though `.tali-book-topbar-inner` around it is the machine-voice bar. Reads
+   the family through the `font` shorthand, not a family-only token — see `.tali-nav-brand`
+   above for why. `font-size`/`font-weight`/`line-height` come after the shorthand, which
+   resets all three. */
+.tali-book-brand { display: block; color: var(--tali-fg); text-decoration: none;
+  font: var(--tali-font-body); font-size: 1.02rem; font-weight: 700; line-height: 1.25;
   text-transform: none; letter-spacing: normal; }
 .tali-book-brand:hover { color: var(--tali-link); }
 /* MOB-8, and the same failure this file already documents once at `.tali-book-drawer-btn svg`
