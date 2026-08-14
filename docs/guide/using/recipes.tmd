@@ -1,10 +1,9 @@
 ---
 title: "Recipes"
-description: "Whole working projects to copy rather than fragments to assemble: front matter, config and layout for four kinds of document."
+description: "Whole working projects to copy rather than fragments to assemble: front matter, config and layout for two kinds of document."
 ---
 
-Five complete, copyable setups: a personal blog, a project portfolio, a
-documentation book, a standalone talk, and a single long-form post. Each one shows
+Two complete, copyable setups: a personal blog and a documentation book. Each one shows
 the directory layout, the config, and the key front matter, with notes on the parts
 that bite. Copy the closest one and edit it down.
 
@@ -12,6 +11,28 @@ Every key used below is real. If you want the full list of what each one does, t
 [front matter](../reference/frontmatter.tmd), [cell options](../reference/cell-options.tmd),
 and [configuration](../reference/configuration.tmd) references are the source of truth;
 this page is the "here is a working whole" companion to them.
+
+## Books, sites, and the difference
+
+Point either command at a directory and Taliesin builds a project instead of a single
+page. Which kind of project depends on one thing: whether that directory's `_site.yml`
+lists `chapters:`. If it does, the directory is a **book**, no `type:` key needed; if it
+doesn't, it's a website whose pages you compose from front matter, the shape recipe 1
+below shows.
+
+The two forms navigate differently, too. A page with `toc: true` gets a table of
+contents built from its own headings, a sidebar rail on a wide screen. A book gets no
+such rail: its Chapters drawer lists every chapter instead, since what a reader
+of a book needs is the neighbouring chapters, not the current one's headings.
+
+The drawer also shows each chapter's length in words, not a reading time, so the cost
+of opening a chapter is visible where that decision gets made. It is a word count and
+not a reading time on purpose: the count excludes fenced code and math, so a code-heavy
+chapter is understated, and a minutes label would carry that error into a promise about
+your time that a word count never makes.
+
+The two recipes below are one of each: a blog built from pages and a `listing:`, and a
+documentation book built from a `chapters:` list.
 
 ## 1. A personal blog
 
@@ -120,84 +141,7 @@ no `date:` still appears, but undated posts cluster deterministically at the end
 break on file path, so give every post a date if order matters.
 :::
 
-## 2. A project / portfolio site
-
-> A `hero:` landing page, a nav bar, and a `projects.tmd` index that lists each
-> project.
-
-```text
-portfolio/
-├── _site.yml
-├── index.tmd            # hero landing
-├── projects.tmd         # a listing over projects/
-├── favicon.svg
-└── projects/
-    ├── thing-one/
-    │   ├── index.tmd
-    │   └── shot.webp
-    └── thing-two/
-        └── index.tmd
-```
-
-`_site.yml`:
-
-```yaml
-title: "Jane Doe"
-description: "Things I build"
-favicon: favicon.svg
-nav:
-  left:
-    - { text: Projects, href: projects.tmd }
-  right:
-    - { icon: github, href: "https://github.com/jane" }
-    - { icon: linkedin, href: "https://www.linkedin.com/in/jane" }
-footer:
-  left: "© 2026 Jane Doe"
-```
-
-The landing page uses a `hero:` block: a big headline, a lead sentence, and a row of
-call-to-action buttons. `headline:` falls back to `title:` if you omit it, and each
-action is `{ text, href, primary }` (mark one `primary: true` to make it the filled
-button):
-
-```yaml
----
-title: "Jane Doe"
-hero:
-  eyebrow: "Software & research"
-  headline: "I build tools for thinking."
-  lead: "Interactive explainers, dev tooling, and the occasional paper."
-  actions:
-    - { text: "See my work", href: "projects.tmd", primary: true }
-    - { text: "GitHub", href: "https://github.com/jane" }
----
-
-A paragraph or two below the hero, if you like. Everything after the front matter
-renders as normal page content.
-```
-
-`projects.tmd` is the same listing pattern as the blog index, pointed at `projects/`:
-
-```yaml
----
-title: "Projects"
-title-block-style: none
-page-layout: full
-listing:
-  contents: projects
-  type: grid
----
-
-Things I built to learn something.
-```
-
-::: {.callout-tip}
-The nav and footer accept a bundled icon glyph (`{ icon: github, href: … }`) instead
-of raw HTML. Available glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`,
-`bluesky`, `email`. For anything else, pass an inline `<svg>` as the item `text:`.
-:::
-
-## 3. A documentation book
+## 2. A documentation book
 
 > Numbered chapters grouped into a part, a Chapters drawer, and Cmd-K search, all
 > from one `chapters:` list.
@@ -251,75 +195,11 @@ book built this way: open the Chapters drawer and press Cmd-K to try the search.
 ::: {.callout-note}
 There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like
 `bibliography:`) and a chapter's own front matter overrides them, two levels, no
-directory merge. See [Books & sites](formats.tmd) for the difference between a book and
-a plain multi-page site.
-:::
-
-## 4. A single long-form technical post
-
-> One `.tmd` file with math, citations from a `.bib`, and numbered, cross-referenced
-> figures. No `_site.yml`, no directory: just a file you preview and build directly.
-
-```text
-post/
-├── article.tmd
-├── references.bib
-└── diagram.svg
-```
-
-This is the simplest project of all: a lone document. Preview it with
-`taliesin preview article.tmd` and build it with `taliesin build article.tmd` (which
-produces one self-contained `.html`). The front matter pulls in the bibliography and
-sets the metadata:
-
-```yaml
----
-title: "A geometric view of the thing"
-subtitle: "Why the obvious approach is wrong"
-author: "Jane Doe"
-date: 2026-06-01
-description: "One sentence for the social card."
-toc: true
-bibliography: references.bib
----
-```
-
-`bibliography:` enables `[@key]` citations and appends an auto-generated References
-section. (References always render in a single built-in IEEE style; a `csl:` key is
-recognized but not supported, so the build warns on it.) Inline and display math use
-`$…$` and `$$…$$`,
-rendered server-side, so the HTML carries the math with no client-side library:
-
-```markdown
-The estimator minimizes the squared error $\lVert y - X\beta \rVert^2$. Its closed
-form follows from setting the gradient to zero [@hastie2009]:
-
-$$ \hat{\beta} = (X^\top X)^{-1} X^\top y. $$ {#eq-ols}
-
-As @eq-ols shows, the fit is linear in $y$.
-```
-
-Give a display equation `{#eq-name}` and reference it as `@eq-ols`. The same numbered
-cross-reference scheme covers figures (`@fig-`) and sections (`@sec-`); a reference
-to a label that does not exist is reported as a broken cross-reference. A static image becomes a
-numbered figure with a Markdown caption and an `{#fig-shape}` id:
-
-```markdown
-![A standardized data cloud with its principal axes.](diagram.svg){#fig-shape}
-
-@fig-shape shows the axes lining up with the directions of greatest variance.
-```
-
-::: {.callout-note}
-The cross-reference label and its target must live in the **same document**. For a
-figure produced by a code cell instead of a static image, set the cell's `#| label:
-fig-…` and `#| fig-cap: "…"` options; see [Running code](code.tmd) and
-[Writing](writing.tmd) for the figure and citation details.
+directory merge.
 :::
 
 ## Where to go next
 
-- [Books & sites](formats.tmd): the full feature set behind recipes 2 and 3.
 - [Running code](code.tmd): cells, outputs, and the execution cache for any recipe
   with `{python}`.
 - [Interactive content](interactive.tmd): live `{js}` cells and reactive inputs to
@@ -329,5 +209,5 @@ fig-…` and `#| fig-cap: "…"` options; see [Running code](code.tmd) and
 - [Front matter reference](../reference/frontmatter.tmd): every per-page `---` key the
   recipes set (`listing:`, `hero:`, `image:`, and the rest).
 - [Cell options reference](../reference/cell-options.tmd): every `#|` cell option,
-  including the `label: fig-…` / `fig-cap:` keys used in recipe 5.
+  including the `label:`/`fig-cap:` keys that number a figure produced by code.
 - [CLI reference](../reference/cli.tmd): every command and flag used above.

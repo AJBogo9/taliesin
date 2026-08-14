@@ -134,7 +134,7 @@ taliesin build hello.tmd --out dist      # -> dist/index.html + copied local ass
 ```
 
 Point `build`/`preview` at a **directory** instead and you get a whole
-multi-page site or book (see [Books & sites](formats.tmd)):
+multi-page site or book (see [Recipes](recipes.tmd)):
 
 ```sh
 taliesin build blog/                     # -> blog/_site/   (one .html per page)

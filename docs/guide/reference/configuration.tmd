@@ -191,7 +191,7 @@ set, from the same validator — in any LSP editor. See [Preview](../using/previ
 Two front-matter blocks turn a page into something special: `listing:` (an
 index of other pages) and `hero:` (a landing banner). `listing:` is detailed
 below; `hero:` is documented in [Front matter](frontmatter.tmd) and shown in
-context in [Formats](../using/formats.tmd).
+context in [Recipes](../using/recipes.tmd).
 
 #### `listing:` (an index page)
 

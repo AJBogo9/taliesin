@@ -11,7 +11,6 @@ chapters:
       - using/code.tmd
       - using/writing.tmd
       - using/interactive.tmd
-      - using/formats.tmd
       - using/theming.tmd
       - using/recipes.tmd
   - part: "Reference"

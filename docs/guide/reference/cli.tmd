@@ -82,7 +82,7 @@ pre-commit hook.
 
 Each human `path` is rooted on the target **as you typed it**, so it opens from wherever
 you ran the command: `taliesin build docs/guide --check-only` from the repository root
-reports `docs/guide/using/formats.tmd:12:`, not a bare `using/formats.tmd` that only
+reports `docs/guide/using/recipes.tmd:12:`, not a bare `using/recipes.tmd` that only
 resolves inside the project. (The `file` in `--format json` stays relative to the target,
 since whoever passed the target can resolve against it.)
 
