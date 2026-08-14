@@ -7,17 +7,4 @@ hero:
   actions:
     - { text: "Read the posts", href: "blog.tmd", primary: true }
     - { text: "Projects", href: "projects.tmd" }
-toc: false
-listing:
-  id: recent-posts
-  contents: posts
-  max-items: 2
-  type: grid
 ---
-
-## Recent Posts
-
-::: {#recent-posts}
-:::
-
-[View all posts →](blog.tmd){.btn}
