@@ -214,7 +214,7 @@ to its figure in another.
 
 In a site or book, `bibliography:` can instead live once in `_site.yml` and be shared
 by every page; a page's own `bibliography:` is then merged over it. See
-[Configuration](../reference/configuration.tmd).
+[Configuration](../reference/frontmatter.tmd#project-site-yml).
 
 ## Footnotes and sidenotes
 

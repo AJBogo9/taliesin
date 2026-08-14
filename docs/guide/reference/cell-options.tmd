@@ -3,7 +3,7 @@ title: "Cell-options reference"
 description: "Every cell option and what a label decides, including why the cache key sees your code rather than your data."
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · Cell options · [Configuration](configuration.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: [CLI](cli.tmd) · [Configuration](frontmatter.tmd) · Cell options · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 A code cell carries per-cell options on its leading comment lines. These tune
 whether the source shows, whether the cell runs, whether its output is cached, and
@@ -11,7 +11,7 @@ how the output is captioned, numbered, and cross-referenced. This page is the
 complete list. For the narrative on writing and running cells, see
 [Executable content](../using/code.tmd); for the document-wide `execute:` defaults
 that cell options override, see the
-[Configuration reference](configuration.tmd).
+[Configuration reference](frontmatter.tmd).
 
 ## How options are written
 
@@ -68,7 +68,7 @@ notes.tmd:14: unknown cell option `labl` (did you mean `label`?)
 The cell still renders exactly as before, the warning just points at the line. In
 live preview you can click it straight to the source. The build surfaces the
 same warning as a publish gate. (Front-matter and `_site.yml` keys are validated
-the same way; see the [Configuration reference](configuration.tmd).)
+the same way; see the [Configuration reference](frontmatter.tmd).)
 
 ## Every option
 
@@ -209,8 +209,8 @@ in kind: it is a property of the document's relationship to `_freeze/`, not of h
 cell reads.
 
 The `eval` / `output` / `warning` keys some other tools put under `execute:` are not
-honoured either. See the [Configuration reference](configuration.tmd) for where `execute:`
-sits in front matter.
+honoured either. See the [Configuration reference](frontmatter.tmd#execute-document-wide-cell-defaults)
+for where `execute:` sits in front matter.
 
 ## `{js}` reactive options
 

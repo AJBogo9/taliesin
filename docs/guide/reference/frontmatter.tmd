@@ -1,15 +1,24 @@
 ---
-title: "Front-matter reference"
-description: "Every top-level front-matter key, the closed vocabulary behind did-you-mean, and a fully annotated example."
+title: "Configuration reference"
+description: "Every front-matter key and every _site.yml key, in one place: the closed vocabularies behind did-you-mean, with a fully annotated example of each."
 ---
 
-Every `.tmd` document can open with a YAML **front-matter** block: a `---`
-fenced header that sets the document's metadata, output, and behaviour. This page
-is the full vocabulary, every top-level key Taliesin reads, plus the nested blocks
-(`execute:`, `listing:`, `hero:`) and their children. For
-project-wide settings (a site's navbar, footer, chapter order) see the
-[Configuration reference](configuration.tmd); for per-cell `#|` options see the
+*Reference: [CLI](cli.tmd) · Configuration · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+
+Taliesin reads configuration from two places: a document's own **front matter** (the
+`---` block at the top of a `.tmd` file), and, for a site or book, the project's
+**`_site.yml`**. Both are closed vocabularies, validated with the same "did you
+mean" machinery, so this page covers both, in two parts: [document front
+matter](#document-front-matter) first, [project `_site.yml`](#project-site-yml)
+second. For per-cell `#|` options, see the
 [Cell-options reference](cell-options.tmd).
+
+# Document front matter {#document-front-matter}
+
+Every `.tmd` document can open with a YAML **front-matter** block: a `---`
+fenced header that sets the document's metadata, output, and behaviour. This
+section is the full vocabulary, every top-level key Taliesin reads, plus the
+nested blocks (`execute:`, `listing:`, `hero:`) and their children.
 
 A minimal block is just a title:
 
@@ -62,7 +71,7 @@ There is no per-document raw-injection key. `css:`, `include-in-header:`,
 the `_site.yml` `css:`, `body-start:` and `body-end:` beside them.
 
 What survives is one hatch, project-wide: `_site.yml`'s
-[`head:`](configuration.tmd), which injects markup into every page's `<head>`. That is
+[`head:`](#project-site-yml), which injects markup into every page's `<head>`. That is
 where an analytics snippet, a search-console `<meta>`, or a custom stylesheet goes. For
 colours and type, prefer a [`theme:`](../using/theming.tmd) over raw CSS.
 
@@ -192,10 +201,10 @@ is what every listing that used to spell it out asked for.
 
 | Sub-key | Type | Default | Meaning |
 |---|---|---|---|
-| `contents` | string | (required) | A single directory to crawl for documents (one directory string, not a list or glob). Without it, there is nothing to list |
+| `contents` | string | (required) | A single directory to crawl for documents, relative to this page (one directory string, not a list or glob). Every `.tmd` under it with a `title:` becomes a card; without it, there is nothing to list |
 | `id` | string | (none) | Fill a matching `::: {#id}` block in the page body instead of appending the listing to the end |
-| `type` | string | (list) | `grid` renders a card grid; anything else (or omitted) renders a stacked list |
-| `max-items` | int | (none) | Cap the number of items shown |
+| `type` | string | (list) | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's `image:` as a thumbnail beside the text; the default (anything else, or omitted) is the same stacked layout without images, for a formal text list |
+| `max-items` | int | (none) | Cap the number of items shown; omit it to list every match |
 
 ```yaml
 ---
@@ -212,6 +221,20 @@ listing:
 Set `id:` and place a `::: {#recent}` block where you want the listing to land, so
 you can write an intro above it and the cards below it on the same page.
 :::
+
+A card's date, categories, and image come from each listed page's own front
+matter. To give a page a category badge on its card, set `categories:` on
+**that page**:
+
+```yaml
+---
+title: "A post about rust"
+date: 2026-06-20
+categories: [rust, performance]   # these become the card's badges
+image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
+image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
+---
+```
 
 ## `hero:` (a landing banner) {#hero-a-landing-banner}
 
@@ -305,3 +328,188 @@ execute:
 draft: false                                        # true: preview shows it, build excludes it
 ---
 ```
+
+# Project `_site.yml` {#project-site-yml}
+
+A **directory** with a `_site.yml` is a site or book project. The schema is
+flat: Taliesin is HTML-only, so there's no `format: html:` nesting, and the
+project type is inferred (presence of `chapters:` ⇒ a book). A nested config (a
+`project:` / `website:` / `book:` / `format:` block) is no longer parsed: its
+unknown top-level keys warn, and its nested values are ignored. Flatten it (see
+the key table below). There is no `_metadata.yml` cascade: the root config sets
+defaults, a page's own front matter overrides them.
+
+A **website**:
+
+```yaml
+title: "My Site"
+description: "Notes on things"
+url: "https://example.com"
+favicon: favicon.svg
+logo: logo.svg           # brand image in the navbar (book: the topbar + chapter drawer)
+head: head.html          # raw markup for every page's <head> — the one escape hatch
+bibliography: refs.bib   # one .bib for every page (see below)
+
+nav:                     # a list is the left side; or { left: [...], right: [...] }
+  - { text: Blog,     href: blog.tmd }
+  - { text: Projects, href: projects.tmd }
+
+footer:                  # a string is left text; or { left, center, right }
+  left: "© 2026 Me"
+  right:
+    - { icon: github, href: "https://github.com/me" }
+```
+
+A **book**: just add `chapters:` (its presence makes it a book; no `type:`):
+
+```yaml
+title: "My Book"
+author: "Me"
+toc: true
+chapters:
+  - index.tmd
+  - part: "Part One"     # group chapters under a part header
+    chapters: [a.tmd, b.tmd]
+  - file: c.tmd          # { file:, text: } overrides the chapter label
+    text: "Conclusions"
+```
+
+A chapter entry is a bare path (`- a.tmd`), a `{ part:, chapters: }` group header, or
+a `{ file:, text: }` mapping whose `text:` overrides the chapter label (the override
+also works inside a part's list). Without `text:`, the label is the chapter's first
+`# H1`, then its front-matter `title:`, then the file stem.
+
+| Key | Meaning |
+|---|---|
+| `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
+| `favicon` | Tab icon (defaults to the Taliesin mark) |
+| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
+| `image` | Deprecated; the social-card image is now auto-generated per page |
+| `head` | Raw markup injected into every page's `<head>`: a path, a `{ text: … }` / `{ file: … }` map, or a list of those. The **one** raw-injection hatch — analytics, a search-console `<meta>`, a custom stylesheet |
+| `nav` | Navbar items: a list (left), or `{ left, right }` |
+| `footer` | Footer: a string, or `{ left, center, right }` of items |
+| `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
+| `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
+| `python` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
+| `external-prefixes` | URL prefixes another project supplies when several are composed into one deploy. Links into them are not reported as broken, because this project cannot see those pages. Only useful if you compose projects yourself; a single project never needs it |
+
+**A shared bibliography.** `bibliography:` in `_site.yml` is read by every page, so a
+series of posts citing one reference file declares it once instead of repeating the
+line in each front matter. It is a *layer*, not a fallback: a page that also declares
+its own `bibliography:` gets both, with the page's entry winning on a shared key — the
+way to correct one reference for one post without editing the file every other page
+reads.
+
+Two read-only checks come with it, reported against `_site.yml` by the lint
+and `build`. A **duplicate key** inside the shared file would otherwise silently
+last-write-win. An entry **no page cites** is dead weight; that one is site-wide by
+necessity, since a shared entry one page cites is in use however many pages leave it
+alone. It is advice rather than an error, so it never fails a build unless you ask
+with `--strict`. A page's *own* `bibliography:` gets the same never-cited check scoped
+to that page. Neither check ever edits a `.bib`.
+
+**Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`.
+Taliesin picks the interpreter by the first source that exists, so a project can pin
+its own without fighting your global shell:
+
+1. the `_site.yml` `python:` field;
+2. a project-local `.venv` (`<project>/.venv/bin/python`, then `.venv/bin/python3`);
+3. the `TALIESIN_PYTHON` environment variable;
+4. an ancestor `.venv`, found by walking up from the project directory;
+5. the bare `python3` on your `PATH`.
+
+Because a project `.venv` (or a `python:` pin) beats a global `TALIESIN_PYTHON`, a
+committed project reproduces the same interpreter on any machine. The chosen
+interpreter and where it came from are logged the first time the kernel
+starts (`python -> /proj/.venv/bin/python  (from .venv)`), and `taliesin doctor` prints
+an **Environment** section listing it plus whether its Jupyter kernel package is
+importable. A single `.tmd` with no `_site.yml` uses the same order minus the field
+(`.venv` beside the file, then env, then default).
+
+**Icons.** A nav/footer item can be `{ icon: <name>, href: … }` instead of raw
+HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
+`email`.
+
+**Table of contents.** A site-wide `toc: true` shows the right-hand "on this page"
+list only on pages with **at least three headings**, so a short page doesn't get a
+near-empty rail. To override the auto-gate, set `toc:` in a page's own front matter:
+an explicit `toc: true` / `toc: false` always wins. On narrow screens the list appears
+inline after the article instead of floating as a sidebar.
+
+`toc:` is a **website** key. A book has no right-hand rail: the Chapters drawer is its
+navigation instead, so a second, shallower list beside the text earned nothing. Writing
+`toc:` in a book's `_site.yml` warns and does nothing; delete the key.
+
+**Validation.** Unrecognized keys are reported with a "did you mean …" hint, offered
+when a known key is within edit distance 2, so a typo like `favicn:` doesn't silently do
+nothing. Validation only **warns**: the document still renders, and every warning is
+**located**, so in the live preview you can click it straight to the source line. The same
+closed-vocabulary check covers unknown cell `#|` options and unknown immediate children
+of `execute:` / `listing:` / `hero:`. (The Internals book covers the design, and the
+drift-locked Draft 2020-12 `_site.yml` schema, in its *Validation & schemas* chapter.)
+
+## Editor autocomplete (config schema)
+
+`_site.yml` is the one config surface no language server covers, so Taliesin ships a
+JSON Schema for it: your editor's YAML language server can then autocomplete keys, show
+hovers, and flag unknown keys as you type, before you render. The schema describes the
+same key set Taliesin validates against at render time, so the editor and the renderer
+always agree.
+
+The VS Code companion ships a copy of that schema and wires it up for you, so with the
+companion installed there is nothing to do. In any other editor, save the schema somewhere
+your YAML language server can reach and add the modeline at the very top:
+
+```yaml
+# yaml-language-server: $schema=tali-site.schema.json
+title: My site
+```
+
+**Front matter needs no schema here.** It lives inside a `.tmd` file, where no YAML
+language server looks; `taliesin lsp` is what completes and validates it, the same key
+set, from the same validator, in any LSP editor. See [Preview](../using/preview.tmd).
+
+## Page blocks (sites)
+
+Two front-matter blocks turn a page into something special: `listing:` (an
+index of other pages) and `hero:` (a landing banner). Both are page-level
+front-matter keys, so they are documented once, in the [document front
+matter](#document-front-matter) part above: [`listing:`](#listing-an-index-page)
+and [`hero:`](#hero-a-landing-banner). A `listing:` shown in context is also in
+[Recipes](../using/recipes.tmd).
+
+## Project structure & reserved names
+
+A multi-page project is just a directory with a `_site.yml`. Taliesin discovers the
+pages by walking that directory, with one rule: **anything whose name starts with
+`_` or `.` is not a page.** That single convention is what keeps config, partials,
+caches, and build output from turning into navigable pages.
+
+```text
+my-site/
+├── _site.yml            # project config; presence makes this a site/book
+├── index.tmd            # a page (the home page)
+├── about.tmd            # a page
+├── posts/
+│   └── first.tmd        # a page (nested pages are discovered too)
+├── _includes/           # `_`-prefixed ⇒ skipped: partials for {{< include >}}
+│   └── _disclaimer.tmd
+├── _extensions/         # `_`-prefixed ⇒ skipped: reusable theme bundles
+│   └── my-theme/
+├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (gitignored)
+└── _site/               # build output (_book/ for a book; elsewhere with build --out)
+```
+
+Reserved names, all skipped by page discovery:
+
+| Name | What it is |
+|------|------------|
+| `_site.yml` | the project config (its presence is what defines a project) |
+| `_includes/` | a convention for `{{< include >}}` partials; the `_` keeps them out of the page set (the leading `_` on the partial files themselves, e.g. `_intro.tmd`, is also enough) |
+| `_extensions/` | reusable theme bundles: a `_extensions/<name>/theme.css` selected by name from `theme:` |
+| `_freeze/` | the persistent execution cache, keyed by content hash; gitignore it |
+| `_site/` / `_book/` | build output (`build <dir>` writes here; write elsewhere with `build --out <dir>`) |
+| anything `.`-prefixed | hidden files/dirs (`.git`, …) are skipped too |
+
+A `404.tmd` is special-cased the other way: it builds to `404.html` at the site root
+(most static hosts serve it for unknown URLs) but stays out of the nav.

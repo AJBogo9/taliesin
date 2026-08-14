@@ -3,7 +3,7 @@ title: "CLI reference"
 description: "Every subcommand and flag: preview and build, the pre-publish lint gate, and the lsp editor server."
 ---
 
-*Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: CLI · [Configuration](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 | Command | Effect |
 |---|---|
@@ -20,7 +20,7 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and how (`_site.yml` `python:`, a `.venv`, `TALIESIN_PYTHON`, then `PATH`), whether `ipykernel` imports, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
 
 A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
-directory a project (see [Configuration](configuration.tmd)). Point `preview` or
+directory a project (see [Configuration](frontmatter.tmd#project-site-yml)). Point `preview` or
 `build` at a directory that has none and the command refuses rather than
 guessing, and names two ways forward:
 
@@ -138,7 +138,7 @@ never chokes on a stray human message. Human format keeps that error on stderr.
 
 The lint is static, so it does **not** spawn interpreters and says nothing about whether a
 kernel works. That audit is `taliesin doctor`, which resolves the interpreter each language
-would run on and probes it. See the [configuration reference](configuration.html) for how
+would run on and probes it. See the [configuration reference](frontmatter.html#project-site-yml) for how
 the interpreter is chosen.
 
 At a glance, here is everything the lint looks at, grouped by what it protects:
@@ -369,7 +369,7 @@ taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
 Everything else is an edit to those two files rather than a starter you pick up front: add a
 page by dropping another `.tmd` beside `index.tmd`, add a top nav with a `nav:` block, and
 turn the project into a book by listing the pages under `chapters:`. See
-[Configuration](configuration.tmd).
+[Configuration](frontmatter.tmd#project-site-yml).
 
 The scaffold is correct on its first save: it renders, and `build --check-only` passes on it
 with no diagnostics. That is not a promise, it is a test: `crates/server/tests/new_cli.rs`

@@ -102,7 +102,7 @@ completion cannot suggest something the validator would reject.
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
 - **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
   extension installed. Outside VS Code, wire the same schema up with one comment line
-  (see [Configuration](../reference/configuration.tmd)).
+  (see [Configuration](../reference/frontmatter.tmd#project-site-yml)).
 
 ### What the document's structure gets you
 

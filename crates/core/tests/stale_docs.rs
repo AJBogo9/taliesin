@@ -134,16 +134,38 @@ fn backticked(text: &str) -> Vec<String> {
 }
 
 /// These phrases describe machinery deleted in the native rewrite and must not return.
+///
+/// Not path-bound: it used to read `docs/guide/reference/configuration.tmd` by name, but
+/// that page's `_site.yml` content (and the two needles below) merged into
+/// `docs/guide/reference/frontmatter.tmd` on 2026-08-14, and a test that re-pointed at the
+/// new path would just as soon go stale again on the next rename. Scanning
+/// [`reader_facing_docs`] instead makes the assertion survive the move and any future one,
+/// and reports which file and line a hit landed in, so a regression is still located.
+/// This is the opposite case from the `internals_do_not_describe_the_deleted_shim` needle
+/// below: there the subject content was deleted outright, so re-pointing would have been
+/// vacuous; here the subject content survives and merely changed file, so the assertion
+/// stays live by widening its source rather than by naming a new path.
 #[test]
 fn docs_do_not_claim_quarto_config_still_works() {
-    let cfg = read("docs/guide/reference/configuration.tmd");
+    // Scoped to a line naming Quarto: "still works" alone is ordinary English (a
+    // block-model page saying cross-file source mapping "still works", an execution
+    // page saying an uncached build "still works") and matched two of those on the
+    // first run of the widened gate.
+    let mut hits = Vec::new();
+    for (rel, text) in reader_facing_docs() {
+        for (line, l) in text.lines().enumerate() {
+            if l.contains("Quarto") && l.contains("still works")
+                || l.contains("Coming from a Quarto config?")
+            {
+                hits.push(format!("{rel}:{}: {}", line + 1, l.trim()));
+            }
+        }
+    }
     assert!(
-        !cfg.contains("still works"),
-        "configuration.tmd still claims a Quarto config works"
-    );
-    assert!(
-        !cfg.contains("Coming from a Quarto config?"),
-        "configuration.tmd still has the stale Quarto-config callout"
+        hits.is_empty(),
+        "a reader-facing doc still claims a Quarto config works, or still carries the \
+         stale Quarto-config callout:\n{}",
+        hits.join("\n")
     );
 }
 

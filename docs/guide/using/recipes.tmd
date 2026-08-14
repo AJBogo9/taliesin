@@ -8,9 +8,9 @@ the directory layout, the config, and the key front matter, with notes on the pa
 that bite. Copy the closest one and edit it down.
 
 Every key used below is real. If you want the full list of what each one does, the
-[front matter](../reference/frontmatter.tmd), [cell options](../reference/cell-options.tmd),
-and [configuration](../reference/configuration.tmd) references are the source of truth;
-this page is the "here is a working whole" companion to them.
+[configuration](../reference/frontmatter.tmd) and [cell options](../reference/cell-options.tmd)
+references are the source of truth; this page is the "here is a working whole"
+companion to them.
 
 ## Books, sites, and the difference
 
@@ -204,10 +204,9 @@ directory merge.
   with `{python}`.
 - [Interactive content](interactive.tmd): live `{js}` cells and reactive inputs to
   add to a post.
-- [Configuration reference](../reference/configuration.tmd): every `_site.yml` key, in
-  full.
-- [Front matter reference](../reference/frontmatter.tmd): every per-page `---` key the
-  recipes set (`listing:`, `hero:`, `image:`, and the rest).
+- [Configuration reference](../reference/frontmatter.tmd): every per-page `---` key
+  the recipes set (`listing:`, `hero:`, `image:`, and the rest) and every `_site.yml`
+  key, in full.
 - [Cell options reference](../reference/cell-options.tmd): every `#|` cell option,
   including the `label:`/`fig-cap:` keys that number a figure produced by code.
 - [CLI reference](../reference/cli.tmd): every command and flag used above.
