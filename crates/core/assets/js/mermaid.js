@@ -54,13 +54,11 @@ function taliMermaidConfig() {
     'requirement', 'gitGraph', 'c4', 'mindmap', 'timeline', 'sankey', 'quadrantChart',
     'xyChart', 'block', 'packet', 'architecture', 'kanban'];
   TYPES.forEach(function (t) { cfg[t] = { useMaxWidth: false }; });
-  // Right-angle edge routing instead of mermaid's default bezier ('basis'). This is a
-  // polyline-shape change only: the layout underneath is still dagre, which measured
-  // CLEANER than ELK on this corpus (1 edge-crossing pair vs 4, and 11.5k vs 20.9k total
-  // edge length across all 28 diagrams in corpus/ + docs/), so there is no reason to carry
-  // elkjs for the look. Orthogonal edges read better on the dense module graphs, where a
-  // fan-out becomes one bus line instead of a splay of overlapping curves.
-  cfg.flowchart.curve = 'step';
+  // Edge routing is mermaid's own default (bezier, `curve: 'basis'`) — deliberately NOT
+  // set here. It was 'step' (right angles) from 2026-07-31 until 2026-08-14; the layout
+  // underneath is dagre either way, since that measured CLEANER than ELK on this corpus
+  // (1 edge-crossing pair vs 4, and 11.5k vs 20.9k total edge length across all 28
+  // diagrams in corpus/ + docs/), so the orthogonal look never bought a better layout.
   return cfg;
 }
 /** @param {NodeListOf<Element>} nodes */
