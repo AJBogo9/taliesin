@@ -102,11 +102,11 @@ section: `frontmatter`, `configuration`, `cell-options`, `cli` and `troubleshoot
 lookup-shaped, and lookup-shaped content is exactly what passes question 2. It is dense per
 line and read a few lines at a time, so cutting it optimizes a read-time nobody spends.
 
-| | Now | Target | Change |
-|---|---|---|---|
-| Guide | 4,249 | ~2,750 | -35% |
-| Internals | 1,703 | ~1,100 | -35% |
-| **Total** | **5,952** | **~3,850** | **-35%** |
+| | Now | Target | Achieved | vs. target |
+|---|---|---|---|---|
+| Guide | 4,249 (19 files) | ~2,750 | 3,511 (16 files) | +28% |
+| Internals | 1,703 (7 files) | ~1,100 | 1,387 (6 files) | +26% |
+| **Total** | **5,952 (26 files)** | **~3,850** | **4,898 (22 files)** | **+27%** |
 
 **So the headline is -35%, not the -49% the brainstorm projected**, and the correction is
 in one direction: two thirds of what I expected to cut turned out to pass the bar on
@@ -115,6 +115,44 @@ archaeology, two chapters that were never chapters, four stale tables, and 59 as
 
 The Guide figure remains an estimate: 7 of its 18 chapters have been read in full. Firm it
 per chapter during implementation and update this file if the total moves by more than 10%.
+
+## Achieved (2026-08-14, all thirteen tasks landed)
+
+**The achieved total is 4,898 lines across 22 files, an 18% cut from the 5,952/26 starting
+point, not the ~3,850/-35% this file targeted. That is 27% over the target, well outside
+the 10% band this file itself set for "update this file if the total moves by more than
+10%". Stated plainly, per that rule, rather than adjusted to fit: the target was wrong, not
+the outcome.**
+
+Both books individually missed by about the same margin (Guide +28% over target, Internals
++26%), which points at one cause repeating rather than two unrelated ones. It is the same
+cause the "Revised target" correction above already named once, before implementation
+started: **reading a chapter in full finds more of it passes the keep-criterion than its
+heading suggested, every time, in the same direction.** That correction moved the target
+down once, from a brainstormed ~49% cut to a measured ~35% one, on the strength of four
+chapters read in full. Implementation then re-derived six more per-chapter targets against
+the actual text and found every one of them arithmetically wrong in the same direction: the
+plan's own line-budget arithmetic (cuts named minus a start count, or absorbed sections
+summed) didn't match what survived the criterion once a reviewer checked it section by
+section. Three are on record with their numbers: `architecture.tmd`'s ~150-line target
+corrected to ~295 once the plan's own cuts and its mandated absorption from `server.tmd`
+were added up (Task 3); `extending.tmd`'s ~90 corrected to ~115 once the brief's own
+"keep these five sections verbatim" instruction was summed (Task 4); and the merged
+configuration reference's ~330 corrected to 515 once the page's unique content (interpreter
+precedence, icon glyphs, the TOC auto-gate, shared-bibliography semantics) was checked
+against the rest of the guide and found to not duplicate it (Task 9). Every one of the six
+was a target that undershot, never one that overshot: nothing was cut that should have
+survived, and nothing was kept that should have gone. The per-task rulings in
+`.superpowers/sdd/2026-08-14-docs-cut-plan/progress.md` hold the full account.
+
+The criterion itself was honoured throughout, and re-verified at the end: a full
+end-to-end read of both books in a browser (Task 13) found the cut content stayed cut and
+the kept content reads as a coherent whole, with two small exceptions surfaced rather than
+silently patched (a stale chapter description in `architecture.tmd` naming content
+`extending.tmd` no longer has, and a dangling reference in `frontmatter.tmd` to an Internals
+chapter retired before this plan began; see the task's report for both, left for the author
+to disposition). The instrument that was wrong was the line-count arithmetic attached to the
+criterion, not the criterion's application.
 
 ## Target shape: the Guide
 

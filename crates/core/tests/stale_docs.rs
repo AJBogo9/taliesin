@@ -960,7 +960,7 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
 /// key with its colon (`theme: dark`), so a literal `theme:` substring catches that
 /// shape directly. A key-reference TABLE never does: its own key column is the bare
 /// key with no colon at all (`` | `theme` | string | ... | ``), so the substring check
-/// alone is structurally blind to exactly the row this gate most needs to see — that
+/// alone is structurally blind to exactly the row this gate most needs to see: that
 /// that blind spot is how a stale table cell in `frontmatter.tmd` (the book's own
 /// authoritative key reference) taught `theme: light`/`dark`/`default` as live values
 /// with every earlier version of this gate green. A table row is unambiguous: split on
