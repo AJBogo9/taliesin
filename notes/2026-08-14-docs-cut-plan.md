@@ -147,7 +147,7 @@ fn reader_facing_docs() -> Vec<(String, String)> {
     // matches nothing makes every gate below pass forever.
     assert!(
         docs.len() > 20,
-        "only {} reader-facing docs matched — the path prefixes drifted",
+        "only {} reader-facing docs matched (the path prefixes drifted)",
         docs.len()
     );
     docs
@@ -159,7 +159,7 @@ fn retired_verbs() -> Vec<String> {
     let src = read("crates/server/src/main.rs");
     let (_, table) = src
         .split_once("RETIRED_COMMANDS: &[(&str, &str)] = &[")
-        .expect("RETIRED_COMMANDS moved or changed shape — update this gate, do not delete it");
+        .expect("RETIRED_COMMANDS moved or changed shape; update this gate, do not delete it");
     let table = table.split("\n];").next().unwrap_or_default();
     // Entries are `(name, note)`, written both inline and split across lines; the first
     // string literal of each is the name either way.
@@ -181,7 +181,7 @@ fn retired_theme_modes() -> Vec<String> {
     let src = read("crates/core/src/render/theme.rs");
     let (_, body) = src
         .split_once("fn resolve_theme(")
-        .expect("resolve_theme moved — update this gate, do not delete it");
+        .expect("resolve_theme moved; update this gate, do not delete it");
     for line in body.lines() {
         let Some((pattern, _)) = line.split_once("=> {") else {
             continue;
@@ -204,7 +204,7 @@ fn retired_theme_modes() -> Vec<String> {
                 .collect();
         }
     }
-    panic!("the retired-mode match arm moved or changed shape — update this gate");
+    panic!("the retired-mode match arm moved or changed shape; update this gate");
 }
 
 /// A reader-facing doc must not name a subcommand the binary no longer answers.
@@ -231,7 +231,7 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
     let retired = retired_verbs();
     assert!(
         retired.iter().any(|v| v == "run") && retired.iter().any(|v| v == "serve"),
-        "RETIRED_COMMANDS parsed as {retired:?} — the shape changed, update this gate \
+        "RETIRED_COMMANDS parsed as {retired:?}; the shape changed, update this gate \
          rather than deleting it"
     );
     assert!(
@@ -281,7 +281,7 @@ fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
         let lines: Vec<&str> = text.lines().collect();
         for (line, tok) in backticked_located(&text) {
             if modes.contains(&tok) && lines[line - 1].contains("theme:") {
-                hits.push(format!("{rel}:{line}: `{tok}` — {}", lines[line - 1].trim()));
+                hits.push(format!("{rel}:{line}: `{tok}` in {}", lines[line - 1].trim()));
             }
         }
     }
@@ -317,8 +317,8 @@ Expected: two FAILs, with these exact hits and no others:
 
 ```
 docs/internals/architecture.tmd:273: `run`
-docs/guide/using/formats.tmd:141: `light` — `theme:` selects the built-in `light` …
-docs/guide/using/formats.tmd:141: `dark`  — `theme:` selects the built-in `light` …
+docs/guide/using/formats.tmd:141: `light` in `theme:` selects the built-in `light` ...
+docs/guide/using/formats.tmd:141: `dark`  in `theme:` selects the built-in `light` ...
 ```
 
 (Line numbers are from 2026-08-14 and may have shifted; the files and tokens are what
@@ -351,7 +351,7 @@ cannot hold this and the existing retired-key gate is blind to it.
 Both match on bare backticked tokens rather than on a \`taliesin <verb>\`
 prefix, because that is the form the defects actually took: the stale row
 writes the verbs as a backticked list with no prefix on the line. A prefix
-scan was measured first and rejected — 13 hits, 12 of them prose like
+scan was measured first and rejected: 13 hits, 12 of them prose like
 'taliesin renders', and blind to the real one.
 
 Scoped to reader-facing docs. CLAUDE.md and LICENSE-OUTPUT-EXCEPTION.md are
