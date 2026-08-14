@@ -54,6 +54,32 @@ returns a DOM node (mounted for you) or builds into `tali.container`, and an
 `invalidation` promise lets long-running cells (animations, WebGL) tear down before
 a re-run.
 
+A `viewof` input doesn't need to flow through a `//| name` cell first: a consumer
+can list it directly in `//| input:`. Drag the slider to add odd harmonics to a
+square-wave Fourier synthesis and watch the curve sharpen:
+
+```js
+//| viewof: harmonics
+const wrap = document.createElement("label");
+wrap.append("Harmonics ");
+const input = document.createElement("input");
+input.type = "range";
+input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
+wrap.append(input);
+return wrap;
+```
+
+```js
+//| input: harmonics
+const harmonics = tali.value("harmonics");
+return Plot.lineY(
+  Array.from({length: 500}, (_, t) =>
+    d3.range(1, harmonics + 1).reduce(
+      (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
+  {curve: "basis", stroke: "#4c8dff"}
+).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
+```
+
 ## Inputs without boilerplate: `{{< input >}}`
 
 The `{{< input >}}` shortcode emits a labelled, keyboard-accessible control whose
@@ -160,13 +186,39 @@ post-mount measurements (a canvas sized to its container), take them inside a
 `requestAnimationFrame` callback, which runs after the mount.
 :::
 
-The data can come from a `{python}` cell. Compute coordinates or a mesh in
-the kernel, `define()` them, and read them back in the `{js}` cell with
-`tali.get("...")`: the numbers come from your kernel, the rendering is browser-native.
+The data for a scene like this can come from a `{python}` cell instead of being
+computed in the browser: compute coordinates or a mesh in the kernel and hand
+them to the `{js}` cell that renders them. That handoff is its own pattern,
+covered next.
+
+## The Python → JS bridge
+
+`define()` in a Python cell hands values to `{js}` cells, so you can **compute
+in Python and render reactively in the browser**. Its signature is keyword-only,
+`define(name=value, ...)`: each keyword becomes a published name, and each
+value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
+cell then reads the value as `tali.defines.NAME` (or `tali.value("NAME")`, which
+falls back to defines when no live input owns that name). In live preview the
+Python cell executes *after* the page loads, so its values arrive a moment after
+the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
+(and rebinds when a Python input changes), so the cell recomputes in place without
+a reload. Guard against the value not having arrived yet with an early `return`.
+
+```python
+# sample a noisy sine wave
+import math, random
+random.seed(7)
+signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in range(120)]
+define(signal=signal)
+```
 
 ```js
-// {python} cell:  define(points=my_array.tolist())
-const points = tali.get("points");   // in the {js} cell
+const signal = tali.defines.signal;
+if (!signal) return;
+return Plot.plot({
+  height: 180, marginLeft: 36,
+  marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#2bb673"})]
+});
 ```
 
 The landing page's rotating surface is built exactly this way, and so is the PCA

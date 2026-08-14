@@ -125,11 +125,7 @@ doc.tmd:3: suggestion: bibliography entry `@knuth1984` is declared but never cit
 ```
 
 Severity is carried by the validator that found the defect, not derived from the wording of
-its message. Diagnostics used to also carry a stable `TAL-*` code and a link into a
-generated catalogue, expandable offline with `check --explain <CODE>`; all three went on
-2026-08-08. What an author needs from a diagnostic is the fix, and every message that has a
-mechanical one now names it inline, as a did-you-mean or as the replacement to use for
-something that was withdrawn.
+its message.
 
 `--format json` stays valid JSON even when the lint itself can't run: an unreadable or
 missing path (or an empty project) is reported as a single `{"error": "…"}` object on
@@ -155,11 +151,7 @@ At a glance, here is everything the lint looks at, grouped by what it protects:
 | **Bibliography** | A `.bib` entry declared but never cited — severity `suggestion`, so it never fails the run without `--strict` |
 
 **Every one of those names a defect you cannot see in the rendered page.** That is the test
-this set is kept by, and it is what a family of lints cut on 2026-08-08 failed: an empty or
-duplicated heading, a `$…$` KaTeX cannot parse (it renders as a red error span), a typo'd
-fence language (it renders unhighlighted), two links that read the same, and an icon-only
-control with no accessible name. All five described something you could read back in the
-preview, and the preview's own a11y audit is where the last one lives now.
+this set is kept by.
 
 `--strict` also exists on a **writing** build, where it means the same thing one step
 further along: it promotes a normally non-fatal build into a hard failure, so the page is
@@ -288,73 +280,24 @@ file and has nowhere else to put it: expect that file to be large if it has a di
 live preview serves the same vendored copy from a same-origin route, so the dev loop is
 offline without adding 3.5 MB to every page it re-serves.)
 
-## Publishing & sharing
-
-A `--out <dir>` folder (a single doc, a site, or a book) is **plain static HTML** — no
-server runtime, no build step to reproduce, no database. That is the whole publishing
-story, and it is deliberate: Taliesin has no deploy command and no host it prefers, because
-a folder of files is already the most portable artefact there is. *Any* way of serving
-static files publishes it, and none of them can be discontinued out from under you.
-
-Pick whichever fits how you already work:
-
-- **Send it directly.** Zip the folder and email it, or drop it in a shared drive. The
-  recipient opens `index.html` from disk — everything works offline (see above). Best for
-  a draft to a supervisor or a co-author who just needs to read it.
-- **GitHub Pages** (free, good for a book/site tied to a repo). Build into a folder, then
-  publish that folder to a `gh-pages` branch (or commit it to `/docs` on your default
-  branch) and enable Pages in the repo settings:
-
-  ```sh
-  taliesin build mybook --out _site       # build the static site/book
-  cd _site
-  git init -q && git add -A && git commit -qm "publish"
-  git push -f git@github.com:you/mybook.git HEAD:gh-pages   # a throwaway history is fine
-  ```
-
-  (Add a `.nojekyll` file to the folder so GitHub serves the `_`-prefixed asset dirs.)
-- **A drag-and-drop host** (Netlify, Cloudflare Pages, Vercel, Surge). Point it at the
-  `--out` folder as the publish directory, or drag the folder into their web uploader.
-  Nothing to configure — it's already built.
-- **Your own server / object storage.** `rsync -a _site/ you@host:/var/www/mybook/`, or
-  `aws s3 sync _site s3://your-bucket` behind a CDN. It's just files.
-
-**`--out` wants a folder of its own.** The output folder is a mirror of what the build
-produced, so a build deletes anything under it that it did not write (that is how a
-renamed or deleted page stops lingering in your deploy). For that reason it refuses a
-folder holding files it did not produce, and names them, instead of sweeping them away:
-point `--out` somewhere new or empty. Deploy metadata is exempt either way — a `.git`
-worktree, `.nojekyll` and `_headers` are the dot/underscore names the sweep never touches,
-so publishing straight from the folder keeps working.
-
-Whichever you pick, wrap it in a two-line script and stop thinking about it:
+**Nesting one project inside another's output** composes two builds into one deploy: build
+the book with `--out` pointed inside the site's own output directory, at whatever path you
+want it to live:
 
 ```sh
-#!/bin/sh
-set -e
-taliesin build mybook --check-only          # fail before the readers do
-taliesin build mybook --out _site
-rsync -a --delete _site/ you@host:/var/www/mybook/
+taliesin build my-site                          # -> my-site/_site/
+taliesin build docs --out my-site/_site/docs    # the book, nested at /docs
 ```
 
-**A private draft for one reader.** There is no built-in passcode gate — every host above
-has one, and they are better at it than a document tool would be. Netlify and Vercel both
-offer password protection on a deploy; Cloudflare Pages does it with Access; a plain nginx
-does it with two lines of `basic_auth`. Or skip hosting entirely and send the folder: it
-opens from disk with everything working, which is often what "let me read your draft"
-actually means.
-
-**Printing to PDF.** Open the built page in a browser and print it. Taliesin ships no PDF
-command: HTML is the one output target, and a browser's print dialogue renders the same
-page you have been looking at. Set your own `@media print` rules through `_site.yml`'s
-`head:` if you want to tune the paper layout.
+Build the parent first. A build sweeps whatever sits under its `--out` target that it did
+not itself write, so a book built before the site would be swept away by the site's own
+build. `tools/build-site.sh` composes this project's own marketing site plus its two docs
+books this exact way, parent first, one `--out` per sub-project.
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
-`<meta>` tags (`og:url`, `og:image`) plus `sitemap.xml`, `robots.txt` and the Atom feeds
-are only emitted when a `url:` is configured — the lint warns if you set a social
-`image:` without one.
-Run `taliesin build <dir> --check-only` first: a green lint means no broken links, missing
-anchors, or other publish-blocking mistakes ship to your readers.
+`og:url` / `og:image` tags, `sitemap.xml`, `robots.txt`, and the Atom feeds are only
+emitted when a project `url:` is configured; the lint warns if a page sets a social
+`image:` with no `url:` to absolutize it against.
 
 ## Starting from something: `init` and `new`
 

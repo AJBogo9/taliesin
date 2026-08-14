@@ -66,25 +66,64 @@ helps to keep them straight:
 
 | Option | Does the cell run? | Source shown? | Output shown? | Cached in `_freeze/`? |
 |---|---|---|---|---|
+| (defaults) | yes | yes | yes | yes |
 | `#\| echo: false` | yes | no | yes | yes |
 | `#\| include: false` | yes | no | no | yes |
 | `#\| cache: false` | yes | yes | yes | **never** |
 
 `echo: false` hides the source listing only; the cell still runs and its output
-still appears. `include: false` goes further and hides *both* source and output,
-but the cell **still executes**, so it is the way to run setup that mutates kernel
-state (imports, seeding an RNG, defining a helper) without showing anything: a
-later cell sees those variables. `cache: false` is orthogonal to both: the cell
-runs and shows normally, but its output is never frozen, so it always re-executes
-on the next build or preview. Reach for it when a cell reads the clock, hits the
-network, or draws from a fresh random source, anything whose value should not be
-restored from a stale cache.
+still appears. Use it when the reader should see a plot or a table but not the
+code that made it.
+
+`include: false` goes further and hides *both* source and output, but the cell
+**still executes** (kernel state is kept), so a later cell still sees its
+variables. This is the option for a setup cell whose result you never want to
+see but whose state you need downstream, not a way to skip a cell: there is no
+per-cell "don't run" option, because the cells form one sequential program
+against a single kernel, and skipping one mid-stream would leave the ones after
+it referring to undefined state. To skip execution entirely, run the whole
+document with `--no-exec` / `TALIESIN_NO_EXEC`.
+
+`cache: false` is orthogonal to both: the cell runs and shows normally, but its
+output is never frozen, and everything downstream of it re-runs and is likewise
+never cached (a downstream output follows from this cell's *value*, which the
+cache key cannot see: only its code). Reach for it whenever a cell's result
+depends on something that is not the cell's own code: a data file it reads, an
+environment variable, a network resource, the clock, or a sample without a fixed
+seed.
+
+```python
+#| include: false
+#| cache: false
+# Runs for its side effects; nothing appears on the page. cache: false because
+# the result depends on data.csv, which the cache key cannot see (below).
+import pandas as pd
+df = pd.read_csv("data.csv")
+```
+
+::: {.callout-warning}
+## The cache key sees your code, not your data
+
+The `_freeze/` key is built from cell code, every upstream cell's code, and the
+interpreter's identity. That makes a stale hit impossible when you edit a cell or
+anything above it. It also means the key is blind to everything a cell reads that
+*is not* code: a CSV or Parquet file, an environment variable, a config file, a
+URL it fetches, the clock, an installed library you upgraded in place.
+
+Edit `data.csv` without touching a line of Python and the numbers on the page will
+not change, because as far as the cache is concerned nothing happened. Mark any
+cell with an out-of-band input `#| cache: false`, as above.
+
+To force one fresh run without editing anything, use the dev-menu **Restart
+kernel** or run with `TALIESIN_NO_CACHE`.
+:::
 
 ::: {.callout-note}
-`echo`, `include`, and `cache` also exist as document-wide defaults under the
-`execute:` front-matter key, and a per-cell `#|` option overrides the default for
-that one cell. See the [cell-options reference](../reference/cell-options.tmd) for
-the full table.
+`cache` also exists as a document-wide default under the `execute:` front-matter
+key (`echo` and `include` do not: every real document says those per cell). A
+per-cell `#|` option always overrides the document default. See the
+[cell-options reference](../reference/cell-options.tmd) for the full option table
+and the [Configuration reference](../reference/frontmatter.tmd) for `execute:`.
 :::
 
 ### Captions: figures, listings, and tables
@@ -181,216 +220,9 @@ the source rather than wherever you launched Taliesin — create the folder your
 
 An R cell writes its own file the same way (`ggsave()`).
 
-## Live interactive content
+## Live, browser-side content
 
-`{js}` cells run client-side via a tiny built-in enhancer (no Observable runtime):
-native `viewof` inputs and vendored `Plot` + `d3` all work, and a cell re-runs
-when an input it declares changes. A cell tags
-itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
-`//| input: NAME` to re-run when that control changes (read the current value with
-`tali.value("NAME")`).
-
-The reactive surface is small and worth knowing exactly:
-
-- `tali.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
-  `{{< input >}}` control) or, failing that, a `define` value of that name.
-- `tali.defines.NAME` reads a value published from Python by `define`.
-- `//| input: A, B` takes a **comma-separated list** of names; the cell re-runs
-  when any one of them (input *or* define) changes. There is also
-  `//| name: NAME` to publish this cell's return value under `NAME` for other cells
-  to consume. (For the reactive graph itself, see
-  [Interactive and explorable documents](interactive.tmd).)
-
-Drag the slider to add odd harmonics to a square-wave Fourier
-synthesis and watch the curve sharpen:
-
-```{js}
-//| viewof: harmonics
-//| echo: false
-const wrap = document.createElement("label");
-wrap.className = "tali-input";
-wrap.append("Harmonics ");
-const input = document.createElement("input");
-input.type = "range";
-input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
-wrap.append(input);
-return wrap;
-```
-
-```{js}
-//| input: harmonics
-//| echo: false
-const harmonics = tali.value("harmonics");
-return Plot.lineY(
-  Array.from({length: 500}, (_, t) =>
-    d3.range(1, harmonics + 1).reduce(
-      (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
-  {curve: "basis", stroke: "#4c8dff"}
-).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
-```
-
-
-### The Python → JS bridge
-
-`define()` in a Python cell hands values to `{js}` cells, so you can **compute
-in Python and render reactively in the browser**. Its signature is keyword-only,
-`define(name=value, ...)`: each keyword becomes a published name, and each
-value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
-cell then reads the value as `tali.defines.NAME` (or `tali.value("NAME")`, which
-falls back to defines when no live input owns that name). In live preview the
-Python cell executes *after* the page loads, so its values arrive a moment after
-the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
-(and rebinds when a Python input changes), so the cell recomputes in place without
-a reload. Guard against the value not having arrived yet with an early `return`.
-
-```{python}
-#| code-fold: true
-#| code-summary: "Python: sample a noisy sine wave"
-import math, random
-random.seed(7)
-signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in range(120)]
-define(signal=signal)
-```
-
-```{js}
-//| echo: false
-const signal = tali.defines.signal;
-if (!signal) return;
-return Plot.plot({
-  height: 180, marginLeft: 36,
-  marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#2bb673"})]
-});
-```
-
-### 3D graphics (Three.js / WebGL)
-
-Because a `{js}` cell can `await import()` any ES module, **3D visualizations work
-too**. This cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
-map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe (it
-also auto-rotates), the **⛶** button takes it fullscreen, and the renderer is
-transparent so the globe follows the light/dark theme.
-
-Every cell is handed an `invalidation` promise. It **resolves the moment the
-block is about to re-render or be unmounted** (an edit changes the block's id and
-the client replaces the node, or an upstream input fires a re-run). Hang your
-teardown off `invalidation.then(...)` to cancel anything long-lived: an animation
-loop, an event listener, a WebGL context. The Three.js cell below relies on it,
-calling `cancelAnimationFrame` and disposing the renderer when the promise
-resolves, so a live save never leaks a running loop or a stranded GL context.
-
-```{js}
-//| echo: false
-const THREE = await import("https://esm.sh/three@0.163.0");
-const { OrbitControls } = await import(
-  "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
-);
-
-const w = 600, h = 360;
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(w, h, false);
-renderer.setClearColor(0x000000, 0);
-const cv = renderer.domElement;
-cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
-camera.position.set(0, 0, 4);
-scene.add(new THREE.AmbientLight(0xffffff, 1.7));
-const key = new THREE.DirectionalLight(0xffffff, 0.6);
-key.position.set(5, 3, 5);
-scene.add(key);
-
-const globe = new THREE.Mesh(
-  new THREE.SphereGeometry(1.3, 64, 64),
-  new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
-);
-scene.add(globe);
-
-function graticule() {
-  const c = document.createElement("canvas");
-  c.width = 1024; c.height = 512;
-  const x = c.getContext("2d");
-  x.fillStyle = "#1f3a5f"; x.fillRect(0, 0, c.width, c.height);
-  x.strokeStyle = "rgba(255,255,255,0.35)"; x.lineWidth = 2;
-  for (let lon = 0; lon <= c.width; lon += c.width / 24) {
-    x.beginPath(); x.moveTo(lon, 0); x.lineTo(lon, c.height); x.stroke();
-  }
-  for (let lat = 0; lat <= c.height; lat += c.height / 12) {
-    x.beginPath(); x.moveTo(0, lat); x.lineTo(c.width, lat); x.stroke();
-  }
-  return new THREE.CanvasTexture(c);
-}
-new THREE.TextureLoader().load(
-  "https://unpkg.com/three-globe/example/img/earth-day.jpg",
-  (tex) => {
-    tex.colorSpace = THREE.SRGBColorSpace;
-    globe.material.map = tex;
-    globe.material.emissiveMap = tex;
-    globe.material.emissive = new THREE.Color(0xffffff);
-    globe.material.emissiveIntensity = 0.3;
-    globe.material.needsUpdate = true;
-  },
-  undefined,
-  () => { globe.material.map = graticule(); globe.material.needsUpdate = true; }
-);
-
-const ctrl = new OrbitControls(camera, renderer.domElement);
-ctrl.enableDamping = true;
-ctrl.dampingFactor = 0.06;
-ctrl.enablePan = false;
-ctrl.minDistance = 2;
-ctrl.maxDistance = 8;
-ctrl.autoRotate = true;
-ctrl.autoRotateSpeed = 0.6;
-
-let raf;
-(function animate() {
-  raf = requestAnimationFrame(animate);
-  ctrl.update();
-  renderer.render(scene, camera);
-})();
-
-const box = document.createElement("div");
-box.style.cssText = "position:relative;display:inline-block;max-width:100%";
-box.appendChild(renderer.domElement);
-
-const fsBtn = document.createElement("button");
-fsBtn.textContent = "⛶ Fullscreen";
-fsBtn.style.cssText =
-  "position:absolute;bottom:8px;right:8px;padding:4px 10px;font-size:12px;cursor:pointer;" +
-  "background:rgba(30,30,30,.75);color:#ddd;border:1px solid #555;border-radius:4px;backdrop-filter:blur(4px)";
-fsBtn.onclick = () =>
-  document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen();
-box.appendChild(fsBtn);
-
-function onFS() {
-  const fs = document.fullscreenElement === box;
-  if (fs) {
-    box.style.maxWidth = "none"; box.style.width = "100vw"; box.style.height = "100vh";
-    cv.style.cssText = "display:block;width:100%;height:100%";
-    const fw = box.clientWidth, fh = box.clientHeight;
-    renderer.setSize(fw, fh, false);
-    camera.aspect = fw / fh;
-  } else {
-    box.style.maxWidth = "100%"; box.style.width = ""; box.style.height = "";
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
-  }
-  camera.updateProjectionMatrix();
-  const cs = getComputedStyle(document.documentElement);
-  box.style.background = fs
-    ? (cs.getPropertyValue("--tali-bg").trim() || getComputedStyle(document.body).backgroundColor)
-    : "";
-  fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
-}
-document.addEventListener("fullscreenchange", onFS);
-
-invalidation.then(() => {
-  cancelAnimationFrame(raf); ctrl.dispose(); renderer.dispose();
-  document.removeEventListener("fullscreenchange", onFS);
-});
-
-return box;
-```
+`{js}` cells run in your browser rather than against the kernel: reactive inputs,
+a Python-to-JS bridge for handing kernel-computed values to a `{js}` cell, and
+full 3-D scenes (Three.js/WebGL) are all `{js}` cells with no kernel involved. See
+[Interactive and explorable documents](interactive.tmd).
