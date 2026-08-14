@@ -4927,3 +4927,70 @@ fn a_repeated_explicit_id_is_deduped_and_reported_wherever_it_is_written() {
         clean.warnings
     );
 }
+
+/// Mean advance of English lowercase text in Literata, in `em`.
+///
+/// MEASURED 2026-08-15 with the chrome-devtools MCP, on `corpus/analyst/index.tmd` built
+/// with `--no-exec` and served statically at an 810px viewport (no mobile breakpoint
+/// engages below that; `body { max-width: var(--tali-measure) }` renders its full 640px
+/// column, confirmed via `getComputedStyle(document.body).maxWidth === "640px"`), 20px
+/// body font, `document.fonts.check('20px Literata')` true (the vendored face, not a
+/// fallback). A `white-space: pre` span holding four repeats of a 76-character ordinary
+/// English sentence (including its spaces — an alphabet run overstates density, because
+/// English is rich in narrow letters) was appended to a live paragraph and measured by
+/// `getBoundingClientRect().width`: 9.5500 px/char at 20px = 0.4775 em/char. Stable
+/// (identical to four decimal places) across five different paragraphs on the page,
+/// re-affirming the brief's own pre-subsetting estimate of 0.4776 to within 0.0001.
+///
+/// This is a measurement, so it carries its date. The font hash below is what makes it
+/// re-measurable rather than merely asserted: change the face and this test fails, which
+/// is the point.
+const LITERATA_MEAN_ADVANCE_EM: f64 = 0.4775;
+
+/// The measure is pinned in CHARACTERS, because that is what a reader experiences and it is
+/// what WCAG 1.4.8 bounds. Before this theme the column was 46rem: measured 96 characters of
+/// capacity with filled paragraphs at 80-92, past the 80-character AAA ceiling and far past
+/// the comprehension-optimal band.
+#[test]
+fn the_measure_is_sixty_to_seventy_characters() {
+    let em: f64 = {
+        let d = TOKENS_CSS
+            .split("--tali-measure:")
+            .nth(1)
+            .expect("--tali-measure is defined in tokens.css");
+        let v = d.split(';').next().unwrap().trim();
+        v.trim_end_matches("em")
+            .parse()
+            .unwrap_or_else(|_| panic!("--tali-measure must be in `em`, got `{v}`"))
+    };
+    let chars = em / LITERATA_MEAN_ADVANCE_EM;
+    assert!(
+        (62.0..=72.0).contains(&chars),
+        "the measure renders {chars:.1} characters; keep it in 62..=72 \
+         (WCAG 1.4.8 caps at 80). Either --tali-measure or the body face moved."
+    );
+}
+
+/// The advance constant above describes ONE font binary. If the binary changes, the constant
+/// is stale and the measure test is measuring nothing. Hash the file so a swap cannot be
+/// silent.
+#[test]
+fn the_body_face_is_the_one_the_measure_was_measured_on() {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/fonts/literata-latin-wght-normal.woff2");
+    let bytes = std::fs::read(&p).expect("the vendored body face");
+    // FNV-1a: no dependency, and collision resistance is irrelevant here — this only has
+    // to notice that somebody replaced the file.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in &bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    assert_eq!(
+        (bytes.len(), h),
+        (48_072, 0x7176_a838_9de9_bbdb), // <- printed by the first run, 2026-08-15
+        "the body face changed. Re-measure LITERATA_MEAN_ADVANCE_EM in a browser \
+         (render a paragraph, divide column width by realized characters per line, \
+         divide by font-size), update it and this hash together, and re-date both."
+    );
+}
