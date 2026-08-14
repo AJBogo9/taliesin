@@ -60,11 +60,11 @@ appears here.
 
 | Measurement | Value | What it covers |
 |---|---:|---|
-| Whole-project build, `docs/internals` (7 pages) | **0.13 s** | 18.1 ms/page: parse, render, highlight, math, search index, assets |
-| Whole-project build, this guide (19 pages) | **0.25 s** | 13.3 ms/page, including executed cells replayed from `_freeze/` |
+| Whole-project build, `docs/internals` (6 pages) | **0.13 s** | Parse, render, highlight, math, search index, assets |
+| Whole-project build, this guide (16 pages) | **0.25 s** | Including executed cells replayed from `_freeze/` |
 | Whole-project build, `corpus/tech-blog` (17 pages) | **0.58 s** | 34.1 ms/page, the heaviest project in the tree |
 | `preview` time-to-ready, single document | **3–8 ms** | Process start to a serving socket |
-| `preview` time-to-ready, 19-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
+| `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
 | Warm edit: diff only | **0.75 ms** | The block diff for one keystroke-sized edit |
 | Warm edit: re-render + diff | **13 ms** | Against a 135 ms cold render of the same document |
 | Warm-edit payload | **32 KB** | Versus a 292 KB full page a reload would refetch |

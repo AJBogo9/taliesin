@@ -237,7 +237,7 @@ client connections. `start()`:
 2. spawns the interpreter (`python -m ipykernel`) with
    **stderr piped**, and with its **working directory set to the document's own
    directory** (each `Executor` is created `.in_dir(...)` of its page) so a cell's
-   relative file writes, audio from `scipy.io.wavfile`, a `savefig` / `ggsave`
+   relative file writes, audio from `scipy.io.wavfile`, a `savefig`
    figure, land beside the source rather than in whatever directory the
    server was launched from,
 3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
@@ -325,8 +325,8 @@ writes a clean print-ready figure (black on white).
 
 Inline kernel images, a matplotlib figure, an `image/png`, an SVG, are emitted as `data:`
 URIs baked straight into the cell's output HTML, so they ship inside the page and need no
-sidecar copy at all. A file a cell **writes to disk** (a `savefig` PNG, a `ggsave`,
-audio from `scipy.io.wavfile`) is different: it lands in the document's own directory,
+sidecar copy at all. A file a cell **writes to disk** (a `savefig` PNG, audio from
+`scipy.io.wavfile`) is different: it lands in the document's own directory,
 because each `Executor` runs `.in_dir(<doc dir>)` and the kernel inherits that working
 directory (see [the warm kernel](#the-warm-kernel-kernel-rs)). The cell then references it
 with a relative `src=`, e.g. `<img src="figures/plot.png">`.

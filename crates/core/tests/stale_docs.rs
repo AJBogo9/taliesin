@@ -919,9 +919,26 @@ fn retired_theme_modes() -> Vec<String> {
 /// `taliesin <word>` was tried first and rejected: it matched `taliesin renders`,
 /// `taliesin builds` and `taliesin server`, and missed this line entirely.
 ///
+/// A single token also counts as a hit when it is `taliesin <verb>` with the retired verb
+/// as the remainder, since `` `taliesin run` `` is the most natural way to name a command
+/// in prose and the bare-token match alone would miss it. The prefix is anchored to the
+/// literal word `taliesin `, so `` `cargo run` `` does not collide with it; this is still a
+/// token-scoped match, not the rejected prose scan.
+///
 /// `COMMANDS`/`RETIRED_COMMANDS` are read as text because `taliesin-server` is a
 /// binary-only crate with no `lib.rs`, so no test crate can import them. `gate_script.rs`
 /// solves the same problem the same way, and it needs no production change.
+/// Whether a single backticked token names a retired subcommand: either the bare verb, or
+/// `taliesin <verb>` written as one token (the natural way to name a command in prose, e.g.
+/// `` `taliesin run` ``). The prefix is anchored to the literal word `taliesin `, so
+/// `` `cargo run` `` does not collide with it.
+fn names_a_retired_verb(tok: &str, retired: &[String]) -> bool {
+    retired.iter().any(|v| v == tok)
+        || tok
+            .strip_prefix("taliesin ")
+            .is_some_and(|rest| retired.iter().any(|v| v == rest))
+}
+
 #[test]
 fn reader_facing_docs_do_not_name_a_retired_subcommand() {
     let retired = retired_verbs();
@@ -939,7 +956,7 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
     let mut hits = Vec::new();
     for (rel, text) in reader_facing_docs() {
         for (line, tok) in backticked_located(&text) {
-            if retired.contains(&tok) {
+            if names_a_retired_verb(&tok, &retired) {
                 hits.push(format!("{rel}:{line}: `{tok}`"));
             }
         }
@@ -950,6 +967,30 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
          either teaching a dead command or listing one; rewrite the sentence rather than \
          widening this gate:\n{}",
         hits.join("\n")
+    );
+}
+
+/// Regression pin for the `taliesin <verb>` prefix widening above: a single backticked
+/// token spelling a retired verb that way must be caught, and a same-shaped token naming a
+/// different binary must not collide with it.
+#[test]
+fn a_taliesin_prefixed_token_naming_a_retired_verb_is_a_hit() {
+    let retired = retired_verbs();
+    assert!(
+        retired.iter().any(|v| v == "run"),
+        "fixture assumes `run` is a retired verb"
+    );
+    assert!(
+        names_a_retired_verb("run", &retired),
+        "bare `run` must still be caught (the existing path)"
+    );
+    assert!(
+        names_a_retired_verb("taliesin run", &retired),
+        "`taliesin run` as one token must be caught (the new prefix path)"
+    );
+    assert!(
+        !names_a_retired_verb("cargo run", &retired),
+        "`cargo run` must not collide with the taliesin-prefixed check"
     );
 }
 

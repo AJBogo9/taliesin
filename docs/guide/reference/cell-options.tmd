@@ -130,6 +130,7 @@ a value published by another cell's `//| name:`.
 A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control
 defines is flagged as a dangling reactive input, and a cycle among
 `{js}` cells (each consuming the other) is flagged too. The dangling-input check is
-suppressed when the document contains any Python or R cell, since a runtime
-`define` call could publish the name; the cycle check always runs. See
-[Executable content](../using/code.tmd) for the full reactive walkthrough.
+suppressed when the doc has a `{python}` cell that calls `define(`, since that call
+could publish the name at runtime; the cycle check always runs. See
+[Interactive and explorable documents](../using/interactive.tmd) for the full
+reactive walkthrough.

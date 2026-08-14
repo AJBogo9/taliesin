@@ -291,5 +291,5 @@ the pipeline, `crates/core/src/site/mod.rs` for multi-page projects, and
 describing what it owns.
 
 The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a
-`.tmd` becomes blocks) and [extending Taliesin](extending.tmd) (the conventions,
-how to add a feature, and the dev workflow).
+`.tmd` becomes blocks) and [extending Taliesin](extending.tmd) (the conventions
+and the two seams meant to be extended).

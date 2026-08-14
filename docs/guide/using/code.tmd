@@ -1,6 +1,6 @@
 ---
 title: "Executable content"
-description: "Executable cells against a warm kernel: what a language label decides, how to set up Python or R, and how an output becomes a block."
+description: "Executable cells against a warm kernel: what a language label decides, how to set up Python, and how an output becomes a block."
 ---
 
 This is the heart of "code-block-enhanced HTML." A fenced cell tagged with a
@@ -217,8 +217,6 @@ its **document's directory** as the working directory, so a relative path lands 
 the source rather than wherever you launched Taliesin — create the folder yourself
 (`os.makedirs("figures", exist_ok=True)`). Then in LaTeX:
 `\includegraphics[width=\columnwidth]{figures/loss.pdf}`.
-
-An R cell writes its own file the same way (`ggsave()`).
 
 ## Live, browser-side content
 

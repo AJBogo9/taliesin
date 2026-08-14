@@ -442,8 +442,8 @@ navigation instead, so a second, shallower list beside the text earned nothing. 
 
 **Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
 mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). The
-Internals book covers the design, and the drift-locked Draft 2020-12 `_site.yml`
-schema itself, in its *Validation & schemas* chapter.
+drift-locked Draft 2020-12 `_site.yml` schema itself ships alongside the editor
+autocomplete support described below.
 
 ## Editor autocomplete (config schema)
 
