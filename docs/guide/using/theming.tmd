@@ -31,8 +31,8 @@ Light and Dark are the whole built-in set. A warm low-contrast "sepia" palette
 shipped for a while and was removed: a third palette is a third of every rule and
 every contrast measurement, for a preference a reader can already get from their
 system. Which of the two a reader sees follows their device and nothing else; see
-[The reader experience](reading.tmd) for why the picker that used to sit in the
-top-right corner went away.
+[Reader controls](../reference/accessibility.tmd#reader-controls) for why the picker
+that used to sit in the top-right corner went away.
 :::
 
 ## How the switch works
@@ -294,4 +294,4 @@ touching, and the page still swaps light and dark instantly.
 The variable values above are the *author's* theme: they define what light and dark each
 look like. Which of the two a given reader gets is decided by that reader's device, and
 neither you nor they can override it from the page. Tune both, and check both. See
-[The reader experience](reading.tmd) for why it works that way.
+[Reader controls](../reference/accessibility.tmd#reader-controls) for why it works that way.

@@ -194,8 +194,13 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
             }
         }
     }
+    // An anti-vacuity guard against a broken walk, not a content floor: it exists so a
+    // `read_dir` that silently returns nothing cannot make the real assertion below it pass
+    // forever. Lowered from 40 on 2026-08-14, when the docs cut removed the dev-server
+    // chapter and started on the guide chapters (`reading.tmd` first); the walk finds 38
+    // today and further chapter deletions this same cut will still land above this floor.
     assert!(
-        pages >= 40,
+        pages >= 30,
         "the book walk found only {pages} pages the heading rule applies to"
     );
     assert!(
