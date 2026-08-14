@@ -68,19 +68,26 @@ control-building code. Five of them are ordinary form fields:
 {{< input name="c" type="select" options="alpha,beta,gamma" value="beta" label="channel" >}}
 ```
 
-`name` is required (it is the reactive node); `type` defaults to `slider`; `label`
-defaults to the name. `tali.value()` returns a number for slider and number, a
-boolean for checkbox, and a string for text and select. A consuming cell is then just
-a `{js}` cell with `//| input: k` that reads `tali.value("k")`.
+| Argument | Required | Default | Effect |
+|---|---|---|---|
+| `name=` | warns if omitted | (none) | The reactive node's name (what a consuming cell reads). Omitting it warns (the control still renders, but it can't feed the reactive graph). |
+| `type=` | no | `slider` | One of `slider`, `number`, `checkbox`, `text`, `select`. An unknown type warns with a did-you-mean. |
+| `label=` | no | the `name` | The visible label text. |
+| `value=` | no | (none) | The initial value. A `checkbox` is pre-checked only when `value` is the literal `true`; a `select`'s value must exactly string-match one of the `options` to pre-select it. |
+| `min=` `max=` `step=` | no | (none) | Numeric bounds for `slider` and `number`. |
+| `options=` | for `select` | (none) | A comma-separated option list. **Required** for `type="select"`; omitting it warns. |
+
+`tali.value()` returns a number for `slider` and `number`, a boolean for
+`checkbox`, and a string for `text` and `select`. A consuming cell is then just a
+`{js}` cell with `//| input: k` that reads `tali.value("k")`.
 
 A **`slider`** renders as HTML's `<input type="range">` with a live `<output>` readout
 that updates as you drag, so the reader always sees the current value beside the track.
 `number` shares its numeric `min`/`max`/`step`/`value` attributes but renders as a spinner
 with no readout.
 
-A **`select`** gives a closed set of choices. Its `options` are a comma-separated list,
-and `options` is required for this type (omit it and the build warns). `value` picks the
-initially selected option:
+A **`select`** gives a closed set of choices, picked from the `options=` list.
+`value` picks the initially selected option:
 
 ```markdown
 {{< input name="palette" type="select" options="viridis,magma,cividis" value="magma" label="Palette" >}}

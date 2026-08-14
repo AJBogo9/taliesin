@@ -3,7 +3,7 @@ title: "CLI reference"
 description: "Every subcommand and flag: preview and build, the pre-publish lint gate, and the lsp editor server."
 ---
 
-*Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 | Command | Effect |
 |---|---|

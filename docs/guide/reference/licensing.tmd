@@ -3,7 +3,7 @@ title: "Licensing: what you build is yours"
 description: "Taliesin is AGPL-3.0. The documents you build with it are not: the Output Exception grants you unrestricted rights over your own pages, with nothing to attribute."
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · Licensing*
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · Licensing*
 
 Taliesin is licensed under the **GNU Affero General Public License v3.0**. That governs
 *the program*. It makes no claim on the blog posts, lecture notes, papers and books

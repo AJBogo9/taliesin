@@ -19,7 +19,6 @@ chapters:
       - reference/frontmatter.tmd
       - reference/configuration.tmd
       - reference/cell-options.tmd
-      - reference/shortcodes.tmd
       - reference/cli.tmd
       - reference/troubleshooting.tmd
       - reference/accessibility.tmd

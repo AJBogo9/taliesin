@@ -273,6 +273,46 @@ rail an escape grows leftward instead of centring, keeping its right edge flush 
 the text, because the rail is real content and running underneath it would put text
 over text.
 
+## Reusing a partial
+
+```markdown
+{{< include path/to/partial.tmd >}}
+```
+
+Splices another file's contents into this one before parsing, as if you had pasted
+it in place. The directive must be alone on its own line (leading and trailing
+whitespace is fine); a `{{< include … >}}` with other text on the line is left as
+ordinary content. The path is resolved relative to the file that holds the
+directive, so a partial can itself include further partials and the relative paths
+still make sense at each level.
+
+Includes are how you keep one author bio, one license footer, or one shared figure
+in a single file and pull it into many pages. Because the splice happens before the
+block model is built, the included blocks are first-class: they carry their own
+block ids and source positions, and click-to-source still resolves into the
+partial's own file and line, not the page that pulled it in. The dev server also
+watches every transitively included file, so editing a partial re-renders every
+page that uses it.
+
+::: {.callout-note}
+## The `_includes/` convention
+
+A partial is just a `.tmd` file, but you usually do not want it discovered as its
+own page in a site build. A file (or folder) whose name starts with an underscore
+is skipped by the page walker, and the idiomatic home for shared partials is an
+`_includes/` directory near the project root. A nested post then reaches its shared
+partial with a relative climb, exactly as the corpus does:
+
+```markdown
+{{< include ../../_includes/three-scene.tmd >}}
+```
+:::
+
+An include that cannot be expanded is left visible and reported, never dropped
+silently: an unsafe path (absolute, or one that climbs above the project root), an
+include cycle, and a missing or unreadable file each draw their own located
+warning instead of failing the build outright.
+
 ## Raw HTML passthrough
 
 A `{=html}` block is emitted verbatim, so you can drop in markup the Markdown

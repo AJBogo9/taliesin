@@ -3,7 +3,7 @@ title: "Configuration reference"
 description: "Which knob lives where, what each one defaults to, and the names a project may not use for itself."
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
@@ -14,8 +14,8 @@ the note at the end).
 
 This page is the project (`_site.yml`) and page-block (`listing:`)
 reference. For the full per-key catalogue of a document's front matter, see
-[Front matter](frontmatter.tmd); for cell options and shortcodes, see
-[Cell options](cell-options.tmd) and [Shortcodes](shortcodes.tmd). The summary
+[Front matter](frontmatter.tmd); for cell options, see
+[Cell options](cell-options.tmd). The summary
 table below repeats the front-matter keys most often paired with project config.
 
 ## Document front matter
@@ -271,5 +271,8 @@ The other reference pages cover the rest of the configurable surface:
   `hero:`, in full.
 - [Cell options](cell-options.tmd): the `#|` / `//|` / `%%|` options on code
   cells.
-- [Shortcodes](shortcodes.tmd): `{{< include >}}`,
-  `{{< include >}}` and `{{< input >}}`.
+
+The two shortcodes are covered where they're used, not on a reference page of
+their own: `{{< include >}}` in [Rich writing](../using/writing.tmd#reusing-a-partial),
+and `{{< input >}}` in [Interactive and explorable
+documents](../using/interactive.tmd#inputs-without-boilerplate-input).
