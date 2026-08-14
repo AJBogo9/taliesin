@@ -149,6 +149,19 @@ is now stale, which would break click-to-source. `SetMeta` patches just those
 attributes on the existing element, in place, so the live block keeps its state
 *and* still maps to the right source line.
 
+A real warm edit shows what this costs in bytes, not just in count. Typing one new
+paragraph above an already-open collapse callout, benchmarked by `tools/live-edit-bench`,
+emits 55 operations: 53 of them (every shifted paragraph, heading, figure and code cell
+below the edit) are `SetMeta` patches like the one above, so anything live in those blocks
+keeps running; together with the one `insert` for the new paragraph itself, those 53 weigh
+about **3.2 KB**. The remaining **29 KB** is a single `Update`: the open
+`::: {.callout-note collapse="true"}` div, whose inner blocks each carry their own source
+position and so must fully re-render to keep Ctrl-click accurate. One block shape costs
+90% of the payload; every other block costs bytes proportional to nothing but its own line
+number. The tradeoff is deliberate: its one visible cost is that a collapse callout you
+have opened closes again when an edit lands above it. (See [Choosing
+Taliesin](../guide/using/choosing.html#sec-speed) for the full measurement.)
+
 ::: {.callout-note}
 ## The one limitation: no Move
 
@@ -251,6 +264,10 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   whose `data-sourcepos` covers that line, scrolling to it only when `reveal` is set.
   So an editor can host the preview and add
   cursor sync without forking the client.
+
+Both directions only navigate and highlight: the `.tmd` file stays the single editing
+surface, and nothing in the preview or the editor-client integration ever writes back to
+it.
 
 ## Trust model
 

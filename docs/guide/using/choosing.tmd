@@ -79,19 +79,9 @@ indicative (the numbers vary by machine). The **structural** rows it also record
 counts and payload bytes, are deterministic and gated by a regression test.)*
 
 The number that matters is not any single row: it is that the warm edit is a **diff**, so
-its cost tracks what you changed rather than how large the document is.
-
-That payload row deserves its detail, because the average hides the shape. The edit emits
-55 operations. **53** of them — every shifted paragraph, heading, figure and code cell —
-are metadata-only patches that never touch a DOM node, so anything live in those blocks
-keeps running; together with the one `insert` for the newly typed paragraph they weigh
-about **3.2 KB**. The remaining 29 KB is a *single*
-operation: one `::: {.callout-note collapse="true"}` fenced div, which re-renders in full
-because its inner blocks each carry their own source position and those have to stay
-accurate for Ctrl-click. One block shape costs 90% of the payload; every other block shape
-costs bytes proportional to nothing but its own line number. The tradeoff is deliberate,
-and its one visible cost is that a collapse callout you have opened closes again when an
-edit lands above it.
+its cost tracks what you changed rather than how large the document is. See [the block
+model](../../internals/block-model.html#why-the-diff-is-o-n-log-n) for the operation
+breakdown behind that payload figure.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}
 
