@@ -93,7 +93,7 @@ The chapters build on each other, roughly from the outside in:
   websocket message contract that rides on it.
 - **[Code execution & the kernel](execution.tmd)** covers the warm Jupyter kernel,
   the execution plan, and the persistent output cache.
-- **[The dev server](server.tmd)** is the long-running process: the file watcher, the
+- **[The dev server](architecture.tmd)** is the long-running process: the file watcher, the
   websocket, and the multi-page site server.
 - **[Extending Taliesin](extending.tmd)** is the conventions for adding a feature,
   the two seams meant to be extended, and the editor surface.

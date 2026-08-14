@@ -116,6 +116,64 @@ warm kernel. The multi-page subsystem (page discovery, chrome, cross-page
 references) lives a layer up, in `crates/core/src/site/`, whose `mod.rs` header is
 the entry point to read.
 
+Three parts of that pipeline are worth a closer look: the watcher that starts it,
+the isolation that keeps one bad build from taking down the session, and the guards
+that keep the whole thing reachable only from this machine.
+
+### The watcher
+
+`spawn_watcher` runs `notify` on its own thread (notify is synchronous) and watches the
+project's directory. Events are pumped through a channel so that thread
+owns the watcher and can register watches for directories created after startup: the
+recursive-watch model added an inotify descriptor per directory, including
+`node_modules` and `.git`, which a large project uses to exhaust `max_user_watches` and
+kill hot reload outright.
+
+Skipping `_freeze` matters: the executor writes its own cache there on every run, and
+without the skip each write would kick a redundant rebuild. The skip list is matched
+against the path *relative to the project root*, never the whole path: the watcher deals
+in absolute event paths, and a project can perfectly well live under a directory someone
+else called `_site` or `.git`. Scanning the whole path vetoed every event in such a
+project, which is hot reload dead, silently, with each page still serving 200. The
+filter as a whole keeps an unrelated save (an editor swap file, a build-output write)
+from triggering a wasteful 0-op rebuild. A burst of saves is debounced so several files
+coalesce into one rebuild.
+
+### Panic isolation
+
+The render → execute → diff pipeline above runs inside a spawned task per page, so a
+panic anywhere along it would otherwise silently kill hot reload for the rest of the
+session. `build_page_guarded` wraps each build in `catch_unwind` (via
+`AssertUnwindSafe` over the awaited future, so the panic is caught rather than
+propagated): on a caught panic it pulls a human message off the payload (`panic_msg`
+downcasts the `Box<dyn Any>` to `&str`/`String`), logs it, and broadcasts a
+`protocol::error` so every connected client shows an error overlay. The worker
+survives, so the next good save re-renders and clears the overlay (the errored flag
+makes that recovery a full re-mount even when the diff is empty). Because the state
+lives behind a `parking_lot::Mutex` (not `std::sync::Mutex`), a panic while the lock is
+held releases it cleanly rather than poisoning it.
+
+## Binding, and the two guards
+
+The server binds `127.0.0.1` and nothing else: there is no flag that puts it on a
+network. That is the whole exposure story, and it is why the two guards in
+`serve/security.rs` are both about a *local* peer rather than a remote one.
+
+`ws_origin_ok` gates the websocket upgrade on `Origin` against `Host`. A page on
+another site must not be able to open the control channel and send `restart_kernel`,
+which would destroy the warm kernel this whole design exists to keep. A loopback
+`Origin` is trusted (a second dev server, the editor companion); anything else that is
+not same-origin gets a `403`.
+
+`with_host_guard` applies `host_allowed` to every HTTP response: the `Host` header
+must name a loopback address. This is the DNS-rebinding defence, and it cannot be
+folded into the origin check, because under a rebind both headers are the attacker's
+domain and compare equal. A request with no `Host` is allowed: only a browser can
+mount a rebind, and a browser always sends one.
+
+Reading a draft on another device is a `build` and a static file server, not a flag on
+the preview.
+
 ## The codebase map
 
 The dependency shape first, who leans on whom (@fig-modules). The server
@@ -225,47 +283,12 @@ classDiagram
   Block ..> BlockOp : diff emits
 ```
 
-With the shape in mind, here is the file-by-file detail, one table per layer.
-
-`crates/core/src`, the library (`taliesin-core`):
-
-| Path | Responsibility |
-|---|---|
-| `render/mod.rs` | The render pipeline (`render_internal`). The coordinator. |
-| `render/model.rs` | The block-model data types (`Cell`, `Block`, `RenderedDoc`). |
-| `render/page.rs` | Full HTML-page assembly: the `PAGE_TEMPLATE` shell, site-chrome wiring, favicon. |
-| `render/emit.rs` | One AST node → HTML (the emitter). |
-| `render/divs.rs` | `:::` fenced-div preprocessing + grouping into callouts, the `layout-ncol` grid, and the three width escapes. |
-| `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
-| `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
-| `render/extension/` | Shortcode expansion: the built-in `{{< input >}}`, the only tag that expands here. (`_extensions/` is a theme-CSS lookup, and belongs to `render/theme.rs` above.) |
-| `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
-| `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
-| `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
-| `cite/` | Citations + cross-references + the IEEE-style bibliography. |
-| `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
-| `frontmatter.rs` | Front-matter parsing + unknown-key linting (the `closest()` did-you-mean). |
-| `render/validate.rs` | Closed-vocabulary linting of cell `#|` options + callout kinds, each a located (click-to-source) `Warning`. |
-| `schema.rs` | The bundled Draft-2020-12 JSON Schema for `_site.yml`, shipped in a copy by the VS Code companion. Front matter needs none: no YAML language server reads inside a `.tmd`, so `taliesin lsp` owns it. |
-
-`crates/server/src`, the binary (`taliesin`):
-
-| Path | Responsibility |
-|---|---|
-| `main.rs` | CLI: the seven subcommands (`COMMANDS`) plus the retired-verb register, which answers a cut verb with its successor rather than a did-you-mean. |
-| `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
-| `serve/mod.rs` | The dev server's shared layer: HTTP/asset plumbing, port binding + the single-instance probe, the origin/`Host`/identity guards, the watch predicates, and the CLI error helpers. Not a server itself. |
-| `serve_site/mod.rs` | THE dev server (per-page `PageState`, one `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |
-| `exec.rs` | Sits *between* render and diff: runs a doc's code cells and splices each cell's output back into the block list as a derived output block (incremental: the first changed cell + everything downstream). |
-| `kernel.rs` | The warm Jupyter kernel (ZMQ), reused across edits, with interrupt + timeout. |
-| `freeze.rs` | The persistent `_freeze/` execution cache, keyed by a cumulative content hash. |
-| `log.rs` | Colourised dev-server console output. |
-
-`web-client/`, the browser preview (vanilla JS, no build step): `client.js`
-(mounts blocks, applies ops, the dev menu, click-to-source), `search.js` (the
-Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
-(`code-enhance/` with the `window.taliEnhancers` registry, `mermaid.js`) that
-both the live client and the static build inject.
+The file-by-file detail is not restated here, because a table of module
+responsibilities is a second copy of something each file's own header already says,
+and a second copy is what goes stale. Start at `crates/core/src/render/mod.rs` for
+the pipeline, `crates/core/src/site/mod.rs` for multi-page projects, and
+`crates/server/src/serve_site/mod.rs` for the dev server. Each opens with a header
+describing what it owns.
 
 The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a
 `.tmd` becomes blocks) and [extending Taliesin](extending.tmd) (the conventions,
