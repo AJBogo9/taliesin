@@ -82,6 +82,33 @@ fn collect_docs(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) {
     }
 }
 
+/// [`backticked`], but keeping each span's 1-based line number so a gate can point at it.
+fn backticked_located(text: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut in_fence = false;
+    for (n, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find('`') {
+            rest = &rest[open + 1..];
+            match rest.find('`') {
+                Some(close) => {
+                    out.push((n + 1, rest[..close].to_string()));
+                    rest = &rest[close + 1..];
+                }
+                None => break,
+            }
+        }
+    }
+    out
+}
+
 /// Every inline-code token in `text` (what the docs use to name a file, a flag or a key).
 ///
 /// **Fenced blocks are removed first, and that is load-bearing, not tidiness.** Pairing
@@ -100,29 +127,10 @@ fn collect_docs(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) {
 /// accident into a rule. Measured across the walked docs: the path-claim population is
 /// unchanged at 112.)
 fn backticked(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut in_fence = false;
-    for line in text.lines() {
-        if line.trim_start().starts_with("```") {
-            in_fence = !in_fence;
-            continue;
-        }
-        if in_fence {
-            continue;
-        }
-        let mut rest = line;
-        while let Some(open) = rest.find('`') {
-            rest = &rest[open + 1..];
-            match rest.find('`') {
-                Some(close) => {
-                    out.push(rest[..close].to_string());
-                    rest = &rest[close + 1..];
-                }
-                None => break,
-            }
-        }
-    }
-    out
+    backticked_located(text)
+        .into_iter()
+        .map(|(_, s)| s)
+        .collect()
 }
 
 /// These phrases describe machinery deleted in the native rewrite and must not return.
@@ -784,5 +792,177 @@ fn documented_cli_flags_exist_in_the_cli() {
         missing.is_empty(),
         "the CLI reference documents flag(s) the CLI does not accept: {}",
         missing.join(", ")
+    );
+}
+
+/// The subset of [`shipped_docs`] a *reader* downloads or browses.
+///
+/// `CLAUDE.md` and `LICENSE-OUTPUT-EXCEPTION.md` are deliberately out of scope for the two
+/// gates below, and only for those two. Both legitimately name cut verbs in order to
+/// explain their removal: CLAUDE.md records that the `check` verb never had a gate wired
+/// and that a retired `run` row survived several edits, and the licence file carries an
+/// editorial correction whose whole point is that `render` and `publish` are **not**
+/// Taliesin commands. Measured on 2026-08-14: six such mentions, every one correct prose.
+/// Gating them would force this project's two most careful documents to stop naming what
+/// they removed.
+fn reader_facing_docs() -> Vec<(String, String)> {
+    let docs: Vec<(String, String)> = shipped_docs()
+        .into_iter()
+        .filter(|(rel, _)| {
+            rel.starts_with("docs/guide")
+                || rel.starts_with("docs/internals")
+                || rel.starts_with("site")
+                || rel == "README.md"
+        })
+        .collect();
+    // Anti-vacuity, the same reason `shipped_docs` carries one: a filter that silently
+    // matches nothing makes every gate below pass forever.
+    assert!(
+        docs.len() > 20,
+        "only {} reader-facing docs matched: the path prefixes drifted",
+        docs.len()
+    );
+    docs
+}
+
+/// The retired verb names, read out of `main.rs` rather than restated here, so retiring
+/// another verb extends this gate automatically.
+fn retired_verbs() -> Vec<String> {
+    let src = read("crates/server/src/main.rs");
+    let (_, table) = src
+        .split_once("RETIRED_COMMANDS: &[(&str, &str)] = &[")
+        .expect("RETIRED_COMMANDS moved or changed shape: update this gate, do not delete it");
+    let table = table.split("\n];").next().unwrap_or_default();
+    // Entries are `(name, note)`, written both inline and split across lines; the first
+    // string literal of each is the name either way. The delimiter is anchored to a
+    // line start (`\n    (`, not `    (`) so a `(` inside a backslash-continued note's
+    // indentation, like publish's, cannot masquerade as the next tuple's open paren.
+    table
+        .split("\n    (")
+        .skip(1)
+        .filter_map(|entry| entry.split('"').nth(1).map(str::to_string))
+        .collect()
+}
+
+/// The built-in theme mode names that were retired on 2026-08-13, read out of the match arm
+/// in `resolve_theme` that warns about them.
+///
+/// There is no register to read instead, and that absence is the whole reason this gate
+/// exists: all three retirement registers key on the KEY, and `theme:` is a **live** key
+/// whose three built-in **values** were retired. `RETIRED_KEYS` structurally cannot hold
+/// this, so `shipped_docs_do_not_use_a_retired_front_matter_key` is blind to it.
+fn retired_theme_modes() -> Vec<String> {
+    let src = read("crates/core/src/render/theme.rs");
+    let (_, body) = src
+        .split_once("fn resolve_theme(")
+        .expect("resolve_theme moved: update this gate, do not delete it");
+    for line in body.lines() {
+        let Some((pattern, _)) = line.split_once("=> {") else {
+            continue;
+        };
+        let parts: Vec<&str> = pattern.trim().split('|').map(str::trim).collect();
+        // The arm we want is *only* quoted literals alternated: `"a" | "b" | "c" => {`.
+        // Requiring that rules out the neighbouring `path if path.ends_with(".css") || …`
+        // arm, which also contains a pipe and quotes.
+        let all_literals = parts.len() >= 2
+            && parts.iter().all(|p| {
+                p.len() > 2
+                    && p.starts_with('"')
+                    && p.ends_with('"')
+                    && p[1..p.len() - 1].chars().all(|c| c.is_ascii_lowercase())
+            });
+        if all_literals {
+            return parts
+                .iter()
+                .map(|p| p.trim_matches('"').to_string())
+                .collect();
+        }
+    }
+    panic!("the retired-mode match arm moved or changed shape: update this gate");
+}
+
+/// A reader-facing doc must not name a subcommand the binary no longer answers.
+///
+/// `CLAUDE.md` names this hole explicitly: a new subcommand has four registration sites in
+/// `main.rs`, each drift-gated, and a **fifth** in `docs/guide/reference/cli.tmd`'s table
+/// that nothing gates. Wave 13 left the retired `run` row standing through several edits;
+/// what eventually caught it was `documented_cli_flags_exist_in_the_cli` noticing the
+/// *flags* inside the row, so a verb with no flags would have shipped a documented command
+/// the binary does not answer with every gate green.
+///
+/// Matched as a **bare backticked token**, which is the form the defect actually took: the
+/// stale row wrote `` `preview` / `build` / `run` / `lsp` / `init` `` with no `taliesin`
+/// prefix anywhere on the line. Measured against seventeen retired verbs on 2026-08-14, the
+/// whole reader-facing corpus yielded exactly one hit, the true positive. A prose scan for
+/// `taliesin <word>` was tried first and rejected: it matched `taliesin renders`,
+/// `taliesin builds` and `taliesin server`, and missed this line entirely.
+///
+/// `COMMANDS`/`RETIRED_COMMANDS` are read as text because `taliesin-server` is a
+/// binary-only crate with no `lib.rs`, so no test crate can import them. `gate_script.rs`
+/// solves the same problem the same way, and it needs no production change.
+#[test]
+fn reader_facing_docs_do_not_name_a_retired_subcommand() {
+    let retired = retired_verbs();
+    assert!(
+        retired.iter().any(|v| v == "run") && retired.iter().any(|v| v == "serve"),
+        "RETIRED_COMMANDS parsed as {retired:?}: the shape changed, update this gate \
+         rather than deleting it"
+    );
+    assert!(
+        retired.len() >= 10,
+        "only {} retired verbs parsed out of RETIRED_COMMANDS",
+        retired.len()
+    );
+
+    let mut hits = Vec::new();
+    for (rel, text) in reader_facing_docs() {
+        for (line, tok) in backticked_located(&text) {
+            if retired.contains(&tok) {
+                hits.push(format!("{rel}:{line}: `{tok}`"));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "reader-facing doc(s) name a subcommand the binary no longer answers. Each is \
+         either teaching a dead command or listing one; rewrite the sentence rather than \
+         widening this gate:\n{}",
+        hits.join("\n")
+    );
+}
+
+/// A reader-facing doc must not present a retired built-in mode as a value of `theme:`.
+///
+/// This is the gate that `shipped_docs_do_not_use_a_retired_front_matter_key` cannot be:
+/// `theme:` is live and its three built-in values are retired, while every retirement
+/// register keys on the key. That blind spot is how `formats.tmd` came to teach
+/// `theme: dark` while `theming.tmd` called the same value retired, in the same book, with
+/// every gate green.
+///
+/// Scoped to lines that mention `theme:` so that ordinary prose about a `light` or `dark`
+/// palette is untouched. Measured on 2026-08-14: two hits, both on the one stale line.
+#[test]
+fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
+    let modes = retired_theme_modes();
+    assert_eq!(
+        modes.len(),
+        3,
+        "expected three retired built-in theme modes, parsed {modes:?}"
+    );
+
+    let mut hits = Vec::new();
+    for (rel, text) in reader_facing_docs() {
+        let lines: Vec<&str> = text.lines().collect();
+        for (line, tok) in backticked_located(&text) {
+            if modes.contains(&tok) && lines[line - 1].contains("theme:") {
+                hits.push(format!("{rel}:{line}: `{tok}`: {}", lines[line - 1].trim()));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "reader-facing doc(s) present a `theme:` value the renderer warns about (retired \
+         2026-08-13; both palettes ship and the reader's device selects one):\n{}",
+        hits.join("\n")
     );
 }
