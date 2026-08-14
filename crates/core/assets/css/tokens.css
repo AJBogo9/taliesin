@@ -44,6 +44,13 @@
        register is carried by FACE, SIZE and TRACKING, not by lightness, which is why the
        dark muted tier can stay bright without collapsing into the body. */
     --tali-font-body: 1.25rem/1.55 "Literata", Georgia, serif;
+    /* The family alone, for the handful of sites that need to OVERRIDE an inherited
+       mono voice back to the serif (a wordmark or an author name sitting inside a
+       machine-voice chrome bar) without also fighting that site's own size/weight/
+       line-height. `--tali-font-body` is a `font` SHORTHAND value, so `font-family:
+       var(--tali-font-body)` is invalid there: shorthand values are not composable
+       into a longhand property. */
+    --tali-font-body-family: "Literata", Georgia, serif;
     --tali-font-mono: "JetBrains Mono", ui-monospace, monospace;
     /* The mono sits at .92em so its x-height MATCHES Literata's. Derived, not chosen:
        0.5156 / 0.5625, both measured from the binaries 2026-08-14. Re-derive it if

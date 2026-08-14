@@ -152,10 +152,17 @@
   .feature h3 { margin: 0 0 .4rem; font-size: 1.12rem; }
   .feature p { margin: 0; color: var(--tali-muted); font-size: .95rem; }
   /* Heading scale on the vertical-rhythm unit (`--tali-u`, tokens.css): h1-h3 ease down in
-     size and inherit Literata (no font-family override, no third face); h4 leaves the size
-     progression entirely and switches to the machine voice (mono, uppercase, tracked) — a
-     running head at label weight, not a smaller display size. Replaces the browser-default
-     sizes the headings used to fall back to. */
+     size and inherit Literata (no font-family override, no third face). Sizes are re-derived
+     against the 1.25rem (20px) body: the first cut of this scale (2/1.35/1.12rem) was carried
+     over unchanged from the OLD 1.0625rem body, so against the new, larger body h3 came out
+     SMALLER than the prose it introduces. Four visual levels, then stop: h4 is where the type
+     system runs out of serif sizes and switches to its other voice, the mono label — and h5/h6
+     FOLLOW h4 rather than keeping the browser's shrinking defaults (a fifth or sixth size would
+     invent a level the spec doesn't have; nesting still carries the DOM hierarchy beyond h4, the
+     type does not need to). h4-h6 keep full body contrast, no `--tali-muted`: a past version
+     muted h5/h6, which made the deepest headings on the page read LOWER contrast than the body
+     prose they introduce. Weight (600, below) + the mono's own tracking carry the distinction
+     from body text instead. */
   h1, h2, h3, h4, h5, h6 { font-family: inherit; font-weight: 600; }
   /* Prose rhythm: an explicit paragraph bottom-margin (was the browser default) and a
      flat, tokenised `<hr>` (was the browser's beveled default). List margins are left to
@@ -163,20 +170,15 @@
      `.hero p`/`.feature p` etc. keep their own tighter margins by specificity. */
   p { margin: 0 0 var(--tali-u); }
   hr { border: 0; border-top: 1px solid var(--tali-border); margin: 2rem 0; }
-  h1 { font-size: 2rem; line-height: 1.1; letter-spacing: -.008em; margin: 0 0 calc(.5 * var(--tali-u)); }
-  h2 { font-size: 1.35rem; line-height: 1.2; margin: calc(2 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
-  h3 { font-size: 1.12rem; line-height: 1.25; margin: calc(1.5 * var(--tali-u)) 0 calc(.4 * var(--tali-u)); }
+  h1 { font-size: 2.25rem; line-height: 1.1; letter-spacing: -.008em; margin: 0 0 calc(.5 * var(--tali-u)); }
+  h2 { font-size: 1.6rem; line-height: 1.2; margin: calc(2 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
+  h3 { font-size: 1.3rem; line-height: 1.3; margin: calc(1.5 * var(--tali-u)) 0 calc(.4 * var(--tali-u)); }
   h4 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
        letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
-  /* h5/h6 keep the body colour. They used to be `--tali-muted`, which made the two
-     DEEPEST headings the lowest-contrast text on the page — lighter than the body prose
-     they introduce, so they read as captions rather than as structure. (All three themes
-     pass AA either way; this is a hierarchy defect, not a WCAG one.) It compounds with
-     title-block heading demotion, which pushes an author's `####` into an `<h5>`.
-     Weight + tracking carry the level distinction instead. */
-  h5 { font-size: 1rem; line-height: 1.35; margin: 1.3rem 0 .4rem;
-       text-transform: uppercase; letter-spacing: .04em; }
-  h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; }
+  h5 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
+  h6 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
   .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
   .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
   .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--tali-muted); font-weight: 400; }
@@ -186,8 +188,11 @@
     color: var(--tali-muted); }
   /* Structured byline (item 184). The byline is ONE flex item on the meta line, so a
      multi-author list wraps as a unit and never interleaves with the date — the names
-     stay together and the separators stay with them. */
-  .tali-title-block .tali-byline { display: inline; }
+     stay together and the separators stay with them. An author's name is authored text,
+     not the machine speaking, so it overrides the meta line's machine voice back to the
+     serif, upright and untracked; the date beside it stays on the mono. */
+  .tali-title-block .tali-byline { display: inline; font-family: var(--tali-font-body-family);
+    text-transform: none; letter-spacing: normal; }
   .tali-title-block .tali-author { white-space: nowrap; }
   /* A name that carries a `url:` reads as a name, not as a link in a sentence: the
      underline arrives on hover/focus rather than sitting under every byline. */
@@ -201,9 +206,11 @@
     margin-left: .1em; color: var(--tali-accent); }
   /* The numbered list under the byline. `list-style-position: inside` + inline `<li>`s
      keeps two or three institutions on one quiet line instead of a stacked block that
-     would out-weigh the title it sits under. */
-  .tali-affiliations { margin: .35rem 0 0; font: 400 .78rem/1.3 var(--tali-font-mono);
-    text-transform: uppercase; letter-spacing: .053em; color: var(--tali-muted); }
+     would out-weigh the title it sits under. An institution's name is authored text too,
+     so it is the serif, upright and untracked, kept small and muted (the secondary
+     register carried by size, not by the machine voice). */
+  .tali-affiliations { margin: .35rem 0 0; font-family: var(--tali-font-body-family);
+    font-size: .78rem; line-height: 1.3; color: var(--tali-muted); }
   /* `list-style: none` because the number is emitted as CONTENT, not drawn by the
      marker: an inline `<li>` has no marker at all, so relying on it silently dropped
      every number while the superscripts beside the names kept referring to them. */
@@ -262,11 +269,15 @@
   .tali-hl-constant, .tali-hl-support { color: #0550ae; }
   .tali-hl-entity { color: #8250df; }
   .tali-hl-variable { color: #953800; }
-  /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
-     as code in prose instead of blending in as same-colour monospace; .875em pulls
-     the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
+  /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads as code
+     in prose instead of blending in as same-colour monospace. This is the one place the two
+     owned faces actually sit side by side in running text, so it is the place the x-height
+     match (`--tali-mono-size`, tokens.css) matters most; a `:not(pre) > code` selector is
+     more specific than the bare `code` the size lives on above, so it must be named here
+     explicitly or it silently wins with a smaller, un-derived size. It also breaks rather
+     than overflowing. */
   :not(pre) > code { background: var(--tali-code-bg); padding: .1em .35em; border-radius: var(--tali-radius);
-    font-size: .875em; overflow-wrap: anywhere; }
+    font-size: var(--tali-mono-size); overflow-wrap: anywhere; }
   /* Tokenised so the copy button follows every theme (light / dark) from one
      definition; DARK_CSS no longer needs a per-theme override. */
   .tali-copy { position: absolute; top: .45rem; right: .45rem;

@@ -25,8 +25,16 @@
   .tali-nav-inner { position: relative; max-width: var(--tali-chrome-maxw); margin: 0 auto;
     padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
-  .tali-nav-brand { color: var(--tali-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
-    letter-spacing: -0.01em; white-space: nowrap; }
+  /* Authored text (the site's `title:`), not the machine speaking: stays on the serif and
+     upright even though it sits inside `.tali-nav-inner`'s machine-voice bar. `letter-spacing`
+     is an inherited property, so leaving it unset here would NOT read as "no tracking" — it
+     would compute the ancestor's `.053em` tracking (relative to the ANCESTOR's own smaller
+     font-size, since that is where the em resolves) and inherit that pixel value down, same
+     defect as leaving the family unset. Caught on a live page, not by reading the CSS: the
+     wordmark measured 0.66px of tracking with no local override. */
+  .tali-nav-brand { color: var(--tali-fg); font-family: var(--tali-font-body-family);
+    font-weight: 700; font-size: 1.02rem; text-decoration: none; text-transform: none;
+    letter-spacing: normal; white-space: nowrap; }
   .tali-nav-brand:hover { color: var(--tali-link); }
   /* `logo:` in `_site.yml` — the brand image that replaces the wordmark, in the website
      navbar and in BOTH book brand slots (topbar + drawer head). Sizing lives here, not in
@@ -87,10 +95,10 @@
   /* `page-layout: full` widens the column (the blog/projects card indexes) */
   .tali-site-main.tali-wide { max-width: 60rem; }
   /* a page with a TOC widens into a two-column grid (content + sticky sidebar).
-     max-width is exactly the column sum (46 + 2.5 gap + 14) so the block centres
-     with no dead space pooling to the right of the TOC. */
-  .tali-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
-    gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
+     max-width is exactly the column sum (40 + 2.5 gap + 14 = 56.5) so the block
+     centres with no dead space pooling to the right of the TOC. */
+  .tali-site-main.has-toc { max-width: 56.5rem; display: grid; align-items: start;
+    gap: 2.5rem; grid-template-columns: minmax(0, var(--tali-measure)) 14rem; }
   /* Same rail rule the single-document TOC grid uses (base.css): the rail is content with
      no background, so an escape grows LEFT and keeps its right edge flush with the text
      rather than running underneath it. Same 8.25rem = half of (gap + rail). */
@@ -336,8 +344,11 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 @media (prefers-reduced-motion: reduce) { .tali-book-drawer-panel { animation: none; } }
 .tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
   gap: .5rem; margin: 0 0 1.1rem; }
-.tali-book-brand { display: block; font-weight: 700; font-size: 1.02rem; line-height: 1.25;
-  color: var(--tali-fg); text-decoration: none; }
+/* Authored text (the book's `title:`), not the machine speaking: stays on the serif and
+   upright even though `.tali-book-topbar-inner` around it is the machine-voice bar. */
+.tali-book-brand { display: block; font-family: var(--tali-font-body-family); font-weight: 700;
+  font-size: 1.02rem; line-height: 1.25; color: var(--tali-fg); text-decoration: none;
+  text-transform: none; letter-spacing: normal; }
 .tali-book-brand:hover { color: var(--tali-link); }
 /* MOB-8, and the same failure this file already documents once at `.tali-book-drawer-btn svg`
    above: the topbar row puts its shrink pressure on whichever item has no min-content floor.

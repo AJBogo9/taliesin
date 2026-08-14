@@ -102,11 +102,9 @@ from a single definition (no per-kind dark override needed).
 
 | Variable | Default | Role |
 |:--|:--|:--|
-| `--tali-font-body` | `1.0625rem/1.7 ui-serif, Georgia, …, serif` | Body font (size, leading, stack) |
-| `--tali-font-head` | `ui-sans-serif, system-ui, sans-serif` | Heading + UI font |
-| `--tali-font-mono` | `ui-monospace, SFMono-Regular, Menlo, monospace` | Code font |
-| `--tali-maxw` | `46rem` | Reading-column max width |
-| `--tali-scale` | `1.2` | Modular type-scale ratio for heading sizes (a minor third) |
+| `--tali-font-body` | `1.25rem/1.55 "Literata", Georgia, serif` | Body font (size, leading, stack). Headings inherit it too — there is no separate heading font |
+| `--tali-font-mono` | `"JetBrains Mono", ui-monospace, monospace` | Code font, and every label/nav/caption-number/chip Taliesin draws itself |
+| `--tali-measure` | `32em` | Reading-column max width, in `em` of the body font (≈ 640px / 40rem at the default size) |
 | `--tali-focus` | `2px solid var(--tali-accent)` | Keyboard-focus ring for every control |
 | `--tali-focus-offset` | `2px` | Offset of that ring |
 
@@ -228,8 +226,8 @@ theme: brand.css
 :root {
   --tali-accent: #d6336c;
   --tali-accent-fill: #a61e4d;
-  --tali-font-body: 1.0625rem/1.7 "Iowan Old Style", Georgia, serif;
-  --tali-maxw: 50rem;
+  --tali-font-body: 1.25rem/1.55 "Iowan Old Style", Georgia, serif;
+  --tali-measure: 36em;
 }
 html[data-theme="dark"] {
   --tali-accent: #f06595;
@@ -272,7 +270,7 @@ two-line front-matter block and a small file. Drop `brand.css` beside your `.tmd
 :root {
   --tali-accent: #e8590c;            /* warm orange accent */
   --tali-accent-fill: #d9480f;       /* darker fill keeps white text AA-legible */
-  --tali-font-body: 1.0625rem/1.7 "Charter", Georgia, serif;
+  --tali-font-body: 1.25rem/1.55 "Charter", Georgia, serif;
 }
 html[data-theme="dark"] {
   --tali-accent: #ff922b;

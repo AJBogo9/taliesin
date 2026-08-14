@@ -4238,9 +4238,6 @@ fn body_uses_the_inlined_literata_face() {
         !page.contains("url(fonts/literata"),
         "a bare font url leaked into the page (would 404)"
     );
-    // NOTE: `--tali-font-body` itself still names the retired "Newsreader" family here —
-    // tokens.css is Task 2's file, not Task 1's, so it is not yet repointed at Literata.
-    // Once Task 2 lands, add back an assertion that the body variable names the loaded face.
 }
 
 /// The bundled faces are the two the theme owns, and nothing else. `fonts.css` must name
