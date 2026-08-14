@@ -159,29 +159,46 @@ per chapter during implementation and update this file if the total moves by mor
 
 ## The truth gate
 
-A new test file, `crates/core/tests/docs_truth.rs`, run by `cargo test --workspace` and
+**Two tests appended to the existing `crates/core/tests/stale_docs.rs`**, whose stated
+purpose is already "gates that compare shipped prose against shipped behaviour" and which
+already walks both books, `site/` and `README.md`. Run by `cargo test --workspace` and
 therefore by `gates.sh` and `.githooks/pre-push` with no new wiring.
 
-It walks `docs/**/*.tmd` and asserts:
+The design below replaced a first draft during pre-flight, after each of that draft's three
+tests was measured against the tree and found not to catch its own claim. Both survivors
+were verified before execution: each fails today, on exactly the intended lines, with zero
+false positives.
 
-1. **Every `taliesin <verb>` written in prose or a shell fence is in `COMMANDS`.** Catches
-   claim 1. Requires `COMMANDS` to be reachable from a test; it currently lives in
-   `crates/server/src/main.rs`, so this either moves to `crates/server/tests/` or
-   `COMMANDS` is re-exported. Decide during implementation, preferring the test move
-   (no production change).
-2. **No documented front-matter key, `_site.yml` key or theme value appears in a
-   retirement register.** Cross-checks against `RETIRED_KEYS`, `RETIRED_DIV_CLASSES`,
-   `RETIRED_CELL_LANGS` and the three retired theme values in `render/theme.rs`. Catches
-   claims 4 and 6.
-3. **Every ` ```{lang} ` fence language in the docs is a live cell language.** Catches
-   claim 7 and anything like it.
+1. **No reader-facing doc names a `RETIRED_COMMANDS` verb as a bare backticked token.**
+   Catches claim 1. Measured: 17 retired verbs, exactly 1 hit across `docs/guide`,
+   `docs/internals`, `site/` and `README.md`, and it is the defect.
+   *Why this shape:* the defect writes the verbs as `` `preview` / `build` / `run` ``, a
+   backticked list with no `taliesin` prefix on the line, so the obvious
+   `taliesin <verb>` scan misses it entirely (and matches 12 false positives on prose like
+   "taliesin renders").
+2. **No reader-facing doc presents a retired built-in mode as a `theme:` value.** Catches
+   claim 4. Measured: 2 hits, both on the one stale line.
+   *Why this cannot be a register lookup:* `theme:` is a **live** key whose three built-in
+   **values** were retired, and all three retirement registers key on the key. `RETIRED_KEYS`
+   structurally cannot hold this, which is precisely how the existing
+   `shipped_docs_do_not_use_a_retired_front_matter_key` stayed green over it.
 
-Claims 2, 3 and 5 are prose assertions about behaviour and are **not** mechanically
-catchable. They are fixed by hand in this change, and the gate is honest about not
-covering them: it asserts vocabulary, not truth in general.
+**Scope.** Reader-facing docs only. `CLAUDE.md` and `LICENSE-OUTPUT-EXCEPTION.md` are
+excluded because both legitimately name cut verbs to explain their removal (measured: 6
+mentions, all correct, one of them an editorial correction whose point is that those words
+are *not* commands).
+
+**Claims 2, 3, 5, 6 and 7 are not mechanically catchable** and are fixed by hand. Claim 6
+joined that list during pre-flight: it is a Rust string literal inside a ```` ```rust ````
+fence, and claim 7 is the bare word "R" in prose. A cell-language test was drafted, refined
+until it had no false positives, and then **dropped because it matched nothing at all** and
+would have shipped green. A gate that is green before the fix asserts nothing, which is the
+vacuity `stale_docs.rs` already guards against elsewhere.
 
 **This is a drift gate in the project's existing idiom** (`gate_script.rs`,
-`retired_names.rs`, `stale_docs.rs`), not a new mechanism.
+`retired_names.rs`, `stale_docs.rs`), not a new mechanism, and it needs no production
+change: `taliesin-server` is binary-only, so both registers are read as text exactly as
+`gate_script.rs` reads its own.
 
 ## Hazards
 

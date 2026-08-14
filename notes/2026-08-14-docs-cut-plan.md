@@ -8,7 +8,7 @@
 importance bar, fix seven verified stale claims, and gate the vocabulary so the result
 cannot rot silently.
 
-**Architecture:** Three new tests are added to the existing
+**Architecture:** Two new tests are added to the existing
 `crates/core/tests/stale_docs.rs` (whose stated purpose is already "gates that compare
 shipped prose against shipped behaviour"), written first so they fail against today's
 prose. The seven stale claims are then fixed, turning them green. The content cut follows,
@@ -51,213 +51,313 @@ build --check-only`, `./tools/gates.sh`.
 ### Task 1: The truth gate, written to fail
 
 **Files:**
-- Modify: `crates/core/tests/stale_docs.rs` (append three tests + two helpers)
+- Modify: `crates/core/tests/stale_docs.rs` (refactor one helper, append three helpers +
+  two tests)
 
 **Interfaces:**
 - Consumes: existing helpers in that file: `repo()`, `read(rel)`, `shipped_docs() ->
-  Vec<(String, String)>`, `backticked(text) -> Vec<String>`, `const_block(src, name) ->
-  String`, `string_literals(block) -> Vec<String>`.
-- Consumes: `taliesin_core::render::executes_to_kernel(lang: &str) -> bool` (public).
-- Produces: `live_verbs() -> Vec<String>`, used by no later task but kept for future gates.
+  Vec<(String, String)>`, `backticked(text) -> Vec<String>`.
+- Produces: `backticked_located(text) -> Vec<(usize, String)>` (the new implementation
+  `backticked` delegates to), `reader_facing_docs()`, `retired_verbs()`,
+  `retired_theme_modes()`.
 
-**What this gate does and does not cover.** It catches claims 1, 4 and 6 mechanically.
-Claims 2, 3, 5 and 7 are prose assertions about behaviour (a deleted server, which book the
-hook lints, chrome nothing emits, "R has none") and are not mechanically catchable without
-false positives. They are fixed by hand in Task 2. The gate asserts **vocabulary**, not
-truth in general, and its doc comments must say so.
+**What this gate does and does not cover.** It catches claims 1 and 4 mechanically. Claims
+2, 3, 5, 6 and 7 are prose assertions about behaviour (a deleted server, which book the
+hook lints, chrome nothing emits, a Rust string literal inside a fence, the bare word "R")
+and are not mechanically catchable without false positives. They are fixed by hand in
+Task 2. The gate asserts **vocabulary**, not truth in general, and its doc comments must
+say so.
 
-- [ ] **Step 1: Write the three failing tests**
+**Both tests were verified against the tree on 2026-08-14 before this plan was revised.**
+Test A produces exactly one hit (claim 1) and Test B exactly two (claim 4, one per mode
+named on the line), with zero false positives in either. Three other designs were measured
+and rejected in pre-flight: a `taliesin <verb>` prose scan (13 hits, 12 false, and blind to
+claim 1's actual form), a YAML `theme:` value scan (blind to claim 4, one false positive),
+and a cell-language scan (matches nothing at all, so it would ship green). See the ledger's
+rulings P1 to P4.
+
+- [ ] **Step 1: Give `backticked` a located sibling**
+
+The existing `backticked(text) -> Vec<String>` takes a whole document and skips fenced
+blocks, so it cannot report a line number. Both new tests need one. Refactor in place so
+there is still exactly one implementation, and leave every existing caller untouched:
+
+```rust
+/// [`backticked`], but keeping each span's 1-based line number so a gate can point at it.
+fn backticked_located(text: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut in_fence = false;
+    for (n, line) in text.lines().enumerate() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let mut rest = line;
+        while let Some(open) = rest.find('`') {
+            rest = &rest[open + 1..];
+            match rest.find('`') {
+                Some(close) => {
+                    out.push((n + 1, rest[..close].to_string()));
+                    rest = &rest[close + 1..];
+                }
+                None => break,
+            }
+        }
+    }
+    out
+}
+
+fn backticked(text: &str) -> Vec<String> {
+    backticked_located(text).into_iter().map(|(_, s)| s).collect()
+}
+```
+
+Replace the existing `backticked` body with the wrapper above; keep its doc comment where
+it is.
+
+- [ ] **Step 2: Write the two failing tests**
 
 Append to `crates/core/tests/stale_docs.rs`:
 
 ```rust
-/// Every `taliesin <verb>` a shipped doc teaches must be a verb the binary answers.
+/// The subset of [`shipped_docs`] a *reader* downloads or browses.
+///
+/// `CLAUDE.md` and `LICENSE-OUTPUT-EXCEPTION.md` are deliberately out of scope for the two
+/// gates below, and only for those two. Both legitimately name cut verbs in order to
+/// explain their removal: CLAUDE.md records that the `check` verb never had a gate wired
+/// and that a retired `run` row survived several edits, and the licence file carries an
+/// editorial correction whose whole point is that `render` and `publish` are **not**
+/// Taliesin commands. Measured on 2026-08-14: six such mentions, every one correct prose.
+/// Gating them would force this project's two most careful documents to stop naming what
+/// they removed.
+fn reader_facing_docs() -> Vec<(String, String)> {
+    let docs: Vec<(String, String)> = shipped_docs()
+        .into_iter()
+        .filter(|(rel, _)| {
+            rel.starts_with("docs/guide")
+                || rel.starts_with("docs/internals")
+                || rel.starts_with("site")
+                || rel == "README.md"
+        })
+        .collect();
+    // Anti-vacuity, the same reason `shipped_docs` carries one: a filter that silently
+    // matches nothing makes every gate below pass forever.
+    assert!(
+        docs.len() > 20,
+        "only {} reader-facing docs matched — the path prefixes drifted",
+        docs.len()
+    );
+    docs
+}
+
+/// The retired verb names, read out of `main.rs` rather than restated here, so retiring
+/// another verb extends this gate automatically.
+fn retired_verbs() -> Vec<String> {
+    let src = read("crates/server/src/main.rs");
+    let (_, table) = src
+        .split_once("RETIRED_COMMANDS: &[(&str, &str)] = &[")
+        .expect("RETIRED_COMMANDS moved or changed shape — update this gate, do not delete it");
+    let table = table.split("\n];").next().unwrap_or_default();
+    // Entries are `(name, note)`, written both inline and split across lines; the first
+    // string literal of each is the name either way.
+    table
+        .split("    (")
+        .skip(1)
+        .filter_map(|entry| entry.split('"').nth(1).map(str::to_string))
+        .collect()
+}
+
+/// The built-in theme mode names that were retired on 2026-08-13, read out of the match arm
+/// in `resolve_theme` that warns about them.
+///
+/// There is no register to read instead, and that absence is the whole reason this gate
+/// exists: all three retirement registers key on the KEY, and `theme:` is a **live** key
+/// whose three built-in **values** were retired. `RETIRED_KEYS` structurally cannot hold
+/// this, so `shipped_docs_do_not_use_a_retired_front_matter_key` is blind to it.
+fn retired_theme_modes() -> Vec<String> {
+    let src = read("crates/core/src/render/theme.rs");
+    let (_, body) = src
+        .split_once("fn resolve_theme(")
+        .expect("resolve_theme moved — update this gate, do not delete it");
+    for line in body.lines() {
+        let Some((pattern, _)) = line.split_once("=> {") else {
+            continue;
+        };
+        let parts: Vec<&str> = pattern.trim().split('|').map(str::trim).collect();
+        // The arm we want is *only* quoted literals alternated: `"a" | "b" | "c" => {`.
+        // Requiring that rules out the neighbouring `path if path.ends_with(".css") || …`
+        // arm, which also contains a pipe and quotes.
+        let all_literals = parts.len() >= 2
+            && parts.iter().all(|p| {
+                p.len() > 2
+                    && p.starts_with('"')
+                    && p.ends_with('"')
+                    && p[1..p.len() - 1].chars().all(|c| c.is_ascii_lowercase())
+            });
+        if all_literals {
+            return parts
+                .iter()
+                .map(|p| p.trim_matches('"').to_string())
+                .collect();
+        }
+    }
+    panic!("the retired-mode match arm moved or changed shape — update this gate");
+}
+
+/// A reader-facing doc must not name a subcommand the binary no longer answers.
 ///
 /// `CLAUDE.md` names this hole explicitly: a new subcommand has four registration sites in
 /// `main.rs`, each drift-gated, and a **fifth** in `docs/guide/reference/cli.tmd`'s table
 /// that nothing gates. Wave 13 left the retired `run` row standing through several edits;
 /// what eventually caught it was `documented_cli_flags_exist_in_the_cli` noticing the
 /// *flags* inside the row, so a verb with no flags would have shipped a documented command
-/// the binary does not answer with every gate green. This closes that.
+/// the binary does not answer with every gate green.
 ///
-/// `COMMANDS` is read as text because `taliesin-server` is a binary-only crate with no
-/// `lib.rs`, so a test crate cannot import it. That is the same approach `gate_script.rs`
-/// takes to the same problem, and it needs no production change.
+/// Matched as a **bare backticked token**, which is the form the defect actually took: the
+/// stale row wrote `` `preview` / `build` / `run` / `lsp` / `init` `` with no `taliesin`
+/// prefix anywhere on the line. Measured against seventeen retired verbs on 2026-08-14, the
+/// whole reader-facing corpus yielded exactly one hit, the true positive. A prose scan for
+/// `taliesin <word>` was tried first and rejected: it matched `taliesin renders`,
+/// `taliesin builds` and `taliesin server`, and missed this line entirely.
+///
+/// `COMMANDS`/`RETIRED_COMMANDS` are read as text because `taliesin-server` is a
+/// binary-only crate with no `lib.rs`, so no test crate can import them. `gate_script.rs`
+/// solves the same problem the same way, and it needs no production change.
 #[test]
-fn shipped_docs_do_not_name_a_verb_the_binary_does_not_answer() {
-    let main_rs = read("crates/server/src/main.rs");
-    let live = string_literals(const_block(&main_rs, "COMMANDS"));
+fn reader_facing_docs_do_not_name_a_retired_subcommand() {
+    let retired = retired_verbs();
     assert!(
-        live.contains(&"preview".to_string()) && live.contains(&"build".to_string()),
-        "COMMANDS parsed as {live:?} — the shape changed, update this gate rather than \
-         deleting it"
+        retired.iter().any(|v| v == "run") && retired.iter().any(|v| v == "serve"),
+        "RETIRED_COMMANDS parsed as {retired:?} — the shape changed, update this gate \
+         rather than deleting it"
+    );
+    assert!(
+        retired.len() >= 10,
+        "only {} retired verbs parsed out of RETIRED_COMMANDS",
+        retired.len()
     );
 
-    // Words that follow `taliesin ` but are flags, paths or prose rather than verbs.
-    let not_a_verb = |w: &str| {
-        w.is_empty()
-            || w.starts_with('-')
-            || w.contains('/')
-            || w.contains('.')
-            || w.contains('<')
-            || !w.chars().all(|c| c.is_ascii_lowercase())
-    };
-
     let mut hits = Vec::new();
-    for (rel, text) in shipped_docs() {
-        for (n, line) in text.lines().enumerate() {
-            for (idx, _) in line.match_indices("taliesin ") {
-                let rest = &line[idx + "taliesin ".len()..];
-                let word: String = rest
-                    .chars()
-                    .take_while(|c| !c.is_whitespace() && *c != '`' && *c != ')')
-                    .collect();
-                if not_a_verb(&word) || live.contains(&word) {
-                    continue;
-                }
-                hits.push(format!("{rel}:{}: taliesin {word}", n + 1));
+    for (rel, text) in reader_facing_docs() {
+        for (line, tok) in backticked_located(&text) {
+            if retired.contains(&tok) {
+                hits.push(format!("{rel}:{line}: `{tok}`"));
             }
         }
     }
     assert!(
         hits.is_empty(),
-        "shipped doc(s) name a subcommand the binary does not answer (live: {live:?}):\n{}",
+        "reader-facing doc(s) name a subcommand the binary no longer answers. Each is \
+         either teaching a dead command or listing one; rewrite the sentence rather than \
+         widening this gate:\n{}",
         hits.join("\n")
     );
 }
 
-/// A `theme:` value the manual teaches must not draw a warning from the renderer.
+/// A reader-facing doc must not present a retired built-in mode as a value of `theme:`.
 ///
-/// This checks *behaviour*, not a register, and deliberately so: `theme: light|dark|default`
-/// is a retired **value** of a **live** key, and all three retirement registers key on the
-/// key. `shipped_docs_do_not_use_a_retired_front_matter_key` therefore cannot see it, which
-/// is exactly how `formats.tmd` came to teach `theme: dark` while `theming.tmd` correctly
-/// called it retired, in the same book, for a day short of a year's worth of gates.
+/// This is the gate that `shipped_docs_do_not_use_a_retired_front_matter_key` cannot be:
+/// `theme:` is live and its three built-in values are retired, while every retirement
+/// register keys on the key. That blind spot is how `formats.tmd` came to teach
+/// `theme: dark` while `theming.tmd` called the same value retired, in the same book, with
+/// every gate green.
 ///
-/// Only bare-word values are checked. A `theme: custom.scss` in a shipped example names a
-/// file that does not exist next to a synthetic render and would warn for an unrelated
-/// reason.
+/// Scoped to lines that mention `theme:` so that ordinary prose about a `light` or `dark`
+/// palette is untouched. Measured on 2026-08-14: two hits, both on the one stale line.
 #[test]
-fn shipped_docs_do_not_teach_a_theme_value_the_renderer_warns_about() {
-    let mut taught: Vec<(String, usize, String)> = Vec::new();
-    for (rel, text) in shipped_docs() {
-        for (n, line) in text.lines().enumerate() {
-            let Some(v) = line.trim().strip_prefix("theme:") else {
-                continue;
-            };
-            let v = v.trim().trim_matches('"').trim_matches('\'');
-            // Bare words only: no path, no extension, no placeholder.
-            if v.is_empty()
-                || v.contains('.')
-                || v.contains('/')
-                || v.contains('<')
-                || !v.chars().all(|c| c.is_ascii_lowercase() || c == '-')
-            {
-                continue;
-            }
-            taught.push((rel.clone(), n + 1, v.to_string()));
-        }
-    }
-
-    let mut hits = Vec::new();
-    for (rel, line, value) in taught {
-        let src = format!("---\ntitle: \"t\"\ntheme: {value}\n---\n\nBody.\n");
-        let doc = taliesin_core::render_document(&src);
-        if let Some(w) = doc.warnings.iter().find(|w| w.message.contains(&value)) {
-            hits.push(format!("{rel}:{line}: theme: {value} — {}", w.message));
-        }
-    }
-    assert!(
-        hits.is_empty(),
-        "shipped doc(s) teach a `theme:` value the renderer warns about:\n{}",
-        hits.join("\n")
+fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
+    let modes = retired_theme_modes();
+    assert_eq!(
+        modes.len(),
+        3,
+        "expected three retired built-in theme modes, parsed {modes:?}"
     );
-}
-
-/// A `{lang}` cell language a shipped doc names must still be one the tool handles.
-///
-/// `{r}` was the second kernel language and was cut in Wave 6, leaving two mentions in
-/// `internals/execution.tmd`. This reads backticked tokens, so it catches `` `{r}` `` in
-/// prose and in a fence info string alike. It does **not** catch a bare prose "R", which is
-/// why claim 7 in the spec is fixed by hand.
-#[test]
-fn shipped_docs_do_not_name_a_cell_language_the_tool_dropped() {
-    // Handled at render time rather than by a kernel, so `executes_to_kernel` is false for
-    // each and each is still legitimate in the manual.
-    let render_side = ["js", "mermaid", "=html"];
 
     let mut hits = Vec::new();
-    for (rel, text) in shipped_docs() {
-        for (n, line) in text.lines().enumerate() {
-            for tok in backticked(line) {
-                let Some(lang) = tok.strip_prefix('{').and_then(|t| t.strip_suffix('}'))
-                else {
-                    continue;
-                };
-                if lang.is_empty()
-                    || lang.contains(' ')
-                    || render_side.contains(&lang)
-                    || taliesin_core::render::executes_to_kernel(lang)
-                {
-                    continue;
-                }
-                hits.push(format!("{rel}:{}: {{{lang}}}", n + 1));
+    for (rel, text) in reader_facing_docs() {
+        let lines: Vec<&str> = text.lines().collect();
+        for (line, tok) in backticked_located(&text) {
+            if modes.contains(&tok) && lines[line - 1].contains("theme:") {
+                hits.push(format!("{rel}:{line}: `{tok}` — {}", lines[line - 1].trim()));
             }
         }
     }
     assert!(
         hits.is_empty(),
-        "shipped doc(s) name a cell language the tool no longer handles:\n{}",
+        "reader-facing doc(s) present a `theme:` value the renderer warns about (retired \
+         2026-08-13; both palettes ship and the reader's device selects one):\n{}",
         hits.join("\n")
     );
 }
 ```
 
-- [ ] **Step 2: Run the three tests and confirm each fails for the right reason**
+
+- [ ] **Step 3: Confirm the whole file still compiles and every pre-existing test still passes**
+
+Run: `cargo test -p taliesin-core --test stale_docs`
+
+Expected: the file compiles, the pre-existing tests still pass, and **exactly the two new
+tests fail.** Step 1 refactored a helper other tests call, so a pre-existing failure here
+means the refactor broke `backticked`, not that the docs are stale. Fix that before going on.
+
+- [ ] **Step 4: Confirm each new test fails for the right reason**
 
 Run:
 
 ```sh
 cargo test -p taliesin-core --test stale_docs -- --nocapture \
-  shipped_docs_do_not_name_a_verb_the_binary_does_not_answer \
-  shipped_docs_do_not_teach_a_theme_value_the_renderer_warns_about \
-  shipped_docs_do_not_name_a_cell_language_the_tool_dropped
+  reader_facing_docs_do_not_name_a_retired_subcommand \
+  reader_facing_docs_do_not_present_a_retired_theme_mode
 ```
 
-Expected: three FAILs, naming at minimum
-`docs/internals/architecture.tmd` (`taliesin run`),
-`docs/guide/using/formats.tmd` (`theme: dark`), and
-`docs/internals/execution.tmd` (`{r}`).
+Expected: two FAILs, with these exact hits and no others:
 
-**If any test passes, stop.** A gate that is green before the fix is not testing what it
-claims. Read its output, correct the extractor, and re-run before continuing.
+```
+docs/internals/architecture.tmd:273: `run`
+docs/guide/using/formats.tmd:141: `light` — `theme:` selects the built-in `light` …
+docs/guide/using/formats.tmd:141: `dark`  — `theme:` selects the built-in `light` …
+```
 
-**If a test fails on a doc this plan does not touch**, that is a real eighth defect. Record
-it in the spec's stale-claims table and fix it in Task 2.
+(Line numbers are from 2026-08-14 and may have shifted; the files and tokens are what
+matter.)
 
-- [ ] **Step 3: Verify `render_document` and `Warning` are reachable as written**
+**If either test passes, stop.** A gate that is green before the fix asserts nothing. Read
+its output, correct the extractor, and re-run before continuing.
 
-Run: `cargo test -p taliesin-core --test stale_docs --no-run`
+**If a test fails on a file this plan does not touch, or on a token not listed above**,
+that is a real eighth defect rather than a gate bug. Record it in the spec's stale-claims
+table and fix it in Task 2.
 
-Expected: compiles. If `render_document` is not re-exported at the crate root, use
-`taliesin_core::render::render_document`; if `Warning.message` is private, match on the
-`Display` output instead. Fix inline; do not weaken the assertion.
-
-- [ ] **Step 4: Commit the failing gate**
+- [ ] **Step 5: Commit the failing gate**
 
 ```sh
 git add crates/core/tests/stale_docs.rs
-git commit -m "test: gate the docs' verb, theme-value and cell-language vocabulary
+git commit -m "test: gate the docs' subcommand and theme-value vocabulary
 
-Three tests in the file whose stated job is already comparing shipped prose
-against shipped behaviour. Each fails against today's books, which is the
-point: the manual names a `run` verb cut in Wave 13, teaches a `theme: dark`
-retired on 2026-08-13, and names an `{r}` kernel cut in Wave 6.
+Two tests in the file whose stated job is already comparing shipped prose
+against shipped behaviour. Both fail against today's books, which is the
+point: the manual names a \`run\` verb cut in Wave 13, and teaches a
+\`theme: dark\` retired on 2026-08-13 while the neighbouring chapter calls
+the same value retired.
 
-The theme test checks behaviour rather than a register on purpose. All three
-retirement registers key on the KEY, and a retired *value* of a *live* key is
-invisible to them, which is how formats.tmd came to contradict theming.tmd
-inside the same book with every gate green.
+The theme gate cannot be a register lookup, and that is why it exists.
+\`theme:\` is a live key whose three built-in values were retired, and all
+three retirement registers key on the KEY, so RETIRED_KEYS structurally
+cannot hold this and the existing retired-key gate is blind to it.
+
+Both match on bare backticked tokens rather than on a \`taliesin <verb>\`
+prefix, because that is the form the defects actually took: the stale row
+writes the verbs as a backticked list with no prefix on the line. A prefix
+scan was measured first and rejected — 13 hits, 12 of them prose like
+'taliesin renders', and blind to the real one.
+
+Scoped to reader-facing docs. CLAUDE.md and LICENSE-OUTPUT-EXCEPTION.md are
+excluded because both legitimately name cut verbs to explain their removal,
+one of them in an editorial correction whose point is that those words are
+not commands.
 
 Fails until the next commit."
 ```
@@ -1184,8 +1284,17 @@ steps carry conditional branches (Task 1 Step 3 on `render_document`'s export pa
 Step 1 on which reference page a gate names); both state the check, the likely answer, and
 what to do with each outcome, rather than deferring the decision.
 
-**Type consistency.** The three new tests use only helpers verified present in
+**Type consistency.** The two new tests use only helpers verified present in
 `stale_docs.rs` on 2026-08-14 at the signatures quoted (`read`, `shipped_docs`,
-`backticked`, `const_block`, `string_literals`) plus one public function verified in
-`crates/core/src/render/mod.rs` (`executes_to_kernel`). `const_block` expects the literal
-shape `NAME: &[&str] = &[`, which `COMMANDS` in `main.rs:101` matches exactly.
+`backticked`) plus `backticked_located`, which Task 1 Step 1 introduces as `backticked`'s
+new implementation. Both source parsers (`retired_verbs` over `RETIRED_COMMANDS`,
+`retired_theme_modes` over `resolve_theme`'s match arm) were run against the real files and
+produced the expected 17 verbs and 3 modes. No production API is used, so nothing here
+depends on `executes_to_kernel`, `render_document` or `Warning`, all of which the first
+draft needed.
+
+**Post-pre-flight revision.** Task 1 was rewritten before execution began, after its
+original three tests were measured against the tree and found not to catch their own
+claims. The ledger holds the measurements and rulings P1 to P4. The plan's claim coverage
+moved from "1, 4 and 6 gated" to "1 and 4 gated", and claim 6 joined the hand-fixed list;
+Task 2 is unchanged, since it always fixed all seven by hand.
