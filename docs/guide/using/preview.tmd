@@ -161,31 +161,13 @@ Click it to expand a panel with the preview-only tools:
 
 ### Sections: the shape of the draft
 
-Under **Sections**, every heading in the page is listed at its own level, with the
-weight of its section and any problem inside it. Clicking a row scrolls the preview
-to that heading:
-
-```
-The Constraint That Quietly Breaks Your Optimizer   ⚠1 · TODO · 150w
-Amplitudes: Turning the Constraint Into a Free Lunch        148w
-  A nested subsection with a handful of words in it         138w
-```
-
-A section is the heading **plus everything down to the next heading of the same or
-shallower level**, which is the same definition the editor's outline and folding use,
-so the three never disagree about where a section ends. That does mean a chapter counts
-its own subsections: the numbers are for judging one section's weight, not for adding up.
-
-The badges are the same findings the diagnostics list shows, placed where they
-happened: `✗` errors and `⚠` warnings whose source line falls inside that section, so
-"which part of this draft is broken" is answerable without reading the list and
-counting lines yourself. `TODO` counts your own `TODO`/`FIXME` markers in the prose,
-which nothing in Taliesin validates and nothing will — they are notes to yourself, and
-this only tells you where you left them.
-
-This is a **revision** view, not the reader's table of contents. It is why it lives in
-the dev menu, why its counts are about your draft rather than about the finished page,
-and why a `build` ships none of it.
+Under **Sections**, every heading in the page is listed at its own level, with its
+word count and any problem inside it; clicking a row scrolls the preview there. A
+section is the heading plus everything down to the next heading of the same or
+shallower level, the same definition the editor's outline and folding use. Badges
+place diagnostics (`✗` errors, `⚠` warnings, your own `TODO`/`FIXME` markers) where
+they happened in the source. This is a revision view, not the reader's table of
+contents, and a `build` ships none of it.
 
 ## Live-edit feedback
 

@@ -26,17 +26,11 @@ exactly as they were. No cold start, no full-page flash, no waiting.
   edits show up immediately, and only the cells whose code actually changed
   re-run.
 
+That loop is the whole product; everything below is what you can put inside it.
+
 This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](../internals/), covers how it works inside.
-
-## The 60-second version {.unnumbered}
-
-Write a `.tmd` file, run `taliesin preview` on it, and leave the browser open beside
-your editor. Every save re-renders only the block you touched, so a figure a `{python}`
-cell drew stays on screen while you edit the paragraph above it, and Ctrl-clicking
-(Cmd-clicking on Mac) any block in the preview opens its source line in your editor.
-That loop is the whole product; everything below is what you can put inside it.
 
 ## Coming from Jupyter?
 

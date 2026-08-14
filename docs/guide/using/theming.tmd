@@ -9,6 +9,10 @@ diagrams, figures, and syntax-highlighted code all read those variables, so
 retuning one value restyles everything at once, and the light/dark switch is just
 a swap of the values: nothing re-renders.
 
+Not everything is a variable. Prose also gets quiet typographic polish that needs no
+configuration: balanced headings and captions, pretty last-line wrapping, and figures
+that keep their caption attached.
+
 ## The built-in themes
 
 Two themes ship in the binary and need no files:
@@ -19,10 +23,8 @@ Two themes ship in the binary and need no files:
 **Neither is selected in front matter, and there is no key for it.** Both ship in every
 page and the reader's device decides which one paints, following the OS
 `prefers-color-scheme` and falling back to light when the OS expresses no preference.
-
-`theme: dark`, `theme: light` and `theme: default` were retired on 2026-08-13; writing one
-now draws a warning and changes nothing. `theme:` itself is very much alive, for the custom
-`.css`/`.scss` files and `_extensions/` bundles described below.
+`theme:` itself is very much alive, for the custom `.css`/`.scss` files and
+`_extensions/` bundles described below.
 
 ::: {.callout-note}
 ## Two built-in palettes, and the device picks between them
@@ -288,10 +290,3 @@ theme: brand.css
 Now links, the focus ring, and the active markers are orange, the body sets in
 Charter, and both themes stay contrast-safe. Nothing else in the document needed
 touching, and the page still swaps light and dark instantly.
-
-## Which palette a reader sees is not yours to set
-
-The variable values above are the *author's* theme: they define what light and dark each
-look like. Which of the two a given reader gets is decided by that reader's device, and
-neither you nor they can override it from the page. Tune both, and check both. See
-[Reader controls](../reference/accessibility.tmd#reader-controls) for why it works that way.

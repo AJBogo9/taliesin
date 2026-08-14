@@ -29,10 +29,6 @@ replacement to use instead, with the date it went. Those are different answers o
 did-you-mean is a spelling correction an editor can apply for you (your editor offers it as a
 quick fix over `taliesin lsp`), a removal note is a paragraph you have to read.
 
-Diagnostics carried a stable `TAL-*` code and a generated catalogue page until 2026-08-08,
-expandable offline with `check --explain <CODE>`. Both went: what an author needs from a
-diagnostic is the fix, and the message is where the fix is.
-
 ## Code cells show as source / "kernel unavailable"
 
 There is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python that has

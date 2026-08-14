@@ -28,13 +28,11 @@ as scope classes the theme styles, so the exported HTML needs no CDN, the first
 paint is already coloured, and the light/dark toggle restyles code with nothing to
 re-run.
 
-A fence whose language token isn't recognised still renders, just unhighlighted.
-That is easy to mistake for broken highlighting. Taliesin no longer reports it: the lint that
-did was cut on 2026-08-08, because an unhighlighted block is something you can see. So the fix
-is to check the label yourself:
-` ```pyton ` gets a located "unknown code language" warning. When a block is meant
-to be plain (a terminal transcript, sample output), label it `text` or `console`
-and it stays plain without a warning.
+A fence whose language token isn't recognised still renders, just unhighlighted, with
+no warning: check the label yourself if a block you expected to be highlighted looks
+flat (a common cause is a typo like ` ```pyton `). When a block is meant to be plain
+(a terminal transcript, sample output), label it `text` or `console` and it renders
+exactly the same, deliberately.
 
 An info string may carry **attributes after the language** in the form other tools use
 (` ```rust,ignore `, ` ```python should_panic `, ` ```rust,no_run,edition2021 `). Taliesin
@@ -238,11 +236,8 @@ because a margin note can only hold inline content.
 
 For an aside with no reference to hang it off, a `::: {.column-margin}` block floats
 into the same margin column on a wide screen and folds into the flow on a narrow one:
-web-native marginalia a PDF can't do. `.column-margin` is the only spelling — it used to
-also accept `.sidenote`, `.marginnote`, and `.aside` as aliases (Tufte/Distill/Quarto
-muscle memory), retired on 2026-08-03, since a single tool gains nothing from four names
-for the same box. Footnotes and margin blocks share one column, so the two never
-collide.
+web-native marginalia a PDF can't do. `.column-margin` is the only spelling. Footnotes
+and margin blocks share one column, so the two never collide.
 
 ::: {.column-margin}
 This is a margin note. On a wide screen it sits in the margin, aligned to where it was
@@ -280,11 +275,13 @@ over text.
 ```
 
 Splices another file's contents into this one before parsing, as if you had pasted
-it in place. The directive must be alone on its own line (leading and trailing
-whitespace is fine); a `{{< include … >}}` with other text on the line is left as
-ordinary content. The path is resolved relative to the file that holds the
-directive, so a partial can itself include further partials and the relative paths
-still make sense at each level.
+it in place. Written inside a fenced code block, as in the examples on this page, the
+directive is left unexpanded rather than firing: the same rule keeps any `{{< … >}}`
+shortcode literal inside a fence or an inline code span. The directive must be alone
+on its own line (leading and trailing whitespace is fine); a `{{< include … >}}` with
+other text on the line is left as ordinary content. The path is resolved relative to
+the file that holds the directive, so a partial can itself include further partials
+and the relative paths still make sense at each level.
 
 Includes are how you keep one author bio, one license footer, or one shared figure
 in a single file and pull it into many pages. Because the splice happens before the

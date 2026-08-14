@@ -440,13 +440,10 @@ inline after the article instead of floating as a sidebar.
 navigation instead, so a second, shallower list beside the text earned nothing. Writing
 `toc:` in a book's `_site.yml` warns and does nothing; delete the key.
 
-**Validation.** Unrecognized keys are reported with a "did you mean …" hint, offered
-when a known key is within edit distance 2, so a typo like `favicn:` doesn't silently do
-nothing. Validation only **warns**: the document still renders, and every warning is
-**located**, so in the live preview you can click it straight to the source line. The same
-closed-vocabulary check covers unknown cell `#|` options and unknown immediate children
-of `execute:` / `listing:` / `hero:`. (The Internals book covers the design, and the
-drift-locked Draft 2020-12 `_site.yml` schema, in its *Validation & schemas* chapter.)
+**Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
+mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). The
+Internals book covers the design, and the drift-locked Draft 2020-12 `_site.yml`
+schema itself, in its *Validation & schemas* chapter.
 
 ## Editor autocomplete (config schema)
 

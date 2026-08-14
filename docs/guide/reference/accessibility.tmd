@@ -121,10 +121,6 @@ Tab while open, and restores focus to whatever opened it on close.
 markers are re-asserted with system colors so the chrome stays legible when the
 palette is forced.
 
-Prose also gets quiet typographic polish that needs no configuration: balanced
-headings and captions, pretty last-line wrapping, and figures that keep their
-caption attached.
-
 ## Reporting a barrier
 
 If you hit an accessibility barrier, it is a bug and it is wanted. Please open an issue
