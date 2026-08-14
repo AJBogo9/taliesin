@@ -34,9 +34,25 @@ build --check-only`, `./tools/gates.sh`.
   beyond-CommonMark count, percentage, its complement, and all six per-family
   `| n | share |` pairs still appear in `docs/guide/using/choosing.tmd` and `README.md`.
   Trim around them; never through them.
-- **`stale_docs.rs` has an anti-vacuity guard:** `assert!(out.len() > 25)` over the walked
-  docs, currently ~38. This plan deletes 4 files, landing at ~34. Still above the floor,
-  but do not delete a fifth without re-reading that assertion.
+- **THERE ARE TWO ANTI-VACUITY FLOORS, and the second one bit.** Both count pages and both
+  break when a book legitimately shrinks.
+  1. `stale_docs.rs`: `assert!(out.len() > 25)` over the walked docs, currently ~38. This
+     plan's deletions land it near ~34, still above the floor.
+  2. `a11y_outline.rs:197`: `assert!(pages >= 40)` in
+     `every_book_in_the_repo_emits_a_contiguous_outline`, walking `docs/guide`,
+     `docs/internals` **and `corpus/tarn`**. **Task 3's deletion of `server.tmd` took this
+     to 39 and it has been failing since**, undetected for two tasks because per-task
+     verification ran only `--test stale_docs`. Tasks 6 to 9 delete four more files and
+     Task 12 adds one, landing near 36.
+  Lowering such a floor when a book really did shrink is this repo's established practice,
+  not a workaround: `stale_docs.rs:55` carries "Lowered from 40 on 2026-08-09, when the
+  Internals book went from thirteen chapters to six." Task 6 lowers the second floor the
+  same way, with the same style of dated comment. **A floor is never raised or removed to
+  make a red test green; it is re-justified in a comment or it stays.**
+- **VERIFICATION FOR EVERY REMAINING TASK IS THE FULL CORE SUITE**, not one test file:
+  `cargo test -p taliesin-core`. The narrow `--test stale_docs` command used in Tasks 1 to 5
+  is what let the `a11y_outline` failure hide. Where a task's steps below still say
+  `--test stale_docs`, run the full suite instead.
 - **Both books are gated.** `.githooks/pre-push` steps 4 and 5 run
   `build docs/guide --check-only`, `build docs/internals --check-only` and
   `tools/build-site.sh --check`. Run the first two per task.
