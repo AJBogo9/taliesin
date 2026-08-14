@@ -101,6 +101,23 @@ VS Code companion in `editor/vscode/` implements no language features of its own
 adds only what the protocol has no concept of, which is the preview webview and the
 source sync.
 
+It answers six read-only capabilities:
+
+| capability | what it gives the author |
+|---|---|
+| `completion` | front matter, cell options, cross-references, citations, shortcodes and paths, wherever one is legal |
+| `hover` | a cross-reference's label, a front-matter key's docs, a citation's BibTeX entry |
+| `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
+| `documentSymbol` | the heading outline |
+| `codeAction` | the "did you mean `X`" quick fix |
+| `foldingRange` | front matter, headings, `:::` divs, code fences |
+
+plus `publishDiagnostics`, pushed live as you type. Two more requests are Taliesin's
+own, namespaced so they can never collide with the protocol: `taliesin/cellRegions`
+tells an editor which language owns a code cell's range, so it can route completion
+there, and `taliesin/siteMap` resolves a page's served URL (what lets a chapter
+preview open at the right page).
+
 ## Byte-identity for refactors
 
 A pure refactor must not change the output. The standard check is to build the
