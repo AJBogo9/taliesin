@@ -38,14 +38,12 @@ The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
   `crates/core/src/render/divs.rs`.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
-- **Newsreader** (SIL Open Font License 1.1, Copyright 2020 The Newsreader
-  Project Authors). The **body typeface** for rendered pages: the two variable woff2
-  faces `crates/core/assets/fonts/newsreader-latin-wght-{normal,italic}.woff2` (roman
-  + italic, Latin subset, from `@fontsource-variable/newsreader@5.2.10`) are inlined
-  as `data:` URIs into every page's CSS at build time (`build.rs`), so pages need no
-  network for text. Full license text ships alongside them in
-  `crates/core/assets/fonts/newsreader-OFL-fontsource.txt`. License:
-  <https://github.com/productiontype/Newsreader>.
+- **Literata** — SIL OFL 1.1, no Reserved Font Name.
+  `Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata)`
+  Subset by `tools/subset-fonts.sh`.
+- **JetBrains Mono** — SIL OFL 1.1, no Reserved Font Name.
+  `Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)`
+  Subset by `tools/subset-fonts.sh`, `calt` removed.
 
 The other scripts under `crates/core/assets/js/` (`mermaid.js`, `tali-js.js`, and the
 `code-enhance/` fragments) are Taliesin's own, under the project's AGPL-3.0-only license.

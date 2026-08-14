@@ -1792,9 +1792,9 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
-/// The owned body typeface: Newsreader `@font-face` rules with the two variable woff2
-/// faces (roman + italic) inlined as data URIs at build time (see `build.rs`). Emitted
-/// ahead of the base stylesheet so `--tali-font-body` resolves to the loaded face.
+/// The two owned faces' `@font-face` rules (Literata roman + italic, JetBrains Mono)
+/// inlined as data URIs at build time (see `build.rs`). Emitted ahead of the base
+/// stylesheet so `--tali-font-body`/`--tali-font-mono` resolve to the loaded faces.
 pub(crate) const FONTS_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/fonts-inlined.css"));
 
 /// The same `@font-face` rules with the faces left as `url(fonts/<name>.woff2)` refs
@@ -1814,14 +1814,21 @@ const FONTS_CSS_LINKED: &str = include_str!("../../assets/css/fonts.css");
 /// self-contained file, so it keeps [`FONTS_CSS`]; only a target that already emits a
 /// sidecar `_assets/` directory uses these. Either way the face is self-hosted and offline:
 /// no CDN, no network at render time.
+///
+/// Still only the body face (Literata roman + italic), unchanged in shape since the
+/// Newsreader retirement: wiring JetBrains Mono into this linked/`_assets/` path is
+/// out of scope here (see the instrument-theme plan 1 file structure table, "fonts-as-files
+/// for directory and site builds", explicitly deferred to Plan 4). Until then a multi-page
+/// `build <dir>` still emits an unresolved `url(fonts/jetbrains-mono-latin-wght-normal.woff2)`
+/// from [`fonts_css_linked`] for any caller that does not separately supply that href.
 pub const FONT_FILES: &[(&str, &[u8])] = &[
     (
-        "newsreader-latin-wght-normal.woff2",
-        include_bytes!("../../assets/fonts/newsreader-latin-wght-normal.woff2"),
+        "literata-latin-wght-normal.woff2",
+        include_bytes!("../../assets/fonts/literata-latin-wght-normal.woff2"),
     ),
     (
-        "newsreader-latin-wght-italic.woff2",
-        include_bytes!("../../assets/fonts/newsreader-latin-wght-italic.woff2"),
+        "literata-latin-wght-italic.woff2",
+        include_bytes!("../../assets/fonts/literata-latin-wght-italic.woff2"),
     ),
 ];
 

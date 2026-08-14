@@ -1,19 +1,32 @@
-/* Owned body typeface: Newsreader (OFL), the two variable faces (roman + italic).
-   The `url(fonts/…)` refs are rewritten to inlined `data:` URIs at build time by
-   build.rs (the same pass that inlines KaTeX's fonts), so a page ships the font in its
-   <style> and never makes a network request. `font-weight: 200 800` exposes the real
-   wght axis, so bold text is a genuine weight, never a synthesized faux-bold. */
+/* The two owned faces. Both SIL OFL 1.1 with NO Reserved Font Name (checked 2026-08-14),
+   so they may be subset and vendored without renaming. Produced by tools/subset-fonts.sh;
+   do not hand-edit the binaries. The `url(fonts/…)` refs are rewritten to inlined `data:`
+   URIs at build time by build.rs. `font-weight: 200 900` exposes the real wght axis, so
+   bold is a genuine weight and never a synthesized faux-bold.
+
+   Literata is the body AND the headings: this theme owns no sans. It was chosen on a
+   measurement, not taste — KaTeX renders at a fixed 1.21em, so the body face's x-height
+   decides whether math towers over the prose. Literata's math/body ratio is 1.027 against
+   a 1.08 ceiling; the previous body face (retired 2026-08-14) was 1.168. */
 @font-face {
-  font-family: "Newsreader";
+  font-family: "Literata";
   font-style: normal;
-  font-weight: 200 800;
+  font-weight: 200 900;
   font-display: swap;
-  src: url(fonts/newsreader-latin-wght-normal.woff2) format("woff2");
+  src: url(fonts/literata-latin-wght-normal.woff2) format("woff2");
 }
 @font-face {
-  font-family: "Newsreader";
+  font-family: "Literata";
   font-style: italic;
-  font-weight: 200 800;
+  font-weight: 200 900;
   font-display: swap;
-  src: url(fonts/newsreader-latin-wght-italic.woff2) format("woff2");
+  src: url(fonts/literata-latin-wght-italic.woff2) format("woff2");
+}
+/* Subset WITHOUT `calt`, so code ligatures cannot be re-enabled by a stray rule. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url(fonts/jetbrains-mono-latin-wght-normal.woff2) format("woff2");
 }

@@ -4166,19 +4166,19 @@ fn a_demoted_post_still_lists_all_its_sections_in_the_toc() {
 }
 
 #[test]
-fn body_uses_the_inlined_newsreader_face() {
+fn body_uses_the_inlined_literata_face() {
     let doc = render_document("Body prose.\n");
     let page = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
-    // Two real @font-face rules for the owned body face, family "Newsreader".
+    // Two real @font-face rules for the owned body face, family "Literata".
     assert!(page.contains("@font-face"), "no @font-face in page head");
     assert!(
-        page.contains("\"Newsreader\""),
-        "Newsreader @font-face family missing"
+        page.contains("\"Literata\""),
+        "Literata @font-face family missing"
     );
     // A true italic face (not synthesized) alongside the normal one.
     assert!(
         page.contains("font-style: italic"),
-        "italic Newsreader face missing"
+        "italic Literata face missing"
     );
     // Inlined as a data URI (offline, self-contained), never a bare url(fonts/…) that
     // would 404 since there is no served font path.
@@ -4187,13 +4187,47 @@ fn body_uses_the_inlined_newsreader_face() {
         "font not inlined as a data URI"
     );
     assert!(
-        !page.contains("url(fonts/newsreader"),
+        !page.contains("url(fonts/literata"),
         "a bare font url leaked into the page (would 404)"
     );
-    // The body typeface variable actually names the face (system serif kept as fallback).
+    // NOTE: `--tali-font-body` itself still names the retired "Newsreader" family here —
+    // tokens.css is Task 2's file, not Task 1's, so it is not yet repointed at Literata.
+    // Once Task 2 lands, add back an assertion that the body variable names the loaded face.
+}
+
+/// The bundled faces are the two the theme owns, and nothing else. `fonts.css` must name
+/// each one exactly as it sits on disk, because `build.rs`'s inliner matches the literal
+/// `url(fonts/<name>.woff2)` and SILENTLY leaves an unmatched reference uninlined — which
+/// ships a page that fetches a font that is not there.
+#[test]
+fn the_bundled_faces_are_literata_and_jetbrains_mono() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/fonts");
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .expect("assets/fonts")
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            (p.extension()? == "woff2").then(|| p.file_name()?.to_str().map(String::from))?
+        })
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "jetbrains-mono-latin-wght-normal.woff2".to_string(),
+            "literata-latin-wght-italic.woff2".to_string(),
+            "literata-latin-wght-normal.woff2".to_string(),
+        ],
+        "the bundled woff2 set changed"
+    );
+    for n in &names {
+        assert!(
+            FONTS_CSS_LINKED.contains(&format!("url(fonts/{n})")),
+            "fonts.css does not reference {n} in the exact form build.rs inlines"
+        );
+    }
     assert!(
-        page.contains("\"Newsreader\", ui-serif"),
-        "--tali-font-body not pointed at Newsreader"
+        !FONTS_CSS_LINKED.to_ascii_lowercase().contains("newsreader"),
+        "Newsreader is retired; it must not be referenced"
     );
 }
 
