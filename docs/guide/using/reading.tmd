@@ -37,29 +37,6 @@ once, for every reader, rather than shipping a comfort panel of sliders: the bro
 already offers page zoom for the rare reader who needs larger type, and one well-set
 measure beats a pile of controls nobody opens.
 
-## Running it yourself
-
-A page with code cells ends with a quiet box offering **every cell's source as one
-script**, one download per language, in the order the cells ran. It needs no server: the
-file is carried in the page itself, so a single built `.html` you emailed to someone still
-hands them the code.
-
-The part that matters is what it includes. A cell marked `#| echo: false` runs and shows
-no listing, and those are usually the imports, the data loading and the plot styling — so a
-reader who copied the visible listings by hand would get a script missing its first third
-and only find out when it failed. The download is assembled from the document's block
-model rather than from the rendered page, so hidden cells are in it.
-
-`{js}` cells are deliberately not offered. A `{js}` document is a reactive graph, not a
-script: the runtime orders cells by dependency, not by position, and a cell that reads a
-`{{< input >}}` or the page's DOM means nothing outside the page hosting it. Offering that
-as a file would be handing the reader something that is not the program that ran. Re-running
-a `{js}` document is reloading it.
-
-The **data** the code reads is yours to cite. A small file in the project travels with
-the page because something on it links to the file; a multi-GB parquet does not belong in
-a folder of HTML, so name it and link it the way you would any other source.
-
 ## No focus mode, and no fullscreen
 
 A reading page has neither a focus/reading mode nor a fullscreen toggle, and that is a
@@ -106,6 +83,13 @@ before asking for one of them back:
 - **The show/hide-code toggle.** A reader-side switch used to collapse every executed
   cell's source. The author already decides per cell with `#| echo:`; a reader override of
   that decision is real but rare, and it cost a permanent row in the Settings menu.
+- **The code-download box.** A page with code cells used to end with an aside offering
+  every cell's source as one script per language, carried in the page as a `data:` URL.
+  It was well built — it read the block model, so a `#| echo: false` cell was in the file,
+  and it declined to offer `{js}`, whose order is its dependency graph rather than the
+  page. It was still permanent chrome on every computational page, answering a question
+  most readers never ask, and the source it handed over is already on the page and in
+  view-source. An author who wants the reader to have a runnable script links one.
 - **The theme picker, and the Settings gear that held it.** A segmented Auto / Light / Dark
   control, described above. Removing it emptied the gear, so the gear went too, and with it
   the last reader-facing control on a built page. A third door had to close in the same

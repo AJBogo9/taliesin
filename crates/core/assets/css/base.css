@@ -756,26 +756,6 @@
     .tali-title-block .title { font-size: 1.7rem; }
     .tali-title-block .subtitle { font-size: 1.05rem; }
   }
-  /* The reader's code download (`repro.rs`): a quiet aside after the References/footnotes,
-     styled like a note rather than a call to action — it is an offer, not the point of the
-     page. */
-  .tali-repro { margin: 2.5rem 0 0; padding: .9rem 1.1rem; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius-md); background: var(--tali-code-bg);
-    font-size: .92rem; }
-  .tali-repro-lead { margin: 0 0 .5rem; color: var(--tali-muted); }
-  .tali-repro-list { margin: 0; padding-left: 1.1rem; }
-  .tali-repro-list li + li { margin-top: .25rem; }
-  /* WCAG 2.5.8 (Target Size, Minimum). Measured at a 390px viewport before this rule: the
-     link's own box was 15px tall, because it is inline text in a list item and inherits the
-     line box. `inline-block` + padding is what gives it a box of its own to grow. 24px is
-     the AA floor; a coarse pointer gets the 44px comfort size. */
-  .tali-repro-dl { display: inline-block; padding: .3rem 0; min-height: 24px; }
-  @media (hover: none) and (pointer: coarse) {
-    .tali-repro-dl { min-height: 44px; display: flex; align-items: center; }
-  }
-  /* Print: a paper copy cannot be clicked, so the offer is noise on it. */
-  @media print { .tali-repro { display: none; } }
-
   /* honor reduced-motion: collapse transitions/animations (fades) to near-instant,
      and drop smooth scrolling */
   @media (prefers-reduced-motion: reduce) {

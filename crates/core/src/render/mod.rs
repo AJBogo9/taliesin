@@ -89,12 +89,6 @@ use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // can reach a `base_dir`.
 mod image_meta;
 use image_meta::ImageAnnotator;
-// The reader's code download (C-READ-2): every cell's source, in the order it ran, as one
-// `data:` URL per language. Reads the BLOCK MODEL rather than the emitted HTML, because a
-// `#| echo: false` cell renders no listing and must still be in the script.
-mod repro;
-// The id four consumers must agree to skip when turning a page into text.
-pub(crate) use repro::REPRO_BLOCK_ID;
 // Text projection: a plain-text VIEW of the block model, not an output format. Named for
 // the `read` verb until wave 9 cut it, and documented as reached via a
 // `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its one live
@@ -1298,8 +1292,8 @@ fn render_internal_impl(
             },
         );
     }
-    // The appendix (author contributions), after the References a reader scrolls past and
-    // before the code download, which is chrome rather than content.
+    // The appendix (author contributions), last of the generated blocks, after the
+    // References a reader scrolls past.
     let ap = appendix_html(&authors);
     if !ap.is_empty() {
         blocks.push(Block {
@@ -1310,12 +1304,6 @@ fn render_internal_impl(
             cell: None,
             nested: Vec::new(),
         });
-    }
-    // The reader's code download (C-READ-2), appended last of the generated blocks so it
-    // sits after the References/footnotes a reader scrolls past. `mark_section_extents`
-    // below must still see the final block list.
-    if let Some(b) = repro::repro_block(&blocks) {
-        blocks.push(b);
     }
     // LAST over the block list: every block that will ever be in the document is in it
     // by now (References, footnotes, the title block), so a section's end is final.

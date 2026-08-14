@@ -70,9 +70,6 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 // the author wrote to be read; a cell's source is the computation behind an
                 // output, which is exactly what per-cell `echo:` already governs. The reader
                 // switch is that same axis, owned by the reader.
-                //
-                // Carries the language rather than being a bare flag, because the code
-                // download (`.tali-repro`) groups a page's cells by it.
                 let cell_attr = if is_cell {
                     format!(
                         " data-tali-cell=\"{}\"",

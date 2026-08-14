@@ -152,14 +152,15 @@ impl Block {
     /// this block itself when it is a cell. Yields nothing for ordinary prose.
     ///
     /// **ONE definition, and reading `self.cell` directly instead is the bug.** "Which cells
-    /// does this document have, in what order" is asked from six places today — the executor,
-    /// the preview's kernel-free bypass lane, the fence-language lint, the reproduce block,
-    /// the static anchor lint and the site's `has_cells` flag — and every one of them that
+    /// does this document have, in what order" is asked from five places today — the executor,
+    /// the preview's kernel-free bypass lane, the fence-language lint, the static anchor lint
+    /// and the site's `has_cells` flag — and every one of them that
     /// reads `cell` alone silently forgets each cell inside a callout or a tabset. That is
     /// the exact shape of the defect [`Block::nested`] exists to close, so it is worth one
-    /// method rather than six chances to reintroduce it. (It said seven until 2026-08-09:
+    /// method rather than five chances to reintroduce it. (It said seven until 2026-08-09:
     /// `--cell N` went with `taliesin run`, `check`'s language report with the verb in wave 9,
-    /// and the editor's freeze-cache lens with `codeLens`.)
+    /// and the editor's freeze-cache lens with `codeLens`; the reader's code download went on
+    /// 2026-08-14.)
     pub fn cell_blocks(&self) -> impl Iterator<Item = &Block> {
         self.nested
             .iter()

@@ -468,6 +468,13 @@ headings deliberately excluded).
 
 ### Decided against
 
+- **The reader's code download** (C-READ-2's code half, `render/repro.rs`): **cut 2026-08-14 on the
+  owner's call, out of scope for the MVP.** The whole feature went — the module, the `.tali-repro`
+  CSS, the search-index skip and `REPRO_BLOCK_ID` with it, plus the manual's "Running it yourself"
+  section (now a bullet in `reading.tmd`'s cut record). It worked and was well argued; it was still
+  permanent chrome on every computational page offering source the page already shows. **Do not
+  re-add it**, and note the whole of C-READ-2 is now closed (its data half was `{{< dataset >}}`,
+  itself removed 2026-08-02).
 - **"Adjacent slides bleed into the deck's letterbox" (DT-5, filed and RETRACTED 2026-07-27):**
   **false — the letterbox is empty.** The probe intersected each neighbour with the **viewport**
   instead of with its **clipping ancestor**. **Do not re-file it from a rect measurement**; the only
