@@ -3,8 +3,10 @@ title: "Extending Taliesin"
 description: "Where a new feature belongs, which two seams are meant to be extended, and what a lean core deliberately rules out."
 ---
 
-This chapter is for working *on* Taliesin: the conventions, where new code goes,
-the extension points, and the dev loop.
+This chapter is for a reader checking whether the design holds together: the
+conventions the code follows, the two seams meant to be extended without touching
+the core, how an editor gets its intelligence, and how a refactor is checked for
+byte-identical output.
 
 ## The guiding principle: a lean core
 
@@ -34,17 +36,6 @@ presentation and optional features should ride the extension points below.
   type-checks and the live-kernel suite, because those *skip silently* without
   their interpreter and the script refuses to report success unless each one really
   ran.
-
-## Where a change goes
-
-| You want to… | Touch |
-|---|---|
-| Change how a markdown element renders | `render/emit.rs` (+ `divs.rs`/`figure.rs` for those) |
-| Add a pipeline stage | `render/mod.rs` (`render_internal`), keeping it source-map-preserving |
-| Change incremental behaviour | `diff.rs` |
-| Add a site/book feature | `site/` |
-| Change code execution / the kernel | `server/exec.rs`, `server/kernel.rs` |
-| Add a client-side behaviour | a JS enhancer (below), not the core |
 
 ## The two extension points
 
@@ -102,206 +93,15 @@ window.taliEnhancers.register(function (root) {
 Ship that file and load it with a `<script defer>` from your project's `_site.yml`
 `head:`, and it is wired into the same mount cycle the built-ins use.
 
-## Editor integration: the language server and the VS Code companion
+## The editor
 
-An editor gets two independent things from Taliesin, and keeping them apart is the whole
-design.
+An editor gets everything from `taliesin lsp`, an offline kernel-free language server
+over stdio, so `cmd = { "taliesin", "lsp" }` is the entire setup in any LSP editor. The
+VS Code companion in `editor/vscode/` implements no language features of its own; it
+adds only what the protocol has no concept of, which is the preview webview and the
+source sync.
 
-### `taliesin lsp`: the language server
-
-`taliesin lsp` is a synchronous, offline, **kernel-free** LSP server over stdio
-(`crates/server/src/lsp.rs` plus
-`lsp_complete`/`lsp_nav`/`lsp_outline`/`lsp_pos`/`lsp_fold`).
-It holds open `.tmd` buffers warm and answers:
-
-| capability | what it gives the author |
-|---|---|
-| `publishDiagnostics` | every static finding, live as you type, located to the token where the validator could name one. **Coalesced**, not per-keystroke: this path runs a full render *plus* a walk of every page in the project (so a cross-page `@sec-` is not wrongly reported as broken), which is far too much to pay per keypress. Edits inside a 120 ms window collapse to one publish; `didOpen` still publishes immediately, because opening a document is one event rather than a burst |
-| `completion` | front matter (keys + values), cell options and their values, cell languages, div classes, callout kinds, div **attributes** (narrowed to the classes on the fence), cross-references, citations, shortcode names, `{{< input type= >}}`, anchor ids, math commands, and paths wherever a path is legal |
-| `hover` | a cross-reference's rendered label, a front-matter key's docs, a citation's BibTeX entry, and an include's resolved target |
-| `definition` | an include's file, an anchor's definition site, a citation's `.bib` entry |
-| `documentSymbol` | the heading outline (breadcrumbs, sticky scroll, the outline view) |
-| `codeAction` | the "did you mean `X`" quick fix, whenever the diagnostic carried a precise span |
-| `foldingRange` | front matter, each heading down to the next of equal or shallower level, `:::` divs, code fences. Without this an editor folds `.tmd` by *indentation*, which is meaningless in a format where nesting is heading level and fences |
-
-Because it is the protocol, **every LSP editor gets all of it**: `cmd = { "taliesin", "lsp" }`
-in Neovim, Helix or Zed is the entire setup. A buffer is admitted on either signal, the
-`taliesin` language id (what the VS Code companion declares) or a `.tmd` path (what every
-other editor's filetype produces), so the server is never silently inert.
-
-Two requests are **Taliesin's own**, namespaced so they can never collide with a real LSP
-method. Each exists because the protocol has no way to express what it does, and each is
-answered by the same server:
-
-| method | what it is for |
-|---|---|
-| `taliesin/cellRegions` | where the code cells are and what language each one is, so a client can route completion inside one to whoever owns that language. LSP cannot say "this range is Python, go ask Pylance" |
-| `taliesin/siteMap` | where each publishable page of a project is served: `rel` (the source path) paired with `url`. It is what makes "Preview" open at chapter 7 instead of the book's cover, and it has to be answered here because `.tmd`→`.html`, book chapter numbering, `index` handling and the draft exclusion all live in Rust — a client deriving the URL itself is the second implementation this whole rewrite existed to delete |
-
-**Every one of these answers a question; none of them writes.** Nine capabilities went on
-2026-08-08 (`documentLink`, `rename`, `formatting`, `inlayHint`, `documentHighlight`,
-`references`, `selectionRange`, `workspaceSymbol` and the `diagnostic` pull model), along with
-the `sectionEdit`, `insertEdit`, `renameFileEdits`, `projectOutline` and `projectRefs`
-extensions. The five write paths among them (formatting, rename, and the three edit-producing
-extensions) were the only places in the tool where something other than the author's own
-keystrokes rewrote a `.tmd`, and a preview that never writes beside a language server that
-sometimes does is one editing surface with two owners. The whole-book answer the pull model
-gave is `build <dir> --check-only`, from a terminal.
-
-Two more went on 2026-08-09, both read-only and both cut for the same reason: what was left
-of each was smaller than the machinery under it. `codeLens` had been reduced to a single
-**⚡ cached** label when Wave 13 cut `taliesin run` out from under its Run buttons, and it
-shipped that label as a `Command` with an empty name, which is a client-side convention
-rather than a contract. `taliesin/mathCommands` fed the companion's Insert Math Symbol
-picker, the one shape completion could not serve; math commands stay completable inside
-`$…$`, and what went with the picker is searching that table by rendered glyph. The math
-**hover** went with them, and with it the MathML-to-Unicode walk behind it — an editor-only
-surface that had been living in the render crate.
-
-Two properties are load-bearing. It is **parse-only**: no kernel is started, so answering a
-completion cannot execute a cell. And **stdout is the JSON-RPC wire**, so nothing in that
-module may print to it; all human output goes to `crate::log` on stderr.
-
-### The companion: what an LSP cannot do
-
-`editor/vscode/` is the **Taliesin Companion**, and it implements no language features of
-its own — `src/client.ts` is a thin `vscode-languageclient` over `taliesin lsp`. That was
-not always true: the same features were once re-implemented in TypeScript, shelling out to
-`taliesin`'s own CLI verbs, alongside the Rust server that already did all of it.
-Two copies of one contract with no gate between them can only drift, and they had.
-
-What is left in the extension is what the protocol has no concept of:
-
-- **The live preview + bidirectional source sync.** It spawns `taliesin preview` on a free
-  **localhost** port (the only kind the preview binds), embeds that
-  URL in a webview via `vscode.env.asExternalUri`, and runs a small **relay** HTML document
-  inside the webview to bridge the preview iframe's `postMessage` protocol to and from the
-  extension host. Forward sync (`tali-goto`) calls `revealRange` to move the editor cursor;
-  reverse sync turns a cursor move into a debounced `tali-cursor`, which the client resolves
-  with `highlightAtLine`.
-
-  **What it spawns is the project, not the buffer**, whenever the document sits under a
-  `_site.yml` (`projectRootFor`, nearest ancestor, never `.git`): one server serves the whole
-  book and the webview opens at that page's URL, so a chapter previews with its nav instead of
-  as an orphan. The URL comes from `taliesin/siteMap` — a *lookup*, never a `.tmd`→`.html`
-  rule reimplemented in TypeScript, which is the same discipline the LSP rewrite enforced.
-  (It was a `taliesin map --format json` spawn until Wave 2 cut that verb; the capability
-  moved onto the wire the client already holds open, which is where it belonged.) The registry is keyed by project root so a second chapter reveals the
-  preview it already has; anything that leaves the document without a URL (an unusable map,
-  a draft) falls back to a single-file preview rather than to no preview. Because one preview now spans many documents, forward sync anchors on the page the
-  client last reported via `tali-page`, and a cursor in another chapter sends `tali-navigate`
-  first, then the cursor.
-- **Editor commands:** *Open Preview*, *Reveal Cursor in Preview*, *Diagnose Setup*,
-  *Restart Language Server*, *Show Language Server Log*.
-- **The `.tmd` grammar, the snippets, and `language-configuration.json`** — pure manifest.
-  The last of those carries the `onEnterRules` that continue a list or blockquote on Enter,
-  keeping the marker the author chose. Ordered lists are deliberately *not* continued:
-  `appendText` is a literal and cannot count from `1.` to `2.`, and the alternative is
-  binding Enter itself to a command, which puts the most-used key in the editor behind our
-  own fall-through logic for the suggest widget, snippet placeholders and multi-cursor.
-- **`contributes.yamlValidation` for `_site.yml`**, pointing at a copy of the schema
-  `crates/core` bundles. It is a copy because the manifest needs a file inside the
-  extension, so a gate in `src/test/manifest.test.ts` fails when it drifts from
-  `crates/core/assets/schema/`. Only `_site.yml` is matched, because that is the only name
-  the site loader opens — validating `_site.yaml` would bless a file Taliesin never reads.
-- **`contributes.walkthroughs`**, the first-run experience. Every step's media path and every
-  command it links to are checked by the same manifest gate, since all of them are strings
-  that resolve at runtime and a typo would only ever be seen by a first-time user.
-- **Embedded-language completion inside a code cell** (`src/embedded.ts`). This is the one
-  language feature that *cannot* live in the server, and the reason is the protocol: LSP has
-  no way for a server to say "this range is Python, go ask Pylance". The routing has to
-  happen in the editor, against the editor's own provider registry. So the split is kept
-  honest — the server still owns the **knowledge** (`taliesin/cellRegions`, a custom request
-  answering where the cells are and what language each one is, from `lsp_cells.rs`), and the
-  extension owns only the mechanical forwarding. No fence scanning happens in TypeScript.
-
-  The mechanism is a **shadow document**, and which kind was measured rather than assumed. A
-  custom URI scheme with a `TextDocumentContentProvider` does *not* work: the built-in TS
-  server will not analyze it, and `greeting.` came back with `const, greeting, hi` — word-based
-  fallback, not IntelliSense. An **untitled** document of the right language returns the real
-  52 members including `charAt`. The shadow is the whole `.tmd` with every non-cell line
-  blanked, so positions map 1:1 with no offset arithmetic, and every cell of that language is
-  kept (not just the one under the cursor) so a later cell sees an earlier one's imports —
-  which is how Taliesin actually runs them, one warm kernel with shared state. Leading `#|`
-  option lines are excluded by the server, because they are directives rather than code and a
-  `#|` is a syntax error in JavaScript. Auto-import `additionalTextEdits` are dropped from
-  forwarded items: they are computed against the shadow, where the surrounding lines are
-  blank, so applying one would write an import into the middle of the prose.
-
-It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
-editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
-Development Host).
-
-`taliesin.path` is declared `"scope": "machine"` on purpose: it names a program the
-extension executes, so a repository's own `.vscode/settings.json` must not be able to
-redirect it.
-
-The companion **never writes back to the source**: it only navigates and highlights,
-holding the line that the `.tmd` file is the single editing surface and the preview is a
-read-only view. Editor *commands* that transform the buffer are in scope, strictly as
-`.tmd`-text transforms; preview gestures that mutate the document are not.
-
-## Recipes
-
-### Add a new cell option
-
-Cell options (`#| key: value`, `//|` for `{js}`, `%%|` for `{mermaid}`) are a **closed
-vocabulary**: any key not in the recognized set warns with a did-you-mean hint at its
-exact source line. So adding one is two steps, in order.
-
-1. **Stop the warning.** Add the key to `CELL_OPTION_KEYS` in `render/validate.rs` (a flat
-   `&[&str]`). This is the single list `validate_cell_options` checks; until the key is
-   there, every author who uses it gets `unknown cell option \`yourkey\``. The list is the
-   union across all cell languages, so a `{js}`-only option lives here too (`name`,
-   `viewof`, `input` already do).
-
-2. **Read it where cells are processed.** The key is now *allowed* but still *inert*. Two
-   places consume options depending on what the option does:
-   - **Render-time** options (presentation: `code-fold`, `code-summary`, `label`,
-     `fig-cap`) are read in the render pipeline as the cell's HTML is emitted
-     (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the code-fold
-     wrapper). Add your read there if the option only changes how the cell or its output
-     looks.
-   - **Execution-time** options (`echo`, `include`, `cache`) are read in
-     `server/exec.rs`, where each is captured onto the per-cell `CellRef` before the run
-     and consulted while planning what re-runs. Add your read there if the option changes
-     *whether or how* a cell runs.
-
-A render-only option needs no kernel and shows up immediately in `build`; an
-execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
-option with a witness in `crates/core/src/render/tests.rs`, which is where a feature
-witness belongs, and the lint will keep it from regressing into an unknown-key warning.
-
-::: {.callout-note}
-The parser only reads the **leading contiguous** `#|` block: the first non-option line
-stops option parsing. A `#|` comment further down the cell body is just code, not an
-option, so your new key has to appear at the top of the cell.
-:::
-
-## The dev loop
-
-```sh
-cargo run -p taliesin-server -- preview corpus/<doc>   # iterate on a real doc
-cargo test -p taliesin-core                            # corpus invariants + unit tests
-cargo clippy --workspace --all-targets -- -D warnings
-cd web-client && npx -y -p typescript tsc -p jsconfig.json   # type-check client.js
-```
-
-### The corpus records; it does not lead
-
-There is no exhaustive feature checklist. The contract is that the real documents
-under `corpus/` render correctly; `crates/core/tests/corpus.rs` asserts the block
-invariants across all of them.
-
-The rule used to be that each new capability shipped pinned by a corpus document added
-in the same change. That is retired, because it made the corpus circular as evidence: a
-scan of every feature against the corpus reported nothing unused, which is guaranteed by
-construction and therefore says nothing. Pointed at the documents written to be *read*,
-the same instrument reported 32 features used by nothing anywhere. **A corpus document
-now earns its place by being something a person wanted to read, or by being a golden no
-unit test can hold. A feature witness belongs in `crates/core/src/render/tests.rs`.**
-
-### Byte-identity for refactors
+## Byte-identity for refactors
 
 A pure refactor must not change the output. The standard check is to build the
 corpus before and after and `diff` the results:

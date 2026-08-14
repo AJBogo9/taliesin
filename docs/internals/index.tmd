@@ -93,19 +93,8 @@ The chapters build on each other, roughly from the outside in:
   websocket message contract that rides on it.
 - **[Code execution & the kernel](execution.tmd)** covers the warm Jupyter kernel,
   the execution plan, and the persistent output cache.
-- **[The dev server](architecture.tmd)** is the long-running process: the file watcher, the
-  websocket, and the multi-page site server.
-- **[Extending Taliesin](extending.tmd)** is the conventions for adding a feature,
-  the two seams meant to be extended, and the editor surface.
+- **[Extending Taliesin](extending.tmd)** is the conventions and the two seams meant
+  to be extended.
 
 If you read only one chapter, read [Architecture](architecture.tmd). It frames
 everything else.
-
-**Six chapters, and that is deliberate.** This book had thirteen until 2026-08-09; the
-seven that went (the repository layout, the multi-page subsystem, the data-type
-reference, the websocket protocol, the browser client, validation, and offline theming)
-were each a second, hand-maintained description of something a single file already
-states precisely. Where a chapter now points you at
-`crates/core/src/render/model.rs` or `crates/server/src/protocol.rs` instead of
-restating it, that is the trade: one description that cannot go stale, rather than two
-that can disagree.
