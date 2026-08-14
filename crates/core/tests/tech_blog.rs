@@ -330,14 +330,10 @@ fn listing_frontmatter_emits_post_cards() {
         "blog: card image-alt not emitted from post front matter"
     );
 
-    // The homepage fills its `::: {#recent-posts}` placeholder, capped at 2.
-    let home = site.render_page("index.tmd").expect("home renders");
-    assert!(
-        home.contains("id=\"recent-posts\""),
-        "home: recent-posts container missing"
-    );
-    let recent = home.matches("class=\"tali-card\"").count();
-    assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
+    // The homepage carried a second, capped `::: {#recent-posts}` listing until
+    // 2026-08-14; its hero now links straight to this page instead. An id-targeted
+    // listing and the `max-items:` cap are pinned by `an_id_listing_lands_at_its_target`
+    // and `max_items_caps_the_cards_a_listing_renders` in `site::mod`'s tests.
 }
 
 /// Regression pin for a bug found in the final review of the visual minimalism pass: task 9
@@ -776,16 +772,25 @@ fn post_pages_link_back_to_their_listing() {
         "post: backlink label is not the owning listing page's title"
     );
 
-    // A project belongs to NO single listing here: both projects.tmd AND cv.tmd (its
-    // "selected projects" section) list `contents: projects` un-capped, so the owner is
-    // genuinely ambiguous and the rule correctly skips the backlink. This pins the
-    // ambiguity guard against real corpus content, not just a synthetic fixture.
+    // A project is owned by projects.tmd alone (cv.tmd carried a second un-capped
+    // `contents: projects` listing until 2026-08-14, which made the owner ambiguous and
+    // correctly suppressed this backlink; the CV dropped its project list, so the page
+    // resolves to a single owner now). The ambiguous-owner guard itself is pinned
+    // synthetically by `no_backlink_when_two_uncapped_listings_cover_the_post`.
     let project = site
         .render_page("projects/iphone-premium-analysis/index.tmd")
         .expect("project renders");
     assert!(
-        !project.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
-        "project: ambiguous owner (Projects page + CV both list projects) → no backlink"
+        project.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+        "project: sole owner (the Projects page) should render a backlink"
+    );
+    assert!(
+        project.contains("href=\"../../projects.html\""),
+        "project: backlink not resolved to the Projects listing at the right depth"
+    );
+    assert!(
+        project.contains("</span> Projects</a>"),
+        "project: backlink label is not the owning listing page's title"
     );
 
     // Pages that belong to no listing show no backlink.

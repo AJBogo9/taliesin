@@ -2438,6 +2438,110 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A `listing:` carrying an `id:` renders its cards AT that id, not appended to the end
+    /// of the page. Two page shapes reach two different arms of `expand_page`'s target lookup
+    /// and both must place the cards before the prose that follows the target: a `::: {#id}`
+    /// container with content in it, and a bare `::: {#id}` placeholder, which emits no block
+    /// at all, so the id is the auto-slugged heading's and the cards become the block after it.
+    ///
+    /// `corpus/tech-blog/index.tmd` was the only thing in the tree exercising either arm until
+    /// it dropped its `recent-posts` listing on 2026-08-14, so this is the witness now. It pins
+    /// placement relative to the target, not which arm ran.
+    #[test]
+    fn an_id_listing_lands_at_its_target() {
+        let root = write_site(
+            "listing-id-target",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "filled.tmd",
+                    "---\ntitle: Filled\nlisting:\n  id: picks\n  contents: posts\n---\n\n## Selected\n\n::: {#picks}\nPicked by hand.\n:::\n\nTrailing paragraph.\n",
+                ),
+                (
+                    "anchored.tmd",
+                    "---\ntitle: Anchored\nlisting:\n  id: recent-posts\n  contents: posts\n---\n\n## Recent Posts\n\n::: {#recent-posts}\n:::\n\nTrailing paragraph.\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+                ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+
+        // Container shape: cards land after the container's own prose and before the page's.
+        let (filled, _) = render_page(&site, "filled.tmd");
+        let at = |hay: &str, needle: &str| -> usize {
+            hay.find(needle)
+                .unwrap_or_else(|| panic!("missing {needle:?} in: {hay}"))
+        };
+        assert!(
+            at(&filled, "id=\"picks\"") < at(&filled, "Picked by hand.")
+                && at(&filled, "Picked by hand.") < at(&filled, "class=\"tali-card\"")
+                && at(&filled, "class=\"tali-card\"") < at(&filled, "Trailing paragraph."),
+            "cards must render at the #picks target, not appended past the page: {filled}"
+        );
+
+        // Placeholder shape: an empty fenced div emits no block, so the id is the heading's
+        // and the cards follow it, still ahead of the trailing prose.
+        let (anchored, _) = render_page(&site, "anchored.tmd");
+        assert!(
+            at(&anchored, "id=\"recent-posts\"") < at(&anchored, "class=\"tali-card\"")
+                && at(&anchored, "class=\"tali-card\"") < at(&anchored, "Trailing paragraph."),
+            "cards must render at the #recent-posts anchor: {anchored}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `max-items:` caps how many cards a listing renders, keeping the newest. (What the cap
+    /// does to listing OWNERSHIP is a separate rule, pinned by
+    /// `capped_preview_does_not_own_but_full_list_does`.)
+    #[test]
+    fn max_items_caps_the_cards_a_listing_renders() {
+        let root = write_site(
+            "listing-maxitems",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "all.tmd",
+                    "---\ntitle: All\nlisting:\n  contents: posts\n---\n\n# All\n",
+                ),
+                (
+                    "recent.tmd",
+                    "---\ntitle: Recent\nlisting:\n  contents: posts\n  max-items: 2\n---\n\n# Recent\n",
+                ),
+                (
+                    "posts/oldest.tmd",
+                    "---\ntitle: Oldest\ndate: 2026-01-01\n---\n\nBody.\n",
+                ),
+                (
+                    "posts/middle.tmd",
+                    "---\ntitle: Middle\ndate: 2026-02-01\n---\n\nBody.\n",
+                ),
+                (
+                    "posts/newest.tmd",
+                    "---\ntitle: Newest\ndate: 2026-03-01\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (all, _) = render_page(&site, "all.tmd");
+        assert_eq!(
+            all.matches("class=\"tali-card\"").count(),
+            3,
+            "an uncapped listing renders every post: {all}"
+        );
+        let (recent, _) = render_page(&site, "recent.tmd");
+        assert_eq!(
+            recent.matches("class=\"tali-card\"").count(),
+            2,
+            "max-items: 2 must cap the cards: {recent}"
+        );
+        assert!(
+            recent.contains("Newest") && recent.contains("Middle") && !recent.contains("Oldest"),
+            "the cap keeps the newest two and drops the oldest: {recent}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn backlink_points_to_sole_uncapped_listing() {
         let root = write_site(
