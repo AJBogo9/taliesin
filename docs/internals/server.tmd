@@ -107,7 +107,7 @@ an unrelated save (an editor swap file, a build-output write) from triggering a 
 
 ## Why one server, not two
 
-There used to be two: `serve/mod.rs` for a single document and `serve_site/mod.rs` for a
+There used to be two: `serve/mod.rs` for one document and `serve_site/mod.rs` for a
 directory. The stated reason was simplicity — the single-doc path has no chrome, no
 cross-page links and one block state, so keeping it separate kept each one small.
 

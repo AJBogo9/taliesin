@@ -22,12 +22,15 @@ output caches that let it skip work, one in memory and one on disk:
 ```rust
 struct Executor {
     python: PathBuf,            // TALIESIN_PYTHON (default python3)
-    langs: HashMap<&'static str, LangState>,  // "python" / "r" → warm kernel + ran-list
+    langs: HashMap<&'static str, LangState>,  // "python" → warm kernel + ran-list
     freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
     no_exec: bool,              // TALIESIN_NO_EXEC / --no-exec: render cells as source
     force_next: bool,           // "Restart kernel" forces a full re-run next rebuild
 }
 ```
+
+`langs` holds one key today. It stays a `HashMap` on purpose: `{r}` was the second
+kernel language until Wave 6, and the shape is what makes a third cheap.
 
 `run(blocks)` is the entry point each rebuild calls. Its very first check is the
 `no_exec` flag: with `TALIESIN_NO_EXEC` (or `--no-exec`) set, it returns the blocks
@@ -246,7 +249,7 @@ client connections. `start()`:
 5. runs each language's **startup preambles** once against the now-warm kernel: Python
    installs the `define` Python-to-JS bridge and a matplotlib theme hook that
    restyles inline figures to follow the page (lazily, the first time a cell uses
-   matplotlib); R has none.
+   matplotlib).
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,

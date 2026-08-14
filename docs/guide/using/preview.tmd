@@ -152,9 +152,9 @@ Click it to expand a panel with the preview-only tools:
   `TALIESIN_PYTHON` or install a missing package and want a clean replay.
 - A reminder that **Ctrl-click (Cmd-click on Mac)** opens any block's source in
   your editor.
-- A **theme toggle** (light/dark), but only when the page has no theme toggle of its
-  own. A site puts one in its navbar, so the dev menu adds one only for a document
-  previewed outside any project, whose chrome has none.
+- A **theme toggle** (light/dark). It is the only theme control anywhere in
+  Taliesin and it belongs to the preview alone, so a built page never carries one:
+  what a reader sees is their own device setting.
 - The **diagnostics** list (detailed below), each entry click-to-source, with the
   button's badge tracking the count.
 - **Sections**: the shape of the document, with what is wrong inside each one (below).

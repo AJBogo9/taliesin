@@ -109,30 +109,12 @@ long-running process** (CLI, websocket, file watcher, executor, kernel pool). Th
 browser client is a thin layer that mounts blocks and applies the ops the server
 sends.
 
-### One door, two server paths
-
-There is one websocket protocol (`protocol.rs`) and one block model, but two
-servers behind them, picked by what you point `preview` at: a single `.tmd` file
-or a directory.
-
-| | Single document | Multi-page site / book |
-|---|---|---|
-| Module | `serve/mod.rs` | `serve_site/mod.rs` |
-| You ran | `preview post.tmd` | `preview ./blog` |
-| Live state | one `DocState` (the live block list) | one `PageState` **per page** (its own block list + broadcast channel), built lazily on first visit |
-| Execution | one `Executor` for the doc | an `ExecPool` of per-page executors drained by a builder worker over a job channel |
-| Kernels | one warm kernel per language | bounded warm set (`MAX_WARM_PAGES`, currently 6) by most-recently-built; an evicted page pays a cold start on its next edit |
-| A save | rebuilds the doc, diffs, pushes ops | rebuilds **only the affected page**, diffs it, pushes ops to that page's subscribers; a `_site.yml` change re-discovers the site and reloads open tabs |
-
-Both walk the same re-render → execute → diff path per document, and both speak
-the same messages (`full_render`, `update` / `insert` / `remove` / `set_meta`,
-`diagnostics`, `style`, `reload`, `error`), so the browser client cannot tell
-which target it is serving. One server handles a project and a single document
-alike (a document resolves to the project it belongs to, or becomes a project of
-itself): navigation between pages is an ordinary full page load (no SPA), and only
-the visited page keeps a warm kernel. The multi-page subsystem
-(page discovery, chrome, cross-page references) lives a layer up, in
-`crates/core/src/site/`, whose `mod.rs` header is the entry point to read.
+One server handles a project and a single document alike (a document resolves to
+the project it belongs to, or becomes a project of itself): navigation between
+pages is an ordinary full page load (no SPA), and only the visited page keeps a
+warm kernel. The multi-page subsystem (page discovery, chrome, cross-page
+references) lives a layer up, in `crates/core/src/site/`, whose `mod.rs` header is
+the entry point to read.
 
 ## The codebase map
 
@@ -157,7 +139,7 @@ flowchart TB
   subgraph server["crates/server · Taliesin (binary)"]
     direction TB
     MAIN["main.rs · CLI"]
-    SRV["serve/mod.rs<br/>single doc"]
+    SRV["serve/mod.rs<br/>shared layer"]
     SITE["serve_site/mod.rs<br/>site / book"]
     PR["protocol.rs<br/>shared ws contract"]
     EX["exec.rs · executor"]
@@ -270,7 +252,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 
 | Path | Responsibility |
 |---|---|
-| `main.rs` | CLI: the `preview` / `build` / `run` / `lsp` / `init` subcommands, plus the retired-verb register. |
+| `main.rs` | CLI: the seven subcommands (`COMMANDS`) plus the retired-verb register, which answers a cut verb with its successor rather than a did-you-mean. |
 | `protocol.rs` | The shared websocket message contract (both servers + the client), defined once so they can't drift. |
 | `serve/mod.rs` | The dev server's shared layer: HTTP/asset plumbing, port binding + the single-instance probe, the origin/`Host`/identity guards, the watch predicates, and the CLI error helpers. Not a server itself. |
 | `serve_site/mod.rs` | THE dev server (per-page `PageState`, one `ExecPool` drained by a builder worker, cross-page nav, hot reload). Bounds warm kernels to `MAX_WARM_PAGES`. |

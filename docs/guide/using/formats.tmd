@@ -138,11 +138,12 @@ listing that ever set the key asked for.
 
 ## Themes
 
-`theme:` selects the built-in `light` (default) or `dark`, a `.css`/`.scss` file,
-or an installed `_extensions/<name>/` bundle. A theme is just a `:root` block of
-CSS custom properties (`--tali-*`); the navbar, footer, callouts, diagrams, and
-code all read those variables, so one small file restyles everything and the
-light/dark toggle just swaps the values: nothing re-renders. The full list of
+`theme:` points at a `.css`/`.scss` file or an installed `_extensions/<name>/`
+bundle. There is no built-in mode name to select: both palettes ship in every
+page and the reader's device picks between them. A theme is just a `:root` block
+of CSS custom properties (`--tali-*`); the navbar, footer, callouts, diagrams, and
+code all read those variables, so one small file restyles everything and
+switching palettes just swaps the values: nothing re-renders. The full list of
 `--tali-*` variables and how to author a theme is in [Theming](theming.tmd).
 
 The `{{< include >}}` shortcode and its sibling `{{< input >}}` are

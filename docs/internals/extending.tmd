@@ -27,7 +27,7 @@ presentation and optional features should ride the extension points below.
 - **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
   `.rs`, and `.githooks/pre-push` gates any push that includes `main` on
   `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-  warnings`, `cargo test --workspace`, `build docs/guide --check-only` and
+  warnings`, `cargo test --workspace`, `build docs/{guide,internals} --check-only` and
   `tools/build-site.sh --check`. That hook is the only gate that runs
   automatically today, and it does not exist in a fresh clone. Run
   `./tools/gates.sh` for the rest — `cargo audit`, `cargo deny check`, the `tsc`
