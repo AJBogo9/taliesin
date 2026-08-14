@@ -953,6 +953,33 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
     );
 }
 
+/// Whether `line` is talking about the `theme:` key, either as prose or as a Markdown
+/// key-table row.
+///
+/// Two shapes, because a reader-facing doc names the key both ways. Prose writes the
+/// key with its colon (`theme: dark`), so a literal `theme:` substring catches that
+/// shape directly. A key-reference TABLE never does: its own key column is the bare
+/// key with no colon at all (`` | `theme` | string | ... | ``), so the substring check
+/// alone is structurally blind to exactly the row this gate most needs to see — that
+/// that blind spot is how a stale table cell in `frontmatter.tmd` (the book's own
+/// authoritative key reference) taught `theme: light`/`dark`/`default` as live values
+/// with every earlier version of this gate green. A table row is unambiguous: split on
+/// `|`, and the first non-empty cell IS the key being documented, so treating an exact
+/// (trimmed, unbackticked) `theme` there as theme context adds no prose false positive.
+fn line_theme_context(line: &str) -> bool {
+    if line.contains("theme:") {
+        return true;
+    }
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('|') {
+        return false;
+    }
+    let Some(first_cell) = trimmed.split('|').nth(1) else {
+        return false;
+    };
+    first_cell.trim().trim_matches('`') == "theme"
+}
+
 /// A reader-facing doc must not present a retired built-in mode as a value of `theme:`.
 ///
 /// This is the gate that `shipped_docs_do_not_use_a_retired_front_matter_key` cannot be:
@@ -961,8 +988,12 @@ fn reader_facing_docs_do_not_name_a_retired_subcommand() {
 /// `theme: dark` while `theming.tmd` called the same value retired, in the same book, with
 /// every gate green.
 ///
-/// Scoped to lines that mention `theme:` so that ordinary prose about a `light` or `dark`
-/// palette is untouched. Measured on 2026-08-14: two hits, both on the one stale line.
+/// Scoped to lines [`line_theme_context`] recognizes, prose or a key-table row, so
+/// ordinary prose about a `light` or `dark` palette elsewhere is untouched. Measured on
+/// 2026-08-14: two hits on the one stale prose line; widened on 2026-08-14 to also read
+/// `docs/guide/reference/frontmatter.tmd`'s own key table, which named the same three
+/// retired modes in its `theme` row and had escaped every earlier version of this gate
+/// because that row carries no literal `theme:` substring.
 #[test]
 fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
     let modes = retired_theme_modes();
@@ -976,7 +1007,7 @@ fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
     for (rel, text) in reader_facing_docs() {
         let lines: Vec<&str> = text.lines().collect();
         for (line, tok) in backticked_located(&text) {
-            if modes.contains(&tok) && lines[line - 1].contains("theme:") {
+            if modes.contains(&tok) && line_theme_context(lines[line - 1]) {
                 hits.push(format!("{rel}:{line}: `{tok}`: {}", lines[line - 1].trim()));
             }
         }
@@ -986,5 +1017,29 @@ fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
         "reader-facing doc(s) present a `theme:` value the renderer warns about (retired \
          2026-08-13; both palettes ship and the reader's device selects one):\n{}",
         hits.join("\n")
+    );
+}
+
+/// Regression pin for the exact shape that escaped every earlier version of the gate
+/// above: `docs/guide/reference/frontmatter.tmd`'s own `theme` key-table row, a
+/// backticked `` `theme` `` first cell with no colon anywhere on the line, naming
+/// retired modes as if they were still live values. Written as a literal fixture
+/// (not read from the file) so this pin stays meaningful even after the row itself is
+/// fixed.
+#[test]
+fn a_theme_key_table_row_with_no_colon_is_still_theme_context() {
+    let row = "| `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an \
+               installed `_extensions/<name>/` theme bundle. Unspecified (or any custom \
+               theme) follows the OS via `prefers-color-scheme`, falling back to light; \
+               only an explicit `light` (or `default`)/`dark` forces that mode |";
+    assert!(
+        !row.contains("theme:"),
+        "fixture must reproduce the exact defect shape: no colon anywhere on the line"
+    );
+    assert!(
+        line_theme_context(row),
+        "a key-table row whose first cell is `theme` (no colon) must count as theme \
+         context, or a stale key-table cell naming a retired mode slips past the gate \
+         again exactly as it did before"
     );
 }

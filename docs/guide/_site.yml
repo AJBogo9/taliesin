@@ -15,6 +15,7 @@ chapters:
       - using/recipes.tmd
   - part: "Reference"
     chapters:
+      - reference/cheatsheet.tmd
       - reference/frontmatter.tmd
       - reference/cell-options.tmd
       - reference/cli.tmd

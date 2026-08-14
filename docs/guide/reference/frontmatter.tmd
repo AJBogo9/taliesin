@@ -3,7 +3,7 @@ title: "Configuration reference"
 description: "Every front-matter key and every _site.yml key, in one place: the closed vocabularies behind did-you-mean, with a fully annotated example of each."
 ---
 
-*Reference: [CLI](cli.tmd) · Configuration · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+*Reference: [Cheat sheet](cheatsheet.tmd) · [CLI](cli.tmd) · Configuration · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
 Taliesin reads configuration from two places: a document's own **front matter** (the
 `---` block at the top of a `.tmd` file), and, for a site or book, the project's
@@ -57,7 +57,7 @@ or `{ file: … }` map, or a list of those.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified (or any custom theme) follows the OS via `prefers-color-scheme`, falling back to light; only an explicit `light` (or `default`)/`dark` forces that mode |
+| `theme` | string | A `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. There is no built-in mode name to set: both palettes always ship, and the reader's device picks between them via `prefers-color-scheme`. See [Theming](../using/theming.tmd) |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
 | `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`** — an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |

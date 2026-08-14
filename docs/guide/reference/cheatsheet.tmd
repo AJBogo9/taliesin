@@ -1,0 +1,98 @@
+---
+title: "Cheat sheet"
+description: "Every construct on one page: front matter, cells, divs, references and shortcodes, with a link to the chapter that explains each."
+---
+
+*Reference: Cheat sheet · [CLI](cli.tmd) · [Configuration](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
+
+Every construct taliesin supports fits in the six tables below. Anything you can
+write that is not named on this page is either plain CommonMark, which just works,
+or not something taliesin implements.
+
+## Front matter
+
+| Key | What it does | Chapter |
+|---|---|---|
+| `title:` | The document title: drives `<title>`, the title block, and social meta | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `subtitle:` | A secondary line under the title | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `author:` | A name, a list of names, or a structured list with affiliations | [Configuration reference](frontmatter.tmd#sec-authors) |
+| `date:` | Publication date; sorts a `listing:` | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `description:` | Summary for the meta description and the social-share unfurl | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `lang:` | BCP-47 language tag for `<html lang>` (default `en`) | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `categories:` | Tags for the page; feed a `listing:` card's badges | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `theme:` | A `.css`/`.scss` file path, or an installed `_extensions/<name>/` bundle; the reader's device picks the built-in palette | [Theming](../using/theming.tmd) |
+| `page-layout:` | `full` widens the content column (for a listing index); the default is the reading-width column | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `image:` | The picture on a `listing:` card and the `og:image` a shared link unfurls with | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `image-alt:` | The `alt` text for that picture; required whenever `image:` is set | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `draft:` | Holds a page out of the build; the preview still shows it, badged | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `title-block-style:` | `none` hides the visible `<h1>` title block (the title still drives `<title>`, OpenGraph, nav) | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `toc:` | Forces the table of contents on or off (automatic by default) | [Configuration reference](frontmatter.tmd#document-front-matter) |
+| `bibliography:` | A `.bib` file, enabling `[@key]` citations | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `execute:` | Document-wide cell defaults (`cache:`) | [Configuration reference](frontmatter.tmd#execute-document-wide-cell-defaults) |
+| `listing:` | Turns the page into an index: a card per document | [Configuration reference](frontmatter.tmd#listing-an-index-page) |
+| `hero:` | A landing-page banner with a headline and call-to-action buttons | [Configuration reference](frontmatter.tmd#hero-a-landing-banner) |
+
+That is every top-level front-matter key taliesin recognizes except `csl`, which is
+left off on purpose: it is recognized but not honoured (the build warns and does
+nothing), so there is no behavior to document. See [Configuration
+reference](frontmatter.tmd#document-front-matter).
+
+## Cells
+
+| Syntax | What it does | Chapter |
+|---|---|---|
+| `{python}` | Executes against a warm Jupyter kernel | [Executable content](../using/code.tmd#code-cells) |
+| `{js}` | Runs in the browser, wired into the reactive graph | [Interactive documents](../using/interactive.tmd#reactive-js-cells) |
+| `{mermaid}` | Renders a diagram client-side | [Rich writing](../using/writing.tmd#diagrams) |
+| `{=html}` | Raw HTML, emitted verbatim | [Rich writing](../using/writing.tmd#raw-html-passthrough) |
+| `#\|` | Leading cell-option prefix (most languages) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
+| `//\|` | Leading cell-option prefix (`{js}`) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
+| `%%\|` | Leading cell-option prefix (`{mermaid}`) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
+
+## Cell options
+
+| Option | What it does | Chapter |
+|---|---|---|
+| `#\| echo:` | `false` hides the source listing; the cell still runs | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| include:` | `false` hides both source and output | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| cache:` | `false` opts the cell out of the `_freeze/` cache | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| label:` | A `fig-`/`lst-`/`tbl-` name makes the output numbered and cross-referenceable | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| fig-cap:` | A caption that makes the output a numbered figure | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| lst-cap:` | A caption that makes the source a numbered listing | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| tbl-cap:` | A caption that makes the output a numbered table | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| code-fold:` | Collapses the listing into a closed (or, with `show`, open) `<details>` | [Cell-options reference](cell-options.tmd#every-option) |
+| `#\| code-summary:` | The label on a folded listing | [Cell-options reference](cell-options.tmd#every-option) |
+| `//\| name:` | Publishes a `{js}` cell's return value under this name | [Cell-options reference](cell-options.tmd#js-reactive-options) |
+| `//\| viewof:` | The cell returns a DOM input registered under this name | [Cell-options reference](cell-options.tmd#js-reactive-options) |
+| `//\| input:` | Comma-separated names this cell re-runs on | [Cell-options reference](cell-options.tmd#js-reactive-options) |
+
+## Divs
+
+| Syntax | What it does | Chapter |
+|---|---|---|
+| `::: {.callout-note}` | A blue informational callout | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.callout-tip}` | A green tip callout | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.callout-warning}` | An amber warning callout | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.column-margin}` | Floats into the right margin on a wide screen, folds into the flow on a narrow one | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
+| `::: {.column-page}` | Widens a block up to the page width | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
+| `::: {.column-screen}` | Widens a block edge to edge | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
+
+## References
+
+| Syntax | What it does | Chapter |
+|---|---|---|
+| `[@key]` | A citation, resolved against `bibliography:` | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `@fig-name` | Cross-reference to a numbered figure | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `@sec-name` | Cross-reference to a heading carrying `{#sec-name}` | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `@tbl-name` | Cross-reference to a numbered table | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `@eq-name` | Cross-reference to a numbered equation | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `@lst-name` | Cross-reference to a numbered listing | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+| `[^label]` | A footnote, rendered as a margin sidenote next to the line that cites it | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
+| `{#anchor}` | An explicit id on a heading, figure, or equation, for an `@`-reference to target | [Rich writing](../using/writing.tmd#citations-and-cross-references) |
+
+## Shortcodes
+
+| Syntax | What it does | Chapter |
+|---|---|---|
+| `{{< include path/to/partial.tmd >}}` | Splices another file's contents in before parsing | [Rich writing](../using/writing.tmd#reusing-a-partial) |
+| `{{< input name="k" type="slider" >}}` | A labelled, keyboard-accessible control (`slider`, `number`, `checkbox`, `text`, or `select`) wired into the reactive graph | [Interactive documents](../using/interactive.tmd#inputs-without-boilerplate-input) |
