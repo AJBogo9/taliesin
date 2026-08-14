@@ -1602,7 +1602,11 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
         // The sheet references a SIBLING (both live in `_assets/`), so no path prefix: a
         // `url()` resolves against the stylesheet, not the page. The preload href does the
         // opposite and is depth-adjusted per page by `asset_href`.
-        if src_name.contains("normal") {
+        //
+        // Matched by exact name, not `contains("normal")`: the mono's regular weight also
+        // contains "normal", so that scan matched either FONT_FILES entry depending on
+        // iteration order and could silently preload the wrong face.
+        if *src_name == taliesin_core::FONT_PRELOAD_NAME {
             font_preload = format!("_assets/{name}");
         }
         font_hrefs.push((src_name, name));

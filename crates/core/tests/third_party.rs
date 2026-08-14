@@ -129,7 +129,8 @@ fn the_release_tarball_carries_every_notice_it_must() {
         "THIRD_PARTY.md",
         "crates/core/assets/js/LICENSES.md",
         "crates/core/assets/katex/LICENSE",
-        "crates/core/assets/fonts/newsreader-OFL-fontsource.txt",
+        "crates/core/assets/fonts/literata-OFL-fontsource.txt",
+        "crates/core/assets/fonts/jetbrains-mono-OFL-fontsource.txt",
     ] {
         assert!(
             root.join(rel).is_file(),

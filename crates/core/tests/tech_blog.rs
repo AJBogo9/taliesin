@@ -644,11 +644,11 @@ fn site_404_page_links_the_shared_bundle_in_a_build() {
         app_js: "/_assets/app.cccc.js",
         mermaid_js: "",
         jslibs_js: "",
-        font_preload: "/_assets/newsreader-latin-wght-normal.dddd.woff2",
+        font_preload: "/_assets/literata-latin-wght-normal.dddd.woff2",
     });
     assert!(
         page.contains(
-            r#"<link rel="preload" as="font" type="font/woff2" href="/_assets/newsreader-latin-wght-normal.dddd.woff2" crossorigin>"#
+            r#"<link rel="preload" as="font" type="font/woff2" href="/_assets/literata-latin-wght-normal.dddd.woff2" crossorigin>"#
         ),
         "the body face is preloaded ahead of the sheet that would otherwise discover it"
     );

@@ -8,7 +8,14 @@
 # characters, so this is a correctness choice as much as a size one.
 #
 # Needs fontTools + brotli. fontTools is in .venv; brotli is not, so it is installed
-# into a scratch dir rather than mutating the project venv.
+# into a scratch dir rather than mutating the project venv. `.venv` itself is
+# gitignored, so a fresh clone needs one before this script can run:
+#   python3 -m venv .venv && .venv/bin/pip install --quiet fonttools
+#
+# The CDN URLs below are version-pinned (@5.2.8 for both faces, 2026-08-14): an
+# unpinned `@fontsource-variable/...` URL resolves to whatever jsDelivr serves that
+# day, which makes "rebuild from upstream" not actually reproducible. Bump the pin
+# deliberately and record the new version in THIRD_PARTY.md in the same change.
 #
 #   tools/subset-fonts.sh            # rebuild assets/fonts/ from upstream
 set -euo pipefail
@@ -31,14 +38,21 @@ sub() { # <in> <out> <layout-features>
 }
 
 CDN=https://cdn.jsdelivr.net/npm
-fetch lit.woff2      "$CDN/@fontsource-variable/literata/files/literata-latin-wght-normal.woff2"
-fetch lit-it.woff2   "$CDN/@fontsource-variable/literata/files/literata-latin-wght-italic.woff2"
-fetch jbm.woff2      "$CDN/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2"
+fetch lit.woff2      "$CDN/@fontsource-variable/literata@5.2.8/files/literata-latin-wght-normal.woff2"
+fetch lit-it.woff2   "$CDN/@fontsource-variable/literata@5.2.8/files/literata-latin-wght-italic.woff2"
+fetch jbm.woff2      "$CDN/@fontsource-variable/jetbrains-mono@5.2.8/files/jetbrains-mono-latin-wght-normal.woff2"
 
-# onum/tnum/smcp are kept: the theme sets table figures tabular and uses small caps.
-sub lit.woff2    literata-latin-wght-normal.woff2      "kern,ccmp,mark,mkmk,onum,tnum,smcp,liga"
-sub lit-it.woff2 literata-latin-wght-italic.woff2      "kern,ccmp,mark,mkmk,onum,tnum,liga"
-# NO calt, NO liga on the mono. See the header.
+# tnum is kept: the theme sets table figures tabular. rvrn is kept too: it drives the
+# GSUB FeatureVariations that substitute glyphs (e.g. `$`/`¢`) by weight, and it is on
+# by default in pyftsubset's own --layout-features list — a default our explicit list
+# below overrides, so it must be named or the substitution silently stops above ~wght
+# 600 (checked 2026-08-14 against the upstream variable font; a prior version of this
+# script also named `onum` and `smcp` here, but upstream Literata's GSUB table defines
+# neither, so requesting them was always a no-op).
+sub lit.woff2    literata-latin-wght-normal.woff2      "kern,ccmp,mark,mkmk,tnum,rvrn,liga"
+sub lit-it.woff2 literata-latin-wght-italic.woff2      "kern,ccmp,mark,mkmk,tnum,rvrn,liga"
+# NO calt, NO liga on the mono. See the header. (JetBrains Mono has no FeatureVariations
+# table at all, so rvrn is not applicable here.)
 sub jbm.woff2    jetbrains-mono-latin-wght-normal.woff2 "kern,ccmp,mark,mkmk"
 
 echo "vendored:"

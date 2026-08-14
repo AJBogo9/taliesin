@@ -15,7 +15,12 @@ The verbatim texts therefore ship beside the files they cover:
 [`crates/core/assets/js/LICENSES.md`](crates/core/assets/js/LICENSES.md) (d3, Observable
 Plot, Mermaid + the dependencies Mermaid inlines) and
 [`crates/core/assets/katex/LICENSE`](crates/core/assets/katex/LICENSE) (KaTeX).
-The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
+The fonts carry theirs too: `assets/fonts/literata-OFL-fontsource.txt` and
+`assets/fonts/jetbrains-mono-OFL-fontsource.txt`, each the exact license text bundled
+with the upstream `@fontsource-variable` package the woff2 bytes were subset from
+(OFL 1.1 §2 requires the license to accompany every copy; the vendored woff2 binaries
+carry no embedded `name[13]`/`name[14]` notice, so this file is the only copy that
+travels with them).
 
 - **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
   The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
@@ -38,12 +43,15 @@ The fonts already carried theirs (`assets/fonts/newsreader-OFL-fontsource.txt`).
   `crates/core/src/render/divs.rs`.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
-- **Literata** — SIL OFL 1.1, no Reserved Font Name.
+- **Literata** — SIL OFL 1.1, no Reserved Font Name, `@fontsource-variable/literata@5.2.8`.
   `Copyright 2017 The Literata Project Authors (https://github.com/googlefonts/literata)`
-  Subset by `tools/subset-fonts.sh`.
-- **JetBrains Mono** — SIL OFL 1.1, no Reserved Font Name.
+  Subset by `tools/subset-fonts.sh`. License text:
+  `crates/core/assets/fonts/literata-OFL-fontsource.txt`.
+- **JetBrains Mono** — SIL OFL 1.1, no Reserved Font Name,
+  `@fontsource-variable/jetbrains-mono@5.2.8`.
   `Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)`
-  Subset by `tools/subset-fonts.sh`, `calt` removed.
+  Subset by `tools/subset-fonts.sh`, `calt` removed. License text:
+  `crates/core/assets/fonts/jetbrains-mono-OFL-fontsource.txt`.
 
 The other scripts under `crates/core/assets/js/` (`mermaid.js`, `tali-js.js`, and the
 `code-enhance/` fragments) are Taliesin's own, under the project's AGPL-3.0-only license.

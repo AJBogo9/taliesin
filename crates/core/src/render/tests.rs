@@ -4225,6 +4225,17 @@ fn the_bundled_faces_are_literata_and_jetbrains_mono() {
             "fonts.css does not reference {n} in the exact form build.rs inlines"
         );
     }
+    // The other direction: disk -> CSS above only proves every file on disk is referenced.
+    // A stray `url(fonts/typo.woff2)` added to fonts.css (a name that never landed on disk,
+    // or a leftover from a rename) would pass that loop while shipping a page that fetches
+    // a font build.rs never inlines. One `@font-face` src per vendored file, no more.
+    // (Matches on `"src: url(fonts/"`, not the bare `"url(fonts/"` substring, because the
+    // file's own doc comment names that pattern in prose.)
+    assert_eq!(
+        FONTS_CSS_LINKED.matches("src: url(fonts/").count(),
+        names.len(),
+        "fonts.css references a different number of fonts than assets/fonts/ holds"
+    );
     assert!(
         !FONTS_CSS_LINKED.to_ascii_lowercase().contains("newsreader"),
         "Newsreader is retired; it must not be referenced"

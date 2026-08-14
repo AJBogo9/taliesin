@@ -1815,12 +1815,11 @@ const FONTS_CSS_LINKED: &str = include_str!("../../assets/css/fonts.css");
 /// sidecar `_assets/` directory uses these. Either way the face is self-hosted and offline:
 /// no CDN, no network at render time.
 ///
-/// Still only the body face (Literata roman + italic), unchanged in shape since the
-/// Newsreader retirement: wiring JetBrains Mono into this linked/`_assets/` path is
-/// out of scope here (see the instrument-theme plan 1 file structure table, "fonts-as-files
-/// for directory and site builds", explicitly deferred to Plan 4). Until then a multi-page
-/// `build <dir>` still emits an unresolved `url(fonts/jetbrains-mono-latin-wght-normal.woff2)`
-/// from [`fonts_css_linked`] for any caller that does not separately supply that href.
+/// All three faces, so every `url(fonts/<name>.woff2)` in [`FONTS_CSS_LINKED`] has a
+/// matching entry: emitting a stylesheet that references a file the caller never writes
+/// is a defect (a 404 in production), not a policy choice deferred to a later plan — a
+/// site build was shipping exactly that for JetBrains Mono until this was caught. See
+/// [`FONT_PRELOAD_NAME`] for which one gets the render-blocking preload.
 pub const FONT_FILES: &[(&str, &[u8])] = &[
     (
         "literata-latin-wght-normal.woff2",
@@ -1830,7 +1829,19 @@ pub const FONT_FILES: &[(&str, &[u8])] = &[
         "literata-latin-wght-italic.woff2",
         include_bytes!("../../assets/fonts/literata-latin-wght-italic.woff2"),
     ),
+    (
+        "jetbrains-mono-latin-wght-normal.woff2",
+        include_bytes!("../../assets/fonts/jetbrains-mono-latin-wght-normal.woff2"),
+    ),
 ];
+
+/// The one [`FONT_FILES`] entry that should carry a render-blocking `<link rel=preload>`:
+/// the body's roman weight, because it is what first paint needs before anything else in
+/// `--tali-font-body`'s stack resolves. Named explicitly rather than picked by a
+/// `contains("normal")` scan over [`FONT_FILES`] — the mono's filename also contains
+/// `"normal"` (its regular weight), so that scan matched either entry depending on
+/// iteration order, and a build could silently preload the wrong face.
+pub const FONT_PRELOAD_NAME: &str = "literata-latin-wght-normal.woff2";
 
 /// [`FONTS_CSS_LINKED`] with each face's `url(fonts/<name>.woff2)` rewritten to the href
 /// the caller shipped it at.

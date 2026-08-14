@@ -95,7 +95,8 @@ jobs:
           # `crates/core/tests/third_party.rs` asserts this list against the tree.
           for f in crates/core/assets/js/LICENSES.md \
                    crates/core/assets/katex/LICENSE \
-                   crates/core/assets/fonts/newsreader-OFL-fontsource.txt; do
+                   crates/core/assets/fonts/literata-OFL-fontsource.txt \
+                   crates/core/assets/fonts/jetbrains-mono-OFL-fontsource.txt; do
             mkdir -p "$stage/$(dirname "$f")"
             cp "$f" "$stage/$f"
           done
