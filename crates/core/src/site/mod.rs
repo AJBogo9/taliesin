@@ -948,7 +948,7 @@ impl Site {
         const NOT_FOUND_STYLE: &str = "\n<style>\n\
             .tali-404{min-height:60vh;display:flex;flex-direction:column;\
             align-items:center;justify-content:center;text-align:center;gap:.3rem}\n\
-            .tali-404-code{font-family:var(--tali-font-head);\
+            .tali-404-code{\
             font-size:clamp(4.5rem,20vw,9rem);font-weight:800;line-height:.9;\
             letter-spacing:-.04em;color:var(--tali-accent)}\n\
             .tali-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\

@@ -194,7 +194,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     "background:color-mix(in srgb, var(--tali-bg) 78%, transparent)",
     "color:var(--tali-fg)",
     "border:1px solid var(--tali-border-strong)",
-    "border-radius:var(--tali-radius-sm)",
+    "border-radius:var(--tali-radius)",
     "backdrop-filter:blur(4px)", "z-index:10",
   ].join(";");
 

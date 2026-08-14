@@ -161,7 +161,7 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
             "background:color-mix(in srgb, var(--tali-bg) 78%, transparent)",
             "color:var(--tali-fg)",
             "border:1px solid var(--tali-border-strong)",
-            "border-radius:var(--tali-radius-sm)",
+            "border-radius:var(--tali-radius)",
         ] {
             assert!(
                 style.contains(needle),

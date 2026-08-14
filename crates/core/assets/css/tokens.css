@@ -35,30 +35,42 @@
     --tali-callout-note: #6a7aa9; --tali-callout-tip: #288f70; --tali-callout-warning: #a2781b;
     --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
     color-scheme: light;
-    --tali-font-body: 1.125rem/1.7 "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-    --tali-font-head: ui-sans-serif, system-ui, sans-serif;
-    --tali-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-    --tali-maxw: 46rem;
-    /* Chrome bars (site navbar, book topbar, footer) span a WIDER container than the
-       ~70ch reading measure, so they don't pool dead space on wide screens. Chrome width
-       and reading measure are deliberately separate levers. */
-    --tali-chrome-maxw: 62rem;
-    /* One keyboard-focus ring for every interactive control (links, buttons, tabs,
-       reader-menu controls). One token so a theme can retune the ring once and
-       every control follows; the global rule below applies it via :focus-visible. */
+    /* TWO owned faces, and the rule that generates the whole system: the mono is the
+       MACHINE's voice, the serif is the AUTHOR's. Everything the tool says — labels,
+       figure and table numbers, table headers, callout kinds, nav, TOC, cell timings —
+       is the mono at .78rem uppercase, tracked. Everything the author wrote is Literata.
+       There is no third family and no separate heading face: headings take the body serif.
+       Consequence worth stating, because it is load-bearing in dark mode: the secondary
+       register is carried by FACE, SIZE and TRACKING, not by lightness, which is why the
+       dark muted tier can stay bright without collapsing into the body. */
+    --tali-font-body: 1.25rem/1.55 "Literata", Georgia, serif;
+    --tali-font-mono: "JetBrains Mono", ui-monospace, monospace;
+    /* The mono sits at .92em so its x-height MATCHES Literata's. Derived, not chosen:
+       0.5156 / 0.5625, both measured from the binaries 2026-08-14. Re-derive it if
+       either face changes. */
+    --tali-mono-size: .92em;
+
+    /* The measure is expressed in `em` of the BODY face and never in `ch`: `ch` is the
+       advance of the digit `0`, which overshoots real lowercase by 12-55% depending on
+       family, so the same `65ch` is 73 characters in one face and 101 in another. At
+       1.25rem this is 640px = 67 real characters (measured; see the measure gate). */
+    --tali-measure: 32em;
+    --tali-chrome-maxw: 56rem;
+
+    /* The vertical unit IS the line box: U = 1.55 x 1.25rem. Every vertical space is
+       {0.5U, U, 2U, 3U} and nothing else, replacing 39 ad-hoc rem values. This is also
+       why a 4px lattice cannot be reintroduced piecemeal: 31px is not a multiple of 4. */
+    --tali-u: 1.9375rem;
+
+    /* ONE radius, on interactive objects only (copy button, search input, kbd, focus
+       ring). Structure is square. NOTE, honestly: no experiment has ever tested
+       border-radius; this is inference from measured convention among admired
+       interfaces, and it is the weakest-evidenced number in the theme. */
+    --tali-radius: 2px;
     --tali-focus: 2px solid var(--tali-accent);
     --tali-focus-offset: 2px;
-    /* Geometry + motion scale (PL11): three roundness tiers, three page-elevation shadows
-       (each built on the per-theme --tali-edge-shadow so they adapt automatically), and two
-       motion durations. Single-sources what used to be ~13 ad-hoc border-radius, ~25 hand-
-       written box-shadow, and repeated transition-duration literals. Intentional specials
-       stay literal: 50% circles, 999px pills, em-based inline radii, the dark-overlay
-       shadows, and one-off timings. */
-    --tali-radius-sm: 4px; --tali-radius-md: 8px; --tali-radius-lg: 12px;
-    --tali-shadow-sm: 0 1px 4px var(--tali-edge-shadow);
-    --tali-shadow-md: 0 4px 18px var(--tali-edge-shadow);
-    --tali-shadow-lg: 0 8px 34px var(--tali-edge-shadow);
-    --tali-dur: .12s; --tali-dur-slow: .25s;
+    /* One duration. Hover may change an underline or a ground; it may not MOVE anything. */
+    --tali-dur: .1s;
     /* How tall one cell's output may grow before it scrolls in its own box. Roughly a
        screenful on a laptop: enough that ordinary output is never boxed at all, small enough
        that a runaway cell cannot take the page's scrollbar hostage. Lifted in print. */

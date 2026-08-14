@@ -17,7 +17,7 @@
   ::highlight(tali-search-flash) { background-color: var(--tali-search-flash); color: inherit; }
   /* Fallback for engines without the Custom Highlight API: a transient <mark> that
      fades itself out (a mark CAN be CSS-animated, unlike ::highlight). */
-  mark.tali-search-mark { color: inherit; border-radius: var(--tali-radius-sm); background-color: rgba(250, 204, 21, .5);
+  mark.tali-search-mark { color: inherit; border-radius: var(--tali-radius); background-color: rgba(250, 204, 21, .5);
     animation: tali-search-mark-fade 1.5s ease-out forwards; }
   @keyframes tali-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
   /* The same 50%-alpha yellow composites to #887219 on the dark page, leaving body text at
@@ -59,7 +59,7 @@
   .tali-sr-only, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-  body { max-width: var(--tali-maxw); margin: 2rem auto; padding: 0 1rem;
+  body { max-width: var(--tali-measure); margin: calc(2 * var(--tali-u)) auto; padding: 0 1rem;
          font: var(--tali-font-body); color: var(--tali-fg); background: var(--tali-bg);
          overflow-wrap: break-word;
          font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
@@ -67,7 +67,7 @@
   /* Comfortable prose leading, scoped to prose blocks only so headings (own optical
      line-heights), pre/code (monospace), .katex, and tables are untouched. */
   body p, body li, body dd, body blockquote, body figcaption {
-    line-height: 1.7; }
+    line-height: 1.55; }
   /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the prose leading above
      never leaks into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
      or margin notes. `inherit` restores each element's own leading. */
@@ -84,7 +84,8 @@
   /* Skip-to-content link (taliInitSkipLink): hidden until focused, then pinned top-left. */
   .tali-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
     background: var(--tali-fg); color: var(--tali-bg); padding: .5rem .8rem;
-    border-radius: var(--tali-radius-md); font: 600 .9rem var(--tali-font-head); text-decoration: none; }
+    border-radius: var(--tali-radius); font: 400 .78rem/1.3 var(--tali-font-mono);
+    text-transform: uppercase; letter-spacing: .053em; text-decoration: none; }
   .tali-skip:focus { top: .5rem; }
   /* The second skip link (to the in-page TOC) sits beside the first, not on top of it:
      both are pinned, and only one is focused at a time, but tabbing between them should
@@ -100,7 +101,7 @@
   a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
   [role="tab"]:focus-visible, input:focus-visible, select:focus-visible,
   textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible {
-    outline: var(--tali-focus); outline-offset: var(--tali-focus-offset); border-radius: var(--tali-radius-sm);
+    outline: var(--tali-focus); outline-offset: var(--tali-focus-offset); border-radius: var(--tali-radius);
   }
   /* The skip link is pinned chrome with its own box; keep its offset tight. */
   .tali-skip:focus-visible { outline: var(--tali-focus); outline-offset: 2px; }
@@ -109,8 +110,9 @@
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--tali-link); }
   /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
-  a.btn { display: inline-block; font: 500 .9rem var(--tali-font-head); text-decoration: none;
-    padding: .4rem .95rem; border-radius: var(--tali-radius-md); border: 1px solid var(--tali-accent);
+  a.btn { display: inline-block; font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+    letter-spacing: .053em; text-decoration: none;
+    padding: .4rem .95rem; border-radius: var(--tali-radius); border: 1px solid var(--tali-accent);
     color: var(--tali-link); transition: background var(--tali-dur) ease, color var(--tali-dur) ease; }
   a.btn:hover { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
   a.btn-outline-secondary { border-color: var(--tali-border-strong); color: var(--tali-muted); }
@@ -120,12 +122,12 @@
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
   a.btn-primary { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
   a.btn-primary:hover { filter: brightness(1.08); background: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  a.btn-lg { font-size: 1.02rem; padding: .62rem 1.35rem; border-radius: var(--tali-radius-md); }
+  a.btn-lg { font-size: 1.02rem; padding: .62rem 1.35rem; border-radius: var(--tali-radius); }
   /* Marketing primitives. The top hero is best authored with the `hero:` front
      matter (renders this `.hero` markup, no HTML); `::: {.hero}` / `::: {.feature-grid}`
      fenced divs cover in-body sections. Styled so a landing page needs no bespoke CSS. */
   .hero { text-align: center; padding: 3.2rem 1rem 2.4rem; }
-  .hero h1, .hero h2 { font-family: var(--tali-font-head); font-size: clamp(2rem, 6vw, 3.2rem);
+  .hero h1, .hero h2 { font-size: clamp(2rem, 6vw, 3.2rem);
     line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 .7rem; }
   .hero p, .hero .hero-lead { font-size: clamp(1.05rem, 2.4vw, 1.28rem); color: var(--tali-muted);
     max-width: 36rem; margin: 0 auto 1.5rem; line-height: 1.5; }
@@ -146,25 +148,26 @@
   .feature-grid { display: grid; gap: 1.1rem; margin: 2.2rem 0;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); }
-  .feature h3 { font-family: var(--tali-font-head); margin: 0 0 .4rem; font-size: 1.12rem; }
+    border-radius: var(--tali-radius); background: var(--tali-code-bg); }
+  .feature h3 { margin: 0 0 .4rem; font-size: 1.12rem; }
   .feature p { margin: 0; color: var(--tali-muted); font-size: .95rem; }
-  /* Intentional hand-tuned heading scale: the step ratio eases from ~1.24 (h1->h2) down to
-     ~1.11 (h5->h6), i.e. looser at display sizes and tighter as sizes shrink, rather than one
-     constant modular ratio. Paired with optical line-heights + vertical rhythm (more space
-     before a heading than after, binding it to its section). Replaces the browser-default
+  /* Heading scale on the vertical-rhythm unit (`--tali-u`, tokens.css): h1-h3 ease down in
+     size and inherit Literata (no font-family override, no third face); h4 leaves the size
+     progression entirely and switches to the machine voice (mono, uppercase, tracked) — a
+     running head at label weight, not a smaller display size. Replaces the browser-default
      sizes the headings used to fall back to. */
-  h1, h2, h3, h4, h5, h6 { font-family: var(--tali-font-head); font-weight: 600; }
+  h1, h2, h3, h4, h5, h6 { font-family: inherit; font-weight: 600; }
   /* Prose rhythm: an explicit paragraph bottom-margin (was the browser default) and a
      flat, tokenised `<hr>` (was the browser's beveled default). List margins are left to
      the UA default so a low-specificity rule can't leak into chrome nav/TOC `<li>`s;
      `.hero p`/`.feature p` etc. keep their own tighter margins by specificity. */
-  p { margin: 0 0 1.1rem; }
+  p { margin: 0 0 var(--tali-u); }
   hr { border: 0; border-top: 1px solid var(--tali-border); margin: 2rem 0; }
-  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
-  h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
-  h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }
-  h4 { font-size: 1.15rem; line-height: 1.3; margin: 1.5rem 0 .45rem; }
+  h1 { font-size: 2rem; line-height: 1.1; letter-spacing: -.008em; margin: 0 0 calc(.5 * var(--tali-u)); }
+  h2 { font-size: 1.35rem; line-height: 1.2; margin: calc(2 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
+  h3 { font-size: 1.12rem; line-height: 1.25; margin: calc(1.5 * var(--tali-u)) 0 calc(.4 * var(--tali-u)); }
+  h4 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
   /* h5/h6 keep the body colour. They used to be `--tali-muted`, which made the two
      DEEPEST headings the lowest-contrast text on the page — lighter than the body prose
      they introduce, so they read as captions rather than as structure. (All three themes
@@ -179,7 +182,8 @@
   .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--tali-muted); font-weight: 400; }
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
-    font: 14px var(--tali-font-head); color: var(--tali-muted); }
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    color: var(--tali-muted); }
   /* Structured byline (item 184). The byline is ONE flex item on the meta line, so a
      multi-author list wraps as a unit and never interleaves with the date — the names
      stay together and the separators stay with them. */
@@ -198,8 +202,8 @@
   /* The numbered list under the byline. `list-style-position: inside` + inline `<li>`s
      keeps two or three institutions on one quiet line instead of a stacked block that
      would out-weigh the title it sits under. */
-  .tali-affiliations { margin: .35rem 0 0; font: 13px/1.5 var(--tali-font-head);
-    color: var(--tali-muted); }
+  .tali-affiliations { margin: .35rem 0 0; font: 400 .78rem/1.3 var(--tali-font-mono);
+    text-transform: uppercase; letter-spacing: .053em; color: var(--tali-muted); }
   /* `list-style: none` because the number is emitted as CONTENT, not drawn by the
      marker: an inline `<li>` has no marker at all, so relying on it silently dropped
      every number while the superscripts beside the names kept referring to them. */
@@ -216,7 +220,7 @@
   .tali-appendix-part + .tali-appendix-part { margin-top: 1.25rem; }
   /* An `<h2>` for the outline (these are real sections a reader may jump to), sized down
      to the surrounding small print rather than to the document's other H2s. */
-  .tali-appendix h2 { font: 600 .95em/1.3 var(--tali-font-head); margin: 0 0 .4rem;
+  .tali-appendix h2 { font-weight: 600; font-size: .95em; line-height: 1.3; margin: 0 0 .4rem;
     color: var(--tali-fg); letter-spacing: 0; }
   .tali-appendix p { margin: 0; }
   /* Name / statement pairs. The grid keeps the names in one column so the list scans as a
@@ -229,7 +233,7 @@
     .tali-contributions { grid-template-columns: 1fr; gap: 0; }
     .tali-contributions dd { margin: 0 0 .5rem; }
   }
-  pre { position: relative; padding: 1rem; border-radius: var(--tali-radius-md); overflow: auto; font-size: .9em;
+  pre { position: relative; padding: 1rem; border-radius: var(--tali-radius); overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
            with the content and mask the edge shadows (scroll, pinned to the box)
@@ -244,7 +248,8 @@
         background-repeat: no-repeat;
         background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
         background-attachment: local, local, scroll, scroll; }
-  code { font-family: var(--tali-font-mono); }
+  pre, code { font-family: var(--tali-font-mono); font-size: var(--tali-mono-size);
+              font-feature-settings: "kern" 1; font-variant-ligatures: none; }
   /* the <pre> is the single horizontal scroll container the scroll-shadow keys off,
      so the inner <code> must not introduce its own scroll box. */
   pre > code { display: block; overflow: visible; background: transparent; padding: 0; }
@@ -260,14 +265,14 @@
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
      as code in prose instead of blending in as same-colour monospace; .875em pulls
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
-  :not(pre) > code { background: var(--tali-code-bg); padding: .1em .35em; border-radius: var(--tali-radius-sm);
+  :not(pre) > code { background: var(--tali-code-bg); padding: .1em .35em; border-radius: var(--tali-radius);
     font-size: .875em; overflow-wrap: anywhere; }
   /* Tokenised so the copy button follows every theme (light / dark) from one
      definition; DARK_CSS no longer needs a per-theme override. */
   .tali-copy { position: absolute; top: .45rem; right: .45rem;
               display: inline-flex; align-items: center; justify-content: center;
               padding: .28rem; line-height: 0; color: var(--tali-muted);
-              background: var(--tali-bg); border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius-sm);
+              background: var(--tali-bg); border: 1px solid var(--tali-border-strong); border-radius: var(--tali-radius);
               cursor: pointer;
               opacity: 0; transition: opacity var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
   .tali-copy svg { display: block; width: 14px; height: 14px; }
@@ -350,9 +355,9 @@
   th code, td code { overflow-wrap: normal; }
   table caption { caption-side: top; font-size: .9em; color: var(--tali-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--tali-border); }
-  .callout { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: var(--tali-radius-sm);
+  .callout { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: var(--tali-radius);
              margin: 1rem 0; overflow: hidden; }
-  .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
+  .callout-title { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
                    padding: .5rem .9rem; display: flex; align-items: center; gap: .45rem; }
   .callout-icon { flex: 0 0 auto; width: 1em; height: 1em; }
   .callout-body { padding: .3rem .9rem; }
@@ -376,7 +381,8 @@
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
   details.tali-code-fold > summary { cursor: pointer; color: var(--tali-muted);
-    font: 600 .85em var(--tali-font-head); padding: .15rem 0; margin-bottom: .35rem; }
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    padding: .15rem 0; margin-bottom: .35rem; }
   details.tali-code-fold > summary:hover { color: var(--tali-fg); }
   /* Themed disclosure chevron for folded code (`tali-code-fold`) and collapsible
      callouts: the browser-default triangle is small, inconsistent, and easy to
@@ -432,11 +438,12 @@
   .tali-sidenote {
     float: right; clear: right; width: 12rem;
     margin: .3rem -13.5rem 1rem 1.5rem;
-    font: 400 .82rem/1.5 var(--tali-font-head); color: var(--tali-muted); text-align: left; }
+    font-family: inherit; font-weight: 400; font-size: .82rem; line-height: 1.5;
+    color: var(--tali-muted); text-align: left; }
   .tali-sidenote-num {
     font-size: .75em; vertical-align: super; line-height: 0; margin-right: .35em;
     color: var(--tali-accent); }
-  .tali-sidenote:target { background: var(--tali-flash); border-radius: var(--tali-radius-sm); }
+  .tali-sidenote:target { background: var(--tali-flash); border-radius: var(--tali-radius); }
   /* Below the margin breakpoint there is no margin to put a note in. Collapse it and let
      the reference reveal it in place: the `<sup>` is already an `<a href="#fn-x">` and the
      note already carries `id="fn-x"`, so `:target` is the whole mechanism — no checkbox,
@@ -473,7 +480,8 @@
   .column-margin {
     float: right; clear: right; width: 12rem;
     margin: .3rem -13.5rem 1rem 1.5rem;
-    font: 400 .82rem/1.5 var(--tali-font-head); color: var(--tali-muted); text-align: left; }
+    font-family: inherit; font-weight: 400; font-size: .82rem; line-height: 1.5;
+    color: var(--tali-muted); text-align: left; }
   .column-margin > :first-child { margin-top: 0; }
   .column-margin > :last-child { margin-bottom: 0; }
   @media (max-width: 73rem) {
@@ -601,17 +609,17 @@
   .tali-error { border-left-color: var(--tali-callout-important) !important;
     background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)) !important; }
   [data-block-id] { scroll-margin-top: 1rem; }
-  [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
+  [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius); }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
      the eye (or a phone) lands on what changed. reduced-motion collapses it away. */
   @keyframes tali-flash { from { background-color: var(--tali-flash); } to { background-color: transparent; } }
-  [data-block-id].tali-flash { animation: tali-flash .8s ease-out; border-radius: var(--tali-radius-sm); }
+  [data-block-id].tali-flash { animation: tali-flash .8s ease-out; border-radius: var(--tali-radius); }
   /* single-click click-to-source feedback: the clicked block's accent outline
      fades out (a transient "you clicked here", not a persistent box). The plain
      .tali-hl above stays reserved for the editor cursor sync, which persists. */
   @keyframes tali-hl-fade { from { outline-color: var(--tali-accent); } to { outline-color: transparent; } }
   [data-block-id].tali-hl-flash { outline: 2px solid var(--tali-accent); outline-offset: 3px;
-    border-radius: var(--tali-radius-sm); animation: tali-hl-fade .7s ease-out forwards; }
+    border-radius: var(--tali-radius); animation: tali-hl-fade .7s ease-out forwards; }
   /* Inverse-search affordance: while Ctrl/Cmd is held (html.tali-srcnav) every source-mapped
      block reads as clickable (pointer), and the block a click would resolve to gets a
      dashed accent outline that tracks the mouse (.tali-src-hover, toggled in client.js).
@@ -619,15 +627,15 @@
      marks the editor-cursor sync. Outline (not border) so tracking never reflows the
      page; no animation, because continuous hover feedback must read as instantaneous. */
   html.tali-srcnav [data-block-id], html.tali-srcnav [data-tali-src] { cursor: pointer; }
-  .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius-sm); }
+  .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: var(--tali-radius); }
   figure.tali-figure { margin: 1.5rem 0; }
   figure.tali-figure img { max-width: 100%; height: auto; }
   /* A hand-written `<video>` in a figure. The `{{< video >}}` shortcode that used to
      emit its own frame was retired on 2026-08-08, so this is what a screencast is now:
      the element itself, in the same figure a picture would use. */
   figure.tali-figure video { display: block; width: 100%; height: auto;
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg);
-    background: var(--tali-code-bg); box-shadow: var(--tali-shadow-md); }
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
+    background: var(--tali-code-bg); }
   /* A `dark=` figure ships a light + dark <img> pair; show the one matching the theme.
      Figure images render inline (centred by `text-align`), so the shown variant reverts
      to inline, not block. */
@@ -673,7 +681,7 @@
   .katex-display > .katex { font-size: 1.18em; }
   /* toc layout: content beside a sticky table of contents on wide screens */
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
-                 grid-template-columns: minmax(0, var(--tali-maxw, 46rem)) 14rem; justify-content: center; }
+                 grid-template-columns: minmax(0, var(--tali-measure, 32em)) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
   /* Layout escapes inside a TOC grid. The sticky rail is CONTENT, with no background of its
      own, so an escape that centres on the page runs its text under the rail's text —
@@ -716,7 +724,7 @@
     display: block; float: none; width: auto; margin: .6rem 0;
     padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
-         font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+         font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
   /* Collapse subsection lists; the scrollspy expands only the active section's
@@ -743,7 +751,7 @@
       --tali-escape-room: 100vw;
       margin-left: calc(50% - var(--tali-escape-w) / 2);
       margin-right: calc(50% - var(--tali-escape-w) / 2); }
-    body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-maxw); gap: 0; }
+    body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-measure); gap: 0; }
     body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
@@ -793,8 +801,9 @@
   }
   /* High-contrast / forced-colors (Windows High Contrast, `prefers-contrast`). In
      forced-colors mode the UA replaces colors with the user's system palette and drops
-     box-shadows, so borders/rings/icons that relied on subtle color or shadow can
-     vanish: re-assert them via system color keywords so the chrome stays legible. */
+     any shadow-based elevation, so borders/rings/icons that relied on subtle color or
+     shadow can vanish: re-assert them via system color keywords so the chrome stays
+     legible. */
   @media (forced-colors: active) {
     /* The shared focus ring maps to the system Highlight color (the token's accent is
        ignored in forced-colors, so name a system color explicitly). */
@@ -839,7 +848,7 @@
     body.has-toc > #TOC {
       position: static !important; transform: none !important; order: -1 !important;
       max-height: none !important; overflow: visible !important; z-index: auto !important;
-      background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+      background: transparent !important; border-radius: 0 !important;
       margin: 0 0 1.5rem !important; padding: 0 0 1rem !important;
       border-bottom: 1px solid var(--tali-border) !important; }
     #TOC::before { display: none !important; }
@@ -863,7 +872,7 @@
 
 /* The kernel error box and the `{js}` error box are the same meaning, so they are the same red.
    This used to be Material Design's error red on its own pink: a second vendor red for one idea. */
-.tali-js-error { background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)); border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: var(--tali-radius-md); overflow: auto; font-size: .85em;
+.tali-js-error { background: color-mix(in srgb, var(--tali-callout-important) 12%, var(--tali-bg)); border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: var(--tali-radius); overflow: auto; font-size: .85em;
   /* it's a <pre>, so long stack-trace lines (esp. URLs) would otherwise clip at
      the box edge with no wrap and no scroll-shadow (the background shorthand
      above drops the generic pre rule's shadow). Wrap them so nothing is lost. */

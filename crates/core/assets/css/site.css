@@ -21,11 +21,10 @@
   /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
   .tali-site-nav { position: sticky; top: 0; z-index: 50;
     background: color-mix(in srgb, var(--tali-bg) 88%, transparent);
-    -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
     border-bottom: 1px solid var(--tali-border); }
   .tali-nav-inner { position: relative; max-width: var(--tali-chrome-maxw); margin: 0 auto;
     padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
-    font: 500 15px/1 var(--tali-font-head); }
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   .tali-nav-brand { color: var(--tali-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
     letter-spacing: -0.01em; white-space: nowrap; }
   .tali-nav-brand:hover { color: var(--tali-link); }
@@ -45,7 +44,7 @@
   .tali-nav-spacer { flex: 1 1 auto; }
   .tali-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
     color: var(--tali-muted); text-decoration: none; padding: .35rem .6rem;
-    border-radius: var(--tali-radius-md); white-space: nowrap;
+    border-radius: var(--tali-radius); white-space: nowrap;
     transition: color var(--tali-dur) ease, background var(--tali-dur) ease; }
   /* Reserve the bold (active) width on every item so bolding the current page's
      link never changes its width — the bar stays put across navigations. */
@@ -66,13 +65,13 @@
   /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
   .tali-search-btn { display: inline-flex; align-items: center; gap: .4rem;
     background: var(--tali-code-bg); color: var(--tali-muted);
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
     padding: .32rem .55rem; font: inherit; font-size: .9rem; line-height: 1;
     cursor: pointer; transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
   .tali-search-btn:hover { border-color: var(--tali-accent); color: var(--tali-fg); }
   .tali-search-btn svg { flex: none; }
   .tali-search-kbd { font-size: .72rem; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius-sm); padding: 0 .3rem; color: var(--tali-muted); }
+    border-radius: var(--tali-radius); padding: 0 .3rem; color: var(--tali-muted); }
   /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
@@ -83,7 +82,7 @@
      viewport at narrow widths (the ~32px horizontal overflow at 390px). Border-box
      draws the padding inside the 100%, so the column never exceeds the screen. */
   .tali-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-    max-width: var(--tali-maxw); margin: 0 auto; padding: 2rem 1rem; }
+    max-width: var(--tali-measure); margin: 0 auto; padding: 2rem 1rem; }
   .tali-site-main > main { min-width: 0; }
   /* `page-layout: full` widens the column (the blog/projects card indexes) */
   .tali-site-main.tali-wide { max-width: 60rem; }
@@ -132,14 +131,15 @@
       margin-left: calc(50% - var(--tali-escape-w) / 2);
       margin-right: calc(50% - var(--tali-escape-w) / 2); }
     /* narrow back to the reading measure, unless `page-layout: full` widened the page */
-    .tali-site-main.has-toc:not(.tali-wide) { max-width: var(--tali-maxw); }
+    .tali-site-main.has-toc:not(.tali-wide) { max-width: var(--tali-measure); }
   }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
   .tali-site-footer { flex-shrink: 0; border-top: 1px solid var(--tali-border); }
   .tali-foot-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto; padding: 1.4rem 1rem;
     display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
-    font: 14px var(--tali-font-head); color: var(--tali-muted); }
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    color: var(--tali-muted); }
   .tali-foot-left, .tali-foot-center, .tali-foot-right { display: inline-flex; align-items: center; gap: 1.1rem; }
   .tali-foot-left:empty, .tali-foot-center:empty, .tali-foot-right:empty { display: none; }
   .tali-foot-center { flex: 1 1 auto; justify-content: center; }
@@ -172,16 +172,15 @@
      would also catch the card grid and clamp it to reading width, exactly what this rule
      exists to NOT do. */
   .tali-site-main.tali-wide > main:has(.tali-listing) > :where(p, ul:not(.tali-listing), ol, blockquote) {
-    max-width: var(--tali-maxw); }
+    max-width: var(--tali-measure); }
   .tali-listing-grid { display: grid; gap: 1.25rem;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
   .tali-listing-default { display: flex; flex-direction: column; gap: 1rem; }
   .tali-card { display: flex; flex-direction: column; text-decoration: none; color: var(--tali-fg);
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius-lg); overflow: hidden; background: var(--tali-bg);
-    transition: border-color var(--tali-dur) ease, transform var(--tali-dur) ease, box-shadow var(--tali-dur) ease; }
-  /* Keyboard focus gets the same lift/border/shadow affordance as pointer hover (PA-F3). */
-  .tali-card:hover, .tali-card:focus-visible { border-color: var(--tali-accent); transform: translateY(-2px);
-    box-shadow: var(--tali-shadow-md); }
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius); overflow: hidden; background: var(--tali-bg);
+    transition: border-color var(--tali-dur) ease; }
+  /* Keyboard focus gets the same border affordance as pointer hover (PA-F3). */
+  .tali-card:hover, .tali-card:focus-visible { border-color: var(--tali-accent); }
   .tali-listing-default .tali-card { flex-direction: row; align-items: stretch; }
   .tali-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
     background: var(--tali-code-bg); }
@@ -190,23 +189,23 @@
      same slot so mixed listings stay aligned (row) and even-height (grid) instead of
      leaving a text card floating beside its imaged neighbours. */
   .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: center;
-    justify-content: center; user-select: none; font: 700 2.4rem var(--tali-font-head);
+    justify-content: center; user-select: none; font-weight: 700; font-size: 2.4rem;
     color: color-mix(in oklab, var(--tali-accent) 60%, var(--tali-muted));
-    background: linear-gradient(135deg, var(--tali-code-bg),
-      color-mix(in oklab, var(--tali-accent) 12%, var(--tali-code-bg))); }
+    background: var(--tali-code-bg); }
   .tali-listing-default .tali-card-noimg { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
   .tali-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
-  .tali-card-date { display: block; font: 600 .72rem var(--tali-font-head); color: var(--tali-muted);
-    text-transform: uppercase; letter-spacing: .04em; }
-  .tali-card-title { font: 600 1.08rem/1.25 var(--tali-font-head); margin: 0;
+  .tali-card-date { display: block; font: 400 .78rem/1.3 var(--tali-font-mono); color: var(--tali-muted);
+    text-transform: uppercase; letter-spacing: .053em; }
+  .tali-card-title { font-weight: 600; font-size: 1.08rem; line-height: 1.25; margin: 0;
     transition: color var(--tali-dur) ease; }
   /* Hovering or focusing a card tints its title to the ink accent (reinforces the border). */
   .tali-card:hover .tali-card-title, .tali-card:focus-visible .tali-card-title { color: var(--tali-link); }
   .tali-card-desc { margin: 0; font-size: .92rem; color: var(--tali-muted); line-height: 1.5; }
   .tali-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
-  .tali-cat { font: 500 .72rem var(--tali-font-head); color: var(--tali-muted);
+  .tali-cat { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    color: var(--tali-muted);
     background: var(--tali-code-bg); border: 1px solid var(--tali-border);
-    border-radius: 999px; padding: .1rem .55rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
+    border-radius: var(--tali-radius); padding: .1rem .55rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
 
   @media (max-width: 40rem) {
     .tali-listing-default .tali-card { flex-direction: column; }
@@ -225,7 +224,7 @@
     .tali-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
       flex-direction: column; align-items: stretch; gap: 0; flex: none;
       background: var(--tali-bg); border-bottom: 1px solid var(--tali-border);
-      box-shadow: var(--tali-shadow-md); padding: .35rem 0; }
+      padding: .35rem 0; }
     /* The button toggles this class (see the inline nav script); replaces the old
        `.tali-nav-toggle:checked ~ .tali-nav-links` checkbox-hack selector. */
     .tali-nav-links.tali-nav-open { display: flex; }
@@ -265,7 +264,7 @@
   }
 
 /* --- book format: ONE centred reading column; the chapter list is a summoned drawer ---
-   A book reads like a long blog post: the same ~70ch measure (`--tali-maxw`), not a three-
+   A book reads like a long blog post: the same reading measure (`--tali-measure`), not a three-
    pane rail|content|rail that dwarfs short chapters. Navigation lives in a slim sticky
    topbar + an off-canvas chapter drawer — and that drawer is a book's ONLY in-chapter
    outline (item 76, 2026-07-27): it auto-expands the current chapter and lists it to h3,
@@ -279,12 +278,12 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    box is wider than the reading column so the bar doesn't pool dead space on wide screens. */
 .tali-book-topbar { position: sticky; top: 0; z-index: 50;
   background: color-mix(in srgb, var(--tali-bg) 88%, transparent);
-  -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
   border-bottom: 1px solid var(--tali-border); }
 .tali-book-topbar-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto; padding: .45rem 1rem;
-  display: flex; align-items: center; gap: .7rem; font: 500 15px/1 var(--tali-font-head); }
+  display: flex; align-items: center; gap: .7rem; font: 400 .78rem/1.3 var(--tali-font-mono);
+  text-transform: uppercase; letter-spacing: .053em; }
 .tali-book-drawer-btn { display: inline-flex; align-items: center; gap: .45rem;
-  background: transparent; border: 1px solid var(--tali-border); border-radius: var(--tali-radius-md);
+  background: transparent; border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
   color: var(--tali-fg); cursor: pointer; padding: .35rem .6rem; font: inherit; font-size: .9rem;
   transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
 .tali-book-drawer-btn:hover { border-color: var(--tali-accent); }
@@ -299,11 +298,11 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    sits in the same place whatever its length. This USED to be a 62.5rem box holding a
    `46rem + 2.5rem gap + 14rem` grid, with the rail track reserved on every chapter (TOC or
    not) purely so the text did not jump ~132px between chapters that had a TOC and chapters
-   that did not. With the rail gone (item 76) the compromise goes with it — and the measure
-   is unchanged: border-box 62.5rem minus 2rem padding left the first track 44rem, which is
-   exactly `--tali-maxw` (46rem) minus the same padding. Only the empty track disappears. */
+   that did not. With the rail gone (item 76) the compromise goes with it, and the column
+   just takes `--tali-measure` (the same font-relative reading measure a website article
+   uses) with the same `2rem 1rem` padding. Only the empty track disappears. */
 .tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-  max-width: var(--tali-maxw); margin: 0 auto; padding: 2rem 1rem; }
+  max-width: var(--tali-measure); margin: 0 auto; padding: 2rem 1rem; }
 .tali-book-inner > main { min-width: 0; }
 /* The post-nav is a sibling after the reading column, inside the same padded box, so it
    lines up flush with the text on both edges. */
@@ -332,7 +331,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   width: min(20rem, 86vw); overflow-y: auto; overscroll-behavior: contain;
   padding: 1.4rem 1.25rem 2rem;
   background: var(--tali-bg); border-right: 1px solid var(--tali-border);
-  box-shadow: 2px 0 28px var(--tali-edge-shadow); animation: tali-book-drawer-in .16s ease; }
+  animation: tali-book-drawer-in .16s ease; }
 @keyframes tali-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .tali-book-drawer-panel { animation: none; } }
 .tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
@@ -368,7 +367,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   color: var(--tali-muted); font-size: 1.1rem; line-height: 1; padding: .15rem .35rem;
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; min-height: 24px;
-  border-radius: var(--tali-radius-md); }
+  border-radius: var(--tali-radius); }
 @media (hover: none) and (pointer: coarse) {
   .tali-book-drawer-close { min-width: 44px; min-height: 44px; }
 }
@@ -392,7 +391,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    pins measure the token, and an opacity multiplier silently defeats them. */
 .tali-chap-words { display: block; font-size: .74rem; color: var(--tali-muted);
   font-variant-numeric: tabular-nums; }
-/* No narrow-width book override: the reading column is one `--tali-maxw` box at every
+/* No narrow-width book override: the reading column is one `--tali-measure` box at every
    width, so there is no two-column grid to collapse and no reserved track to reclaim. */
 
 /* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted
@@ -423,7 +422,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   text-transform: uppercase;
   color: var(--tali-bg);
   background: var(--tali-muted);
-  border-radius: var(--tali-radius-sm);
+  border-radius: var(--tali-radius);
   padding: .05rem .35rem;
   margin-right: .4rem;
   vertical-align: middle;

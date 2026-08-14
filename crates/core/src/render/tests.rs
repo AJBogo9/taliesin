@@ -3528,6 +3528,52 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
     }
 }
 
+/// The theme owns TWO faces and no more. `--tali-font-head` was `ui-sans-serif, system-ui`
+/// with 20 reads across four files: headings and chrome rendered in whatever the reader's OS
+/// shipped, so the page had a different voice on every platform and two of its three voices
+/// were not the tool's. Headings now take the body serif; labels take the mono.
+#[test]
+fn the_theme_owns_exactly_two_faces_and_no_system_ui() {
+    for (name, css) in [
+        ("tokens.css", TOKENS_CSS),
+        ("tokens-dark.css", TOKENS_DARK_CSS),
+        ("base.css", BASE_CSS),
+        ("dark.css", DARK_CSS),
+        ("site.css", SITE_CSS),
+    ] {
+        assert!(
+            !css.contains("--tali-font-head"),
+            "{name} still reads --tali-font-head; headings take the body serif now"
+        );
+        assert!(
+            !css.contains("system-ui"),
+            "{name} still names system-ui; the theme owns its faces"
+        );
+    }
+    assert!(TOKENS_CSS.contains(r#"--tali-font-body: 1.25rem/1.55 "Literata""#));
+    assert!(TOKENS_CSS.contains(r#"--tali-font-mono: "JetBrains Mono""#));
+}
+
+/// The geometry and motion scales must describe what the sheets actually contain. The old
+/// token file advertised "three roundness tiers, three elevation shadows, two motion
+/// durations" while the sheets held three radii, ONE shadow and ONE duration.
+#[test]
+fn the_geometry_scale_is_one_radius_no_shadows_one_duration() {
+    assert_eq!(TOKENS_CSS.matches("--tali-radius").count(), 1);
+    assert!(!TOKENS_CSS.contains("--tali-shadow"));
+    assert!(!TOKENS_CSS.contains("--tali-dur-slow"));
+    for (name, css) in [("base.css", BASE_CSS), ("site.css", SITE_CSS)] {
+        assert!(
+            !css.contains("box-shadow"),
+            "{name} still draws a box-shadow"
+        );
+        assert!(
+            !css.contains("backdrop-filter"),
+            "{name} still blurs a sticky bar"
+        );
+    }
+}
+
 /// One `--tali-scrim` token single-sources the "dim behind an overlay" backdrop, which used to
 /// carry drifted black alphas per sheet. Folded to one token; no raw scrim literal survives
 /// (each literal string was unique to its own backdrop rule). PA-F2.
@@ -3554,9 +3600,11 @@ fn overlay_backdrops_share_the_scrim_token() {
     );
 }
 
-/// The motion scale is exactly two durations (`--tali-dur` / `--tali-dur-slow`); a bare `.15s`
-/// had crept in as an undocumented third value. Every `.15s` left in base.css is part of the
-/// `1.15s` peek-hint animation (an intentional special), and site.css carries none. PA-S3.
+/// The motion scale is exactly ONE duration (`--tali-dur`; `--tali-dur-slow` is gone, zero
+/// consumers). A bare `.15s` once crept in as an undocumented second value; the guard stays
+/// as a shape check, comparing `.15s` against `1.15s` so a distinct literal duration (an
+/// intentional special, not part of the scale) is never mistaken for the stray. Neither
+/// base.css nor site.css carries either today. PA-S3.
 #[test]
 fn no_stray_15s_duration_outside_the_motion_scale() {
     assert_eq!(
