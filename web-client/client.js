@@ -73,160 +73,6 @@
     wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
   };
 
-  /** The prose words of an element: code, math and equation numbers excluded, as `Words` is. */
-  const proseWords = (/** @type {?Element} */ node) => {
-    if (!node) return /** @type {string[]} */ ([]);
-    const clone = /** @type {Element} */ (node.cloneNode(true));
-    if (clone.querySelectorAll) {
-      clone.querySelectorAll("pre, .katex, .tali-eqn-number").forEach((n) => n.remove());
-    }
-    return (clone.textContent || "").toLowerCase().match(/[^\s]+/g) || [];
-  };
-
-  /**
-   * Words added and removed between two word lists, as a multiset difference.
-   * `added - removed` is always `after.length - before.length`, which is what makes the
-   * running totals add up to the document.
-   */
-  // --- section annotations ------------------------------------------------------
-  // The revision view of the document's shape: every heading with the weight of its
-  // section and the problems inside it. Deliberately NOT a heading tree for its own
-  // sake — the editor already has one from the language server
-  // (`textDocument/documentSymbol`), and a second one here would be the same list in a
-  // worse place. What the editor cannot show is what only the *rendered* page knows:
-  // how many words a section actually weighs, and which of the page's diagnostics fall
-  // inside it.
-  //
-  // The problem counts come from the diagnostics the server already pushed, never from
-  // re-deriving them here. A `data-tali-xref` marker in the DOM means "not resolved on
-  // this page", which on a site is often a perfectly good reference to another chapter —
-  // so counting markers would badge a section as broken for doing something correct.
-  // The server knows the difference (it walks the project); this only has to place its
-  // answers.
-  let sectionsEl = /** @type {HTMLElement|null} */ (null);
-  let sectionsStale = true;
-  let lastDiagnostics = /** @type {Diagnostic[]} */ ([]);
-
-  /** The heading level of an element, or 0 when it is not a heading. */
-  const headingLevel = (/** @type {Element} */ el) => {
-    const m = /^H([1-6])$/.exec(el.tagName);
-    return m ? Number(m[1]) : 0;
-  };
-
-  /** The 1-based start line of a block, or null when it has none worth trusting. */
-  const startLine = (/** @type {Element} */ el) => {
-    if (!(el instanceof HTMLElement)) return null;
-    const n = parseInt((el.dataset.sourcepos || "").split(":")[0], 10);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-
-  /**
-   * Each heading with its section's word count and the problems inside it.
-   *
-   * The section's *content* is taken as a DOM range between consecutive headings, which
-   * is exact whatever the nesting: a heading inside a `:::` div still ends the section
-   * above it, and `root.children` would not have seen it at all.
-   */
-  const collectSections = () => {
-    // The title block's `<h1>` is page furniture, not a section: the only content
-    // "inside" it is the date and the reading time, which counted as a five-word section
-    // and read as a defect in the document.
-    const headings = /** @type {HTMLElement[]} */ ([
-      ...root.querySelectorAll("h1,h2,h3,h4,h5,h6"),
-    ]).filter((h) => !h.closest(".tali-title-block"));
-    return headings.map((h, i) => {
-      const level = headingLevel(h);
-      // A section is the heading plus everything down to the next heading of the same or
-      // SHALLOWER level — the definition `lsp_outline::sections` uses for the outline and
-      // for "move section down", so the three agree. Ending at the next heading of any
-      // level instead made a chapter with subsections report `0w` for itself, which reads
-      // as a defect in the document rather than as an artefact of the count.
-      const next = headings.slice(i + 1).find((n) => headingLevel(n) <= level);
-      const range = document.createRange();
-      range.setStartAfter(h);
-      if (next) range.setEndBefore(next);
-      else range.setEnd(root, root.childNodes.length);
-      const holder = document.createElement("div");
-      holder.appendChild(range.cloneContents());
-      const words = proseWords(holder).length;
-      // `\b` around each keyword so "todos" in prose is not a marker. The author's own
-      // markers, not a lint: nothing in Rust claims TODO means anything, so nothing here
-      // pretends this is validation.
-      const todos = ((holder.textContent || "").match(/\b(TODO|FIXME)\b/g) || []).length;
-      const from = startLine(h);
-      const to = next ? startLine(next) : null; // the same boundary, so badges match words
-      const file = h.dataset.sourceFile || null;
-      // A diagnostic belongs to this section when it is in the same file and its line
-      // falls between this heading and the next. An unlocated one belongs to no section
-      // (it is about the document as a whole) and stays in the diagnostics list only.
-      const problems = lastDiagnostics.filter((d) => {
-        if (typeof d.line !== "number" || from === null) return false;
-        if ((d.file || null) !== file) return false;
-        return d.line >= from && (to === null || d.line < to);
-      });
-      // Strip screen-reader-only chrome before reading the title text, so it does not
-      // leak into the label.
-      const label = /** @type {HTMLElement} */ (h.cloneNode(true));
-      label.querySelectorAll(".tali-sr-only").forEach((n) => n.remove());
-      return {
-        el: h,
-        level,
-        title: (label.textContent || "").replace(/\s+/g, " ").trim(),
-        words,
-        todos,
-        errors: problems.filter((d) => d.level === "error").length,
-        warnings: problems.filter((d) => d.level !== "error").length,
-      };
-    });
-  };
-
-  const renderSections = () => {
-    if (!sectionsEl) return;
-    const host = sectionsEl;
-    sectionsStale = false;
-    host.textContent = "";
-    const sections = collectSections();
-    if (!sections.length) {
-      const empty = document.createElement("div");
-      empty.className = "tali-section-empty";
-      empty.textContent = "no headings yet";
-      host.appendChild(empty);
-      return;
-    }
-    const deepest = Math.min(...sections.map((s) => s.level));
-    sections.forEach((s) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "tali-section-row";
-      // Indent by level rather than by a per-level class: the tree is up to six deep and
-      // six CSS rules would say nothing this one line does not.
-      row.style.paddingLeft = 0.35 + (s.level - deepest) * 0.6 + "rem";
-      const name = document.createElement("span");
-      name.className = "tali-section-name";
-      name.textContent = s.title || "(untitled)";
-      const meta = document.createElement("span");
-      meta.className = "tali-section-meta";
-      const badges = [];
-      if (s.errors) badges.push("✗" + s.errors);
-      if (s.warnings) badges.push("⚠" + s.warnings);
-      if (s.todos) badges.push("TODO" + (s.todos > 1 ? " " + s.todos : ""));
-      badges.push(s.words.toLocaleString() + "w");
-      meta.textContent = badges.join(" · ");
-      if (s.errors) meta.dataset.taliOp = "error";
-      else if (s.warnings || s.todos) meta.dataset.taliOp = "warn";
-      row.append(name, meta);
-      row.title = "Scroll to this section";
-      // Scrolls the preview; it does not open the editor. Ctrl-clicking the heading in
-      // the page is still how you get to the source, so this row adds a way to *look*
-      // without adding a second way to navigate.
-      row.addEventListener("click", (e) => {
-        e.stopPropagation();
-        s.el.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
-      });
-      host.appendChild(row);
-    });
-  };
-
   // --- diagnostics: render/include/kernel issues the server pushes -----------
   // A small bottom-left stack, shown only when there are issues, so the author
   // sees a broken include or a missing kernel without watching the terminal.
@@ -242,18 +88,12 @@
   cellErrEl.id = "tali-cell-errors";
   cellErrEl.style.display = "none";
   let cellErrCount = 0;
-  // A third source: accessibility issues found by scanning the rendered output
-  // (missing alt text, heading skips, …). Each row jumps to the offending source.
-  const a11yEl = document.createElement("div");
-  a11yEl.id = "tali-a11y";
-  a11yEl.style.display = "none";
-  let a11yCount = 0;
 
   // Reflect the total issue count on the collapsed dev button (amber + a badge),
   // so problems are noticeable without expanding the panel.
   const refreshAlert = () => {
     const diagCount = diagEl.style.display === "none" ? 0 : diagEl.children.length;
-    const total = diagCount + cellErrCount + a11yCount;
+    const total = diagCount + cellErrCount;
     const toggle = document.getElementById("tali-dev-toggle");
     if (toggle) toggle.classList.toggle("tali-dev-alert", total > 0);
     const badge = document.getElementById("tali-dev-count");
@@ -265,11 +105,6 @@
 
   const setDiagnostics = (/** @type {Diagnostic[]=} */ items) => {
     const list = (items || []).filter(Boolean);
-    // The section annotations badge these by section, so they are kept rather than only
-    // rendered. A diagnostics-only message (no re-render) must still move the badges.
-    lastDiagnostics = list;
-    if (sectionsEl && !document.getElementById("tali-dev-panel")?.hidden) renderSections();
-    else sectionsStale = true;
     diagEl.textContent = "";
     diagEl.style.display = list.length ? "flex" : "none";
     for (const it of list) {
@@ -322,135 +157,6 @@
       });
       cellErrEl.appendChild(row);
     });
-    refreshAlert();
-  };
-
-  // --- accessibility audit of the rendered output ----------------------------
-  // A handful of high-confidence, recurring-and-invisible a11y checks run over the
-  // mounted DOM after every render. Each issue becomes a panel row; located ones
-  // (tied to a block) jump to the offending source line on click, like a server
-  // diagnostic. Cheap, advisory, and never blocks rendering.
-
-  // The source file:line of the nearest locatable ancestor of `el` (a `data-block-id`
-  // block or `data-source-file` include), or null when nothing carries a sourcepos.
-  const a11yLoc = (/** @type {Element} */ el) => {
-    const block = el.closest("[data-sourcepos], [data-block-id]");
-    if (!(block instanceof HTMLElement)) return null;
-    const m = /^(\d+):/.exec(block.dataset.sourcepos || "");
-    if (!m) return null;
-    const fileEl = el.closest("[data-source-file]");
-    const file = fileEl instanceof HTMLElement ? fileEl.dataset.sourceFile || null : null;
-    return { file, line: Number(m[1]) };
-  };
-
-  // WCAG relative-luminance contrast ratio between two `[r,g,b]` colors.
-  const contrastRatio = (/** @type {number[]} */ a, /** @type {number[]} */ b) => {
-    const lum = (/** @type {number[]} */ c) => {
-      const f = c.map((v) => {
-        const s = v / 255;
-        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-      });
-      return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
-    };
-    const l1 = lum(a), l2 = lum(b);
-    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-  };
-  const parseRgb = (/** @type {string} */ s) => {
-    const m = /rgba?\(([^)]+)\)/.exec(s);
-    if (!m) return null;
-    const p = m[1].split(",").map((x) => parseFloat(x));
-    // A fully transparent color carries no contrast signal.
-    if (p.length >= 4 && p[3] === 0) return null;
-    return [p[0], p[1], p[2]];
-  };
-  // The first opaque background walking up from `el` (defaults to white).
-  const bgColor = (/** @type {Element|null} */ el) => {
-    for (let e = el; e; e = e.parentElement) {
-      const rgb = parseRgb(getComputedStyle(e).backgroundColor);
-      if (rgb) return rgb;
-    }
-    return [255, 255, 255];
-  };
-
-  const scanA11y = () => {
-    /** @type {{message:string, file:?string, line?:number}[]} */
-    const issues = [];
-    /** @param {string} message @param {Element} [near] */
-    const add = (message, near) => {
-      const loc = near ? a11yLoc(near) : null;
-      issues.push({ message, file: loc?.file ?? null, line: loc?.line });
-    };
-    if (root) {
-      // 1. Images need an `alt` attribute (decorative images use `alt=""`).
-      let nAlt = 0;
-      for (const img of root.querySelectorAll("img:not([alt])")) {
-        if (nAlt++ < 8) add("Image is missing alt text (use alt=\"\" if decorative)", img);
-      }
-      if (nAlt > 8) add(`…and ${nAlt - 8} more images missing alt text`);
-
-      // 2. Heading levels shouldn't skip a level going deeper (h2 → h4).
-      let prev = 0;
-      for (const h of root.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
-        const lvl = Number(h.tagName[1]);
-        if (prev && lvl > prev + 1) {
-          add(`Heading level skips from h${prev} to h${lvl}`, h);
-        }
-        prev = lvl;
-      }
-
-      // 3. Links/buttons need an accessible name (text, aria-label, title, or an
-      //    alt-bearing image), or a screen reader announces nothing.
-      let nName = 0;
-      for (const el of root.querySelectorAll("a[href], button")) {
-        const named =
-          (el.textContent || "").trim() ||
-          el.getAttribute("aria-label") ||
-          el.getAttribute("title") ||
-          el.querySelector("img[alt]:not([alt=''])") ||
-          el.querySelector("svg [role='img'], svg title");
-        if (!named && nName++ < 5) {
-          add(`${el.tagName === "A" ? "Link" : "Button"} has no accessible name`, el);
-        }
-      }
-    }
-
-    // 4. The document needs a language (set on <html lang>).
-    const lang = document.documentElement.getAttribute("lang");
-    if (!lang || !lang.trim()) add("Document is missing a language (<html lang>)");
-
-    // 5. Body-text contrast should meet WCAG AA (4.5:1).
-    try {
-      const probe = root && root.querySelector("p") ? root.querySelector("p") : document.body;
-      if (probe) {
-        const fg = parseRgb(getComputedStyle(probe).color);
-        if (fg) {
-          const ratio = contrastRatio(fg, bgColor(probe));
-          if (ratio < 4.5) {
-            add(`Body text contrast ${ratio.toFixed(1)}:1 is below WCAG AA (4.5:1)`);
-          }
-        }
-      }
-    } catch (_e) {
-      /* getComputedStyle can throw in odd layouts; a contrast miss is non-fatal */
-    }
-
-    a11yCount = issues.length;
-    a11yEl.textContent = "";
-    a11yEl.style.display = issues.length ? "flex" : "none";
-    for (const it of issues) {
-      const located = typeof it.line === "number";
-      const row = document.createElement(located ? "button" : "div");
-      row.className = "tali-diag tali-diag-warning" + (located ? " tali-diag-loc" : "");
-      const msg = document.createElement("div");
-      msg.textContent = "♿ " + it.message;
-      row.appendChild(msg);
-      if (located) {
-        /** @type {HTMLButtonElement} */ (row).type = "button";
-        row.title = "Open this line in your editor";
-        row.addEventListener("click", () => gotoSource(it.file, /** @type {number} */ (it.line)));
-      }
-      a11yEl.appendChild(row);
-    }
     refreshAlert();
   };
 
@@ -569,7 +275,6 @@
       e.stopPropagation();
       panel.hidden = !panel.hidden;
       toggle.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-      if (!panel.hidden && sectionsStale) renderSections();
     });
     document.addEventListener("click", (e) => {
       if (!panel.hidden && e.target instanceof Node && !host.contains(e.target)) {
@@ -618,19 +323,7 @@
       }
     });
 
-    // Cache legibility (DX9): tie the ⚡ cached badges + the console "restored N cached
-    // cell(s)" line to how you force a re-run, right beside the button that does it.
-    const cacheHint = document.createElement("span");
-    cacheHint.id = "tali-cache-hint";
-    cacheHint.textContent = "⚡ cached cells replay instantly";
-    cacheHint.title =
-      "Cells marked ⚡ replayed from the _freeze cache without running. " +
-      "Restart kernel (above) or set TALIESIN_NO_CACHE=1 to force a fresh re-run.";
-
-    sectionsEl = document.createElement("div");
-    sectionsEl.className = "tali-dev-sections";
-
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint), devRow("Sections", document.createElement("span")), sectionsEl);
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
 
     // Draft pages (preview only): a count that expands to click-to-open links. The server
     // sets window.TALIESIN_DRAFTS on site previews; absent/empty on single-doc + builds.
@@ -661,8 +354,8 @@
       if (window.taliWireThemeToggles) window.taliWireThemeToggles();
     }
 
-    // Diagnostics, per-cell errors, and a11y findings all live inside the panel.
-    panel.append(diagEl, cellErrEl, a11yEl);
+    // Diagnostics and per-cell errors both live inside the panel.
+    panel.append(diagEl, cellErrEl);
     host.append(toggle, panel);
 
     setStatus("connecting…");
@@ -772,7 +465,7 @@
     }
   }
 
-  // --- progress chip: idle/busy dot, k/N bar, click-to-scroll, tab-title/favicon ---
+  // --- progress chip: idle/busy dot, k/N bar, click-to-scroll, tab title ---
   var progressEl = /** @type {HTMLElement|null} */ (null);
   var buildStartMs = /** @type {number|null} */ (null); // set on first non-idle build-state
   var warmStartMs = /** @type {number|null} */ (null); // set at first warming-kernel of a build
@@ -789,33 +482,6 @@
   function setPageTitle(/** @type {string|null|undefined} */ t) {
     baseTitle = t || "Taliesin";
     document.title = baseTitle;
-  }
-
-  // Canvas-drawn favicon: a coloured dot superimposed on the base favicon SVG.
-  // Swapped in while busy/error; the link[rel=icon] href is restored on idle.
-  var origFavicon = /** @type {string|null} */ (null); // original href, captured once
-  function setFaviconDot(/** @type {string|null} */ color) {
-    var link = /** @type {HTMLLinkElement|null} */ (document.querySelector("link[rel~='icon']"));
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    if (origFavicon === null) origFavicon = link.href; // capture once
-    if (!color) { link.href = origFavicon || ""; return; } // restore on idle
-    try {
-      var c = document.createElement("canvas");
-      c.width = 32; c.height = 32;
-      var ctx = c.getContext("2d");
-      if (!ctx) return;
-      // Draw the dot (bottom-right quadrant, radius 7, with a 1.5px white ring)
-      ctx.clearRect(0, 0, 32, 32);
-      ctx.beginPath(); ctx.arc(24, 24, 8.5, 0, 2 * Math.PI);
-      ctx.fillStyle = "#fff"; ctx.fill();
-      ctx.beginPath(); ctx.arc(24, 24, 7, 0, 2 * Math.PI);
-      ctx.fillStyle = color; ctx.fill();
-      link.href = c.toDataURL("image/png");
-    } catch (_e) { /* canvas blocked (CSP / non-browser env) */ }
   }
 
   function ensureProgress() {
@@ -858,9 +524,8 @@
         "<span class=\"tali-prog-label\">Up to date" + elapsedTxt + "</span>";
       el.setAttribute("data-state", "idle");
       el.removeAttribute("title");
-      // Restore tab title and favicon
+      // Restore the tab title
       document.title = baseTitle;
-      setFaviconDot(null);
       return;
     }
     // A fresh build starting: clear any latched error so the chip can recover, and
@@ -879,7 +544,6 @@
       el.setAttribute("data-state", "error");
       el.title = "Click to scroll to erroring cell";
       document.title = "⚠ error — " + baseTitle;
-      setFaviconDot("#e5534b");
       return;
     }
     // warming-kernel: a distinct, timed phase — "Starting <lang> kernel… (Ns)". No
@@ -895,7 +559,6 @@
       el.setAttribute("data-state", "warming");
       el.title = "Starting kernel…";
       document.title = "● starting kernel… — " + baseTitle;
-      setFaviconDot("#d9a23a");
       return;
     }
     // executing: show dot + k/N text + mini bar.
@@ -913,10 +576,6 @@
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
     document.title = "● building… — " + baseTitle;
-    // Canvas fillStyle can't consume var(...) directly, so resolve the liveness
-    // token (same one the CSS busy-dot/progress-fill use) to its live value.
-    var busyColor = getComputedStyle(document.documentElement).getPropertyValue("--tali-fg").trim();
-    setFaviconDot(busyColor || "#000");
   }
 
   // Render the warm-up chip: a dot + "Starting <lang> kernel… (Ns)". The lang and
@@ -1125,18 +784,13 @@
     buildToc();
     if (window.taliInitTocSpy) window.taliInitTocSpy(); // re-collect against the fresh nav
     updateWordCount();
-    // Recomputed only when someone is looking: the section walk clones a DOM range per
-    // heading, and afterChange is already the O(document) part of the save hot path.
-    sectionsStale = true;
-    if (sectionsEl && !document.getElementById("tali-dev-panel")?.hidden) renderSections();
     if (window.taliEnhanceCode) window.taliEnhanceCode(root);
     scanCellErrors();
-    scanA11y();
   };
 
   // A single save emits a BURST of block ops (each its own websocket message).
   // afterChange() is entirely O(document) derived-UI recompute (TOC + scrollspy +
-  // word count deep-clones #tali-root + a11y/code scans), so running it per op was an
+  // word count deep-clones #tali-root, code scan), so running it per op was an
   // O(ops × doc) cliff on the save hot path. Coalesce the burst into ONE afterChange on
   // the next animation frame — every op in the frame has applied by then.
   let afterChangeRAF = 0;

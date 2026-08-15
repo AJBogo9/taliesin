@@ -3737,6 +3737,89 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// Spec §8's five dev-menu deletions, gated on the two files that render the dev UI.
+///
+/// Each had its own reason and none of them is style: the section-annotations panel duplicated
+/// three of its four columns three rows above itself; the "Cache" row was static prose; the
+/// "Sections" row was a label with an empty `<span>` for a value; the client-side a11y scanner
+/// duplicated the server, re-implemented the accessible-name check wave 9 deliberately cut,
+/// double-counted its own findings into the alert badge, and rendered unstyled because every
+/// `.tali-diag` rule is scoped to a different id; and the canvas favicon dot drew a coloured
+/// circle nobody asked for over a mark spec §7 had just made deliberate.
+#[test]
+fn the_dev_menu_lost_the_five_panels_spec_8_deletes() {
+    let root = repo_root();
+    let client = std::fs::read_to_string(root.join("web-client/client.js")).expect("client.js");
+    let serve =
+        std::fs::read_to_string(root.join("crates/server/src/serve/mod.rs")).expect("serve/mod.rs");
+
+    for (needle, why) in [
+        (
+            "collectSections",
+            "the section-annotations panel is deleted",
+        ),
+        ("renderSections", "the section-annotations panel is deleted"),
+        ("sectionsEl", "the section-annotations panel is deleted"),
+        (
+            "scanA11y",
+            "the client-side a11y scanner duplicated the server",
+        ),
+        (
+            "a11yCount",
+            "the a11y scanner double-counted into the alert badge",
+        ),
+        (
+            "contrastRatio",
+            "runtime contrast re-derived what the token gates already score",
+        ),
+        ("setFaviconDot", "the canvas favicon dot is deleted"),
+        ("tali-cache-hint", "the static Cache prose row is deleted"),
+        (
+            "devRow(\"Sections\"",
+            "the Sections row was a label with an empty value",
+        ),
+    ] {
+        assert!(
+            !client.contains(needle),
+            "client.js still has `{needle}`: {why}"
+        );
+    }
+    // The CSS for a deleted panel is deleted in the same commit, or it becomes a rule set
+    // nothing can reach and the next reader restyles it.
+    for (needle, why) in [
+        (
+            "tali-dev-sections",
+            "the section panel's rules go with the panel",
+        ),
+        (
+            "tali-section-row",
+            "the section panel's rules go with the panel",
+        ),
+        (
+            "tali-section-meta",
+            "the section panel's rules go with the panel",
+        ),
+        (
+            "tali-section-empty",
+            "the section panel's rules go with the panel",
+        ),
+    ] {
+        assert!(
+            !serve.contains(needle),
+            "STATUS_CSS still styles `{needle}`: {why}"
+        );
+    }
+    // `♿` is the one emoji that lived ONLY in a panel this commit deletes. `✗` and `⚠` do
+    // not: they also badge the diagnostic and cell-error rows, which survive — so they leave
+    // with the machine-voice sweep rather than with the panels, and the gate for that is the
+    // one next door. Ruling R7 draws the seam; this assertion is where it was checked, and
+    // the first draft of it got the seam wrong.
+    assert!(
+        !client.contains('♿'),
+        "`♿` lived only in the a11y scanner this commit deletes"
+    );
+}
+
 /// Every `.tmd` under `dir`, skipping committed build output (`_site/`, `_book/`) and the
 /// freeze cache.
 #[cfg(test)]

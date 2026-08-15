@@ -67,7 +67,10 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-drawer-close",
     "data-tali-input",
     "data-tali-input-bound",
-    "data-tali-op",
+    // `data-tali-op` went on 2026-08-15 with the dev menu's section-annotations panel
+    // (spec §8): the panel's own `renderSections` was the only thing that set it and
+    // STATUS_CSS's `.tali-section-meta[data-tali-op=…]` the only thing that read it. No Rust
+    // emitter ever wrote it, so nothing is left unguarded by its removal — checked, not assumed.
     "data-tali-out",
     "data-tali-ran",
     "data-tali-search",

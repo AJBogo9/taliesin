@@ -398,19 +398,6 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted, #888); } \
     .tali-dev-row .tali-dev-label { font-weight: 600; } \
     #tali-wordcount { font-variant-numeric: tabular-nums; } \
-    .tali-dev-sections { display: flex; flex-direction: column; gap: .1rem; max-width: 22rem; \
-      max-height: 14rem; overflow-y: auto; } \
-    .tali-dev-sections .tali-section-row { display: flex; gap: .5rem; justify-content: space-between; \
-      width: 100%; text-align: left; font: inherit; font-size: 12px; line-height: 1.35; \
-      cursor: pointer; background: none; border: 0; padding: .1rem .35rem; \
-      color: var(--tali-muted, #888); } \
-    .tali-dev-sections .tali-section-row:hover { color: var(--tali-fg, #111); \
-      background: var(--tali-code-bg, #f5f5f5); border-radius: 4px; } \
-    .tali-dev-sections .tali-section-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
-    .tali-dev-sections .tali-section-meta { flex: none; font-variant-numeric: tabular-nums; } \
-    .tali-dev-sections .tali-section-meta[data-tali-op=\"warn\"] { color: #d9a23a; } \
-    .tali-dev-sections .tali-section-meta[data-tali-op=\"error\"] { color: #e5534b; } \
-    .tali-dev-sections .tali-section-empty { padding: .1rem .35rem; color: var(--tali-muted, #888); font-size: 12px; } \
     .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
     .tali-dev-drafts a { color: var(--tali-fg); text-decoration: none; font-size: 12px; } \
     .tali-dev-drafts a:hover { text-decoration: underline; } \
