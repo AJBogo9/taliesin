@@ -3576,7 +3576,8 @@ fn repo_root() -> std::path::PathBuf {
 /// **The file list is the point.** This test used to scan the five bundled stylesheets, which
 /// is exactly the set where the doctrine had already been applied — so it passed while
 /// `#4c8dff` and `#4c6ef5` shipped in both favicons, the VS Code icon, the dev-menu CSS and
-/// nine demo documents. A ban that only looks where you already cleaned is not a ban.
+/// demo documents that plotted with it. A ban that only looks where you already cleaned is not
+/// a ban.
 #[test]
 fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     const BANNED: &[(&str, &str)] = &[
@@ -3590,9 +3591,35 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
         ("#b00020", "Material Design's error red"),
         ("#0645ad", "the old print link blue"),
         ("#9aa0aa", "the retired dark-mode muted"),
+        ("#e0a800", "the old callout warning amber"),
+        ("#e0566b", "the old callout important red"),
+        ("#e8730c", "the old callout caution orange"),
     ];
+
+    // The dev UI's own status colours are a bounded exemption, not an oversight. `running` /
+    // `done` / `error` / `warming` is a closed semantic set; collapsing `done` or `warming` onto
+    // `--tali-fg` the way this test already forced for the `running`/busy indicator would erase
+    // a distinction the dev UI depends on. Full status-token work belongs to Plan 3. Until it
+    // lands, these three literals may appear ONLY on the dev UI's own colour surface — the two
+    // files that render it: `serve/mod.rs`'s Rust-embedded CSS and `client.js`'s canvas-drawn
+    // favicon dot. `#d9a23a` living in both is not a leak: it is one status rendered by the two
+    // halves of a single surface, exactly like `#4c8dff`'s busy-dot before this test's fix.
+    // Anywhere else — a bundled stylesheet, either favicon, the VS Code icon, `search.js` — the
+    // ban still fires.
+    //
+    // **If you just gave these status colours real tokens, delete this exemption in the same
+    // commit.** That is what it is for: an exemption nobody ever removes is how the gap this
+    // test exists to close quietly reopens.
+    const DEV_UI_STATUS_EXEMPT: &[(&str, &str)] = &[
+        ("#2bb673", "the dev UI's `done` cell-state colour"),
+        ("#cc3333", "the dev UI's `error` cell-state colour"),
+        ("#d9a23a", "the dev UI's `warming` status colour"),
+    ];
+    const DEV_UI_SURFACE: &[&str] = &["crates/server/src/serve/mod.rs", "web-client/client.js"];
+
     let root = repo_root();
     let mut checked = 0usize;
+    let mut exempt_seen = [false; DEV_UI_STATUS_EXEMPT.len()];
     for rel in [
         "crates/core/assets/css/tokens.css",
         "crates/core/assets/css/tokens-dark.css",
@@ -3616,9 +3643,27 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
                 "{rel} still ships {hex} ({what}); route it through the token layer"
             );
         }
+        let on_dev_ui_surface = DEV_UI_SURFACE.contains(&rel);
+        for (i, (hex, what)) in DEV_UI_STATUS_EXEMPT.iter().enumerate() {
+            if text.contains(hex) {
+                assert!(
+                    on_dev_ui_surface,
+                    "{rel} ships {hex} ({what}), which is exempt only on the dev UI's own \
+                     surface (serve/mod.rs + client.js); route it through the token layer"
+                );
+                exempt_seen[i] = true;
+            }
+        }
         checked += 1;
     }
     assert_eq!(checked, 11, "a file dropped out of the vendor-colour sweep");
+    for (i, (hex, what)) in DEV_UI_STATUS_EXEMPT.iter().enumerate() {
+        assert!(
+            exempt_seen[i],
+            "{hex} ({what}) is no longer used anywhere on the dev UI's exempt surface — if you \
+             just gave it a real token, delete this exemption instead of leaving it stale"
+        );
+    }
 }
 
 /// The syntax palette is OWNED. Four hues in one warm-anchored chroma envelope, mapped onto
