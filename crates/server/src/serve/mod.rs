@@ -374,17 +374,35 @@ fn hex_val(b: u8) -> Option<u8> {
 }
 
 pub(crate) const STATUS_CSS: &str = "\
+    /* The preview dev UI, on the theme's own mono at the machine voice's size. \
+\
+       The FACE and the SIZE are on the container; the uppercase and the tracking are NOT, \
+       and that split is spec §4's rule rather than a preference. Two things in here are not \
+       generated labels: a diagnostic MESSAGE is a sentence (tracked uppercase turns it into \
+       shouting, which is the same correction §4 records for captions reading as terminal \
+       output), and `.tali-dev-drafts a` holds a draft page's `title:` — the AUTHOR's own \
+       words, which take the serif and no tracking at all. The voice attaches to the labels \
+       below, one at a time. */ \
     #tali-controls.tali-dev { position: fixed; bottom: .6rem; left: .6rem; z-index: 9999; \
-      font: 12px ui-sans-serif, system-ui, sans-serif; } \
+      font: 400 .78rem/1.4 var(--tali-font-mono); } \
+    .tali-dev-row .tali-dev-label, .tali-dev-count, .tali-cell-badge, .tali-diag-kind { \
+      text-transform: uppercase; letter-spacing: .053em; } \
+    /* The kind as a word. It replaced a `✗ `/`⚠ ` prefix, and it is load-bearing rather \
+       than ornamental: without it the only thing separating an error row from a warning \
+       row is the colour of its left rule, which is colour as the sole cue (WCAG 1.4.1). */ \
+    .tali-diag-kind { display: block; font-size: .72rem; color: var(--tali-muted); \
+      margin-bottom: .15rem; } \
+    .tali-diag-error .tali-diag-kind { color: var(--tali-status-error); } \
+    .tali-diag-warning .tali-diag-kind { color: var(--tali-status-warn); } \
     .tali-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
       background: var(--tali-bg); color: var(--tali-muted); \
-      border: 1px solid var(--tali-border); border-radius: 999px; padding: .25rem .6rem; \
-      box-shadow: 0 1px 6px rgba(0,0,0,.12); } \
+      border: 1px solid var(--tali-border); border-radius: var(--tali-radius); padding: .25rem .6rem; } \
     .tali-dev-toggle:hover { color: var(--tali-fg); } \
     .tali-dev-toggle.tali-dev-alert { border-color: var(--tali-status-warn); color: var(--tali-status-warn); } \
-    .tali-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
-    .tali-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: var(--tali-status-warn); color: var(--tali-bg); \
-      font-weight: 700; font-size: 11px; line-height: 1.3; text-align: center; } \
+    .tali-dev-glyph { letter-spacing: -1px; text-transform: none; } \
+    .tali-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: var(--tali-radius); \
+      background: var(--tali-status-warn); color: var(--tali-bg); \
+      font-size: 11px; line-height: 1.3; text-align: center; } \
     .tali-dev-count[hidden] { display: none; } \
     .tali-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tali-muted); flex: none; } \
     .tali-dev-dot[data-state=\"live\"] { background: var(--tali-status-live); } \
@@ -393,45 +411,59 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-panel { position: absolute; bottom: calc(100% + .45rem); left: 0; min-width: 13rem; \
       display: flex; flex-direction: column; gap: .5rem; padding: .65rem; \
       background: var(--tali-bg); color: var(--tali-fg); \
-      border: 1px solid var(--tali-border); border-radius: 9px; box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
+      border: 1px solid var(--tali-border); border-radius: var(--tali-radius); } \
     .tali-dev-panel[hidden] { display: none; } \
     .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted); } \
-    .tali-dev-row .tali-dev-label { font-weight: 600; } \
+    .tali-dev-row .tali-dev-label { color: var(--tali-fg); } \
     #tali-wordcount { font-variant-numeric: tabular-nums; } \
     .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
-    .tali-dev-drafts a { color: var(--tali-fg); text-decoration: none; font-size: 12px; } \
+    /* A draft's `title:` is the AUTHOR's own words inside the tool's own panel, so it \
+       takes the serif and no tracking — spec §4's rule, and the reason the voice is on the \
+       labels above rather than on the container. */ \
+    .tali-dev-drafts a { color: var(--tali-fg); text-decoration: none; \
+      font: var(--tali-font-body); font-size: .82rem; letter-spacing: normal; } \
     .tali-dev-drafts a:hover { text-decoration: underline; } \
     .tali-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
-      background: var(--tali-code-bg); color: var(--tali-fg); \
-      border: 1px solid var(--tali-border); border-radius: 6px; padding: .3rem .55rem; } \
+      font: inherit; background: var(--tali-code-bg); color: var(--tali-fg); \
+      border: 1px solid var(--tali-border); border-radius: var(--tali-radius); padding: .3rem .55rem; } \
     .tali-dev-ctl:hover { border-color: var(--tali-fg); } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
-    #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg); \
+    #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: var(--tali-radius); background: var(--tali-code-bg); \
       border: 1px solid var(--tali-border); line-height: 1.35; } \
-    #tali-diagnostics .tali-diag-error { border-left: 3px solid var(--tali-status-error); } \
-    #tali-diagnostics .tali-diag-warning { border-left: 3px solid var(--tali-status-warn); } \
+    #tali-diagnostics .tali-diag-error { border-left: 2px solid var(--tali-status-error); } \
+    #tali-diagnostics .tali-diag-warning { border-left: 2px solid var(--tali-status-warn); } \
     #tali-diagnostics .tali-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
     #tali-diagnostics .tali-diag-loc:hover { border-color: var(--tali-fg); } \
-    #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--tali-muted); font-size: 11px; } \
-    #tali-diagnostics .tali-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
-      background: var(--tali-bg); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
+    /* The one glyph left in the dev chrome, and it is a `content` string rather than an \
+       emoji: U+2192. The vendored mono subset does not carry it, so it falls back to a \
+       system mono for this arrow alone until Plan 4 re-vendors the face. Deliberate, not an \
+       oversight — the alternative is the word `source` twice. */ \
+    #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--tali-muted); } \
+    #tali-diagnostics .tali-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: var(--tali-radius); overflow-x: auto; \
+      background: var(--tali-bg); white-space: pre; font: 11px/1.45 var(--tali-font-mono); } \
     #tali-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
-    .tali-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
+    .tali-cellerr { text-align: left; cursor: pointer; font: inherit; \
       color: var(--tali-fg); background: var(--tali-code-bg); border: 1px solid var(--tali-border); \
-      border-left: 3px solid var(--tali-status-error); border-radius: 6px; padding: .3rem .5rem; \
+      border-left: 2px solid var(--tali-status-error); border-radius: var(--tali-radius); padding: .3rem .5rem; \
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
     .tali-cellerr:hover { border-color: var(--tali-status-error); } \
+    /* The progress chip is appended to `document.body`, NOT inside `#tali-controls`, so it \
+       cannot inherit the machine voice from the rule at the top of this sheet — it would \
+       inherit the page's serif instead. Written out for that reason. */ \
     #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
-      font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
+      font: 400 .78rem/1.4 var(--tali-font-mono); \
+      padding: 5px 10px; border-radius: var(--tali-radius); \
       background: var(--tali-bg); color: var(--tali-fg); \
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent); \
-      box-shadow: 0 1px 6px rgba(0,0,0,.10); cursor: default; user-select: none; } \
+      cursor: default; user-select: none; } \
     #tali-progress[data-state=\"busy\"] { cursor: pointer; } \
     #tali-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, var(--tali-status-warn) 55%, transparent); } \
     #tali-progress[data-state=\"error\"] { cursor: pointer; border-color: var(--tali-status-error); } \
-    #tali-progress[data-state=\"idle\"] { opacity: .65; } \
+    /* An idle chip is quiet by COLOUR, not by `opacity`: spec §3 bans opacity as text \
+       dimming outright, because it is a colour nobody chose and nothing scores. */ \
+    #tali-progress[data-state=\"idle\"] { color: var(--tali-muted); } \
     .tali-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
       background: var(--tali-muted); } \
     #tali-progress[data-state=\"busy\"] .tali-prog-dot { background: var(--tali-fg); } \
@@ -445,18 +477,23 @@ pub(crate) const STATUS_CSS: &str = "\
       @keyframes tali-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } } \
     } \
     .tali-prog-label { white-space: nowrap; } \
-    .tali-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: 2px; \
+    .tali-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: var(--tali-radius); \
       background: color-mix(in srgb, currentColor 15%, transparent); flex: none; } \
-    .tali-prog-fill { display: block; height: 100%; border-radius: 2px; \
-      background: var(--tali-fg); transition: width .15s linear; } \
-    [data-tali-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
-    [data-tali-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
+    .tali-prog-fill { display: block; height: 100%; border-radius: var(--tali-radius); \
+      background: var(--tali-fg); transition: width var(--tali-dur) linear; } \
+    [data-tali-cell-state] { border-left: 2px solid transparent; padding-left: 8px; } \
+    /* No `opacity` on a queued cell: it dimmed the AUTHOR's own rendered output — a figure, \
+       a table — to say something about the tool's schedule. The border says it instead. */ \
+    [data-tali-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); } \
     [data-tali-cell-state=\"running\"] { border-left-color: var(--tali-fg); } \
     [data-tali-cell-state=\"done\"] { border-left-color: var(--tali-status-live); } \
     [data-tali-cell-state=\"error\"] { border-left-color: var(--tali-status-error); } \
     [data-tali-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, var(--tali-status-live) 40%, transparent); } \
-    [data-tali-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
-    .tali-cell-badge { font: 11px/1 var(--tali-font-mono); opacity: .75; margin-right: 6px; } \
+    /* The badge is muted by COLOUR. A cached replay used to be dimmed FURTHER on top of \
+       that, which stacked two unscored alphas; the badge now says `cached` in words, so the \
+       distinction is carried by the label rather than by how faint it is. */ \
+    .tali-cell-badge { font: 400 11px/1 var(--tali-font-mono); text-transform: uppercase; \
+      letter-spacing: .053em; color: var(--tali-muted); margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
       [data-tali-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \
@@ -999,13 +1036,18 @@ mod protocol_contract {
 
     #[test]
     fn client_and_status_css_ship_the_cache_legibility_surface() {
-        // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,
+        // DX9: the `cached` badge + the muted cached-cell border are include_str!'d JS/CSS,
         // so this drift guard keeps the render and the style in lockstep with the protocol's
         // `source: "cache"` tag. If the badge text or the CSS attr hook is renamed, the wire
         // stays "cache" and the surface goes silently blank — this fails first.
+        //
+        // The needle was the literal `⚡ cached` until 2026-08-15, when spec §8 took the emoji
+        // out of the dev chrome. What this test is about is the DISTINCTION between a replay
+        // and a fresh run, not the pictogram that used to carry it, so the needle is the word:
+        // a badge renamed or blanked still reddens this.
         assert!(
-            CLIENT_JS.contains("⚡ cached"),
-            "client.js must render the ⚡ cached badge for a cache replay"
+            CLIENT_JS.contains("\"cached\""),
+            "client.js must render the `cached` badge for a cache replay"
         );
         assert!(
             CLIENT_JS.contains("data-tali-cell-source"),

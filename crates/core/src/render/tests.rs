@@ -3723,6 +3723,71 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// Spec §12.2's tell probe, applied to the two files that render the preview dev UI.
+///
+/// The probe has always asserted these things — on the five bundled stylesheets, which is the
+/// set where the doctrine had already been applied. That is the same shape of hole §12.1
+/// widened the vendor-hex ban for, and it is how a `ui-sans-serif, system-ui` stack survived
+/// in `client.js` after Plan 1 removed it from every sheet and gated against it: the gate did
+/// not scan the file.
+#[test]
+fn the_dev_ui_carries_no_generated_design_tells_either() {
+    let root = repo_root();
+    for rel in ["crates/server/src/serve/mod.rs", "web-client/client.js"] {
+        let text = std::fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|e| panic!("{rel}: {e}"))
+            .to_ascii_lowercase();
+        for (needle, why) in [
+            (
+                "box-shadow",
+                "separation is whitespace, then a ground shift, then a hairline",
+            ),
+            (
+                "backdrop-filter",
+                "an opaque ground and a 1px rule read the same",
+            ),
+            ("system-ui", "the theme owns its faces"),
+            ("ui-sans-serif", "the theme owns its faces"),
+            (
+                "border-radius: 999px",
+                "a pill badge is a tell; set the label as text",
+            ),
+            (
+                "sfmono-regular",
+                "the mono is JetBrains Mono, through --tali-font-mono",
+            ),
+        ] {
+            assert!(!text.contains(needle), "{rel}: {needle} — {why}");
+        }
+        // One radius, and it is the token. `50%` (a circle) is the one shape exclusion, and it
+        // is bounded by being a single literal value — the same carve-out the sheet probe
+        // makes, for the same reason.
+        let mut radii: Vec<&str> = Vec::new();
+        for seg in text.split("border-radius:").skip(1) {
+            let v = seg.split(&[';', '"'][..]).next().unwrap_or("").trim();
+            if v != "50%" && !v.starts_with("var(") && !v.is_empty() {
+                radii.push(v);
+            }
+        }
+        radii.sort_unstable();
+        radii.dedup();
+        assert!(
+            radii.iter().all(|v| *v == "0"),
+            "{rel}: the radius scale drifted: {radii:?}. One token, 2px, objects only"
+        );
+    }
+
+    // The machine voice replaces the emoji (spec §8). `♿` went with the a11y scanner; these
+    // are the ones on badges, rows and tab titles that survived it.
+    let client = std::fs::read_to_string(root.join("web-client/client.js")).expect("client.js");
+    for glyph in ['⚡', '⏳', '✓', '✕', '●', '⚠', '✗'] {
+        assert!(
+            !client.contains(glyph),
+            "`{glyph}` is still in the dev chrome; the machine voice replaces it (spec §8)"
+        );
+    }
+}
+
 /// The dev UI's status colours are named, scored tokens (spec §8) rather than literals picked
 /// for a dark UI and never measured against the paper.
 ///

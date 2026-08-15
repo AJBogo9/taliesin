@@ -112,9 +112,17 @@
       const located = typeof it.line === "number"; // clickable jump-to-source
       const row = document.createElement(located ? "button" : "div");
       row.className = "tali-diag tali-diag-" + level + (located ? " tali-diag-loc" : "");
+      // The kind as a WORD, which is what "the machine voice replaces the emoji" (spec §8)
+      // means here. It replaced a cross/warning-sign prefix, and it is not decoration:
+      // without it the only thing separating an error row from a warning row is the colour
+      // of its left rule, which is colour as the sole cue (WCAG 1.4.1). Same anatomy as a
+      // callout's kind-word, for the same reason.
+      const kind = document.createElement("span");
+      kind.className = "tali-diag-kind";
+      kind.textContent = level;
       const msg = document.createElement("div");
-      msg.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
-      row.appendChild(msg);
+      msg.textContent = String(it.message || it);
+      row.append(kind, msg);
       if (it.frame) {
         const pre = document.createElement("pre");
         pre.className = "tali-diag-frame";
@@ -150,7 +158,7 @@
       const row = document.createElement("button");
       row.type = "button";
       row.className = "tali-cellerr";
-      row.textContent = "✗ " + (el.textContent || "cell error").trim().slice(0, 90);
+      row.textContent = (el.textContent || "cell error").trim().slice(0, 90);
       row.addEventListener("click", () => {
         el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
         pulse(/** @type {HTMLElement} */ (el), "tali-hl-flash");
@@ -161,34 +169,46 @@
   };
 
   // --- fatal-error overlay ---------------------------------------------------
-  // Its COLOURS are the reader's own palette as of 2026-08-15. This was a hardcoded
-  // near-black card with its own red and its own pink-on-dark body text, drawn
-  // identically whatever theme the reader had chosen — a whole second design system on
-  // the one surface that appears when something has ALREADY gone wrong. Its geometry and
-  // its faces are the next commit's.
   // A render/read failure leaves the last good content in place; this overlays it
   // so a broken save is impossible to miss (including on a phone). It clears on
   // the next successful render, or on click-outside / Escape.
+  //
+  // On the theme as of 2026-08-15. It was a hardcoded near-black card with its own red,
+  // its own pink-on-dark body text, a 10px radius, a 44px shadow and a backdrop blur —
+  // the third verbatim blur after the two spec §3 named — drawn identically whatever
+  // palette the reader had chosen. It is the one surface that appears when something has
+  // ALREADY gone wrong, and it was the one that ignored them.
+  //
+  // It keeps its own <style> rather than moving into STATUS_CSS because it must render
+  // when the page's own render FAILED, which is exactly when assuming STATUS_CSS arrived
+  // is a bad bet. The tokens it reads are in the inlined token sheet in <head>, which is
+  // not part of the render that failed.
   const errorEl = (() => {
     const style = document.createElement("style");
     style.textContent =
       "#tali-error{position:fixed;inset:0;z-index:2147482500;display:none;flex-direction:column;" +
       "align-items:center;justify-content:center;padding:2rem;box-sizing:border-box;" +
-      "background:var(--tali-scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
+      "background:var(--tali-scrim);}" +
       "#tali-error.tali-show{display:flex;}" +
       "#tali-error .tali-error-card{max-width:min(680px,92vw);width:100%;max-height:74vh;overflow:auto;" +
       "background:var(--tali-bg);border:1px solid var(--tali-border);" +
-      "border-left:4px solid var(--tali-status-error);border-radius:10px;" +
-      "padding:1rem 1.2rem;box-shadow:0 14px 44px rgba(0,0,0,.55);}" +
-      "#tali-error .tali-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:var(--tali-status-error);margin-bottom:.55rem;}" +
+      "border-left:2px solid var(--tali-status-error);border-radius:var(--tali-radius);" +
+      "padding:1rem 1.2rem;}" +
+      "#tali-error .tali-error-title{font:400 .78rem/1.3 var(--tali-font-mono);text-transform:uppercase;" +
+      "letter-spacing:.053em;color:var(--tali-status-error);margin-bottom:.55rem;}" +
       "#tali-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
-      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--tali-fg);}" +
-      "#tali-error .tali-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:var(--tali-muted);}";
+      "font:13px/1.5 var(--tali-font-mono);color:var(--tali-fg);}" +
+      // A SENTENCE, so no uppercase and no tracking. `Render failed` above is a generated
+      // LABEL and takes the voice; this is instructions to a person, and tracked uppercase
+      // turns instructions into shouting. Same split as the diagnostic rows, and the render
+      // is what caught it — the static gates were green with this line shouting.
+      "#tali-error .tali-error-hint{margin-top:.85rem;font:400 .78rem/1.4 var(--tali-font-mono);" +
+      "color:var(--tali-muted);}";
     (document.head || document.documentElement).appendChild(style);
     const el = document.createElement("div");
     el.id = "tali-error";
     el.innerHTML =
-      '<div class="tali-error-card"><div class="tali-error-title">⚠ Render failed</div><pre></pre>' +
+      '<div class="tali-error-card"><div class="tali-error-title">Render failed</div><pre></pre>' +
       '<div class="tali-error-hint">Fix the source and save; this clears on the next successful render. (Esc to dismiss)</div></div>';
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("tali-show"); });
@@ -393,7 +413,7 @@
     if (msg.state === "running") {
       activeCell = msg.cell_id; // track the active cell for click-to-scroll
       runningTimers[msg.cell_id] = msg.started_ms || Date.now();
-      badge.textContent = "⏳ 0.0s";
+      badge.textContent = "running 0.0s";
       // Ready this cell's output block for live output (175b). Without this a
       // re-run streams underneath the previous run's output, so the cell reads as
       // having produced both. The block `update` that follows would fix it, but
@@ -402,12 +422,14 @@
     } else {
       delete runningTimers[msg.cell_id];
       if (msg.state === "error") activeCell = msg.cell_id; // keep erroring cell as scroll target
-      // A cache replay shows "⚡ cached" instead of the blank "✓" it used to (a replay
-      // carries no duration, so "✓ " with nothing after it read as a 0ms run); a fresh run
-      // keeps "✓ 1.2s".
-      if (msg.state === "done") badge.textContent = msg.source === "cache" ? "⚡ cached" : "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
-      else if (msg.state === "error") badge.textContent = "✕";
-      else badge.textContent = "⏳"; // queued
+      // The badge is a word in the machine voice, not a glyph (spec §8). A cache replay
+      // carries no duration, so it says `cached` where a fresh run says its elapsed time —
+      // the distinction the old lightning-bolt/check pair carried, minus the pictograms.
+      // A duration-less fresh run says `done` rather than an empty string, which is why the
+      // glyph pair existed in the first place.
+      if (msg.state === "done") badge.textContent = msg.source === "cache" ? "cached" : (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "done");
+      else if (msg.state === "error") badge.textContent = "failed";
+      else badge.textContent = "queued";
     }
   }
   setInterval(function () {
@@ -416,7 +438,7 @@
       var out = elById(id + "-out") || elById(id);
       if (!out) return;
       var b = out.querySelector(":scope > .tali-cell-badge");
-      if (b) b.textContent = "⏳ " + fmtElapsed(now - runningTimers[id]);
+      if (b) b.textContent = "running " + fmtElapsed(now - runningTimers[id]);
     });
   }, 200);
 
@@ -480,7 +502,7 @@
   var baseTitle = document.title || "Taliesin"; // the page's own title, restored after each build
 
   // Retitle the tab. Goes through here so `baseTitle` moves with it: the build/error
-  // states overwrite document.title with transient labels ("● building… — X") and restore
+  // states overwrite document.title with transient labels ("building… — X") and restore
   // `baseTitle` when they finish, so assigning document.title alone would look right until
   // the next save and then silently revert to the old name.
   // `t` arrives display-ready from the server (H1 fallback + " · {site}" already applied);
@@ -549,7 +571,7 @@
         "<span class=\"tali-prog-label\">Error</span>";
       el.setAttribute("data-state", "error");
       el.title = "Click to scroll to erroring cell";
-      document.title = "⚠ error — " + baseTitle;
+      document.title = "error — " + baseTitle;
       return;
     }
     // warming-kernel: a distinct, timed phase — "Starting <lang> kernel… (Ns)". No
@@ -564,7 +586,7 @@
       renderWarming(el, msg.lang);
       el.setAttribute("data-state", "warming");
       el.title = "Starting kernel…";
-      document.title = "● starting kernel… — " + baseTitle;
+      document.title = "starting kernel… — " + baseTitle;
       return;
     }
     // executing: show dot + k/N text + mini bar.
@@ -581,7 +603,7 @@
     if (busyLabel) busyLabel.textContent = msg.ran + "/" + msg.total;
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
-    document.title = "● building… — " + baseTitle;
+    document.title = "building… — " + baseTitle;
   }
 
   // Render the warm-up chip: a dot + "Starting <lang> kernel… (Ns)". The lang and
