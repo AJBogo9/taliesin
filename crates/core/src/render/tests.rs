@@ -4368,24 +4368,21 @@ fn h5_and_h6_are_not_dimmer_than_body_text() {
     // SKIM-1: h5/h6 were both `--tali-muted`, making the two DEEPEST headings the
     // lowest-contrast text on the page — lighter than the prose they introduce. It
     // compounds with title-block demotion, which pushes an author's `####` into `<h5>`.
+    // h4-h6 became ONE selector list on 2026-08-15 (they had been three byte-identical
+    // rules), so this looks up the rule that styles h5 rather than a line that starts with
+    // it: the property being guarded is what the rule sets, not how the selector is spelled.
     let css = BASE_CSS;
-    let h5 = css
-        .lines()
-        .find(|l| l.trim_start().starts_with("h5 {"))
-        .expect("base.css must style h5");
-    let h6 = css
-        .lines()
-        .find(|l| l.trim_start().starts_with("h6 {"))
-        .expect("base.css must style h6");
-    // The h5 rule wraps to a second line; check the whole declaration block.
-    let h5_block = &css[css.find(h5).unwrap()..css.find(h6).unwrap()];
+    let at = css
+        .find("\n  h4, h5, h6 {")
+        .expect("base.css must style h5 and h6");
+    let block = &css[at..at + css[at..].find('}').expect("an unterminated rule")];
     assert!(
-        !h5_block.contains("--tali-muted"),
-        "h5 must not render dimmer than body text: {h5_block}"
+        block.contains("h5") && block.contains("h6"),
+        "the rule found must be the one that styles both: {block}"
     );
     assert!(
-        !h6.contains("--tali-muted"),
-        "h6 must not render dimmer than body text: {h6}"
+        !block.contains("--tali-muted"),
+        "h5/h6 must not render dimmer than body text: {block}"
     );
 }
 
@@ -5718,6 +5715,86 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
             stripped == "0" || stripped == "2px"
         }),
         "the radius scale drifted: {radii:?}. One token, 2px, objects only."
+    );
+}
+
+/// The reading surface's vertical rhythm is the line box. Every margin between flow blocks is
+/// a member of `{0.5U, U, 1.5U, 2U, 3U}` — the four-member scale spec §3 first carried could
+/// not satisfy its own heading-ratio rule at more than one level, because from four values
+/// the only legal pairs are `(2U, 0.5U)` = 4:1 and `(3U, U)` = 3:1 and the second is larger.
+///
+/// `0.25U` is admitted for the internal padding of a small object (a table cell), which the
+/// spec's amended row scopes out of the block scale: `0.5U` is 15.5px and triples a row.
+#[test]
+fn the_reading_surface_margins_are_on_the_spacing_scale() {
+    const SCALE: &[&str] = &[".25", ".5", "1.5", "2", "3"];
+    for seg in BASE_CSS.split("calc(").skip(1) {
+        let expr = seg.split(')').next().unwrap_or("");
+        if !expr.contains("var(--tali-u)") {
+            continue;
+        }
+        let factor = expr.split('*').next().unwrap_or("").trim();
+        // `calc(-1 * (…))` is the margin-column pull, not a scale step.
+        assert!(
+            SCALE.contains(&factor) || factor.starts_with('-'),
+            "`calc({expr})` uses {factor}U, which is not on the scale {SCALE:?}"
+        );
+    }
+    // The heading ladder, with the ratios the spec's own rule asks for: 4:1 then 3:1.
+    // Anchored on the newline and indent, not a bare `h2 {`: the FIRST `h2 {` in the sheet
+    // belongs to `.hero`, and matching that one made this assertion read a rule it was never
+    // about — the same trap `layout_escapes.rs`'s `rule()` helper carries a comment for.
+    for want in [
+        "\n  h2 { font-size: 1.6rem; line-height: 1.2; margin: calc(2 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }",
+        "\n  h3 { font-size: 1.3rem; line-height: 1.3; margin: calc(1.5 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }",
+    ] {
+        assert!(
+            BASE_CSS.contains(want),
+            "the prose heading ladder must carry `{}`",
+            want.trim()
+        );
+    }
+}
+
+/// Under 480px the body steps 20px -> 16px and every serif size steps with it, by the same
+/// factor. It did not: `h1` had no override at all, so a document `.title` (1.7rem = 27.2px)
+/// rendered SMALLER than a body `#` (2.25rem = 36px). Author decision, 2026-08-15: the mobile
+/// scale is the desktop scale x 0.8, the factor the body already takes. The mono voice does
+/// NOT move — it is a fixed .78rem on every surface and at every width.
+#[test]
+fn the_mobile_scale_keeps_the_title_above_the_headings() {
+    let mobile = BASE_CSS
+        .split("@media (max-width: 30rem) {")
+        .nth(1)
+        .expect("the mobile breakpoint")
+        .split("\n  }")
+        .next()
+        .expect("the block ends");
+    let size = |sel: &str| -> f64 {
+        mobile
+            .split(sel)
+            .nth(1)
+            .unwrap_or_else(|| panic!("{sel} has no mobile size in:\n{mobile}"))
+            .split("font-size:")
+            .nth(1)
+            .unwrap()
+            .split(&['r', ';'][..])
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
+    };
+    let title = size(".tali-title-block .title {");
+    let (h1, h2, h3) = (size("h1 {"), size("h2 {"), size("h3 {"));
+    assert!(
+        title > h1 && h1 > h2 && h2 > h3,
+        "the scale must stay ordered: title {title} > h1 {h1} > h2 {h2} > h3 {h3}"
+    );
+    assert!(
+        h3 * 16.0 >= 16.0,
+        "no serif heading may sit under the 16px mobile body: h3 is {}px",
+        h3 * 16.0
     );
 }
 

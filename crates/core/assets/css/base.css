@@ -172,24 +172,32 @@
      type does not need to). h4-h6 keep full body contrast, no `--tali-muted`: a past version
      muted h5/h6, which made the deepest headings on the page read LOWER contrast than the body
      prose they introduce. Weight (600, below) + the mono's own tracking carry the distinction
-     from body text instead. */
+     from body text instead.
+
+     VERTICAL RHYTHM: the ladder is `{0.5U, U, 1.5U, 2U, 3U}`. `1.5U` is not an ad-hoc value —
+     from the four-member scale the spec first carried, the only pairs satisfying its own
+     3:1-or-4:1 heading ratio are (2U, 0.5U) and (3U, U), and the second is LARGER than the
+     first, so at most one heading level could be spaced legally. h2 takes 4:1 and h3 takes
+     3:1 against a single 0.5U bottom. h4-h6 are a stated exception at 2:1 (U : 0.5U): they
+     are the mono LABEL rather than a serif section heading, and no five-member scale can give
+     them a legal ratio that is also smaller than h3's — the alternatives were a sixth and
+     seventh member (0.75U/0.25U) or spacing h4 identically to h3. */
   h1, h2, h3, h4, h5, h6 { font-family: inherit; font-weight: 600; }
   /* Prose rhythm: an explicit paragraph bottom-margin (was the browser default) and a
      flat, tokenised `<hr>` (was the browser's beveled default). List margins are left to
      the UA default so a low-specificity rule can't leak into chrome nav/TOC `<li>`s;
      `.hero p`/`.feature p` etc. keep their own tighter margins by specificity. */
   p { margin: 0 0 var(--tali-u); }
-  hr { border: 0; border-top: 1px solid var(--tali-border); margin: 2rem 0; }
+  hr { border: 0; border-top: 1px solid var(--tali-border); margin: calc(2 * var(--tali-u)) 0; }
   h1 { font-size: 2.25rem; line-height: 1.1; letter-spacing: -.008em; margin: 0 0 calc(.5 * var(--tali-u)); }
   h2 { font-size: 1.6rem; line-height: 1.2; margin: calc(2 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
-  h3 { font-size: 1.3rem; line-height: 1.3; margin: calc(1.5 * var(--tali-u)) 0 calc(.4 * var(--tali-u)); }
-  h4 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
-  h5 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
-  h6 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
-  .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
+  h3 { font-size: 1.3rem; line-height: 1.3; margin: calc(1.5 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
+  /* h4-h6 were three byte-identical rules; they are one selector list because they are one
+     level. Their 2:1 is the scale's ONE stated exception (see the comment above). */
+  h4, h5, h6 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.5 * var(--tali-u)); }
+  .tali-title-block { margin: 0 0 calc(2 * var(--tali-u)); padding-bottom: var(--tali-u);
+    border-bottom: 1px solid var(--tali-border); }
   /* The title block sits on the same re-derived scale as h1-h6, and the re-derivation stopped
      one selector short of it. The document's own title is the ONE element allowed above the
      heading scale: `.title` is an `<h1>`, so a class-specificity `2.1rem` here made it render
@@ -522,7 +530,8 @@
      also serves colour-blind readers. */
   .tali-xref { text-decoration: underline; text-underline-offset: .12em;
     text-decoration-thickness: from-font; }
-  .tali-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  .tali-references .csl-entry { margin: calc(.5 * var(--tali-u)) 0;
+    padding-left: 2.2rem; text-indent: -2.2rem; }
   /* Footnotes: `[^1]` emits a superscript reference, and the note itself sits in the
      right margin beside it (owner ruling 2026-08-01 — margin placement is the DEFAULT on
      a wide screen, not a `footnotes:` knob). There is NO gathered endnote list: the note
@@ -645,6 +654,11 @@
      the rail began at x=1111 at 1702px). With the margin column permanent, the same answer
      holds everywhere — which is precisely what lets three copies become one.
 
+     `100% - 2rem` on the text track, not a bare `100%`: a percentage track resolves against
+     the whole container, so `100%` lets the text claim every pixel and leaves the two 1rem
+     gutters to overflow. Measured at a 500px viewport: 16px of horizontal scroll on a page
+     that should have none, on every narrow screen.
+
      The side gutters are the grid's own `minmax(1rem, 1fr)` and NOT the containers'
      padding. That is a fix, not tidiness: `.tali-site-main`/`.tali-book-main` are
      `border-box` with `2rem 1rem` INSIDE `max-width: var(--tali-measure)`, so a site page
@@ -668,7 +682,7 @@
     --tali-prose-cols:
       minmax(1rem, 1fr)
       [bleed-start] minmax(0, var(--tali-bleed))
-      [text-start] min(var(--tali-measure), 100%) [text-end bleed-end]
+      [text-start] min(var(--tali-measure), 100% - 2rem) [text-end bleed-end]
       var(--tali-note-gap)
       [note-start] var(--tali-note-w) [note-end]
       minmax(1rem, 1fr);
@@ -705,7 +719,7 @@
      `border-box` because the global reset is content-box: without it `pre`'s own 2 x .5U of
      padding is added OUTSIDE the track and the box overhangs by 31px. */
   :is(#tali-main, #tali-root, #tali-main > article) > pre { box-sizing: border-box; }
-  .tali-output { margin: 0 0 1rem; }
+  .tali-output { margin: 0 0 var(--tali-u); }
   /* An output slot that never filled leaves no trace. A cell folded inside a `:::` div
      gets its output element emitted at RENDER time (the slot the executor writes into,
      see `render::divs::output_slot`), so unlike a top-level cell — whose output block
@@ -859,7 +873,7 @@
   body.has-toc { max-width: 102.25rem; display: grid; align-items: start; gap: 2.5rem;
                  grid-template-columns: minmax(0, 1fr) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
-  #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
+  #TOC { position: sticky; top: calc(.5 * var(--tali-u)); max-height: 92vh; overflow: auto;
          font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
@@ -885,16 +899,28 @@
        does not know or care what the outer grid did. */
     body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: none; gap: 0; }
     body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
-           border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
+           border-bottom: 1px solid var(--tali-border);
+           margin-bottom: var(--tali-u); padding-bottom: calc(.5 * var(--tali-u)); }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
        minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
        to the column instead of forcing their intrinsic width and overflowing the page. */
     .tali-layout { grid-template-columns: minmax(0, 1fr) !important; }
   }
+  /* Under 480px the body steps 20px -> 16px, a factor of 0.8, and every serif size steps with
+     it so the ladder keeps its desktop proportions. It did not before: `h1` had no override at
+     all, so a document title (1.7rem = 27.2px) rendered SMALLER than a body `#` (2.25rem =
+     36px). Author decision, 2026-08-15 — the factor is derived from the body's own step, not
+     chosen. The mono voice does NOT move: .78rem is the machine voice at every width and on
+     every surface, and 0.8 of it would be 10px.
+     No side padding here any more: the reading grid's `minmax(1rem, 1fr)` gutters already
+     reserve it, and a second gutter on `body` would indent the page twice. */
   @media (max-width: 30rem) {
-    body { padding-left: .85rem; padding-right: .85rem; font-size: 16px; }
-    .tali-title-block .title { font-size: 1.7rem; }
-    .tali-title-block .subtitle { font-size: 1.05rem; }
+    body { font-size: 16px; }
+    .tali-title-block .title { font-size: 2rem; }        /* 32px   = 2.5rem  x .8 */
+    .tali-title-block .subtitle { font-size: 1.12rem; }  /* 17.9px = 1.4rem  x .8 */
+    h1 { font-size: 1.8rem; }                            /* 28.8px = 2.25rem x .8 */
+    h2 { font-size: 1.28rem; }                           /* 20.5px = 1.6rem  x .8 */
+    h3 { font-size: 1.04rem; }                           /* 16.6px = 1.3rem  x .8 */
   }
   /* honor reduced-motion: collapse transitions/animations (fades) to near-instant,
      and drop smooth scrolling */

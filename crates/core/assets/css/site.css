@@ -122,7 +122,8 @@
        sticky positioning (the `top` offset above is desktop-only and does nothing to
        a `position: static` element regardless). */
     .tali-site-main.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
-      border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
+      border-bottom: 1px solid var(--tali-border);
+      margin-bottom: var(--tali-u); padding-bottom: calc(.5 * var(--tali-u)); }
     /* One column again and no rail in the way. The escapes need no hand-back rule: they
        are tracks of the reading grid inside <main>, which neither knows nor cares what the
        outer grid did — and for the same reason the container needs no narrowing back to
