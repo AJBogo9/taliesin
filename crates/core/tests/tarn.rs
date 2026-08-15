@@ -337,45 +337,11 @@ fn a_below_toc_gate_chapters_sections_reach_the_drawer_outline() {
     }
 }
 
-#[test]
-fn the_chapter_drawer_prints_an_absolute_prose_length() {
-    // The drawer is the ONE surface that shows a chapter's cost, since the landing's own
-    // Contents nav was deleted on 2026-08-04. This test used to be the drift pin between
-    // the two renderers (`assert_eq!(in_drawer, in_contents)`); with one renderer left
-    // there is no drift to pin, so what survives is the part that names a guarantee about
-    // the drawer itself: an absolute word count, prose-only. Pinned on a chapter whose
-    // count is stable and whose body is prose, not code.
-    let drawer_page = tarn()
-        .render_page("grouping.tmd")
-        .expect("grouping renders");
-    // Scope the read to the drawer's own list: `filtering.html` is also a prev/next target
-    // and a search-index entry on this page, so a whole-page search could land elsewhere.
-    let at = drawer_page
-        .find("id=\"tali-book-chapters\"")
-        .expect("the drawer's chapter list");
-    let rest = &drawer_page[at..];
-    let row = rest[rest.find("filtering.html").expect("the row exists")..].to_string();
-    let start = row.find("-words\">").expect("a words span follows") + "-words\">".len();
-    let in_drawer =
-        row[start..start + row[start..].find('<').expect("the span closes")].to_string();
-    assert!(
-        in_drawer.ends_with(" words")
-            && in_drawer.chars().next().is_some_and(|c| c.is_ascii_digit()),
-        "the drawer must print an absolute word count, not a bar or a time: {in_drawer}"
-    );
-    // Prose only: `filtering.tmd` is the longest chapter by prose, and counting its fenced
-    // Python as words would put it somewhere else entirely.
-    let words: usize = in_drawer
-        .trim_end_matches(" words")
-        .replace(',', "")
-        .parse()
-        .expect("a plain number");
-    let raw = std::fs::read_to_string(corpus_dir().join("tarn/filtering.tmd")).unwrap();
-    assert!(
-        words < raw.split_whitespace().count(),
-        "prose-only must be strictly under the raw token count ({words} vs raw)"
-    );
-}
+// `the_chapter_drawer_prints_an_absolute_prose_length` stood here until 2026-08-15. Its whole
+// subject — the drawer's per-chapter word count — is spec §9's cut #12, and the chain went
+// with it: the label, the `Chapter::words` field, and the include-expanding `word_count` pass
+// that ran over every chapter at discovery. Nothing survives for it to pin, so it goes rather
+// than being weakened into a test of something else.
 
 /// The drawer's chapter list (`.tali-book-chapters`) is a plain list of links and must stay
 /// usable with JavaScript off: a server-emitted `<button>` — an expander, a toggle, anything

@@ -51,7 +51,7 @@ or `{ file: … }` map, or a list of those.
 | `date` | string | Publication date (shown in the title block; sorts a `listing:`) |
 | `description` | string | Summary used for the `<meta name="description">` and the `og:description` a shared link unfurls with |
 | `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
-| `categories` | list | Tags for the page; feed `listing:` cards, shown as a badge on each |
+| `categories` | list | Tags for the page; each becomes a `<category>` in the Atom feed |
 
 ### Output, format, and theming
 
@@ -222,15 +222,15 @@ Set `id:` and place a `::: {#recent}` block where you want the listing to land, 
 you can write an intro above it and the cards below it on the same page.
 :::
 
-A card's date, categories, and image come from each listed page's own front
-matter. To give a page a category badge on its card, set `categories:` on
-**that page**:
+A row's date and image come from each listed page's own front matter, as does
+`categories:`, which no longer shows on the row itself but still tags the page in
+the Atom feed:
 
 ```yaml
 ---
 title: "A post about rust"
 date: 2026-06-20
-categories: [rust, performance]   # these become the card's badges
+categories: [rust, performance]   # these become <category> in the Atom feed
 image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
 image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
 ---
@@ -306,7 +306,7 @@ author: "Andreas Bogossian"
 date: "2026-06-27"
 description: "A close read of a training run."   # og:description + <meta description>
 lang: en                                          # <html lang> (default en)
-categories: [machine-learning, training]          # listing tags -> card badges
+categories: [machine-learning, training]          # tags -> Atom feed <category>
 
 # --- Output / format / theme ---
 theme: brand.css                                   # a .css/.scss file or an _extensions/ bundle (light/dark follow the reader's device)

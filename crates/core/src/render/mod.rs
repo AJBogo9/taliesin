@@ -1238,16 +1238,13 @@ fn render_internal_impl(
     // and `llms-full.txt` have all since been cut, leaving the index.)
     // A visible title block. It is a generated block (no sourcepos), so it rides the
     // block model + diff like the References section.
-    // A dated document is an article (a post), which gates both the reading-time estimate and
-    // the standalone `og:type`. An undated page is a generic `website`, not an `article`.
+    // A dated document is an article (a post), which gates the standalone `og:type`. An
+    // undated page is a generic `website`, not an `article`. It used to gate a reading-time
+    // estimate too; that went on 2026-08-15 with spec §9's cut #12, for the reason `book.rs`
+    // already gave about chapter lengths: `word_count` excludes fenced code and math, and
+    // reading code is slower than reading prose, so a minutes label is wrong twice over in
+    // the same direction on exactly the documents this tool exists for.
     let is_article = date.as_deref().is_some_and(|d| !d.is_empty());
-    // Reading-time estimate, shown only for a dated post. Prose words / 200 wpm, rounded to
-    // whole minutes (min 1), matching the client's live count; `src` is include-expanded, so
-    // an included file's prose is included.
-    let read_time = is_article.then(|| {
-        let mins = ((crate::prose::word_count(src) + 100) / 200).max(1);
-        format!("{mins} min read")
-    });
     if !hide_title_block
         && let Some(tb) = title_block_html(
             title.as_deref(),
@@ -1255,7 +1252,6 @@ fn render_internal_impl(
             &authors,
             date.as_deref(),
             description.as_deref(),
-            read_time.as_deref(),
         )
     {
         blocks.insert(
@@ -1418,7 +1414,6 @@ fn title_block_html(
     authors: &[crate::author::Author],
     date: Option<&str>,
     description: Option<&str>,
-    read_time: Option<&str>,
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
@@ -1437,15 +1432,7 @@ fn title_block_html(
     // `<time datetime>` so it stays machine-readable; a value that isn't a plain ISO date is
     // shown verbatim (never mangled).
     let date_span = date.filter(|s| !s.is_empty()).map(|s| time_html(s, ""));
-    // A subtle reading-time estimate ("N min read"), only when the caller supplies one
-    // (a dated post). Rides the same muted meta line as author · date.
-    let read_span = read_time
-        .filter(|s| !s.is_empty())
-        .map(|s| format!("<span class=\"tali-read-time\">{}</span>", html_escape(s)));
-    let meta: Vec<String> = [author_span, date_span, read_span]
-        .into_iter()
-        .flatten()
-        .collect();
+    let meta: Vec<String> = [author_span, date_span].into_iter().flatten().collect();
     if !meta.is_empty() {
         h.push_str(&format!(
             "<div class=\"tali-title-meta\">{}</div>",

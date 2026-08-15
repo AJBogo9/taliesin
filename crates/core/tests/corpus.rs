@@ -995,11 +995,15 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "twitter card missing"
     );
 
-    // Reading-time estimate: a post's title block carries a subtle "N min read", rendered
-    // server-side so it lives in the static HTML (no JS, SEO-visible).
+    // No reading-time estimate: spec §9's cut #12 took it on 2026-08-15, together with the
+    // chapter-cost signal in the book drawer, for the reason `book.rs` had already recorded
+    // about that one — `word_count` excludes fenced code and math, and reading code is
+    // slower than reading prose, so a minutes label is wrong twice in the same direction on
+    // exactly the documents this tool exists for. The title block's meta line is the byline
+    // and the date.
     assert!(
-        post.contains("class=\"tali-read-time\"") && post.contains(" min read"),
-        "post should show a reading-time estimate"
+        !post.contains("tali-read-time") && !post.contains(" min read"),
+        "a post must not carry a reading-time estimate"
     );
 
     // No per-tag archive pages, and a post no longer carries a category strip

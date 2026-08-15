@@ -47,7 +47,10 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "Short summary used for listings and social cards.",
         ),
         ("lang", "Content language (BCP-47), for example `en`."),
-        ("categories", "Tags used to group the page in listings."),
+        (
+            "categories",
+            "Tags for the page; each becomes a `<category>` in the Atom feed.",
+        ),
         ("image", "Social-card and listing thumbnail image path."),
         ("image-alt", "Alt text for `image`."),
         ("theme", "Named theme or theme overrides."),

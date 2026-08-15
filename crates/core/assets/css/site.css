@@ -113,10 +113,11 @@
   .tali-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
     max-width: none; margin: 0 auto; padding: 2rem 0; }
   .tali-site-main > main { min-width: 0; }
-  /* `page-layout: full` (the blog/projects card indexes) widens the TEXT track rather than
-     the container, because the container no longer has a width to widen. Listing cards are
-     Plan 3's subject; this keeps them exactly as wide as they are today. */
-  .tali-site-main.tali-wide > main { --tali-measure: 60rem; }
+  /* `page-layout: full` no longer widens the text track. Plan 2 left a local measure
+     override here (60rem) so the card GRID would keep its width; a ruled list has no grid
+     to widen and reads at the reading measure like everything else, so the override went
+     with the cards. `.tali-wide` still exists as a class the front matter sets; it simply
+     no longer changes the measure. */
   /* Same outer grid as base.css's single-document `body.has-toc`, and for the same reason:
      the rail is a SIBLING TRACK of the reading grid, not a competitor for its space, so the
      four rules that used to force escapes and margin notes back into the flow beside it are
@@ -162,66 +163,47 @@
   /* Icon-only footer links need a >=24px hit area (WCAG 2.5.8) without enlarging the 16px icon. */
   a.tali-foot-item:has(svg) { min-height: 24px; min-width: 24px; justify-content: center; }
 
-  /* listing: post cards (a `grid` of cards, or a stacked `default` list) */
-  /* A listing is a real `<ul>` (PA-M3), so strip the list affordances the base
-     stylesheet gives prose lists — the cards ARE the visible items. */
-  .tali-listing { margin: 1.75rem 0; padding: 0; list-style: none; }
-  /* The `<li>` is the grid/flex item the card used to be, so it must not change the
-     layout: it carries no box of its own and stretches its card to the row height
-     (which is what kept cards in a grid row equal-height before the wrapper existed). */
-  .tali-listing > .tali-listing-item { display: flex; margin: 0; padding: 0; }
+  /* A LISTING IS A RULED LIST. It was a grid of bordered cards, and a "card" in this theme
+     is a box with radius 0 (spec §3), no ground and no colour (spec §1) — which is a
+     hairline rule with extra steps. So it is the rule: a row per post, a hairline between
+     rows, the date in the machine voice above a serif title at the prose size, and the
+     description under it. The `<ul role="list">` / `<li>` / `<a>` markup is unchanged; only
+     its dress is.
+
+     One layout, not two. The `grid` and `default` layouts were a thumbnail grid and a
+     stacked row, and the grid's whole reason was to give a 16:9 image somewhere to sit — which is also what needed the monogram placeholder cut #12 deletes, since a
+     mixed listing left a text-only post floating beside its imaged neighbours. A ruled list
+     has no such alignment to keep: a post with an image shows it, a post without simply
+     does not.
+
+     A listing is a real `<ul>` (PA-M3), so the list affordances the base stylesheet gives
+     prose lists are stripped — the rows ARE the visible items. */
+  .tali-listing { margin: calc(2 * var(--tali-u)) 0; padding: 0; list-style: none;
+    border-top: 1px solid var(--tali-border); }
+  .tali-listing > .tali-listing-item { display: flex; margin: 0; padding: 0;
+    border-bottom: 1px solid var(--tali-border); }
   .tali-listing > .tali-listing-item > .tali-card { flex: 1 1 auto; min-width: 0; }
-  /* On a wide listing page (blog / projects), the intro prose stays at the reading measure
-     while the card grid keeps the full chrome width. Grid width and reading measure are
-     already separate tokens; this just applies that separation to a listing's own lead.
-     `:has(.tali-listing)` targets the `<ul>` `listing_html` always emits directly under
-     `<main>`: the wrapping `.tali-listing-wrap` div this used to key off was deleted
-     2026-08-04 (visual minimalism pass, task 9) along with the category filter chip row it
-     wrapped, and without that div the listing `<ul>` itself became a DIRECT child of `<main>`
-     — the same position the intro `<p>` sits in. `ul:not(.tali-listing)` is load-bearing, not
-     redundant: `.tali-listing` is itself a `ul`, so a bare `:where(p, ul, ol, blockquote)`
-     would also catch the card grid and clamp it to reading width, exactly what this rule
-     exists to NOT do. */
-  .tali-site-main.tali-wide > main:has(.tali-listing) > :where(p, ul:not(.tali-listing), ol, blockquote) {
-    max-width: var(--tali-measure); }
-  .tali-listing-grid { display: grid; gap: 1.25rem;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
-  .tali-listing-default { display: flex; flex-direction: column; gap: 1rem; }
-  .tali-card { display: flex; flex-direction: column; text-decoration: none; color: var(--tali-fg);
-    border: 1px solid var(--tali-border); border-radius: var(--tali-radius); overflow: hidden; background: var(--tali-bg);
-    transition: border-color var(--tali-dur) ease; }
-  /* Keyboard focus gets the same border affordance as pointer hover (PA-F3). */
-  .tali-card:hover, .tali-card:focus-visible { border-color: var(--tali-accent); }
-  .tali-listing-default .tali-card { flex-direction: row; align-items: stretch; }
-  .tali-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
-    background: var(--tali-code-bg); }
-  .tali-listing-default .tali-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
-  /* Placeholder for a post with no `image:` in a thumbnail listing: a monogram fills the
-     same slot so mixed listings stay aligned (row) and even-height (grid) instead of
-     leaving a text card floating beside its imaged neighbours. */
-  .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: center;
-    justify-content: center; user-select: none; font-weight: 700; font-size: 2.4rem;
-    color: color-mix(in oklab, var(--tali-accent) 60%, var(--tali-muted));
-    background: var(--tali-code-bg); }
-  .tali-listing-default .tali-card-noimg { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
-  .tali-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
-  .tali-card-date { display: block; font: 400 .78rem/1.3 var(--tali-font-mono); color: var(--tali-muted);
-    text-transform: uppercase; letter-spacing: .053em; }
-  .tali-card-title { font-weight: 600; font-size: 1.08rem; line-height: 1.25; margin: 0;
-    transition: color var(--tali-dur) ease; }
-  /* Hovering or focusing a card tints its title to the ink accent (reinforces the border). */
-  .tali-card:hover .tali-card-title, .tali-card:focus-visible .tali-card-title { color: var(--tali-link); }
+  .tali-card { display: flex; flex-direction: column; text-decoration: none;
+    color: var(--tali-fg); padding: var(--tali-u) 0;
+    transition: background var(--tali-dur) ease; }
+  /* Hover changes a GROUND and nothing else — it may not move anything (spec §3), and the
+     row has no border of its own left to tint. Keyboard focus gets the same affordance
+     (PA-F3). The old rule tinted the title to `--tali-link` as well, which was a no-op: the
+     title inherits `--tali-fg` from the row and the two tokens hold the same value in both
+     palettes. */
+  .tali-card:hover, .tali-card:focus-visible { background: var(--tali-code-bg); }
+  .tali-card-img { width: 100%; max-width: 12rem; aspect-ratio: 16 / 9; object-fit: cover;
+    display: block; margin-bottom: calc(.5 * var(--tali-u)); background: var(--tali-code-bg); }
+  .tali-card-body { display: flex; flex-direction: column; gap: calc(.25 * var(--tali-u)); }
+  .tali-card-date { display: block; font: 400 .78rem/1.3 var(--tali-font-mono);
+    color: var(--tali-muted); text-transform: uppercase; letter-spacing: .053em; }
+  /* A listing title is the author's own headline, at the size the prose it lists is set in.
+     It was 1.08rem = 17.28px against a 20px body — the defect the reading-scale gate catches
+     everywhere it can see, on a selector that gate does not know about. */
+  .tali-card-title { font-weight: 600; font-size: 1.25rem; line-height: 1.25; margin: 0; }
   .tali-card-desc { margin: 0; font-size: .92rem; color: var(--tali-muted); line-height: 1.5; }
-  .tali-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
-  .tali-cat { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
-    color: var(--tali-muted);
-    background: var(--tali-code-bg); border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius); padding: .1rem .55rem; transition: background var(--tali-dur) ease, color var(--tali-dur) ease, border-color var(--tali-dur) ease; }
 
   @media (max-width: 40rem) {
-    .tali-listing-default .tali-card { flex-direction: column; }
-    .tali-listing-default .tali-card-img,
-    .tali-listing-default .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; }
     /* Narrow desktop windows: the hint is real (there IS a ⌘/Ctrl key) but the row is
        cramped, so it still goes. The capability half of this lives below — see MOB-3. */
     .tali-search-kbd { display: none; }
@@ -405,12 +387,6 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-active { color: var(--tali-link); font-weight: 600; }
 .tali-chap-num { color: var(--tali-muted); margin-right: .25rem; }
 .tali-book-active .tali-chap-num { color: var(--tali-link); }
-/* Per-chapter prose length: the cost of opening a chapter, where the decision is made.
-   Absolute units as plain text (never a normalised bar), quiet enough that the chapter
-   title stays the thing being scanned. No `opacity` on the text: the theme's contrast
-   pins measure the token, and an opacity multiplier silently defeats them. */
-.tali-chap-words { display: block; font-size: .74rem; color: var(--tali-muted);
-  font-variant-numeric: tabular-nums; }
 /* No narrow-width book override: the reading column is one `--tali-measure` box at every
    width, so there is no two-column grid to collapse and no reserved track to reclaim. */
 

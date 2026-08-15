@@ -25,12 +25,6 @@ contents built from its own headings, a sidebar rail on a wide screen. A book ge
 such rail: its Chapters drawer lists every chapter instead, since what a reader
 of a book needs is the neighbouring chapters, not the current one's headings.
 
-The drawer also shows each chapter's length in words, not a reading time, so the cost
-of opening a chapter is visible where that decision gets made. It is a word count and
-not a reading time on purpose: the count excludes fenced code and math, so a code-heavy
-chapter is understated, and a minutes label would carry that error into a promise about
-your time that a word count never makes.
-
 The two recipes below are one of each: a blog built from pages and a `listing:`, and a
 documentation book built from a `chapters:` list.
 

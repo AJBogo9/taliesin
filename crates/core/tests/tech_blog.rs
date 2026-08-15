@@ -316,9 +316,13 @@ fn listing_frontmatter_emits_post_cards() {
         "blog: post card link not rewritten to .html"
     );
     assert!(blog.contains("tali-card-title"), "blog: card has no title");
-    // The category-filter chip row was deleted 2026-08-03; each card still carries its
-    // own category badges (page-level `categories:` front matter survives).
-    assert!(blog.contains("tali-cat"), "blog: category badges missing");
+    // No category chips on a row: they went 2026-08-15 with spec §9's cut #12. Page-level
+    // `categories:` front matter SURVIVES and still tags the Atom feed; what went is the
+    // chip row on the listing itself.
+    assert!(
+        !blog.contains("class=\"tali-cat\""),
+        "blog: a listing row must not carry category chips"
+    );
     // Newest-first: the latest-dated post's card precedes an older one.
     let fourier = blog.find("posts/fourier-transform/").unwrap(); // 2026-05-15
     let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14
@@ -338,138 +342,18 @@ fn listing_frontmatter_emits_post_cards() {
     // and `max_items_caps_the_cards_a_listing_renders` in `site::mod`'s tests.
 }
 
-/// Regression pin for a bug found in the final review of the visual minimalism pass: task 9
-/// (2026-08-04) deleted the `<div class="tali-listing-wrap">` emitter along with the category
-/// filter chip row it wrapped, but `site.css`'s "clamp a wide listing page's intro prose to the
-/// reading measure" rule still keyed its `:has()` off `.tali-listing-wrap` — a class nothing
-/// emits any more, so the rule could never match and `page-layout: full` pages (like this one)
-/// lost the clamp entirely.
-///
-/// This is two checks, deliberately kept apart:
-/// - The CSS-content assertion below pins the SELECTOR TEXT (that the rule targets a class
-///   really emitted, `.tali-listing`, not the deleted `.tali-listing-wrap`). It does NOT prove
-///   the rule has any rendered effect — a Rust unit test can't evaluate `:has()` — so it would
-///   stay green even if some other change broke the cascade.
-/// - The structural assertion on the built `projects.html` proves the precondition a browser
-///   would need to actually match `:has()`: `.tali-site-main.tali-wide` really wraps a `<main>`
-///   whose direct children really are the intro `<p>` immediately followed by the
-///   `<ul class="tali-listing …">`, in that DOM shape, with no wrapper div between them.
-///
-/// A second trap the fix itself had to dodge: `.tali-listing` is itself a `<ul>`, so a naive
-/// `:where(p, ul, ol, blockquote)` would ALSO catch the listing and clamp the card grid to
-/// reading width — exactly what `tali-wide` exists to avoid (verified live in a browser at
-/// 1440x900: without the `ul:not(.tali-listing)` exclusion the grid narrows to one column).
-/// This test can't see computed widths, so that half is not re-pinned here; it was checked by
-/// hand against the built page.
-#[test]
-fn wide_listing_page_intro_prose_selector_targets_a_class_that_really_ships() {
-    let css = taliesin_core::render::site_css();
-    assert!(
-        css.contains("main:has(.tali-listing) > :where(p, ul:not(.tali-listing), ol, blockquote)"),
-        "the wide-listing intro-prose clamp must key off `.tali-listing` (what listing_html \
-         actually emits), not a wrapper div that no longer exists: {css}"
-    );
-    assert!(
-        !css.contains(":has(.tali-listing-wrap)"),
-        "no selector may key off `.tali-listing-wrap` any more; nothing emits that class \
-         (a bare `contains(\"tali-listing-wrap\")` would false-positive on this very test's \
-         own explanatory comment in site.css, so this needles the selector form): {css}"
-    );
+// `wide_listing_page_intro_prose_selector_targets_a_class_that_really_ships` stood here until
+// 2026-08-15. It pinned `site.css`'s "clamp a wide listing page's intro prose to the reading
+// measure" rule against keying its `:has()` off a class nothing emits. That rule is gone: a
+// listing is a ruled list at the reading measure now, so there is no wider card grid for an
+// intro paragraph to be clamped against. Its second half — the DOM shape `:has()` needed —
+// pinned a precondition for a selector that no longer exists, so it goes too rather than
+// being kept as a guarantee nothing depends on.
 
-    // `projects.tmd` is `page-layout: full` + `listing:` + a lead paragraph — the live example
-    // named in the review. Confirm the DOM shape the selector above depends on.
-    let site = Site::discover(&corpus_dir().join("tech-blog"));
-    let projects = site.render_page("projects.tmd").expect("projects renders");
-    assert!(
-        projects.contains("class=\"tali-site-main tali-wide\""),
-        "projects.tmd must render with the wide main class: {projects}"
-    );
-    let main_start = projects
-        .find("<main id=\"tali-main\"")
-        .expect("projects has a <main>");
-    let after_main = &projects[main_start..];
-    let p_pos = after_main
-        .find("<p ")
-        .expect("a lead <p> follows <main> on the listing page");
-    let ul_pos = after_main
-        .find("<ul role=\"list\" class=\"tali-listing")
-        .expect("the listing <ul> is emitted");
-    assert!(
-        p_pos < ul_pos,
-        "the intro <p> must precede the listing <ul> as siblings under <main>: {projects}"
-    );
-    // No wrapper element between them — if `listing_html` ever grows one back, this selector
-    // needs to change again, and this assertion is what would catch it.
-    let between = &after_main[p_pos..ul_pos];
-    assert!(
-        !between.contains("<div"),
-        "no wrapping <div> may sit between the intro prose and the listing <ul>, or the \
-         `main:has(.tali-listing) > :where(...)` direct-child selector stops matching either \
-         one: {between}"
-    );
-}
-
-/// Post dates render humanized ("14 April 2026"), never the raw ISO string, in both the
-/// post title block and the listing cards. The machine-readable ISO stays where machines
-/// read it (JSON-LD `datePublished`, `citation_*`, the feed) — so the check is scoped to
-/// the visible regions, not the whole page.
-#[test]
-fn dates_are_humanized_in_the_title_block_and_cards() {
-    let site = Site::discover(&corpus_dir().join("tech-blog"));
-    // Post title block (em-algorithm, dated 2026-04-14).
-    let post = site
-        .render_page("posts/em-algorithm/index.tmd")
-        .expect("post");
-    let meta = post
-        .split("class=\"tali-title-meta\">") // the element, not the CSS selector
-        .nth(1)
-        .and_then(|s| s.split("</div>").next())
-        .expect("title meta div");
-    // The date is a `<time datetime>` (PA-M1): the ISO is machine-readable in the attribute,
-    // the humanized form is the visible text — the raw ISO must never be the visible text.
-    assert!(
-        meta.contains("<time datetime=\"2026-04-14\">14 April 2026</time>"),
-        "post date is a <time> with ISO attr + humanized text: {meta}"
-    );
-    // Listing cards (fourier 2026-05-15, em 2026-04-14): each a `<time class="tali-card-date">`.
-    let blog = site.render_page("blog.tmd").expect("blog");
-    assert!(
-        blog.contains("<time class=\"tali-card-date\" datetime=\"2026-05-15\">15 May 2026</time>"),
-        "fourier card date is a humanized <time>"
-    );
-    assert!(
-        blog.contains(
-            "<time class=\"tali-card-date\" datetime=\"2026-04-14\">14 April 2026</time>"
-        ),
-        "em card date is a humanized <time>"
-    );
-}
-
-/// Reading time shows on posts (a dated title block) but not on undated pages (the CV,
-/// listing indexes) — the gate is the same `date:` that marks an article.
-#[test]
-fn reading_time_shows_on_posts_not_on_undated_pages() {
-    let site = Site::discover(&corpus_dir().join("tech-blog"));
-    let post = site
-        .render_page("posts/em-algorithm/index.tmd")
-        .expect("post");
-    assert!(
-        post.contains("class=\"tali-read-time\"") && post.contains(" min read"),
-        "a post shows a reading-time estimate"
-    );
-    // The CV has no `date:` → no reading time.
-    let cv = site.render_page("cv.tmd").expect("cv");
-    assert!(
-        !cv.contains("tali-read-time"),
-        "an undated page shows no reading time"
-    );
-    // A listing index (blog) has no `date:` either.
-    let blog = site.render_page("blog.tmd").expect("blog");
-    assert!(
-        !blog.contains("tali-read-time"),
-        "a listing index shows no reading time"
-    );
-}
+// `reading_time_shows_on_posts_not_on_undated_pages` stood here until 2026-08-15, when spec
+// §9's cut #12 removed the estimate from the title block. The `date:`-gates-an-article rule it
+// leaned on survives and still gates the standalone `og:type`, which
+// `standalone_doc_carries_opengraph_seo_meta` in `corpus.rs` pins directly (both arms).
 
 /// The homepage renders the Marginalia hero (native text-only `hero:`), not the old
 /// Quarto `about: jolla` profile block. Site-level, exercised on the real blog.

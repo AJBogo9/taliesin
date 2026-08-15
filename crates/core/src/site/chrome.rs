@@ -510,14 +510,11 @@ impl Site {
             } else {
                 ""
             };
-            // The cost of opening this chapter, where the decision to open it is made.
-            // Inside the `<a>` so a screen reader announces it with the chapter rather
-            // than as a stray row.
-            let words = super::book::words_label(e.words)
-                .map(|w| format!(" <span class=\"tali-chap-words\">{w}</span>"))
-                .unwrap_or_default();
+            // The per-chapter word count went on 2026-08-15 with spec §9's cut #12, and the
+            // whole chain went with it: the label, the `Chapter::words` field, and the
+            // include-expanding `word_count` pass this ran over every chapter at discovery.
             s.push_str(&format!(
-                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}{words}</a></li>",
+                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}</a></li>",
                 e.url,
                 esc(&e.title)
             ));

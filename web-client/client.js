@@ -62,15 +62,21 @@
     if (dot) dot.dataset.state = state;
   };
 
-  // Words + reading time (prose only: code and math are excluded), refreshed on
+  // The draft's own length in words (prose only: code and math are excluded), refreshed on
   // every change. Shown in the control bar; no-op without it.
+  //
+  // Words, not a reading time. The "· N min" half went on 2026-08-15 with spec §9's cut #12,
+  // which took the same estimate off the title block and the chapter drawer: `word_count`
+  // excludes fenced code and math, so a code-heavy document is understated, and reading code
+  // is slower than reading prose — a minutes label is wrong twice in the same direction on
+  // exactly the documents this tool exists for. The count survives because it measures the
+  // AUTHOR's own draft rather than claiming anything about a reader's time.
   const updateWordCount = () => {
     if (!wordCountEl) return;
     const clone = /** @type {Element} */ (root.cloneNode(true));
     clone.querySelectorAll("pre, .katex, .tali-eqn-number").forEach((n) => n.remove());
     const words = ((clone.textContent || "").match(/[^\s]+/g) || []).length;
-    const mins = Math.max(1, Math.round(words / 200));
-    wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
+    wordCountEl.textContent = `${words.toLocaleString()} words`;
   };
 
   // --- diagnostics: render/include/kernel issues the server pushes -----------

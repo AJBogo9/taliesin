@@ -326,8 +326,8 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
     (
         "listing key",
         "categories",
-        "it was removed on 2026-08-03: page-level `categories:` still works and still shows \
-         as a badge on each card",
+        "it was removed on 2026-08-03: page-level `categories:` still works and still \
+         becomes a `<category>` in the Atom feed",
     ),
     (
         "callout kind",
@@ -936,9 +936,15 @@ mod tests {
     /// The listing category-filter chips were deleted 2026-08-03 (visual minimalism
     /// pass): they paid off only on a blog with many posts AND disciplined category
     /// vocabulary — the linter existed precisely because that discipline does not hold
-    /// by default. Page-level `categories:` and the card badges SURVIVE; only
-    /// `listing.categories` is retired, and it must be recognized in ITS OWN scope
-    /// (`listing key`), not answered with the generic did-you-mean.
+    /// by default. Page-level `categories:` SURVIVES; only `listing.categories` is retired,
+    /// and it must be recognized in ITS OWN scope (`listing key`), not answered with the
+    /// generic did-you-mean.
+    ///
+    /// The card badges did NOT survive — they went on 2026-08-15 with spec §9's cut #12, and
+    /// this note went with them, because a retirement note that describes a second thing
+    /// which has since been deleted sends the author looking for a badge that is not there.
+    /// The key itself is not retired and must not be: `feed.rs` still emits one `<category>`
+    /// per entry, which is where a tag does real work.
     #[test]
     fn the_listing_categories_subkey_is_retired_but_page_categories_live() {
         assert!(
@@ -959,8 +965,8 @@ mod tests {
             "must be scoped to `listing key`, not the generic front-matter scope: {msg}"
         );
         assert!(
-            msg.contains("removed on 2026-08-03") && msg.contains("badge"),
-            "must say it went and that the badge survives: {msg}"
+            msg.contains("removed on 2026-08-03") && msg.contains("Atom feed"),
+            "must say it went and what page-level `categories:` still does: {msg}"
         );
         assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
     }

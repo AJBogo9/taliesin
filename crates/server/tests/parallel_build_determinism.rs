@@ -227,14 +227,14 @@ fn listing_index_reflects_all_siblings_jobs1_vs_jobs_n() {
         });
         last_pos += pos + needle.len();
     }
-    // Each sibling's description + category also rode along (card built from front matter).
+    // Each sibling's description also rode along (the row is built from front matter).
+    // The category badge was the second witness of that until 2026-08-15, when spec §9's
+    // cut #12 took the chips off a listing row; `categories:` itself survives and still
+    // tags the Atom feed, but it no longer reaches this file, so the description carries
+    // the assertion alone.
     assert!(
         index.contains("Summary of post 0."),
         "listing card did not carry the sibling's description"
-    );
-    assert!(
-        index.contains("data-cat=\"cat0\""),
-        "listing card did not carry the sibling's category badge"
     );
 
     let _ = fs::remove_dir_all(&base);

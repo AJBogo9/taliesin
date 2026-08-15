@@ -1370,28 +1370,16 @@ impl Site {
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
         let href = format!("{up}{}", p.url);
+        // A post with an `image:` shows it; a post without simply does not. The monogram
+        // placeholder that used to fill the empty slot went on 2026-08-15 with spec §9's cut
+        // #12: it existed to keep a text-only post ALIGNED beside its imaged neighbours in a
+        // card grid, and a ruled list has no such alignment to keep.
         let img = match (with_image, &p.card_image) {
             (true, Some(src)) => format!(
                 "<img class=\"tali-card-img\" src=\"{up}{}\" alt=\"{}\" loading=\"lazy\">",
                 esc(src),
                 esc(p.card_image_alt.as_deref().unwrap_or(""))
             ),
-            // This listing shows thumbnails, but this post has no `image:`. Reserve the
-            // same slot with a monogram placeholder so a mixed listing keeps its rhythm:
-            // in the row layout the body still starts at the thumbnail column, and in the
-            // grid the card is a proper card, not a stretched void beside its neighbours.
-            (true, None) => {
-                let title = p.title.as_deref().unwrap_or(&p.rel);
-                let initial = title
-                    .chars()
-                    .find(|c| c.is_alphanumeric())
-                    .map(|c| c.to_uppercase().to_string())
-                    .unwrap_or_default();
-                format!(
-                    "<div class=\"tali-card-noimg\" aria-hidden=\"true\">{}</div>",
-                    esc(&initial)
-                )
-            }
             _ => String::new(),
         };
         // A `<time datetime>` (PA-M1) so the card date stays machine-readable; the class keeps
@@ -1407,24 +1395,11 @@ impl Site {
             .as_deref()
             .map(|d| format!("<p class=\"tali-card-desc\">{}</p>", esc(d)))
             .unwrap_or_default();
-        // Each badge still carries `data-cat` (the exact category name), a leftover of the
-        // listing category filter deleted 2026-08-04 (visual minimalism pass) — the badge
-        // is inert display now; nothing reads `data-cat` at runtime.
-        let cats = if p.categories.is_empty() {
-            String::new()
-        } else {
-            let badges: String = p
-                .categories
-                .iter()
-                .map(|c| {
-                    format!(
-                        "<span class=\"tali-cat\" data-cat=\"{c}\">{c}</span>",
-                        c = esc(c)
-                    )
-                })
-                .collect();
-            format!("<div class=\"tali-card-cats\">{badges}</div>")
-        };
+        // The category badges went on 2026-08-15 (spec §9 cut #12). `categories:` itself is
+        // NOT retired and must not be: `feed.rs` still emits one `<category>` per entry in
+        // the Atom feed, which is where a tag does real work. What is gone is the chip row —
+        // and with it the last consumer of `data-cat`, an attribute already inert since the
+        // listing category filter was deleted on 2026-08-04.
         // A draft card is badged so it reads as unpublished in a listing (preview only —
         // a built listing never contains a draft, so this is inert in `build`).
         let draft_badge = if p.draft {
@@ -1436,7 +1411,7 @@ impl Site {
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
             "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a></li>",
+             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}</div></a></li>",
             src = esc(&p.rel)
         )
     }

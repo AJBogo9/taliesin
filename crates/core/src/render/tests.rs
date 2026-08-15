@@ -70,30 +70,6 @@ fn front_matter_title_extracted_and_rendered_as_title_block() {
 }
 
 #[test]
-fn reading_time_scales_with_word_count() {
-    // The estimate is prose-words / 200 wpm, min 1. Pin the NUMBER, not merely that some
-    // "N min read" string is present: a constant `mins = 1` regression sails through a
-    // `contains(" min read")` substring check (the site tests only did that), yet mislabels
-    // every long post as a one-minute read.
-    let body = "lorem ".repeat(400);
-    let doc = render_document(&format!("---\ntitle: T\ndate: 2020-01-01\n---\n\n{body}\n"));
-    let h = doc.body_html();
-    assert!(
-        h.contains("class=\"tali-read-time\""),
-        "reading time shown: {h}"
-    );
-    // (400 + 100) / 200 = 2, so it must read "2 min read", not a collapsed constant.
-    assert!(
-        h.contains("2 min read"),
-        "reading time must scale with word count, got: {h}"
-    );
-    assert!(
-        !h.contains("1 min read"),
-        "reading time must not collapse to a constant: {h}"
-    );
-}
-
-#[test]
 fn title_block_style_none_injects_a_hidden_h1_but_no_visible_block() {
     let doc = render_document("---\ntitle: \"Blog\"\ntitle-block-style: none\n---\n\nIntro.\n");
     // Metadata title is preserved (drives `<title>`, OpenGraph, nav)...
@@ -2723,16 +2699,22 @@ fn prose_lint_is_retired_and_lints_nothing() {
     );
 }
 
-/// Reading time still works: `prose::word_count` is the surviving half of `prose.rs` and it
-/// has many consumers (the title block here, the book chapter-cost signal, the LSP outline,
-/// `map`). Removing the linter must not have taken the selection walk with it.
+/// `prose::word_count`'s selection walk still works: it is the surviving half of `prose.rs`,
+/// and removing the linter must not have taken the walk with it.
+///
+/// This asserted through the title block's reading-time estimate until 2026-08-15, when spec
+/// §9's cut #12 deleted that estimate along with the chapter-cost signal — the walk's two
+/// most visible consumers. The subject survives them both (the LSP outline and the dev menu's
+/// word count still read it), so the test asks the function directly rather than through a
+/// surface that no longer exists.
 #[test]
-fn reading_time_still_counts_prose() {
-    let doc = render_document("---\ntitle: T\ndate: 2026-01-01\n---\n\nOne two three four five.\n");
-    assert!(
-        doc.body_html().contains("min read"),
-        "a dated post still gets its reading-time estimate:\n{}",
-        doc.body_html()
+fn word_count_still_walks_only_the_prose() {
+    // Front matter out, the fence out, the heading and the prose in.
+    let src = "---\ntitle: T\n---\n\n# Heading\n\none two three\n\n```py\nnot counted here\n```\n";
+    assert_eq!(
+        crate::prose::word_count(src),
+        4,
+        "`Heading` (1) + three prose words, with front matter and the fence excluded"
     );
 }
 
@@ -3720,6 +3702,84 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
                  coloured — just not out of the palette this theme replaced"
             );
         }
+    }
+}
+
+/// A listing is a ruled list. A "card" in this theme is a box with radius 0, no ground and no
+/// colour — which is a hairline rule with extra steps (ruling R4) — and its title was 17.28px
+/// against a 20px body, the exact defect `the_serif_reading_scale_never_drops_below_the_body`
+/// gates for on every selector it knows about and could not see on this one.
+///
+/// Spec §9's cut #12 lands here whole: category chips, the monogram placeholder, the reading
+/// time and the chapter word counts. Splitting a numbered cut across tasks is how half of one
+/// survives and is then defended by the pin that outlived it.
+#[test]
+fn a_listing_is_a_ruled_list_and_cut_12_landed() {
+    for (needle, why) in [
+        (".tali-card-cats", "category chips: spec §9 cut #12"),
+        (".tali-cat ", "category chips: spec §9 cut #12"),
+        (
+            ".tali-card-noimg",
+            "the monogram placeholder: spec §9 cut #12",
+        ),
+        (".tali-chap-words", "chapter word counts: spec §9 cut #12"),
+        (
+            ".tali-listing-grid",
+            "a listing is one ruled list, not two layouts",
+        ),
+    ] {
+        assert!(
+            !SITE_CSS.contains(needle),
+            "site.css still styles `{needle}`: {why}"
+        );
+    }
+    // The row is a rule, not a box.
+    assert!(
+        !SITE_CSS.contains("border: 1px solid var(--tali-border); border-radius: var(--tali-radius); overflow: hidden; background: var(--tali-bg);"),
+        "the card's box is a rule now"
+    );
+    // A listing title is prose and may not sit under the prose it lists.
+    let title = declaration_in(SITE_CSS, ".tali-card-title {", "font-size")
+        .expect(".tali-card-title sets a font-size");
+    assert!(
+        rem_px(title) >= 20.0,
+        "a listing title is {}px against a 20px body; the small register in this theme is \
+         the MONO voice, not a shrunken serif",
+        rem_px(title)
+    );
+    // The measure override Plan 2 left for these pages is gone with the grid that needed it.
+    assert!(
+        !SITE_CSS.contains("--tali-measure: 60rem"),
+        "a ruled list reads at the reading measure; the local token override went with the \
+         card grid it was widening"
+    );
+
+    // The cut is in the EMITTERS too, not only the sheet: a deleted rule leaves the markup
+    // shipping, styled by nothing.
+    let root = repo_root();
+    for (rel, needle, why) in [
+        ("crates/core/src/site/mod.rs", "tali-card-cats", "chips"),
+        (
+            "crates/core/src/site/mod.rs",
+            "tali-card-noimg",
+            "the monogram",
+        ),
+        (
+            "crates/core/src/site/chrome.rs",
+            "tali-chap-words",
+            "chapter word counts",
+        ),
+        (
+            "crates/core/src/render/mod.rs",
+            "min read",
+            "the reading-time estimate",
+        ),
+    ] {
+        let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        assert!(
+            !text.contains(needle),
+            "{rel} still emits {why} (`{needle}`): spec §9 cut #12"
+        );
     }
 }
 
