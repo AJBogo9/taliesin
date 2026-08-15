@@ -76,7 +76,7 @@ return Plot.lineY(
   Array.from({length: 500}, (_, t) =>
     d3.range(1, harmonics + 1).reduce(
       (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
-  {curve: "basis", stroke: "#4c8dff"}
+  {curve: "basis", stroke: "#3A5578"}
 ).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
 ```
 
@@ -146,7 +146,7 @@ camera.position.set(4, 3, 6);
 scene.add(new THREE.AmbientLight(0xffffff, 1));
 scene.add(new THREE.Mesh(
   new THREE.IcosahedronGeometry(1.5, 0),
-  new THREE.MeshStandardMaterial({ color: 0x4c8dff, flatShading: true }),
+  new THREE.MeshStandardMaterial({ color: 0x3a5578, flatShading: true }),
 ));
 
 (function animate() {

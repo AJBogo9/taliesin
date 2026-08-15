@@ -3567,38 +3567,58 @@ fn every_theme_defines_its_own_flash_tint() {
     );
 }
 
-/// The brand rests on ONE owned accent hue. These are the vendor defaults it replaced: three
-/// blues (a stock light blue, GitHub Primer's, Tailwind's blue-600), the deck's fourth blue,
-/// Material's error red, and the old maximally-saturated callout set. Shipping any of them again
-/// is the single loudest "this was assembled from framework defaults" tell, so ban the literals.
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The brand rests on ONE owned palette. These are the vendor defaults it replaced.
+///
+/// **The file list is the point.** This test used to scan the five bundled stylesheets, which
+/// is exactly the set where the doctrine had already been applied — so it passed while
+/// `#4c8dff` and `#4c6ef5` shipped in both favicons, the VS Code icon, the dev-menu CSS and
+/// nine demo documents. A ban that only looks where you already cleaned is not a ban.
 #[test]
-fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
+fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     const BANNED: &[(&str, &str)] = &[
         ("#4c8dff", "the old stock light blue"),
         ("#1f6feb", "GitHub Primer's blue"),
         ("#2563eb", "Tailwind blue-600"),
         ("#4c6ef5", "the retired deck's fourth blue"),
+        ("#1e293b", "Tailwind slate-800"),
+        ("#e2e8f0", "Tailwind slate-200"),
+        ("#f9fafb", "Tailwind gray-50"),
         ("#b00020", "Material Design's error red"),
-        ("#2bb673", "the old callout tip green"),
-        ("#e0a800", "the old callout warning amber"),
-        ("#e0566b", "the old callout important red"),
-        ("#e8730c", "the old callout caution orange"),
+        ("#0645ad", "the old print link blue"),
+        ("#9aa0aa", "the retired dark-mode muted"),
     ];
-    for (sheet, css) in [
-        ("tokens.css", TOKENS_CSS),
-        ("tokens-dark.css", TOKENS_DARK_CSS),
-        ("base.css", BASE_CSS),
-        ("dark.css", DARK_CSS),
-        ("site.css", SITE_CSS),
+    let root = repo_root();
+    let mut checked = 0usize;
+    for rel in [
+        "crates/core/assets/css/tokens.css",
+        "crates/core/assets/css/tokens-dark.css",
+        "crates/core/assets/css/base.css",
+        "crates/core/assets/css/dark.css",
+        "crates/core/assets/css/site.css",
+        "crates/server/src/serve/mod.rs",
+        "web-client/client.js",
+        "web-client/search.js",
+        "site/favicon.svg",
+        "web-client/favicon.svg",
+        "editor/vscode/icons/tmd.svg",
     ] {
-        let lower = css.to_ascii_lowercase();
+        let p = root.join(rel);
+        let text = std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("{rel}: {e}"))
+            .to_ascii_lowercase();
         for (hex, what) in BANNED {
             assert!(
-                !lower.contains(hex),
-                "{sheet} still ships {hex} ({what}); route it through the accent/callout tokens"
+                !text.contains(hex),
+                "{rel} still ships {hex} ({what}); route it through the token layer"
             );
         }
+        checked += 1;
     }
+    assert_eq!(checked, 11, "a file dropped out of the vendor-colour sweep");
 }
 
 /// The syntax palette is OWNED. Four hues in one warm-anchored chroma envelope, mapped onto

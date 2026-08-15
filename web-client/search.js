@@ -36,15 +36,15 @@
     "#tali-search .tali-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
     "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
     "#tali-search .tali-s-head{display:flex;align-items:baseline;gap:.6rem}" +
-    "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent-fill,#1f6feb);color:var(--tali-on-accent,#fff)}" +
+    "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent-fill);color:var(--tali-on-accent)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:rgba(255,255,255,.8)}" +
     "#tali-search .tali-s-snip{font-size:.78rem;color:var(--tali-muted,#888);overflow:hidden;" +
     "text-overflow:ellipsis;white-space:nowrap}" +
-    "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-link,#2563eb);font-weight:700;padding:0}" +
+    "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-link);font-weight:700;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:rgba(255,255,255,.85)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip mark{color:#fff}" +
     "#tali-search .tali-s-title{font-weight:600}" +
-    "#tali-search .tali-s-title mark{background:transparent;color:var(--tali-link,#2563eb);" +
+    "#tali-search .tali-s-title mark{background:transparent;color:var(--tali-link);" +
     "font-weight:800;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
@@ -52,7 +52,7 @@
     // meant to contextualise (the title is what the reader is scanning for).
     "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted,#888);white-space:nowrap;margin-left:auto;" +
     "overflow:hidden;text-overflow:ellipsis;max-width:40%}" +
-    "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link,#2563eb);text-transform:uppercase;" +
+    "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link);text-transform:uppercase;" +
     "font-size:.66rem;letter-spacing:.05em;font-weight:700}" +
     // Outline rows: a chapter leads with its number, its sections are indented one step per
     // level of nesting WITHIN that chapter, and a chapter that only labels a group of
@@ -72,7 +72,7 @@
     "#tali-search .tali-s-d3{padding-left:4.1rem}" +
     "#tali-search .tali-s-d4{padding-left:5.3rem}" +
     "#tali-search .tali-s-item[class*=tali-s-d] .tali-s-title{font-weight:400}" +
-    "#tali-search .tali-s-more .tali-s-title{font-size:.8rem;color:var(--tali-link,#2563eb);font-weight:600}" +
+    "#tali-search .tali-s-more .tali-s-title{font-size:.8rem;color:var(--tali-link);font-weight:600}" +
     "#tali-search .tali-s-more[aria-selected=true] .tali-s-title{color:inherit}" +
     "#tali-search .tali-s-miss{font-size:.75rem;color:var(--tali-muted,#888)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-miss{color:rgba(255,255,255,.85)}" +

@@ -471,7 +471,7 @@
       "#tali-error .tali-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:#ff8c82;margin-bottom:.55rem;}" +
       "#tali-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
       "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2d5d5;}" +
-      "#tali-error .tali-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:#9aa0aa;}";
+      "#tali-error .tali-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:var(--tali-muted);}";
     (document.head || document.documentElement).appendChild(style);
     const el = document.createElement("div");
     el.id = "tali-error";
@@ -913,7 +913,10 @@
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
     document.title = "● building… — " + baseTitle;
-    setFaviconDot("#4c8dff");
+    // Canvas fillStyle can't consume var(...) directly, so resolve the liveness
+    // token (same one the CSS busy-dot/progress-fill use) to its live value.
+    var busyColor = getComputedStyle(document.documentElement).getPropertyValue("--tali-fg").trim();
+    setFaviconDot(busyColor || "#000");
   }
 
   // Render the warm-up chip: a dot + "Starting <lang> kernel… (Ns)". The lang and

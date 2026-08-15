@@ -858,7 +858,7 @@
        whichever order the theme sheets are inlined in. The head script additionally swaps
        `data-theme` to light for the print job, which also neutralises dark.css's untokenised
        syntax + diagnostic-box colours; this block is the no-JS fallback.
-       `--tali-link`/`--tali-accent` used to force the classic web-safe link blue (#0645ad)
+       `--tali-link`/`--tali-accent` used to force the classic web-safe link blue
        here; that was the last surviving accent hue anywhere in the theme. This palette has
        no chrome accent on screen, so print does not get one either: both resolve to this
        block's own `--tali-fg`, same as the `prefers-contrast: more` block below does. */

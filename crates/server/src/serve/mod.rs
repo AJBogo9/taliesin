@@ -412,12 +412,12 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-sections .tali-section-meta[data-tali-op=\"error\"] { color: #e5534b; } \
     .tali-dev-sections .tali-section-empty { padding: .1rem .35rem; color: var(--tali-muted, #888); font-size: 12px; } \
     .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
-    .tali-dev-drafts a { color: var(--tali-accent, #4c8dff); text-decoration: none; font-size: 12px; } \
+    .tali-dev-drafts a { color: var(--tali-fg); text-decoration: none; font-size: 12px; } \
     .tali-dev-drafts a:hover { text-decoration: underline; } \
     .tali-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
       background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
       border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
-    .tali-dev-ctl:hover { border-color: var(--tali-accent, #4c8dff); } \
+    .tali-dev-ctl:hover { border-color: var(--tali-fg); } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
     #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg, #f5f5f5); \
@@ -425,7 +425,7 @@ pub(crate) const STATUS_CSS: &str = "\
     #tali-diagnostics .tali-diag-error { border-left: 3px solid #e5534b; } \
     #tali-diagnostics .tali-diag-warning { border-left: 3px solid #d9a23a; } \
     #tali-diagnostics .tali-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
-    #tali-diagnostics .tali-diag-loc:hover { border-color: var(--tali-accent, #4c8dff); } \
+    #tali-diagnostics .tali-diag-loc:hover { border-color: var(--tali-fg); } \
     #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--tali-muted, #888); font-size: 11px; } \
     #tali-diagnostics .tali-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
       background: var(--tali-bg, #fff); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
@@ -447,7 +447,7 @@ pub(crate) const STATUS_CSS: &str = "\
     #tali-progress[data-state=\"idle\"] { opacity: .65; } \
     .tali-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
       background: var(--tali-muted, #aaa); } \
-    #tali-progress[data-state=\"busy\"] .tali-prog-dot { background: #4c8dff; } \
+    #tali-progress[data-state=\"busy\"] .tali-prog-dot { background: var(--tali-fg); } \
     #tali-progress[data-state=\"warming\"] .tali-prog-dot { background: #d9a23a; } \
     #tali-progress[data-state=\"idle\"] .tali-prog-dot { background: #3fb950; } \
     #tali-progress[data-state=\"error\"] .tali-prog-dot { background: #e5534b; } \
@@ -461,15 +461,15 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: 2px; \
       background: color-mix(in srgb, currentColor 15%, transparent); flex: none; } \
     .tali-prog-fill { display: block; height: 100%; border-radius: 2px; \
-      background: #4c8dff; transition: width .15s linear; } \
+      background: var(--tali-fg); transition: width .15s linear; } \
     [data-tali-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
     [data-tali-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
-    [data-tali-cell-state=\"running\"] { border-left-color: #4c8dff; } \
+    [data-tali-cell-state=\"running\"] { border-left-color: var(--tali-fg); } \
     [data-tali-cell-state=\"done\"] { border-left-color: #2bb673; } \
     [data-tali-cell-state=\"error\"] { border-left-color: #cc3333; } \
     [data-tali-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
     [data-tali-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
-    .tali-cell-badge { font: 11px/1 var(--tali-mono, monospace); opacity: .75; margin-right: 6px; } \
+    .tali-cell-badge { font: 11px/1 var(--tali-font-mono, monospace); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
       [data-tali-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \

@@ -53,7 +53,7 @@ const build = async () => {
           if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
           const geo = new S.THREE.PlaneGeometry(6, 6, n, n);
           mesh = new S.THREE.Mesh(geo, new S.THREE.MeshStandardMaterial({
-            color: 0x4c8dff, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
+            color: 0x3a5578, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
           }));
           mesh.rotation.x = -Math.PI / 2.3;
           S.scene.add(mesh);
@@ -120,7 +120,7 @@ const build = async () => {
           if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
           const geo = new S.THREE.PlaneGeometry(6, 6, n, n);
           mesh = new S.THREE.Mesh(geo, new S.THREE.MeshStandardMaterial({
-            color: 0x4c8dff, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
+            color: 0x3a5578, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
           }));
           mesh.rotation.x = -Math.PI / 2.3;
           S.scene.add(mesh);
@@ -174,7 +174,7 @@ $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
-return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
+return Plot.lineY(ys, { curve: "basis", stroke: "#3A5578" })
   .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
@@ -186,7 +186,7 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
-return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
+return Plot.lineY(ys, { curve: "basis", stroke: "#3A5578" })
   .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
