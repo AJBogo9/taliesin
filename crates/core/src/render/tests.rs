@@ -5748,6 +5748,76 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
     );
 }
 
+/// A collapsed sidenote can get back to where the reader was. Below the margin breakpoint the
+/// note is revealed IN PLACE by its own reference, which leaves the reader wherever the jump
+/// landed them: the note was `display: none` behind `:target` with no route back to the
+/// sentence they were reading — the one component whose reduced form was a defect rather than
+/// a simplification (spec §6). The reference already carries `id="fnref-<name>-1"`, so this
+/// needs no new markup on the other end, only a link.
+#[test]
+fn a_collapsed_sidenote_links_back_to_its_reference() {
+    let page = render_html_page(
+        "---\ntitle: T\n---\n\nText with a note.[^a]\n\n[^a]: The note.\n",
+        "bl",
+    );
+    assert!(
+        page.contains("id=\"fnref-a-1\""),
+        "the reference must carry the id the back-link targets: {page}"
+    );
+    assert!(
+        page.contains("<a class=\"tali-sidenote-back\" href=\"#fnref-a-1\""),
+        "the note must carry a link back to its first reference: {page}"
+    );
+    // It appears exactly when the reader arrived by jumping — `:target` is true only after
+    // following the reference — and is absent the rest of the time, in either form.
+    assert!(
+        BASE_CSS.contains(".tali-sidenote-back { display: none; }"),
+        "an untargeted note must not carry a stray word of chrome"
+    );
+    assert!(
+        BASE_CSS.contains(".tali-sidenote:target .tali-sidenote-back"),
+        "the back-link must be revealed with the note it belongs to"
+    );
+    // …and never on paper, where every note is already in the flow and a link is a dead word.
+    assert!(
+        BASE_CSS.contains(".tali-sidenote-back { display: none !important; }"),
+        "the back-link must not print"
+    );
+}
+
+/// The breakpoint that engages the margin column is DERIVED, not chosen: it is the sum of the
+/// tracks that have to fit. A hand-picked number drifts away from the geometry the moment
+/// either token moves, and nothing would say so.
+#[test]
+fn the_margin_column_breakpoint_is_the_sum_of_its_tracks() {
+    // The engaged values live in the media query in base.css, not in tokens.css (which
+    // declares the collapsed zero), so they are read from the query itself.
+    let engaged = BASE_CSS
+        .split("/* ENGAGED */")
+        .nth(1)
+        .expect("the engagement block is marked `/* ENGAGED */` so this test can find it");
+    let note_w = token_len(engaged, "--tali-note-w:", "rem");
+    let note_gap = token_len(engaged, "--tali-note-gap:", "rem");
+    let measure_rem = token_len(TOKENS_CSS, "--tali-measure:", "em") * 1.25; // em of a 1.25rem body
+    let want = 1.0 + measure_rem + note_gap + note_w + 1.0; // two 1rem page gutters
+    // The query's value ends at `)`, not at a `;`, so it needs its own read.
+    let got: f64 = engaged
+        .split("@media (min-width:")
+        .nth(1)
+        .expect("the engagement block is a min-width query")
+        .split(')')
+        .next()
+        .unwrap()
+        .trim()
+        .trim_end_matches("rem")
+        .parse()
+        .expect("the breakpoint is in rem");
+    assert!(
+        (got - want).abs() < 0.51,
+        "the margin column engages at {got}rem but its tracks need {want}rem"
+    );
+}
+
 /// JetBrains Mono's advance, in `em`. MEASURED 2026-08-15 from the vendored binary with
 /// fontTools: `unitsPerEm` 1000, and all 229 non-combining glyphs carry an advance of 600.
 /// It is a monospace, so unlike Literata's mean this is exact — but it still describes ONE

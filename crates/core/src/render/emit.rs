@@ -239,6 +239,15 @@ fn is_safe_data_image(url: &str) -> bool {
 /// the *referencing* block and lands on that block's line — silently the wrong line,
 /// which is worse than no-op. The id is namespaced `fn-…`, which cannot collide with a
 /// content-hashed block id (`make_id` emits `b-…`).
+///
+/// The trailing back-link is the collapsed form's whole point of difference. Below the margin
+/// breakpoint the note is revealed in place by `:target`, which leaves the reader wherever the
+/// jump landed them with no route back to the sentence they were reading;
+/// [`footnote_ref_markup`] already emits `id="fnref-<name>-<n>"` and comrak numbers references
+/// from 1, so the first reference is a stable target and nothing changes on that end. The
+/// label is a WORD and not a `↩`: the vendored mono subset carries neither U+21A9 nor U+2190,
+/// so a glyph here would silently fall back to whatever system mono the reader happens to
+/// have. CSS hides it in the margin form, where the note already sits beside its reference.
 pub(crate) fn footnote_sidenote<'a>(
     node: &'a AstNode<'a>,
     name: &str,
@@ -268,7 +277,9 @@ pub(crate) fn footnote_sidenote<'a>(
         format!(
             "<span class=\"tali-sidenote\" id=\"fn-{n}\" role=\"doc-footnote\" \
              data-block-id=\"fn-{n}\" data-sourcepos=\"{sourcepos}\"{file_attr}>\
-             <span class=\"tali-sidenote-num\">{ix}</span>{inner}</span>"
+             <span class=\"tali-sidenote-num\">{ix}</span>{inner}\
+             <a class=\"tali-sidenote-back\" href=\"#fnref-{n}-1\" \
+             aria-label=\"Back to reference {ix}\">Back</a></span>"
         ),
         flattened,
     )
