@@ -337,7 +337,7 @@ fn external_inlines_enhancer_registry_before_include_after_body() {
 /// Item 150: the body typeface was 160 KB of base64 sitting inside the render-blocking
 /// stylesheet that **every** page of a site links (23 of 23 on a built `docs/guide`) — the
 /// only weight a reader pays on all of them. A site build already emits separate hashed
-/// assets, so there the two faces become their own `.woff2` files with a `preload`.
+/// assets, so there the three faces become their own `.woff2` files with a `preload`.
 ///
 /// **Per-target, not global.** `build <file.tmd>` promises ONE self-contained file, so it
 /// must keep inlining; the last assertion here is what stops a future change from "fixing"
@@ -371,7 +371,7 @@ fn a_site_build_links_the_body_font_instead_of_inlining_160kb_of_base64() {
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
 
-    // Both faces ship as real files, content-hashed like every other shared asset.
+    // All three faces ship as real files, content-hashed like every other shared asset.
     let faces = assets
         .iter()
         .filter(|n| n.ends_with(".woff2"))
@@ -379,8 +379,8 @@ fn a_site_build_links_the_body_font_instead_of_inlining_160kb_of_base64() {
         .collect::<Vec<_>>();
     assert_eq!(
         faces.len(),
-        2,
-        "the roman + italic faces must each be their own file: {assets:?}"
+        3,
+        "the body roman, body italic and mono faces must each be their own file: {assets:?}"
     );
 
     let app_css_name = assets
@@ -415,9 +415,13 @@ fn a_site_build_links_the_body_font_instead_of_inlining_160kb_of_base64() {
     // instead of after it parses. Depth-adjusted, because THIS href is page-relative.
     let index = std::fs::read_to_string(out.join("index.html")).unwrap();
     let deep = std::fs::read_to_string(out.join("sub/deep.html")).unwrap();
+    // Match the body face's own stem, not the bare substring "normal": the mono face
+    // (`jetbrains-mono-latin-wght-normal.<hash>.woff2`) contains "normal" too, and
+    // `faces` is built from `read_dir`, whose order is not guaranteed, so a substring
+    // match here could silently select the mono face on some runs.
     let roman = faces
         .iter()
-        .find(|n| n.contains("normal"))
+        .find(|n| n.starts_with("literata-latin-wght-normal"))
         .expect("a roman face");
     assert!(
         index.contains(&format!(
