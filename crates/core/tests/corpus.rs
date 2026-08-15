@@ -690,7 +690,7 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
     );
     for n in 4..=6 {
         assert!(
-            page.contains(&format!("Figure&nbsp;{n}:")),
+            page.contains(&format!("Figure&nbsp;{n}</span>:")),
             "missing 'Figure {n}:' caption"
         );
     }
@@ -1284,7 +1284,9 @@ fn book_chapter_scopes_float_numbers_across_chapters() {
 
     let intro = site.render_page("intro.tmd").expect("intro renders");
     assert!(
-        intro.contains("<figcaption>Figure&nbsp;1.1: How this book"),
+        intro.contains(
+            "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1.1</span>: How this book"
+        ),
         "chapter 1's first figure numbers as 1.1: {intro}"
     );
     assert!(
@@ -1296,7 +1298,7 @@ fn book_chapter_scopes_float_numbers_across_chapters() {
     // Chapter 2's first figure is 2.1, NOT the flat "Figure 2" a shared per-page counter
     // would have produced.
     assert!(
-        methods.contains("<figcaption>Figure&nbsp;2.1: The three estimation stages.</figcaption>"),
+        methods.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2.1</span>: The three estimation stages.</figcaption>"),
         "chapter 2's first figure numbers as 2.1: {methods}"
     );
     assert!(

@@ -130,8 +130,8 @@ fn the_authored_table_carries_its_id_and_folded_caption() {
     );
     assert!(
         h.contains(
-            "<caption>Table&nbsp;1: The two service objectives this readout is \
-             written against.</caption>"
+            "<caption><span class=\"tali-caption-label\">Table&nbsp;1</span>: The two \
+             service objectives this readout is written against.</caption>"
         ),
         "the `: caption` paragraph folds into the table as a numbered <caption>: {h}"
     );

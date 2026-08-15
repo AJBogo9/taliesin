@@ -103,7 +103,8 @@ fn two_figures_number_and_their_crossrefs_resolve() {
     // Numbering increments across the two figures, and the inline @fig- refs resolve
     // to a link carrying the same number (not a bare "Figure").
     assert!(
-        h.contains("<figcaption>Figure&nbsp;1:") && h.contains("<figcaption>Figure&nbsp;2:"),
+        h.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>:")
+            && h.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2</span>:"),
         "figures number 1 then 2: {h}"
     );
     assert!(

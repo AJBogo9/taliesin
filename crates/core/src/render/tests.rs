@@ -662,7 +662,7 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
         "diagram pre missing: {body}"
     );
     assert!(
-        body.contains("<figcaption>Figure&nbsp;1: The pipeline</figcaption>"),
+        body.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>: The pipeline</figcaption>"),
         "got: {body}"
     );
     // the `%%|` option lines are stripped from the diagram source
@@ -816,7 +816,7 @@ fn a_labelled_non_executable_lang_never_phantoms_a_figure_number() {
         "no element must carry the phantom `fig-shell` anchor: {body}"
     );
     assert!(
-        !body.contains("Figure&nbsp;1: Shell"),
+        !body.contains("Figure&nbsp;1</span>: Shell"),
         "the bash cell must not become a numbered figure: {body}"
     );
     // The real figure keeps number 1: the phantom must not have burned it to Figure 2.
@@ -1216,11 +1216,17 @@ fn table_caption_is_numbered_folded_and_referenceable() {
         "table did not get the explicit id: {body}"
     );
     assert!(
-        body.contains("<caption>Table&nbsp;1: My caption</caption>"),
+        body.contains(
+            "<caption><span class=\"tali-caption-label\">Table&nbsp;1</span>: My caption</caption>"
+        ),
         "caption not folded/numbered into the table: {body}"
     );
+    // The caption paragraph must be CONSUMED, not merely reproduced: it should appear once,
+    // inside the `<caption>`, and nowhere else. This used to check for a stray `>: My
+    // caption`, which the label span now legitimately produces (`</span>: My caption`), so it
+    // counts occurrences instead of matching a shape the markup is allowed to have.
     assert!(
-        !body.contains("{#tbl-data}") && !body.contains(">: My caption"),
+        !body.contains("{#tbl-data}") && body.matches("My caption").count() == 1,
         "the caption paragraph leaked instead of folding into the table: {body}"
     );
     assert!(
@@ -1654,7 +1660,7 @@ fn standalone_image_becomes_a_numbered_figure() {
     assert!(h.contains("<img src=\"scree.png\""), "got: {h}");
     assert!(h.contains("style=\"width:50%\""), "got: {h}");
     assert!(
-        h.contains("<figcaption>Figure&nbsp;1: Scree plot</figcaption>"),
+        h.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>: Scree plot</figcaption>"),
         "got: {h}"
     );
     assert!(!h.contains("{#fig-"), "the attribute block leaked: {h}");
@@ -3130,11 +3136,11 @@ fn book_chapter_scopes_figure_numbers() {
     );
     let body = doc.body_html();
     assert!(
-        body.contains("<figcaption>Figure&nbsp;2.1: A fit.</figcaption>"),
+        body.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2.1</span>: A fit.</figcaption>"),
         "the first figure in chapter 2 numbers as 2.1: {body}"
     );
     assert!(
-        body.contains("<figcaption>Figure&nbsp;2.2: A second.</figcaption>"),
+        body.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2.2</span>: A second.</figcaption>"),
         "the second as 2.2: {body}"
     );
     assert!(
@@ -3161,11 +3167,11 @@ fn book_chapter_scopes_equation_listing_and_table_numbers() {
         "the chapter's first equation numbers as (2.1): {body}"
     );
     assert!(
-        body.contains("Listing&nbsp;2.1: My listing"),
+        body.contains("Listing&nbsp;2.1</span>: My listing"),
         "the chapter's first listing numbers as 2.1: {body}"
     );
     assert!(
-        body.contains("<caption>Table&nbsp;2.1: My caption</caption>"),
+        body.contains("<caption><span class=\"tali-caption-label\">Table&nbsp;2.1</span>: My caption</caption>"),
         "the chapter's first table numbers as 2.1: {body}"
     );
     for (anchor, label) in [
@@ -3193,7 +3199,7 @@ fn floats_stay_flat_outside_a_book_chapter() {
     );
     let body = doc.body_html();
     assert!(
-        body.contains("<figcaption>Figure&nbsp;1: A fit.</figcaption>"),
+        body.contains("<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>: A fit.</figcaption>"),
         "no chapter context keeps flat figure numbering: {body}"
     );
     assert!(
@@ -5712,6 +5718,44 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
             stripped == "0" || stripped == "2px"
         }),
         "the radius scale drifted: {radii:?}. One token, 2px, objects only."
+    );
+}
+
+/// The generated part of a caption is the tool's label; the rest is the author's sentence.
+/// They must be separately addressable, or the choice is between a whole caption in mono
+/// (which reads as terminal output — the correction spec §4 records from a render) and a
+/// whole caption in serif, which loses the machine voice on the one word that is the tool's.
+#[test]
+fn a_caption_number_is_the_machine_voice_and_the_caption_is_not() {
+    let page = render_html_page(
+        "---\ntitle: T\n---\n\n![A river at dusk](img.png){#fig-r}\n",
+        "fg",
+    );
+    assert!(
+        page.contains("<span class=\"tali-caption-label\">Figure&nbsp;1</span>: A river at dusk"),
+        "the label is a span and the author's sentence is not inside it: {page}"
+    );
+    assert!(
+        BASE_CSS.contains(".tali-caption-label { font: 400 .78rem/1.3 var(--tali-font-mono);"),
+        "the label takes the machine voice"
+    );
+    // The caption is prose: serif, italic, and NOT uppercased by the label beside it.
+    assert!(
+        BASE_CSS.contains(
+            "figcaption, table caption { font: var(--tali-font-body); font-size: .92rem;"
+        ),
+        "a caption is prose in the serif at .92rem (spec §4)"
+    );
+    assert!(
+        BASE_CSS.contains("font-style: italic; font-weight: 400; color: var(--tali-muted);"),
+        "spec §4: captions are italic"
+    );
+    // The label must be upright against that italic, or the machine voice reads as emphasis.
+    assert!(
+        BASE_CSS.contains(
+            ".tali-caption-label { font: 400 .78rem/1.3 var(--tali-font-mono); font-style: normal;"
+        ),
+        "the label resets font-style: the caption around it is italic"
     );
 }
 

@@ -51,6 +51,7 @@ use cell_extract::{
     is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
+pub use cell_numbered::caption_label;
 pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 mod client_lang;
@@ -2595,8 +2596,9 @@ fn apply_table_captions(
             let gt = table.find('>').unwrap_or(0) + 1;
             let open = table[..gt].replacen("<table", &format!("<table{id_attr}"), 1);
             blocks[i].html = format!(
-                "{open}<caption>Table&nbsp;{tbl_num}{sep}{caption_html}</caption>{}",
+                "{open}<caption>{label}{sep}{caption_html}</caption>{}",
                 &table[gt..],
+                label = caption_label("Table", &tbl_num.to_string()),
             );
             blocks.remove(i + 1); // the caption paragraph is now folded in
         }

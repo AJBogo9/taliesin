@@ -121,10 +121,14 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
         ),
         None => img(&fig.url, ""),
     };
+    // `fig.caption` is already rendered HTML (the image's alt content), so it does not go
+    // through `numbered_caption`, which parses markdown — but the generated label is the same
+    // span, from the same helper, so the two paths cannot drift.
     format!(
         "<figure{block_attrs}{id_attr} class=\"tali-figure{align_class}\">\
          {imgs}\
-         <figcaption>Figure&nbsp;{num}: {}</figcaption></figure>",
+         <figcaption>{}: {}</figcaption></figure>",
+        super::caption_label("Figure", num),
         fig.caption,
     )
 }

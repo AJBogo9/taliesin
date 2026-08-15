@@ -1588,9 +1588,9 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
     let gt = start + rel_gt + 1;
     let open = inner[start..gt].replacen("<table", &format!("<table{id_attr}"), 1);
     format!(
-        "{}{open}<caption>Table&nbsp;{}{sep}{}</caption>{}",
+        "{}{open}<caption>{}{sep}{}</caption>{}",
         &inner[..start],
-        tbl.number,
+        render::caption_label("Table", &tbl.number.to_string()),
         caption_html(caption),
         &inner[gt..],
     )
@@ -1617,8 +1617,8 @@ fn table_figure_wrap(
 ) -> String {
     format!(
         "<figure{id_attr} class=\"tali-figure tali-table-figure\">\
-         <figcaption>Table&nbsp;{}{sep}{}</figcaption>{inner}</figure>",
-        tbl.number,
+         <figcaption>{}{sep}{}</figcaption>{inner}</figure>",
+        render::caption_label("Table", &tbl.number.to_string()),
         caption_html(caption),
     )
 }
@@ -3031,7 +3031,7 @@ mod tests {
             "the anchor must survive a non-table output, else @tbl-coefs dangles: {html}"
         );
         assert!(
-            html.contains("<figcaption>Table&nbsp;3: Fitted coefficients &amp; SEs</figcaption>"),
+            html.contains("<figcaption><span class=\"tali-caption-label\">Table&nbsp;3</span>: Fitted coefficients &amp; SEs</figcaption>"),
             "the spent number + escaped caption must still be shown: {html}"
         );
         assert!(
@@ -3057,7 +3057,9 @@ mod tests {
         let html = table_wrap(&tbl, "kernel unavailable");
         assert!(html.contains("id=\"tbl-x\""), "{html}");
         assert!(
-            html.contains("<figcaption>Table&nbsp;1</figcaption>"),
+            html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Table&nbsp;1</span></figcaption>"
+            ),
             "no caption -> bare number, no colon: {html}"
         );
     }
@@ -3077,7 +3079,7 @@ mod tests {
         );
         assert!(
             html.contains(
-                "<table id=\"tbl-cov\" border=\"0\"><caption>Table&nbsp;2: Coverage</caption>"
+                "<table id=\"tbl-cov\" border=\"0\"><caption><span class=\"tali-caption-label\">Table&nbsp;2</span>: Coverage</caption>"
             ),
             "the in-place caption path regressed: {html}"
         );

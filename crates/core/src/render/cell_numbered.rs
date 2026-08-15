@@ -31,13 +31,27 @@ fn caption_inline_html(caption: &str) -> String {
     html_escape(caption)
 }
 
-/// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
-/// appended (rendered as inline markdown) when a non-empty caption is given. Shared
-/// by the figure, listing, mermaid, and `{js}`-figure emitters.
+/// The generated half of a caption — `Figure 3`, `Table 2`, `Listing 7` — wrapped so CSS can
+/// address it separately from the sentence beside it.
+///
+/// This is the ONE part of a caption the tool wrote; everything after the colon is the
+/// author's own sentence and stays in the serif. Without the wrapper the two are one flat
+/// string and the choice is between a whole caption in mono — which reads as terminal output,
+/// the correction spec §4 records from a render — and no machine voice at all on the one word
+/// that is the tool's. Shared by the figure, listing, mermaid and `{js}`-figure emitters here
+/// and by the executed-table captions in `crates/server`.
+pub fn caption_label(label: &str, num: &str) -> String {
+    format!("<span class=\"tali-caption-label\">{label}&nbsp;{num}</span>")
+}
+
+/// A numbered figure/listing caption: the label span, with `": <caption>"` appended
+/// (rendered as inline markdown) when a non-empty caption is given. Shared by the figure,
+/// listing, mermaid, and `{js}`-figure emitters.
 pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
+    let head = caption_label(label, num);
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("{label}&nbsp;{num}: {}", caption_inline_html(c)),
-        None => format!("{label}&nbsp;{num}"),
+        Some(c) => format!("{head}: {}", caption_inline_html(c)),
+        None => head,
     }
 }
 
