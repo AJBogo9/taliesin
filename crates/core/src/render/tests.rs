@@ -3705,6 +3705,39 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// The chrome's half of the spacing scale. `tokens.css` says the scale "lands with the
+/// components it measures: Plan 2 for the reading surface, Plan 3 for the chrome"; Plan 2
+/// landed its half and gated `base.css`. This is the other half.
+///
+/// Same scope as its sibling: MARGINS between flow blocks are on `{0.5U, U, 1.5U, 2U, 3U}`,
+/// while the internal padding of a small object stays on a quarter-unit sub-multiple, because
+/// 0.5U is 15.5px and triples a table row (spec §3's amended row).
+#[test]
+fn the_chrome_margins_are_on_the_spacing_scale_too() {
+    const SCALE: &[&str] = &[".25", ".5", "1.5", "2", "3"];
+    for seg in SITE_CSS.split("calc(").skip(1) {
+        let expr = seg.split(')').next().unwrap_or("");
+        if !expr.contains("var(--tali-u)") {
+            continue;
+        }
+        let factor = expr.split('*').next().unwrap_or("").trim();
+        assert!(
+            SCALE.contains(&factor) || factor.starts_with('-'),
+            "`calc({expr})` uses {factor}U, which is not on the scale {SCALE:?}"
+        );
+    }
+    // A hover that sets a colour the element already has is a rule that does nothing. Both of
+    // these set `--tali-link` on an element already at `--tali-fg`, and the two tokens hold
+    // the same value in BOTH palettes — so they were silent no-ops in every theme.
+    for sel in [".tali-nav-brand:hover", ".tali-book-brand:hover"] {
+        assert!(
+            !SITE_CSS.contains(sel),
+            "`{sel}` sets --tali-link on an element already at --tali-fg, and the two tokens \
+             are the same value in both palettes: it changes nothing"
+        );
+    }
+}
+
 /// Spec §15.2: the landing page is an editorial masthead and prose. The masthead form already
 /// existed for reading-measure pages (`base.css`'s `:not(.tali-wide)` branch); this makes it
 /// the ONLY form, which is what deletes the centred hero, the viewport-scaled headline and
@@ -4011,7 +4044,15 @@ fn the_two_sticky_bars_are_one_rule_and_the_bar_is_opaque() {
 #[test]
 fn the_dev_ui_carries_no_generated_design_tells_either() {
     let root = repo_root();
-    for rel in ["crates/server/src/serve/mod.rs", "web-client/client.js"] {
+    // `search.js` joined this list on 2026-08-15. It draws the Cmd-K palette — reader-facing
+    // chrome on every site and every book, not a preview-only surface — and it carried a
+    // `blur(2px)` backdrop, a 60px shadow and three radii the whole time, for the same reason
+    // the dev UI did: no gate scanned the file. Found by rendering, not by reading.
+    for rel in [
+        "crates/server/src/serve/mod.rs",
+        "web-client/client.js",
+        "web-client/search.js",
+    ] {
         let text = std::fs::read_to_string(root.join(rel))
             .unwrap_or_else(|e| panic!("{rel}: {e}"))
             .to_ascii_lowercase();

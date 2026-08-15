@@ -78,12 +78,17 @@ pub fn clear_screen() {
     let _ = err.flush();
 }
 
-/// The opening banner: tool name + version.
+/// The opening banner: the mark, then the version.
+///
+/// The mark is the WORDMARK and carries no colour — spec §7 makes the favicon, this banner and
+/// the VS Code icon one purely typographic mark, and spec §3 puts no colour in chrome. It
+/// printed in bright green bold, which is a chrome accent in the one place with no ground to
+/// score it against. Bold is the emphasis a terminal actually has; the version stays dim.
 pub fn banner(version: &str) {
     eprintln!();
     eprintln!(
         "  {} {}",
-        paint("taliesin", "\x1b[1;32m"),
+        paint("taliesin", "\x1b[1m"),
         paint(version, "\x1b[2m")
     );
 }
@@ -105,9 +110,11 @@ pub fn ready(url: &str, elapsed: std::time::Duration) {
 /// The one-line orientation hint for the preview's controls. Taliesin has no interactive
 /// stdin key loop — a reader coming from Vite (or a Vite-style dev server) who presses
 /// `r`/`o`/`u`/`c`/`q`/`h` at the terminal gets silence, because every control lives in the
-/// browser's `◇` dev menu instead. Pure so its wording is unit-testable.
+/// browser's dev menu instead. Pure so its wording is unit-testable — and the GLYPH it names
+/// is derived from `client.js` by a test rather than written twice, because it said `◇` for as
+/// long as it shipped while the toggle drew `</>`.
 fn keys_hint_body() -> &'static str {
-    "controls live in the browser — open the ◇ dev menu (bottom-left)"
+    "controls live in the browser — open the </> dev menu (bottom-left)"
 }
 
 /// Print the controls hint once at startup. TTY-gated: a human at a terminal is the only one
@@ -326,13 +333,75 @@ mod tests {
     #[test]
     fn keys_hint_points_readers_at_the_browser_menu() {
         // The whole point is redirecting terminal muscle-memory to the browser: it must name
-        // the browser and the ◇ menu glyph, or the hint fails silently.
+        // the browser, or the hint fails silently. WHICH glyph it names is the next test's
+        // job, and deliberately not this one's: asserting a literal here is what let the
+        // hint name a glyph the toggle does not draw.
         let body = keys_hint_body();
         assert!(
             body.contains("browser"),
             "hint must name the browser: {body:?}"
         );
-        assert!(body.contains('◇'), "hint must name the ◇ menu: {body:?}");
+    }
+
+    /// The hint must name the glyph the dev-menu toggle actually DRAWS, not one chosen when
+    /// the hint was written. It said `◇` while `client.js` rendered `</>` — the same failure
+    /// as the corner (see the test below, added after the hint named the wrong corner for as
+    /// long as it shipped): prose pinned against itself rather than against the thing it
+    /// describes. So derive it, and moving the glyph reddens this instead of rotting the
+    /// sentence.
+    #[test]
+    fn keys_hint_names_the_glyph_the_toggle_actually_draws() {
+        let client = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web-client/client.js"),
+        )
+        .expect("client.js");
+        let glyph = client
+            .split_once("class=\"tali-dev-glyph\">")
+            .expect("the toggle draws a glyph")
+            .1
+            .split_once("</span>")
+            .expect("the glyph span is closed")
+            .0;
+        // The toggle writes it HTML-escaped; the terminal hint writes it plain.
+        let plain = glyph
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&");
+        assert!(
+            !plain.is_empty(),
+            "the glyph slice is empty; this gate must not pass by comparing nothing"
+        );
+        let body = keys_hint_body();
+        assert!(
+            body.contains(&plain),
+            "hint must name the {plain:?} glyph the toggle draws: {body:?}"
+        );
+    }
+
+    /// The banner is the third instance of the one typographic mark (spec §7), and a mark in
+    /// this theme carries no colour (spec §3: colour in chrome, none). It printed in
+    /// `\x1b[1;32m` — bright green bold — which is a chrome accent in a place with no ground
+    /// to score it against. Weight is the emphasis a terminal actually has.
+    #[test]
+    fn the_banner_carries_no_colour() {
+        let src = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/log.rs"),
+        )
+        .expect("log.rs");
+        let body = src
+            .split_once("pub fn banner(")
+            .expect("banner exists")
+            .1
+            .split_once("\n}")
+            .expect("banner is closed")
+            .0;
+        for code in ["30m", "31m", "32m", "33m", "34m", "35m", "36m", "37m"] {
+            assert!(
+                !body.contains(code),
+                "the banner sets SGR colour {code}; the mark is a letterform and the theme \
+                 puts no colour in chrome. Weight and dim are the available emphasis"
+            );
+        }
     }
 
     /// The hint named the wrong corner for as long as it shipped: it said `(top-right)`

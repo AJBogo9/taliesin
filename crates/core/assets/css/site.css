@@ -55,7 +55,10 @@
   .tali-nav-brand { color: var(--tali-fg); text-decoration: none; white-space: nowrap;
     font: var(--tali-font-body); font-size: 1.02rem; font-weight: 700; line-height: 1.3;
     text-transform: none; letter-spacing: normal; }
-  .tali-nav-brand:hover { color: var(--tali-link); }
+  /* No `:hover` on either brand (the book's is below): both set `--tali-link` on an
+     element already at `--tali-fg`, and the two tokens hold the SAME value in both palettes,
+     so the rules were silent no-ops in every theme. A wordmark that is already the ink has
+     nowhere to lift to; it is a link and the cursor says so. */
   /* `logo:` in `_site.yml` — the brand image that replaces the wordmark, in the website
      navbar and in BOTH book brand slots (topbar + drawer head). Sizing lives here, not in
      config: the height is capped against the bar it sits in, so no file can grow sticky
@@ -98,8 +101,13 @@
     cursor: pointer; transition: border-color var(--tali-dur) ease, color var(--tali-dur) ease; }
   .tali-search-btn:hover { border-color: var(--tali-accent); color: var(--tali-fg); }
   .tali-search-btn svg { flex: none; }
-  .tali-search-kbd { font-size: .72rem; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius); padding: 0 .3rem; color: var(--tali-muted); }
+  /* `<kbd>` carries a UA default of `monospace`, so without a family here the badge
+     rendered "Ctrl K" in the SYSTEM mono while every other machine-voice label on the page
+     was JetBrains Mono. Caught in a render: the tell probe counts families in the sheets,
+     and a family nothing declares is exactly what it cannot see. */
+  .tali-search-kbd { font-family: var(--tali-font-mono); font-size: .72rem;
+    border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
+    padding: 0 .3rem; color: var(--tali-muted); }
   /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
@@ -148,7 +156,8 @@
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
   .tali-site-footer { flex-shrink: 0; border-top: 1px solid var(--tali-border); }
-  .tali-foot-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto; padding: 1.4rem 1rem;
+  .tali-foot-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto;
+    padding: calc(.5 * var(--tali-u)) 1rem;
     display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
     color: var(--tali-muted); }
@@ -303,14 +312,16 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 /* The post-nav is a sibling after the reading column, inside the same padded box, so it
    lines up flush with the text on both edges. */
 .tali-book-postnav { display: flex; align-items: center; gap: 1rem;
-  margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--tali-border); }
+  margin-top: calc(2 * var(--tali-u)); padding-top: calc(.5 * var(--tali-u));
+  border-top: 1px solid var(--tali-border); }
 .tali-book-prev, .tali-book-next { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
 .tali-book-prev:hover, .tali-book-next:hover { color: var(--tali-link); }
 .tali-book-postnav .tali-nav-spacer { flex: 1 1 auto; }
 /* The website "back to listing" link fills the same bottom-of-article slot as the book
    pager, in the muted post-nav voice: a hairline rule, then a quiet link that lifts to
    the link colour on hover. */
-.tali-listing-backnav { margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--tali-border); }
+.tali-listing-backnav { margin-top: calc(2 * var(--tali-u));
+  padding-top: calc(.5 * var(--tali-u)); border-top: 1px solid var(--tali-border); }
 .tali-back-link { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
 .tali-back-link:hover { color: var(--tali-link); }
 .tali-section-number { color: var(--tali-muted); font-weight: inherit; margin-right: .15em; }
@@ -331,7 +342,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 @keyframes tali-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .tali-book-drawer-panel { animation: none; } }
 .tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
-  gap: .5rem; margin: 0 0 1.1rem; }
+  gap: .5rem; margin: 0 0 calc(.5 * var(--tali-u)); }
 /* Authored text (the book's `title:`), not the machine speaking: stays on the serif and
    upright even though `.tali-book-topbar-inner` around it is the machine-voice bar. Reads
    the family through the `font` shorthand, not a family-only token — see `.tali-nav-brand`
@@ -340,7 +351,6 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-brand { display: block; color: var(--tali-fg); text-decoration: none;
   font: var(--tali-font-body); font-size: 1.02rem; font-weight: 700; line-height: 1.25;
   text-transform: none; letter-spacing: normal; }
-.tali-book-brand:hover { color: var(--tali-link); }
 /* MOB-8, and the same failure this file already documents once at `.tali-book-drawer-btn svg`
    above: the topbar row puts its shrink pressure on whichever item has no min-content floor.
    That fix gave the icon `flex: none` and left the title exposed. As a flex item the title's
@@ -387,7 +397,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    rule stays (chrome.rs emits the class, so deleting it would render a nested part flat);
    only its type treatment goes. */
 .tali-book-part-nested { margin-left: .9rem; }
-.tali-book-chapter { display: block; padding: .3rem 0; color: var(--tali-muted);
+.tali-book-chapter { display: block; padding: calc(.25 * var(--tali-u)) 0; color: var(--tali-muted);
   text-decoration: none; font-size: .95rem; line-height: 1.3; }
 .tali-book-chapter:hover { color: var(--tali-fg); }
 .tali-book-active { color: var(--tali-link); font-weight: 600; }

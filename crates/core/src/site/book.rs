@@ -297,38 +297,6 @@ mod tests {
         book
     }
 
-    /// Build a book whose chapter files carry the given bodies (not the empty `# a.tmd`
-    /// stub `book_of` writes), so a test can assert on their contents.
-    fn book_of_bodies(yaml: &str, files: &[(&str, &str)]) -> Book {
-        let dir = std::env::temp_dir().join(format!(
-            "tali-book-body-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        for (f, body) in files {
-            let path = dir.join(f);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::write(path, body).unwrap();
-        }
-        let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
-        let config = SiteConfig {
-            chapters: value
-                .get("chapters")
-                .and_then(|v| v.as_sequence())
-                .cloned()
-                .unwrap_or_default(),
-            ..Default::default()
-        };
-        let book = build_book(&dir, &config, DraftMode::Include, &mut Vec::new());
-        std::fs::remove_dir_all(&dir).ok();
-        book
-    }
-
     #[test]
     fn a_nested_part_group_keeps_its_chapters() {
         // The regression: the inner loop called `push_chapter_entry` and threw away its

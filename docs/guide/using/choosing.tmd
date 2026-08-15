@@ -13,7 +13,7 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **82 `.tmd` documents** in Taliesin's own corpus — **7,128 lines** of real
+Across the **82 `.tmd` documents** in Taliesin's own corpus — **7,134 lines** of real
 writing, the largest sample that exists — **488 lines, 6.8%, carry any construct beyond
 plain CommonMark.** The other 93.2% is Markdown, and any Markdown tool reads it.
 

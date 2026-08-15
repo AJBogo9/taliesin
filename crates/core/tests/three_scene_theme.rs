@@ -145,7 +145,9 @@ fn no_document_asks_a_three_scene_for_a_background_colour() {
 
 /// The helper's own DOM chrome (the Fullscreen button) was a hard-coded
 /// `rgba(30,30,30,.75)` / `#ddd` / `#555` chip: unreadable-by-design on a light page and
-/// unable to follow a theme toggle. It must be built from `--tali-*` tokens instead.
+/// unable to follow a theme toggle. It must be built from `--tali-*` tokens instead — and
+/// since 2026-08-15 from an OPAQUE one in the theme's own mono, because it is chrome and
+/// spec §3 allows it neither a blur nor a face of its own.
 #[test]
 fn the_three_scene_fullscreen_button_is_token_driven() {
     for (rel, src) in helper_copies() {
@@ -158,8 +160,16 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
         let style = &src[at..at + end];
 
         for needle in [
-            "background:color-mix(in srgb, var(--tali-bg) 78%, transparent)",
+            // Opaque as of 2026-08-15. This needled the translucent
+            // `color-mix(… 78%, transparent)` ground, which was only ever legible because a
+            // `backdrop-filter: blur(4px)` sat behind it — the last blur in the tree, and
+            // banned by spec §3. With the blur gone the translucency is not an effect, it is
+            // the WebGL canvas showing through the control that sits on it.
+            "background:var(--tali-bg)",
             "color:var(--tali-fg)",
+            // The button inherits no font (it is a `<button>`), so without this its label
+            // rendered in the UA's Arial on a page that owns two faces.
+            "font:400 .78rem/1.3 var(--tali-font-mono)",
             "border:1px solid var(--tali-border-strong)",
             "border-radius:var(--tali-radius)",
         ] {

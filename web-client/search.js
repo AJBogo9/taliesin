@@ -23,18 +23,16 @@
     "#tali-search{position:fixed;inset:0;z-index:10050;display:flex;justify-content:center;" +
     "align-items:flex-start;padding-top:12vh}" +
     "#tali-search[hidden]{display:none}" +
-    "#tali-search .tali-s-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);" +
-    "backdrop-filter:blur(2px)}" +
+    "#tali-search .tali-s-backdrop{position:absolute;inset:0;background:var(--tali-scrim)}" +
     "#tali-search .tali-s-box{position:relative;width:min(38rem,92vw);max-height:70vh;display:flex;" +
-    "flex-direction:column;background:var(--tali-bg,#fff);color:var(--tali-fg,#111);" +
-    "border:1px solid var(--tali-border,#e0e0e0);border-radius:12px;" +
-    "box-shadow:0 18px 60px rgba(0,0,0,.4);overflow:hidden}" +
+    "flex-direction:column;background:var(--tali-bg);color:var(--tali-fg);" +
+    "border:1px solid var(--tali-border);border-radius:var(--tali-radius);overflow:hidden}" +
     "#tali-search .tali-s-input{width:100%;box-sizing:border-box;border:0;outline:0;" +
     "padding:.95rem 1.1rem;font-size:1.05rem;background:transparent;color:inherit;" +
-    "border-bottom:1px solid var(--tali-border,#e0e0e0)}" +
+    "border-bottom:1px solid var(--tali-border)}" +
     "#tali-search .tali-s-results{list-style:none;margin:0;padding:.3rem;overflow:auto;flex:1}" +
     "#tali-search .tali-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
-    "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
+    "border-radius:var(--tali-radius);cursor:pointer;scroll-margin:.4rem}" +
     "#tali-search .tali-s-head{display:flex;align-items:baseline;gap:.6rem}" +
     // The selected row is painted with `--tali-accent-fill`, which is the INK of whichever
     // palette is live — near-black in light, near-WHITE in dark. So every child on the row
@@ -45,7 +43,7 @@
     // text; every text colour explicit and scored).
     "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent-fill);color:var(--tali-on-accent)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:var(--tali-on-accent)}" +
-    "#tali-search .tali-s-snip{font-size:.78rem;color:var(--tali-muted,#888);overflow:hidden;" +
+    "#tali-search .tali-s-snip{font-size:.78rem;color:var(--tali-muted);overflow:hidden;" +
     "text-overflow:ellipsis;white-space:nowrap}" +
     "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-link);font-weight:700;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:var(--tali-on-accent)}" +
@@ -57,7 +55,7 @@
     "text-decoration:underline}" +
     // max-width so a long ancestor path ellipsizes instead of squeezing the title it is
     // meant to contextualise (the title is what the reader is scanning for).
-    "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted,#888);white-space:nowrap;margin-left:auto;" +
+    "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted);white-space:nowrap;margin-left:auto;" +
     "overflow:hidden;text-overflow:ellipsis;max-width:40%}" +
     "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link);text-transform:uppercase;" +
     "font-size:.66rem;letter-spacing:.05em;font-weight:700}" +
@@ -65,14 +63,14 @@
     // level of nesting WITHIN that chapter, and a chapter that only labels a group of
     // results is not interactive.
     "#tali-search .tali-s-label{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
-    "border-radius:7px}" +
+    "border-radius:var(--tali-radius)}" +
     "#tali-search .tali-s-chapter{margin-top:.35rem}" +
     "#tali-search .tali-s-chapter:first-child{margin-top:0}" +
     "#tali-search .tali-s-chapter .tali-s-title{font-weight:700}" +
-    "#tali-search .tali-s-label .tali-s-title{color:var(--tali-muted,#888);font-size:.78rem;" +
+    "#tali-search .tali-s-label .tali-s-title{color:var(--tali-muted);font-size:.78rem;" +
     "text-transform:uppercase;letter-spacing:.05em}" +
     "#tali-search .tali-s-num{font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem;" +
-    "color:var(--tali-muted,#888);min-width:1.4em}" +
+    "color:var(--tali-muted);min-width:1.4em}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-num{color:inherit}" +
     "#tali-search .tali-s-d1{padding-left:1.7rem}" +
     "#tali-search .tali-s-d2{padding-left:2.9rem}" +
@@ -81,13 +79,13 @@
     "#tali-search .tali-s-item[class*=tali-s-d] .tali-s-title{font-weight:400}" +
     "#tali-search .tali-s-more .tali-s-title{font-size:.8rem;color:var(--tali-link);font-weight:600}" +
     "#tali-search .tali-s-more[aria-selected=true] .tali-s-title{color:inherit}" +
-    "#tali-search .tali-s-miss{font-size:.75rem;color:var(--tali-muted,#888)}" +
+    "#tali-search .tali-s-miss{font-size:.75rem;color:var(--tali-muted)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-miss{color:var(--tali-on-accent)}" +
-    "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--tali-muted,#888)}" +
+    "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--tali-muted)}" +
     "#tali-search .tali-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
-    "color:var(--tali-muted,#888);border-top:1px solid var(--tali-border,#e0e0e0)}" +
-    "#tali-search .tali-s-hint kbd{font:inherit;border:1px solid var(--tali-border,#e0e0e0);" +
-    "border-radius:4px;padding:0 .3rem}";
+    "color:var(--tali-muted);border-top:1px solid var(--tali-border)}" +
+    "#tali-search .tali-s-hint kbd{font:inherit;border:1px solid var(--tali-border);" +
+    "border-radius:var(--tali-radius);padding:0 .3rem}";
 
   function injectCss() {
     if (document.getElementById("tali-search-css")) return;

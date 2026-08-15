@@ -24,7 +24,7 @@ and block model).
 Three things a stranger should know, each measured rather than asserted. The long version,
 with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosing.tmd).
 
-- **Your source stays yours.** Across the 82 documents / 7,128 lines of the project's own
+- **Your source stays yours.** Across the 82 documents / 7,134 lines of the project's own
   corpus, **6.8% of lines carry any construct beyond plain CommonMark** — and all six of
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is

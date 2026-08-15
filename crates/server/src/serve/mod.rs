@@ -394,7 +394,12 @@ pub(crate) const STATUS_CSS: &str = "\
       margin-bottom: .15rem; } \
     .tali-diag-error .tali-diag-kind { color: var(--tali-status-error); } \
     .tali-diag-warning .tali-diag-kind { color: var(--tali-status-warn); } \
+    /* `font: inherit` because a `<button>` inherits NO font: without it the `</>` glyph — the \
+       one the console hint names — rendered in the UA's Arial on a surface that had just been \
+       put on the theme's own mono. Found by rendering; the family was declared correctly on \
+       the container one rule above, which is exactly what a stylesheet read cannot catch. */ \
     .tali-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
+      font: inherit; \
       background: var(--tali-bg); color: var(--tali-muted); \
       border: 1px solid var(--tali-border); border-radius: var(--tali-radius); padding: .25rem .6rem; } \
     .tali-dev-toggle:hover { color: var(--tali-fg); } \
