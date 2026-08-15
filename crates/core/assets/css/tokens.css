@@ -7,34 +7,44 @@
      Keep in sync: nothing else should declare these tokens.
      =========================================================================== */
   :root {
-    /* The accent is ONE owned hue across light and dark: OKLCH H 271, chroma
-       .077: roughly a third the chroma of a brand blue, and darker. It reads as ink rather
-       than as a button, which is the point: iron-gall ink is what Taliesin's Book survives in.
-       Its three lightnesses are the only accent values in the product. Previously this was
-       three unrelated vendor blues (a stock light blue, GitHub Primer's, and Tailwind's
-       blue-600). The exact hexes are banned by a test. */
-    --tali-bg: #ffffff; --tali-fg: #1a1a1a; --tali-muted: #555; --tali-accent: #3a4673;
-    /* Light is dark enough that the accent doubles as its own fill (white on it is
-       9.12:1); only dark needs a separate, darker fill. */
-    --tali-accent-fill: #3a4673; --tali-on-accent: #ffffff;
-    --tali-link: #3a4673; --tali-code-bg: #f5f5f5; --tali-border: #e3e3e3;
-    /* `--tali-border` is a 1.28:1 hairline: fine for a decorative separator, but it is also
-       the ONLY visual boundary of real controls (segmented control, copy button, kbd, outline
-       buttons), where WCAG 1.4.11 requires 3:1 to identify the component. `--tali-border-strong`
-       is that boundary, and it clears 3:1 against BOTH the page and the code surface (a kbd
-       and the copy button sit on code-bg). Separators keep the hairline. */
-    --tali-border-strong: #8a8a8a;
-    --tali-edge-shadow: rgba(0, 0, 0, .16); --tali-flash: rgba(58, 70, 115, .14);
-    /* Per-kind callout accents: the border + icon take these; the title-bar tint is derived
-       via color-mix. One tuned categorical family sharing a chroma envelope (C .075-.141),
-       not five maximally-saturated picks: the old set collapsed under deuteranopia (tip vs
-       important, dE 8.4: indistinguishable). Every theme now defines its own; `note` is the
-       accent hue, so the informational callout and the brand ink are one colour.
-       Residual: tip vs important sit at dE 9.1 under protanopia, which the distinct icon
-       shape and the text title ("Tip" / "Important") carry: hue is never the sole cue. */
-    --tali-callout-note: #6a7aa9; --tali-callout-tip: #288f70; --tali-callout-warning: #a2781b;
-    --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
+    /* The ground is a warm off-white and the ink a warm near-black, so nothing on screen
+       sits at either end of the luminance range. Stated honestly: this is a brand and
+       preference choice. The most recent controlled test of tinted grounds found no
+       reading-performance effect in English, so it must never be defended as legibility,
+       and never with blue light. Every value carries its measured WCAG ratio.
+
+       There is NO chrome accent. Colour on a Taliesin page means DATA: a plot, a syntax
+       token, an error. Links are the ink with a hairline underline. */
+    --tali-bg: #FBF9F5;                 /* paper */
+    --tali-fg: #22201A;                 /* 15.49:1 */
+    --tali-muted: #5F5C54;              /* 6.35:1  — the machine voice */
+    --tali-inline-code: #3A362E;        /* 10.66:1 on the code ground */
+    --tali-code-bg: #F4F1EB;            /* ink 4% over paper */
+    --tali-border: #D9D7D2;             /* 1.37:1 — a decorative separator, not a control */
+    --tali-border-strong: #8B887F;      /* 3.37:1 — clears the 3:1 non-text floor */
+    --tali-link: #22201A;
+    --tali-underline: #A8A49B;
+    --tali-flash: rgba(34, 32, 26, .08);
+    /* `--tali-accent` is NOT a second chrome colour: this theme has none. It survives as a
+       token only because ~30 call sites (the focus ring, xref markers, sidenote numbers, the
+       nav active state, callout edges) ask for "the emphasis colour", and repointing every
+       one of them is a later plan's job, not this one's. So it resolves to the ink, exactly
+       as if each of those sites had asked for `--tali-fg` directly. Fill/on-accent follow
+       the same rule: a *filled* surface is the ink, and text drawn on it is the paper. Do
+       not give this a hue again — that is the brand blue this palette replaced. */
+    --tali-accent: #22201A;
+    --tali-accent-fill: #22201A; --tali-on-accent: #FBF9F5;
+    --tali-edge-shadow: rgba(0, 0, 0, .16);
     color-scheme: light;
+    /* Three callout kinds; the left rule and the mono kind-word carry the meaning.
+       `caution` is deleted (zero consumers, kept alive only by a test looping over five). */
+    --tali-callout-note: #5F5C54;
+    --tali-callout-tip: #3F6152;
+    --tali-callout-warning: #7A4A18;
+    /* `important` is no longer an author-reachable callout kind (`CALLOUT_KINDS` dropped it
+       2026-08-03), but `.tali-error`/`.tali-js-error` still derive their surface from it, and
+       an error is exactly the kind of DATA this theme's one colour rule carves out room for. */
+    --tali-callout-important: #8B3A2E;
     /* TWO owned faces, and the rule that generates the whole system: the mono is the
        MACHINE's voice, the serif is the AUTHOR's. Everything the tool says — labels,
        figure and table numbers, table headers, callout kinds, nav, TOC, cell timings —

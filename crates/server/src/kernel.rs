@@ -238,8 +238,8 @@ try:
         # The background is only used for artists that paint their OWN backing and so
         # cannot just be made transparent: a legend frame. Everything else is set to
         # 'none' and lets the page show through.
-        _TALI_LIGHT = ('#1a1a1a', '#d0d0d0', '#ffffff')
-        _TALI_DARK = ('#e6e6e6', '#363a44', '#16181d')
+        _TALI_LIGHT = ('#22201a', '#d9d7d2', '#fbf9f5')
+        _TALI_DARK = ('#eae7e0', '#33312b', '#14130f')
         _tali_orig_png = [None]  # the real Figure->png formatter, captured once
 
         def _tali_fill_boxes(ax):
@@ -282,7 +282,7 @@ try:
             # background is a data colour that is identical in both themes, so
             # forcing it to the page foreground is what MAKES it illegible. Measured:
             # a `1.00` cell is near-black #67000d and the author had written
-            # color='white'; the light render turned that white into #1a1a1a.
+            # color='white'; the light render turned that white into #22201a.
             #
             # Only `ax.texts` is considered, which is exactly the artists the author
             # added with text()/annotate(). The title, axis labels and tick labels are

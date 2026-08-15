@@ -2334,7 +2334,7 @@ fn both_palettes_ship_on_every_page_and_are_selected_by_data_theme() {
         page.contains("html[data-theme=\"dark\"]"),
         "scoped dark CSS not shipped"
     );
-    assert!(page.contains("--tali-bg: #16181d"), "dark vars missing");
+    assert!(page.contains("--tali-bg: #14130F"), "dark vars missing");
     assert!(
         render_document("---\ntitle: x\n---\n\nx\n")
             .theme_css
@@ -3351,6 +3351,53 @@ fn color_after<'a>(css: &'a str, needle: &str) -> &'a str {
     &rest[h..h + 7]
 }
 
+/// Every text colour the theme ships is scored, in both palettes. The floors are WCAG 2.x:
+/// 4.5:1 for text, 3:1 for a control boundary. A decorative separator is deliberately below
+/// both — it is not a control and not text.
+///
+/// APCA is deliberately absent. It is a different model on the WCAG 3 research track, and a
+/// guessed Lc is worse than an absent one.
+#[test]
+fn every_text_colour_is_scored_in_both_palettes() {
+    for (theme, css, bg, code_bg) in [
+        ("light", TOKENS_CSS, "#fbf9f5", "#f4f1eb"),
+        ("dark", TOKENS_DARK_CSS, "#14130f", "#1c1a15"),
+    ] {
+        let on_page = |tok: &str| wcag_contrast(color_after(css, tok), bg);
+        for (tok, floor) in [("--tali-fg:", 7.0), ("--tali-muted:", 4.5)] {
+            let c = on_page(tok);
+            assert!(
+                c >= floor,
+                "{theme}: {tok} is {c:.2}:1 on the page, needs {floor}:1"
+            );
+        }
+        let inline = wcag_contrast(color_after(css, "--tali-inline-code:"), code_bg);
+        assert!(
+            inline >= 4.5,
+            "{theme}: inline code is {inline:.2}:1 on the code ground"
+        );
+        let strong = on_page("--tali-border-strong:");
+        assert!(
+            strong >= 3.0,
+            "{theme}: --tali-border-strong is {strong:.2}:1; a control boundary needs 3:1"
+        );
+    }
+}
+
+/// The dark palette is DESIGNED, not inverted. The tell of an inversion is a muted tier that
+/// mirrors the light one's lightness; here muted stays bright on purpose, because in this
+/// theme the secondary register is carried by face, size and tracking rather than by
+/// lightness. Assert it did not drift dark.
+#[test]
+fn the_dark_muted_tier_is_not_a_lightness_mirror() {
+    let c = wcag_contrast(color_after(TOKENS_DARK_CSS, "--tali-muted:"), "#14130f");
+    assert!(
+        c >= 9.0,
+        "dark muted is only {c:.2}:1. A mirrored muted grey lands near 6.7:1 and reads as \
+         dimmed rather than as a different voice."
+    );
+}
+
 /// `.sr-only` is aliased to `.tali-sr-only` in base.css so a site that hand-writes the conventional
 /// screen-reader class (e.g. a footer icon label) hides it with no per-site custom.css. Guards the
 /// tech-blog landmine: without the alias, deleting custom.css un-hides the footer social labels.
@@ -3443,8 +3490,8 @@ fn cross_document_view_transitions_ship_bundled_and_respect_reduced_motion() {
 #[test]
 fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
     for (theme, css, bg, code_bg) in [
-        ("light", TOKENS_CSS, "#ffffff", "#f5f5f5"),
-        ("dark", TOKENS_DARK_CSS, "#16181d", "#21242b"),
+        ("light", TOKENS_CSS, "#fbf9f5", "#f4f1eb"),
+        ("dark", TOKENS_DARK_CSS, "#14130f", "#1c1a15"),
     ] {
         let c = color_after(css, "--tali-border-strong:");
         let (a, b) = (wcag_contrast(c, bg), wcag_contrast(c, code_bg));
@@ -3475,7 +3522,7 @@ fn dark_search_mark_keeps_body_text_readable() {
         BASE_CSS,
         "html[data-theme=\"dark\"] mark.tali-search-mark { background-color: ",
     );
-    let r = wcag_contrast("#e6e6e6", c);
+    let r = wcag_contrast("#eae7e0", c);
     assert!(r >= 4.5, "dark search mark {c}: body text at {r:.2}");
 }
 
@@ -3646,18 +3693,23 @@ fn mix_over(fg: &str, pct: f64, bg: &str) -> String {
 }
 
 /// The callout family is the reader's semantic vocabulary. Every kind's border must clear the 3:1
-/// graphical floor against the page, and body text must stay AA on its title tint: in all three
+/// graphical floor against the page, and body text must stay AA on its title tint: in both
 /// themes. (The ICON's own contrast is not a WCAG requirement here: each callout also renders a
 /// distinct icon shape and a text title, which puts the icon outside 1.4.11's "required to
 /// understand" scope. It is held to 3:1 anyway as a quality bar, but only the two floors below
 /// are compliance.)
+///
+/// Three kinds, not five: `important` and `caution` stopped being author-reachable callout
+/// kinds on 2026-08-03 (`CALLOUT_KINDS`), so this loop no longer scores them here.
+/// `--tali-callout-important` still exists (`.tali-error`/`.tali-js-error` derive their
+/// surface from it) and is scored separately, below.
 #[test]
 fn callout_family_meets_its_contrast_floors_in_every_theme() {
     for (theme, css, bg, fg) in [
-        ("light", TOKENS_CSS, "#ffffff", "#1a1a1a"),
-        ("dark", TOKENS_DARK_CSS, "#16181d", "#e6e6e6"),
+        ("light", TOKENS_CSS, "#fbf9f5", "#22201a"),
+        ("dark", TOKENS_DARK_CSS, "#14130f", "#eae7e0"),
     ] {
-        for kind in ["note", "tip", "warning", "important", "caution"] {
+        for kind in ["note", "tip", "warning"] {
             let c = color_after(css, &format!("--tali-callout-{kind}:"));
             let border = wcag_contrast(c, bg);
             assert!(
@@ -3672,6 +3724,45 @@ fn callout_family_meets_its_contrast_floors_in_every_theme() {
                 "{theme} callout-{kind}: body text {body:.2} on its title tint {tint} (need 4.5)"
             );
         }
+    }
+}
+
+/// The two exec/diagnostic surfaces (`.tali-stderr` derives from `--tali-callout-warning`,
+/// `.tali-error`/`.tali-js-error` from `--tali-callout-important`) must stay legible AND
+/// distinguishable from EACH OTHER, even though `important` is no longer a reachable callout
+/// kind in its own right — it survives as the diagnostic-only error colour, because an error
+/// is exactly the kind of DATA this theme's one colour rule carves out room for.
+#[test]
+fn diagnostic_surfaces_stay_legible_and_distinct_from_each_other() {
+    for (theme, css, bg, fg) in [
+        ("light", TOKENS_CSS, "#fbf9f5", "#22201a"),
+        ("dark", TOKENS_DARK_CSS, "#14130f", "#eae7e0"),
+    ] {
+        let warn = color_after(css, "--tali-callout-warning:");
+        let err = color_after(css, "--tali-callout-important:");
+        assert!(
+            wcag_contrast(warn, bg) >= 3.0,
+            "{theme} stderr border {warn} fails the 3:1 floor on {bg}"
+        );
+        assert!(
+            wcag_contrast(err, bg) >= 3.0,
+            "{theme} error border {err} fails the 3:1 floor on {bg}"
+        );
+        let warn_tint = mix_over(warn, 13.0, bg);
+        let err_tint = mix_over(err, 12.0, bg);
+        assert!(
+            wcag_contrast(fg, &warn_tint) >= 4.5,
+            "{theme} stderr body text fails AA on its tint {warn_tint}"
+        );
+        assert!(
+            wcag_contrast(fg, &err_tint) >= 4.5,
+            "{theme} error body text fails AA on its tint {err_tint}"
+        );
+        assert_ne!(
+            warn.to_ascii_lowercase(),
+            err.to_ascii_lowercase(),
+            "{theme}: stderr and error must not share a hue"
+        );
     }
 }
 
@@ -3751,17 +3842,21 @@ fn syntax_comment_token_meets_wcag_aa() {
     // Batch 3b: the comment token was sub-AA (light 4.17) on its code background. Pin
     // >= 4.5:1 against the actual code-block backgrounds so a future palette edit can't
     // silently regress it.
+    //
+    // The grounds here are `--tali-code-bg`, updated for the owned palette; the six
+    // `.tali-hl-*` syntax colours themselves are untouched (a later plan's job) and happen
+    // to still clear AA against the new, likewise-warm code ground.
     let light = color_after(BASE_CSS, ".tali-hl-comment { color: ");
     assert!(
-        wcag_contrast(light, "#f5f5f5") >= 4.5,
-        "light comment {light} vs #f5f5f5 = {:.2}",
-        wcag_contrast(light, "#f5f5f5")
+        wcag_contrast(light, "#f4f1eb") >= 4.5,
+        "light comment {light} vs #f4f1eb = {:.2}",
+        wcag_contrast(light, "#f4f1eb")
     );
     let dark = color_after(DARK_CSS, ".tali-hl-comment { color: ");
     assert!(
-        wcag_contrast(dark, "#21242b") >= 4.5,
-        "dark comment {dark} vs #21242b = {:.2}",
-        wcag_contrast(dark, "#21242b")
+        wcag_contrast(dark, "#1c1a15") >= 4.5,
+        "dark comment {dark} vs #1c1a15 = {:.2}",
+        wcag_contrast(dark, "#1c1a15")
     );
 }
 

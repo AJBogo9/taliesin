@@ -856,10 +856,14 @@
     /* `:root:root` (0,2,0) so this outranks `html[data-theme="dark"]` (0,1,1)
        whichever order the theme sheets are inlined in. The head script additionally swaps
        `data-theme` to light for the print job, which also neutralises dark.css's untokenised
-       syntax + diagnostic-box colours; this block is the no-JS fallback. */
+       syntax + diagnostic-box colours; this block is the no-JS fallback.
+       `--tali-link`/`--tali-accent` used to force the classic web-safe link blue (#0645ad)
+       here; that was the last surviving accent hue anywhere in the theme. This palette has
+       no chrome accent on screen, so print does not get one either: both resolve to this
+       block's own `--tali-fg`, same as the `prefers-contrast: more` block below does. */
     :root:root {
       --tali-bg: #fff; --tali-fg: #111; --tali-muted: #555; --tali-border: #ccc;
-      --tali-code-bg: #f5f5f5; --tali-link: #0645ad; --tali-accent: #0645ad;
+      --tali-code-bg: #f5f5f5; --tali-link: var(--tali-fg); --tali-accent: var(--tali-fg);
     }
     #tali-controls, #tali-diagnostics, .tali-copy { display: none !important; }
     body { max-width: none !important; margin: 0 !important; }

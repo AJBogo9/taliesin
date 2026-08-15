@@ -1,19 +1,35 @@
 
-  /* Dark palette override. Keyed on BOTH the page's `html[data-theme="dark"]` attribute and the
-     `html[data-theme="dark"]` attribute, so every surface shares one dark palette instead of
-     a parallel per-surface set. Same accent hue as light (OKLCH H 272),
-     lifted in lightness and eased in chroma so it does not vibrate on the dark surface. 7.62:1 as
-     link text. */
+  /* The dark palette is DESIGNED, not inverted.
+
+     Its muted tier is nearly as bright as the body, and that is correct here: a muted grey
+     dark enough to LOOK secondary fails perceptual contrast, and in this theme the secondary
+     register is carried by face, size and tracking (it is the mono voice) rather than by
+     lightness. So muted stays bright and still reads as secondary. That is a dividend of the
+     theme's one rule, and it is why the usual dark-mode muted-grey trap does not apply.
+
+     The ground is #14130F rather than #000000: pure black buys almost nothing and adds
+     halation. */
   html[data-theme="dark"] {
-    --tali-bg: #16181d; --tali-fg: #e6e6e6; --tali-muted: #9aa0aa; --tali-accent: #9aa8dc;
-    /* Dark is the one theme where the accent is too light to fill behind white text, so it takes
-       a darker fill at the same hue (white on it = 5.59:1). */
-    --tali-accent-fill: #57659d; --tali-on-accent: #ffffff;
-    --tali-link: #9aa8dc; --tali-code-bg: #21242b; --tali-border: #363a44;
-    --tali-border-strong: #6c7079; /* 3.58:1 on the page bg, 3.13:1 on the code surface */
-    --tali-edge-shadow: rgba(255, 255, 255, .14); --tali-flash: rgba(154, 168, 220, .20);
-    /* Callouts lifted to the dark surface at the same hues + chroma envelope as light. */
-    --tali-callout-note: #92a3d4; --tali-callout-tip: #65bf9f; --tali-callout-warning: #d4aa5a;
-    --tali-callout-important: #dc747d; --tali-callout-caution: #be6f45;
+    --tali-bg: #14130F;
+    --tali-fg: #EAE7E0;                 /* 15.05:1 */
+    --tali-muted: #D0CCC3;              /* 11.60:1 */
+    --tali-inline-code: #DBD7CE;        /* 12.11:1 on the dark code ground */
+    --tali-code-bg: #1C1A15;
+    --tali-border: #33312B;             /* 1.43:1 decorative */
+    --tali-border-strong: #7C7972;      /* 4.28:1 */
+    --tali-link: #EAE7E0;
+    --tali-underline: #6E6B63;
+    --tali-flash: rgba(234, 231, 224, .08);
+    /* Same rule as tokens.css: this theme has no chrome accent, so `--tali-accent` (and its
+       fill/on-accent pair) resolve to the ink/paper of THIS palette rather than a hue. */
+    --tali-accent: #EAE7E0;
+    --tali-accent-fill: #EAE7E0; --tali-on-accent: #14130F;
+    --tali-edge-shadow: rgba(255, 255, 255, .14);
+    --tali-callout-note: #D0CCC3;
+    --tali-callout-tip: #8FBBA3;
+    --tali-callout-warning: #D0A67C;
+    /* Diagnostic-only, same as light: not a reachable callout kind, kept alive by
+       `.tali-error`/`.tali-js-error`. */
+    --tali-callout-important: #DC8B78;
     color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
   }
