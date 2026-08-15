@@ -3703,6 +3703,87 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
             );
         }
     }
+
+    // The fourth instance of the mark is a raster and is unreachable from here; it has its
+    // own gate below.
+}
+
+/// The mark's fourth instance, and the one a text sweep structurally cannot see.
+///
+/// Everything above reads files as UTF-8 and looks for hex strings, which covers both favicons
+/// and `tmd.svg` and is blind to `icon.png`, whose colours are bytes in a palette chunk. Spec
+/// §12.1 named "the VS Code icon" in the widened scope; what landed covered the SVG one, so the
+/// PNG that `package.json:31` actually ships to the marketplace carried Tailwind's slate-800
+/// ground, its slate-200 letterform and a 40-step `#4c8dff` ramp through the entire redesign
+/// with every gate green. It was the first thing anyone evaluating the companion would have
+/// seen.
+///
+/// **This asserts the palette, not the pixels, and the two are different tests.** Whether the
+/// mark is *drawn* well is a thing a person sees. Whether it is drawn out of a vendor palette
+/// is a thing only a gate sees, and only this one. Indexed colour is required rather than
+/// merely accepted, so that a truecolour re-export carrying no `PLTE` at all cannot make the
+/// assertion vacuous, which is the raster form of the same hole this test was written to fix.
+#[test]
+fn the_marketplace_icon_is_the_mark_in_two_owned_colours() {
+    const PAPER: &[u8] = &[0xFB, 0xF9, 0xF5];
+    const INK: &[u8] = &[0x22, 0x20, 0x1A];
+
+    let rel = "editor/vscode/icons/icon.png";
+    let png = std::fs::read(repo_root().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+    assert_eq!(
+        png.get(..8),
+        Some(&b"\x89PNG\r\n\x1a\n"[..]),
+        "{rel} is not a PNG"
+    );
+
+    let (mut dims, mut colour_type, mut palette) = (None, None, None);
+    let mut i = 8;
+    while i + 12 <= png.len() {
+        let len = u32::from_be_bytes(png[i..i + 4].try_into().unwrap()) as usize;
+        let Some(body) = png.get(i + 8..i + 8 + len) else {
+            panic!("{rel}: chunk at byte {i} runs past the end of the file");
+        };
+        match &png[i + 4..i + 8] {
+            // width, height, bit depth, colour type, …
+            b"IHDR" => {
+                dims = Some((
+                    u32::from_be_bytes(body[0..4].try_into().unwrap()),
+                    u32::from_be_bytes(body[4..8].try_into().unwrap()),
+                ));
+                colour_type = Some(body[9]);
+            }
+            b"PLTE" => palette = Some(body.to_vec()),
+            _ => {}
+        }
+        i += 12 + len;
+    }
+
+    assert_eq!(
+        dims,
+        Some((128, 128)),
+        "{rel} is the 128x128 marketplace icon"
+    );
+    assert_eq!(
+        colour_type,
+        Some(3),
+        "{rel} must be indexed colour, so its palette is the whole truth about what it paints"
+    );
+    let palette = palette.unwrap_or_else(|| panic!("{rel}: colour type 3 with no PLTE chunk"));
+    assert!(
+        !palette.is_empty() && palette.len() % 3 == 0,
+        "{rel}: malformed palette of {} bytes",
+        palette.len()
+    );
+    for rgb in palette.chunks_exact(3) {
+        assert!(
+            rgb == PAPER || rgb == INK,
+            "{rel} paints #{:02X}{:02X}{:02X}, which is neither the mark's paper nor its ink. \
+             Spec §7: one letterform, two colours, no third colour and no gradient",
+            rgb[0],
+            rgb[1],
+            rgb[2]
+        );
+    }
 }
 
 /// The chrome's half of the spacing scale. `tokens.css` says the scale "lands with the
