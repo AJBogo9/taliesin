@@ -128,38 +128,47 @@
   /* Filled + large button variants, layered on `.btn` (a landing-page primary CTA
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
   a.btn-primary { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  a.btn-primary:hover { filter: brightness(1.08); background: var(--tali-accent-fill); color: var(--tali-on-accent); }
+  /* A filled button is already the ink, so hover has no second ground to move to — which
+     is why this reached for `filter: brightness()`, a colour nobody chose and nothing
+     scores. Spec §3 allows a hover to change an underline OR a ground; with the ground
+     taken, it is the underline. */
+  a.btn-primary:hover { background: var(--tali-accent-fill); color: var(--tali-on-accent);
+    text-decoration: underline; text-underline-offset: 3px; }
   a.btn-lg { font-size: 1.02rem; padding: .62rem 1.35rem; border-radius: var(--tali-radius); }
-  /* Marketing primitives. The top hero is best authored with the `hero:` front
-     matter (renders this `.hero` markup, no HTML); `::: {.hero}` / `::: {.feature-grid}`
-     fenced divs cover in-body sections. Styled so a landing page needs no bespoke CSS. */
-  .hero { text-align: center; padding: 3.2rem 1rem 2.4rem; }
-  .hero h1, .hero h2 { font-size: clamp(2rem, 6vw, 3.2rem);
-    line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 .7rem; }
-  .hero p, .hero .hero-lead { font-size: clamp(1.05rem, 2.4vw, 1.28rem); color: var(--tali-muted);
-    max-width: 36rem; margin: 0 auto 1.5rem; line-height: 1.5; }
-  .hero-eyebrow { font: 600 .8rem/1 var(--tali-font-mono); letter-spacing: .12em;
-    text-transform: uppercase; color: var(--tali-link); margin: 0 0 1rem; }
-  .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-top: 1.5rem; }
-  .hero a.btn { margin: .35rem .3rem 0; }
-  .hero-actions a.btn { margin: 0; }
-  /* A hero on a reading-measure page (page-layout not `full`, e.g. a personal homepage)
-     is an editorial masthead: left-aligned, with a short ink hairline under the eyebrow
-     in place of a flat grey rule. A hero on a full-width page (`page-layout: full`, the
-     marketing landing) keeps the centered landing style above. */
-  .tali-site-main:not(.tali-wide) .hero { text-align: left; }
-  .tali-site-main:not(.tali-wide) .hero .hero-lead { max-width: none; margin-left: 0; margin-right: 0; }
-  .tali-site-main:not(.tali-wide) .hero .hero-actions { justify-content: flex-start; }
-  .tali-site-main:not(.tali-wide) .hero .hero-eyebrow::after { content: ""; display: block;
-    width: 2.5rem; height: 2px; background: var(--tali-accent); margin-top: .55rem; }
-  .feature-grid { display: grid; gap: 1.1rem; margin: 2.2rem 0;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border);
-    border-radius: var(--tali-radius); background: var(--tali-code-bg); }
-  /* A feature card's heading IS an h3 — it takes the h3 size below rather than a second,
-     un-derived scale. It was 1.12rem (17.92px), the exact value the heading re-derivation
-     condemned for being smaller than the 20px body it introduces. */
-  .feature h3 { margin: 0 0 .4rem; font-size: 1.3rem; }
+  /* THE MASTHEAD. Spec §15.2, an author decision: a landing page is an editorial masthead
+     and prose — no centred hero, no letterspaced all-caps eyebrow, no three-card feature
+     grid, no repeated bottom CTA. The left-aligned form already existed here for
+     reading-measure pages and is now the only form, which is what deletes the centred
+     branch, its viewport-scaled headline (the last `vw` type size on the site) and the
+     centred actions row.
+
+     The eyebrow is the AUTHOR's word — `hero.eyebrow:` in front matter — so it takes the
+     serif, not the machine voice: spec §4's rule attaches the voice to labels the TOOL
+     generates and never to a container that may hold author text. It shipped in a FOURTH
+     voice (600 weight, .8rem, .12em tracking, uppercase), which is neither of the two this
+     theme owns. */
+  .hero { padding: calc(2 * var(--tali-u)) 0 var(--tali-u); }
+  .hero h1, .hero h2 { font-size: 2.25rem; line-height: 1.1; letter-spacing: -.008em;
+    margin: 0 0 calc(.5 * var(--tali-u)); }
+  .hero p, .hero .hero-lead { font-size: 1.25rem; color: var(--tali-muted);
+    max-width: none; margin: 0 0 var(--tali-u); line-height: 1.5; }
+  .hero-eyebrow { font: var(--tali-font-body); font-size: .92rem; font-style: italic;
+    color: var(--tali-muted); text-transform: none; letter-spacing: normal;
+    margin: 0 0 calc(.5 * var(--tali-u)); }
+  /* The hairline under the eyebrow is the masthead's one mark, and it is the ink: a rule
+     the width of a word, not a coloured band. */
+  .hero-eyebrow::after { content: ""; display: block; width: 2.5rem; height: 2px;
+    background: var(--tali-fg); margin-top: calc(.25 * var(--tali-u)); }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: var(--tali-u); }
+  .hero a.btn, .hero-actions a.btn { margin: 0; }
+  /* Ruled sections, not cards (spec §15.2). A `.feature` was a bordered, tinted box; the
+     theme's structure is square, unboxed and separated by a hairline, exactly as a callout
+     is a rule and a listing is a rule. `.feature h3` keeps taking the h3 size — the gate
+     that pins it against the body reads this selector by name. */
+  .feature-list { display: flex; flex-direction: column; margin: calc(2 * var(--tali-u)) 0;
+    border-top: 1px solid var(--tali-border); }
+  .feature { padding: var(--tali-u) 0; border-bottom: 1px solid var(--tali-border); }
+  .feature h3 { margin: 0 0 calc(.25 * var(--tali-u)); font-size: 1.3rem; }
   .feature p { margin: 0; color: var(--tali-muted); font-size: .95rem; }
   /* Heading scale on the vertical-rhythm unit (`--tali-u`, tokens.css): h1-h3 ease down in
      size and inherit Literata (no font-family override, no third face). Sizes are re-derived

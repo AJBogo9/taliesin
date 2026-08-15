@@ -3705,6 +3705,90 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// Spec §15.2: the landing page is an editorial masthead and prose. The masthead form already
+/// existed for reading-measure pages (`base.css`'s `:not(.tali-wide)` branch); this makes it
+/// the ONLY form, which is what deletes the centred hero, the viewport-scaled headline and
+/// the three-card feature grid in one go.
+#[test]
+fn the_landing_page_is_a_masthead_and_prose() {
+    // Scoped to the masthead's OWN rules, not to the whole sheet: a centred mermaid diagram,
+    // an author's `.tali-figure-center`, a flex-centred copy button and the reading grid's
+    // own `justify-content` are all legitimate and unrelated. The first draft of this gate
+    // banned centring outright and called all four a violation.
+    let masthead: String = BASE_CSS
+        .lines()
+        .skip_while(|l| !l.contains("THE MASTHEAD"))
+        .take_while(|l| !l.contains("Heading scale on the vertical-rhythm unit"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        masthead.contains(".hero-eyebrow {"),
+        "the masthead block must be findable, or this gate scans nothing and passes forever"
+    );
+    for (needle, why) in [
+        ("text-align: center", "no centred hero (spec §15.2)"),
+        (
+            "justify-content: center",
+            "the hero's actions sit where the prose starts",
+        ),
+    ] {
+        assert!(
+            !masthead.contains(needle),
+            "the masthead still has `{needle}`: {why}"
+        );
+    }
+    // These two are sheet-wide, and correctly so: `clamp()` was the ONLY viewport-relative
+    // type size in the tree, and `.feature-grid` is a class nothing may style anywhere.
+    for (needle, why) in [
+        (
+            "clamp(",
+            "the last viewport-relative type size went with the centred hero",
+        ),
+        (
+            ".feature-grid",
+            "the three-card feature grid becomes ruled sections",
+        ),
+    ] {
+        assert!(
+            !BASE_CSS.contains(needle),
+            "base.css still has `{needle}`: {why}"
+        );
+    }
+    // The eyebrow is the AUTHOR's word (`hero.eyebrow:` in front matter), so it may not wear
+    // the machine voice — spec §4's rule, which this shipped against in a FOURTH voice: 600
+    // weight, .8rem, .12em tracking, uppercase.
+    let eyebrow = BASE_CSS
+        .split_once(".hero-eyebrow {")
+        .expect(".hero-eyebrow exists")
+        .1
+        .split_once('}')
+        .expect("the rule is closed")
+        .0;
+    for banned in [
+        "text-transform: uppercase",
+        "var(--tali-font-mono)",
+        "letter-spacing: .12em",
+    ] {
+        assert!(
+            !eyebrow.contains(banned),
+            "`.hero-eyebrow` still carries `{banned}` on text the author wrote"
+        );
+    }
+
+    // And the page itself, not only its stylesheet: §15.2 calls this a rewrite of index.tmd.
+    let index = std::fs::read_to_string(repo_root().join("site/index.tmd")).expect("index.tmd");
+    assert!(
+        !index.contains("{.feature-grid}"),
+        "the three-card feature grid is still authored in the landing page"
+    );
+    assert_eq!(
+        index.matches("{.btn").count(),
+        0,
+        "the repeated bottom CTA and its button ladder go with the centred hero; the \
+         masthead's own actions come from the `hero:` front matter"
+    );
+}
+
 /// The book drawer stops carrying its own type scale and its own clock.
 ///
 /// `.tali-book-part` was `.76rem/700/.04em/uppercase` and `.tali-book-part-nested` a variation

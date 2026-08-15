@@ -3,9 +3,9 @@ title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 page-layout: full
 hero:
-  eyebrow: "Markdown in · live HTML out"
-  headline: "Technical writing at the speed of code"
-  lead: "A focused dev server that turns one .tmd file into a live post, book, or website, updating the instant you save."
+  eyebrow: "A dev server for technical writing"
+  headline: "Taliesin"
+  lead: "One .tmd file becomes a live post, a book, or a website — and only the block you changed re-renders."
   actions:
     - { text: "Read the docs", href: "docs/guide/", primary: true }
     - { text: "Explore the features", href: "features.tmd" }
@@ -79,7 +79,7 @@ Write once in plain text and choose the output in the front matter. Every format
 shares the same block model, the offline math and highlighting, and the live edit
 loop, so anything you learn for one carries to the rest.
 
-::: {.feature-grid}
+::: {.feature-list}
 ::: {.feature}
 ### Blog posts & papers
 Prose, math, figures, citations, and cross-references, with executable Python
@@ -123,12 +123,3 @@ There is nothing here a screenshot could fake: **this landing page, the surface 
 spun at the top of it, and the [documentation book](docs/guide/) it links to are all
 built and served by Taliesin**, from plain `.tmd` files in one repository. If it reads
 well here, the framework is doing its job.
-
-::: {.hero}
-## Write your next thing in plain text
-
-Author in `.tmd`, preview it live, and ship self-contained HTML: a post, a paper, a
-book, or a site.
-
-[Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/guide/){.btn .btn-lg}
-:::
