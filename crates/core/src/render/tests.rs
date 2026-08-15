@@ -5268,13 +5268,21 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
         }
     }
 
-    // Exactly one radius value, and it is small. `border-radius: 50%` (a circle) and
-    // `em`-based inline radii are intentional specials and are excluded by shape.
+    // Exactly one radius value, and it is small. `border-radius: 50%` (a circle) is the only
+    // shape exclusion, and it is safe because it is bounded by construction: exactly one
+    // literal value, so it cannot smuggle a pill radius through under a different guise. An
+    // `em`-based exclusion (`!v.ends_with("em")`) lived here once and was deleted, not bounded:
+    // `ends_with("em")` has no magnitude, so `border-radius: 40em` would have slipped past this
+    // gate uncompared and unchecked by any needle (the only radius needle is the literal
+    // `999px`) — a hole in the gate whose entire job is to close this one. It protected a case
+    // that does not exist in any of the five sheets. If a real em-based radius is ever needed,
+    // let this gate fail and add a bounded exclusion then, as a deliberate, reviewed decision —
+    // do not restore a bare `ends_with("em")`.
     let mut radii: Vec<&str> = Vec::new();
     for (_, css) in sheets {
         for seg in css.split("border-radius:").skip(1) {
             let v = seg.split(';').next().unwrap_or("").trim();
-            if v != "50%" && !v.ends_with("em") && !v.starts_with("var(") && !v.is_empty() {
+            if v != "50%" && !v.starts_with("var(") && !v.is_empty() {
                 radii.push(v);
             }
         }
