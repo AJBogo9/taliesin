@@ -3723,6 +3723,60 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// The website navbar and the book topbar are ONE bar with two garnishes.
+///
+/// They were two byte-identical rules whose inner boxes differed by one padding value, and
+/// they had already drifted: the book bar is 3px shorter than the website bar for no recorded
+/// reason, while `--tali-nav-h` — the offset every `[data-block-id]` scroll-margin and the
+/// sticky TOC read — was declared 3.25rem on one body and 3rem on the other, so a jumped-to
+/// heading cleared the bar by a different amount in a book than on a site.
+///
+/// And the bar is OPAQUE. `color-mix(… 88%, transparent)` is the residue of a glassmorphic bar
+/// after Plan 1 deleted its backdrop-filter; without the blur it is not a translucency effect,
+/// it is body text scrolling visibly through the chrome.
+#[test]
+fn the_two_sticky_bars_are_one_rule_and_the_bar_is_opaque() {
+    assert!(
+        !SITE_CSS.contains("88%, transparent"),
+        "a sticky bar over scrolling prose is opaque: the blur that made translucency \
+         legible was deleted in Plan 1 and only the transparency was left behind"
+    );
+    assert!(
+        SITE_CSS.contains(":is(.tali-site-nav, .tali-book-topbar)"),
+        "the two bars share one rule"
+    );
+    assert!(
+        SITE_CSS.contains(":is(.tali-nav-inner, .tali-book-topbar-inner)"),
+        "the two inner boxes share one rule"
+    );
+    // Neither may re-declare the shared properties on its own afterwards. Matched as a
+    // SOLITARY selector opening a rule, not as a bare substring: the `forced-colors: active`
+    // block names both classes in one selector list, which is the two bars agreeing rather
+    // than a second definition of either, and a substring needle called that a violation.
+    for sel in [".tali-site-nav", ".tali-book-topbar"] {
+        let solitary = format!("{sel} {{");
+        for line in SITE_CSS.lines() {
+            assert!(
+                !line.trim_start().starts_with(&solitary),
+                "`{solitary}` is a second definition of a bar that now has one: {line}"
+            );
+        }
+    }
+    // One bar, one height. The token both `scroll-margin-top` rules read must agree.
+    let heights: std::collections::BTreeSet<&str> = SITE_CSS
+        .split("--tali-nav-h:")
+        .skip(1)
+        .map(|s| s.split(';').next().unwrap_or("").trim())
+        .collect();
+    assert_eq!(
+        heights.len(),
+        1,
+        "--tali-nav-h has {} values {heights:?}; a jumped-to heading would clear the bar by \
+         a different amount depending on which one it is under",
+        heights.len()
+    );
+}
+
 /// Spec §12.2's tell probe, applied to the two files that render the preview dev UI.
 ///
 /// The probe has always asserted these things — on the five bundled stylesheets, which is the

@@ -5,7 +5,8 @@
      screens), while the content keeps the ~70ch reading measure. */
   body.tali-site { max-width: none; margin: 0; padding: 0;
     min-height: 100vh; display: flex; flex-direction: column;
-    /* height of the sticky navbar; the TOC and jumped-to headings clear it */
+    /* Height of the sticky bar; the TOC and jumped-to headings clear it. ONE value, shared
+       with `body.tali-book-body` below, because there is one bar. */
     --tali-nav-h: 3.25rem; }
   /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
      of any heading a TOC link jumps to — offset both by the navbar height + a gap */
@@ -18,13 +19,27 @@
   }
   body.tali-site [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) + 1rem); }
 
-  /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
-  .tali-site-nav { position: sticky; top: 0; z-index: 50;
-    background: color-mix(in srgb, var(--tali-bg) 88%, transparent);
-    border-bottom: 1px solid var(--tali-border); }
-  .tali-nav-inner { position: relative; max-width: var(--tali-chrome-maxw); margin: 0 auto;
-    padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
+  /* ONE sticky bar, worn two ways: the website navbar and a book's topbar were two
+     byte-identical rules whose inner boxes differed by a single padding value — and they had
+     already drifted, the book bar sitting 3px shorter with no recorded reason while
+     `--tali-nav-h` said 3.25rem on one body and 3rem on the other. That token is what every
+     `[data-block-id]`'s scroll-margin and the sticky TOC's `top` read, so a heading jumped to
+     from a TOC cleared the bar by a different amount in a book than on a site.
+
+     OPAQUE, deliberately. This ground was 88% of the page colour mixed with transparency —
+     what is left of a glassmorphic bar once Plan 1 deleted the blur behind it. Without that
+     blur it is not a translucency effect: it is body text scrolling visibly through the
+     chrome. The tell probe's own message for the blur ban states the replacement, and this
+     is it: an opaque ground and a 1px rule read the same. */
+  :is(.tali-site-nav, .tali-book-topbar) { position: sticky; top: 0; z-index: 50;
+    background: var(--tali-bg); border-bottom: 1px solid var(--tali-border); }
+  :is(.tali-nav-inner, .tali-book-topbar-inner) { position: relative;
+    max-width: var(--tali-chrome-maxw); margin: 0 auto;
+    padding: calc(.25 * var(--tali-u)) 1rem; display: flex; align-items: center; gap: 1.1rem;
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
+  /* The one thing a book's bar really does differ in: it holds a drawer button and a title
+     rather than seven links, so its items sit closer. */
+  .tali-book-topbar-inner { gap: .7rem; }
   /* Authored text (the site's `title:`), not the machine speaking: stays on the serif and
      upright even though it sits inside `.tali-nav-inner`'s machine-voice bar. Reads the
      family through the `font` SHORTHAND (`--tali-font-body`) rather than a family-only
@@ -266,18 +281,21 @@
    outline (item 76, 2026-07-27): it auto-expands the current chapter and lists it to h3,
    where the right rail listed h2 only. So there is no `has-toc` grid in a book, no `#TOC`
    rules below, and nothing here reserves an empty track. */
-body.tali-book-body { max-width: none; margin: 0; padding: 0; --tali-nav-h: 3rem;
+/* `--tali-nav-h` is 3.25rem here too, and that is the merge: there is ONE bar (see the shared
+   rule near the top of this file), so there is one height. It said 3rem here against the
+   site's 3.25rem, and this token is what every `[data-block-id]`'s scroll-margin and the
+   sticky TOC's `top` offset read — so the same heading, jumped to from a TOC, cleared the bar
+   by 4px less in a book than on a site. The larger of the two is the one that cannot
+   under-clear. */
+body.tali-book-body { max-width: none; margin: 0; padding: 0; --tali-nav-h: 3.25rem;
   min-height: 100vh; display: flex; flex-direction: column; }
 body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) + 1rem); }
 
-/* slim sticky topbar (a book's only chrome bar — NOT the website .tali-site-nav). The inner
-   box is wider than the reading column so the bar doesn't pool dead space on wide screens. */
-.tali-book-topbar { position: sticky; top: 0; z-index: 50;
-  background: color-mix(in srgb, var(--tali-bg) 88%, transparent);
-  border-bottom: 1px solid var(--tali-border); }
-.tali-book-topbar-inner { max-width: var(--tali-chrome-maxw); margin: 0 auto; padding: .45rem 1rem;
-  display: flex; align-items: center; gap: .7rem; font: 400 .78rem/1.3 var(--tali-font-mono);
-  text-transform: uppercase; letter-spacing: .053em; }
+/* A book's topbar is the SAME bar as the website navbar — see the shared
+   `:is(.tali-site-nav, .tali-book-topbar)` rule near the top of this file, which owns its
+   stickiness, its ground and its rule, and `:is(.tali-nav-inner, .tali-book-topbar-inner)`,
+   which owns the inner box. Only the gap between its items differs, and that is declared
+   beside the shared rule so the two cannot drift apart again. */
 .tali-book-drawer-btn { display: inline-flex; align-items: center; gap: .45rem;
   background: transparent; border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
   color: var(--tali-fg); cursor: pointer; padding: .35rem .6rem; font: inherit; font-size: .9rem;
