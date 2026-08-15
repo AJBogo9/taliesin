@@ -146,7 +146,7 @@ on a failed render. A small badge appears on it when there are diagnostics waiti
 
 Click it to expand a panel with the preview-only tools:
 
-- **Status** and a live **word count / reading time** for the prose.
+- **Status** and a live **word count** for the prose.
 - **Restart kernel**: drops the warm Jupyter kernel and re-runs every cell against
   a fresh one. Reach for it when the kernel wedges, or after you fix
   `TALIESIN_PYTHON` or install a missing package and want a clean replay.
@@ -157,17 +157,6 @@ Click it to expand a panel with the preview-only tools:
   what a reader sees is their own device setting.
 - The **diagnostics** list (detailed below), each entry click-to-source, with the
   button's badge tracking the count.
-- **Sections**: the shape of the document, with what is wrong inside each one (below).
-
-### Sections: the shape of the draft
-
-Under **Sections**, every heading in the page is listed at its own level, with its
-word count and any problem inside it; clicking a row scrolls the preview there. A
-section is the heading plus everything down to the next heading of the same or
-shallower level, the same definition the editor's outline and folding use. Badges
-place diagnostics (`✗` errors, `⚠` warnings, your own `TODO`/`FIXME` markers) where
-they happened in the source. This is a revision view, not the reader's table of
-contents, and a `build` ships none of it.
 
 ## Live-edit feedback
 
@@ -178,11 +167,6 @@ The loop surfaces what is happening without you watching the terminal:
   menu's **diagnostics** list.
 - A **broken front matter** points right at the bad line: the diagnostic shows a
   small code frame and is clickable to open that line in your editor.
-- An advisory **accessibility audit** scans the rendered output for a handful of
-  high-confidence, easy-to-miss issues (an image with no `alt` text, a heading
-  level that skips, a link with no accessible name, a missing `<html lang>`, body
-  text below the WCAG contrast floor) and lists them in the same panel, each
-  click-to-source like any other diagnostic.
 - A *failed* render throws a prominent, dismissible **error overlay** over the
   last good content, so a broken save is impossible to miss. It clears on the
   next successful render.

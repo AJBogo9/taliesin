@@ -230,7 +230,7 @@ DOM mutation, and the diff above is what keeps that set small.
 - Every mutation runs inside **`keepScroll`**, which pins `window.scrollY` across the
   change (instantly, never animated), and is followed by **`afterChange`**, which
   rebuilds the TOC, re-runs the code enhancers, and re-scans for
-  cell errors and a11y issues. `set_meta` skips `afterChange` (nothing rendered).
+  cell errors. `set_meta` skips `afterChange` (nothing rendered).
 - The first paint is **server-rendered** into `#tali-root`, so the very first
   `full_render` after connect is identical and is **skipped** (no flash, no needless
   `{js}` re-init). A *reconnect* re-mounts normally, and a dropped socket retries
