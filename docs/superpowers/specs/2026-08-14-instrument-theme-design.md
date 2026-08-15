@@ -66,8 +66,8 @@ These bind every surface: reading page, marketing site, book, preview chrome.
 | Body | `1.25rem / 1.55` (20 px / 31 px) | comprehension peaks well below speed-optimal; 20 px keeps weight 400 legible without APCA's weight penalty |
 | Measure | `--tali-measure: 32em` of the **body face** | **never `ch`** — `ch` is the advance of `0` and overshoots real lowercase by 12–55 %, so the same `65ch` is 73 characters in one face and 101 in another. Verified: 32 em of Literata at 20 px = 640 px = **67 characters** |
 | Vertical unit | `U = 1.55 × 1.25rem = 1.9375rem (31px)` | derived from the line box, so the rhythm is the leading. This is also why the Tailwind 4 px lattice cannot be reintroduced piecemeal |
-| Spacing scale | `{0.5U, U, 2U, 3U}` and nothing else | replaces 39 ad-hoc values |
-| Space distribution | above a thing, not around it; heading `margin-top : margin-bottom` = 3:1 or 4:1 | binds a heading to the section it owns |
+| Spacing scale | `{0.5U, U, 1.5U, 2U, 3U}` between flow blocks, and nothing else | replaces 39 ad-hoc values. `1.5U` is not decoration: with the four-member set this row first carried, the only pairs satisfying the ratio row below are `(2U, 0.5U)` = 4:1 and `(3U, U)` = 3:1, and the second is *larger* than the first — so at most ONE heading level could be spaced legally. This row governs margins between blocks; the internal padding of a small object (a table cell, a `kbd`, a copy button) is a quarter-unit sub-multiple, because `0.5U` is 15.5 px and triples a table row |
+| Space distribution | above a thing, not around it; heading `margin-top : margin-bottom` = 3:1 or 4:1 | binds a heading to the section it owns. `h4`-`h6` are a stated exception at 2:1 (`U : 0.5U`): they are the mono label rather than a serif section heading, and no five-member scale can give them a legal ratio that is also smaller than `h3`'s |
 | Radius | one token, **2px**, on interactive objects only (copy button, search input, `kbd`, focus ring). `0` on `pre`, `table`, `figure`, callouts, cards, drawers, page frame | the 8–16 px ladder is the single widest measured gap between generated and authored interfaces. Flagged in §12 as the weakest-evidenced number here |
 | Shadows | **none**, anywhere | also: `box-shadow` is forced to `none` under `forced-colors`, so anything drawn with one is already invisible to some readers |
 | Backdrop blur | **none** | two verbatim `saturate(1.4) blur(9px)` rules go |
@@ -101,6 +101,14 @@ Measured by canvas `TextMetrics` at a 400 px em on 2026-08-14
 - `--tali-font-head` is **deleted**, with all 18 consumers.
 
 ### The machine's voice
+
+> **The rule, which generates every exception below.** The machine voice attaches to a label
+> the TOOL generates. It never attaches to a container that may hold the AUTHOR's text.
+> Applying it to a container is how the wordmark (`_site.yml title:`), author names and
+> affiliations, and callout titles (34 of 55 in this repo are authored) each shipped uppercased
+> and were each fixed one ruling at a time. When a selector *sometimes* holds authored text,
+> the distinction is marked structurally at emission — `divs.rs` marks the generated
+> kind-word branch, `model.rs` marks the generated code-fold label — never guessed in CSS.
 
 `0.78rem`, uppercase, `letter-spacing: .053em`, weight 400, in the mono. Applies to: `h4`,
 callout kind labels, table headers, figure/table/equation *numbers*, the TOC, nav, footer,

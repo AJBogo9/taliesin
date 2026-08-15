@@ -3407,10 +3407,15 @@ fn rem_px(v: &str) -> f64 {
 /// guessed Lc is worse than an absent one.
 #[test]
 fn every_text_colour_is_scored_in_both_palettes() {
-    for (theme, css, bg, code_bg) in [
-        ("light", TOKENS_CSS, "#fbf9f5", "#f4f1eb"),
-        ("dark", TOKENS_DARK_CSS, "#14130f", "#1c1a15"),
-    ] {
+    // The grounds are READ, never spelled. A literal here scores against whatever the ground
+    // happened to be on the day the test was written, so a retune of `--tali-bg` or
+    // `--tali-code-bg` leaves every assertion green while the page it describes loses real
+    // contrast. DEMONSTRATED 2026-08-15: with `--tali-code-bg` swapped from #F4F1EB to
+    // #6E6A60, this test and its three neighbours all passed on a page whose comment token
+    // then sat at 1.00:1 against its own ground.
+    for (theme, css) in [("light", TOKENS_CSS), ("dark", TOKENS_DARK_CSS)] {
+        let bg = color_after(css, "--tali-bg:");
+        let code_bg = color_after(css, "--tali-code-bg:");
         let on_page = |tok: &str| wcag_contrast(color_after(css, tok), bg);
         for (tok, floor) in [("--tali-fg:", 7.0), ("--tali-muted:", 4.5)] {
             let c = on_page(tok);
@@ -3570,10 +3575,11 @@ fn cross_document_view_transitions_ship_bundled_and_respect_reduced_motion() {
 /// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
 #[test]
 fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
-    for (theme, css, bg, code_bg) in [
-        ("light", TOKENS_CSS, "#fbf9f5", "#f4f1eb"),
-        ("dark", TOKENS_DARK_CSS, "#14130f", "#1c1a15"),
-    ] {
+    // Both grounds are read from the palette, not spelled — see
+    // `every_text_colour_is_scored_in_both_palettes` for the demonstration of why.
+    for (theme, css) in [("light", TOKENS_CSS), ("dark", TOKENS_DARK_CSS)] {
+        let bg = color_after(css, "--tali-bg:");
+        let code_bg = color_after(css, "--tali-code-bg:");
         let c = color_after(css, "--tali-border-strong:");
         let (a, b) = (wcag_contrast(c, bg), wcag_contrast(c, code_bg));
         assert!(
@@ -3800,10 +3806,13 @@ fn the_syntax_palette_is_owned_and_scored() {
             );
         }
     }
-    for (theme, css, bg) in [
-        ("light", BASE_CSS, "#f4f1eb"),
-        ("dark", DARK_CSS, "#1c1a15"),
+    // The scope colours live in the page sheets and the ground they sit on lives in the token
+    // sheets, so the loop carries both and reads the ground rather than spelling it.
+    for (theme, css, tokens) in [
+        ("light", BASE_CSS, TOKENS_CSS),
+        ("dark", DARK_CSS, TOKENS_DARK_CSS),
     ] {
+        let bg = color_after(tokens, "--tali-code-bg:");
         for scope in [
             "tali-hl-comment",
             "tali-hl-string",
@@ -4098,20 +4107,21 @@ fn syntax_comment_token_meets_wcag_aa() {
     // >= 4.5:1 against the actual code-block backgrounds so a future palette edit can't
     // silently regress it.
     //
-    // The grounds here are `--tali-code-bg`, updated for the owned palette; the six
-    // `.tali-hl-*` syntax colours themselves are untouched (a later plan's job) and happen
-    // to still clear AA against the new, likewise-warm code ground.
+    // The ground is `--tali-code-bg`, READ from each palette rather than spelled: a literal
+    // here scores the comment against a ground the page may no longer paint.
+    let light_bg = color_after(TOKENS_CSS, "--tali-code-bg:");
     let light = color_after(BASE_CSS, ".tali-hl-comment { color: ");
     assert!(
-        wcag_contrast(light, "#f4f1eb") >= 4.5,
-        "light comment {light} vs #f4f1eb = {:.2}",
-        wcag_contrast(light, "#f4f1eb")
+        wcag_contrast(light, light_bg) >= 4.5,
+        "light comment {light} vs {light_bg} = {:.2}",
+        wcag_contrast(light, light_bg)
     );
+    let dark_bg = color_after(TOKENS_DARK_CSS, "--tali-code-bg:");
     let dark = color_after(DARK_CSS, ".tali-hl-comment { color: ");
     assert!(
-        wcag_contrast(dark, "#1c1a15") >= 4.5,
-        "dark comment {dark} vs #1c1a15 = {:.2}",
-        wcag_contrast(dark, "#1c1a15")
+        wcag_contrast(dark, dark_bg) >= 4.5,
+        "dark comment {dark} vs {dark_bg} = {:.2}",
+        wcag_contrast(dark, dark_bg)
     );
 }
 
