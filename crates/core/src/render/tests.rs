@@ -3641,6 +3641,12 @@ fn the_syntax_palette_is_owned_and_scored() {
         BASE_CSS.contains(".tali-hl-comment { color: #6E6A60; font-style: italic; }"),
         "the comment scope must stay italic: hue is never the only cue"
     );
+    assert!(
+        DARK_CSS.contains(
+            "html[data-theme=\"dark\"] .tali-hl-comment { color: #8C877C; font-style: italic; }"
+        ),
+        "the dark comment scope must stay italic too: hue is never the only cue"
+    );
 }
 
 /// The theme owns TWO faces and no more. `--tali-font-head` was `ui-sans-serif, system-ui`
