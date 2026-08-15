@@ -3628,32 +3628,35 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
         ("#e0a800", "the old callout warning amber"),
         ("#e0566b", "the old callout important red"),
         ("#e8730c", "the old callout caution orange"),
+        (
+            "#3fb950",
+            "GitHub Primer's success green — the dev UI's old `live` dot",
+        ),
+        (
+            "#e5534b",
+            "GitHub Primer's danger red — the dev UI's old `error` colour",
+        ),
+        ("#2bb673", "the dev UI's old `done` cell-state green"),
+        ("#cc3333", "the dev UI's old `error` cell-state red"),
+        ("#d9a23a", "the dev UI's old `warming`/`warn` amber"),
     ];
 
-    // The dev UI's own status colours are a bounded exemption, not an oversight. `running` /
-    // `done` / `error` / `warming` is a closed semantic set; collapsing `done` or `warming` onto
-    // `--tali-fg` the way this test already forced for the `running`/busy indicator would erase
-    // a distinction the dev UI depends on. Full status-token work belongs to Plan 3. Until it
-    // lands, these three literals may appear ONLY on the dev UI's own colour surface — the two
-    // files that render it: `serve/mod.rs`'s Rust-embedded CSS and `client.js`'s canvas-drawn
-    // favicon dot. `#d9a23a` living in both is not a leak: it is one status rendered by the two
-    // halves of a single surface, exactly like `#4c8dff`'s busy-dot before this test's fix.
-    // Anywhere else — a bundled stylesheet, either favicon, the VS Code icon, `search.js` — the
-    // ban still fires.
+    // The dev UI's four status literals had a bounded exemption here until 2026-08-15, when
+    // they became `--tali-status-live` / `-warn` / `-error` (three tokens: `warming` and
+    // `warn` were the same literal). The exemption is DELETED rather than emptied, and the
+    // five hexes join BANNED above — so the ban is strictly WIDER after this than before it.
     //
-    // **If you just gave these status colours real tokens, delete this exemption in the same
-    // commit.** That is what it is for: an exemption nobody ever removes is how the gap this
-    // test exists to close quietly reopens.
-    const DEV_UI_STATUS_EXEMPT: &[(&str, &str)] = &[
-        ("#2bb673", "the dev UI's `done` cell-state colour"),
-        ("#cc3333", "the dev UI's `error` cell-state colour"),
-        ("#d9a23a", "the dev UI's `warming` status colour"),
-    ];
-    const DEV_UI_SURFACE: &[&str] = &["crates/server/src/serve/mod.rs", "web-client/client.js"];
+    // That is what the exemption was for. Its own message said to delete it in the commit
+    // that gave these colours real tokens, because an exemption nobody ever removes is how
+    // the gap this test exists to close quietly reopens. Two of the five were GitHub Primer's
+    // success and danger and had never been on the list at all.
+    //
+    // Measured before the swap, on the warm paper Plan 1 landed: #3fb950 scored 2.42:1,
+    // #2bb673 2.48:1 and #d9a23a 2.18:1 while being used as the alert LABEL, where the floor
+    // is 4.5:1. They were dark-UI colours that had never met this ground.
 
     let root = repo_root();
     let mut checked = 0usize;
-    let mut exempt_seen = [false; DEV_UI_STATUS_EXEMPT.len()];
     for rel in [
         "crates/core/assets/css/tokens.css",
         "crates/core/assets/css/tokens-dark.css",
@@ -3677,27 +3680,9 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
                 "{rel} still ships {hex} ({what}); route it through the token layer"
             );
         }
-        let on_dev_ui_surface = DEV_UI_SURFACE.contains(&rel);
-        for (i, (hex, what)) in DEV_UI_STATUS_EXEMPT.iter().enumerate() {
-            if text.contains(hex) {
-                assert!(
-                    on_dev_ui_surface,
-                    "{rel} ships {hex} ({what}), which is exempt only on the dev UI's own \
-                     surface (serve/mod.rs + client.js); route it through the token layer"
-                );
-                exempt_seen[i] = true;
-            }
-        }
         checked += 1;
     }
     assert_eq!(checked, 11, "a file dropped out of the vendor-colour sweep");
-    for (i, (hex, what)) in DEV_UI_STATUS_EXEMPT.iter().enumerate() {
-        assert!(
-            exempt_seen[i],
-            "{hex} ({what}) is no longer used anywhere on the dev UI's exempt surface — if you \
-             just gave it a real token, delete this exemption instead of leaving it stale"
-        );
-    }
 
     // …and the authored documents, which spec §12.1 named in the widened scope ("`serve/mod.rs`,
     // `client.js`, both favicons, the VS Code icon, **and the demo `.tmd` sources**") and the
@@ -3706,8 +3691,9 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     //
     // A plot colour, a scene colour, an SVG fill: those are DATA, and this theme's one rule
     // carves out room for exactly that. What a document may not do is reach for a retired
-    // vendor palette — the tell is the palette, not the fact of colour. The dev UI's three
-    // status literals are banned here outright: a `.tmd` is not the dev UI's surface.
+    // vendor palette — the tell is the palette, not the fact of colour. The dev UI's old
+    // status literals were banned here outright even while they were exempt above; now that
+    // the exemption is gone they are simply on BANNED and this reads it directly.
     //
     // `_site/` and `_book/` are skipped: committed build output carries the OLD palette by
     // design and is not edited by hand.
@@ -3727,13 +3713,128 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
         let text = std::fs::read_to_string(p)
             .unwrap_or_else(|e| panic!("{rel}: {e}"))
             .to_ascii_lowercase();
-        for (hex, what) in BANNED.iter().chain(DEV_UI_STATUS_EXEMPT) {
+        for (hex, what) in BANNED {
             assert!(
                 !text.contains(hex),
                 "{rel} still ships {hex} ({what}). A plot or scene colour is DATA and may be \
                  coloured — just not out of the palette this theme replaced"
             );
         }
+    }
+}
+
+/// The dev UI's status colours are named, scored tokens (spec §8) rather than literals picked
+/// for a dark UI and never measured against the paper.
+///
+/// MEASURED 2026-08-15 on the branch tip, before this commit: `#3fb950` (live) scored 2.42:1
+/// on `#FBF9F5`, `#2bb673` (cell done) 2.48:1, and `#d9a23a` 2.18:1 — the last of which is
+/// used as TEXT (the alert label and the count badge), where the floor is 4.5:1. Three of the
+/// five failed their own floor. That is why §8 says *scored* and not merely *named*.
+///
+/// Three tokens and not four: `warming` and `warn` were the same literal, so a fourth name
+/// would be a second spelling of one value (ruling R1).
+#[test]
+fn the_dev_ui_paints_status_from_scored_tokens_only() {
+    let serve = std::fs::read_to_string(repo_root().join("crates/server/src/serve/mod.rs"))
+        .expect("serve/mod.rs");
+    // Bounded to the CONST, not to "everything after it": `STATUS_CSS` is a backslash-
+    // continued string literal, so every line of it ends in `\` and only its last ends in
+    // `";`. Slicing on the const name alone swept the rest of the file, and the first run of
+    // this test duly reported `#f00` — a colour in a `#[cfg(test)]` fixture 400 lines below,
+    // which is not the dev UI's surface and not this gate's business.
+    let mut css = String::new();
+    for line in serve
+        .lines()
+        .skip_while(|l| !l.contains("pub(crate) const STATUS_CSS"))
+    {
+        css.push_str(line);
+        css.push('\n');
+        if line.trim_end().ends_with("\";") {
+            break;
+        }
+    }
+    assert!(
+        css.contains("#tali-controls.tali-dev"),
+        "the STATUS_CSS slice is empty or mis-bounded; this gate must not pass by scanning \
+         nothing"
+    );
+
+    // No literal colour of any kind on the dev UI's own surface. A `#` followed by three or
+    // six hex digits is a colour wherever it appears in a stylesheet; there is no legitimate
+    // one left once the four status hexes are tokens.
+    let mut literals: Vec<String> = Vec::new();
+    for (i, _) in css.match_indices('#') {
+        let tail: String = css[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        // `#tali-progress` and friends are ids, not colours: an id is followed by more
+        // identifier characters, a colour by a delimiter.
+        let after = css[i + 1 + tail.len()..].chars().next().unwrap_or(' ');
+        if (tail.len() == 3 || tail.len() == 6) && !after.is_alphanumeric() && after != '-' {
+            literals.push(format!("#{tail}"));
+        }
+    }
+    literals.sort();
+    literals.dedup();
+    assert!(
+        literals.is_empty(),
+        "STATUS_CSS still paints literal colours {literals:?}. Every one of them was chosen \
+         for a dark UI and none was ever scored against the paper — see the ratios in this \
+         test's doc comment. Route them through --tali-status-* or an existing token"
+    );
+
+    // `client.js` is the dev UI's other half and paints one surface of its own: the fatal-error
+    // overlay, which is a `<style>` element rather than a rule in STATUS_CSS. It was a hardcoded
+    // #1b1d23 card with its own red and its own pink-on-dark body text, drawn identically
+    // whatever palette the reader had chosen — the one surface that appears when something has
+    // ALREADY gone wrong, and the one that ignored them. Only its colours are this gate's
+    // business; its geometry and faces answer to the tell probe next door.
+    let client =
+        std::fs::read_to_string(repo_root().join("web-client/client.js")).expect("client.js");
+    let mut overlay: Vec<String> = Vec::new();
+    for (i, _) in client.match_indices('#') {
+        let tail: String = client[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        let after = client[i + 1 + tail.len()..].chars().next().unwrap_or(' ');
+        if (tail.len() == 3 || tail.len() == 6) && !after.is_alphanumeric() && after != '-' {
+            overlay.push(format!("#{tail}"));
+        }
+    }
+    overlay.sort();
+    overlay.dedup();
+    assert!(
+        overlay.is_empty(),
+        "client.js still paints literal colours {overlay:?}; the dev UI has one palette and \
+         it is the reader's"
+    );
+
+    // The three tokens exist, are declared exactly once, and each derives from the diagnostic
+    // colour it shares a meaning with, which is what gets the dark palette right (R2).
+    let tokens = std::fs::read_to_string(repo_root().join("crates/core/assets/css/tokens.css"))
+        .expect("tokens.css");
+    for (name, from) in [
+        ("--tali-status-live", "--tali-callout-tip"),
+        ("--tali-status-warn", "--tali-callout-warning"),
+        ("--tali-status-error", "--tali-callout-important"),
+    ] {
+        assert_eq!(
+            tokens.matches(&format!("{name}:")).count(),
+            1,
+            "{name} must be declared exactly once, in tokens.css"
+        );
+        assert!(
+            tokens.contains(&format!("{name}: var({from})")),
+            "{name} must derive from {from}: spec §8 says the status tokens are SHARED with \
+             the diagnostic surfaces, and an alias is what makes tokens-dark.css's override \
+             reach both without a second dark block"
+        );
+        assert!(
+            css.contains(&format!("var({name})")),
+            "{name} is declared but the dev UI never reads it"
+        );
     }
 }
 

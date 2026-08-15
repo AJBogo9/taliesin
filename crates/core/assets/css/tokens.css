@@ -47,6 +47,23 @@
        2026-08-03), but `.tali-error`/`.tali-js-error` still derive their surface from it, and
        an error is exactly the kind of DATA this theme's one colour rule carves out room for. */
     --tali-callout-important: #8B3A2E;
+    /* The preview dev UI's three status colours, which are the diagnostic colours under names
+       that say what they mean (spec §8: "named, scored status tokens ... shared with the
+       diagnostic surfaces"). Aliases and not literals, so tokens-dark.css's override of the
+       callout tokens reaches these too — both are declared on `:root`, which IS `html`, so the
+       substitution reads the cascaded dark value on the same element. (That is what makes this
+       safe where Plan 2's `:root` track list was not: THAT one read a property engaged on a
+       DESCENDANT and baked in the root's zero.)
+
+       Scored 2026-08-15 on the ground each sits on: live 6.56 light / 8.68 dark, warn 7.08 /
+       8.34, error 7.28 / 7.09. All six clear 4.5:1 as text. What they replace did not — the
+       literals here were picked for a dark UI and met the warm paper for the first time when
+       Plan 1 landed: live scored 2.42:1, cell-done 2.48:1, and the amber 2.18:1 while being
+       used as the alert LABEL. `warming` and `warn` shared one literal, which is why there are
+       three names here and not spec §8's four. */
+    --tali-status-live: var(--tali-callout-tip);
+    --tali-status-warn: var(--tali-callout-warning);
+    --tali-status-error: var(--tali-callout-important);
     /* TWO owned faces, and the rule that generates the whole system: the mono is the
        MACHINE's voice, the serif is the AUTHOR's. Everything the tool says — labels,
        figure and table numbers, table headers, callout kinds, nav, TOC, cell timings —

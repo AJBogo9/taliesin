@@ -161,6 +161,11 @@
   };
 
   // --- fatal-error overlay ---------------------------------------------------
+  // Its COLOURS are the reader's own palette as of 2026-08-15. This was a hardcoded
+  // near-black card with its own red and its own pink-on-dark body text, drawn
+  // identically whatever theme the reader had chosen — a whole second design system on
+  // the one surface that appears when something has ALREADY gone wrong. Its geometry and
+  // its faces are the next commit's.
   // A render/read failure leaves the last good content in place; this overlays it
   // so a broken save is impossible to miss (including on a phone). It clears on
   // the next successful render, or on click-outside / Escape.
@@ -169,14 +174,15 @@
     style.textContent =
       "#tali-error{position:fixed;inset:0;z-index:2147482500;display:none;flex-direction:column;" +
       "align-items:center;justify-content:center;padding:2rem;box-sizing:border-box;" +
-      "background:rgba(10,12,16,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
+      "background:var(--tali-scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
       "#tali-error.tali-show{display:flex;}" +
       "#tali-error .tali-error-card{max-width:min(680px,92vw);width:100%;max-height:74vh;overflow:auto;" +
-      "background:#1b1d23;border:1px solid #5a2a2a;border-left:4px solid #e5534b;border-radius:10px;" +
+      "background:var(--tali-bg);border:1px solid var(--tali-border);" +
+      "border-left:4px solid var(--tali-status-error);border-radius:10px;" +
       "padding:1rem 1.2rem;box-shadow:0 14px 44px rgba(0,0,0,.55);}" +
-      "#tali-error .tali-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:#ff8c82;margin-bottom:.55rem;}" +
+      "#tali-error .tali-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:var(--tali-status-error);margin-bottom:.55rem;}" +
       "#tali-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
-      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2d5d5;}" +
+      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--tali-fg);}" +
       "#tali-error .tali-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:var(--tali-muted);}";
     (document.head || document.documentElement).appendChild(style);
     const el = document.createElement("div");

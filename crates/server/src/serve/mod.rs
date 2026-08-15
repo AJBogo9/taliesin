@@ -377,67 +377,67 @@ pub(crate) const STATUS_CSS: &str = "\
     #tali-controls.tali-dev { position: fixed; bottom: .6rem; left: .6rem; z-index: 9999; \
       font: 12px ui-sans-serif, system-ui, sans-serif; } \
     .tali-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
-      background: var(--tali-bg, #fff); color: var(--tali-muted, #888); \
-      border: 1px solid var(--tali-border, #e0e0e0); border-radius: 999px; padding: .25rem .6rem; \
+      background: var(--tali-bg); color: var(--tali-muted); \
+      border: 1px solid var(--tali-border); border-radius: 999px; padding: .25rem .6rem; \
       box-shadow: 0 1px 6px rgba(0,0,0,.12); } \
-    .tali-dev-toggle:hover { color: var(--tali-fg, #111); } \
-    .tali-dev-toggle.tali-dev-alert { border-color: #d9a23a; color: #d9a23a; } \
+    .tali-dev-toggle:hover { color: var(--tali-fg); } \
+    .tali-dev-toggle.tali-dev-alert { border-color: var(--tali-status-warn); color: var(--tali-status-warn); } \
     .tali-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
-    .tali-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: #d9a23a; color: #fff; \
+    .tali-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: var(--tali-status-warn); color: var(--tali-bg); \
       font-weight: 700; font-size: 11px; line-height: 1.3; text-align: center; } \
     .tali-dev-count[hidden] { display: none; } \
-    .tali-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tali-muted, #888); flex: none; } \
-    .tali-dev-dot[data-state=\"live\"] { background: #3fb950; } \
-    .tali-dev-dot[data-state=\"warn\"] { background: #d9a23a; } \
-    .tali-dev-dot[data-state=\"error\"] { background: #e5534b; } \
+    .tali-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tali-muted); flex: none; } \
+    .tali-dev-dot[data-state=\"live\"] { background: var(--tali-status-live); } \
+    .tali-dev-dot[data-state=\"warn\"] { background: var(--tali-status-warn); } \
+    .tali-dev-dot[data-state=\"error\"] { background: var(--tali-status-error); } \
     .tali-dev-panel { position: absolute; bottom: calc(100% + .45rem); left: 0; min-width: 13rem; \
       display: flex; flex-direction: column; gap: .5rem; padding: .65rem; \
-      background: var(--tali-bg, #fff); color: var(--tali-fg, #111); \
-      border: 1px solid var(--tali-border, #e0e0e0); border-radius: 9px; box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
+      background: var(--tali-bg); color: var(--tali-fg); \
+      border: 1px solid var(--tali-border); border-radius: 9px; box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
     .tali-dev-panel[hidden] { display: none; } \
-    .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted, #888); } \
+    .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted); } \
     .tali-dev-row .tali-dev-label { font-weight: 600; } \
     #tali-wordcount { font-variant-numeric: tabular-nums; } \
     .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
     .tali-dev-drafts a { color: var(--tali-fg); text-decoration: none; font-size: 12px; } \
     .tali-dev-drafts a:hover { text-decoration: underline; } \
     .tali-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
-      background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
-      border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
+      background: var(--tali-code-bg); color: var(--tali-fg); \
+      border: 1px solid var(--tali-border); border-radius: 6px; padding: .3rem .55rem; } \
     .tali-dev-ctl:hover { border-color: var(--tali-fg); } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
-    #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg, #f5f5f5); \
-      border: 1px solid var(--tali-border, #e0e0e0); line-height: 1.35; } \
-    #tali-diagnostics .tali-diag-error { border-left: 3px solid #e5534b; } \
-    #tali-diagnostics .tali-diag-warning { border-left: 3px solid #d9a23a; } \
+    #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg); \
+      border: 1px solid var(--tali-border); line-height: 1.35; } \
+    #tali-diagnostics .tali-diag-error { border-left: 3px solid var(--tali-status-error); } \
+    #tali-diagnostics .tali-diag-warning { border-left: 3px solid var(--tali-status-warn); } \
     #tali-diagnostics .tali-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
     #tali-diagnostics .tali-diag-loc:hover { border-color: var(--tali-fg); } \
-    #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--tali-muted, #888); font-size: 11px; } \
+    #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--tali-muted); font-size: 11px; } \
     #tali-diagnostics .tali-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
-      background: var(--tali-bg, #fff); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
+      background: var(--tali-bg); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
     #tali-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
     .tali-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
-      color: var(--tali-fg, #111); background: var(--tali-code-bg, #f5f5f5); border: 1px solid var(--tali-border, #e0e0e0); \
-      border-left: 3px solid #e5534b; border-radius: 6px; padding: .3rem .5rem; \
+      color: var(--tali-fg); background: var(--tali-code-bg); border: 1px solid var(--tali-border); \
+      border-left: 3px solid var(--tali-status-error); border-radius: 6px; padding: .3rem .5rem; \
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
-    .tali-cellerr:hover { border-color: #e5534b; } \
+    .tali-cellerr:hover { border-color: var(--tali-status-error); } \
     #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
-      background: var(--tali-bg, #fff); color: var(--tali-fg, #222); \
+      background: var(--tali-bg); color: var(--tali-fg); \
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent); \
       box-shadow: 0 1px 6px rgba(0,0,0,.10); cursor: default; user-select: none; } \
     #tali-progress[data-state=\"busy\"] { cursor: pointer; } \
-    #tali-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, #d9a23a 55%, transparent); } \
-    #tali-progress[data-state=\"error\"] { cursor: pointer; border-color: #e5534b; } \
+    #tali-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, var(--tali-status-warn) 55%, transparent); } \
+    #tali-progress[data-state=\"error\"] { cursor: pointer; border-color: var(--tali-status-error); } \
     #tali-progress[data-state=\"idle\"] { opacity: .65; } \
     .tali-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
-      background: var(--tali-muted, #aaa); } \
+      background: var(--tali-muted); } \
     #tali-progress[data-state=\"busy\"] .tali-prog-dot { background: var(--tali-fg); } \
-    #tali-progress[data-state=\"warming\"] .tali-prog-dot { background: #d9a23a; } \
-    #tali-progress[data-state=\"idle\"] .tali-prog-dot { background: #3fb950; } \
-    #tali-progress[data-state=\"error\"] .tali-prog-dot { background: #e5534b; } \
+    #tali-progress[data-state=\"warming\"] .tali-prog-dot { background: var(--tali-status-warn); } \
+    #tali-progress[data-state=\"idle\"] .tali-prog-dot { background: var(--tali-status-live); } \
+    #tali-progress[data-state=\"error\"] .tali-prog-dot { background: var(--tali-status-error); } \
     @media (prefers-reduced-motion: no-preference) { \
       #tali-progress[data-state=\"busy\"] .tali-prog-dot, \
       #tali-progress[data-state=\"warming\"] .tali-prog-dot { \
@@ -452,11 +452,11 @@ pub(crate) const STATUS_CSS: &str = "\
     [data-tali-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
     [data-tali-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
     [data-tali-cell-state=\"running\"] { border-left-color: var(--tali-fg); } \
-    [data-tali-cell-state=\"done\"] { border-left-color: #2bb673; } \
-    [data-tali-cell-state=\"error\"] { border-left-color: #cc3333; } \
-    [data-tali-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
+    [data-tali-cell-state=\"done\"] { border-left-color: var(--tali-status-live); } \
+    [data-tali-cell-state=\"error\"] { border-left-color: var(--tali-status-error); } \
+    [data-tali-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, var(--tali-status-live) 40%, transparent); } \
     [data-tali-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
-    .tali-cell-badge { font: 11px/1 var(--tali-font-mono, monospace); opacity: .75; margin-right: 6px; } \
+    .tali-cell-badge { font: 11px/1 var(--tali-font-mono); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
       [data-tali-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \
