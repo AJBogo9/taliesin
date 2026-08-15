@@ -135,7 +135,7 @@ fn callout_descriptions() -> &'static [(&'static str, &'static str)] {
 /// `render::DIV_FEATURE_CLASSES` (the near-miss anchor for the div-class did-you-mean); the
 /// `div_classes_are_a_subset_of_the_validator_vocab` test pins that so the two can't drift.
 /// Keep in sync with the `.class` dispatch in `render/divs.rs`.
-const DIV_CLASS_NAMES: &[&str] = &["column-margin", "column-page", "column-screen"];
+const DIV_CLASS_NAMES: &[&str] = &["column-margin", "column-page"];
 
 fn div_classes() -> Value {
     named(
@@ -145,10 +145,6 @@ fn div_classes() -> Value {
             (
                 "column-page",
                 "Widen content past the text column, up to the page width.",
-            ),
-            (
-                "column-screen",
-                "Widen content to the full width of the screen.",
             ),
         ],
     )

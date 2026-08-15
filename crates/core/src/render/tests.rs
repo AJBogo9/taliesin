@@ -5747,3 +5747,57 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
         "the radius scale drifted: {radii:?}. One token, 2px, objects only."
     );
 }
+
+/// The width-escape arithmetic has ONE definition. It had three near-identical ones
+/// (`.column-page/.column-screen`, `body.has-toc > main :is(…)`, and the `.tali-site-main`
+/// twin of the second), plus two narrow-screen re-overrides and two rules that forced margin
+/// notes back into the flow beside a TOC rail — seven places that had to agree, and the
+/// clipping visible in every render of this design happened where they did not.
+///
+/// The replacement is a grid with named lines, so a block declares WHICH COLUMN it is in
+/// instead of recomputing a centring formula. This test is the anti-drift half: it fails if a
+/// second definition reappears.
+#[test]
+fn the_width_escape_has_exactly_one_definition() {
+    for (name, css) in [("base.css", BASE_CSS), ("site.css", SITE_CSS)] {
+        for (needle, why) in [
+            (
+                "--tali-escape-room",
+                "the retired per-container escape budget",
+            ),
+            ("--tali-escape-w", "the retired computed escape width"),
+            ("calc(50% - ", "the retired centring formula"),
+            // The full-bleed class cut alongside this grid is deliberately NOT checked here.
+            // Its tombstone is `every_retired_vocabulary_name_is_gone_unstyled_and_…` in
+            // `render::validate`, which asks `css_has_class_selector` — a check that knows a
+            // selector from a prefix of a longer name, where a bare `contains` here would
+            // also fire on the comment in base.css explaining the removal.
+        ] {
+            assert!(
+                !css.contains(needle),
+                "{name} still carries `{needle}` ({why}); the reading grid replaced it"
+            );
+        }
+    }
+    // One track list, and every consumer names it rather than repeating it.
+    assert_eq!(
+        BASE_CSS.matches("--tali-prose-cols:").count(),
+        1,
+        "the track list must be declared exactly once"
+    );
+    assert_eq!(
+        BASE_CSS
+            .matches("grid-template-columns: var(--tali-prose-cols)")
+            .count(),
+        1,
+        "every grid container shares one rule; a second one is a second definition"
+    );
+    // The preview mounts into `#tali-root` and a build into `#tali-main`; a grid that names
+    // only one of them is invisible in exactly the loop the author works in.
+    for id in ["#tali-main", "#tali-root"] {
+        assert!(
+            BASE_CSS.contains(id),
+            "the reading grid must cover {id} (build page AND live preview mount)"
+        );
+    }
+}

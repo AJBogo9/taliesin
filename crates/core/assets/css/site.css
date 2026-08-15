@@ -89,39 +89,25 @@
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
 
-  /* the reading column; grows to fill the column so the footer is pushed down.
-     `box-sizing: border-box` is load-bearing: the global reset is content-box, so a
-     `width: 100%` column plus the 1rem side padding would render 2rem WIDER than the
-     viewport at narrow widths (the ~32px horizontal overflow at 390px). Border-box
-     draws the padding inside the 100%, so the column never exceeds the screen. */
+  /* The reading column; grows to fill the flex column so the footer is pushed down.
+     It no longer owns the measure or the side padding — the reading grid inside `<main>`
+     owns both (base.css). Keeping `max-width: var(--tali-measure)` here with `border-box`
+     padding is exactly what made a site page's measure 63.7 characters against a single
+     document's 67.0: the `2rem 1rem` was drawn INSIDE the token, so the same measure
+     rendered two different line lengths depending on which container it was in. */
   .tali-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-    max-width: var(--tali-measure); margin: 0 auto; padding: 2rem 1rem; }
+    max-width: none; margin: 0 auto; padding: 2rem 0; }
   .tali-site-main > main { min-width: 0; }
-  /* `page-layout: full` widens the column (the blog/projects card indexes) */
-  .tali-site-main.tali-wide { max-width: 60rem; }
-  /* a page with a TOC widens into a two-column grid (content + sticky sidebar).
-     max-width is exactly the column sum (40 + 2.5 gap + 14 = 56.5) so the block
-     centres with no dead space pooling to the right of the TOC. */
-  .tali-site-main.has-toc { max-width: 56.5rem; display: grid; align-items: start;
-    gap: 2.5rem; grid-template-columns: minmax(0, var(--tali-measure)) 14rem; }
-  /* Same rail rule the single-document TOC grid uses (base.css): the rail is content with
-     no background, so an escape grows LEFT and keeps its right edge flush with the text
-     rather than running underneath it. Same 8.25rem = half of (gap + rail). */
-  .tali-site-main.has-toc > main :is(.column-page, .column-screen) {
-    --tali-escape-room: calc(50vw + 50% - 8.25rem);
-    margin-left: calc(100% - var(--tali-escape-w));
-    margin-right: 0; }
-  /* And the same for the narrow end of that axis: the rail owns the right gutter, so a
-     margin note floated into it draws on top of the rail's rows. Rationale and the
-     measurement are in base.css beside the single-document copy of these two rules — a
-     site page and a single document share the rail, so they must share the answer. */
-  .tali-site-main.has-toc > main .column-margin {
-    float: none; width: auto; margin: 1rem 0;
-    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
-  .tali-site-main.has-toc > main .tali-sidenote { display: none; }
-  .tali-site-main.has-toc > main .tali-sidenote:target {
-    display: block; float: none; width: auto; margin: .6rem 0;
-    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
+  /* `page-layout: full` (the blog/projects card indexes) widens the TEXT track rather than
+     the container, because the container no longer has a width to widen. Listing cards are
+     Plan 3's subject; this keeps them exactly as wide as they are today. */
+  .tali-site-main.tali-wide > main { --tali-measure: 60rem; }
+  /* Same outer grid as base.css's single-document `body.has-toc`, and for the same reason:
+     the rail is a SIBLING TRACK of the reading grid, not a competitor for its space, so the
+     four rules that used to force escapes and margin notes back into the flow beside it are
+     gone. Cap: 85.75rem (the reading grid at full stretch) + 2.5rem gap + 14rem rail. */
+  .tali-site-main.has-toc { max-width: 102.25rem; display: grid; align-items: start;
+    gap: 2.5rem; grid-template-columns: minmax(0, 1fr) 14rem; }
   /* Below this breakpoint `#TOC` drops out of the sticky rail and becomes a static,
      in-flow block ordered ABOVE <main> (mirrors base.css's single-document treatment):
      it follows <main> in the DOM, so without the lift it would strand at the very
@@ -137,14 +123,10 @@
        a `position: static` element regardless). */
     .tali-site-main.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
       border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
-    /* One column again and no rail in the way: hand the escapes back to the page-centred
-       formula in base.css. */
-    .tali-site-main.has-toc > main :is(.column-page, .column-screen) {
-      --tali-escape-room: 100vw;
-      margin-left: calc(50% - var(--tali-escape-w) / 2);
-      margin-right: calc(50% - var(--tali-escape-w) / 2); }
-    /* narrow back to the reading measure, unless `page-layout: full` widened the page */
-    .tali-site-main.has-toc:not(.tali-wide) { max-width: var(--tali-measure); }
+    /* One column again and no rail in the way. The escapes need no hand-back rule: they
+       are tracks of the reading grid inside <main>, which neither knows nor cares what the
+       outer grid did — and for the same reason the container needs no narrowing back to
+       the measure, since the measure is a track rather than a container width. */
   }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
@@ -315,7 +297,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    just takes `--tali-measure` (the same font-relative reading measure a website article
    uses) with the same `2rem 1rem` padding. Only the empty track disappears. */
 .tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-  max-width: var(--tali-measure); margin: 0 auto; padding: 2rem 1rem; }
+  max-width: none; margin: 0 auto; padding: 2rem 0; }
 .tali-book-inner > main { min-width: 0; }
 /* The post-nav is a sibling after the reading column, inside the same padded box, so it
    lines up flush with the text on both edges. */

@@ -249,24 +249,25 @@ The body keeps flowing in the reading column while the margin note sits alongsid
 paragraph it annotates, so a digression never interrupts the main thread.
 
 The opposite move on the same axis is to make a block *wider* than the reading column.
-`::: {.column-page}` widens up to the page width, and `::: {.column-screen}` goes edge
-to edge. Both are for content the ~70-character measure is simply wrong for: a wide
-table, a multi-panel plot, a diagram whose labels only fit at size.
+`::: {.column-page}` widens up to the page width. It is for content the ~70-character
+measure is simply wrong for: a wide table, a multi-panel plot, a diagram whose labels
+only fit at size.
 
 ::: {.column-page}
 | Escape | Width | Use it for |
 | --- | --- | --- |
 | *(none)* | the reading measure | prose, which is what the measure is tuned for |
 | `.column-page` | up to the page width | a wide table, a figure that needs the room |
-| `.column-screen` | edge to edge | a full-bleed band |
 :::
 
-Neither is a new block type — they are plain classes, so they work on a table, a
-figure, a listing, or a bare div, and the block keeps its identity (a `@fig-`
-cross-reference still resolves through one). On a page that shows a table-of-contents
-rail an escape grows leftward instead of centring, keeping its right edge flush with
-the text, because the rail is real content and running underneath it would put text
-over text.
+A code block needs no escape: `pre` takes the wider column by itself, because the reading
+measure fits 55 columns of code and PEP 8 asks for 79.
+
+It is not a new block type — it is a plain class, so it works on a table, a figure, a
+listing, or a bare div, and the block keeps its identity (a `@fig-` cross-reference
+still resolves through one). An escape grows leftward rather than centring, keeping its
+right edge flush with the text: the margin column owns the band on the right, and a block
+centred on the page would run its text under a note's.
 
 ## Reusing a partial
 

@@ -69,6 +69,27 @@
     --tali-measure: 32em;
     --tali-chrome-maxw: 56rem;
 
+    /* The reading grid's geometry. The track LIST itself is `--tali-prose-cols` in base.css,
+       where the layout it describes lives; only the numbers are tokens.
+
+       Stated in `rem` and not in the spec's `em`, and that is load-bearing rather than a
+       style preference: these are re-declared inside a media query on a container whose own
+       `em` would resolve against the ROOT's 16px, silently rendering the margin column 20%
+       narrow. The spec's numbers are `em` OF THE BODY FACE, so the conversion is exact and
+       fixed - 16em x 1.25rem = 20rem, 3em x 1.25rem = 3.75rem.
+
+       Both note tokens are ZERO here, deliberately: the margin column is a real grid track,
+       so collapsing it to nothing is how the layout below its breakpoint is expressed. One
+       track list, not two spellings of one. base.css engages them. */
+    --tali-note-w: 0;
+    --tali-note-gap: 0;
+    /* How far a code block or a `::: {.column-page}` may grow, and it grows LEFT: with a
+       permanent margin column on the right, left is the only direction that cannot run
+       under a note. 20rem + the 40rem measure = 60rem, which is exactly the cap the three
+       retired copies of the escape formula each carried as `min(60rem, ...)` - the number
+       survives the rewrite, only its expression changes. */
+    --tali-bleed: 20rem;
+
     /* The vertical unit IS the line box: U = 1.55 x 1.25rem, so the rhythm is the leading.
        The TARGET is that every vertical space is a small multiple of U and nothing else,
        replacing the ad-hoc rem values in margin/padding/gap. That is not done — this layer

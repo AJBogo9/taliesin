@@ -49,7 +49,7 @@ pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 /// (`panel-tabset`/`code-walkthrough`/`scrolly`/`step`) and the five theorem kinds were
 /// withdrawn on 2026-08-08 and are registered in [`RETIRED_DIV_CLASSES`] below, which is
 /// what a leftover fence hits now.
-pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &["column-margin", "column-page", "column-screen"];
+pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &["column-margin", "column-page"];
 
 /// Input control types `.input type=` recognizes.
 ///
@@ -253,6 +253,11 @@ pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
         "debug",
         "it was removed on 2026-08-08 along with the algorithm stepper and `#| trace:`, \
          and nothing replaces it",
+    ),
+    (
+        "column-screen",
+        "it was removed on 2026-08-15 with the reading grid, which has no full-bleed track: \
+         use `.column-page`, which reaches 60rem",
     ),
     (
         "columns",
@@ -497,8 +502,8 @@ mod tests {
         );
         assert_eq!(
             DIV_FEATURE_CLASSES,
-            &["column-margin", "column-page", "column-screen"],
-            "the live div-class vocabulary should be exactly the three width escapes"
+            &["column-margin", "column-page"],
+            "the live div-class vocabulary should be exactly the two width escapes"
         );
         assert_eq!(
             CALLOUT_KINDS,
@@ -588,12 +593,7 @@ mod tests {
         );
         assert_eq!(w.line, Some(4));
         // Other feature classes warn generically (callout/width escape), no shortcode hint.
-        for c in [
-            "callout-note",
-            "column-page",
-            "column-margin",
-            "column-screen",
-        ] {
+        for c in ["callout-note", "column-page", "column-margin"] {
             let w = validate_empty_feature_div(&div(&[c]), 1, None)
                 .unwrap_or_else(|| panic!("empty .{c} should warn"));
             assert!(

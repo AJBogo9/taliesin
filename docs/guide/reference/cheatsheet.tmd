@@ -75,7 +75,6 @@ reference](frontmatter.tmd#document-front-matter).
 | `::: {.callout-warning}` | An amber warning callout | [Rich writing](../using/writing.tmd#callouts) |
 | `::: {.column-margin}` | Floats into the right margin on a wide screen, folds into the flow on a narrow one | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
 | `::: {.column-page}` | Widens a block up to the page width | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
-| `::: {.column-screen}` | Widens a block edge to edge | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
 
 ## References
 

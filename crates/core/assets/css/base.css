@@ -59,7 +59,10 @@
   .tali-sr-only, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
-  body { max-width: var(--tali-measure); margin: calc(2 * var(--tali-u)) auto; padding: 0 1rem;
+  /* The reading grid inside `<main>` owns the measure and the side gutters, so `body` is
+     just the page. It carried `max-width: var(--tali-measure)` and `padding: 0 1rem` until
+     2026-08-15; both moved into the grid's own tracks. */
+  body { max-width: none; margin: calc(2 * var(--tali-u)) 0; padding: 0;
          font: var(--tali-font-body); color: var(--tali-fg); background: var(--tali-bg);
          overflow-wrap: break-word;
          font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
@@ -514,33 +517,22 @@
      and no text is duplicated for Ctrl-F or the text projections to report twice. */
   .tali-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
   .tali-fnref a { text-decoration: none; padding: 0 .1em; }
-  /* Deliberately the SAME geometry as `.column-margin` below, so a footnote and an
-     explicit margin div share one column instead of two overlapping ones. `float` rather
-     than absolute positioning is what makes that work: several notes hanging off one
-     paragraph push each other down the margin in document order, where absolutely
-     positioned notes would stack on top of one another. A floated `<span>` blockifies
-     per CSS, so no `display` declaration is needed to make the box work. */
-  .tali-sidenote {
-    float: right; clear: right; width: 12rem;
-    margin: .3rem -13.5rem 1rem 1.5rem;
-    font-family: inherit; font-weight: 400; font-size: .82rem; line-height: 1.5;
-    color: var(--tali-muted); text-align: left; }
+  /* THE MARGIN COLUMN — the collapsed form is the DEFAULT and the column is the addition,
+     because the column is what is conditional. `.tali-sidenote` (a footnote) and
+     `.column-margin` (an author's own marginal aside) share one geometry deliberately, so
+     two notes hanging off the same paragraph occupy ONE column rather than two overlapping
+     ones.
+
+     The note is out of the flow until its own reference reveals it: the `<sup>` is already
+     an `<a href="#fn-x">` and the note already carries `id="fn-x"`, so `:target` is the
+     whole mechanism — no checkbox, no hidden form control in the prose, no JS. Tapping a
+     second note collapses the first, which is the reading flow anyway. */
+  .tali-sidenote { display: none; }
+  .tali-sidenote:target { display: block; margin: .6rem 0;
+    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   .tali-sidenote-num {
     font-size: .75em; vertical-align: super; line-height: 0; margin-right: .35em;
     color: var(--tali-accent); }
-  .tali-sidenote:target { background: var(--tali-flash); border-radius: var(--tali-radius); }
-  /* Below the margin breakpoint there is no margin to put a note in. Collapse it and let
-     the reference reveal it in place: the `<sup>` is already an `<a href="#fn-x">` and the
-     note already carries `id="fn-x"`, so `:target` is the whole mechanism — no checkbox,
-     no label, no hidden form control in the middle of the prose, and no JS. Tapping a
-     second note collapses the first, which is the reading flow anyway.
-     Same breakpoint as `.column-margin`: they compete for the same absent space. */
-  @media (max-width: 73rem) {
-    .tali-sidenote { display: none; }
-    .tali-sidenote:target {
-      display: block; float: none; width: auto; margin: .6rem 0;
-      padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
-  }
   /* Paper has no viewport and `taliesin pdf` lays out to a fixed page box whose side
      margins (~90pt, measured on A4) are narrower than the note column, so the `-13.5rem`
      pull would carry the note off the page. Print every note in the flow instead: a
@@ -554,77 +546,115 @@
      page. That belongs to the print track (item 159), not here, because it needs the page
      box to reserve the space. Losing a note would be a defect; this is a cosmetic debt. */
   @media print {
-    .tali-sidenote, .tali-sidenote:target {
+    /* The reading grid is a screen layout; paper has one column. Collapsing the grid
+       collapses every escape and the margin column with it, in one declaration, instead of
+       resetting each track — and it is what makes the in-flow note rule below reachable at
+       all, since a note that stayed a grid item could not be un-floated back into the text. */
+    #tali-main, #tali-root, #tali-main > article { display: block !important; }
+    .tali-sidenote, .tali-sidenote:target, .column-margin {
       display: block; float: none; width: auto; margin: .6rem 0;
       padding-left: .9rem; border-left: 2px solid var(--tali-border); background: none; }
   }
-  /* Margin notes (Tufte/Distill): `::: {.column-margin}` floats into the right margin on
-     a wide screen — marginalia that don't interrupt the body, impossible to do in a PDF.
-     Below ~73rem (no margin room) it falls back to an indented aside in the flow. It's a
-     normal block, so click-to-source works. */
-  .column-margin {
-    float: right; clear: right; width: 12rem;
-    margin: .3rem -13.5rem 1rem 1.5rem;
-    font-family: inherit; font-weight: 400; font-size: .82rem; line-height: 1.5;
-    color: var(--tali-muted); text-align: left; }
+  /* Margin notes (Tufte/Distill): `::: {.column-margin}` is an author's own marginal aside.
+     Same two forms and the same geometry as the footnote note above, so the two share one
+     column. It is a normal block, so click-to-source works. */
+  .column-margin { margin: 1rem 0; padding-left: .9rem;
+    border-left: 2px solid var(--tali-accent); }
   .column-margin > :first-child { margin-top: 0; }
   .column-margin > :last-child { margin-bottom: 0; }
-  @media (max-width: 73rem) {
-    .column-margin {
-      float: none; width: auto; margin: 1rem 0;
-      padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
+  .tali-sidenote, .column-margin {
+    font: var(--tali-font-body); font-size: .82rem; font-weight: 400; line-height: 1.5;
+    text-transform: none; letter-spacing: normal;
+    color: var(--tali-muted); text-align: left; }
+  /* ENGAGED */
+  /* The margin column engages when the page can afford it, and the number is DERIVED:
+     1rem gutter + 32em measure + 3em gutter + 16em note + 1rem gutter = 66rem (1056px).
+     The spec's stated ~1022px is the same sum without the two page gutters.
+     NOT on a page with a TOC rail: there the same sum gains 2.5rem + 14rem = 82.5rem, and
+     below that the text track would have to shrink under the measure to keep the column —
+     the measure is a spec invariant and the margin column is a feature. A rail page keeps
+     the collapsed form it has always had.
+     The track and the float engage TOGETHER, on the same selector list: a float sized from
+     `--tali-note-w` while the track is still 0 lands in the page gutter, on top of nothing
+     that reserved room for it.
+
+     `float` and not grid placement, because a footnote note is a `<span>` INSIDE a
+     paragraph and can never be a grid item — but a float with a negative right margin lands
+     exactly in the track the grid holds empty for it, and several notes hanging off one
+     paragraph push each other DOWN the column in document order, where absolutely
+     positioned notes would stack on top of one another. */
+  @media (min-width: 66rem) {
+    body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main {
+      --tali-note-w: 20rem; --tali-note-gap: 3.75rem; }
+    :is(body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main) .tali-sidenote {
+      display: block; float: right; clear: right; width: var(--tali-note-w);
+      margin: .3rem calc(-1 * (var(--tali-note-w) + var(--tali-note-gap)))
+              var(--tali-u) var(--tali-note-gap);
+      padding-left: 0; border-left: 0; }
+    /* An author's `::: {.column-margin}` is a TOP-LEVEL BLOCK, so it is a grid item — and
+       `float` has no effect on a grid item (CSS Grid §4). It therefore takes the reserved
+       track by name instead, which is the mechanism the grid exists for. The footnote note
+       above cannot do the same: it is a `<span>` inside a paragraph, so it is not an item of
+       this grid at all and a float with a negative margin is the only way it reaches the
+       band. Two mechanisms, one geometry, and the reason is structural rather than
+       stylistic. */
+    :is(body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main)
+      :is(#tali-main, #tali-root, #tali-main > article) > .column-margin {
+      grid-column: note; margin: 0 0 var(--tali-u); padding-left: 0; border-left: 0; }
   }
-  /* Layout escapes — the other end of the same axis as `.column-margin` above (item 181).
-     `::: {.column-page}` widens past the ~70ch prose measure; `::: {.column-screen}` goes
-     edge to edge. Distill's `l-page`/`l-screen` and Tufte's `.fullwidth` are the same idea,
-     and like them these are plain classes on a block, so they apply to a div, table, pre or
-     figure alike — there is no render path, no new fenced-div arm.
+  /* ===== THE READING GRID ====================================================
+     ONE definition of where a block sits horizontally. It replaces three near-identical
+     copies of a centring formula (the two width-escape classes, `body.has-toc > main
+     :is(…)`, `.tali-site-main.has-toc > main :is(…)`), their two narrow-screen
+     re-overrides, and the two rules that killed margin notes beside a TOC rail.
 
-     ONE formula serves every container mode because it is written against the CONTAINER,
-     not the viewport: a margin of `50% - w/2` puts the box's centre exactly on its
-     container's centre whatever that container's width is, and `width` then overflows
-     symmetrically on both sides. Taliesin's three block containers (single-doc `body`,
-     `.tali-site-main`, `.tali-book-main`) are themselves viewport-centred, so that lands on
-     the viewport centre for free, and nothing here needs to know which one it is in.
+     Five tracks. Prose sits in `text`. A code block or an author escape spans `bleed` —
+     the band to the LEFT plus the text track. The margin column is `note`, permanently
+     reserved so a floated note has somewhere to go that nothing else may occupy.
 
-     `--tali-escape-room` is how much width an escape may take. It is `100vw` here and is
-     overridden by the two TOC grid modes below, which have a sticky rail in the way.
+     Why the escape grows LEFT rather than centring: the margin column owns the right band,
+     and a box centred on the page runs its text under a note's text. The tree already ruled
+     exactly this for the TOC rail on a measurement (a `.column-page` reached x=1331 while
+     the rail began at x=1111 at 1702px). With the margin column permanent, the same answer
+     holds everywhere — which is precisely what lets three copies become one.
 
-     `max(100%, …)` is a floor, not decoration: below ~26rem the viewport minus its gutter
-     is NARROWER than the reading column, and without it a `.column-page` would render
-     *indented* on a phone — an escape hatch that makes things smaller. */
-  .column-page, .column-screen {
-    box-sizing: border-box;
-    --tali-escape-room: 100vw;
-    width: var(--tali-escape-w);
-    max-width: none;
-    margin-left: calc(50% - var(--tali-escape-w) / 2);
-    margin-right: calc(50% - var(--tali-escape-w) / 2); }
-  .column-page { --tali-escape-w: max(100%, min(60rem, var(--tali-escape-room) - 2rem)); }
-  /* `100vw` is the viewport INCLUDING the classic scrollbar, so an edge-to-edge box
-     overshoots the space it actually has by half a scrollbar on each side (measured: 7px at
-     a 15px scrollbar). The overshoot is clipped, not scrolled, by the rule below — but with
-     no padding the thing being clipped is the first 7px of the author's own content. A
-     gutter absorbs it, and doubles as the reason full-bleed text is readable at all:
-     `border-box` keeps the BOX edge-to-edge while the content sits inside. */
-  .column-screen { --tali-escape-w: max(100%, var(--tali-escape-room)); padding-inline: 1rem; }
-  /* `100vw` is the viewport INCLUDING the classic scrollbar, so an edge-to-edge block is
-     ~15px wider than the space it has and the page grows a horizontal scrollbar it never
-     had. Measured before this rule: scrollWidth 1710 against clientWidth 1702.
+     The side gutters are the grid's own `minmax(1rem, 1fr)` and NOT the containers'
+     padding. That is a fix, not tidiness: `.tali-site-main`/`.tali-book-main` are
+     `border-box` with `2rem 1rem` INSIDE `max-width: var(--tali-measure)`, so a site page
+     rendered 63.7 characters where a single document rendered 67.0 — one token, two
+     measures. One gutter, one measure, all three modes.
 
-     `clip` rather than `hidden` because `hidden` would make <html> a scroll container and
-     break every `position: sticky` element on the page (the TOC rail, the book topbar).
-     `:has()` rather than a blanket rule because a page with no full-bleed block may have
-     some other reason to scroll horizontally, and silently clipping that would be a
-     regression in content nobody could then reach. */
-  html:has(.column-screen) { overflow-x: clip; }
-  /* Paper has no viewport to bleed to, and the print track (`taliesin pdf`) lays out to a
-     fixed page box: collapse both escapes back to the text column. `100%` makes each margin
-     `50% - 50%` = 0, so this is a true reset rather than an override fight. */
-  @media print {
-    .column-page, .column-screen {
-      --tali-escape-w: 100%; --tali-escape-room: 100%; padding-inline: 0; }
-  }
+     `::: {.column-page}` is the author's opt-in to the wider band. There is no full-bleed
+     class any more: the one that existed needed `100vw`, a scrollbar-width correction and
+     `overflow-x: clip` on `<html>`, none of which is a grid track, so it was cut with this
+     rewrite (spec §9). Its name and its removal note live in `RETIRED_DIV_CLASSES`, which
+     is also what stops this file naming it — `css_has_class_selector` reads a comment the
+     same way it reads a rule, deliberately, so the register is the one place it is spelled. */
+  /* The track list is declared ON the grid container and not on `:root`, and that is not a
+     style preference: a custom property's computed value is its specified value with every
+     `var()` ALREADY SUBSTITUTED, so a list declared at `:root` bakes in `:root`'s
+     `--tali-note-w` (zero) and inherits that resolved string downward. The margin column
+     then never engages while the float that fills it does — measured, on a page that grew
+     328px of horizontal overflow with the note track still reporting 0px. Declared here,
+     the substitution happens on an element that has already inherited the engaged values. */
+  #tali-main, #tali-root, #tali-main > article {
+    --tali-prose-cols:
+      minmax(1rem, 1fr)
+      [bleed-start] minmax(0, var(--tali-bleed))
+      [text-start] min(var(--tali-measure), 100%) [text-end bleed-end]
+      var(--tali-note-gap)
+      [note-start] var(--tali-note-w) [note-end]
+      minmax(1rem, 1fr);
+    display: grid; grid-template-columns: var(--tali-prose-cols); }
+  :is(#tali-main, #tali-root, #tali-main > article) > * { grid-column: text; }
+  /* A dated post wraps its blocks in an `<article>` landmark, so the grid must reach one
+     level deeper. It spans the whole track set and REPEATS the track list rather than using
+     `subgrid`: its width equals the parent's content box, so identical tracks compute
+     identical sizes, while an unsupported `subgrid` would be dropped as an invalid value and
+     silently render every block full-bleed. This rule follows the `> *` rule above at equal
+     specificity, so source order is what makes it win. */
+  #tali-main > article { grid-column: 1 / -1; }
+  :is(#tali-main, #tali-root, #tali-main > article) > .column-page { grid-column: bleed; }
   .tali-output { margin: 0 0 1rem; }
   /* An output slot that never filled leaves no trace. A cell folded inside a `:::` div
      gets its output element emitted at RENDER time (the slot the executor writes into,
@@ -764,50 +794,18 @@
      oversized); keep display math at its standalone presence. */
   .katex { font-size: 1.06em; }
   .katex-display > .katex { font-size: 1.18em; }
-  /* toc layout: content beside a sticky table of contents on wide screens */
-  body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
-                 grid-template-columns: minmax(0, var(--tali-measure, 32em)) 14rem; justify-content: center; }
+  /* A page with a TOC keeps its sticky rail as a SIBLING TRACK of the reading grid rather
+     than a competitor for the same space: the rail is the second column of this outer grid
+     and the reading grid lives entirely inside the first. That is why the four rules that
+     used to force escapes and margin notes back into the flow beside a rail are gone — a
+     note in the `note` track and a rail in a different track of a different grid cannot
+     overlap by construction, where floats and a centring formula could only be kept apart
+     by hand, per container, per breakpoint.
+     Cap: 85.75rem (the reading grid at full stretch: 1 + 20 + 40 + 3.75 + 20 + 1) + 2.5rem
+     gap + 14rem rail = 102.25rem. */
+  body.has-toc { max-width: 102.25rem; display: grid; align-items: start; gap: 2.5rem;
+                 grid-template-columns: minmax(0, 1fr) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
-  /* Layout escapes inside a TOC grid. The sticky rail is CONTENT, with no background of its
-     own, so an escape that centres on the page runs its text under the rail's text —
-     measured at 1702px: a `.column-page` reached x=1331 while the rail began at x=1111.
-     So on these pages an escape grows LEFT instead, keeping its right edge flush with the
-     text column: collision-free by construction, and it still roughly halves the wasted
-     margin (704px of prose to ~1055px here) rather than degrading to no escape at all.
-
-     `--tali-escape-room` is the exact distance from the viewport's left edge to the prose
-     column's right edge, so `.column-screen` lands on the viewport edge and stops. Its
-     8.25rem is half of (2.5rem gap + 14rem rail), a CONSTANT at every width above the
-     collapse breakpoint because only the prose track flexes — which is what makes it a
-     derivable offset rather than a magic number per breakpoint. `50%` resolves against the
-     prose track, since that is this element's containing block. */
-  body.has-toc > main :is(.column-page, .column-screen) {
-    --tali-escape-room: calc(50vw + 50% - 8.25rem);
-    margin-left: calc(100% - var(--tali-escape-w));
-    margin-right: 0; }
-  /* Margin notes inside a TOC grid — the same collision as the escapes above, at the
-     narrow end of the axis instead of the wide one. The sticky rail OWNS the right
-     gutter, so a note that floats into it lands inside the rail's box; the rail is text
-     with no background of its own, so both sets of text draw on top of each other.
-     Measured at 1440px against a 12-row rail: the note spanned x=973-1165 while the rail
-     began at x=989. (This predates footnote sidenotes — an explicit `::: {.column-margin}`
-     collided the same way — but a note per reference makes it constant rather than rare.)
-     There is no offset that fixes it: the grid's tracks total 62.5rem with no spare
-     column, so the fix is to stop floating, exactly as below the width breakpoint and for
-     exactly the same reason. Collision-free by construction beats a clever offset that
-     only holds at some widths — the rule item 181 settled on for the other end. */
-  body.has-toc > main .column-margin {
-    float: none; width: auto; margin: 1rem 0;
-    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
-  /* A footnote takes the *collapsed* fallback rather than the in-flow one, because there
-     is one per reference rather than one or two per page: dropping every note into the
-     flow would split the paragraph that cites it at the exact word the marker sits on.
-     Collapsed, the reference still reveals its own note in place — the same mechanism and
-     the same gesture as a narrow screen. */
-  body.has-toc > main .tali-sidenote { display: none; }
-  body.has-toc > main .tali-sidenote:target {
-    display: block; float: none; width: auto; margin: .6rem 0;
-    padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
          font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
@@ -829,14 +827,10 @@
     /* Stack the TOC above the content. Keep it a grid so the minmax(0,1fr) track
        clamps <main> to the viewport, and `order` lifts the TOC (which follows <main>
        in the DOM) up instead of stranding it at the bottom. */
-    /* This collapse leaves one full-width column and no rail in the way, so the
-       left-growing override above no longer describes anything: hand the escapes back to
-       the shared page-centred formula. */
-    body.has-toc > main :is(.column-page, .column-screen) {
-      --tali-escape-room: 100vw;
-      margin-left: calc(50% - var(--tali-escape-w) / 2);
-      margin-right: calc(50% - var(--tali-escape-w) / 2); }
-    body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: var(--tali-measure); gap: 0; }
+    /* This collapse leaves one full-width column and no rail in the way. The escapes need
+       no hand-back rule any more: they are tracks of the reading grid inside <main>, which
+       does not know or care what the outer grid did. */
+    body.has-toc { grid-template-columns: minmax(0, 1fr); max-width: none; gap: 0; }
     body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--tali-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).

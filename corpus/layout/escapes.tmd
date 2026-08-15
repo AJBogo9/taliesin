@@ -5,7 +5,7 @@ title: "Layout: escaping the text column"
 The reading measure is deliberately narrow, around 70 characters, because that is what
 long-form prose wants. Some content does not: a wide table, a multi-panel plot, a
 diagram whose labels only fit at size. `.column-margin` already sends a note *out* to
-the gutter; these two send a block *wider* instead, and they are the same axis.
+the gutter; `.column-page` sends a block *wider* instead, and they are the same axis.
 
 ::: {.column-margin}
 This margin note is the narrow end of the same axis the two escapes below widen along.
@@ -32,42 +32,34 @@ the reading measure, so the escape reads as a deliberate exception rather than a
 change of layout.
 
 ::: {.column-page}
-| Container | How an escape grows | Sticky rail in the way |
+| Track | What sits in it | Width |
 | --- | --- | --- |
-| single-document `body` | centred on the viewport | no |
-| `body.has-toc` | leftward, right edge flush with the text | yes |
-| `.tali-site-main` | centred on the viewport | no |
-| `.tali-site-main.has-toc` | leftward, right edge flush with the text | yes |
-| `.tali-book-main` | centred on the viewport | no |
+| gutter | nothing; it is the page edge | at least 1rem, then whatever is left over |
+| bleed band | the left half of an escape | up to 20rem |
+| text | prose, and everything that did not ask to escape | the reading measure |
+| gutter + margin column | a footnote or a `.column-margin` aside | 3em, then 16em |
+| gutter | nothing | at least 1rem |
 :::
 
-That table is the reason the feature is one CSS formula rather than five. An escape
-centres on *its own container*, and the three plain containers are themselves centred in
-the viewport, so nothing in them needs to know which one it is.
+That table is the reason the feature is one grid rather than three copies of an
+arithmetic. A block does not compute a width: it names the column it belongs to, and the
+grid resolves what that means in whatever container the page happens to be. The same five
+tracks serve a single document, a website page, a book chapter and a page with a
+table-of-contents rail.
 
-The two table-of-contents layouts are the exception, and the reason is visible on this
-page: the rail to the right is ordinary text with no background of its own, so an escape
-centred on the page would run its own text underneath it. On those pages an escape grows
-*leftward* into the unused margin and keeps its right edge flush with the prose, which is
-collision-free by construction and still recovers most of the wasted width.
+An escape grows *leftward*, keeping its right edge flush with the prose. That used to be
+the special case for the two table-of-contents layouts and is now simply the rule: the
+margin column owns the band on the right permanently, so a block centred on the page
+would run its text under a note's. Growing left is collision-free by construction, and it
+recovers the same width either way.
 
-## `.column-screen`, edge to edge {#sec-screen}
+## It is a plain class {#sec-plain}
 
-`::: {.column-screen}` goes the whole width of the viewport, with no gutter left at
-all. It is for content that is its own full-bleed band.
-
-::: {.column-screen}
-Edge to edge. On a phone this is the whole screen. On a page with a table-of-contents
-rail it stops at the prose column's right edge instead, for the same reason
-`.column-page` does, so "screen" there means every pixel that is not already spoken for.
-:::
-
-## They are plain classes {#sec-plain}
-
-Neither is a new block type, so neither needs a `:::` container of its own when the
-thing being widened is already a block. They apply to a table, a figure, a `pre`, or a
-div alike, and the block keeps its own identity, which is what lets a cross-reference
-still resolve through one.
+It is not a new block type, so it needs no `:::` container of its own when the thing being
+widened is already a block. It applies to a table, a figure, a `pre`, or a div alike, and
+the block keeps its own identity, which is what lets a cross-reference still resolve
+through one. A code block does not need it at all: `pre` takes the bleed band on its own,
+because the measure fits 55 columns of code and PEP 8 asks for 79.
 
 ::: {.column-page}
 ```python
