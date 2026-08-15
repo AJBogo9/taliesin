@@ -3705,6 +3705,86 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     }
 }
 
+/// The book drawer stops carrying its own type scale and its own clock.
+///
+/// `.tali-book-part` was `.76rem/700/.04em/uppercase` and `.tali-book-part-nested` a variation
+/// on it — a fifth and sixth voice in a theme that owns two. And they hold `parts:` names,
+/// which the author wrote: under spec §4's rule the machine voice attaches to a label the TOOL
+/// generates and never to a container that may hold the AUTHOR's text, so the answer is not
+/// "make it the machine voice" but "make it the serif".
+#[test]
+fn the_drawer_speaks_in_the_themes_two_voices_and_one_clock() {
+    // One duration. `.16s` was a second clock on the one surface that animates.
+    let durations: std::collections::BTreeSet<&str> = SITE_CSS
+        .split("animation:")
+        .skip(1)
+        .filter_map(|s| s.split(';').next())
+        .flat_map(|s| s.split_whitespace())
+        .filter(|w| {
+            w.ends_with('s')
+                && w.chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit() || c == '.')
+        })
+        .collect();
+    assert!(
+        durations.is_empty(),
+        "site.css animates for {durations:?}; the one duration is var(--tali-dur)"
+    );
+    // A `parts:` name is the author's word, so it is the serif — not a sixth voice, and not
+    // the machine voice either (spec §4's rule).
+    let rule_of = |sel: &str| -> String {
+        SITE_CSS
+            .split_once(sel)
+            .unwrap_or_else(|| panic!("{sel} exists"))
+            .1
+            .split_once('}')
+            .expect("the rule is closed")
+            .0
+            .to_string()
+    };
+    let part = rule_of(".tali-book-part {");
+    for banned in ["text-transform", "letter-spacing"] {
+        assert!(
+            !part.contains(banned),
+            "`.tali-book-part` still carries `{banned}`, on a label the AUTHOR wrote (`parts:`)"
+        );
+    }
+    // The nested variant keeps its rule — `chrome.rs` emits the class, so deleting the rule
+    // would render a nested part flat — but it may only INDENT. Depth is an indent; a second
+    // size and weight for it was the sixth voice.
+    let nested = rule_of(".tali-book-part-nested {");
+    for banned in [
+        "font-size",
+        "font-weight",
+        "text-transform",
+        "letter-spacing",
+    ] {
+        assert!(
+            !nested.contains(banned),
+            "`.tali-book-part-nested` sets `{banned}`: a nested part is a part, indented"
+        );
+    }
+
+    // A part heads the chapters under it, so it may not be SMALLER than them. Found in a
+    // render, not by reading the rules: dropping the old `.76rem` bold-uppercase label into
+    // the serif at `.92rem` put a part at 14.72px above chapters at 15.2px, which is the
+    // hierarchy upside down. Nothing static said so, because each rule was individually
+    // fine — this compares the PAIR, which is the only way to see it.
+    let part_px = rem_px(
+        declaration_in(SITE_CSS, ".tali-book-part {", "font-size").expect("a part has a size"),
+    );
+    let chapter_px = rem_px(
+        declaration_in(SITE_CSS, ".tali-book-chapter {", "font-size")
+            .expect("a chapter row has a size"),
+    );
+    assert!(
+        part_px >= chapter_px,
+        "a part heading is {part_px}px against chapters at {chapter_px}px: a part heads the \
+         chapters under it and cannot read as a level below them"
+    );
+}
+
 /// A listing is a ruled list. A "card" in this theme is a box with radius 0, no ground and no
 /// colour — which is a hairline rule with extra steps (ruling R4) — and its title was 17.28px
 /// against a 20px body, the exact defect `the_serif_reading_scale_never_drops_below_the_body`

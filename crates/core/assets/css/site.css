@@ -325,9 +325,9 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    the other half of the scroll lock the drawer script sets on the root element (MOB-5). */
 .tali-book-drawer-panel { position: absolute; top: 0; left: 0; bottom: 0;
   width: min(20rem, 86vw); overflow-y: auto; overscroll-behavior: contain;
-  padding: 1.4rem 1.25rem 2rem;
+  padding: var(--tali-u) calc(.5 * var(--tali-u)) calc(2 * var(--tali-u));
   background: var(--tali-bg); border-right: 1px solid var(--tali-border);
-  animation: tali-book-drawer-in .16s ease; }
+  animation: tali-book-drawer-in var(--tali-dur) ease; }
 @keyframes tali-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .tali-book-drawer-panel { animation: none; } }
 .tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
@@ -375,12 +375,18 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 }
 .tali-book-drawer-close:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
 .tali-book-chapters { list-style: none; margin: 0; padding: 0; }
-.tali-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
-  letter-spacing: .04em; text-transform: uppercase; color: var(--tali-muted); }
-/* A part nested inside another part: indented to the depth of the chapters it heads,
-   and slightly lighter, so it reads as a subdivision rather than a peer. */
-.tali-book-part-nested { margin-left: .9rem; font-weight: 600; text-transform: none;
-  letter-spacing: .02em; font-size: .8rem; }
+/* A `parts:` name is a word the AUTHOR wrote, so it is the serif — spec §4's rule attaches
+   the machine voice to labels the TOOL generates and never to a container that may hold
+   author text. It was .76rem/700/.04em/uppercase, which is neither of this theme's two
+   voices: too small to be prose, too heavy and too tracked to be the mono label. */
+.tali-book-part { margin: var(--tali-u) 0 calc(.25 * var(--tali-u));
+  font-size: 1rem; font-weight: 600; color: var(--tali-muted); }
+/* A part nested inside another part is indented to the depth of the chapters it heads,
+   and that is ALL it is: depth is an indent, which is what depth means. It used to take a
+   second size, weight and tracking on top — a sixth voice in a theme that owns two. The
+   rule stays (chrome.rs emits the class, so deleting it would render a nested part flat);
+   only its type treatment goes. */
+.tali-book-part-nested { margin-left: .9rem; }
 .tali-book-chapter { display: block; padding: .3rem 0; color: var(--tali-muted);
   text-decoration: none; font-size: .95rem; line-height: 1.3; }
 .tali-book-chapter:hover { color: var(--tali-fg); }
