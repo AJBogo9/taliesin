@@ -39,8 +39,9 @@ travels with them).
   <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
   glyph paths are embedded directly in source — the copy/check button in the
-  `code-enhance/` fragments and the callout-kind icons in
-  `crates/core/src/render/divs.rs`.
+  `code-enhance/` fragments. (The callout-kind icons in
+  `crates/core/src/render/divs.rs` were the other user until 2026-08-15, when the
+  callout became a left rule and a kind word with no icon.)
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
 - **Literata** — SIL OFL 1.1, no Reserved Font Name, `@fontsource-variable/literata@5.2.8`.
