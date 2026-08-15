@@ -268,15 +268,16 @@
   /* the <pre> is the single horizontal scroll container the scroll-shadow keys off,
      so the inner <code> must not introduce its own scroll box. */
   pre > code { display: block; overflow: visible; background: transparent; padding: 0; }
-  /* server-side syntax-highlight scope classes (syntect), light palette (GitHub-ish);
-     the dark overrides live in DARK_CSS so the theme toggle restyles code with no
-     re-highlight. Unmapped scopes inherit the default code colour. */
-  .tali-hl-comment { color: #646b74; font-style: italic; } /* AA (4.9:1) on the #f5f5f5 code bg */
-  .tali-hl-string { color: #0a3069; }
-  .tali-hl-keyword, .tali-hl-storage { color: #cf222e; }
-  .tali-hl-constant, .tali-hl-support { color: #0550ae; }
-  .tali-hl-entity { color: #8250df; }
-  .tali-hl-variable { color: #953800; }
+  /* Owned syntax palette: four hues sharing one warm-anchored chroma envelope, replacing
+     twelve borrowed GitHub Primer hexes. Every value scored on the code ground it sits on
+     (ratios in the comment are WCAG 2.x, computed 2026-08-14). Comments are italic as well
+     as coloured, so hue is never the only cue. Unmapped scopes inherit the code colour. */
+  .tali-hl-comment { color: #6E6A60; font-style: italic; }   /* 4.78:1 */
+  .tali-hl-string { color: #3F6152; }                        /* 6.12:1 */
+  .tali-hl-keyword, .tali-hl-storage { color: #7A3B52; }     /* 7.23:1 */
+  .tali-hl-constant, .tali-hl-support { color: #3A5578; }    /* 6.77:1 */
+  .tali-hl-entity { color: #6B4A2F; }                        /* 7.04:1 */
+  .tali-hl-variable { color: #22201A; }                      /* 14.45:1 */
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads as code
      in prose instead of blending in as same-colour monospace. This is the one place the two
      owned faces actually sit side by side in running text, so it is the place the x-height

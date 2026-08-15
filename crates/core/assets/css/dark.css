@@ -7,10 +7,13 @@
   /* Callout title tints are derived from --tali-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
-  /* server-side syntax-highlight scope classes (syntect), recoloured for dark */
-  html[data-theme="dark"] .tali-hl-comment { color: #8b949e; }
-  html[data-theme="dark"] .tali-hl-string { color: #a5d6ff; }
-  html[data-theme="dark"] .tali-hl-keyword, html[data-theme="dark"] .tali-hl-storage { color: #ff7b72; }
-  html[data-theme="dark"] .tali-hl-constant, html[data-theme="dark"] .tali-hl-support { color: #79c0ff; }
-  html[data-theme="dark"] .tali-hl-entity { color: #d2a8ff; }
-  html[data-theme="dark"] .tali-hl-variable { color: #ffa657; }
+  /* The dark syntax palette is chosen, not lightened: same four roles, re-picked against the
+     dark code ground. Ratios computed 2026-08-14. */
+  html[data-theme="dark"] .tali-hl-comment { color: #8C877C; font-style: italic; } /* 4.86:1 */
+  html[data-theme="dark"] .tali-hl-string { color: #8FBBA3; }                      /* 8.12:1 */
+  html[data-theme="dark"] .tali-hl-keyword,
+  html[data-theme="dark"] .tali-hl-storage { color: #D99BB0; }                     /* 7.67:1 */
+  html[data-theme="dark"] .tali-hl-constant,
+  html[data-theme="dark"] .tali-hl-support { color: #9DB4DA; }                     /* 8.26:1 */
+  html[data-theme="dark"] .tali-hl-entity { color: #D0A67C; }                      /* 7.80:1 */
+  html[data-theme="dark"] .tali-hl-variable { color: #EAE7E0; }                    /* 14.08:1 */

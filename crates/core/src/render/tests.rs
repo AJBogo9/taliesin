@@ -3601,6 +3601,48 @@ fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
     }
 }
 
+/// The syntax palette is OWNED. Four hues in one warm-anchored chroma envelope, mapped onto
+/// the six syntect scopes, every one scored on the code ground it actually sits on. Comments
+/// are italic as well as coloured, so hue is never the only cue.
+#[test]
+fn the_syntax_palette_is_owned_and_scored() {
+    const GITHUB_PRIMER: &[&str] = &[
+        "#646b74", "#0a3069", "#cf222e", "#0550ae", "#8250df", "#953800", // light
+        "#8b949e", "#a5d6ff", "#ff7b72", "#79c0ff", "#d2a8ff", "#ffa657", // dark
+    ];
+    for (name, css) in [("base.css", BASE_CSS), ("dark.css", DARK_CSS)] {
+        let lower = css.to_ascii_lowercase();
+        for hex in GITHUB_PRIMER {
+            assert!(
+                !lower.contains(hex),
+                "{name} still ships GitHub Primer's {hex}; the syntax palette is owned now"
+            );
+        }
+    }
+    for (theme, css, bg) in [
+        ("light", BASE_CSS, "#f4f1eb"),
+        ("dark", DARK_CSS, "#1c1a15"),
+    ] {
+        for scope in [
+            "tali-hl-comment",
+            "tali-hl-string",
+            "tali-hl-keyword",
+            "tali-hl-constant",
+            "tali-hl-entity",
+        ] {
+            let c = wcag_contrast(color_after(css, scope), bg);
+            assert!(
+                c >= 4.5,
+                "{theme}: .{scope} is {c:.2}:1 on the code ground, needs 4.5:1"
+            );
+        }
+    }
+    assert!(
+        BASE_CSS.contains(".tali-hl-comment { color: #6E6A60; font-style: italic; }"),
+        "the comment scope must stay italic: hue is never the only cue"
+    );
+}
+
 /// The theme owns TWO faces and no more. `--tali-font-head` was `ui-sans-serif, system-ui`
 /// with 20 reads across four files: headings and chrome rendered in whatever the reader's OS
 /// shipped, so the page had a different voice on every platform and two of its three voices
