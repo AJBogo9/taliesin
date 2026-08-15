@@ -3398,6 +3398,32 @@ fn the_dark_muted_tier_is_not_a_lightness_mirror() {
     );
 }
 
+/// R1: `--tali-accent` (and its fill/on-accent partners) is kept as a token name but carries
+/// no hue of its own — the theme has no chrome accent colour, so the token is redefined as
+/// the ink (`--tali-accent`/`--tali-accent-fill`) or the paper (`--tali-on-accent`). Asserted
+/// as a RELATIONSHIP to `--tali-fg`/`--tali-bg`, not a repeated literal, so this still holds
+/// if the ink/paper are ever retuned and fails the moment a distinct hue is reintroduced.
+#[test]
+fn the_accent_family_carries_no_hue_of_its_own_in_either_palette() {
+    for (theme, css) in [("light", TOKENS_CSS), ("dark", TOKENS_DARK_CSS)] {
+        let ink = color_after(css, "--tali-fg:").to_ascii_lowercase();
+        let paper = color_after(css, "--tali-bg:").to_ascii_lowercase();
+        for tok in ["--tali-accent:", "--tali-accent-fill:"] {
+            let got = color_after(css, tok).to_ascii_lowercase();
+            assert_eq!(
+                got, ink,
+                "{theme}: {tok} is {got}, not the ink ({ink}) — a hue was reintroduced"
+            );
+        }
+        let on_accent = color_after(css, "--tali-on-accent:").to_ascii_lowercase();
+        assert_eq!(
+            on_accent, paper,
+            "{theme}: --tali-on-accent is {on_accent}, not the paper ({paper}) — a hue was \
+             reintroduced"
+        );
+    }
+}
+
 /// `.sr-only` is aliased to `.tali-sr-only` in base.css so a site that hand-writes the conventional
 /// screen-reader class (e.g. a footer icon label) hides it with no per-site custom.css. Guards the
 /// tech-blog landmine: without the alias, deleting custom.css un-hides the footer social labels.
