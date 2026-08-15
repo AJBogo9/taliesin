@@ -432,34 +432,7 @@ fn every_tali_custom_property_read_is_defined_somewhere() {
     let mut defined: BTreeSet<String> = BTreeSet::new();
     let mut read: BTreeSet<(String, String)> = BTreeSet::new(); // (name, file)
 
-    let mut files: Vec<PathBuf> = Vec::new();
-    for d in [
-        root.join("crates/core/assets/css"),
-        root.join("crates/core/assets/js"),
-        root.join("crates/core/assets/js/code-enhance"),
-        root.join("web-client"),
-    ] {
-        if let Ok(entries) = std::fs::read_dir(&d) {
-            for e in entries.flatten() {
-                let p = e.path();
-                let name = p
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string();
-                if name.ends_with(".min.js") || !(name.ends_with(".js") || name.ends_with(".css")) {
-                    continue;
-                }
-                files.push(p);
-            }
-        }
-    }
-    let mut rs = Vec::new();
-    for d in ["crates/core/src", "crates/server/src"] {
-        rust_files(&root.join(d), &mut rs);
-    }
-    files.extend(rs);
-    files.sort();
+    let files = styling_sources(&root);
 
     for p in &files {
         let text = std::fs::read_to_string(p).unwrap_or_default();
@@ -517,5 +490,96 @@ fn every_tali_custom_property_read_is_defined_somewhere() {
          using one is silently DROPPED by the browser (a missing border, not a wrong \
          one). Use an existing token or define it in tokens.css:\n  {}",
         orphans.join("\n  ")
+    );
+}
+
+/// Every source file a `--tali-*` can be defined in or read from: the bundled sheets and JS,
+/// the browser client, and the Rust that emits inline styles.
+fn styling_sources(root: &Path) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for d in [
+        root.join("crates/core/assets/css"),
+        root.join("crates/core/assets/js"),
+        root.join("crates/core/assets/js/code-enhance"),
+        root.join("web-client"),
+    ] {
+        if let Ok(entries) = std::fs::read_dir(&d) {
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                if name.ends_with(".min.js") || !(name.ends_with(".js") || name.ends_with(".css")) {
+                    continue;
+                }
+                files.push(p);
+            }
+        }
+    }
+    let mut rs = Vec::new();
+    for d in ["crates/core/src", "crates/server/src"] {
+        rust_files(&root.join(d), &mut rs);
+    }
+    files.extend(rs);
+    files.sort();
+    files
+}
+
+/// The other direction of the same contract: every token the PALETTE LAYER declares is read
+/// by something.
+///
+/// Read-but-undefined is the destructive direction and was the one gated. Defined-but-unread
+/// fails quietly — and it does not merely waste two lines, it CORRUPTS a gate.
+/// `every_text_colour_is_scored_in_both_palettes` scored `--tali-inline-code` against the code
+/// ground and reported 10.66/12.11, a ratio no rendered page produced: inline code was painted
+/// `--tali-fg`, and nothing connected the token to the element. The same silence hid
+/// `--tali-underline`, which was the whole mechanism for spec §5's "links are the ink with a
+/// hairline underline" — without a reader the links simply took the UA's full-weight
+/// `currentColor` rule and the design was never realized.
+///
+/// Scoped to `tokens.css` + `tokens-dark.css` on purpose: those two files are the theme's
+/// published vocabulary, and a name published there is a promise that something honours it.
+#[test]
+fn every_token_the_palette_declares_is_read_by_something() {
+    let root = repo_root();
+
+    let mut declared: BTreeSet<String> = BTreeSet::new();
+    for rel in [
+        "crates/core/assets/css/tokens.css",
+        "crates/core/assets/css/tokens-dark.css",
+    ] {
+        let text = std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
+        for (i, _) in text.match_indices("--tali-") {
+            let rest = &text[i..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+                .unwrap_or(rest.len());
+            if rest[end..].trim_start().starts_with(':') {
+                declared.insert(rest[..end].to_string());
+            }
+        }
+    }
+    assert!(
+        declared.len() > 25,
+        "only {} tokens declared — the scan broke, and an empty gate passes forever",
+        declared.len()
+    );
+
+    let mut blob = String::new();
+    for p in styling_sources(&root) {
+        blob.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+        blob.push('\n');
+    }
+    let unread: Vec<&String> = declared
+        .iter()
+        .filter(|t| !blob.contains(&format!("var({t})")) && !blob.contains(&format!("var({t},")))
+        .collect();
+    assert!(
+        unread.is_empty(),
+        "these tokens are declared in the palette and read by nothing, so the value is a \
+         claim no page keeps — and any contrast assertion against one scores a pair that is \
+         never painted. Wire them up or delete them:\n  {unread:?}"
     );
 }

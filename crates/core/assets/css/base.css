@@ -108,7 +108,11 @@
 
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
-  a { color: var(--tali-link); }
+  /* "Links are the ink with a hairline underline" (tokens.css). The ink is `--tali-link`; the
+     hairline is `--tali-underline`, and without this declaration the UA drew the underline in
+     `currentColor` at full weight — the design's one link treatment, defined and unread.
+     Chrome links (nav, cards, footer, `a.btn`) set `text-decoration: none` and are untouched. */
+  a { color: var(--tali-link); text-decoration-color: var(--tali-underline); }
   /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
   a.btn { display: inline-block; font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
     letter-spacing: .053em; text-decoration: none;
@@ -149,7 +153,10 @@
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border);
     border-radius: var(--tali-radius); background: var(--tali-code-bg); }
-  .feature h3 { margin: 0 0 .4rem; font-size: 1.12rem; }
+  /* A feature card's heading IS an h3 — it takes the h3 size below rather than a second,
+     un-derived scale. It was 1.12rem (17.92px), the exact value the heading re-derivation
+     condemned for being smaller than the 20px body it introduces. */
+  .feature h3 { margin: 0 0 .4rem; font-size: 1.3rem; }
   .feature p { margin: 0; color: var(--tali-muted); font-size: .95rem; }
   /* Heading scale on the vertical-rhythm unit (`--tali-u`, tokens.css): h1-h3 ease down in
      size and inherit Literata (no font-family override, no third face). Sizes are re-derived
@@ -180,8 +187,16 @@
   h6 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
        letter-spacing: .053em; margin: var(--tali-u) 0 calc(.3 * var(--tali-u)); }
   .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
-  .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
-  .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--tali-muted); font-weight: 400; }
+  /* The title block sits on the same re-derived scale as h1-h6, and the re-derivation stopped
+     one selector short of it. The document's own title is the ONE element allowed above the
+     heading scale: `.title` is an `<h1>`, so a class-specificity `2.1rem` here made it render
+     SMALLER (33.6px) than any body `#` heading (36px). The subtitle was 1.15rem — 18.4px,
+     under the 20px body — which is the defect the h3 fix names: in this theme the small
+     register is the mono voice, never a shrunken serif. It now sits between `h3` and `h2`.
+     (The `max-width: 30rem` block below steps both down again, against that breakpoint's own
+     16px body.) */
+  .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.5rem; line-height: 1.15; }
+  .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.4rem; color: var(--tali-muted); font-weight: 400; }
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
@@ -248,7 +263,10 @@
     .tali-contributions { grid-template-columns: 1fr; gap: 0; }
     .tali-contributions dd { margin: 0 0 .5rem; }
   }
-  pre { position: relative; padding: 1rem; border-radius: var(--tali-radius); overflow: auto; font-size: .9em;
+  /* No `font-size` here: the size is the DERIVED `--tali-mono-size` on the `pre, code` rule
+     below. A `.9em` sat here and was dead — same element specificity, earlier in the file —
+     and reading it made the size look accounted for while the real one applied twice. */
+  pre { position: relative; padding: 1rem; border-radius: var(--tali-radius); overflow: auto;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
            with the content and mask the edge shadows (scroll, pinned to the box)
@@ -266,8 +284,13 @@
   pre, code { font-family: var(--tali-font-mono); font-size: var(--tali-mono-size);
               font-feature-settings: "kern" 1; font-variant-ligatures: none; }
   /* the <pre> is the single horizontal scroll container the scroll-shadow keys off,
-     so the inner <code> must not introduce its own scroll box. */
-  pre > code { display: block; overflow: visible; background: transparent; padding: 0; }
+     so the inner <code> must not introduce its own scroll box.
+     `font-size: inherit` is load-bearing, not tidiness: `emit.rs` always emits
+     `<pre><code>`, and the inner <code> matches `pre, code` above too — so without this
+     reset the derived .92em is applied a SECOND time, .92 x .92 = .8464em, and code renders
+     at 16.93px instead of the 18.4px the x-height derivation produces. */
+  pre > code { display: block; overflow: visible; background: transparent; padding: 0;
+               font-size: inherit; }
   /* Owned syntax palette: four hues sharing one warm-anchored chroma envelope, replacing
      twelve borrowed GitHub Primer hexes. Every value scored on the code ground it sits on
      (ratios in the comment are WCAG 2.x, computed 2026-08-14). Comments are italic as well
@@ -286,6 +309,7 @@
      explicitly or it silently wins with a smaller, un-derived size. It also breaks rather
      than overflowing. */
   :not(pre) > code { background: var(--tali-code-bg); padding: .1em .35em; border-radius: var(--tali-radius);
+    color: var(--tali-inline-code);
     font-size: var(--tali-mono-size); overflow-wrap: anywhere; }
   /* Tokenised so the copy button follows every theme (light / dark) from one
      definition; DARK_CSS no longer needs a per-theme override. */
@@ -374,11 +398,38 @@
      already sets `white-space: pre`, so this is a no-op for code blocks.) */
   th code, td code { overflow-wrap: normal; }
   table caption { caption-side: top; font-size: .9em; color: var(--tali-muted); padding-bottom: .4rem; text-align: left; }
-  thead th { border-bottom: 2px solid var(--tali-border); }
+  /* A column head names what the column holds — the TOOL's register, not the author's
+     sentence — so it takes the machine voice, like `h4`, the TOC, the nav and the meta line.
+     The `font` shorthand comes FIRST and the longhands after it: the shorthand resets
+     `font-weight`/`font-size`/`line-height`, so a declaration written above it is discarded.
+     `font-weight: 400` is deliberate against the UA's bold `th`: the mono's tracking and
+     casing already carry the distinction, and bolding a tracked uppercase line thickens it
+     into a banner. */
+  thead th { border-bottom: 2px solid var(--tali-border);
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
+    letter-spacing: .053em; }
   .callout { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: var(--tali-radius);
              margin: 1rem 0; overflow: hidden; }
-  .callout-title { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+  /* A callout title is the AUTHOR's by default. `divs.rs` derives it from, in order, the
+     `title="…"` attribute, a leading heading, and only then the capitalized kind word — so
+     the element is authored text far more often than it is a label (34 of the 55 callouts in
+     this repo). Uppercasing it mangles the author's own words, exactly as the wordmark and
+     author-name rulings found: "Why two accent variables" is not WHY TWO ACCENT VARIABLES.
+     So the default here is the serif at the body size with heading weight (it stands in for
+     the `## heading` the author often literally wrote), reached through the `font` SHORTHAND
+     rather than a family-only token, for the same reason as `.tali-nav-brand` and
+     `.tali-byline`: one source of truth for the family. Longhands come AFTER the shorthand —
+     it resets weight and leading — and `text-transform`/`letter-spacing` are re-declared
+     because both are inherited properties, so leaving them unset would compute an ancestor's
+     tracked uppercase rather than "none". */
+  .callout-title { font: var(--tali-font-body); font-weight: 600; line-height: 1.3;
+                   text-transform: none; letter-spacing: normal;
                    padding: .5rem .9rem; display: flex; align-items: center; gap: .45rem; }
+  /* Branch (3): the kind word, which the TOOL supplied. That is the machine voice, and spec
+     §4's scope line says "callout kind LABELS" — the label, not the element. Marked
+     structurally in `divs.rs` so the distinction cannot be lost to a cosmetic edit. */
+  .callout-title.callout-kind { font: 400 .78rem/1.3 var(--tali-font-mono);
+                   text-transform: uppercase; letter-spacing: .053em; }
   .callout-icon { flex: 0 0 auto; width: 1em; height: 1em; }
   .callout-body { padding: .3rem .9rem; }
   .callout-body > :first-child { margin-top: .4rem; }
@@ -400,9 +451,16 @@
   .callout-minimal .callout-icon { color: var(--tali-muted); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
+  /* Same split as `.callout-title`, one scale smaller: `#| code-summary:` is the author's
+     sentence, the "Code" fallback is the tool's word. The authored form keeps this control's
+     own small size (the `.tali-byline` precedent: restore the face and the casing, not the
+     size — a disclosure label is chrome either way) and only stops being uppercased mono. */
   details.tali-code-fold > summary { cursor: pointer; color: var(--tali-muted);
-    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3;
+    text-transform: none; letter-spacing: normal;
     padding: .15rem 0; margin-bottom: .35rem; }
+  details.tali-code-fold > summary.tali-code-label {
+    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   details.tali-code-fold > summary:hover { color: var(--tali-fg); }
   /* Themed disclosure chevron for folded code (`tali-code-fold`) and collapsible
      callouts: the browser-default triangle is small, inconsistent, and easy to

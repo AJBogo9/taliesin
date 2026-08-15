@@ -177,7 +177,9 @@ fn code_fold_defaults_to_code_label() {
         "code-fold did not produce a <details>"
     );
     assert!(
-        html.contains("<summary>Code</summary>"),
+        // The fallback label is the TOOL's word, not the author's, so it is marked as such
+        // and keeps the uppercase mono; an authored `code-summary:` is a bare <summary>.
+        html.contains("<summary class=\"tali-code-label\">Code</summary>"),
         "default code-fold label missing"
     );
 }

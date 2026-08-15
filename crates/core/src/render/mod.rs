@@ -12,11 +12,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 mod model;
-pub(crate) use model::CellRole;
 pub use model::{
     AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
     PageIncludes, RenderedDoc, Severity, SiteDefaults, Warning,
 };
+pub(crate) use model::{CellRole, CodeFold};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();

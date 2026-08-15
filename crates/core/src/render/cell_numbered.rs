@@ -123,7 +123,7 @@ pub(super) fn emit_code_listing(
     lang: &str,
     anchor: Option<&str>,
     caption: Option<&str>,
-    fold: Option<&(bool, String)>,
+    fold: Option<&CodeFold>,
     block_attrs: &str,
     num: &str,
 ) -> String {
@@ -137,10 +137,10 @@ pub(super) fn emit_code_listing(
     let figcap = numbered_caption("Listing", num, caption);
     // `code-fold` collapses the listing's source behind its summary.
     let code_html = match fold {
-        Some((open, summary)) => format!(
-            "<details class=\"tali-code-fold\"{}><summary>{}</summary><pre><code{class}>{code_html}</code></pre></details>",
-            if *open { " open" } else { "" },
-            html_escape(summary),
+        Some(f) => format!(
+            "<details class=\"tali-code-fold\"{}>{}<pre><code{class}>{code_html}</code></pre></details>",
+            if f.open { " open" } else { "" },
+            f.summary_html(),
         ),
         None => format!("<pre><code{class}>{code_html}</code></pre>"),
     };

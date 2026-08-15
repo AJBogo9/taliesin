@@ -217,7 +217,7 @@ const signal = tali.defines.signal;
 if (!signal) return;
 return Plot.plot({
   height: 180, marginLeft: 36,
-  marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#2bb673"})]
+  marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#3A5578"})]
 });
 ```
 

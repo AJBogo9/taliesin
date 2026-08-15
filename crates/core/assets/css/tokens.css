@@ -2,8 +2,7 @@
   /* ===========================================================================
      Design tokens: the ONE source of the owned palette (+ fonts, geometry, motion).
      `include_str!`'d ahead of the page bundle (base.css), so the light/dark palette
-     is typed exactly once instead of re-declared per surface. The OG-card generator can't share
-     CSS, so `site/card.rs` is drift-locked against the dark values by a test.
+     is typed exactly once instead of re-declared per surface.
      Keep in sync: nothing else should declare these tokens.
      =========================================================================== */
   :root {
@@ -67,9 +66,14 @@
     --tali-measure: 32em;
     --tali-chrome-maxw: 56rem;
 
-    /* The vertical unit IS the line box: U = 1.55 x 1.25rem. Every vertical space is
-       {0.5U, U, 2U, 3U} and nothing else, replacing 39 ad-hoc rem values. This is also
-       why a 4px lattice cannot be reintroduced piecemeal: 31px is not a multiple of 4. */
+    /* The vertical unit IS the line box: U = 1.55 x 1.25rem, so the rhythm is the leading.
+       The TARGET is that every vertical space is a small multiple of U and nothing else,
+       replacing the ad-hoc rem values in margin/padding/gap. That is not done — this layer
+       only supplies the unit, and plenty of raw rem values are still live in base.css and
+       site.css. The scale lands with the components it measures: Plan 2 for the reading
+       surface, Plan 3 for the chrome. Do not restate a count here; count them when the
+       replacement is finished. This is also why a 4px lattice cannot be reintroduced
+       piecemeal: 31px is not a multiple of 4. */
     --tali-u: 1.9375rem;
 
     /* ONE radius, on interactive objects only (copy button, search input, kbd, focus

@@ -36,17 +36,24 @@
     "#tali-search .tali-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
     "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
     "#tali-search .tali-s-head{display:flex;align-items:baseline;gap:.6rem}" +
+    // The selected row is painted with `--tali-accent-fill`, which is the INK of whichever
+    // palette is live — near-black in light, near-WHITE in dark. So every child on the row
+    // takes `--tali-on-accent` (the paper) and nothing on it may name a literal colour: white
+    // text was 1.23:1 on the dark row, taking the breadcrumb, the snippet, both sets of match
+    // marks and the missing-term hint with it. The dimmer register the alphas used to carry is
+    // carried by size and weight instead, which is also the theme's own rule (no `opacity` on
+    // text; every text colour explicit and scored).
     "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent-fill);color:var(--tali-on-accent)}" +
-    "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:rgba(255,255,255,.8)}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:var(--tali-on-accent)}" +
     "#tali-search .tali-s-snip{font-size:.78rem;color:var(--tali-muted,#888);overflow:hidden;" +
     "text-overflow:ellipsis;white-space:nowrap}" +
     "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-link);font-weight:700;padding:0}" +
-    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:rgba(255,255,255,.85)}" +
-    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip mark{color:#fff}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:var(--tali-on-accent)}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip mark{color:var(--tali-on-accent)}" +
     "#tali-search .tali-s-title{font-weight:600}" +
     "#tali-search .tali-s-title mark{background:transparent;color:var(--tali-link);" +
     "font-weight:800;padding:0}" +
-    "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:var(--tali-on-accent);" +
     "text-decoration:underline}" +
     // max-width so a long ancestor path ellipsizes instead of squeezing the title it is
     // meant to contextualise (the title is what the reader is scanning for).
@@ -75,7 +82,7 @@
     "#tali-search .tali-s-more .tali-s-title{font-size:.8rem;color:var(--tali-link);font-weight:600}" +
     "#tali-search .tali-s-more[aria-selected=true] .tali-s-title{color:inherit}" +
     "#tali-search .tali-s-miss{font-size:.75rem;color:var(--tali-muted,#888)}" +
-    "#tali-search .tali-s-item[aria-selected=true] .tali-s-miss{color:rgba(255,255,255,.85)}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-miss{color:var(--tali-on-accent)}" +
     "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--tali-muted,#888)}" +
     "#tali-search .tali-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
     "color:var(--tali-muted,#888);border-top:1px solid var(--tali-border,#e0e0e0)}" +

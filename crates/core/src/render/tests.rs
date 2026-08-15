@@ -3351,6 +3351,54 @@ fn color_after<'a>(css: &'a str, needle: &str) -> &'a str {
     &rest[h..h + 7]
 }
 
+/// The declaration block of the rule whose selector text is `selector` (everything from the
+/// `{` that follows it up to the matching `}`). `selector` must include its trailing `{` so
+/// `pre, code {` cannot be answered by `pre, code, table, .katex {`.
+#[cfg(test)]
+fn rule_block<'a>(css: &'a str, selector: &str) -> &'a str {
+    let i = css
+        .find(selector)
+        .unwrap_or_else(|| panic!("no rule `{selector}` in css"));
+    let rest = &css[i + selector.len()..];
+    let end = rest.find('}').expect("an unterminated rule");
+    &rest[..end]
+}
+
+/// The value a rule gives `prop`, or `None` when it does not set it. Longhand only: this
+/// does not expand the `font` shorthand, which is deliberate — the shorthand's own
+/// ordering trap (it resets what precedes it) is what the callers are checking.
+#[cfg(test)]
+fn declaration_in<'a>(css: &'a str, selector: &str, prop: &str) -> Option<&'a str> {
+    let block = rule_block(css, selector);
+    let needle = format!("{prop}:");
+    // Guard against `font-size:` answering a request for `size:`: a declaration starts at
+    // the block's head or just after a `;`.
+    block
+        .match_indices(&needle)
+        .find(|(i, _)| {
+            block[..*i]
+                .chars()
+                .next_back()
+                .is_none_or(|c| c == ';' || c.is_whitespace())
+        })
+        .map(|(i, _)| {
+            let v = &block[i + needle.len()..];
+            v.split(';').next().unwrap_or(v).trim()
+        })
+}
+
+/// A `rem` (or unitless-`0`) length in px, against the 16px UA root. `base.css` declares no
+/// `html { font-size }`, so `rem` is the UA root everywhere.
+#[cfg(test)]
+fn rem_px(v: &str) -> f64 {
+    v.trim()
+        .strip_suffix("rem")
+        .unwrap_or_else(|| panic!("expected a `rem` length, got `{v}`"))
+        .parse::<f64>()
+        .unwrap_or_else(|_| panic!("expected a `rem` length, got `{v}`"))
+        * 16.0
+}
+
 /// Every text colour the theme ships is scored, in both palettes. The floors are WCAG 2.x:
 /// 4.5:1 for text, 3:1 for a control boundary. A decorative separator is deliberately below
 /// both — it is not a control and not text.
@@ -3663,6 +3711,67 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
             "{hex} ({what}) is no longer used anywhere on the dev UI's exempt surface — if you \
              just gave it a real token, delete this exemption instead of leaving it stale"
         );
+    }
+
+    // …and the authored documents, which spec §12.1 named in the widened scope ("`serve/mod.rs`,
+    // `client.js`, both favicons, the VS Code icon, **and the demo `.tmd` sources**") and the
+    // implementation dropped. Six violations were live behind that gap, one of them two lines
+    // below a hex the same commit had just replaced in the same file.
+    //
+    // A plot colour, a scene colour, an SVG fill: those are DATA, and this theme's one rule
+    // carves out room for exactly that. What a document may not do is reach for a retired
+    // vendor palette — the tell is the palette, not the fact of colour. The dev UI's three
+    // status literals are banned here outright: a `.tmd` is not the dev UI's surface.
+    //
+    // `_site/` and `_book/` are skipped: committed build output carries the OLD palette by
+    // design and is not edited by hand.
+    let mut tmd = Vec::new();
+    for d in ["docs", "site", "corpus", "tools/record-demo"] {
+        collect_tmd(&root.join(d), &mut tmd);
+    }
+    tmd.sort();
+    assert!(
+        tmd.len() > 80,
+        "only {} `.tmd` files found — the document sweep broke, and an empty gate passes \
+         forever",
+        tmd.len()
+    );
+    for p in &tmd {
+        let rel = p.strip_prefix(&root).unwrap_or(p).display().to_string();
+        let text = std::fs::read_to_string(p)
+            .unwrap_or_else(|e| panic!("{rel}: {e}"))
+            .to_ascii_lowercase();
+        for (hex, what) in BANNED.iter().chain(DEV_UI_STATUS_EXEMPT) {
+            assert!(
+                !text.contains(hex),
+                "{rel} still ships {hex} ({what}). A plot or scene colour is DATA and may be \
+                 coloured — just not out of the palette this theme replaced"
+            );
+        }
+    }
+}
+
+/// Every `.tmd` under `dir`, skipping committed build output (`_site/`, `_book/`) and the
+/// freeze cache.
+#[cfg(test)]
+fn collect_tmd(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        let name = p
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        if p.is_dir() {
+            if !matches!(name.as_str(), "_site" | "_book" | "_freeze" | ".git") {
+                collect_tmd(&p, out);
+            }
+        } else if name.ends_with(".tmd") {
+            out.push(p);
+        }
     }
 }
 
@@ -4021,6 +4130,65 @@ fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
             && SEARCH_JS.contains("role=\"listbox\" aria-label=\"Search results\""),
         "combobox role on the input + a named listbox"
     );
+
+    // R1 made `--tali-accent-fill` the INK rather than a mid-blue, so in dark mode the
+    // selected row's ground is #EAE7E0 — near-white. Five declarations still painted white
+    // text on it (#ffffff on #EAE7E0 is 1.23:1, measured in the browser on the built guide),
+    // so the breadcrumb, the snippet, both sets of match marks and the missing-term hint went
+    // invisible on the one row the reader is looking at. The token assertions above pass
+    // straight through that: they only check that the tokens are referenced SOMEWHERE.
+    //
+    // So score the rules, not the sheet. Nothing inside an `[aria-selected=true]` rule may
+    // name a literal white in any spelling — the row's ground is a token whose value moves
+    // with the palette, and a literal cannot follow it.
+    let css = search_overlay_css();
+    let mut selected_rules = 0usize;
+    for rule in css.split('}') {
+        if !rule.contains("[aria-selected=true]") {
+            continue;
+        }
+        selected_rules += 1;
+        let l = rule.to_ascii_lowercase();
+        for lit in ["#fff", "rgba(255,255,255", "rgb(255,255,255", ":white"] {
+            assert!(
+                !l.contains(lit),
+                "a selected row is painted with --tali-accent-fill, which is the INK: `{lit}` \
+                 on it is 1.23:1 in the dark palette. Route it through --tali-on-accent. \
+                 Offending rule: {rule}}}"
+            );
+        }
+    }
+    assert!(
+        selected_rules >= 5,
+        "only {selected_rules} `[aria-selected=true]` rules found — the selected-row scan \
+         broke, and an empty gate passes forever"
+    );
+}
+
+/// The overlay stylesheet `search.js` injects, reassembled from its `var CSS = "…" + "…"`
+/// concatenation (the string literals only, so the `//` comments interleaved between them
+/// are dropped). Reassembling is what lets a gate reason about a whole RULE instead of
+/// grepping the file for a token name.
+#[cfg(test)]
+fn search_overlay_css() -> String {
+    let start = SEARCH_JS
+        .find("var CSS =")
+        .expect("search.js declares its overlay CSS");
+    let region = &SEARCH_JS[start..];
+    let end = region
+        .find("function injectCss")
+        .expect("…and injects it right after");
+    let mut css = String::new();
+    for (i, part) in region[..end].split('"').enumerate() {
+        if i % 2 == 1 {
+            css.push_str(part);
+        }
+    }
+    assert!(
+        css.contains("#tali-search{position:fixed"),
+        "the CSS reassembly missed the sheet — a `\"` must have entered a literal or a comment"
+    );
+    css
 }
 
 /// PA-F3: keyboard focus on a listing card missed the pointer-hover lift/border/title-tint,
@@ -5185,6 +5353,13 @@ const LITERATA_MEAN_ADVANCE_EM: f64 = 0.4775;
 /// what WCAG 1.4.8 bounds. Before this theme the column was 46rem: measured 96 characters of
 /// capacity with filled paragraphs at 80-92, past the 80-character AAA ceiling and far past
 /// the comprehension-optimal band.
+///
+/// This scores the token, which is the **widest** surface it produces: `body` is content-box,
+/// so a standalone page's text column is the full 32em. A site page (`.tali-site-main`) and a
+/// book chapter (`.tali-book-main`) are `box-sizing: border-box` with `padding: 2rem 1rem`, so
+/// the same token yields a 608px column there — about 63.7 characters, three-and-a-bit
+/// narrower and still inside the band. The band, not the single number, is what this pins:
+/// both surfaces have to fit in it, so the assertion is written against the wider one.
 #[test]
 fn the_measure_is_sixty_to_seventy_characters() {
     let em: f64 = {
@@ -5198,11 +5373,21 @@ fn the_measure_is_sixty_to_seventy_characters() {
             .unwrap_or_else(|_| panic!("--tali-measure must be in `em`, got `{v}`"))
     };
     let chars = em / LITERATA_MEAN_ADVANCE_EM;
-    assert!(
-        (62.0..=72.0).contains(&chars),
-        "the measure renders {chars:.1} characters; keep it in 62..=72 \
-         (WCAG 1.4.8 caps at 80). Either --tali-measure or the body face moved."
-    );
+    // The padded site/book column is the same token minus `2 x 1rem` at a 20px body.
+    let padded = (em - 2.0 * 16.0 / 20.0) / LITERATA_MEAN_ADVANCE_EM;
+    for (surface, c) in [
+        ("a standalone page (content-box `body`)", chars),
+        (
+            "a site page / book chapter (border-box, `padding: 2rem 1rem`)",
+            padded,
+        ),
+    ] {
+        assert!(
+            (62.0..=72.0).contains(&c),
+            "the measure renders {c:.1} characters on {surface}; keep it in 62..=72 \
+             (WCAG 1.4.8 caps at 80). Either --tali-measure or the body face moved."
+        );
+    }
 }
 
 /// The advance constant above describes ONE font binary. If the binary changes, the constant
@@ -5223,9 +5408,235 @@ fn the_body_face_is_the_one_the_measure_was_measured_on() {
     assert_eq!(
         (bytes.len(), h),
         (48_072, 0x7176_a838_9de9_bbdb), // <- printed by the first run, 2026-08-15
-        "the body face changed. Re-measure LITERATA_MEAN_ADVANCE_EM in a browser \
-         (render a paragraph, divide column width by realized characters per line, \
-         divide by font-size), update it and this hash together, and re-date both."
+        "the body face's BYTES changed. Two very different causes, and the likelier one \
+         first: (a) `tools/subset-fonts.sh` was re-run and recompressed the same glyph data \
+         — woff2 is brotli, so a different brotli or fontTools rewrites every byte while \
+         every metric stays identical. Confirm the advance is unchanged and update only this \
+         hash. (b) The FACE actually changed, in which case LITERATA_MEAN_ADVANCE_EM is stale: \
+         re-measure it in a browser (render a paragraph, divide column width by realized \
+         characters per line, divide by font-size) and update it and this hash together, \
+         re-dating both."
+    );
+}
+
+/// `--tali-mono-size` is DERIVED (0.5156 / 0.5625, the two measured x-heights) and must be
+/// applied exactly ONCE, or the derivation it encodes is not what any page renders.
+///
+/// It was applied twice. `emit.rs` always emits `<pre><code>`, both elements match the
+/// `pre, code` rule, and `pre > code` reset everything except the size — so the .92em
+/// compounded: .92 x .92 = .8464em, **16.93px against the derived 18.4px**, measured in the
+/// browser on the built guide (`getComputedStyle(pre > code).fontSize`). The `pre` rule's own
+/// `font-size: .9em` hid it in plain sight: same specificity, earlier in the file, so it was
+/// dead, and reading it made the size look accounted for.
+///
+/// Spec §6's "a `pre` at mono 0.92em fits ~58 columns" is computed against the size this
+/// asserts, not against the one the compounding produced.
+#[test]
+fn the_derived_mono_size_is_applied_once_not_compounded() {
+    assert_eq!(
+        declaration_in(BASE_CSS, "pre, code {", "font-size"),
+        Some("var(--tali-mono-size)"),
+        "the mono size comes from the derived token"
+    );
+    assert_eq!(
+        declaration_in(BASE_CSS, "pre > code {", "font-size"),
+        Some("inherit"),
+        "`<pre><code>` is what emit.rs emits, and the inner <code> matches `pre, code` too. \
+         Without a reset the derived .92em multiplies itself"
+    );
+    assert_eq!(
+        declaration_in(BASE_CSS, "\n  pre {", "font-size"),
+        None,
+        "the `pre` rule must not carry a font-size of its own: the later `pre, code` rule \
+         has the same specificity and wins, so it is dead — and a dead declaration is how \
+         the compounding stayed invisible"
+    );
+}
+
+/// Spec §4 enumerates the machine voice's scope: "`h4`, callout kind labels, **table
+/// headers**, figure/table/equation numbers, the TOC, nav, footer, the title-block meta
+/// line, cell timings, and the dev menu." `thead th` carried no font declaration at all, so a
+/// table header rendered as bold serif body text — 20px Literata, `text-transform: none`,
+/// measured on the built guide.
+#[test]
+fn a_table_header_speaks_in_the_machine_voice() {
+    let b = rule_block(BASE_CSS, "thead th {");
+    assert!(
+        b.contains("var(--tali-font-mono)")
+            && b.contains("text-transform: uppercase")
+            && b.contains("letter-spacing:"),
+        "a table header is the TOOL speaking, not the author: it takes the mono voice. Got: \
+         `{b}`"
+    );
+}
+
+/// The machine voice belongs to text the TOOL wrote. A callout title is only that in the
+/// third of three branches (`divs.rs`: `title=` attribute, then a leading heading, then the
+/// capitalized kind word), and 34 of 55 callouts in this repo carry an authored title — so
+/// the uppercase mono was mangling the author's own words, "Why two accent variables"
+/// rendering as WHY TWO ACCENT VARIABLES in this project's own guide.
+///
+/// The distinction is structural, not cosmetic: `.callout-kind` marks the generated branch,
+/// and the machine voice hangs off that class rather than off `.callout-title`. Same for the
+/// code-fold summary, where `#| code-summary:` is authored and the "Code" fallback is not.
+#[test]
+fn the_machine_voice_is_only_on_generated_labels_never_on_authored_text() {
+    // Anchored on the line start: `.callout-title {` also ends the shared `text-wrap: balance`
+    // selector list near the top of the sheet.
+    let base = rule_block(BASE_CSS, "\n  .callout-title {");
+    assert!(
+        !base.contains("var(--tali-font-mono)") && !base.contains("text-transform: uppercase"),
+        "`.callout-title` matches an AUTHORED title too; the mono voice cannot live here. \
+         Got: `{base}`"
+    );
+    assert!(
+        base.contains("var(--tali-font-body)"),
+        "an authored title is the author's voice: the serif, reached through the `font` \
+         shorthand. Got: `{base}`"
+    );
+    let kind = rule_block(BASE_CSS, ".callout-title.callout-kind {");
+    assert!(
+        kind.contains("var(--tali-font-mono)") && kind.contains("text-transform: uppercase"),
+        "the generated kind label IS the machine speaking. Got: `{kind}`"
+    );
+    let summary = rule_block(BASE_CSS, "details.tali-code-fold > summary {");
+    assert!(
+        !summary.contains("var(--tali-font-mono)")
+            && !summary.contains("text-transform: uppercase"),
+        "`#| code-summary:` is authored text; the mono voice cannot live on the bare \
+         summary. Got: `{summary}`"
+    );
+    let label = rule_block(
+        BASE_CSS,
+        "details.tali-code-fold > summary.tali-code-label {",
+    );
+    assert!(
+        label.contains("var(--tali-font-mono)") && label.contains("text-transform: uppercase"),
+        "the \"Code\" fallback is generated, so it keeps the machine voice. Got: `{label}`"
+    );
+}
+
+/// The render half of the rule above: only the GENERATED label carries the marker class.
+#[test]
+fn only_a_generated_callout_kind_label_is_marked_as_the_machine_speaking() {
+    let bare = render_document("::: {.callout-note}\nBody.\n:::\n");
+    assert!(
+        bare.blocks[0]
+            .html
+            .contains("class=\"callout-title callout-kind\""),
+        "a bare `::: {{.callout-note}}` says NOTE in the tool's own voice: {}",
+        bare.blocks[0].html
+    );
+    for (what, src) in [
+        (
+            "a title= attribute",
+            "::: {.callout-note title=\"Why two accent variables\"}\nBody.\n:::\n",
+        ),
+        (
+            "a leading heading",
+            "::: {.callout-note}\n## Why two accent variables\n\nBody.\n:::\n",
+        ),
+        (
+            "an authored title on a collapsible callout",
+            "::: {.callout-note collapse=\"true\" title=\"Why two accent variables\"}\nBody.\n:::\n",
+        ),
+    ] {
+        let h = &render_document(src).blocks[0].html;
+        assert!(
+            h.contains("Why two accent variables"),
+            "{what}: the author's own capitalization survives to the HTML: {h}"
+        );
+        assert!(
+            !h.contains("callout-kind"),
+            "{what}: an authored title is not the machine speaking: {h}"
+        );
+    }
+}
+
+/// The same distinction for a folded cell's disclosure label.
+#[test]
+fn only_the_generated_code_fold_label_is_marked_as_the_machine_speaking() {
+    let generated = render_document("```{python}\n#| code-fold: true\nx = 1\n```\n");
+    assert!(
+        generated.blocks[0]
+            .html
+            .contains("<summary class=\"tali-code-label\">Code</summary>"),
+        "the \"Code\" fallback is the tool's word: {}",
+        generated.blocks[0].html
+    );
+    let authored = render_document(
+        "```{python}\n#| code-fold: true\n#| code-summary: How the data was generated\nx = 1\n```\n",
+    );
+    assert!(
+        authored.blocks[0]
+            .html
+            .contains("<summary>How the data was generated</summary>"),
+        "`code-summary:` is the author's: {}",
+        authored.blocks[0].html
+    );
+}
+
+/// The reading scale is derived against the 1.25rem (20px) body, and the re-derivation that
+/// fixed `h1`-`h6` stopped one selector short of three that sit beside them:
+/// `.tali-title-block .subtitle` was 1.15rem (18.4px, SMALLER than the body it introduces),
+/// `.feature h3` was 1.12rem (17.92px — the exact value the re-derivation condemned), and
+/// `.tali-title-block .title` was 2.1rem against `h1`'s 2.25rem, so a document's own title
+/// rendered smaller than a body `#` heading. All three measured in the browser.
+///
+/// Deliberately an explicit selector list rather than a sweep of every `font-size` in the
+/// sheet: the `max-width: 30rem` block steps the title block down against a 16px body, so a
+/// sweep would have to model the breakpoint's own body size to say anything true.
+#[test]
+fn the_serif_reading_scale_never_drops_below_the_body() {
+    let body_px = {
+        let f = TOKENS_CSS
+            .split("--tali-font-body:")
+            .nth(1)
+            .expect("--tali-font-body is defined")
+            .split(';')
+            .next()
+            .unwrap();
+        rem_px(f.trim().split('/').next().unwrap())
+    };
+    assert_eq!(
+        body_px, 20.0,
+        "the body is 20px; the scale is derived from it"
+    );
+
+    // Newline-anchored: a bare `h2 {` is also the tail of `.hero h1, .hero h2 {`, whose
+    // `clamp()` belongs to the marketing masthead and is not on this scale.
+    for sel in [
+        "\n  .tali-title-block .title {",
+        "\n  .tali-title-block .subtitle {",
+        "\n  .feature h3 {",
+        "\n  h1 {",
+        "\n  h2 {",
+        "\n  h3 {",
+    ] {
+        let v = declaration_in(BASE_CSS, sel, "font-size")
+            .unwrap_or_else(|| panic!("`{}` sets a font-size", sel.trim()));
+        let px = rem_px(v);
+        assert!(
+            px >= body_px,
+            "`{}` is {px}px against a {body_px}px body. Serif text the reader reads as a \
+             heading may not be smaller than the prose it introduces — the small register in \
+             this theme is the MONO voice, not a shrunken serif",
+            sel.trim()
+        );
+    }
+
+    let title =
+        rem_px(declaration_in(BASE_CSS, "\n  .tali-title-block .title {", "font-size").unwrap());
+    let h1 = rem_px(declaration_in(BASE_CSS, "\n  h1 {", "font-size").unwrap());
+    assert!(
+        title >= h1,
+        "a document's own title is {title}px against h1's {h1}px: a body `#` heading \
+         out-sizes the title of the page it is on"
+    );
+    assert_eq!(
+        declaration_in(BASE_CSS, "\n  .feature h3 {", "font-size"),
+        declaration_in(BASE_CSS, "\n  h3 {", "font-size"),
+        "a feature card's heading is an h3; it takes the h3 size rather than a second scale"
     );
 }
 

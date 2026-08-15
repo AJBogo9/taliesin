@@ -81,11 +81,11 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 // `code-fold` wraps the listing in a <details>; the block data
                 // attrs move to the <details> so click-to-source still keys off it.
                 let highlighted = crate::highlight::highlight(&literal, lang.as_deref());
-                if let Some((open, summary)) = &fold {
-                    let open_attr = if *open { " open" } else { "" };
+                if let Some(f) = &fold {
+                    let open_attr = if f.open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>{highlighted}</code></pre></details>",
-                        html_escape(summary)
+                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}>{}<pre><code{class}>{highlighted}</code></pre></details>",
+                        f.summary_html()
                     ));
                 } else {
                     out.push_str(&format!(

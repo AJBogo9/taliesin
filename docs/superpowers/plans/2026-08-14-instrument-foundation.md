@@ -80,10 +80,13 @@ data-URI inlining, `pyftsubset` from the repo `.venv` for font subsetting.
   `url(fonts/<name>.woff2)`; `crates/core/build.rs`'s `inline_woff2` rewrites those to
   `data:` URIs at build time and emits `$OUT_DIR/fonts-inlined.css`.
 
-**Verified facts this task rests on** (measured 2026-08-14, re-runnable via the script):
-Literata roman 47,700 B, italic 48,732 B, JetBrains Mono 19,768 B = **116,200 B**, against
-Newsreader's 122,604 B. The tool gains a monospace it has never owned and ships **6,404 bytes
-less**. Dropping `calt` halves JetBrains Mono (37,828 → 19,768 B).
+**Verified facts this task rests on** (the byte counts re-measured 2026-08-15 against the
+files actually on disk after the `rvrn` re-vendor, which moved both Literata faces; the
+2026-08-14 figures they replace — 47,700 / 48,732 / 116,200 / 6,404 — described the earlier
+subset and were never corrected): Literata roman 48,072 B, italic 48,868 B, JetBrains Mono
+19,768 B = **116,708 B**, against Newsreader's 122,604 B. The tool gains a monospace it has
+never owned and ships **5,896 bytes less**. Dropping `calt` halves JetBrains Mono
+(37,828 → 19,768 B).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -275,6 +278,12 @@ The tool also gains a monospace it has never owned and still ships 6,404 bytes L
 font data (116,200 vs 122,604), because tools/subset-fonts.sh drops calt from the
 mono — which halves it and makes code ligatures un-re-enableable."
 ```
+
+> **Correction, 2026-08-15.** The commit above shipped with those two figures and they are
+> wrong; the message is left as written because it is what was committed. The `rvrn` fix in
+> the following commit re-subset both Literata faces, so the real totals are 116,708 B against
+> Newsreader's 122,604 B — **5,896 bytes less**, not 6,404. See the corrected "Verified facts"
+> block at the top of this task.
 
 ---
 

@@ -10,12 +10,22 @@
 # Needs fontTools + brotli. fontTools is in .venv; brotli is not, so it is installed
 # into a scratch dir rather than mutating the project venv. `.venv` itself is
 # gitignored, so a fresh clone needs one before this script can run:
-#   python3 -m venv .venv && .venv/bin/pip install --quiet fonttools
+#   python3 -m venv .venv && .venv/bin/pip install --quiet fonttools==4.63.0
 #
 # The CDN URLs below are version-pinned (@5.2.8 for both faces, 2026-08-14): an
 # unpinned `@fontsource-variable/...` URL resolves to whatever jsDelivr serves that
 # day, which makes "rebuild from upstream" not actually reproducible. Bump the pin
 # deliberately and record the new version in THIRD_PARTY.md in the same change.
+#
+# The COMPRESSOR is pinned for the same reason, and it is the easier one to overlook:
+# woff2 is brotli, so a different brotli produces different bytes from identical glyph
+# data — every metric unchanged, every hash changed. Unpinned, this script could not
+# reproduce its own output, and the resulting failure of
+# `the_body_face_is_the_one_the_measure_was_measured_on` reads exactly like a face swap.
+# fontTools is the remaining loose input: it comes from `.venv`, which was 4.63.0 on
+# 2026-08-15. Pin added 2026-08-15 and NOT verified to reproduce the bytes already on
+# disk — re-vendoring is a later plan's work, because it moves the hash and the measure
+# constant together.
 #
 #   tools/subset-fonts.sh            # rebuild assets/fonts/ from upstream
 set -euo pipefail
@@ -28,7 +38,7 @@ trap 'rm -rf "$WORK"' EXIT
 LATIN="U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,\
 U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
 
-.venv/bin/pip install --quiet --target="$WORK/pylibs" brotli
+.venv/bin/pip install --quiet --target="$WORK/pylibs" brotli==1.2.0
 
 fetch() { curl -sSLf -o "$WORK/$1" "$2"; }
 sub() { # <in> <out> <layout-features>

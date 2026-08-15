@@ -4,7 +4,7 @@
 //! All take a code literal/lines + key and return derived strings/bools; none touches
 //! the orchestrator's shared state.
 
-use super::JsOpts;
+use super::{CodeFold, JsOpts};
 
 /// If `line` is a leading cell-option directive, return the content after the pipe.
 /// Recognizes `#|` (most langs), `//|` (JS), `%%|` (mermaid), each tolerating optional
@@ -119,18 +119,21 @@ pub(super) fn hidden_cell(attrs: &str) -> String {
     format!("<div{attrs} class=\"tali-cell-hidden\" hidden></div>")
 }
 
-/// If a cell sets `code-fold`, return `(start_open, summary)`. `true` folds
-/// (starts closed), `show` folds but starts open; `code-summary` overrides the
-/// "Code" label.
-pub(super) fn code_fold(literal: &str) -> Option<(bool, String)> {
+/// If a cell sets `code-fold`, return its disclosure state. `true` folds (starts closed),
+/// `show` folds but starts open; `code-summary` overrides the "Code" label — and whether it
+/// did is carried through, because an authored label is the author's voice and the fallback
+/// is the tool's.
+pub(super) fn code_fold(literal: &str) -> Option<CodeFold> {
     let v = cell_option(literal, "code-fold")?;
     if v != "true" && v != "show" {
         return None;
     }
-    let summary = cell_option(literal, "code-summary")
-        .unwrap_or("Code")
-        .to_string();
-    Some((v == "show", summary))
+    let authored = cell_option(literal, "code-summary");
+    Some(CodeFold {
+        open: v == "show",
+        summary: authored.unwrap_or("Code").to_string(),
+        authored: authored.is_some(),
+    })
 }
 
 /// Drop leading cell-option lines (`#|` for most languages, `//|` for JS,

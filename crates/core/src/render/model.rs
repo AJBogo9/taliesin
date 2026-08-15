@@ -66,6 +66,37 @@ pub struct CellTable {
     pub number: String,
 }
 
+/// A folded code listing's disclosure state (`#| code-fold:`).
+///
+/// `authored` is what makes the machine-voice rule structural rather than cosmetic: the
+/// `<summary>` is the AUTHOR's `#| code-summary:` sentence or the tool's own "Code"
+/// fallback, and only the fallback may be set in the uppercase mono. Deriving that from the
+/// label text instead would misread an author who wrote `code-summary: Code`.
+pub(crate) struct CodeFold {
+    /// `code-fold: show` starts the `<details>` open; `true` starts it closed.
+    pub(crate) open: bool,
+    /// The disclosure label, already unescaped (the emitters escape it).
+    pub(crate) summary: String,
+    /// The author supplied `code-summary:`, rather than this being the "Code" fallback.
+    pub(crate) authored: bool,
+}
+
+impl CodeFold {
+    /// The `<summary>` element. The generated label carries `.tali-code-label`, which is
+    /// where base.css hangs the machine voice; an authored one stays unmarked and serif.
+    pub(crate) fn summary_html(&self) -> String {
+        let class = if self.authored {
+            ""
+        } else {
+            " class=\"tali-code-label\""
+        };
+        format!(
+            "<summary{class}>{}</summary>",
+            crate::render::html_escape(&self.summary)
+        )
+    }
+}
+
 /// A code cell's cross-reference role from its `label`/`*-cap` options.
 pub(crate) enum CellRole {
     /// `label: fig-x` / `fig-cap` -> a numbered figure (the cell's output).
@@ -74,11 +105,11 @@ pub(crate) enum CellRole {
         caption: Option<String>,
     },
     /// `label: lst-x` / `lst-cap` -> a numbered listing (the cell's source);
-    /// `fold` carries `code-fold` (start-open, summary) so a folded listing works.
+    /// `fold` carries `code-fold` (start-open, summary, authored) so a folded listing works.
     Listing {
         anchor: Option<String>,
         caption: Option<String>,
-        fold: Option<(bool, String)>,
+        fold: Option<CodeFold>,
     },
     /// `label: tbl-x` / `tbl-cap` -> a numbered table (the cell's executed output).
     Table {

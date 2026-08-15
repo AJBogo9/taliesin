@@ -550,6 +550,12 @@ fn build_container(
         // dead link. `id` on the title makes `#sec-x` scroll to the callout. Only
         // xref-prefixed ids are hoisted (a plain autoslug title stays id-less, as before).
         let mut title_id_attr = String::new();
+        // Branches (1) and (2) are the AUTHOR's own words; only (3) is the tool speaking.
+        // The machine voice (uppercase tracked mono) belongs to (3) alone — uppercasing an
+        // authored title mangles a choice the author made, the same finding the wordmark and
+        // author-name rulings reached. Marked with a class rather than left to a selector, so
+        // the distinction is structural and a stylesheet edit cannot lose it.
+        let mut generated_kind_label = false;
         let title = match attrs.get("title") {
             Some(t) => html_escape(t),
             None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
@@ -561,7 +567,15 @@ fn build_container(
                 }
                 strip_tags(&heading)
             }
-            None => capitalize(kind),
+            None => {
+                generated_kind_label = true;
+                capitalize(kind)
+            }
+        };
+        let title_class = if generated_kind_label {
+            "callout-title callout-kind"
+        } else {
+            "callout-title"
         };
         // A bundled kind icon precedes the title text unless `icon="false"`.
         let icon = if attrs.get("icon") == Some("false") {
@@ -582,11 +596,11 @@ fn build_container(
             Some(v) => {
                 let open = if v == "false" { " open" } else { "" };
                 format!(
-                    "<div class=\"callout callout-{kind} callout-collapse{appearance}\"{data}><details{open}><summary class=\"callout-title\"{title_id_attr}>{icon}{title}</summary><div class=\"callout-body\">{body}</div></details></div>"
+                    "<div class=\"callout callout-{kind} callout-collapse{appearance}\"{data}><details{open}><summary class=\"{title_class}\"{title_id_attr}>{icon}{title}</summary><div class=\"callout-body\">{body}</div></details></div>"
                 )
             }
             None => format!(
-                "<div class=\"callout callout-{kind}{appearance}\"{data}><div class=\"callout-title\"{title_id_attr}>{icon}{title}</div><div class=\"callout-body\">{body}</div></div>"
+                "<div class=\"callout callout-{kind}{appearance}\"{data}><div class=\"{title_class}\"{title_id_attr}>{icon}{title}</div><div class=\"callout-body\">{body}</div></div>"
             ),
         }
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {

@@ -357,7 +357,7 @@ const C = {
     path:      "#fbbf24",  // amber-400
     current:   "#f97316",  // orange-500
     text:      "#ffffff",  // white — for S/E labels on coloured cells
-    scoreText: "#1e293b",  // slate-800 — dark, readable on all light cell colours
+    scoreText: "#3A5578",  // dark, readable on all light cell colours
   };
 
   // ── SVG setup ───────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ const C = {
   const tooltip = Object.assign(document.createElement("div"), {});
   tooltip.style.cssText = `
   position: fixed;
-  background: #1e293b;
+  background: #3A5578;
   color: #f8fafc;
   border: 1px solid #475569;
   border-radius: 4px;
