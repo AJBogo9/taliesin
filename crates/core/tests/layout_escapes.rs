@@ -58,12 +58,16 @@ fn the_escape_class_renders_as_a_plain_block_and_is_known_vocabulary() {
 }
 
 /// The escape is a grid span. If it ever goes back to computing a margin, this fails.
+///
+/// `pre` shares the span with the author's opt-in class, and that is the point rather than a
+/// convenience: at the measure a code block fits 55 columns inside its own padding against
+/// PEP 8's 79, so code that did not opt into anything still has to leave the prose column.
 #[test]
 fn the_escape_is_a_grid_span_not_an_arithmetic() {
     let base = css("base.css");
     assert!(
-        base.contains("> .column-page { grid-column: bleed; }"),
-        "`.column-page` must be a named grid span"
+        base.contains("> :is(pre, .column-page) {\n    grid-column: bleed; }"),
+        "`pre` and `.column-page` must share one named grid span"
     );
     assert!(
         !base.contains("margin-left: calc("),

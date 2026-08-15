@@ -269,7 +269,7 @@
   /* No `font-size` here: the size is the DERIVED `--tali-mono-size` on the `pre, code` rule
      below. A `.9em` sat here and was dead — same element specificity, earlier in the file —
      and reading it made the size look accounted for while the real one applied twice. */
-  pre { position: relative; padding: 1rem; border-radius: var(--tali-radius); overflow: auto;
+  pre { position: relative; padding: calc(.5 * var(--tali-u)); border-radius: var(--tali-radius); overflow: auto;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
            with the content and mask the edge shadows (scroll, pinned to the box)
@@ -654,7 +654,30 @@
      silently render every block full-bleed. This rule follows the `> *` rule above at equal
      specificity, so source order is what makes it win. */
   #tali-main > article { grid-column: 1 / -1; }
-  :is(#tali-main, #tali-root, #tali-main > article) > .column-page { grid-column: bleed; }
+  :is(#tali-main, #tali-root, #tali-main > article) > :is(pre, .column-page) {
+    grid-column: bleed; }
+  /* Code leaves the prose measure, and it grows LEFT from the text column's right edge.
+     At the measure a `pre` fits 55 columns inside its padding against PEP 8's 79, so the
+     code on the page was clipped and scrolled in every render of this design; in the bleed
+     band it fits 84 (measured: JetBrains Mono's advance is exactly .6em, and .92em of a
+     20px body is 11.04px per column).
+
+     `width: max-content` with a `min-width` floor of the measure is what keeps a two-line
+     snippet from becoming a 960px slab: a short block is exactly as wide as the prose and
+     sits where it does today, and only a block that needs the room takes it.
+     `justify-self: end` is why it grows left — the right edge stays flush with the text
+     column, which is what makes the escape collision-free against the margin column. */
+  /* A code block FILLS the band rather than being fitted to its longest line, so every
+     `pre` on a page shares one left edge. Fitting was tried and measured worse on both
+     counts: three blocks on one page came out at two different left edges (a ragged column
+     of grey boxes), and the floor that was meant to keep a short snippet at the prose width
+     resolved to 589px instead of 640 — `--tali-measure` is `32em` OF THE BODY FACE, and on a
+     `pre` an `em` is the MONO size (18.4px), so the token silently means something else here
+     than it does anywhere else. Uniform width needs neither bound and cannot be read wrong.
+
+     `border-box` because the global reset is content-box: without it `pre`'s own 2 x .5U of
+     padding is added OUTSIDE the track and the box overhangs by 31px. */
+  :is(#tali-main, #tali-root, #tali-main > article) > pre { box-sizing: border-box; }
   .tali-output { margin: 0 0 1rem; }
   /* An output slot that never filled leaves no trace. A cell folded inside a `:::` div
      gets its output element emitted at RENDER time (the slot the executor writes into,

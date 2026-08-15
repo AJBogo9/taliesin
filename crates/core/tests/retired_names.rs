@@ -510,22 +510,23 @@ fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
 /// hand-write a tombstone), and none could fail unless someone re-introduced a dead
 /// identifier by its exact name, which nothing would do by accident.
 ///
-/// Three of those tests carried a positive assertion among the absences, and those are the
-/// half worth keeping: a deletion pass that took the arrow-key chapter nav or the pre-paint
-/// theme bootstrap with it would break a reader, and an absence test cannot notice that.
-/// Asserting what must ship catches the over-cut; asserting what must not ship catches
-/// nothing. (The third subject, the Settings menu's mounting API, was itself removed on
-/// 2026-08-13 with the theme picker it hosted: a page follows the reader's device.)
+/// Three of those tests carried a positive assertion among the absences, and those were the
+/// half worth keeping: a deletion pass that took the pre-paint theme bootstrap with it would
+/// break a reader, and an absence test cannot notice that. Asserting what must ship catches
+/// the over-cut; asserting what must not ship catches nothing. (The second subject, the
+/// Settings menu's mounting API, was itself removed on 2026-08-13 with the theme picker it
+/// hosted: a page follows the reader's device.)
+///
+/// **The arrow-key chapter nav was the third subject, and it was removed on 2026-08-15.**
+/// This assertion caught that removal, which is what it was for — so the removal is recorded
+/// here rather than made silently. It was cut deliberately, not over-cut: it had been
+/// undiscoverable since its cheatsheet went, and it bound the arrow keys while
+/// `16-scroll-a11y.js` gives a wide `<pre>` `tabindex="0"` for the express purpose of letting
+/// the arrow keys scroll it. The same commit made that horizontal scrolling a designed
+/// behaviour — a code block now escapes to 84 columns and then scrolls — so the two fragments
+/// were no longer merely in tension, they were answering the same keypress differently.
 #[test]
 fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
-    let js = taliesin_core::render::code_scripts();
-
-    // Arrow keys are not character keys, so the chapter nav survived the 2026-08-04
-    // deletion of the `?` and `/` shortcuts and their WCAG 2.1.4 off-switch.
-    assert!(
-        js.contains("ArrowLeft") || js.contains("ArrowRight"),
-        "the arrow-key chapter nav must survive; it is not a character key"
-    );
     // The theme half of `theme.rs`'s pre-paint bootstrap, which ships in every rendered
     // page's <head> rather than in `code_scripts()`. The code-visibility half was deleted
     // out of the same bootstrap on 2026-08-03, which is exactly why this is checked against

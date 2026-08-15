@@ -2084,7 +2084,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/01-registry.js"),
     include_str!("../../assets/js/code-enhance/04-focus-trap.js"),
     include_str!("../../assets/js/code-enhance/06-skip-link.js"),
-    include_str!("../../assets/js/code-enhance/07-keyboard.js"),
     include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
     include_str!("../../assets/js/code-enhance/09-register.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),

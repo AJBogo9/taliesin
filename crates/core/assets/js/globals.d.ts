@@ -29,7 +29,6 @@ interface Window {
   __taliMermaidLoading?: boolean;
 
   // --- install-once guards (each feature fragment sets its own) --------------
-  __taliKeyboard?: boolean;
   __taliSkipLink?: boolean;
   __taliReaderPrefs?: boolean;
 }

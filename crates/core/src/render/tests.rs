@@ -5748,6 +5748,81 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
     );
 }
 
+/// JetBrains Mono's advance, in `em`. MEASURED 2026-08-15 from the vendored binary with
+/// fontTools: `unitsPerEm` 1000, and all 229 non-combining glyphs carry an advance of 600.
+/// It is a monospace, so unlike Literata's mean this is exact — but it still describes ONE
+/// binary, which is what the hash below is for.
+const JETBRAINS_MONO_ADVANCE_EM: f64 = 0.6;
+
+/// Read a numeric token value out of a sheet, e.g. `--tali-bleed: 20rem;` → 20.0.
+#[cfg(test)]
+fn token_len(css: &str, tok: &str, unit: &str) -> f64 {
+    let v = css
+        .split(tok)
+        .nth(1)
+        .unwrap_or_else(|| panic!("{tok} is defined"))
+        .split(';')
+        .next()
+        .unwrap()
+        .trim()
+        .to_string();
+    v.trim_end_matches(unit)
+        .parse()
+        .unwrap_or_else(|_| panic!("{tok} must be a `{unit}` length, got `{v}`"))
+}
+
+/// A code block must leave the prose measure. At the measure a `pre` fits 55 columns inside
+/// its own padding, against PEP 8's 79 and Black's 88 — so the code a reader meets was
+/// clipped and scrolled in every render of this design. The grid gives `pre` the `bleed`
+/// band; this asserts the capacity that buys, computed from the tokens rather than asserted
+/// in prose.
+#[test]
+fn a_code_block_escapes_the_measure_and_clears_pep8() {
+    let measure_em = token_len(TOKENS_CSS, "--tali-measure:", "em"); // 32em OF THE BODY
+    let bleed_rem = token_len(TOKENS_CSS, "--tali-bleed:", "rem");
+    let mono_em = token_len(TOKENS_CSS, "--tali-mono-size:", "em");
+    let u_rem = token_len(TOKENS_CSS, "--tali-u:", "rem");
+
+    // The body is 1.25rem, so an `em` of the body face is 20px and a `rem` is 16px.
+    let track_px = measure_em * 20.0 + bleed_rem * 16.0;
+    // `pre`'s padding is .5U on each side, asserted literally so this arithmetic cannot
+    // drift away from the sheet it describes.
+    assert!(
+        BASE_CSS.contains("padding: calc(.5 * var(--tali-u))"),
+        "pre's padding must be .5U, which this capacity figure subtracts"
+    );
+    let content_px = track_px - u_rem * 16.0; // 2 x .5U
+    let col_px = JETBRAINS_MONO_ADVANCE_EM * mono_em * 20.0;
+    let cols = content_px / col_px;
+    let at_measure = (measure_em * 20.0 - u_rem * 16.0) / col_px;
+    assert!(
+        cols >= 79.0,
+        "a code block fits {cols:.0} columns ({at_measure:.0} at the bare measure); PEP 8 \
+         is 79. Either the bleed band, the measure, the mono size or pre's padding moved."
+    );
+}
+
+/// The advance above describes ONE binary. Same instrument as the body face's pin: hash the
+/// file so a swap cannot be silent.
+#[test]
+fn the_mono_face_is_the_one_the_columns_were_measured_on() {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("assets/fonts/jetbrains-mono-latin-wght-normal.woff2");
+    let bytes = std::fs::read(&p).expect("the vendored mono face");
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in &bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    assert_eq!(
+        (bytes.len(), h),
+        (19_768, 0x9433_d6f3_a3e2_860d),
+        "the mono face changed. Re-measure JETBRAINS_MONO_ADVANCE_EM from the binary \
+         (fontTools: hmtx advance / head.unitsPerEm), update it and this hash together, \
+         and re-date both."
+    );
+}
+
 /// The width-escape arithmetic has ONE definition. It had three near-identical ones
 /// (`.column-page/.column-screen`, `body.has-toc > main :is(…)`, and the `.tali-site-main`
 /// twin of the second), plus two narrow-screen re-overrides and two rules that forced margin
