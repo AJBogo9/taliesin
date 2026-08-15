@@ -386,39 +386,6 @@ fn callout_uses_explicit_title_and_default_title() {
 }
 
 #[test]
-fn callout_emits_kind_icon_and_respects_icon_false() {
-    let tip = render_document("::: {.callout-tip}\nBody.\n:::\n");
-    assert!(
-        tip.blocks[0].html.contains("<svg class=\"callout-icon\""),
-        "tip should carry a bundled icon: {}",
-        tip.blocks[0].html
-    );
-    let none = render_document("::: {.callout-note icon=\"false\"}\nBody.\n:::\n");
-    assert!(
-        !none.blocks[0].html.contains("callout-icon"),
-        "icon=\"false\" suppresses the icon: {}",
-        none.blocks[0].html
-    );
-}
-
-#[test]
-fn callout_appearance_adds_modifier_class() {
-    let simple = render_document("::: {.callout-warning appearance=\"simple\"}\nBody.\n:::\n");
-    assert!(
-        simple.blocks[0].html.contains("callout-simple"),
-        "simple appearance adds a modifier class: {}",
-        simple.blocks[0].html
-    );
-    let def = render_document("::: {.callout-note}\nBody.\n:::\n");
-    assert!(
-        !def.blocks[0].html.contains("callout-simple")
-            && !def.blocks[0].html.contains("callout-minimal"),
-        "default appearance adds no modifier: {}",
-        def.blocks[0].html
-    );
-}
-
-#[test]
 fn layout_ncol_div_becomes_grid() {
     let doc = render_document("::: {layout-ncol=2}\n![](a.png)\n\n![](b.png)\n:::\n");
     assert_eq!(doc.blocks.len(), 1);
@@ -5746,6 +5713,66 @@ fn the_bundled_stylesheets_carry_no_generated_design_tells() {
         }),
         "the radius scale drifted: {radii:?}. One token, 2px, objects only."
     );
+}
+
+/// A callout is a 2px left rule and a kind word. The box, the radius, the tinted title bar
+/// and the icon are gone (spec §5 + §3's radius row + §1's no-colour-in-chrome rule) — and
+/// with the tint and the rule-width gone, `appearance=` and `icon=` vary nothing, so they are
+/// retired in the same commit as the anatomy they described rather than deferred.
+#[test]
+fn a_callout_is_a_left_rule_and_a_kind_word() {
+    for (needle, why) in [
+        // The tinted title BAR, specifically. Not every `color-mix` of a callout token:
+        // `.tali-stderr`, `.tali-error` and `.tali-js-error` derive their surfaces from the
+        // same family and keep them, because spec §5 exempts the two diagnostic surfaces by
+        // name — an error is exactly the kind of DATA the one-colour rule carves room for.
+        (
+            ".callout-title { background",
+            "a callout title carries no tint; the left rule and the kind word carry the kind",
+        ),
+        (
+            "> summary.callout-title { background",
+            "same, for the collapsible form",
+        ),
+        (
+            "callout-simple",
+            "`appearance=simple` varied only the tint, which is gone",
+        ),
+        (
+            "callout-minimal",
+            "`appearance=minimal` varied only the rule width, now 2px",
+        ),
+        ("callout-icon", "the bundled Octicons went with the box"),
+    ] {
+        assert!(
+            !BASE_CSS.contains(needle),
+            "base.css still has `{needle}`: {why}"
+        );
+    }
+    assert!(
+        BASE_CSS.contains("border-left: 2px solid var(--tali-border-strong)"),
+        "the callout's own edge is the 2px rule the kind then colours"
+    );
+    // The knobs stop being READ, not merely undocumented: a register entry alone leaves the
+    // key live, which is the half no gate derives.
+    let html = render_html_page(
+        "---\ntitle: T\n---\n\n::: {.callout-tip appearance=\"simple\" icon=\"false\"}\nBody.\n:::\n",
+        "ca",
+    );
+    assert!(
+        !html.contains("callout-simple"),
+        "`appearance=` must no longer be read: {html}"
+    );
+    assert!(
+        !html.contains("callout-icon"),
+        "`icon=` and the icons it suppressed must both be gone: {html}"
+    );
+    for key in ["appearance", "icon"] {
+        assert!(
+            crate::frontmatter::retired_note("callout attribute", key).is_some(),
+            "`{key}` needs its one-line register entry under the `callout attribute` scope"
+        );
+    }
 }
 
 /// A collapsed sidenote can get back to where the reader was. Below the margin breakpoint the

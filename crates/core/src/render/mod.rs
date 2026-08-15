@@ -2971,6 +2971,13 @@ impl DivAttrs {
     fn callout_kind(&self) -> Option<&str> {
         self.classes.iter().find_map(|c| c.strip_prefix("callout-"))
     }
+    /// Every `key=` the author wrote, in source order. The only caller checks them against
+    /// the retirement register: callout attributes are an OPEN vocabulary, so a name that is
+    /// merely unknown must stay silent, while a name that was RETIRED is one the author is
+    /// still typing and the tool now ignores.
+    fn keys(&self) -> impl Iterator<Item = &str> {
+        self.kv.iter().map(|(k, _)| k.as_str())
+    }
 }
 
 fn is_heading(html: &str) -> bool {

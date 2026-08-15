@@ -417,8 +417,16 @@
   thead th { border-bottom: 2px solid var(--tali-border);
     font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
     letter-spacing: .053em; }
-  .callout { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: var(--tali-radius);
-             margin: 1rem 0; overflow: hidden; }
+  /* Three kinds, and the kind is carried by a 2px left rule plus the mono kind-word — not by
+     a box, a tint or an icon (spec §5). What goes with that: the 1px box (structure here is
+     square and unboxed; the rule and the indent are the whole affordance), the radius (spec
+     §3 puts 0 on a callout), the three `color-mix` title tints (chrome carries no colour),
+     and the three bundled Octicon blobs. `appearance=` and `icon=` are retired in the same
+     commit because they varied exactly those axes: `simple` removed the tint, `minimal`
+     thinned the rule, and neither exists to vary now. `overflow: hidden` went with the
+     radius it was clipping the tint against. */
+  .callout { border: 0; border-left: 2px solid var(--tali-border-strong); border-radius: 0;
+             margin: 0 0 var(--tali-u); padding-left: calc(.5 * var(--tali-u)); }
   /* A callout title is the AUTHOR's by default. `divs.rs` derives it from, in order, the
      `title="…"` attribute, a leading heading, and only then the capitalized kind word — so
      the element is authored text far more often than it is a label (34 of the 55 callouts in
@@ -433,31 +441,21 @@
      tracked uppercase rather than "none". */
   .callout-title { font: var(--tali-font-body); font-weight: 600; line-height: 1.3;
                    text-transform: none; letter-spacing: normal;
-                   padding: .5rem .9rem; display: flex; align-items: center; gap: .45rem; }
+                   margin: 0 0 calc(.5 * var(--tali-u)); display: flex; align-items: center; }
   /* Branch (3): the kind word, which the TOOL supplied. That is the machine voice, and spec
      §4's scope line says "callout kind LABELS" — the label, not the element. Marked
      structurally in `divs.rs` so the distinction cannot be lost to a cosmetic edit. */
   .callout-title.callout-kind { font: 400 .78rem/1.3 var(--tali-font-mono);
                    text-transform: uppercase; letter-spacing: .053em; }
-  .callout-icon { flex: 0 0 auto; width: 1em; height: 1em; }
-  .callout-body { padding: .3rem .9rem; }
-  .callout-body > :first-child { margin-top: .4rem; }
-  /* Per-kind accent: border + icon take the token; the title tint is derived from it. */
+  .callout-body { padding: 0; }
+  .callout-body > :first-child { margin-top: 0; }
+  .callout-body > :last-child { margin-bottom: 0; }
+  /* The kind, and the only thing that carries it: the left rule takes the kind's own colour.
+     This is the one place in the furniture with a hue, and spec §5 keeps it deliberately —
+     the rule plus the mono kind-word are what distinguish three kinds from each other. */
   .callout-note { border-left-color: var(--tali-callout-note); }
   .callout-tip { border-left-color: var(--tali-callout-tip); }
   .callout-warning { border-left-color: var(--tali-callout-warning); }
-  .callout-note .callout-icon { color: var(--tali-callout-note); }
-  .callout-tip .callout-icon { color: var(--tali-callout-tip); }
-  .callout-warning .callout-icon { color: var(--tali-callout-warning); }
-  .callout-note .callout-title { background: color-mix(in srgb, var(--tali-callout-note) 12%, transparent); }
-  .callout-tip .callout-title { background: color-mix(in srgb, var(--tali-callout-tip) 12%, transparent); }
-  .callout-warning .callout-title { background: color-mix(in srgb, var(--tali-callout-warning) 13%, transparent); }
-  /* appearance="simple": no tinted title bar (border + icon carry the kind). */
-  .callout-simple > .callout-title, .callout-simple > details > summary.callout-title { background: transparent; }
-  /* appearance="minimal": drop the left accent too; muted icon. */
-  .callout-minimal { border-left-width: 1px; }
-  .callout-minimal > .callout-title, .callout-minimal > details > summary.callout-title { background: transparent; }
-  .callout-minimal .callout-icon { color: var(--tali-muted); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
   /* Same split as `.callout-title`, one scale smaller: `#| code-summary:` is the author's
@@ -752,10 +750,13 @@
   html[data-theme="dark"] img.tali-fig-dark { display: block; }
   /* Exec output + diagnostic boxes derive from the callout family instead of per-theme
      literals: stderr is the warning surface, the kernel-error box the important surface,
-     each a color-mix of its callout token over the page bg (identical to the matching
-     callout's title tint). Body text clears AA on that tint in every theme (the callout
-     contrast test guarantees it), so they need no per-theme override and the print
-     token-reset reaches them. */
+     each a color-mix of its callout token over the page bg. Body text clears AA on that tint
+     in every theme (the callout contrast test guarantees it), so they need no per-theme
+     override and the print token-reset reaches them.
+     These tints USED to be described as "identical to the matching callout's title tint",
+     and that reference died on 2026-08-15 when the callout lost its tinted title bar. The
+     surfaces themselves stay: spec §5 exempts the two diagnostic surfaces by name, because
+     an error is exactly the kind of DATA the theme's one-colour rule carves room for. */
   .tali-stderr { border-left-color: var(--tali-callout-warning) !important;
     background: color-mix(in srgb, var(--tali-callout-warning) 13%, var(--tali-bg)) !important; }
   .tali-error { border-left-color: var(--tali-callout-important) !important;

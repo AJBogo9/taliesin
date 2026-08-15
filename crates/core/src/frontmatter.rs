@@ -339,6 +339,18 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
         "caution",
         "it was removed on 2026-08-03: use `warning`",
     ),
+    // --- The callout's presentation knobs, retired 2026-08-15 with the anatomy they varied.
+    (
+        "callout attribute",
+        "appearance",
+        "it was removed on 2026-08-15 with the callout's box and tinted title bar, the only \
+         things it varied: there is nothing",
+    ),
+    (
+        "callout attribute",
+        "icon",
+        "it was removed on 2026-08-15 with the bundled callout icons: there is nothing",
+    ),
     // --- Surfaces with no user, retired 2026-08-03.
     (
         "cell option",

@@ -1,11 +1,13 @@
 ---
-title: "Callout kinds, icons, and appearances"
+title: "Callout kinds"
 ---
 
-The three callout kinds each carry a bundled icon and a theme-aware accent.
+There are three callout kinds, and each is carried by a 2px left rule in its own colour
+plus the kind word above the body. There is no box, no icon and no tint: the rule and the
+word are the whole affordance.
 
 ::: {.callout-note}
-A note. The default boxed appearance with a tinted title bar.
+A note, for an aside the reader can take or leave.
 :::
 
 ::: {.callout-tip}
@@ -16,16 +18,16 @@ A tip worth surfacing.
 A warning the reader should not miss.
 :::
 
-The appearance and icon are configurable.
+The kind word is the tool speaking, so it takes the machine voice. A title is not.
 
-::: {.callout-tip appearance="simple"}
-`appearance="simple"` drops the tinted title bar; the border and icon carry the kind.
+::: {.callout-note title="An authored title"}
+A `title=` makes the callout's own heading, and it stays in the author's voice — upright
+serif, not tracked uppercase — because those are the author's own words.
 :::
 
-::: {.callout-warning appearance="minimal"}
-`appearance="minimal"` also drops the left accent for a quieter aside.
-:::
+A callout can fold, and the summary is the same split: the author's title if they wrote
+one, the kind word if they did not.
 
-::: {.callout-note icon="false"}
-`icon="false"` suppresses the icon entirely.
+::: {.callout-tip collapse="true" title="Folded, with an authored summary"}
+The body is behind a disclosure the reader opens.
 :::

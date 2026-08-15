@@ -165,8 +165,8 @@ enum DivScope {
 /// actually read it.
 ///
 /// **The per-class narrowing is the whole point.** `render/divs.rs` dispatches on class in an
-/// if-else chain, so an attribute is not a property of divs in general: `icon=` is read only
-/// inside the callout arm, and offering it on a `.column-page` would have the editor
+/// if-else chain, so an attribute is not a property of divs in general: `collapse=` is read
+/// only inside the callout arm, and offering it on a `.column-page` would have the editor
 /// recommend a no-op — the same failure `UNSUPPORTED_KEYS` exists to prevent for front
 /// matter.
 ///
@@ -207,20 +207,6 @@ const DIV_ATTRIBUTES: &[DivAttribute] = &[
         value: "${1|true,false|}",
         scope: &[DivScope::Callouts],
         probe: "true",
-    },
-    DivAttribute {
-        name: "icon",
-        description: "`false` hides the callout's kind icon.",
-        value: "${1|false|}",
-        scope: &[DivScope::Callouts],
-        probe: "false",
-    },
-    DivAttribute {
-        name: "appearance",
-        description: "Callout presentation variant (default boxed).",
-        value: "${1|simple,minimal|}",
-        scope: &[DivScope::Callouts],
-        probe: "simple",
     },
     DivAttribute {
         name: "layout-ncol",
@@ -566,7 +552,7 @@ mod tests {
             // Callout attributes on a width escape: it falls through to the generic arm,
             // which reads neither.
             ("column-page", "collapse", "true"),
-            ("column-page", "icon", "false"),
+            ("column-page", "title", "T"),
         ] {
             assert_eq!(
                 div_html(class, ""),

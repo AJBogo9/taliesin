@@ -349,7 +349,7 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
 
     let callout = response(&stdout, 2);
     let got = labels(&callout);
-    for expected in ["title", "collapse", "icon", "appearance"] {
+    for expected in ["title", "collapse"] {
         assert!(
             got.iter().any(|l| l == expected),
             "`{expected}=` should be offered on a callout: {got:?}"
@@ -362,17 +362,19 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
              reads it) and must not be offered: {got:?}"
         );
     }
-    // The value half comes with the key, and as a snippet, so `appearance` lands on a
-    // value the renderer recognizes instead of an empty pair of quotes.
+    // The value half comes with the key, and as a snippet, so a closed-set attribute lands
+    // on a value the renderer recognizes instead of an empty pair of quotes. This used to be
+    // checked on `appearance=`, which was retired on 2026-08-15 with the callout's box and
+    // title tint; `collapse=` is the surviving closed set and makes the same point.
     let items = callout.as_array().expect("items");
-    let appearance = items
+    let collapse = items
         .iter()
-        .find(|i| i["label"] == "appearance")
-        .expect("appearance is offered");
-    assert_eq!(appearance["insertTextFormat"], 2, "{appearance:?}");
+        .find(|i| i["label"] == "collapse")
+        .expect("collapse is offered");
+    assert_eq!(collapse["insertTextFormat"], 2, "{collapse:?}");
     assert_eq!(
-        appearance["insertText"], "appearance=\"${1|simple,minimal|}\"",
-        "the closed value set should be offered as a snippet choice: {appearance:?}"
+        collapse["insertText"], "collapse=\"${1|true,false|}\"",
+        "the closed value set should be offered as a snippet choice: {collapse:?}"
     );
 
     // The other side of the narrowing: a div carrying no callout class falls through to
@@ -382,7 +384,7 @@ fn completion_offers_div_attributes_narrowed_to_the_classes_on_the_fence() {
         generic.iter().any(|l| l == "layout-ncol"),
         "`layout-ncol=` reaches a plain div: {generic:?}"
     );
-    for absent in ["title", "collapse", "icon", "appearance"] {
+    for absent in ["title", "collapse"] {
         assert!(
             !generic.iter().any(|l| l == absent),
             "`{absent}=` is a callout attribute; the generic arm never reads it, so \
