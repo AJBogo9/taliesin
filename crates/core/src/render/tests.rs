@@ -5228,3 +5228,68 @@ fn the_body_face_is_the_one_the_measure_was_measured_on() {
          divide by font-size), update it and this hash together, and re-date both."
     );
 }
+
+/// The checklist a reviewer would otherwise have to run by eye, as a gate. Each line is a
+/// documented tell of generated or templated design; each is cheap to reintroduce by accident
+/// and expensive to notice.
+///
+/// Static analysis of the bundled sheets, deliberately: a browser smoke test was decided
+/// against with evidence on 2026-08-13 (notes/DO-NOT-REBUILD.md) and this must not become one.
+#[test]
+fn the_bundled_stylesheets_carry_no_generated_design_tells() {
+    let sheets = [
+        ("tokens.css", TOKENS_CSS),
+        ("tokens-dark.css", TOKENS_DARK_CSS),
+        ("base.css", BASE_CSS),
+        ("dark.css", DARK_CSS),
+        ("site.css", SITE_CSS),
+    ];
+    for (name, css) in sheets {
+        let l = css.to_ascii_lowercase();
+        for (needle, why) in [
+            (
+                "box-shadow",
+                "separation is whitespace, then a ground shift, then a hairline",
+            ),
+            (
+                "backdrop-filter",
+                "an opaque ground and a 1px rule read the same",
+            ),
+            ("system-ui", "the theme owns its faces"),
+            (
+                "border-radius: 999px",
+                "a pill badge is a tell; set the label as text",
+            ),
+            ("linear-gradient(135deg", "no decorative gradients"),
+            ("translatey(-2px)", "hover may not move anything"),
+            ("scale(1.05)", "hover may not move anything"),
+        ] {
+            assert!(!l.contains(needle), "{name}: {needle} — {why}");
+        }
+    }
+
+    // Exactly one radius value, and it is small. `border-radius: 50%` (a circle) and
+    // `em`-based inline radii are intentional specials and are excluded by shape.
+    let mut radii: Vec<&str> = Vec::new();
+    for (_, css) in sheets {
+        for seg in css.split("border-radius:").skip(1) {
+            let v = seg.split(';').next().unwrap_or("").trim();
+            if v != "50%" && !v.ends_with("em") && !v.starts_with("var(") && !v.is_empty() {
+                radii.push(v);
+            }
+        }
+    }
+    radii.sort_unstable();
+    radii.dedup();
+    assert!(
+        radii.iter().all(|v| {
+            // `!important` is stripped before comparing, not admitted as a third allowed
+            // value: base.css has one correct `border-radius: 0 !important`, but adding
+            // "0 !important" to the allowed set would also let "999px !important" through,
+            // which is exactly the tell this gate exists to catch.
+            let stripped = v.trim_end_matches("!important").trim();
+            stripped == "0" || stripped == "2px"
+        }),
+        "the radius scale drifted: {radii:?}. One token, 2px, objects only."
+    );
+}
