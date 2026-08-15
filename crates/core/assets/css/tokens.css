@@ -22,7 +22,10 @@
     --tali-border: #D9D7D2;             /* 1.37:1 — a decorative separator, not a control */
     --tali-border-strong: #8B887F;      /* 3.37:1 — clears the 3:1 non-text floor */
     --tali-link: #22201A;
-    --tali-underline: #A8A49B;
+    /* Load-bearing: `--tali-link` is the ink, so this hairline is the ONLY cue distinguishing a
+       link from body text. #A8A49B (2.36:1) was too faint; this is `--tali-border-strong`'s
+       value, reused rather than invented. */
+    --tali-underline: #8B887F;          /* 3.37:1 — clears the 3:1 non-text floor */
     --tali-flash: rgba(34, 32, 26, .08);
     /* `--tali-accent` is NOT a second chrome colour: this theme has none. It survives as a
        token only because ~30 call sites (the focus ring, xref markers, sidenote numbers, the

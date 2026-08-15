@@ -18,7 +18,7 @@
     --tali-border: #33312B;             /* 1.43:1 decorative */
     --tali-border-strong: #7C7972;      /* 4.28:1 */
     --tali-link: #EAE7E0;
-    --tali-underline: #6E6B63;
+    --tali-underline: #6E6B63;          /* 3.49:1 — already clears the 3:1 non-text floor */
     --tali-flash: rgba(234, 231, 224, .08);
     /* Same rule as tokens.css: this theme has no chrome accent, so `--tali-accent` (and its
        fill/on-accent pair) resolve to the ink/paper of THIS palette rather than a hue. */

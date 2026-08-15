@@ -3429,6 +3429,13 @@ fn every_text_colour_is_scored_in_both_palettes() {
             strong >= 3.0,
             "{theme}: --tali-border-strong is {strong:.2}:1; a control boundary needs 3:1"
         );
+        let underline = on_page("--tali-underline:");
+        assert!(
+            underline >= 3.0,
+            "{theme}: --tali-underline is {underline:.2}:1; a non-text decoration needs 3:1. \
+             It is painted (`text-decoration-color`), and it is the ONLY cue distinguishing a \
+             link from body text since --tali-link is byte-identical to --tali-fg."
+        );
     }
 }
 
@@ -5494,6 +5501,15 @@ fn the_machine_voice_is_only_on_generated_labels_never_on_authored_text() {
         "an authored title is the author's voice: the serif, reached through the `font` \
          shorthand. Got: `{base}`"
     );
+    // `text-transform`/`letter-spacing` are INHERITED, so leaving them unset here would let a
+    // `.callout-title` nested under something tracked-uppercase (or a future ancestor rule)
+    // compute the machine voice rather than "none" — the comment above `.callout-title` in
+    // base.css calls this load-bearing for exactly that reason.
+    assert!(
+        base.contains("text-transform: none") && base.contains("letter-spacing: normal"),
+        "`.callout-title` must reset both inherited properties explicitly, not rely on no \
+         ancestor setting them. Got: `{base}`"
+    );
     let kind = rule_block(BASE_CSS, ".callout-title.callout-kind {");
     assert!(
         kind.contains("var(--tali-font-mono)") && kind.contains("text-transform: uppercase"),
@@ -5513,6 +5529,15 @@ fn the_machine_voice_is_only_on_generated_labels_never_on_authored_text() {
     assert!(
         label.contains("var(--tali-font-mono)") && label.contains("text-transform: uppercase"),
         "the \"Code\" fallback is generated, so it keeps the machine voice. Got: `{label}`"
+    );
+    // The same inheritance trap, one selector over: `thead th` (below, in the same file) IS the
+    // machine voice, and both properties are inherited straight through an inline `<code>` in a
+    // header cell — uppercasing the author's literal source characters, e.g. `` `_freeze/` ``
+    // rendering as `_FREEZE/`.
+    let th_code = rule_block(BASE_CSS, "th code {");
+    assert!(
+        th_code.contains("text-transform: none") && th_code.contains("letter-spacing: normal"),
+        "`th code` must opt back out of the inherited machine voice. Got: `{th_code}`"
     );
 }
 

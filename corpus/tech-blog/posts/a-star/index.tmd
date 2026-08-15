@@ -357,7 +357,7 @@ const C = {
     path:      "#fbbf24",  // amber-400
     current:   "#f97316",  // orange-500
     text:      "#ffffff",  // white — for S/E labels on coloured cells
-    scoreText: "#3A5578",  // dark, readable on all light cell colours
+    scoreText: "#22201A",  // the ink — AA (4.5:1+) on every scored cell colour
   };
 
   // ── SVG setup ───────────────────────────────────────────────────────────────

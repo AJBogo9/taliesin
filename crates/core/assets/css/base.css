@@ -397,6 +397,12 @@
      its own scroll box, so let it scroll rather than shred the token. (A `<pre>` in a cell
      already sets `white-space: pre`, so this is a no-op for code blocks.) */
   th code, td code { overflow-wrap: normal; }
+  /* `text-transform`/`letter-spacing` are INHERITED, so `thead th` below (the machine voice)
+     reaches straight through an inline `<code>` and uppercases the author's literal source
+     characters — `` `_freeze/` `` rendering as `_FREEZE/`. That misrepresents what the author
+     typed, the same defect class the code-ligature ban exists to prevent, so reset both back
+     to normal for code specifically. */
+  th code { text-transform: none; letter-spacing: normal; }
   table caption { caption-side: top; font-size: .9em; color: var(--tali-muted); padding-bottom: .4rem; text-align: left; }
   /* A column head names what the column holds — the TOOL's register, not the author's
      sentence — so it takes the machine voice, like `h4`, the TOC, the nav and the meta line.
@@ -494,9 +500,10 @@
     transform: rotate(45deg); transition: transform var(--tali-dur) ease; opacity: .75; }
   .callout-collapse > details[open] > summary.callout-title::after { transform: rotate(135deg); }
   /* Citations and cross-references were the only links on the page with no underline, so colour
-     alone said "clickable". Against BODY text (the 1.4.1 comparison) the link tone is 1.93:1 in
-     dark, the default theme. An underline discharges 1.4.1 in every theme
-     and also serves colour-blind readers. */
+     alone said "clickable". Against BODY text (the 1.4.1 comparison) the link tone is 1.00:1 in
+     BOTH themes: `--tali-link` is byte-identical to `--tali-fg`, so colour was never a real cue
+     at all, only the ink computing to the ink. An underline discharges 1.4.1 in every theme and
+     also serves colour-blind readers. */
   .tali-xref { text-decoration: underline; text-underline-offset: .12em;
     text-decoration-thickness: from-font; }
   .tali-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
