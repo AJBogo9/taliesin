@@ -1409,3 +1409,110 @@ fn every_titled_post_emits_exactly_one_h1() {
         assert_eq!(n, 1, "{label} should emit exactly one <h1>, found {n}");
     }
 }
+
+/// **Which of these 82 documents a person actually looks at**, and the answer is three
+/// projects, not nineteen.
+///
+/// The corpus is mostly machine-checked and always was: `diagnostics/` produces a warnings
+/// list rather than a page, `layout/structure.tmd` pins `data-section-end`, `native-tmd.tmd`
+/// exercises the walker. Eyeballing those is wasted effort, but nothing in the tree ever said
+/// so, so the honest default was to assume the manual pass covered everything and then not do
+/// it.
+///
+/// **The list is DERIVED, which is the whole point.** `tools/build-site.sh`'s mount block is
+/// already the definition of what a stranger sees, so the visual set is read out of it rather
+/// than maintained beside it, and mounting a new exhibit moves a project into the pass without
+/// anyone remembering to. `tech-blog/` is the single hand-named member and the comment beside
+/// it in the README says why: it is human-facing but deliberately not deployed, so no script
+/// can derive it. That is exactly the kind of claim worth pinning rather than trusting.
+///
+/// Bidirectional on purpose. A project the deploy ships that the README calls machine-checked
+/// is a document nobody looks at in the one place a defect is public; a project marked `eye`
+/// that nothing mounts sends the author to read a fixture. A NEW corpus project with no row at
+/// all fails here too, which is the drift this would otherwise grow.
+#[test]
+fn the_readme_marks_the_same_visual_set_the_deploy_ships() {
+    let root = corpus_dir().parent().unwrap().to_path_buf();
+    let script = fs::read_to_string(root.join("tools/build-site.sh")).unwrap();
+
+    // `subprojects=( "corpus/tarn:gallery/tarn" … )`, read from the script's own block.
+    let block = script
+        .split("subprojects=(")
+        .nth(1)
+        .and_then(|s| s.split(')').next())
+        .expect("tools/build-site.sh no longer declares subprojects=( … )");
+    let mut deployed: HashSet<String> = block
+        .lines()
+        .filter_map(|l| l.trim().trim_matches('"').strip_prefix("corpus/"))
+        .filter_map(|l| l.split(':').next())
+        .map(str::to_string)
+        .collect();
+    assert!(
+        !deployed.is_empty(),
+        "no corpus project is mounted into the deploy — the parse broke, and an empty \
+         expectation passes forever"
+    );
+    // Human-facing, deliberately not deployed, so no script can derive it.
+    deployed.insert("tech-blog".to_string());
+
+    let readme = fs::read_to_string(corpus_dir().join("README.md")).unwrap();
+    let rows: Vec<(String, String)> = readme
+        .lines()
+        .filter(|l| l.starts_with("| `"))
+        .filter_map(|l| {
+            let mut cells = l.trim_matches('|').split('|').map(str::trim);
+            Some((cells.next()?.to_string(), cells.next()?.to_string()))
+        })
+        .collect();
+    assert!(
+        rows.len() > 15,
+        "only {} document rows parsed out of corpus/README.md",
+        rows.len()
+    );
+
+    // Every project directory and every loose document, from the tree rather than a list.
+    let mut entries: Vec<String> = Vec::new();
+    for e in fs::read_dir(corpus_dir()).unwrap() {
+        let p = e.unwrap().path();
+        let name = p.file_name().unwrap().to_str().unwrap().to_string();
+        if p.is_dir() || name.ends_with(".tmd") {
+            entries.push(name);
+        }
+    }
+    entries.sort();
+
+    for entry in &entries {
+        let want = if deployed.contains(entry.as_str()) {
+            "eye"
+        } else {
+            "machine"
+        };
+        let token = if entry.ends_with(".tmd") {
+            format!("`{entry}`")
+        } else {
+            format!("`{entry}/")
+        };
+        let matched: Vec<&(String, String)> = rows
+            .iter()
+            .filter(|(path, _)| path.contains(&token))
+            .collect();
+        assert!(
+            !matched.is_empty(),
+            "corpus/{entry} has no row in corpus/README.md's document table, so nothing says \
+             whether a person is meant to look at it"
+        );
+        for (path, pass) in matched {
+            assert_eq!(
+                pass,
+                want,
+                "corpus/{entry} is marked `{pass}` in the row {path}, but tools/build-site.sh \
+                 {} it",
+                if want == "eye" {
+                    "ships"
+                } else {
+                    "does not ship"
+                }
+            );
+        }
+    }
+}

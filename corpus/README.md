@@ -24,32 +24,55 @@ was used, which is true by construction and therefore says nothing.
 guards leaves that code unguarded while every gate still passes, because the sweeps
 iterate over whatever exists.
 
+## What you verify by eye
+
+**Three of these nineteen projects are the ones a person looks at**, and they are not chosen
+by taste: they are the three `tools/build-site.sh` mounts into the composed deploy, which is
+where a defect is public. `tarn/` at `/gallery/tarn`, `descent/` at `/gallery/descent`,
+`analyst/` at `/gallery/analyst`. Plus one post out of `tech-blog/`, sampled rather than swept,
+because 19 near-identical posts do not each earn an eyeball.
+
+Everything else is checked by machine, and looking at it is wasted effort rather than diligence:
+the diagnostics documents produce a warnings list and not a page, `layout/structure.tmd` pins
+`data-section-end`, `native-tmd.tmd` exercises the walker. The `Pass` column below answers this
+per document.
+
+**The column is derived, not maintained.** `the_readme_marks_the_same_visual_set_the_deploy_ships`
+reads the mount block out of `tools/build-site.sh`, so mounting a new exhibit moves that project
+into the visual pass whether or not anyone remembers to, and a new corpus project with no row
+here fails the test rather than sitting unclassified. `tech-blog/` is the one hand-named member:
+it is human-facing and deliberately not deployed, so no script can derive it.
+
+This thins nothing. All 82 documents still render under the sweeps above, and the two that get
+stronger with every document added are untouched. The column governs a person's attention, not
+the regression net.
+
 ## The documents
 
-| Path | What it is |
-|---|---|
-| `tech-blog/` | The author's real deployed blog (19 docs): `_site.yml`, navbar/footer, listings, the `hero:` homepage header, `.tmd`→`.html` link rewriting, a `logo:` brand image, a draft post, and the three heavy posts (`em-algorithm` math, `pca-geometry` `{js}`+Three.js, `fourier-transform` Python→`{js}` bridge + raw `{=html}` audio). The only realistic multi-page workload in the suite. |
-| `demo-book/` | The book format, purpose-built and small: `chapters:` with a `part:` and `{ file:, text: }` label overrides, chapter and section numbering, prev/next, a draft appendix, a brand logo in both book slots, and chapter-scoped numbering for **two** float kinds (figures and display equations) with cross-page refs to each. |
-| `tarn/` | A larger book: Guide + API **Reference** parts including a nested one, deep install subsections, cross-page guide→reference links, and a full-text Cmd-K index that spans the whole book and carries each record's chapter number and heading path. Pinned by `tarn.rs`; the marketing site's `/gallery/tarn` exhibit. |
-| `analyst/` | A two-page computational report that **executes**: `{python}` cleans and charts one committed CSV, and one table counter is shared by the authored `: caption {#tbl-}` path and the executed `#\| label: tbl-` path in document order, with cross-page refs to cell-produced floats. `/gallery/analyst`. |
-| `descent/` | A single-page explorable explanation: `{{< input >}}` sliders driving a draggable `{js}` graphic, a select-driven scene walk, a reactive Observable Plot chart, math, and two numbered theme-adaptive SVG figures. `/gallery/descent`. |
-| `single-page-report/` | One page assembled from seven `subsections/` includes, with cross-refs, a bibliography, `toc: true`, and document-order figure numbering across both cell figures and labelled image figures. |
-| `diagnostics/` | Six documents that deliberately trip the validators: typo'd / retired / inert keys (`typos.tmd`), the static check-superset (`check-superset.tmd`), widget shapes, links, refs and a11y. Exempt from the clean-vocabulary sweeps. Strictly more valuable as the retirement registers grow. |
-| `agent/executed-read.tmd` | The lone-document fixture: `standalone_document_chrome.rs` (preview and build must agree on a single document's page chrome) and the project-refusal message both name it. |
-| `posts/born-machines.tmd` | Pure prose, no math and no code: the simplest render target in the tree. |
-| `posts/cite-coverage/` | `.bib` edge cases: LaTeX accents → Unicode, a brace-protected corporate author, `@string` substitution, `@incollection` `booktitle`+`pages`, and a manual `# References` heading suppressing the generated one. |
-| `shared-bib/` | A project-wide `bibliography:` in `_site.yml`, merged **under** a page's own `.bib` (same key → the page wins). |
-| `structured-authors/` | Structured `author:` front matter with superscript numbers derived from first appearance, plus the generated Author Contributions appendix. |
-| `layout/` | `structure.tmd` (every heading shape `data-section-end` must survive, including an empty section and a final one followed by generated furniture), `escapes.tmd` (the three width escapes), `dense-output.tmd` (the three overflow shapes, and the raw-HTML root that opens in one block and closes in a later one). |
-| `media/` | A `layout-ncol` figure grid, intrinsic `width`/`height` read from the file with the LCP exception, and a theme-adaptive figure. |
-| `callouts/kinds.tmd` | All 3 callout kinds with bundled icons, `appearance=` and `icon="false"`. |
-| `nested-cells.tmd` | One executable cell per container kind (callout, grid column, width escape, two deep), pinning the output slots' order and depth. |
-| `reactive/` | The `{js}` graph: `//\| viewof`/`name`/`input` chains, the `{{< input >}}` control set, and the error box a throwing cell shows. |
-| `reader/` | Read-only reader enhancers: pre-paint theme, display preferences, the TOC scrollspy. |
-| `highlight.tmd` | Per-language `tali-hl-` scope classes, including the highlighted-but-never-executed languages. Why `ts` and `toml` are the load-bearing cases is in `highlight_langs.rs`. |
-| `native-tmd.tmd` | `.tmd` is the native **and only** source extension: the walker, the lint and the link rewrite recognize it, and a stray `.qmd` is not a source document. |
-| `theme-css/` | `theme: brand.css` read relative to the document, and the `_extensions/<name>/theme.css` bundle branch resolved by bare name. |
-| `recipes/`, `render-fixes/` | A data-to-figure recipe, and the regression page for individually-fixed render defects. |
+| Path | Pass | What it is |
+|---|---|---|
+| `tech-blog/` | eye | The author's real deployed blog (19 docs): `_site.yml`, navbar/footer, listings, the `hero:` homepage header, `.tmd`→`.html` link rewriting, a `logo:` brand image, a draft post, and the three heavy posts (`em-algorithm` math, `pca-geometry` `{js}`+Three.js, `fourier-transform` Python→`{js}` bridge + raw `{=html}` audio). The only realistic multi-page workload in the suite. |
+| `demo-book/` | machine | The book format, purpose-built and small: `chapters:` with a `part:` and `{ file:, text: }` label overrides, chapter and section numbering, prev/next, a draft appendix, a brand logo in both book slots, and chapter-scoped numbering for **two** float kinds (figures and display equations) with cross-page refs to each. |
+| `tarn/` | eye | A larger book: Guide + API **Reference** parts including a nested one, deep install subsections, cross-page guide→reference links, and a full-text Cmd-K index that spans the whole book and carries each record's chapter number and heading path. Pinned by `tarn.rs`; the marketing site's `/gallery/tarn` exhibit. |
+| `analyst/` | eye | A two-page computational report that **executes**: `{python}` cleans and charts one committed CSV, and one table counter is shared by the authored `: caption {#tbl-}` path and the executed `#\| label: tbl-` path in document order, with cross-page refs to cell-produced floats. `/gallery/analyst`. |
+| `descent/` | eye | A single-page explorable explanation: `{{< input >}}` sliders driving a draggable `{js}` graphic, a select-driven scene walk, a reactive Observable Plot chart, math, and two numbered theme-adaptive SVG figures. `/gallery/descent`. |
+| `single-page-report/` | machine | One page assembled from seven `subsections/` includes, with cross-refs, a bibliography, `toc: true`, and document-order figure numbering across both cell figures and labelled image figures. |
+| `diagnostics/` | machine | Six documents that deliberately trip the validators: typo'd / retired / inert keys (`typos.tmd`), the static check-superset (`check-superset.tmd`), widget shapes, links, refs and a11y. Exempt from the clean-vocabulary sweeps. Strictly more valuable as the retirement registers grow. |
+| `agent/executed-read.tmd` | machine | The lone-document fixture: `standalone_document_chrome.rs` (preview and build must agree on a single document's page chrome) and the project-refusal message both name it. |
+| `posts/born-machines.tmd` | machine | Pure prose, no math and no code: the simplest render target in the tree. |
+| `posts/cite-coverage/` | machine | `.bib` edge cases: LaTeX accents → Unicode, a brace-protected corporate author, `@string` substitution, `@incollection` `booktitle`+`pages`, and a manual `# References` heading suppressing the generated one. |
+| `shared-bib/` | machine | A project-wide `bibliography:` in `_site.yml`, merged **under** a page's own `.bib` (same key → the page wins). |
+| `structured-authors/` | machine | Structured `author:` front matter with superscript numbers derived from first appearance, plus the generated Author Contributions appendix. |
+| `layout/` | machine | `structure.tmd` (every heading shape `data-section-end` must survive, including an empty section and a final one followed by generated furniture), `escapes.tmd` (the three width escapes), `dense-output.tmd` (the three overflow shapes, and the raw-HTML root that opens in one block and closes in a later one). |
+| `media/` | machine | A `layout-ncol` figure grid, intrinsic `width`/`height` read from the file with the LCP exception, and a theme-adaptive figure. |
+| `callouts/kinds.tmd` | machine | All 3 callout kinds: the 2px left rule and the kind word, an authored `title=` staying in the author's voice, and a `collapse="true"` fold. |
+| `nested-cells.tmd` | machine | One executable cell per container kind (callout, grid column, width escape, two deep), pinning the output slots' order and depth. |
+| `reactive/` | machine | The `{js}` graph: `//\| viewof`/`name`/`input` chains, the `{{< input >}}` control set, and the error box a throwing cell shows. |
+| `reader/` | machine | Read-only reader enhancers: pre-paint theme, display preferences, the TOC scrollspy. |
+| `highlight.tmd` | machine | Per-language `tali-hl-` scope classes, including the highlighted-but-never-executed languages. Why `ts` and `toml` are the load-bearing cases is in `highlight_langs.rs`. |
+| `native-tmd.tmd` | machine | `.tmd` is the native **and only** source extension: the walker, the lint and the link rewrite recognize it, and a stray `.qmd` is not a source document. |
+| `theme-css/` | machine | `theme: brand.css` read relative to the document, and the `_extensions/<name>/theme.css` bundle branch resolved by bare name. |
+| `recipes/`, `render-fixes/` | machine | A data-to-figure recipe, and the regression page for individually-fixed render defects. |
 
 ## Two things worth knowing before you edit
 
