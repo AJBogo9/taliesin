@@ -86,8 +86,8 @@ cargo test --workspace
 # `--strict` is deliberately absent: advice must not block a push.
 #
 # BOTH books, because wave 9 wired only the guide and covered one of two. `docs/internals`
-# was built by tools/build-site.sh (a plain `build … --out`, which exits 0 on any number of
-# errors) and linted by nothing. `gate_script.rs` now derives the book list from the tree
+# was built by the composition script (a plain `build … --out`, which exits 0 on any number
+# of errors) and linted by nothing. `gate_script.rs` now derives the book list from the tree
 # and fails if any `_site.yml` project under `docs/` is missing from this file.
 #
 # Built with the same profile the tests just used, so this costs a link and not a rebuild.
@@ -95,12 +95,16 @@ echo "  [4/5] cargo run -q -p taliesin-server -- build docs/{guide,internals} --
 cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
 cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
 
-# The gate that replaces `mounts:` (cut 2026-08-09). The marketing site links into the two
-# docs books and the three gallery exhibits; the config key used to make those links resolve
-# by construction, and now a shell script composes them instead. build.rs recorded that the
-# script alternative had already shipped this project's call-to-action with a 404 once,
-# because the script was not run. So it is run here: `--check` builds the whole composition
-# with --no-exec into a temp dir and fails if any cross-project link has nothing behind it.
-echo "  [5/5] tools/build-site.sh --check"
-tools/build-site.sh --check
+# The publish gate. FOUR separate projects, four Cloudflare Pages deploys, four domains:
+# the marketing site, the two docs books and the gallery each build alone, and they reach
+# each other by absolute URL rather than by composition (Cloudflare Pages has no subpath
+# deploy, so a composed tree would have to be re-uploaded whole on every change).
+#
+# What is left to verify is the gallery, the one project that still writes other projects
+# under its own output. `--check` builds all four with --no-exec into temp dirs and fails
+# if any gallery exhibit link has nothing behind it. build.rs recorded that an unrun script
+# had already shipped this project's call-to-action with a 404 once (item 149), which is
+# why this runs here rather than by hand.
+echo "  [5/5] tools/publish.sh --check"
+tools/publish.sh --check
 echo "pre-push: all checks passed."

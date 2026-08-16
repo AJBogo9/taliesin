@@ -1,5 +1,7 @@
 title: "Taliesin Internals"
 author: "Andreas Bogossian"
+# Its own deploy, its own domain — see the note in docs/guide/_site.yml.
+url: "https://internals.taliesin.sh"
 
 chapters:
   - index.tmd

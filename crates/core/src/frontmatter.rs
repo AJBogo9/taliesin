@@ -94,9 +94,9 @@ pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
     (
         "config key",
         "mounts",
-        "it was removed on 2026-08-09: build each project separately and link between \
-         them relatively, composing the deploy with a script (this repo's own is \
-         `tools/build-site.sh`)",
+        "it was removed on 2026-08-09: publish each project as its own deploy and link \
+         between them by absolute URL (this repo's own four are built by \
+         `tools/publish.sh`)",
     ),
     // --- The reactive tail and the second kernel language, retired 2026-08-08.
     (

@@ -479,7 +479,7 @@ fn elapsed_note(started: std::time::Instant) -> String {
 /// a page carrying one and left the exit to `--strict`. Widening this to all of severity
 /// `error` also fails `--no-exec`, where an unexecuted `{js}` figure's own `@fig-` ref is
 /// broken *by the flag* rather than by the document -- and `--no-exec` is what the
-/// pre-push gate and `tools/build-site.sh --check` run. An unparseable block is different
+/// pre-push gate and `tools/publish.sh --check` run. An unparseable block is different
 /// in kind: nothing in it was read, so the page silently lost its `title:`,
 /// `bibliography:` and `listing:` while reporting success.
 fn finalize_build(
@@ -1737,13 +1737,17 @@ fn build_site(
 /// directory is a deployable static site. `out_override` (the `--out` flag) wins over the
 /// config's `output-dir` (default `_site`).
 ///
-/// One project per call. Composing several into one deploy (this repo's own site, with the
-/// two docs books and the gallery exhibits under it) is `tools/build-site.sh`, which runs
-/// one `build … --out <out>/<prefix>` per sub-project, parent first, because the parent's sweep
-/// deletes what it did not write. That script is run by `.githooks/pre-push`, and it
-/// resolves every cross-project link against the composed output, because the reason the
-/// `mounts:` key existed at all was a deploy whose call-to-action 404'd from a script
-/// nobody ran (item 149).
+/// One project per call, and since 2026-08-16 that is also one project per DEPLOY: this
+/// repo's four sites (marketing, the two docs books, the gallery) each publish to their own
+/// Cloudflare Pages project and reach each other by absolute URL, because Pages has no
+/// subpath deploy and a composed tree would have to be re-uploaded whole on every change.
+///
+/// The gallery is the one project that still writes others under its own output (its three
+/// exhibits), and `tools/publish.sh` does that with one `build … --out <out>/<prefix>` per
+/// exhibit, parent first, because the parent's sweep deletes what it did not write. That
+/// script is run by `.githooks/pre-push` and it resolves every exhibit link against the
+/// built output, because the reason the `mounts:` key existed at all was a deploy whose
+/// call-to-action 404'd from a script nobody ran (item 149).
 async fn build_site_async(
     root: &Path,
     out_override: Option<&str>,
@@ -2316,8 +2320,8 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
 /// The marker `build` writes into its output directory and reads back to recognise that
 /// directory as its own on the next run. Dot-prefixed, so [`mirror_assets`] never copies
 /// one into a nested deploy and [`sweep_stale`] never deletes it — which is also what
-/// lets a composed deploy (`tools/build-site.sh`, parent first) survive the parent's
-/// sweep and rebuild each sub-project into its own prefix.
+/// lets the gallery deploy (`tools/publish.sh`, parent first) survive the parent's
+/// sweep and rebuild each exhibit into its own prefix.
 const OUTPUT_MARKER: &str = ".taliesin-build";
 
 const OUTPUT_MARKER_BODY: &str = "\

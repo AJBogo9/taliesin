@@ -80,7 +80,7 @@ counts and payload bytes, are deterministic and gated by a regression test.)*
 
 The number that matters is not any single row: it is that the warm edit is a **diff**, so
 its cost tracks what you changed rather than how large the document is. See [the block
-model](../../internals/block-model.html#why-the-diff-is-o-n-log-n) for the operation
+model](https://internals.taliesin.sh/block-model.html#why-the-diff-is-o-n-log-n) for the operation
 breakdown behind that payload figure.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}

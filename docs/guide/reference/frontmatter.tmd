@@ -391,7 +391,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
 | `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
 | `python` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
-| `external-prefixes` | URL prefixes another project supplies when several are composed into one deploy. Links into them are not reported as broken, because this project cannot see those pages. Only useful if you compose projects yourself; a single project never needs it |
+| `external-prefixes` | URL prefixes another project is built under inside this one's output. Links into them are not reported as broken, because this project cannot see those pages, so resolve them yourself against the built output. Only needed if you nest projects; separate deploys linked by absolute URL need nothing here |
 
 **A shared bibliography.** `bibliography:` in `_site.yml` is read by every page, so a
 series of posts citing one reference file declares it once instead of repeating the

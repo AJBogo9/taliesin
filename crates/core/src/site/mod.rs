@@ -801,14 +801,13 @@ impl Site {
                     continue;
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
-                    // A prefix another project supplies in the composed deploy
+                    // A prefix another project is built under inside this one's output
                     // (`_site.yml`'s `external-prefixes:`). This project cannot see those
-                    // pages and never will; `tools/build-site.sh --check` resolves them for
-                    // real, against the composed output, and is what pre-push and
-                    // `tools/gates.sh` run. Without this the marketing site's own
-                    // pre-publish gate was permanently red on 11 links that all resolve,
-                    // which trains an author to ignore the one command that would catch a
-                    // real one.
+                    // pages and never will; `tools/publish.sh --check` resolves them for
+                    // real, against the built output, and is what pre-push and
+                    // `tools/gates.sh` run. Without this the gallery's own pre-publish gate
+                    // would be permanently red on links that all resolve, which trains an
+                    // author to ignore the one command that would catch a real one.
                     if self
                         .config
                         .external_prefixes

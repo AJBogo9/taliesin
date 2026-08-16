@@ -22,7 +22,9 @@ Module map:
 Conventions:
 - Submodules use `use super::*`; expose an item to `mod.rs`/siblings via a `pub(crate) use`
   re-export in `mod.rs` (parents can't see a child's private items).
-- One project per `Site`. Composing several into one deploy (this repo's own site plus the
-  two docs books and the gallery exhibits) is `tools/build-site.sh`, which runs one
-  `build … --out <out>/<prefix>` per project, **parent first**, because the parent's stale-output
-  sweep deletes anything under its output it did not itself write.
+- One project per `Site`, and one project per deploy: this repo's four sites (marketing,
+  the two docs books, the gallery) publish separately and link by absolute URL
+  (`tools/publish.sh`). The gallery is the only one that writes other projects under its
+  own output (its three exhibits), one `build … --out <out>/<prefix>` each, **parent
+  first**, because the parent's stale-output sweep deletes anything under its output it
+  did not itself write.

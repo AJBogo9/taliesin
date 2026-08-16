@@ -172,7 +172,7 @@ fn every_pre_push_command_is_also_run_by_the_gate_script() {
     let ci = read(".github/workflows/ci.yml");
 
     // The load-bearing invocations, spelled as they appear in the hook.
-    const REQUIRED: &[&str] = &["--check-only", "build-site.sh"];
+    const REQUIRED: &[&str] = &["--check-only", "publish.sh"];
 
     let mut checked = 0usize;
     for needle in REQUIRED {
@@ -207,9 +207,9 @@ fn every_pre_push_command_is_also_run_by_the_gate_script() {
 ///
 /// The substring cross-check above cannot do this job: `--check-only` is present whichever
 /// book is named, so wave 9 wired the document gate for `docs/guide`, covered one of two
-/// already-separate books, and left every gate green. `docs/internals` was built by
-/// `tools/build-site.sh` — a plain `build … --out`, which exits 0 on any number of errors
-/// — and linted by nothing for four days.
+/// already-separate books, and left every gate green. `docs/internals` was built by the
+/// composition script — a plain `build … --out`, which exits 0 on any number of errors —
+/// and linted by nothing for four days.
 ///
 /// So compare SETS, derived from the tree: the `_site.yml` projects that exist under
 /// `docs/` against the ones each gate names. A third book added later cannot slip through

@@ -138,17 +138,22 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
     "bibliography",
     // `external-prefixes:` — URL prefixes this project LINKS INTO but does not itself
-    // contain, because another project supplies them when the deploy is composed
-    // (`tools/build-site.sh`). Link validation stops at the prefix instead of reporting a
+    // contain, because another project is written under them at publish time
+    // (`tools/publish.sh`). Link validation stops at the prefix instead of reporting a
     // broken link for every one of them.
     //
     // This is NOT `mounts:` returning (cut 2026-08-09). That key did three things: served
     // sub-projects under a prefix in preview, recursed into them on build, and made their
     // links resolve. The routing layer and the build recursion (with its cycle guard) stay
     // cut — this is the third part alone, a declaration with no behaviour attached beyond
-    // silencing a check that cannot see the composed tree. `tools/build-site.sh --check`
-    // still resolves every one of these links for real, against the composed output, and
-    // is what pre-push and `tools/gates.sh` run.
+    // silencing a check that cannot see the composed tree. `tools/publish.sh --check`
+    // still resolves every one of these links for real, against the built output, and is
+    // what pre-push and `tools/gates.sh` run.
+    //
+    // ONE project in this repo sets it, and that is the point: since 2026-08-16 the four
+    // sites publish separately and link by absolute URL, so `gallery/` is the only place
+    // left where one project's output contains another's. A second user of this key is a
+    // sign the composition is spreading again.
     "external-prefixes",
 ];
 

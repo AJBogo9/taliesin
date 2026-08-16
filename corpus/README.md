@@ -27,10 +27,10 @@ iterate over whatever exists.
 ## What you verify by eye
 
 **Three of these nineteen projects are the ones a person looks at**, and they are not chosen
-by taste: they are the three `tools/build-site.sh` mounts into the composed deploy, which is
-where a defect is public. `tarn/` at `/gallery/tarn`, `descent/` at `/gallery/descent`,
-`analyst/` at `/gallery/analyst`. Plus one post out of `tech-blog/`, sampled rather than swept,
-because 19 near-identical posts do not each earn an eyeball.
+by taste: they are the three exhibits `tools/publish.sh` deploys to gallery.taliesin.sh, which
+is where a defect is public. `tarn/` at `/tarn`, `descent/` at `/descent`, `analyst/` at
+`/analyst`. Plus one post out of `tech-blog/`, sampled rather than swept, because 19
+near-identical posts do not each earn an eyeball.
 
 Everything else is checked by machine, and looking at it is wasted effort rather than diligence:
 the diagnostics documents produce a warnings list and not a page, `layout/structure.tmd` pins
@@ -38,9 +38,9 @@ the diagnostics documents produce a warnings list and not a page, `layout/struct
 per document.
 
 **The column is derived, not maintained.** `the_readme_marks_the_same_visual_set_the_deploy_ships`
-reads the mount block out of `tools/build-site.sh`, so mounting a new exhibit moves that project
-into the visual pass whether or not anyone remembers to, and a new corpus project with no row
-here fails the test rather than sitting unclassified. `tech-blog/` is the one hand-named member:
+reads the `GALLERY_EXHIBITS` block out of `tools/publish.sh`, so publishing a new exhibit moves
+that project into the visual pass whether or not anyone remembers to, and a new corpus project
+with no row here fails the test rather than sitting unclassified. `tech-blog/` is the one hand-named member:
 it is human-facing and deliberately not deployed, so no script can derive it.
 
 This thins nothing. All 82 documents still render under the sweeps above, and the two that get

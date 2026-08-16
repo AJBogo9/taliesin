@@ -1,30 +1,25 @@
 # Taliesin marketing site: a website project, built by Taliesin itself.
-# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs books and the
-# gallery exhibits are separate projects, composed into one deploy by tools/build-site.sh
-# (which `.githooks/pre-push` runs, and which resolves every link below against the
-# composed output). In `preview` this project serves its own pages only.
+# Native flat schema (HTML-only; no `project:`/`format:` nesting).
+#
+# This project is published ALONE, to its own Cloudflare Pages project (tools/publish.sh).
+# The Guide, the Internals book and the Gallery are separate Taliesin projects with their
+# own domains, and the links below are absolute URLs into them: outbound links, exactly
+# like the GitHub one, not a composed tree. Nothing assembles several projects into this
+# output, so there is no `external-prefixes:` here and every link on every page of this
+# site resolves in `preview site` exactly as it does in the deploy.
 title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.sh"
 favicon: favicon.svg
-
-# The prefixes tools/build-site.sh writes OTHER projects under. This project links into
-# them (the navbar, the gallery cards, every call-to-action) but does not contain them, so
-# `build site --check-only` would otherwise report 11 broken links that all resolve in the
-# real deploy. The script still verifies every one of them against the composed output.
-external-prefixes:
-  - docs/guide
-  - docs/internals
-  - gallery
 
 nav:
   left:
     - { text: "Features", href: features.tmd }
     - { text: "Document types", href: formats.tmd }
     - { text: "See it live", href: showcase.tmd }
-    - { text: "Gallery", href: gallery.tmd }
-    - { text: "Guide", href: "docs/guide/" }
-    - { text: "Internals", href: "docs/internals/" }
+    - { text: "Gallery", href: "https://gallery.taliesin.sh/" }
+    - { text: "Guide", href: "https://guide.taliesin.sh/" }
+    - { text: "Internals", href: "https://internals.taliesin.sh/" }
   right:
     - { icon: github, href: "https://github.com/AJBogo9/taliesin" }
 
@@ -32,6 +27,6 @@ footer:
   left:
     - { text: "Built with Taliesin" }
   right:
-    - { text: "Guide", href: "docs/guide/" }
-    - { text: "Internals", href: "docs/internals/" }
+    - { text: "Guide", href: "https://guide.taliesin.sh/" }
+    - { text: "Internals", href: "https://internals.taliesin.sh/" }
     - { icon: github, href: "https://github.com/AJBogo9/taliesin" }

@@ -7,7 +7,7 @@ hero:
   headline: "Taliesin"
   lead: "One .tmd file becomes a live post, a book, or a website — and only the block you changed re-renders."
   actions:
-    - { text: "Read the docs", href: "docs/guide/", primary: true }
+    - { text: "Read the docs", href: "https://guide.taliesin.sh/", primary: true }
     - { text: "Explore the features", href: "features.tmd" }
 ---
 
@@ -93,7 +93,7 @@ cells and live interactive graphics.
 A sidebar, numbered chapters, cross-chapter references, and full-text search. These
 very docs are a Taliesin book.
 
-[Read the docs book →](docs/guide/)
+[Read the docs book →](https://guide.taliesin.sh/)
 :::
 
 ::: {.feature}
@@ -120,6 +120,6 @@ moves, and the kernel never cold-starts.
 ## Built the way you would build yours
 
 There is nothing here a screenshot could fake: **this landing page, the surface you
-spun at the top of it, and the [documentation book](docs/guide/) it links to are all
+spun at the top of it, and the [documentation book](https://guide.taliesin.sh/) it links to are all
 built and served by Taliesin**, from plain `.tmd` files in one repository. If it reads
 well here, the framework is doing its job.

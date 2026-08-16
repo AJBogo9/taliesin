@@ -10,7 +10,7 @@ re-renders in place, and nothing else moves: your scroll position holds, the 3D
 canvas two sections down keeps spinning, the Jupyter kernel stays warm. No flash,
 no reload, no cold start. **This book is how that works.**
 
-The companion [User Guide](../guide/) is about *using* Taliesin; this one is about
+The companion [User Guide](https://guide.taliesin.sh/) is about *using* Taliesin; this one is about
 *how it is built*, for contributors, for anyone extending it, and for the curious
 reader who would rather see the design decisions than take them on faith.
 

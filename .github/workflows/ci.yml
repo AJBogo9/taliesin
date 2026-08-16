@@ -74,8 +74,8 @@ jobs:
         run: |
           cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
           cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
-      - name: Composition gate (every cross-project link resolves)
-        run: ./tools/build-site.sh --check
+      - name: Publish gate (all four sites build; gallery exhibit links resolve)
+        run: ./tools/publish.sh --check
 
   # Exercise the live execution stack (kernel.rs / exec.rs) against a REAL ipykernel —
   # the `test` job above cannot, because TALIESIN_PYTHON is unset there so every kernel

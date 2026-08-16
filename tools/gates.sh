@@ -342,7 +342,7 @@ run_gate "build docs/guide --check-only" docs-guide.log \
 run_gate "build docs/internals --check-only" docs-internals.log \
     cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
 
-run_gate "tools/build-site.sh --check" build-site.log ./tools/build-site.sh --check
+run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
 
 # ---------------------------------------------------------------------------
 # 11. The published census still reproduces.

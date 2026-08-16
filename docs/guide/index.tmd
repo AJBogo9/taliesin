@@ -30,7 +30,7 @@ That loop is the whole product; everything below is what you can put inside it.
 
 This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
-companion book, [Internals](../internals/), covers how it works inside.
+companion book, [Internals](https://internals.taliesin.sh/), covers how it works inside.
 
 ## Coming from Jupyter?
 
@@ -93,4 +93,4 @@ loop](using/preview.tmd), [executable content](using/code.tmd) (Python cells),
 [interactive content](using/interactive.tmd) (`{js}` cells, 3D graphics), [rich
 writing](using/writing.tmd) (math, diagrams, figures, citations), and [recipes for
 books and sites](using/recipes.tmd). For how
-Taliesin works inside, read the companion [Internals](../internals/) book.
+Taliesin works inside, read the companion [Internals](https://internals.taliesin.sh/) book.

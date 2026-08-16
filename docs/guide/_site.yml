@@ -1,5 +1,10 @@
 title: "Taliesin User Guide"
 author: "Andreas Bogossian"
+# Its own deploy, its own domain. The Guide, the Internals book and the marketing site are
+# three separate Taliesin projects published to three separate Cloudflare Pages projects
+# (tools/publish.sh); nothing composes them into one tree, so each needs its own `url:`
+# for canonical links, sitemap.xml and robots.txt.
+url: "https://guide.taliesin.sh"
 
 chapters:
   - index.tmd

@@ -1,0 +1,32 @@
+# The Taliesin gallery: whole documents built with Taliesin, each one openable.
+#
+# Its own project, its own Cloudflare Pages deploy, its own domain (tools/publish.sh).
+# It is the ONE project that still composes: the exhibits are separate Taliesin projects
+# written underneath this one's output, because a gallery is a collection by definition
+# and this is the only place in the tree where that is true. The marketing site, the Guide
+# and the Internals book each build and deploy alone.
+title: "Taliesin Gallery"
+description: "Whole projects built with Taliesin, each one a real document you can open, not a screenshot."
+url: "https://gallery.taliesin.sh"
+
+# The exhibit prefixes tools/publish.sh writes the corpus projects under. This project
+# links into them but does not contain them, so link validation stops at the prefix;
+# publish.sh resolves every one of them against the composed output before it deploys.
+external-prefixes:
+  - tarn
+  - descent
+  - analyst
+
+nav:
+  left:
+    - { text: "Taliesin", href: "https://taliesin.sh/" }
+    - { text: "Guide", href: "https://guide.taliesin.sh/" }
+    - { text: "Internals", href: "https://internals.taliesin.sh/" }
+  right:
+    - { icon: github, href: "https://github.com/AJBogo9/taliesin" }
+
+footer:
+  left:
+    - { text: "Built with Taliesin" }
+  right:
+    - { icon: github, href: "https://github.com/AJBogo9/taliesin" }

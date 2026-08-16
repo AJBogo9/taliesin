@@ -160,7 +160,7 @@ position and so must fully re-render to keep Ctrl-click accurate. One block shap
 90% of the payload; every other block costs bytes proportional to nothing but its own line
 number. The tradeoff is deliberate: its one visible cost is that a collapse callout you
 have opened closes again when an edit lands above it. (See [Choosing
-Taliesin](../guide/using/choosing.html#sec-speed) for the full measurement.)
+Taliesin](https://guide.taliesin.sh/using/choosing.html#sec-speed) for the full measurement.)
 
 ::: {.callout-note}
 ## The one limitation: no Move

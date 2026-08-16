@@ -1419,12 +1419,13 @@ fn every_titled_post_emits_exactly_one_h1() {
 /// so, so the honest default was to assume the manual pass covered everything and then not do
 /// it.
 ///
-/// **The list is DERIVED, which is the whole point.** `tools/build-site.sh`'s mount block is
-/// already the definition of what a stranger sees, so the visual set is read out of it rather
-/// than maintained beside it, and mounting a new exhibit moves a project into the pass without
-/// anyone remembering to. `tech-blog/` is the single hand-named member and the comment beside
-/// it in the README says why: it is human-facing but deliberately not deployed, so no script
-/// can derive it. That is exactly the kind of claim worth pinning rather than trusting.
+/// **The list is DERIVED, which is the whole point.** `tools/publish.sh`'s gallery-exhibit
+/// block is already the definition of what a stranger sees, so the visual set is read out of
+/// it rather than maintained beside it, and publishing a new exhibit moves a project into the
+/// pass without anyone remembering to. `tech-blog/` is the single hand-named member and the
+/// comment beside it in the README says why: it is human-facing but deliberately not deployed,
+/// so no script can derive it. That is exactly the kind of claim worth pinning rather than
+/// trusting.
 ///
 /// Bidirectional on purpose. A project the deploy ships that the README calls machine-checked
 /// is a document nobody looks at in the one place a defect is public; a project marked `eye`
@@ -1433,14 +1434,14 @@ fn every_titled_post_emits_exactly_one_h1() {
 #[test]
 fn the_readme_marks_the_same_visual_set_the_deploy_ships() {
     let root = corpus_dir().parent().unwrap().to_path_buf();
-    let script = fs::read_to_string(root.join("tools/build-site.sh")).unwrap();
+    let script = fs::read_to_string(root.join("tools/publish.sh")).unwrap();
 
-    // `subprojects=( "corpus/tarn:gallery/tarn" … )`, read from the script's own block.
+    // `GALLERY_EXHIBITS=( "corpus/tarn:tarn" … )`, read from the script's own block.
     let block = script
-        .split("subprojects=(")
+        .split("GALLERY_EXHIBITS=(")
         .nth(1)
         .and_then(|s| s.split(')').next())
-        .expect("tools/build-site.sh no longer declares subprojects=( … )");
+        .expect("tools/publish.sh no longer declares GALLERY_EXHIBITS=( … )");
     let mut deployed: HashSet<String> = block
         .lines()
         .filter_map(|l| l.trim().trim_matches('"').strip_prefix("corpus/"))
@@ -1449,8 +1450,8 @@ fn the_readme_marks_the_same_visual_set_the_deploy_ships() {
         .collect();
     assert!(
         !deployed.is_empty(),
-        "no corpus project is mounted into the deploy — the parse broke, and an empty \
-         expectation passes forever"
+        "no corpus project is published as a gallery exhibit — the parse broke, and an \
+         empty expectation passes forever"
     );
     // Human-facing, deliberately not deployed, so no script can derive it.
     deployed.insert("tech-blog".to_string());
@@ -1505,7 +1506,7 @@ fn the_readme_marks_the_same_visual_set_the_deploy_ships() {
             assert_eq!(
                 pass,
                 want,
-                "corpus/{entry} is marked `{pass}` in the row {path}, but tools/build-site.sh \
+                "corpus/{entry} is marked `{pass}` in the row {path}, but tools/publish.sh \
                  {} it",
                 if want == "eye" {
                     "ships"

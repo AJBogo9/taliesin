@@ -133,9 +133,11 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    own front-matter `image:`; the generated social-card rasterizer,
                    the JSON-LD graph, llms.txt and the PWA manifest were all cut in
                    Wave 4), Cmd-K search (search.rs),
-                   cross-refs (xref.rs). ONE project per build: composing several
-                   into one deploy is tools/build-site.sh, parent first (the
-                   parent's sweep deletes output it did not itself write)
+                   cross-refs (xref.rs). ONE project per build, and since 2026-08-16
+                   ONE PROJECT PER DEPLOY: the four sites publish separately and link
+                   by absolute URL (tools/publish.sh). Only gallery/ nests others
+                   under its output, parent first (the parent's sweep deletes output
+                   it did not itself write)
   assets/          bundled offline: css/ (base, dark, site),
                    js/ (code-enhance/ fragments, mermaid.js, tali-js.js
                    + vendored plot.umd.min.js/d3.min.js for `{js}` cells), katex/
@@ -163,8 +165,8 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze). ONE project
                    per server since Wave 11 cut `mounts:`, so the cap now means what its
                    name says (it used to be per-project, letting site/'s seven mounts
-                   keep 8x the cap resident). Composing several projects into one
-                   deploy is `tools/build-site.sh`, run by `.githooks/pre-push`.
+                   keep 8x the cap resident). Building and deploying the four sites is
+                   `tools/publish.sh`, whose `--check` runs in `.githooks/pre-push`.
                    `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
                    project, opened at that page; with no ancestor `_site.yml` it is a
                    project of just that document (`Site::discover_single`). That
@@ -263,8 +265,10 @@ web-client/      browser preview client (vanilla JS, the only client): client.js
 docs/            project's own manual: TWO sibling book projects, authored in .tmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/);
                  docs/internals/ = Internals book. docs/ itself is just a container
-                 (no _site.yml). tools/build-site.sh writes each under the marketing
-                 site at /docs/guide + /docs/internals.
+                 (no _site.yml). Each publishes to its OWN domain
+                 (guide/internals.taliesin.sh), not under the marketing site.
+gallery/         the exhibit index: its own project + domain, the ONE project that
+                 builds others (corpus/{tarn,descent,analyst}) under its output
 corpus/          the real .tmd docs (the spec); cargo test renders them all
 ```
 
@@ -278,10 +282,12 @@ corpus/          the real .tmd docs (the spec); cargo test renders them all
     pipeline, the block model, the execution model, the dev server,
     and how to extend it. Preview it: `taliesin preview docs/internals`.
   - `docs/` itself is just a container (no `_site.yml`); the books are siblings
-    because the page-walker would otherwise swallow a nested book's pages. The
-    marketing site's deploy carries them at `/docs/guide` + `/docs/internals`, composed
-    by `tools/build-site.sh`. Cross-book links are written as relative `.html` (e.g.
-    `../guide/using/formats.html`).
+    because the page-walker would otherwise swallow a nested book's pages. **Each book
+    is its own Cloudflare Pages deploy on its own domain** (2026-08-16), so cross-book
+    links are ABSOLUTE URLs (`https://guide.taliesin.sh/using/choosing.html`), never
+    the `../guide/…` relative form they used while one composed tree carried both.
+    `crates/core/tests/cross_site_links.rs` resolves every such URL against the source
+    tree, so a renamed page fails `cargo test` instead of a reader's click.
 - **corpus/README.md** for what the test documents exercise.
 
 ## Commands
@@ -295,7 +301,7 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
 cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH GATE: lint, write nothing, exit non-zero
                                                                #   (+ --strict to fail on advice, + --format json for one machine surface)
-./tools/build-site.sh [--check]                                # compose the marketing-site deploy (site + docs books + gallery)
+./tools/publish.sh [--check] [site|guide|internals|gallery]    # build + deploy the four sites (--check = build all, deploy none)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js + mermaid.js, strict; globals.d.ts + web-client's are merged; run it by hand, nothing gates it)
@@ -347,8 +353,9 @@ hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-cl
 via `core.hooksPath`, so it is invisible in `.git/hooks`: a push that includes `main`
 runs `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
 warnings`, `cargo test --workspace`, `build docs/{guide,internals} --check-only --no-exec`
-(the guide in wave 9, the internals book on 2026-08-13) and `tools/build-site.sh --check`
-(new in wave 11) first, and a WIP-branch push
+(the guide in wave 9, the internals book on 2026-08-13) and `tools/publish.sh --check`
+(wave 11 as the composition script, replaced 2026-08-16 when the composed deploy became
+four separate ones) first, and a WIP-branch push
 skips it. Step 4 is the DOCUMENT gate the `check` verb never had wired anywhere: a broken
 cross-reference in this project's own manual used to reach a reader with every gate green.
 It names **both** books, because wave 9 wired one of two and the substring drift-check
@@ -382,7 +389,7 @@ live-region test (`TALIESIN_REQUIRE_NODE`), the two `tsc` type-checks above, the
 companion's offline TextMate grammar test, `cargo audit` / `cargo deny check`
 (`deny.toml` is still the policy) on any dependency change, and **the document gates the
 pre-push hook also runs** (`build docs/guide --check-only`, `build docs/internals
---check-only` and `tools/build-site.sh --check`). Never call one of these verified without
+--check-only` and `tools/publish.sh --check`). Never call one of these verified without
 its output.
 
 **It runs TWELVE gates and prints the count.** It ran eight while this paragraph claimed all
@@ -394,7 +401,7 @@ to read. `gate_script.rs`'s `every_pre_push_command_is_also_run_by_the_gate_scri
 compares the script's list against the hook's on every run. The hook keeps running both
 too — it is the only gate that runs automatically and this script is manual, so the two
 are a pair, not a move. The eleventh is the census gate (below); the twelfth is
-`docs/internals`, which was built by `tools/build-site.sh` and linted by nothing until
+`docs/internals`, which the composition script built and nothing linted until
 2026-08-13, because that same substring cross-check cannot see *which* book is named.
 **Take the count from the script's own verdict line; never increment the one written
 here.**
