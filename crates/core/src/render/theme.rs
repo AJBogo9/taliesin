@@ -1,6 +1,7 @@
 //! Theming: resolve a doc's `theme:` (built-in light/dark, a `.css`/`.scss`
 //! file, or an installed `_extensions/<name>/theme.css`), the pre-paint
-//! `<head>` theme script + toggle wiring, extension `theme:` layers, and the
+//! `<head>` theme script (the dev toggle's wiring is NOT here; it lives beside its
+//! button in `web-client/client.js`), extension `theme:` layers, and the
 //! `<style>` wrappers. Split out of the render module; `use super::*` reaches
 //! the shared imports (Path, serde_yaml).
 
@@ -113,9 +114,25 @@ fn refused_theme(named: &str, reason: crate::includes::Refused) -> String {
 }
 /// Inline `<head>` script (runs before paint, so no flash): set `<html data-theme>` from the
 /// reader's DEVICE (`prefers-color-scheme`), falling back to light when it expresses no
-/// preference, and keep following it live. Also defines `taliSetTheme` / `taliToggleTheme` /
-/// `taliWireThemeToggles` for the preview dev menu's quick toggle — the only theme control
-/// left anywhere, and one that never ships in a build.
+/// preference, and keep following it live. Also defines `taliSetTheme`, which owns the
+/// stored override and the repaint.
+///
+/// **What it deliberately does NOT define is the dev menu's toggle BUTTON.** Until
+/// 2026-08-16 this script also shipped `taliToggleTheme`, `taliWireThemeToggles` and two
+/// inline SVG icons. Only `web-client/`'s dev menu ever creates a
+/// `[data-tali-theme-toggle]`, and a build ships no client, so on every built page that
+/// wiring ran once, matched nothing, and returned: 1,693 bytes (537 gzipped, 6% of a page)
+/// of JS that could not fire. It is now in `web-client/client.js` beside the button it
+/// wires. This script stays the ONE thing both the preview and the build need, and what
+/// crosses the boundary is `taliSetTheme` plus the resolved mode, which `apply` publishes
+/// as `html[data-theme]` (`pref` never returns `"auto"`, so the attribute IS the mode and
+/// the client needs no private access to read it).
+///
+/// The comment here used to claim the opposite, that the wiring was "Shipped here (not in
+/// the preview client) so the toggle works in `build` too". That was not a comment-only
+/// defect: `docs/guide/reference/cli.tmd` was written from it and promised every reader of
+/// the manual a build-time theme toggle that has never existed. Nothing gates prose against
+/// this file, so do not re-add a control here without an emitter to go with it.
 ///
 /// **It takes no argument, and that is the point.** A `default_mode` parameter carried the
 /// front-matter `theme: light|dark` forcing until 2026-08-13. With no per-document input
@@ -126,35 +143,38 @@ fn refused_theme(named: &str, reason: crate::includes::Refused) -> String {
 /// nor `dark` reads as "follow the device". That is also the migration for any mode ever
 /// withdrawn: a reader whose localStorage still says `sepia` (removed 2026-08-02) degrades
 /// to the device rather than to a `data-theme` nothing paints, with no migration code.
-pub fn theme_head() -> String {
-    format!(
-        r#"<script>
-(function(){{
+/// The script itself. A plain `const`, not a `format!`: it has carried no
+/// interpolated value since the theme toggle moved to `web-client/client.js`, so the
+/// braces are real JavaScript braces rather than `{{`/`}}` escapes, and rendering a page
+/// no longer formats a 6 kB string. Keep it that way; re-introducing an argument means
+/// re-escaping every brace below.
+const THEME_HEAD_SCRIPT: &str = r#"<script>
+(function(){
   // The reader's DEVICE decides the mode. DEVICE is a function (not a constant) so it
   // re-reads the OS on every call — the dev toggle and the OS-change listener both see
   // the live value. Falls back to light when the OS expresses no dark preference.
-  function DEVICE(){{
-    try {{
+  function DEVICE(){
+    try {
       if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return "dark";
-    }} catch(e) {{}}
+    } catch(e) {}
     return "light";
-  }}
+  }
   // The one stored override, written ONLY by the preview dev menu's quick toggle
   // (web-client/client.js), which never ships in a build — so on a built page this is
   // always absent and the device always wins. Absent or unrecognized reads as "auto",
   // which is also why withdrawing a mode needs no migration step.
-  function choice(){{
+  function choice(){
     var v = null;
-    try {{ v = localStorage.getItem("tali-theme"); }} catch(e) {{}}
+    try { v = localStorage.getItem("tali-theme"); } catch(e) {}
     return (v === "light" || v === "dark") ? v : "auto";
-  }}
+  }
   // The MODE that actually paints: never "auto".
-  function pref(){{
+  function pref(){
     var c = choice();
     return c === "auto" ? DEVICE() : c;
-  }}
-  var BG = {{ dark: '#14130f', light: '#fbf9f5' }};
-  function apply(){{
+  }
+  var BG = { dark: '#14130f', light: '#fbf9f5' };
+  function apply(){
     var mode = pref();
     var el = document.documentElement;
     el.setAttribute("data-theme", mode);
@@ -168,18 +188,18 @@ pub fn theme_head() -> String {
     // canvas, so a dark page no longer sits under a white status bar. Reuse the same BG map
     // (single source, no duplicated hex) and follow the in-page toggle, not just the OS. The
     // meta is created here rather than emitted statically so its value is never a stale literal.
-    try {{
+    try {
       var head = document.head || document.getElementsByTagName("head")[0];
       var mc = document.querySelector('meta[name="theme-color"]');
-      if (!mc && head) {{ mc = document.createElement("meta"); mc.setAttribute("name", "theme-color"); head.appendChild(mc); }}
+      if (!mc && head) { mc = document.createElement("meta"); mc.setAttribute("name", "theme-color"); head.appendChild(mc); }
       if (mc) mc.setAttribute("content", BG[mode] || '#fbf9f5');
-    }} catch(e) {{}}
+    } catch(e) {}
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render when the mode changes. The detail carried a `choice` field
     // until 2026-08-13, for the Settings picker's pressed state alone; no listener reads
     // anything but `mode`.
-    try {{ window.dispatchEvent(new CustomEvent("tali:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
-  }}
+    try { window.dispatchEvent(new CustomEvent("tali:themechange", { detail: { mode: mode } })); } catch(e) {}
+  }
   apply();
   // Follow OS theme flips live. The listener is registered UNCONDITIONALLY: it used to
   // be skipped whenever front matter forced a mode, and that state no longer exists, so
@@ -187,72 +207,45 @@ pub fn theme_head() -> String {
   // the choice is auto, so the dev toggle is not fought by the OS mid-preview. (Older
   // Safari exposes addListener instead of addEventListener; guard for it the way the
   // rest of the code guards matchMedia.)
-  try {{
-    if (window.matchMedia) {{
+  try {
+    if (window.matchMedia) {
       var osDark = window.matchMedia('(prefers-color-scheme: dark)');
-      var onOsChange = function(){{ if (choice() === "auto") apply(); }};
+      var onOsChange = function(){ if (choice() === "auto") apply(); };
       if (osDark.addEventListener) osDark.addEventListener('change', onOsChange);
       else if (osDark.addListener) osDark.addListener(onOsChange);
-    }}
-  }} catch(e) {{}}
+    }
+  } catch(e) {}
   // Passing anything that is not "light"/"dark" REMOVES the key rather than storing it:
   // "following the device" and "never touched the toggle" are the same state, and the
   // OS listener above keys off exactly that.
-  window.taliSetTheme = function(p){{
-    try {{
+  window.taliSetTheme = function(p){
+    try {
       if (p === "light" || p === "dark") localStorage.setItem("tali-theme", p);
       else localStorage.removeItem("tali-theme");
-    }} catch(e) {{}}
+    } catch(e) {}
     apply();
-  }};
+  };
   // Paper is white. dark.css recolours the syntax scopes with untokenised literals (a
   // dark-mode string is #a5d6ff: 1.6:1 on paper), so the print stylesheet's token reset
   // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach
   // them; the syntax scopes are what still force the swap.) Drop the whole document to the
   // light theme for the duration of the print job and restore afterwards. `apply()`
   // restores colour-scheme, canvas, and mermaid.
-  try {{
-    window.addEventListener("beforeprint", function(){{
+  try {
+    window.addEventListener("beforeprint", function(){
       var el = document.documentElement;
       el.setAttribute("data-theme", "light");
       el.style.colorScheme = "light";
       el.style.background = BG.light;
-    }});
+    });
     window.addEventListener("afterprint", apply);
-  }} catch(e) {{}}
-  // Wire any `[data-tali-theme-toggle]` button (the dev
-  // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
-  // Shipped here (not in the preview client) so the toggle works in `build` too.
-  var ICONS = {{ light: "{sun_icon}", dark: "{moon_icon}" }};
-  // Flip light <-> dark, resolving the current mode first. Exposed as a global so the
-  // Cmd-K command palette (web-client/search.js) and the dev-menu button share one path.
-  window.taliToggleTheme = function(){{ window.taliSetTheme(pref() === "dark" ? "light" : "dark"); }};
-  window.taliWireThemeToggles = function(){{
-    var btns = document.querySelectorAll("[data-tali-theme-toggle]");
-    for (var i = 0; i < btns.length; i++) {{
-      (function(btn){{
-        if (btn.getAttribute("data-wired")) return;
-        btn.setAttribute("data-wired", "1");
-        function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.dark;
-          btn.setAttribute("aria-label", "Theme: " + p + " (click to toggle light / dark)"); }}
-        btn.addEventListener("click", function(){{ window.taliToggleTheme(); sync(); }});
-        window.addEventListener("tali:themechange", sync);
-        sync();
-      }})(btns[i]);
-    }}
-  }};
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", window.taliWireThemeToggles);
-  else window.taliWireThemeToggles();
-}})();
-</script>"#,
-        sun_icon = THEME_ICON_SUN,
-        moon_icon = THEME_ICON_MOON,
-    )
+  } catch(e) {}
+})();
+</script>"#;
+
+pub fn theme_head() -> String {
+    THEME_HEAD_SCRIPT.to_string()
 }
-// Monochrome theme-toggle icons (single-quoted attrs so they embed in JS double
-// quotes; `currentColor` so they inherit the control's colour).
-const THEME_ICON_SUN: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/></svg>";
-const THEME_ICON_MOON: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='currentColor'><path d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/></svg>";
 /// Detect the `theme:` front-matter value (top-level or nested under `format:`).
 pub(super) fn detect_theme(front_matter: &str) -> Option<String> {
     front_matter.lines().find_map(|line| {

@@ -80,7 +80,13 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-target",
     "data-theme",
     "data-viewof",
-    "data-wired",
+    // `data-wired` went on 2026-08-16 with the theme toggle's move into web-client. It was
+    // that wiring's re-entrancy guard and nothing else's; the navbar and book drawer spell
+    // theirs `dataset.navWired` / `data-drawer-wired`. It briefly survived this list on a
+    // COMMENT in site/chrome.rs alone (the census scans every Rust file holding `<script`,
+    // prose included), which is the same vacuous-match trap the note above the theme
+    // assertions in render/tests.rs describes. The client's own `querySelector` guard
+    // replaced it: the button is created once or not at all.
 ];
 
 /// Emitted attributes with no browser-side consumer. Each needs a stated reason,

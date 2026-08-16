@@ -270,9 +270,16 @@
 
   // One collapsed dev menu (Next.js-style): a corner button showing the live
   // status dot, expanding to a panel with the preview-only tools — live status,
-  // word count, the click-to-source toggle, diagnostics, and (only when the page
-  // chrome has no real theme toggle of its own) a theme toggle.
-  // The site navbar's theme toggle is a real, shipped feature, not a dev tool.
+  // word count, the click-to-source hint, restart-kernel, any draft pages,
+  // diagnostics, and the quick theme toggle.
+  //
+  // That theme toggle is UNCONDITIONAL, and the `querySelector` guard below is belt to
+  // braces rather than a real branch. This used to read "(only when the page chrome has no
+  // real theme toggle of its own)… the site navbar's theme toggle is a real, shipped
+  // feature, not a dev tool", and neither half is true any more: no navbar toggle has
+  // existed since the reader Settings gear went on 2026-08-13, and a built page now offers
+  // no theme control whatsoever (it follows the reader's device). This one is the only
+  // theme control left anywhere, which is also why its wiring moved here on 2026-08-16.
   (function buildDevMenu() {
     const host = document.getElementById("tali-controls");
     if (!host) return;
@@ -374,16 +381,42 @@
       panel.append(devRow("Drafts", draftCount), draftList);
     }
 
-    // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
-    // so the author can flip theme during preview without opening the reader Settings gear.
-    // Guarded so we never add a second one.
+    // The dev menu carries its own quick light/dark toggle so the author can flip theme
+    // during preview without touching their OS setting.
+    //
+    // The wiring lives HERE, not in the shared `theme_head`, where it lived until
+    // 2026-08-16. This is the only thing that ever creates the button, and a `build` ships
+    // no client, so the head-script copy ran on every published page, matched nothing and
+    // returned: 1,693 bytes (537 gzipped, 6% of a page) that could not fire. `theme_head`
+    // still owns the storage and the repaint via `taliSetTheme`; the resolved mode is
+    // readable off `html[data-theme]`, which its `apply()` keeps current, so nothing private
+    // has to cross over. Guarded so we never add a second one.
     if (!document.querySelector("[data-tali-theme-toggle]")) {
       const themeBtn = document.createElement("button");
       themeBtn.className = "tali-dev-ctl tali-dev-theme";
       themeBtn.type = "button";
       themeBtn.setAttribute("data-tali-theme-toggle", "");
+      // Monochrome; single-quoted attrs so they sit in a double-quoted JS string, and
+      // `currentColor` so they inherit the control's colour.
+      const THEME_ICONS = {
+        light:
+          "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/></svg>",
+        dark: "<svg width='15' height='15' viewBox='0 0 24 24' fill='currentColor'><path d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/></svg>",
+      };
+      const themeMode = () =>
+        document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+      const syncTheme = () => {
+        const p = themeMode();
+        themeBtn.innerHTML = THEME_ICONS[p];
+        themeBtn.setAttribute("aria-label", `Theme: ${p} (click to toggle light / dark)`);
+      };
+      themeBtn.addEventListener("click", () => {
+        if (window.taliSetTheme) window.taliSetTheme(themeMode() === "dark" ? "light" : "dark");
+        syncTheme();
+      });
+      window.addEventListener("tali:themechange", syncTheme);
+      syncTheme();
       panel.appendChild(themeBtn);
-      if (window.taliWireThemeToggles) window.taliWireThemeToggles();
     }
 
     // Diagnostics and per-cell errors both live inside the panel.

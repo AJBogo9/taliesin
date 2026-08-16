@@ -263,8 +263,8 @@ A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**
 `index.html` straight from disk (`file://`), or zip the folder and send it. Everything
 the reader needs is copied in and works with no server and no network, **offline**:
 navigation and prev/next, the Cmd-K search across the whole book, all math (rendered to
-KaTeX at build time with the fonts inlined), the reading enhancers (theme toggle, the
-table of contents and its scrollspy), and any `{js}` cells (the
+KaTeX at build time with the fonts inlined), the table of contents and its scrollspy,
+and any `{js}` cells (the
 `d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 

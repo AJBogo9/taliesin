@@ -354,9 +354,17 @@ fn a_standalone_document_builds_and_previews_without_site_chrome() {
             "a standalone BUILD must carry no `{marker}`"
         );
     }
+    // And no theme control either. It never survived the build as a CONTROL: only the
+    // preview dev menu creates the button, and a build ships no client. This asserted the
+    // OPPOSITE until 2026-08-16 and passed, because `theme_head` inlined the button-wiring
+    // helper into every page and its `querySelectorAll("[data-tali-theme-toggle]")` held
+    // this needle — so the assertion was reading 1.7 kB of JS that could never fire as a
+    // shipped feature. `docs/guide/reference/cli.tmd` made the same mistake from the same
+    // source comment and promised readers a build-time toggle. A built page follows the
+    // reader's device and offers nothing to click (docs/guide/reference/accessibility.tmd).
     assert!(
-        built.contains("tali-theme-toggle"),
-        "theme toggle survives the build"
+        !built.contains("tali-theme-toggle"),
+        "a standalone BUILD must carry no theme control: the page follows the reader's device"
     );
 
     // The assertion that actually discriminates: `preview` of the same document, over
@@ -385,9 +393,14 @@ fn a_standalone_document_builds_and_previews_without_site_chrome() {
             "a standalone PREVIEW must carry no `{marker}`"
         );
     }
-    // The reader affordances stay: they are personal, not project, chrome.
+    // The dev menu's quick toggle stays, and this is the half where it is real. It is not a
+    // reader affordance (there are none); it is an authoring control, and the preview is the
+    // only place it exists. The preview inlines `web-client/client.js`, so this needle
+    // matches the code that CREATES the button — the button is made at runtime and cannot
+    // appear in served HTML at all. Browser-verified 2026-08-16: it renders in the dev menu,
+    // flips the mode, and syncs its icon and `aria-label`.
     assert!(
         served.contains("tali-theme-toggle"),
-        "theme toggle survives in preview"
+        "the dev menu's theme toggle must still be wired in preview"
     );
 }

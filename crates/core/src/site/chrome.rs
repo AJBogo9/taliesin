@@ -152,7 +152,7 @@ impl Site {
         s.push_str("</nav></header>");
         // Wire the burger button: toggle `aria-expanded` + a `.tali-nav-open` class
         // the CSS shows the menu on, and close on Escape / link click. Idempotent
-        // (a `data-wired` guard) so re-running it (live hot-reload re-injects the
+        // (a `dataset.navWired` guard) so re-running it (live hot-reload re-injects the
         // navbar) never double-binds. Inlined here, in the navbar's own HTML, to
         // keep this fix inside the two owned files (no new asset, no other JS).
         s.push_str(NAV_TOGGLE_SCRIPT);

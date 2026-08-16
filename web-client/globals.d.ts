@@ -31,15 +31,13 @@ interface Window {
     teardown?: (n: Element) => void;
     reset?: () => void;
   };
-  /** Theme API from the head script (`theme_head`). A page follows the reader's device;
-   *  these exist for the preview dev menu's quick toggle, which is the only theme control
-   *  left and never ships in a build. Passing anything but `"light"`/`"dark"` to
-   *  `taliSetTheme` clears the stored override and returns the page to the device. */
+  /** Theme API from the head script (`theme_head`). A page follows the reader's device; this
+   *  exists for the preview dev menu's quick toggle, which is the only theme control left and
+   *  never ships in a build. The toggle's own wiring lives in `client.js` beside the button,
+   *  so this is the whole boundary: call it to set the mode, read `html[data-theme]` for the
+   *  current one. Passing anything but `"light"`/`"dark"` clears the stored override and
+   *  returns the page to the device. */
   taliSetTheme?: (choice: 'auto' | 'light' | 'dark') => void;
-  /** Wires every `[data-tali-theme-toggle]` button (defined in theme_head). */
-  taliWireThemeToggles?: () => void;
-  /** Flip light <-> dark (defined in theme_head). The dev-menu button is its only caller. */
-  taliToggleTheme?: () => void;
   /** Restart the warm Jupyter kernel (preview client only; the palette's "Restart kernel"
    *  action gates on its presence, so it's hidden in a static build). */
   taliRestartKernel?: () => void;

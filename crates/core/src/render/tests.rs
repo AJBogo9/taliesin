@@ -1926,8 +1926,14 @@ fn search_js_ships_the_command_palette_actions() {
     // (each action gating on its capability global) + the action branch in go() + the
     // "run a command" placeholder. JS is include_str!'d, so this is the drift guard.
     let js = super::SEARCH_JS;
+    // `taliToggleTheme` was the first needle here, labelled "the always-available theme
+    // action", until 2026-08-16. That action was removed on 2026-08-13 and the only
+    // occurrence left in search.js is the COMMENT explaining the removal, so the assertion
+    // had been passing on prose for three days. Its sibling twenty lines up
+    // (`!SEARCH_JS.contains("window.taliToggleTheme")`) already carries the warning: match
+    // the call form, never the bare name. Removed rather than re-spelled, because there is
+    // no theme action left to guard.
     for needle in [
-        "taliToggleTheme",         // the always-available theme action
         "taliRestartKernel",       // preview-only kernel action
         "taliOpenPageSource",      // preview-only open-in-editor action
         "availableActions",        // the capability-gated action list
@@ -1965,15 +1971,42 @@ fn search_js_locks_the_background_scroller_while_the_palette_is_modal() {
 }
 
 #[test]
-fn theme_head_ships_a_toggle_theme_global() {
-    // The preview dev menu's quick toggle calls window.taliToggleTheme. It is defined here
-    // rather than in the preview client so the button has one implementation and no
-    // duplicated flip logic. The Cmd-K palette shared it until 2026-08-13, which is what
-    // made a reader-facing override outlive the Settings gear on every static build.
+fn the_dev_menu_toggle_is_wired_in_the_preview_client_not_the_head_script() {
+    // `theme_head` defined `taliToggleTheme`, `taliWireThemeToggles` and two inline SVG
+    // icons until 2026-08-16, and every BUILT page carried them. Only the preview client
+    // ever creates the `[data-tali-theme-toggle]` they look for, and a build ships no
+    // client, so on a published page that wiring ran once, matched nothing and returned:
+    // 1,693 bytes (537 gzipped, 6% of a page) that could not fire.
+    //
+    // BOTH halves are pinned. Deleting the head-script copy without landing the client copy
+    // silently removes the only theme control left anywhere, and no other test would notice.
+    let head = theme_head();
+    for gone in [
+        "taliToggleTheme",
+        "taliWireThemeToggles",
+        "data-tali-theme-toggle",
+    ] {
+        assert!(
+            !head.contains(gone),
+            "theme_head must not carry the dev menu's toggle wiring, found `{gone}` — it \
+             belongs in web-client/client.js, beside the button it wires"
+        );
+    }
+    // `taliSetTheme` is the whole boundary and stays here: it owns the stored override and
+    // the repaint. The client reads the current mode off `html[data-theme]`, which `apply`
+    // writes, so nothing private has to cross over.
     assert!(
-        theme_head().contains("window.taliToggleTheme"),
-        "theme_head must define window.taliToggleTheme for the dev menu's toggle"
+        head.contains("window.taliSetTheme"),
+        "theme_head still owns the stored override and the repaint"
     );
+    let client =
+        std::fs::read_to_string(repo_root().join("web-client/client.js")).expect("client.js");
+    for needle in ["data-tali-theme-toggle", "taliSetTheme", "tali:themechange"] {
+        assert!(
+            client.contains(needle),
+            "the preview client must both create and wire the toggle: missing `{needle}`"
+        );
+    }
 }
 
 /// Tab / Shift-Tab move the palette's selection, as the arrow keys do.
