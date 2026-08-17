@@ -2583,6 +2583,9 @@ fn is_bare_specifier(v: &str) -> bool {
 struct ExternalRef {
     url: String,
     line: Option<u32>,
+    /// The included file the enclosing block came from, when it came from one. `None` means
+    /// the primary document, whose name the caller already has.
+    file: Option<String>,
 }
 
 /// The 1-based source line of the block enclosing byte `offset` in `html`, read from the
@@ -2595,6 +2598,28 @@ fn sourcepos_line_before(html: &str, offset: usize) -> Option<u32> {
         .take_while(|c| c.is_ascii_digit())
         .collect();
     digits.parse().ok()
+}
+
+/// The included file the block enclosing byte `offset` came from, read from the
+/// `data-source-file="…"` on the same tag as the `data-sourcepos` [`sourcepos_line_before`]
+/// used. `None` for a block of the primary document.
+///
+/// **The two must be read from the same tag** (Fable audit FA14). The line already came
+/// from the block, while the file was the *page's* name, so an offline-ref warning inside an
+/// `{{< include >}}`d partial pointed the author at the parent document at the partial's
+/// line number: a real file, an openable line, and nothing there. This is the same
+/// file-and-line pairing rule CLAUDE.md states for the renderer's own warnings.
+fn source_file_before(html: &str, offset: usize) -> Option<String> {
+    const KEY: &str = "data-sourcepos=\"";
+    let at = html[..offset].rfind(KEY)?;
+    // Bounded to the one tag: from its `<` to its `>`, so the next block's attribute is
+    // never picked up for this one.
+    let lt = html[..at].rfind('<')?;
+    let gt = taliesin_core::render::tag_end(&html[lt..]).map_or(html.len(), |i| lt + i);
+    const FILE: &str = "data-source-file=\"";
+    let from = html[lt..gt].find(FILE)? + lt + FILE.len();
+    let len = html[from..gt].find('"')?;
+    Some(html[from..from + len].to_string())
 }
 
 /// Whether the tag opened just before byte `attr_at` in `html` has tag name `name` (ASCII,
@@ -2718,10 +2743,15 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
     let mut out: Vec<ExternalRef> = Vec::new();
     let push = |url: &str, off: usize, out: &mut Vec<ExternalRef>| {
         let line = sourcepos_line_before(html, off);
-        if !out.iter().any(|r| r.url == url && r.line == line) {
+        let file = source_file_before(html, off);
+        if !out
+            .iter()
+            .any(|r| r.url == url && r.line == line && r.file == file)
+        {
             out.push(ExternalRef {
                 url: url.to_string(),
                 line,
+                file,
             });
         }
     };
@@ -2779,9 +2809,12 @@ fn offline_ref_warnings(html: &str, label: &str) -> Vec<String> {
     external_refs(html)
         .into_iter()
         .map(|r| {
+            // The file and the line must come from the same block, or the warning names a
+            // real file at a line that belongs to another one (FA14).
+            let file = r.file.as_deref().unwrap_or(label);
             let loc = match r.line {
-                Some(l) => format!("{label}:{l}"),
-                None => label.to_string(),
+                Some(l) => format!("{file}:{l}"),
+                None => file.to_string(),
             };
             format!(
                 "{loc}: external reference not bundled: {} — the build will fetch it at view time, \
@@ -2889,6 +2922,39 @@ mod mirror_tests {
                 "`{flagged}` IS fetched at view time and must still be flagged: {urls:?}"
             );
         }
+    }
+
+    /// An offline-ref warning inside an included partial names the PARTIAL, at the
+    /// partial's line.
+    ///
+    /// **The defect (Fable audit FA14).** The line came from the block's `data-sourcepos`
+    /// (the included file's own numbering) while the file was always the page being built,
+    /// so the author was pointed at a real, openable file at a line that belongs to a
+    /// different one. The include source map had the right answer on the same tag all along:
+    /// `data-source-file`.
+    #[test]
+    fn an_offline_ref_inside_an_include_names_the_included_file() {
+        let html = concat!(
+            "<p data-block-id=\"b-1\" data-sourcepos=\"3:1-3:40\">",
+            "<img src=\"https://example.com/own.png\"></p>",
+            "<p data-block-id=\"b-2\" data-sourcepos=\"7:1-7:40\" data-source-file=\"_includes/part.tmd\">",
+            "<img src=\"https://example.com/partial.png\"></p>",
+        );
+        let warnings = offline_ref_warnings(html, "index.tmd");
+        assert!(
+            warnings.iter().any(|w| w.starts_with("index.tmd:3:")),
+            "the page's own block keeps the page's name: {warnings:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.starts_with("_includes/part.tmd:7:")),
+            "an included block must name the file its line belongs to: {warnings:?}"
+        );
+        assert!(
+            !warnings.iter().any(|w| w.starts_with("index.tmd:7:")),
+            "the parent file paired with the partial's line points at nothing: {warnings:?}"
+        );
     }
 
     #[test]

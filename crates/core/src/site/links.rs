@@ -66,24 +66,15 @@ pub(super) fn href_matches_page(href: &str, page: &Page) -> bool {
 /// Rewrite every intra-site `.tmd` link in rendered HTML to its `.html` target,
 /// preserving the author's relative/absolute prefix and `#fragment`. External
 /// links, data URIs, and non-`.tmd` paths are untouched.
+///
+/// Only inside an element tag ([`crate::render::rewrite_attr_in_tags`]). This walked the
+/// raw string until 2026-08-17, so an inline code span showing `<a href="other.tmd">`
+/// published as `other.html`: the page told the reader something they did not write. The
+/// two things that kept it from being noticed were accidents of other passes (syntect
+/// escapes the quotes in a highlighted fence, smart punctuation curls them in prose), not
+/// a rule anyone had stated.
 pub fn rewrite_tmd_links(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-    while let Some(pos) = rest.find("href=\"") {
-        let val_start = pos + 6;
-        out.push_str(&rest[..val_start]);
-        let after = &rest[val_start..];
-        let Some(end) = after.find('"') else {
-            rest = after;
-            break;
-        };
-        let val = &after[..end];
-        out.push_str(&rewrite_one_href(val));
-        out.push('"');
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    out
+    crate::render::rewrite_attr_in_tags(html, "href=\"", rewrite_one_href)
 }
 
 /// Whether a link value must be left untouched by the site rewriters: an in-page anchor
@@ -317,6 +308,28 @@ mod tests {
             "external untouched"
         );
         assert!(out.contains("href=\"#local\""), "anchor untouched");
+    }
+
+    /// A code sample showing an href is text the reader is meant to read verbatim.
+    ///
+    /// **The defect (Fable audit FA12).** The rewrite was a raw `find("href=\"")` over
+    /// finished page HTML with no tag-versus-text state, so an inline code span containing
+    /// `<a href="other.tmd">` displayed as `other.html` in the built page. What kept it off
+    /// most pages was two accidents rather than a rule: syntect escapes the quotes inside a
+    /// highlighted fence, and smart punctuation curls them in prose.
+    #[test]
+    fn an_href_shown_inside_code_is_not_rewritten() {
+        // Exactly what the escaper emits for an inline code span: `<`/`>` escaped, `"` not.
+        let html = r##"<p>Write <code>&lt;a href="other.tmd"&gt;</code> and get <a href="other.tmd">o</a>.</p>"##;
+        let out = rewrite_tmd_links(html);
+        assert!(
+            out.contains(r##"<code>&lt;a href="other.tmd"&gt;</code>"##),
+            "the displayed sample must survive verbatim: {out}"
+        );
+        assert!(
+            out.contains(r##"<a href="other.html">"##),
+            "the real link must still rewrite: {out}"
+        );
     }
 
     /// A `?query` on a source href must not defeat the rewrite. It did until 2026-08-13

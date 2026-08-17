@@ -127,7 +127,16 @@ use theme::{detect_theme, resolve_theme, theme_style};
 /// assert!(doc.blocks[0].html.contains("<h1"));
 /// ```
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src.to_owned(), None, None, None, None, None)
+    // The include-less path's own ingest point. Every other entry goes through
+    // `includes::expand`, which normalizes there; this one never touches it.
+    render_internal(
+        crate::includes::normalize_line_endings(src).into_owned(),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
 }
 
 /// Whether `--no-exec` / `TALIESIN_NO_EXEC` is in force: the user asked that this
@@ -2647,42 +2656,32 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
 /// Rewrite each ` id="…"` in `html` whose value is already in `seen`, returning the new html
 /// and one `(original, renamed)` pair per rewrite. The attribute is matched WITH its leading
 /// space, which is what keeps `data-block-id="…"` from false-matching (the same
-/// discriminator `diagnostics::headings::heading_id` uses).
+/// discriminator `diagnostics::headings::heading_id` uses), and only ever inside an element
+/// tag ([`rewrite_attr_in_tags`]): a code sample *showing* `<div id="example">` twice used
+/// to have its visible text rewritten and drew two bogus error-severity diagnostics.
 fn rename_repeated_ids(
     html: &str,
     counts: &mut HashMap<String, u32>,
     seen: &mut std::collections::HashSet<String>,
 ) -> (String, Vec<(String, String)>) {
-    const ATTR: &str = " id=\"";
-    let mut out = String::with_capacity(html.len());
     let mut renamed: Vec<(String, String)> = Vec::new();
-    let mut rest = html;
-    while let Some(pos) = rest.find(ATTR) {
-        let value_at = pos + ATTR.len();
-        let Some(len) = rest[value_at..].find('"') else {
-            break; // an unterminated attribute: leave the remainder untouched
-        };
-        let id = rest[value_at..value_at + len].to_string();
-        out.push_str(&rest[..value_at]);
-        if seen.insert(id.clone()) {
+    let out = rewrite_attr_in_tags(html, " id=\"", |id| {
+        if seen.insert(id.to_string()) {
             // First sighting. Seed the counter as `dedup_with_suffix` would have, so the
             // next repeat comes out `id-1` and not `id` again.
-            counts.entry(id.clone()).or_insert(1);
-            out.push_str(&id);
-        } else {
-            // Keep bumping until the suffixed form is itself unused: a page can hold a
-            // hand-written `fig-plot-1` as well as two `fig-plot`s, and `dedup_with_suffix`
-            // alone would hand the second `fig-plot` an id that is already taken.
-            let mut candidate = dedup_with_suffix(id.clone(), counts);
-            while !seen.insert(candidate.clone()) {
-                candidate = dedup_with_suffix(id.clone(), counts);
-            }
-            out.push_str(&candidate);
-            renamed.push((id, candidate));
+            counts.entry(id.to_string()).or_insert(1);
+            return id.to_string();
         }
-        rest = &rest[value_at + len..];
-    }
-    out.push_str(rest);
+        // Keep bumping until the suffixed form is itself unused: a page can hold a
+        // hand-written `fig-plot-1` as well as two `fig-plot`s, and `dedup_with_suffix`
+        // alone would hand the second `fig-plot` an id that is already taken.
+        let mut candidate = dedup_with_suffix(id.to_string(), counts);
+        while !seen.insert(candidate.clone()) {
+            candidate = dedup_with_suffix(id.to_string(), counts);
+        }
+        renamed.push((id.to_string(), candidate.clone()));
+        candidate
+    });
     (out, renamed)
 }
 
@@ -2891,30 +2890,12 @@ fn mark_section_extents(blocks: &mut [Block]) {
         // Append to the opening tag rather than inserting after `<hN`: `id`,
         // `data-block-id` and `data-sourcepos` lead a heading tag in a fixed order that
         // tests and the client both read, and a new attribute has no business splitting
-        // it. `open_tag_end` is quote-aware, so a `>` inside an authored attribute value
+        // it. `tag_end` is quote-aware, so a `>` inside an authored attribute value
         // cannot be mistaken for the end of the tag.
-        if let Some(at) = open_tag_end(html) {
+        if let Some(at) = tag_end(html) {
             html.insert_str(at, &format!(" data-section-end=\"{}\"", escape_attr(&id)));
         }
     }
-}
-
-/// The byte offset of the `>` closing an element's opening tag, skipping any `>` inside
-/// a quoted attribute value. `None` if the tag never closes.
-fn open_tag_end(html: &str) -> Option<usize> {
-    let mut quote: Option<u8> = None;
-    for (i, b) in html.bytes().enumerate() {
-        match quote {
-            Some(q) if b == q => quote = None,
-            Some(_) => {}
-            None => match b {
-                b'"' | b'\'' => quote = Some(b),
-                b'>' => return Some(i),
-                _ => {}
-            },
-        }
-    }
-    None
 }
 
 /// Move a heading block's visible tag by `shift` levels (`<hN>` -> `<h{N+shift}>`, clamped
@@ -2978,7 +2959,10 @@ fn is_heading(html: &str) -> bool {
 /// one in the title). `None` if the tag is unterminated. Used by the string-surgery
 /// helpers that splice a class/attribute into an already-emitted opening tag — a
 /// naive `find('>')` would split inside an attribute value.
-pub(crate) fn tag_end(html: &str) -> Option<usize> {
+///
+/// `pub` because the server's build-time HTML scanners need the same answer and a second
+/// hand-rolled quote-aware scan is how the two would drift.
+pub fn tag_end(html: &str) -> Option<usize> {
     let mut quote: Option<u8> = None;
     for (i, &b) in html.as_bytes().iter().enumerate() {
         match quote {
@@ -2992,6 +2976,81 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
         }
     }
     None
+}
+
+/// Rewrite the value of every `attr` that sits inside a real element tag, leaving the
+/// document's visible TEXT untouched. `attr` carries its own opening delimiter, e.g.
+/// `" id=\""` or `"href=\""`; `rewrite` is handed each value and returns its replacement.
+///
+/// **Why this exists (Fable audit FA11/FA12).** Two passes rewrote finished HTML with a
+/// bare `find(attr)` and no notion of tag-versus-text, and `escape_html` does not escape
+/// `"`. So a fenced or inline code sample that merely *shows* `<div id="example">` had its
+/// visible text rewritten to `example-1` (stealing the real element's anchor and firing two
+/// bogus error-severity diagnostics), and a code sample showing `<a href="other.tmd">` was
+/// published reading `other.html`. Neither was hypothetical; both were reproduced. The
+/// remaining defenses were accidents: syntect escapes quotes inside highlighted fences, and
+/// smart punctuation curls them in prose.
+///
+/// The scan is quote-aware through [`tag_end`], so a `>` inside an attribute value does not
+/// end a tag, and it steps over `<!-- … -->` whole: a comment is not markup either.
+pub(crate) fn rewrite_attr_in_tags(
+    html: &str,
+    attr: &str,
+    mut rewrite: impl FnMut(&str) -> String,
+) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(lt) = rest.find('<') {
+        let after = &rest[lt + 1..];
+        if let Some(body) = after.strip_prefix("!--") {
+            // A comment, emitted verbatim. Its `>`s are text, so `tag_end` would stop early.
+            let end = body.find("-->").map_or(rest.len(), |i| lt + 4 + i + 3);
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+            continue;
+        }
+        // `<` followed by anything but a name, `/` or `!` is text (an unescaped `<` in a
+        // raw-HTML block, a `<` inside a script). Keep it and carry on past it.
+        let is_tag = after
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '/' | '!'));
+        let Some(gt) = is_tag.then(|| tag_end(&rest[lt..])).flatten() else {
+            out.push_str(&rest[..lt + 1]);
+            rest = &rest[lt + 1..];
+            continue;
+        };
+        out.push_str(&rest[..lt]);
+        out.push_str(&rewrite_attr_in_one_tag(
+            &rest[lt..lt + gt + 1],
+            attr,
+            &mut rewrite,
+        ));
+        rest = &rest[lt + gt + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// [`rewrite_attr_in_tags`] for one already-isolated tag.
+fn rewrite_attr_in_one_tag(
+    tag: &str,
+    attr: &str,
+    rewrite: &mut impl FnMut(&str) -> String,
+) -> String {
+    let mut out = String::with_capacity(tag.len());
+    let mut rest = tag;
+    while let Some(pos) = rest.find(attr) {
+        let value_at = pos + attr.len();
+        let Some(len) = rest[value_at..].find('"') else {
+            break; // an unterminated attribute: leave the remainder untouched
+        };
+        out.push_str(&rest[..value_at]);
+        out.push_str(&rewrite(&rest[value_at..value_at + len]));
+        rest = &rest[value_at + len..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Strip HTML tags, returning the visible text (callout/tabset titles, TOC entries,

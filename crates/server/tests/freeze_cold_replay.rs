@@ -483,8 +483,12 @@ fn deleting_a_cache_false_directive_leaves_a_self_consistent_page() {
 /// (same interpreter, same `--version`, same keys, different packages), and it does not
 /// require the test to mutate the machine it runs on.
 ///
-/// The mixed run needs a disk-restored tail *after* the last executed cell, so cell 1 fails
-/// (an error is never persisted, so its key is always unknown) and cell 2 does not.
+/// The warning needs something restored from DISK, which is the ordinary full replay: both
+/// cells succeed and are persisted on the first build, and the second build restores both
+/// without starting a kernel. (It used to make cell 1 fail so its key stayed unknown and
+/// cell 2 came back as a restored tail. That fixture stopped existing on 2026-08-17, when
+/// the persist range learned to stop at the first errored cell: nothing downstream of a
+/// failure is written any more, so there is no such tail to restore.)
 #[test]
 fn a_replay_that_crossed_a_package_change_is_announced() {
     let Some(real_py) = python_or_skip() else {
@@ -496,17 +500,17 @@ fn a_replay_that_crossed_a_package_change_is_announced() {
     let src = dir.join("doc.tmd");
     fs::write(
         &src,
-        "---\ntitle: P\n---\n\n```{python}\nraise ValueError(\"boom\")\n```\n\n\
+        "---\ntitle: P\n---\n\n```{python}\nprint(1618)\n```\n\n\
          ```{python}\nprint(2718)\n```\n",
     )
     .unwrap();
     const ANNOUNCEMENT: &str = "produced under a different package set";
 
-    // Build 1: cell 1 errors (never persisted), cell 2 succeeds (persisted + stamped).
+    // Build 1: both cells run, both are persisted, and the run stamps its package digest.
     let first = build_capturing(&src, &dir.join("a.html"), &py);
     assert!(
         first.status.success(),
-        "a cell error is baked into the page, not a build failure: {}",
+        "the first build should be clean: {}",
         String::from_utf8_lossy(&first.stderr)
     );
 
@@ -543,5 +547,74 @@ fn a_replay_that_crossed_a_package_change_is_announced() {
     assert!(
         moved_err.contains(ANNOUNCEMENT),
         "a restore that crossed a package change said nothing:\n{moved_err}"
+    );
+}
+
+/// Nothing computed after a failed cell is persisted.
+///
+/// **The defect (Fable audit FA7).** The persist loop refused an errored cell's own output
+/// and the `#| cache: false` tail, and nothing else. A cell that ran AFTER an upstream cell
+/// raised executed against half-mutated kernel state (the assignments below the raise never
+/// happened), and its output went to disk under a cumulative key that asserts it follows
+/// from a complete upstream run. The failing cell is never persisted, so it re-runs for
+/// ever; the moment its failure stops reproducing, the downstream cell restores the output
+/// it produced while the failure was still there.
+#[test]
+fn a_cell_after_a_failed_one_is_not_persisted() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("downstream-of-error");
+    let log = dir.join("launches.log");
+    let py = recording_python(&dir, &real_py, &log);
+    let src = dir.join("doc.tmd");
+    // Cell B does not read A's state, so it succeeds. That is the point: a successful
+    // output is exactly what would be written, and its correctness is not the question.
+    fs::write(
+        &src,
+        "---\ntitle: E\n---\n\n```{python}\nraise ValueError(\"boom\")\n```\n\n\
+         ```{python}\nprint(2718)\n```\n",
+    )
+    .unwrap();
+
+    let out = build_capturing(&src, &dir.join("a.html"), &py);
+    assert!(
+        out.status.success(),
+        "a cell error is baked into the page, not a build failure: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let page = fs::read_to_string(dir.join("a.html")).expect("the page was written");
+    assert!(page.contains("2718"), "the downstream cell did run: {page}");
+
+    let text = fs::read_to_string(freeze_file(&dir)).expect("freeze json");
+    let cache: serde_json::Value = serde_json::from_str(&text).expect("freeze json parses");
+    let entries = cache
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .unwrap_or_else(|| panic!("no entries list in the freeze file: {text}"));
+    assert!(
+        entries.is_empty(),
+        "an output computed after a failed cell was persisted: {text}"
+    );
+
+    // The negative control: with the failure removed, both cells persist as normal, so the
+    // assertion above is about the failure and not about persistence being broken.
+    fs::write(
+        &src,
+        "---\ntitle: E\n---\n\n```{python}\nprint(1618)\n```\n\n\
+         ```{python}\nprint(2718)\n```\n",
+    )
+    .unwrap();
+    build_capturing(&src, &dir.join("b.html"), &py);
+    let text = fs::read_to_string(freeze_file(&dir)).expect("freeze json");
+    let cache: serde_json::Value = serde_json::from_str(&text).expect("freeze json parses");
+    let entries = cache
+        .get("entries")
+        .and_then(|e| e.as_array())
+        .unwrap_or_else(|| panic!("no entries list in the freeze file: {text}"));
+    assert_eq!(
+        entries.len(),
+        2,
+        "a clean two-cell document must persist both: {text}"
     );
 }

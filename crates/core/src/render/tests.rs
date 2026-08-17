@@ -6776,3 +6776,106 @@ fn the_width_escape_has_exactly_one_definition() {
         );
     }
 }
+
+/// A lone `\r` must not shift the line model out from under the block walk.
+///
+/// **The defect (Fable audit FA10).** CommonMark ends a line at `\r\n`, at `\n`, or at a
+/// lone `\r`; comrak implements that and `str::lines()` does not. So comrak counted one
+/// more line than the renderer did from the CR onwards, and `slice_lines` handed every
+/// later block the wrong source line: the heading below rendered as
+/// `<h2 id="section" data-block-id="b-cbf29ce48422">`, where `section` is the empty-slug
+/// fallback and `b-cbf29ce48422` is `fnv1a("")`. Two blocks then collided on that same
+/// empty hash and deduped to a `-1` suffix. Nothing warned.
+///
+/// The fix normalizes at ingest (`includes::normalize_line_endings`), one character for
+/// one, so this also pins that line numbers and columns are untouched by it.
+#[test]
+fn a_lone_carriage_return_does_not_break_ids_slugs_or_sourcepos() {
+    let doc = render_document("line one\rline two\n\n## A heading\n\npara.\n");
+    let heading = doc
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("<h2"))
+        .expect("the heading rendered");
+    assert!(
+        heading.html.contains("id=\"a-heading\""),
+        "the heading slug came from the wrong source line: {}",
+        heading.html
+    );
+    assert_ne!(
+        heading.id,
+        format!("b-{:x}", crate::hash::fnv1a("")),
+        "the block id is the hash of an empty slice, so slice_lines read past the end"
+    );
+    // The CR is a line ending, so the heading is on line 4 (`line one`, `line two`, blank,
+    // `## A heading`) exactly as comrak counts it.
+    assert!(
+        heading.sourcepos.starts_with("4:"),
+        "sourcepos disagrees with comrak's line numbering: {}",
+        heading.sourcepos
+    );
+    // Every block keeps a distinct id: the empty-hash collision deduped to `-1` suffixes.
+    let ids: std::collections::HashSet<&str> = doc.blocks.iter().map(|b| b.id.as_str()).collect();
+    assert_eq!(ids.len(), doc.blocks.len(), "duplicate block ids");
+
+    // And the two spellings agree: a document whose CR is already an LF renders the same.
+    let lf = render_document("line one\nline two\n\n## A heading\n\npara.\n");
+    assert_eq!(
+        doc.blocks.iter().map(|b| &b.html).collect::<Vec<_>>(),
+        lf.blocks.iter().map(|b| &b.html).collect::<Vec<_>>(),
+        "a lone CR must render exactly as the newline it is"
+    );
+}
+
+/// A code sample that SHOWS a duplicate `id="…"` is text, not markup.
+///
+/// **The defect (Fable audit FA11).** `rename_repeated_ids` scanned flat HTML for ` id="`
+/// with no tag-versus-text state, and `escape_html` does not escape `"`. A fence or an
+/// inline code span displaying `<div id="example">` twice therefore had its **visible
+/// text** rewritten to `example-1`, and the page drew two error-severity "duplicate element
+/// id" diagnostics about elements that do not exist. Fenced blocks in a *known* language
+/// survived only because syntect escapes quotes; a plain fence reaches the escaper verbatim.
+#[test]
+fn a_code_sample_showing_a_duplicate_id_is_left_alone() {
+    let doc = render_document(
+        "---\ntitle: T\n---\n\n\
+         ```\n<div id=\"example\">one</div>\n```\n\n\
+         ```\n<div id=\"example\">two</div>\n```\n\n\
+         Inline: `<div id=\"example\">`\n",
+    );
+    let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        !html.contains("example-1"),
+        "a code sample's visible text was rewritten: {html}"
+    );
+    assert_eq!(
+        html.matches("id=\"example\"").count(),
+        3,
+        "all three displayed ids must survive verbatim: {html}"
+    );
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate element id")),
+        "prose about HTML is not a duplicate id: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+
+    // The real case still renames and still warns, or the assertion above would be a way
+    // of switching the check off.
+    let real = render_document(
+        "---\ntitle: T\n---\n\n\
+         ::: {#shared}\nfirst\n:::\n\n::: {#shared}\nsecond\n:::\n",
+    );
+    let real_html: String = real.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        real_html.contains("id=\"shared\"") && real_html.contains("id=\"shared-1\""),
+        "a genuinely repeated element id must still be renamed: {real_html}"
+    );
+    assert!(
+        real.warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate element id")),
+        "and still draw its diagnostic"
+    );
+}

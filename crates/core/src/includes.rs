@@ -3,7 +3,53 @@
 //! result can be traced back to the file and line it came from. This is what
 //! lets click-to-source jump into the *included* file rather than the parent.
 
+use std::borrow::Cow;
 use std::path::{Component, Path, PathBuf};
+
+/// `src` with every **lone `\r`** rewritten to `\n`, which is what makes the rest of the
+/// crate's `str::lines()` agree with comrak.
+///
+/// CommonMark ends a line at `\r\n`, at `\n`, **or at a lone `\r`**, and comrak implements
+/// that; `str::lines()` implements the first two. A single stray CR (pasted terminal
+/// output, a file that crossed a classic-Mac tool) therefore split the document into two
+/// different line models, and every line index after it was off by a growing amount. It was
+/// not a cosmetic drift: `slice_lines` handed the block walk the WRONG line, so from the CR
+/// onwards every heading id became the empty-slug fallback `section` and every block id
+/// became `fnv1a("")`, ids collided and deduped to `-1` suffixes, and no diagnostic
+/// anywhere fired. Reproduced 2026-08-17 with
+/// `printf 'line one\rline two\n\n## A heading\n\npara.\n'`.
+///
+/// **Normalizing rather than teaching ten call sites a new splitter** is the choice here.
+/// The substitution is one character for one character, so every line number and every
+/// column is preserved exactly, and click-to-source still lands where the author's cursor
+/// is. The LSP is not affected and keeps `lsp_pos::lines`: it works against the client's
+/// raw buffer, whose positions must stay in the client's own coordinates.
+///
+/// CRLF is deliberately left alone: `str::lines()` already strips it and already agrees
+/// with comrak, so rewriting it would be churn.
+///
+/// Borrows when there is nothing to do, which is every real document.
+pub fn normalize_line_endings(src: &str) -> Cow<'_, str> {
+    let mut bytes = src.bytes().enumerate().filter(|(_, b)| *b == b'\r');
+    if !bytes.any(|(i, _)| src.as_bytes().get(i + 1) != Some(&b'\n')) {
+        return Cow::Borrowed(src);
+    }
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(i) = rest.find('\r') {
+        out.push_str(&rest[..i]);
+        // CRLF stays whole; a lone CR becomes the terminator every other reader sees.
+        if rest[i + 1..].starts_with('\n') {
+            out.push_str("\r\n");
+            rest = &rest[i + 2..];
+        } else {
+            out.push('\n');
+            rest = &rest[i + 1..];
+        }
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
+}
 
 /// Where a line of the expanded buffer originally came from.
 #[derive(Debug, Clone)]
@@ -95,6 +141,11 @@ fn expand(
     out_origins: &mut Vec<LineOrigin>,
     out_warnings: &mut Vec<IncludeWarning>,
 ) {
+    // The one ingest point for every source text this crate renders: the primary document
+    // arrives here, and so does each included file (this function recurses with its
+    // contents). See [`normalize_line_endings`] for what a lone `\r` did before this line.
+    let normalized = normalize_line_endings(src);
+    let src = normalized.as_ref();
     let mut in_code: Option<(char, usize)> = None;
     for (idx, line) in src.lines().enumerate() {
         // Emit `line` verbatim, mapped back to the current file (used whenever a

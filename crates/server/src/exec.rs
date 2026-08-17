@@ -937,6 +937,19 @@ impl Executor {
         // upstream cell re-ran (it had never been persisted) and the downstream one
         // restored an output computed from a different upstream value, permanently.
         let uncacheable_at = first_uncacheable(cells.len(), |i| cells[i].cache);
+        // Nor is anything downstream of a cell that ERRORED or was INTERRUPTED, which is the
+        // same argument one step further. Such a cell left the kernel half-mutated: the
+        // assignments below its raise never happened, the interrupted loop stopped where the
+        // signal landed. Every cell after it therefore ran against state that does not
+        // follow from the upstream code, while its key says it does — and the entry outlives
+        // the failure, because a re-run reaching the same code hits it. The upstream cell
+        // itself is never persisted (`is_uncacheable`), so it re-runs every time; if its
+        // failure is transient (a file that appears, a flaky fetch, an interrupt the author
+        // does not repeat) the success case then restores the output computed while it was
+        // still failing. Same shape as `first_uncacheable`, one range instead of two rules.
+        let failed_at = (shared..run_end)
+            .find(|&i| is_uncacheable(&outputs[i]))
+            .unwrap_or(run_end);
         // The digest on record BEFORE this run stamps its own. Read here, not at the
         // warning below, because `stamp_packages` overwrites it in between: the warning
         // asks what the DISK-RESTORED tail was produced under, and reading after the stamp
@@ -947,7 +960,7 @@ impl Executor {
         let packages_on_entry = self.freeze.recorded_packages(lang).map(str::to_string);
         if has_kernel {
             for i in shared..run_end {
-                if i > uncacheable_at {
+                if i > uncacheable_at || i > failed_at {
                     continue;
                 }
                 if cells[i].cache && !is_uncacheable(&outputs[i]) {
