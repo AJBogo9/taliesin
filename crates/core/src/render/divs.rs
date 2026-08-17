@@ -204,8 +204,8 @@ fn parse_fence(s: &str) -> Option<Fence> {
 
 /// A fenced-div span in buffer-line space (1-based, inclusive of the markers).
 pub(crate) struct DivSpan {
-    open: usize,
-    close: usize,
+    open: BufLine,
+    close: BufLine,
     /// Raw attribute string from the opening fence (e.g. `.callout-note title="X"`).
     attrs: String,
 }
@@ -215,8 +215,8 @@ pub(crate) struct DivSpan {
 /// Also returns the 1-based line of any `:::` open that was never closed — the
 /// orchestrator warns on those (an unterminated fence otherwise drops its wrapper
 /// silently and the content renders unfenced).
-pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
-    let mut stack: Vec<(usize, String)> = Vec::new();
+pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<BufLine>) {
+    let mut stack: Vec<(BufLine, String)> = Vec::new();
     let mut spans: Vec<DivSpan> = Vec::new();
     let mut in_code: Option<(char, usize)> = None;
     for (i, line) in src.lines().enumerate() {
@@ -226,12 +226,12 @@ pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
             continue; // inside (or entering/closing) a code block: not a div fence
         }
         match parse_fence(line.trim_start()) {
-            Some(Fence::Open(attrs)) => stack.push((i + 1, attrs)),
+            Some(Fence::Open(attrs)) => stack.push((BufLine::new(i + 1), attrs)),
             Some(Fence::Close) => {
                 if let Some((open, attrs)) = stack.pop() {
                     spans.push(DivSpan {
                         open,
-                        close: i + 1,
+                        close: BufLine::new(i + 1),
                         attrs,
                     });
                 }
@@ -240,7 +240,7 @@ pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
         }
     }
     spans.sort_by_key(|s| (s.open, std::cmp::Reverse(s.close)));
-    let mut unclosed: Vec<usize> = stack.into_iter().map(|(open, _)| open).collect();
+    let mut unclosed: Vec<BufLine> = stack.into_iter().map(|(open, _)| open).collect();
     unclosed.sort_unstable();
     (spans, unclosed)
 }
@@ -414,7 +414,10 @@ pub(crate) fn group_divs(
         push_block(&mut stack, &mut result, fb.block.clone());
 
         // Close spans that end before the next block begins (innermost first).
-        let next_start = flat.get(i + 1).map(|n| n.buf_start).unwrap_or(usize::MAX);
+        let next_start = flat
+            .get(i + 1)
+            .map(|n| n.buf_start)
+            .unwrap_or(BufLine::new(usize::MAX));
         while let Some(top) = stack.last() {
             if top.span.close < next_start {
                 let done = stack.pop().unwrap();

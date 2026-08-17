@@ -13,7 +13,7 @@ against the release binary before filing them. Findings that got neither check a
 scratchpad `audit-full.json` (not committed; this file supersedes it).
 
 **Landed 2026-08-17**, each with `./tools/gates.sh` green before and
-after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18,
+after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA15, FA17, FA18,
 FA19, FA20, FA24, FA25, FA26, FA27, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
 all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
@@ -86,21 +86,6 @@ the author's call (billing on a private repo is why it is off).
 - Done when: a rehearsal run of ci.yml and release.yml (a throwaway fork, or a scratch tag
   once the repo is public; a `workflow_dispatch` trigger makes this cheap) has completed
   once with its logs read.
-- Effort: M.
-
-# BATCH F5: string surgery over finished HTML (three of four fixed)
-
-## FA15 [A] the two line coordinate systems are still both bare `usize`
-
-CLAUDE.md calls pairing them "the bug that keeps happening"; the current defense is
-comments, and the 2026-08-13 incident touched ten sites. A `BufLine(usize)` /
-`SrcLine(usize)` newtype pair (construction at the two boundaries: `group_divs` output
-and `map_origin`/`map_span` output) makes a wrong pairing a compile error and retires
-the class.
-
-- Done when: `Warning::at` and `data-sourcepos` assembly accept only the source-side
-  type; the buffer-side type never reaches a user-visible surface; no behavior change
-  (pure refactor, existing tests green).
 - Effort: M.
 
 # BATCH F6: parity by construction

@@ -4,7 +4,7 @@
 //! All take a code literal/lines + key and return derived strings/bools; none touches
 //! the orchestrator's shared state.
 
-use super::{CodeFold, JsOpts};
+use super::{BufLine, CodeFold, JsOpts};
 
 /// If `line` is a leading cell-option directive, return the content after the pipe.
 /// Recognizes `#|` (most langs), `//|` (JS), `%%|` (mermaid), each tolerating optional
@@ -155,9 +155,9 @@ pub(super) fn strip_cell_options(literal: &str) -> String {
     body
 }
 
-pub(super) fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
-    let s = start.saturating_sub(1);
-    let e = end.min(lines.len());
+pub(super) fn slice_lines(lines: &[&str], start: BufLine, end: BufLine) -> String {
+    let s = start.get().saturating_sub(1);
+    let e = end.get().min(lines.len());
     if s >= e {
         return String::new();
     }

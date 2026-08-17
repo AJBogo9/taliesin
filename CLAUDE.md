@@ -299,16 +299,18 @@ certifies nothing. Do not credit it for a check until the repo is public.
   blocks also carry `data-source-file`. Source mapping, incremental re-render and
   live-state preservation all key off this one block model, so preserve those invariants
   (`crates/core/tests/corpus.rs` enforces them).
-- **There are TWO line coordinate systems in `render/mod.rs` and pairing them is the bug
-  that keeps happening.** `buf_start` is the line in the post-include BUFFER (what
-  `group_divs` matches `:::` spans in); the mapped line from `map_origin`/`map_span` is the
-  line in the file the author actually wrote. **A `source_file` may only ever be paired
-  with a mapped line** — any include shifts every later buffer line, so the mismatch puts a
-  diagnostic N lines off in a real openable file with nothing signalling it. For the same
-  reason a block's `data-sourcepos` range must stay inside ONE file's numbering: mapping
-  the two ends independently emits spans like `39:1-6:25` on a paragraph comrak merged
-  across an include boundary, which `client.js`'s `highlightAtLine` skips outright.
-  `map_span` is the single answer to both ends.
+- **There are TWO line coordinate systems in `render/mod.rs`, and since FA15 the COMPILER
+  keeps them apart.** A post-include BUFFER line (what `group_divs` matches `:::` spans in)
+  is a `BufLine` — a newtype in `render/model.rs` with no `Display` and no conversion, so
+  it cannot be formatted into a `data-sourcepos` or passed as the `u32` `Warning::at` takes.
+  `map_origin`/`map_span` are the way out, returning the author's own file and line; the
+  source side stays a bare number because past that point there is only one system left.
+  **A `source_file` may only ever be paired with a mapped line** — any include shifts every
+  later buffer line, so the mismatch puts a diagnostic N lines off in a real openable file
+  with nothing signalling it. For the same reason a block's `data-sourcepos` range must stay
+  inside ONE file's numbering: mapping the two ends independently emits spans like
+  `39:1-6:25` on a paragraph comrak merged across an include boundary, which `client.js`'s
+  `highlightAtLine` skips outright. `map_span` is the single answer to both ends.
 - **Read finished HTML through `render::tags` / `render::attrs`, never a bare
   `find("src=\"")`.** `escape_html` does not escape `"`, so a code sample that merely
   *shows* `<a href="x.md">` puts a real-looking attribute into the page's TEXT, and the

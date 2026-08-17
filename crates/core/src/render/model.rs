@@ -2,6 +2,39 @@
 //! consumes (cells, blocks, the rendered doc, page includes). Split out of
 //! mod.rs so the data model is separate from the render pipeline + emission.
 
+/// A 1-based line in the **post-include buffer**: the text comrak actually parsed, with
+/// every `{{< include >}}` already spliced in. Not the line the author wrote.
+///
+/// A newtype rather than a `usize` because pairing one with a mapped `source_file` is, in
+/// CLAUDE.md's words, "the bug that keeps happening": any include shifts every later
+/// buffer line, so the pair lands N lines off **inside a real, openable file**, with
+/// nothing to signal it. The 2026-08-13 incident touched ten sites and the defence was a
+/// comment.
+///
+/// It is defined HERE, a module `mod.rs` cannot see the insides of, so the wrapped number
+/// is genuinely out of reach: no `Display` (a buffer line cannot be formatted into a
+/// `data-sourcepos`), no conversion (it cannot become the `u32` `Warning::at` wants), and
+/// [`BufLine::get`] to unwrap by hand where the buffer itself is being indexed. The way
+/// OUT of buffer space is `map_origin`/`map_span`, which return the author's own file and
+/// line — plain numbers, because past that point there is only one coordinate system left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct BufLine(usize);
+
+impl BufLine {
+    /// Assert that `line` counts lines of the preprocessed buffer. The honest callers are
+    /// comrak's `sourcepos`, the `:::` span scan and the nesting scan — each of which reads
+    /// the buffer directly.
+    pub(crate) fn new(line: usize) -> BufLine {
+        BufLine(line)
+    }
+
+    /// The raw number, for indexing the buffer or its source map. **Never for a diagnostic
+    /// or a `data-sourcepos`**: see the type's own doc for what that costs.
+    pub(crate) fn get(self) -> usize {
+        self.0
+    }
+}
+
 /// An executable code cell (```` ```{lang} ````), exposed so the dev
 /// server can run it against a kernel.
 #[derive(Debug, Clone)]

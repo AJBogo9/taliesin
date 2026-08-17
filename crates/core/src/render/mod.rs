@@ -16,7 +16,7 @@ pub use model::{
     AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
     PageIncludes, RenderedDoc, Severity, SiteDefaults, Warning,
 };
-pub(crate) use model::{CellRole, CodeFold};
+pub(crate) use model::{BufLine, CellRole, CodeFold};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
@@ -290,10 +290,10 @@ pub const MAX_NESTING_DEPTH: usize = 1000;
 /// which also nest one level per marker (`- - - x` is three nested lists). `:::` fenced divs
 /// are deliberately NOT counted: their fences are stripped by a flat line-preserving pass
 /// rather than parsed recursively, and AP2 measured 1M levels of them rendering fine.
-fn overlong_nesting(src: &str) -> Option<(usize, usize)> {
+fn overlong_nesting(src: &str) -> Option<(BufLine, usize)> {
     src.lines().enumerate().find_map(|(idx, line)| {
         let depth = leading_container_depth(line);
-        (depth > MAX_NESTING_DEPTH).then_some((idx + 1, depth))
+        (depth > MAX_NESTING_DEPTH).then_some((BufLine::new(idx + 1), depth))
     })
 }
 
@@ -559,7 +559,11 @@ fn render_internal_impl(
             // document end, but its sourcepos still points at where the author wrote it,
             // which is the line click-to-source must land on.
             let sp = data.sourcepos;
-            let (file, start_line, end_line) = map_span(origins, sp.start.line, sp.end.line);
+            let (file, start_line, end_line) = map_span(
+                origins,
+                BufLine::new(sp.start.line),
+                BufLine::new(sp.end.line),
+            );
             Some((
                 fd.name.clone(),
                 FootnoteDef {
@@ -569,7 +573,11 @@ fn render_internal_impl(
                         start_line, sp.start.column, end_line, sp.end.column
                     ),
                     source_file: file,
-                    src: slice_lines(&lines, sp.start.line, sp.end.line),
+                    src: slice_lines(
+                        &lines,
+                        BufLine::new(sp.start.line),
+                        BufLine::new(sp.end.line),
+                    ),
                     line: start_line as u32,
                 },
             ))
@@ -639,6 +647,10 @@ fn render_internal_impl(
         // of an included partial, and — because any include shifts every later buffer line —
         // put the PARENT document's own later warnings N lines off in a real, openable file
         // with nothing signalling it.
+        //
+        // Their difference is now a TYPE ([`BufLine`]), not this paragraph: `buf_start`
+        // cannot be formatted into a `data-sourcepos` and cannot become the `u32` a warning
+        // wants. The paragraph stays for the *why*; the compiler holds the rule.
         let (
             buf_start,
             src_line,
@@ -692,7 +704,11 @@ fn render_internal_impl(
             }
             let sp = data.sourcepos;
             // Translate the buffer line range back to the originating file/line.
-            let (file, start_line, end_line) = map_span(origins, sp.start.line, sp.end.line);
+            let (file, start_line, end_line) = map_span(
+                origins,
+                BufLine::new(sp.start.line),
+                BufLine::new(sp.end.line),
+            );
             let sourcepos = format!(
                 "{}:{}-{}:{}",
                 start_line, sp.start.column, end_line, sp.end.column
@@ -769,11 +785,15 @@ fn render_internal_impl(
                 ));
             }
             (
-                sp.start.line,
+                BufLine::new(sp.start.line),
                 start_line,
                 sourcepos,
                 file,
-                slice_lines(&lines, sp.start.line, sp.end.line),
+                slice_lines(
+                    &lines,
+                    BufLine::new(sp.start.line),
+                    BufLine::new(sp.end.line),
+                ),
                 is_paragraph,
                 heading_level,
                 cell,
@@ -1677,7 +1697,7 @@ fn load_bibliography(
 /// A top-level block plus its line in the (post-include, post-blank) buffer,
 /// used to group blocks back into fenced-div containers.
 struct FlatBlock {
-    buf_start: usize,
+    buf_start: BufLine,
     block: Block,
 }
 
@@ -1720,17 +1740,17 @@ pub(crate) fn id_attr(id: Option<&str>) -> String {
 
 /// Map a 1-based buffer line to its (origin file, origin line). Without a
 /// source map, the file is the primary document and the line is unchanged.
-fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<String>, usize) {
+fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: BufLine) -> (Option<String>, usize) {
     match origin_at(origins, buffer_line) {
         Some(origin) => (origin.file.clone(), origin.line),
-        None => (None, buffer_line),
+        None => (None, buffer_line.get()),
     }
 }
 
 /// The source map's entry for a 1-based buffer line: `None` when there is no map at all
 /// (the whole buffer is the primary document) or the line is past its end.
-fn origin_at(origins: Option<&[LineOrigin]>, buffer_line: usize) -> Option<&LineOrigin> {
-    origins.and_then(|o| o.get(buffer_line.saturating_sub(1)))
+fn origin_at(origins: Option<&[LineOrigin]>, buffer_line: BufLine) -> Option<&LineOrigin> {
+    origins.and_then(|o| o.get(buffer_line.get().saturating_sub(1)))
 }
 
 /// Map a buffer line RANGE back to ONE origin file: the file the range starts in, plus
@@ -1751,13 +1771,13 @@ fn origin_at(origins: Option<&[LineOrigin]>, buffer_line: usize) -> Option<&Line
 /// document with no includes changes.
 fn map_span(
     origins: Option<&[LineOrigin]>,
-    start: usize,
-    end: usize,
+    start: BufLine,
+    end: BufLine,
 ) -> (Option<String>, usize, usize) {
     let start_file = origin_at(origins, start).and_then(|o| o.file.as_deref());
     let mut last = end;
     while last > start && origin_at(origins, last).and_then(|o| o.file.as_deref()) != start_file {
-        last -= 1;
+        last = BufLine::new(last.get() - 1);
     }
     let (file, start_line) = map_origin(origins, start);
     (file, start_line, map_origin(origins, last).1)
