@@ -13,6 +13,48 @@ pub fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
 }
 
+/// A rendered page with the *contents* of every `<script>` and `<style>` blanked, for
+/// assertions about the page's own markup.
+///
+/// A built page inlines the bundled CSS and JS, so a `contains("…")` against the whole
+/// page can be satisfied by a comment or a selector inside those assets rather than by
+/// anything the renderer emitted. That is not hypothetical: `06-skip-link.js` opens by
+/// quoting `<main id="tali-main" tabindex="-1">` verbatim to say what the server already
+/// does, so the a11y chrome test passed with the real `<main>` emission commented out, and
+/// every `tali-site-nav` / `tali-site-footer` needle is also a selector in `site.css`.
+///
+/// The tags survive (only their bodies are emptied) so a needle *about* a script or style
+/// element (`<script type="application/tali-js">`, `<script src=…>`) still works.
+pub fn markup_only(page: &str) -> String {
+    let mut out = String::with_capacity(page.len());
+    let mut rest = page;
+    while let Some((at, tag)) = ["<script", "<style"]
+        .iter()
+        .filter_map(|t| rest.find(t).map(|i| (i, *t)))
+        .min()
+    {
+        // The open tag itself is markup and is kept whole; only what it wraps goes.
+        let Some(open_end) = rest[at..].find('>').map(|i| at + i + 1) else {
+            // An unterminated open tag: keep what precedes it, drop the rest unread.
+            out.push_str(&rest[..at]);
+            rest = "";
+            break;
+        };
+        out.push_str(&rest[..open_end]);
+        let close = format!("</{}", &tag[1..]);
+        match rest[open_end..].find(&close) {
+            Some(i) => rest = &rest[open_end + i..],
+            // An unclosed script/style: drop what it swallowed rather than assert on it.
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A throwaway project directory built up in-test, so each case can express
 /// exactly the manifest/config/files it needs without committed fixtures. The
 /// directory is removed on drop.

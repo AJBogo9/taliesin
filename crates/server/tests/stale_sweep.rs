@@ -203,6 +203,43 @@ fn an_output_directory_from_an_earlier_binary_is_still_recognised() {
 }
 
 #[test]
+fn a_foreign_app_stylesheet_does_not_claim_the_output_directory() {
+    // The fallback above recognises `_assets/app.<hash>.css` because nothing but a
+    // Taliesin build writes that name, but only the *hashed* shape is exclusive.
+    // `app.min.css` is one of the most conventional stylesheet names there is, and a
+    // webpack/parcel `app.<contenthash>.css` is another; matching those handed the sweep
+    // a stranger's directory and deleted their files with an exit-0 build.
+    let dir = tmp_dir("foreign-bundle");
+    let src = dir.join("blog");
+    let out = dir.join("dist");
+    project(&src);
+    fs::create_dir_all(out.join("_assets")).unwrap();
+    fs::write(out.join("_assets").join("app.min.css"), "body{}").unwrap();
+    fs::write(out.join("precious.txt"), "hi\n").unwrap();
+
+    let (ok, err) = try_build(&src, &out);
+
+    assert!(
+        !ok,
+        "a foreign `_assets/app.min.css` must not claim the directory: {err}"
+    );
+    assert!(
+        out.join("precious.txt").is_file(),
+        "a refused build must touch nothing: {err}"
+    );
+    assert!(
+        out.join("_assets").join("app.min.css").is_file(),
+        "including the file it mistook for its own: {err}"
+    );
+    assert!(
+        !out.join("index.html").exists(),
+        "and writes nothing: {err}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_deploy_metadata_only_output_directory_is_still_usable() {
     // The boundary the refusal turns on: `.nojekyll`, `_headers` and a `.git` worktree
     // are exactly what the sweep already promises never to touch, so a deploy folder

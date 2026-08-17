@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod common;
-use common::corpus_dir;
+use common::{corpus_dir, markup_only};
 
 fn collect_tmd(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap() {
@@ -172,6 +172,19 @@ fn tag_attr(tag: &str, attr: &str) -> Option<String> {
 
 /// Every off-origin subresource reference in a built page, as `(element, url)`.
 fn offsite_refs(page: &str) -> Vec<(String, String)> {
+    subresource_refs(page)
+        .into_iter()
+        .filter(|(_, u)| is_offsite(u))
+        .collect()
+}
+
+/// Every subresource reference in a built page, off-origin or not, as `(element, url)`.
+///
+/// [`offsite_refs`] is this filtered by [`is_offsite`], and the split is what lets the
+/// anti-vacuity floor below count what the scanner actually *looked at*. It used to count
+/// pages containing `<script` or `<img`, which every built page satisfies through its
+/// inlined bundle whether or not a single URL was ever handed to the scanner.
+fn subresource_refs(page: &str) -> Vec<(String, String)> {
     let mut hits = Vec::new();
     let mut i = 0;
     while let Some(rel) = page[i..].find('<') {
@@ -206,7 +219,7 @@ fn offsite_refs(page: &str) -> Vec<(String, String)> {
                 // `srcset` is a comma-separated candidate list, each `url [descriptor]`.
                 for cand in v.split(',') {
                     let url = cand.split_whitespace().next().unwrap_or("");
-                    if !url.is_empty() && is_offsite(url) {
+                    if !url.is_empty() {
                         hits.push((name.clone(), url.to_string()));
                     }
                 }
@@ -232,7 +245,7 @@ fn offsite_refs(page: &str) -> Vec<(String, String)> {
                 .chars()
                 .take_while(|c| !matches!(c, '"' | '\'' | ')' | ';' | ' '))
                 .collect();
-            if is_offsite(&url) {
+            if !url.is_empty() {
                 hits.push(("css".to_string(), url));
             }
         }
@@ -289,10 +302,13 @@ fn no_built_page_fetches_anything_off_origin() {
                 hits.is_empty(),
                 "{label} ({mode:?}): a built page must fetch nothing off-origin, found {hits:?}"
             );
-            // The scanner has to be looking at something. A page with zero fetching
-            // elements would pass with the assertion disabled, so count the pages that do
-            // carry subresources and require below that the corpus produced some.
-            if page.contains("<script") || page.contains("<img") {
+            // The scanner has to be looking at something. A page that hands it zero URLs
+            // would pass with the assertion disabled, so count the pages that actually
+            // carried a subresource reference and require below that the corpus produced
+            // some. Counted off the scanner's own walk, not off `contains("<script")`:
+            // every built page inlines a `<script>`, so that proxy was true by
+            // construction and floored nothing.
+            if !subresource_refs(&page).is_empty() {
                 with_subresources += 1;
             }
         }
@@ -360,30 +376,19 @@ fn every_corpus_doc_renders_with_invariants() {
         assert!(!doc.blocks.is_empty(), "{label}: produced no blocks");
 
         let mut ids = HashSet::new();
-        // Document order holds within one contiguous RUN of blocks from a single source
-        // file. Included files reset to their own line numbering, so the run is the unit.
+        // Document order holds per SOURCE FILE, for the whole document: every include is a
+        // whole file, so a file's blocks splice in as one unbroken ascending run and can
+        // never legitimately go backwards. Included files reset to their own line
+        // numbering, which is why the tracking is keyed on the file rather than global.
         //
-        // It used to be tracked per file for the whole document, which is the same thing
-        // as long as every include is a whole file: those splice in one unbroken run, so
-        // a file's blocks can only ever be seen in ascending order. **Block-level
-        // transclusion (item 160) breaks that**, legitimately — a document may pull
-        // `#sec-b` before `#sec-a`, and `corpus/transclude.tmd` does exactly that, so the
-        // second run starts at an earlier line than the first ended.
-        //
-        // Nothing downstream needs the stronger version: `highlightAtLine` in
-        // `web-client/client.js` scans every `[data-sourcepos]` and takes the smallest
-        // covering range (falling back to the latest-starting preceding one), which is a
-        // min/max over the whole set and assumes no ordering at all. What the check is
-        // still worth keeping for is what `render/tests.rs` names: a gathered block
-        // claiming a span it did not come from would show up as a line going backwards
-        // *inside* a run.
-        //
-        // Residual, stated rather than hidden: two transclusions of the SAME file with no
-        // block between them, later section first, would read as one run and trip this.
-        // No corpus document does that today. If one ever does, the fix is here — the
-        // renderer would need to mark run boundaries — not in the document.
+        // This was weakened until 2026-08-17 to re-arm on every alternation of
+        // `source_file`, an accommodation for block-level transclusion (item 160): a
+        // document pulling `#sec-b` before `#sec-a`. That feature and the one document
+        // that used it (`corpus/transclude.tmd`) both went in wave 7, so the weakening
+        // guarded nothing and blinded the check to exactly the defect it is here for: a
+        // gathered block claiming a span it did not come from shows up as a line going
+        // backwards within its file.
         let mut prev_start: std::collections::HashMap<Option<String>, usize> = HashMap::new();
-        let mut prev_file: Option<Option<String>> = None;
         for b in &doc.blocks {
             assert!(!b.html.is_empty(), "{label}: empty html for block {}", b.id);
             assert!(ids.insert(&b.id), "{label}: duplicate block id {}", b.id);
@@ -409,15 +414,10 @@ fn every_corpus_doc_renders_with_invariants() {
                 b.sourcepos
             );
             assert!(sl <= el, "{label}: start line after end in {}", b.sourcepos);
-            // A change of source file ends the run, so the next one starts fresh.
-            if prev_file.as_ref() != Some(&b.source_file) {
-                prev_start.insert(b.source_file.clone(), 0);
-                prev_file = Some(b.source_file.clone());
-            }
             let prev = prev_start.entry(b.source_file.clone()).or_insert(0);
             assert!(
                 sl >= *prev,
-                "{label}: blocks out of order within one run of {:?} ({sl} after {prev})",
+                "{label}: blocks out of order within {:?} ({sl} after {prev})",
                 b.source_file
             );
             *prev = sl;
@@ -560,8 +560,8 @@ fn every_corpus_doc_resolves_its_includes_when_built_alone() {
         // The leaked directive is ESCAPED in the body (`{{&lt; include …`), so a needle
         // for the raw `{{< include` matches nothing and passes on a broken page — this
         // assertion was written that way first and stayed green with the bug in place.
-        // Code has to come out first: `transclude.tmd` *documents* the syntax in code
-        // spans, and those are literal content, not an unresolved directive.
+        // Code has to come out first: a document that *documents* the syntax in code
+        // spans has literal content there, not an unresolved directive.
         let body = strip_code(&doc.body_html());
         let leaked_text = body.contains("{{&lt; include") || body.contains("{{< include");
         let warned = doc
@@ -594,13 +594,19 @@ fn every_corpus_doc_resolves_its_includes_when_built_alone() {
 fn a11y_chrome_emits_landmarks_and_a_skip_link() {
     // A page with a TOC emits the skip-link + focusable <main> SERVER-SIDE (works
     // with JS off) and a distinguishable TOC landmark. ---
-    let page = taliesin_core::render_doc_to_page(
+    //
+    // Every needle below is checked against the page's MARKUP, with the inlined script and
+    // style bodies blanked (`markup_only`). Without that, `06-skip-link.js` quotes
+    // `<main id="tali-main" tabindex="-1">` in its opening comment and `base.css` carries
+    // the `.tali-skip` rule, so this test stayed green with the server-side `tabindex`
+    // dropped. Mutation-checked in both directions on 2026-08-17.
+    let page = markup_only(&taliesin_core::render_doc_to_page(
         &taliesin_core::render_document(
             "---\ntitle: \"T\"\ntoc: true\n---\n\n# One\n\nbody\n\n## Two\n\nmore\n",
         ),
         "fallback",
         taliesin_core::OutputMode::Build,
-    );
+    ));
     // Skip-to-content link is the first thing in the body, before JS runs.
     assert!(
         page.contains("class=\"tali-skip\"") && page.contains("href=\"#tali-main\""),
@@ -634,11 +640,11 @@ fn a11y_chrome_emits_landmarks_and_a_skip_link() {
 
     // ...and a page WITHOUT a TOC offers only the one link: a skip link to a target that
     // does not exist is worse than no skip link, since it spends a tab stop going nowhere.
-    let no_toc = taliesin_core::render_doc_to_page(
+    let no_toc = markup_only(&taliesin_core::render_doc_to_page(
         &taliesin_core::render_document("---\ntitle: \"T\"\n---\n\nbody only\n"),
         "fallback",
         taliesin_core::OutputMode::Build,
-    );
+    ));
     assert!(
         no_toc.contains("href=\"#tali-main\""),
         "the skip-to-content link is unconditional"
@@ -902,14 +908,23 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         assert!(p.url.ends_with(".html"), "page url not .html: {}", p.url);
     }
 
-    // A top-level page renders with the site chrome and rewrites its nav links.
-    let blog = site.render_page("blog.tmd").expect("blog renders");
-    assert!(blog.contains("tali-site-nav"), "navbar missing");
+    // A top-level page renders with the site chrome and rewrites its nav links. Markup
+    // only: `site.css` is inlined into the page and carries `.tali-site-nav` /
+    // `.tali-site-footer` selectors, so the bare class-name needles below were satisfied by
+    // the stylesheet whether or not the chrome was emitted.
+    let blog = markup_only(&site.render_page("blog.tmd").expect("blog renders"));
+    assert!(
+        blog.contains("<header class=\"tali-site-nav\""),
+        "navbar missing"
+    );
     assert!(
         blog.contains("<nav class=\"tali-nav-inner\" aria-label=\"Primary\">"),
         "the website primary nav must be aria-labelled"
     );
-    assert!(blog.contains("tali-site-footer"), "footer missing");
+    assert!(
+        blog.contains("<footer class=\"tali-site-footer\""),
+        "footer missing"
+    );
     // Mobile nav toggle must stay a real, keyboard/SR-operable <button> (WCAG 2.1.1):
     // never regress to the old display:none `<input type=checkbox>` + role-less label hack.
     assert!(

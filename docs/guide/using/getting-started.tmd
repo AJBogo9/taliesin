@@ -168,12 +168,19 @@ common build-and-deploy patterns live in [Recipes](recipes.tmd).
 The build output is **plain static HTML + assets** with no server runtime, so it
 deploys anywhere that serves files.
 
+Run `taliesin build <dir> --check-only` first, wherever you deploy from. A plain
+`build` writes the page and exits 0 even when a cross-reference resolves to nothing or
+an image is missing, by design; `--check-only` is the verb that turns those into a
+non-zero exit, and it writes nothing. The two-stage form is in the
+[CLI reference](../reference/cli.tmd).
+
 - **GitHub Pages.** Build into `docs/` (or push `_site/`) on your default branch
-  and enable Pages, or use an action that runs `taliesin build` and uploads the
-  output directory as the Pages artifact.
+  and enable Pages, or use an action that runs `taliesin build . --check-only` and then
+  `taliesin build`, uploading the output directory as the Pages artifact.
 - **Netlify / Vercel / Cloudflare Pages.** Set the build command to
-  `cargo run -p taliesin-server -- build <dir>` and the publish directory to the
-  emitted `_site/` / `_book/`.
+  `cargo run -p taliesin-server -- build <dir> --check-only && cargo run -p
+  taliesin-server -- build <dir>` and the publish directory to the emitted
+  `_site/` / `_book/`.
 - **Any static host / `rsync`.** Copy the output folder as-is. The `--out <dir>`
   form and the site/book builds copy referenced local assets next to the HTML, so
   the folder is self-contained.
@@ -204,6 +211,11 @@ jobs:
       - name: Install Taliesin
         # point at wherever Taliesin lives; add --tag vX.Y for reproducible builds
         run: cargo install --git https://github.com/AJBogo9/taliesin --locked taliesin-server
+      - name: Check before publishing
+        # `build` exits 0 on a broken cross-reference or a missing image: it writes
+        # the page anyway and leaves the verdict to this. Without it the deploy is
+        # the first place you find out.
+        run: taliesin build . --check-only
       - name: Build the site
         run: taliesin build .          # website -> _site/   (a book emits _book/)
       - uses: actions/upload-pages-artifact@v3

@@ -240,7 +240,9 @@ taliesin build .
 
 That is the point of iterating this way: by the time you want the HTML, there is nothing
 left to compute. The cache is keyed on the cell's own code plus every upstream cell's, so
-there is nothing to clear by hand and no way to get a stale hit.
+there is nothing to clear by hand: no edit to code can produce a stale hit. The key does
+not see what a cell *reads* (a data file, an environment variable, an upgraded library),
+so mark a cell with an out-of-band input `#| cache: false`.
 
 ### There is only ever one kernel per project
 

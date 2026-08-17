@@ -6,6 +6,8 @@
 //!   not ship green); a *missing* `_site.yml` is a harder, unconditional failure (a
 //!   directory is refused as not a project regardless of `--strict` -- see
 //!   `project_required.rs`);
+//! - a page the site build could not read or write fails it unconditionally (the deploy
+//!   still holds the previous body, so exit 0 said "current" about a stale page);
 //! - an unknown `--flag` is a hard error with a did-you-mean (not silently dropped);
 //! - a value-less `--out` is a hard error (not a silent `<stem>.html` write).
 
@@ -79,6 +81,68 @@ fn malformed_site_yml_fails_strict_build() {
         strict_err.contains("unparseable YAML block"),
         "the failure names the unparseable block, not --strict: {strict_err}"
     );
+}
+
+#[test]
+fn a_page_the_site_build_cannot_write_fails_regardless_of_strict() {
+    // A read-only output file is the ordinary shape of this: a deploy directory whose
+    // permissions changed, a page checked out read-only, an ACL. The write fails, the
+    // error prints -- and the build used to close with `built … 1 page` and exit 0 while
+    // the sweep kept the page's URL, so the deploy still held the PREVIOUS body. That is
+    // the one outcome CI reads as "the site is current". The single-doc path has always
+    // returned FAILURE here; the two verbs disagreed.
+    let dir = tmp_dir("readonly-out");
+    let out = dir.join("_site");
+    fs::write(dir.join("_site.yml"), "title: Probe\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nFirst.\n").unwrap();
+
+    let first = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--out")
+        .arg(&out)
+        .arg("--no-exec")
+        .output()
+        .expect("first build");
+    assert!(first.status.success(), "the first build is clean");
+
+    let page = out.join("index.html");
+    let mut perms = fs::metadata(&page).unwrap().permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o444);
+    }
+    perms.set_readonly(true);
+    fs::set_permissions(&page, perms).unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nSecond.\n").unwrap();
+
+    for extra in [&[][..], &["--strict"][..]] {
+        let res = taliesin()
+            .arg("build")
+            .arg(&dir)
+            .arg("--out")
+            .arg(&out)
+            .arg("--no-exec")
+            .args(extra)
+            .output()
+            .expect("rebuild over a read-only page");
+        let err = String::from_utf8_lossy(&res.stderr);
+        assert!(
+            !res.status.success(),
+            "a page that could not be written must fail the build ({extra:?}): {err}"
+        );
+        assert!(
+            err.contains("could not be read or written"),
+            "the closing verdict names what happened ({extra:?}): {err}"
+        );
+    }
+    assert!(
+        fs::read_to_string(&page).unwrap().contains("First."),
+        "and the stale body is what is still deployed, which is why exit 0 was a lie"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

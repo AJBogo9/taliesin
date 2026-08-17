@@ -543,6 +543,20 @@ fn warn_unparseable(unparseable: usize) {
     ));
 }
 
+/// Log the unconditional "a page did not read or write" failure summary for the site path.
+///
+/// Like [`warn_unparseable`], it says nothing about `--strict`: the flag neither caused
+/// this nor can suppress it. What it does say is what the stale output means, because the
+/// page that failed to write still has a URL in the deploy and the sweep kept it.
+fn warn_io_failures(pages: usize) {
+    log::error(&format!(
+        "{pages} page{} could not be read or written; failing the build. The output still \
+         holds the previous build's copy of {}.",
+        if pages == 1 { "" } else { "s" },
+        if pages == 1 { "it" } else { "them" }
+    ));
+}
+
 /// Log the `--strict` failure summary (shared by the single-doc and site build paths).
 fn warn_strict(problems: usize) {
     log::error(&format!(
@@ -1307,6 +1321,13 @@ struct PageOutcome {
     /// the whole story).
     kernel_failure: Option<String>,
     written: bool,
+    /// This page could not be read from, or could not be written to. Folded across the
+    /// build into an unconditional failure, `--strict` or not: a page the build could not
+    /// write is not a built page, and the sweep keeps the stale output that is standing in
+    /// for it, so exit 0 tells CI the deploy is current when it is a rebuild-old copy. The
+    /// single-doc path has always returned `FAILURE` here (`finalize_build`'s `wrote`); the
+    /// site path counted it into neither `problems` nor `unparseable` and exited 0.
+    io_failed: bool,
     /// The conditional `_assets/` blobs this page's HTML links, folded across the build so
     /// only the linked ones are written (item 137).
     used: AssetUse,
@@ -1342,6 +1363,7 @@ async fn build_one_page(
             unparseable: 0,
             kernel_failure: None,
             written: false,
+            io_failed: true,
             used: AssetUse::default(),
         };
     };
@@ -1465,6 +1487,7 @@ async fn build_one_page(
         problems,
         unparseable,
         kernel_failure,
+        io_failed: !written,
         written,
         used,
     }
@@ -1967,6 +1990,8 @@ async fn build_site_async(
     // already logged where it occurs).
     let mut problems = config_problems;
     let mut unparseable = config_errors;
+    // Pages this build could not read or could not write. Never `--strict`-conditional.
+    let mut io_failures = 0usize;
 
     // Build into a slot per page (indexed by page order) so results aggregate
     // deterministically regardless of completion order. A `Semaphore` of size
@@ -2032,6 +2057,7 @@ async fn build_site_async(
         diagnostics.extend(outcome.diagnostics);
         problems += outcome.problems;
         unparseable += outcome.unparseable;
+        io_failures += usize::from(outcome.io_failed);
         kernel_failure = kernel_failure.or(outcome.kernel_failure);
         used.merge(outcome.used);
         if outcome.written {
@@ -2204,8 +2230,16 @@ async fn build_site_async(
     // did not parse lost its own `title:`/`listing:`. Both used to ship green.
     let unparseable = unparseable;
     let strict_fail = strict && problems > 0;
+    // A page that could not be read or written fails the build outright, `--strict` or
+    // not, matching what the single-doc path has always done. The per-page `error` line is
+    // already printed; this is the closing verdict, because `built … N pages` above it
+    // otherwise reads as success, and the sweep keeps the failed page's URL, so what is
+    // still sitting in the output is the previous build's body.
+    let io_fail = io_failures > 0;
     if kernel_fail {
         // The kernel error is the actionable one; don't bury it under a second tally.
+    } else if io_fail {
+        warn_io_failures(io_failures);
     } else if unparseable > 0 {
         warn_unparseable(unparseable);
     } else if strict_fail {
@@ -2214,7 +2248,7 @@ async fn build_site_async(
         warn_nonstrict_problems(problems);
     }
     SiteBuildOutcome {
-        ok: unparseable == 0 && !strict_fail && !kernel_fail,
+        ok: unparseable == 0 && !strict_fail && !kernel_fail && !io_fail,
         diagnostics,
     }
 }
@@ -2337,6 +2371,13 @@ not produce. Delete this file to make it refuse to write here again.
 /// produces that name, and without this clause every `_site/` and every live deploy folder
 /// in existence would be refused once, for bookkeeping the build had not started keeping
 /// yet.
+///
+/// **The fallback matches the emitted shape exactly, hash segment included.** It was
+/// `starts_with("app.") && ends_with(".css")` until 2026-08-17, which also claims
+/// `app.min.css` and every webpack/parcel `app.<contenthash>.css`, conventional names in
+/// a stranger's `dist/`. Claiming one skipped the refusal and let [`sweep_stale`] delete
+/// their files with an exit-0 build: the exact disaster the refusal was installed to
+/// prevent. A fallback that is looser than what it recognises is not evidence.
 fn is_taliesin_output(out: &Path) -> bool {
     if out.join(OUTPUT_MARKER).is_file() {
         return true;
@@ -2345,11 +2386,22 @@ fn is_taliesin_output(out: &Path) -> bool {
         entries.any(|e| {
             e.is_ok_and(|e| {
                 let name = e.file_name();
-                let name = name.to_string_lossy();
-                name.starts_with("app.") && name.ends_with(".css")
+                is_hashed_asset_name(&name.to_string_lossy(), "app", "css")
             })
         })
     })
+}
+
+/// Is `name` the `<stem>.<hash>.<ext>` shape [`write_asset_bundle`] emits? The hash is a
+/// `u64` written `{:x}`, so it is 1-16 lowercase hex digits and never empty.
+fn is_hashed_asset_name(name: &str, stem: &str, ext: &str) -> bool {
+    let Some(rest) = name.strip_prefix(stem).and_then(|r| r.strip_prefix('.')) else {
+        return false;
+    };
+    let Some(hash) = rest.strip_suffix(ext).and_then(|h| h.strip_suffix('.')) else {
+        return false;
+    };
+    (1..=16).contains(&hash.len()) && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// Entries under `out` that this build does not own, or `None` when `out` is the build's

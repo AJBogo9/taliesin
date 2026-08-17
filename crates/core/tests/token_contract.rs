@@ -43,10 +43,16 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
 /// (e.g. `"data-background-" + kind`). They are kept deliberately: a split token is
 /// exactly what a find-and-replace misses.
 const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
-    "data-attribute",
-    "data-attrs",
+    // `data-attribute` and `data-attrs` went on 2026-08-17 with the census's first
+    // comment-free run: neither was ever an attribute. They were the English words in
+    // "guard with a data-attribute" (`01-registry.js`) and "never build data-attrs"
+    // (`cell_numbered.rs`), pinned as vocabulary because the blob ingested prose.
     "data-block-id",
     "data-drawer-wired",
+    // `data-enhanced` arrived in the same pass, from the other direction: `08-copy-buttons.js`
+    // sets and reads it only as `pre.dataset.enhanced`, so no literal spelling existed for
+    // the census to find until it learned to read dataset accessors.
+    "data-enhanced",
     "data-inputs",
     "data-label",
     "data-mermaid-error",
@@ -76,7 +82,9 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-tali-search",
     "data-tali-src",
     "data-tali-theme-toggle",
-    "data-tali-xref",
+    // `data-tali-xref` went on 2026-08-17: it is build-time only, as NO_RUNTIME_CONSUMER
+    // has said all along. No browser code selects on it; the census saw it in `xref.rs`
+    // prose. Two lists disagreed and the comment was what reconciled them.
     "data-target",
     "data-theme",
     "data-viewof",
@@ -193,6 +201,44 @@ fn scan_data_attrs(text: &str, mode: Scan, out: &mut BTreeSet<String>) {
                 end
             };
     }
+    if mode == Scan::Source {
+        scan_dataset_accessors(text, out);
+    }
+}
+
+/// Collect the attribute names reached through the DOM `dataset` property
+/// (`el.dataset.navWired` -> `data-nav-wired`), which is the other half of [`Scan::Source`].
+///
+/// Without this the census sees a name only in whatever prose happens to spell it out in
+/// full, which is not a reference at all. Measured 2026-08-17, when the census blobs
+/// stopped ingesting comments: `data-drawer-wired` and `data-nav-wired` are set and read
+/// exclusively as `dataset.drawerWired` / `dataset.navWired`, so their pinned entries were
+/// standing on a doc comment in `site/chrome.rs`, so a rename of the real code would not
+/// have moved them. Three more entries (`data-attribute`, `data-attrs`, `data-tali-xref`) turned
+/// out to be prose with no runtime side at all and left the pin in the same pass.
+fn scan_dataset_accessors(text: &str, out: &mut BTreeSet<String>) {
+    let mut i = 0usize;
+    while let Some(off) = text[i..].find("dataset.") {
+        let start = i + off + "dataset.".len();
+        let ident: String = text[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
+        i = start + ident.len().max(1);
+        if ident.is_empty() || !ident.starts_with(|c: char| c.is_ascii_lowercase()) {
+            continue;
+        }
+        let mut name = String::from("data-");
+        for c in ident.chars() {
+            if c.is_ascii_uppercase() {
+                name.push('-');
+                name.push(c.to_ascii_lowercase());
+            } else {
+                name.push(c);
+            }
+        }
+        out.insert(name);
+    }
 }
 
 fn tmd_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -236,6 +282,50 @@ fn census() -> BTreeSet<String> {
     attrs
 }
 
+/// `text` with its whole-line comments removed, so a census blob holds code and not prose.
+///
+/// **Why every blob below goes through this.** These censuses are substring searches over
+/// concatenated source, and this tree comments in paragraphs: a name that appears only in
+/// a comment saying what the code *used to* do reads exactly like a live reference. That
+/// has already shipped (`5b9684ae` records three checks passing on prose while the JS they
+/// were meant to cover was dead), and it is the same defect as an assertion satisfied by an
+/// inlined asset's comment.
+///
+/// Whole-line comments only (`//`, `///`, a `/* … */` block on its own lines). A trailing
+/// comment after real code survives, which is the safe direction: under-stripping leaves
+/// today's behaviour, while over-stripping would drop a live reference and fail loudly.
+fn strip_comment_lines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_block = false;
+    for line in text.lines() {
+        let t = line.trim_start();
+        if in_block {
+            if let Some(after) = t.split_once("*/").map(|(_, a)| a) {
+                in_block = false;
+                out.push_str(after);
+                out.push('\n');
+            }
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        if t.starts_with("/*") {
+            match t.split_once("*/") {
+                Some((_, after)) => {
+                    out.push_str(after);
+                    out.push('\n');
+                }
+                None => in_block = true,
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Every file whose contents can select on an attribute at runtime: the bundled
 /// browser assets, the preview client, and any Rust file carrying inline `<script>`
 /// (the book drawer, the theme runtime, the deck runtime, the search UI, ...).
@@ -271,7 +361,9 @@ fn browser_sources() -> String {
             if name.ends_with(".min.js") || !(name.ends_with(".js") || name.ends_with(".css")) {
                 continue;
             }
-            buf.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+            buf.push_str(&strip_comment_lines(
+                &std::fs::read_to_string(&p).unwrap_or_default(),
+            ));
             buf.push('\n');
         }
     }
@@ -302,7 +394,9 @@ fn runtime_sources() -> String {
             if name.ends_with(".min.js") || !(name.ends_with(".js") || name.ends_with(".css")) {
                 continue;
             }
-            buf.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+            buf.push_str(&strip_comment_lines(
+                &std::fs::read_to_string(&p).unwrap_or_default(),
+            ));
             buf.push('\n');
         }
     }
@@ -315,7 +409,7 @@ fn runtime_sources() -> String {
     for p in rs {
         let text = std::fs::read_to_string(&p).unwrap_or_default();
         if text.contains("<script") {
-            buf.push_str(&text);
+            buf.push_str(&strip_comment_lines(&text));
             buf.push('\n');
         }
     }

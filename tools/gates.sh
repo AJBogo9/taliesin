@@ -13,7 +13,9 @@
 # both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
 # and neither is silently optional — there is nothing left for them to gate.
 #
-# **ELEVEN gates as of 2026-08-10** (the census gate is the eleventh). It ran eight while
+# **TWELVE gates as of 2026-08-13** (`docs/internals --check-only` is the twelfth; it was
+# written here as eleven until 2026-08-17, which is this same paragraph's own failure mode
+# one more time). It ran eight while
 # claiming ten for two waves: the document gate (wave 9) and the composition gate (wave 11)
 # were wired into `.githooks/pre-push` and never added here, because neither can skip and so
 # neither looked like this script's problem. A gate that is simply ABSENT from the list

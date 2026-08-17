@@ -138,8 +138,11 @@ build replays the plot from `_freeze/` without ever starting Python. Bump `tau` 
 That cumulative key is what makes this safe where a naive per-cell `cache` would be
 fragile. It encodes *every byte of code the kernel ran to reach this output*, so:
 
-- **a stale hit is impossible by construction**: no mtime heuristics, nothing to
-  clear by hand; the content *is* the key;
+- **a stale hit is impossible for the axes the key can see** (cell code, its
+  upstream, interpreter identity): no mtime heuristics, nothing to clear by hand; the
+  content *is* the key. What it cannot see is what a cell *reads* (a data file, an
+  environment variable, a fetched URL, the clock, a library upgraded in place), which
+  is what `#| cache: false` is for;
 - a different interpreter (say a Python upgrade) busts every key, since it can't
   serve outputs the old one computed;
 - kernel **variable state is deliberately never cached** (that is the fragile part

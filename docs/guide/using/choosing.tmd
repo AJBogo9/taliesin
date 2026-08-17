@@ -111,9 +111,11 @@ retrofitted.
 carry a standing complaint that the cache can serve a *stale* result — an output produced
 by code that has since changed. Taliesin's cache key is the cumulative hash of a cell's own
 code plus every upstream cell in its language plus the interpreter's identity, so editing
-anything upstream invalidates that cell and everything downstream. **A stale hit is not
-unlikely here; it is structurally unrepresentable.** There is nothing to clear by hand,
-because there is no state a stale entry could hide in. See
+anything upstream invalidates that cell and everything downstream. **For the axes the key
+can see (cell code, its upstream, the interpreter) a stale hit is not unlikely, it is
+unrepresentable.** The key is deliberately blind to what a cell *reads*: a data file, an
+environment variable, a fetched URL, the clock, a library upgraded in place. Mark such a
+cell `#| cache: false` and it re-runs every time, along with everything downstream. See
 [Executable content](code.tmd) and the cache notes in
 [Troubleshooting](../reference/troubleshooting.tmd).
 

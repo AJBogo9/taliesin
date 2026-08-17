@@ -19,7 +19,7 @@ track would render *from* the built HTML, never as a parallel format).
 > **THE CUT IS COMPLETE. Wave 13 landed 2026-08-09 and there is no wave 14.** It
 > adjudicated the one bundle the ruling left open and **cut `taliesin run` entirely**, so the
 > CLI is **7 subcommands**: `preview`, `build`, `init`, `new`, `doctor`, `lsp`, `help`. The
-> corpus is 82 documents and the Internals book is six chapters plus an index; a fresh session should read
+> corpus is 82 documents and the Internals book is five chapters plus an index; a fresh session should read
 > `notes/CUT-PROGRESS.md` before assuming a file named in the playbook still exists, because
 > eight of wave 12's "must survive" justifications named files that had already gone.
 >
@@ -65,8 +65,12 @@ witness belongs in `crates/core/src/render/tests.rs`.
 
 **"Do-NOT-touch" is one freeze, not two.** The only *standing* freeze is warm-page
 eviction: `MAX_WARM_PAGES` plus the deterministic LRU order in
-`serve_site/exec_pool.rs`, which the build relies on (an accidental reorder is not
-test-guarded, so it breaks silently). The 7-item "Do NOT touch" list in
+`serve_site/exec_pool.rs`, which the **preview** relies on (`ExecPool` exists nowhere
+else; `build.rs` gives each page its own fresh executor). The freeze stands as a
+scoping decision, not as an untested invariant: the cap and the eviction order are
+pinned by that file's own tests (`evicts_least_recently_built_beyond_cap`,
+`touching_a_page_keeps_it_warm`), so a reorder fails loudly rather than silently. The
+7-item "Do NOT touch" list in
 `notes/native-rewrite.md` is a *completed rewrite-scoping* decision (don't rewrite
 those subsystems for parity, since a rewrite comes out identical-or-worse), **not** a
 standing freeze; their behavior may still change when a change makes the tool better.
@@ -486,7 +490,9 @@ here.**
   retired `run` row standing through several edits; what eventually caught it was
   `documented_cli_flags_exist_in_the_cli` noticing the *flags* inside the row, so a verb
   with no flags would have left a documented command the binary does not answer, with every
-  gate green. Same genus as the two `--help`-prose holes below: grep, do not trust.
+  gate green. Same genus as every ungated prose claim in this file: grep, do not trust.
+  (This sentence pointed at "the two `--help`-prose holes below" from the day it was
+  written; there was never anything below to find.)
 - **`RETIRED_KEYS` is SCOPED — `(scope, key, note)` — and nothing may flatten it.** The same
   word is retired in one vocabulary and live in another: `toc:`/`theorems:` are gone from
   `_site.yml` but live in front matter, `image:` is gone from `hero:` but live at top level,

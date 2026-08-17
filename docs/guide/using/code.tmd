@@ -105,8 +105,9 @@ df = pd.read_csv("data.csv")
 ## The cache key sees your code, not your data
 
 The `_freeze/` key is built from cell code, every upstream cell's code, and the
-interpreter's identity. That makes a stale hit impossible when you edit a cell or
-anything above it. It also means the key is blind to everything a cell reads that
+interpreter's identity. That makes a stale hit impossible on those axes: edit a cell
+or anything above it and the old output cannot come back. It also means the key is
+blind to everything a cell reads that
 *is not* code: a CSV or Parquet file, an environment variable, a config file, a
 URL it fetches, the clock, an installed library you upgraded in place.
 
