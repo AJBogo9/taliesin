@@ -555,20 +555,6 @@ fn build_container(
         } else {
             "callout-title"
         };
-        // `appearance=` and `icon=` were removed on 2026-08-15 with the anatomy they varied
-        // (the tinted title bar and the 4px box); the register is what diagnoses a leftover,
-        // and the loop below is the only thing that consults it, because callout attributes
-        // are an OPEN vocabulary and a generic unknown-attribute lint is the check wave 9
-        // deliberately cut. `open_line` is the div's mapped line, the same one the kind
-        // validator above is given, never a buffer line.
-        for key in attrs.keys() {
-            if let Some(note) = crate::frontmatter::retired_note("callout attribute", key) {
-                warnings.push(
-                    Warning::new(format!("unknown callout attribute `{key}`: {note}"))
-                        .at(file.clone(), open_line as u32),
-                );
-            }
-        }
         let body = concat(&inner);
         // `collapse="true"` makes the callout a native <details> (starts closed);
         // `collapse="false"` is collapsible but starts open.

@@ -17,13 +17,12 @@ This document deliberately uses misspelled keys to pin Taliesin's schema validat
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
 
 The front matter covers three *different* mistakes on purpose, because they need three
-different messages: a **typo** gets a did-you-mean (`treme`, `cach`, `max-itemz`), a
-**retired** name gets a removal note instead of a guessed rename (`theorems:`, withdrawn
-2026-08-08 with the theorem environments, along with the whole nested block it took), and
-a **recognized but inert** key gets neither, because there is nothing to rename and
-nothing was removed (`csl:` parses, and has never had an effect). A retired PARENT key
-takes its children with it: nothing below `theorems:` is validated, because the block
-itself no longer names anything.
+different messages: a **typo** gets a did-you-mean (`treme`, `cach`, `max-itemz`), a name
+with no near neighbour gets no guess at all rather than a wrong one (`theorems:` is four
+edits from `theme:`, so the distance rule declines), and a **recognized but inert** key
+gets neither, because there is nothing to rename (`csl:` parses, and has never had an
+effect). An unknown PARENT key takes its children with it: nothing below `theorems:` is
+validated, because the block itself names nothing.
 
 ::: {.callout-warnign}
 This callout names a kind Taliesin does not define.
@@ -33,27 +32,7 @@ This callout names a kind Taliesin does not define.
 This div names a feature class Taliesin does not define; it silently degraded before DX5.
 :::
 
-::: {.fragment}
-This div names a class Taliesin RETIRED (with the slide-deck engine, 2026-08-08) rather
-than one it never had, so it must draw the register's removal note instead of a rename
-hint. Div classes are an open vocabulary, so without the register entry this gets silence
-and the page quietly loses its layout.
-:::
-
-::: {.panel-tabset}
-This div names a class Taliesin RETIRED on 2026-08-08 with the narrative widgets. It is
-here beside `.fragment` because the two removals were a year apart in the register and a
-single shared code path answers both.
-:::
-
 ::: {.input name="k"}
-:::
-
-::: {.columns}
-::: {.column}
-`.columns` and `.column` were withdrawn on 2026-08-02: a leftover one must say it was
-REMOVED, not be answered with a did-you-mean pointing at a class that survived.
-:::
 :::
 
 ```{python}

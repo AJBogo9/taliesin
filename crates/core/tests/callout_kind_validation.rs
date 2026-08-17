@@ -29,11 +29,11 @@ fn unknown_callout_kind_warns_and_still_renders() {
     );
 }
 
-/// A retired callout kind (`important`/`caution`, cut 2026-08-03) warns with the
-/// removal note rather than a did-you-mean, and still renders unchanged — the render
-/// pipeline is purely diagnostic even for a construct that once existed.
+/// A callout kind this tool does not define still RENDERS unchanged, and only warns: the
+/// render pipeline is purely diagnostic even for `important`/`caution`, which it did define
+/// until 2026-08-03. The page keeps the class the author wrote; their own CSS can style it.
 #[test]
-fn retired_callout_kind_warns_with_removal_note_and_still_renders() {
+fn a_callout_kind_the_tool_does_not_define_warns_and_still_renders() {
     let proj = TempProj::new();
     let src = "# T\n\nIntro.\n\n::: {.callout-important}\nBody.\n:::\n";
     let doc = taliesin_core::render_document_with_includes(src, &proj.0);
@@ -41,16 +41,10 @@ fn retired_callout_kind_warns_with_removal_note_and_still_renders() {
         .warnings
         .iter()
         .find(|w| w.message.contains("callout kind"))
-        .expect("a warning for the retired callout kind");
+        .expect("a warning for the undefined callout kind");
     assert!(
-        w.message
-            .starts_with("unknown callout kind `important`: it was removed"),
+        w.message.starts_with("unknown callout kind `important`"),
         "got: {}",
-        w.message
-    );
-    assert!(
-        !w.message.contains("did you mean"),
-        "a retired kind is not a did-you-mean: {}",
         w.message
     );
     assert_eq!(w.line, Some(5), "located at the opening fence line");

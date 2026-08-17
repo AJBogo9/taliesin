@@ -68,299 +68,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
 /// suggesting they write it are different acts.
 pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 
-/// Vocabulary taliesin USED to honor. A key here is genuinely unknown now, so it still
-/// warns — but a removal and a misspelling are different mistakes and the author needs to
-/// be told which one they made. Consulted by [`unknown_key_message`] ahead of the
-/// did-you-mean search, which would otherwise either stay silent or offer whichever
-/// surviving key happens to be closest, both of which read as "you typed this wrong".
-///
-/// **No entry is phrased as a did-you-mean, even where a successor exists.**
-/// `codes::extract_suggestion` lifts that exact phrase into a structured fix an agent
-/// applies mechanically, and none of these are mechanical renames: `hero:` takes a
-/// different set of sub-keys than `about:` did, so a blind rename trades a warning for a
-/// document that is wrong in a new way. Same reasoning as `validate_unsupported_keys`.
-///
-/// `(scope, key, what to do instead)`, where `scope` is [`unknown_key_message`]'s `what`
-/// label, so a retired *sub*-key is only recognized in the map it actually lived in.
-///
-/// **A note is ONE sentence: the date, then the successor or an explicit "nothing".** An
-/// author reading it is mid-edit and wants the replacement, not the deliberation; the
-/// reasoning belongs in the commit that retired the key. Adding an entry is the entire
-/// cost of a retirement now — `render::validate`'s
-/// `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
-/// derives the tombstone from this table, so no hand-written test is owed.
-pub(crate) const RETIRED_KEYS: &[(&str, &str, &str)] = &[
-    // --- The serve layer, retired 2026-08-09.
-    (
-        "config key",
-        "mounts",
-        "it was removed on 2026-08-09: publish each project as its own deploy and link \
-         between them by absolute URL (this repo's own four are built by \
-         `tools/publish.sh`)",
-    ),
-    // --- The reactive tail and the second kernel language, retired 2026-08-08.
-    (
-        "input type",
-        "range",
-        "it was removed on 2026-08-08: it was a second spelling of `slider`, which emits \
-         exactly the same control. Write `type=\"slider\"`",
-    ),
-    (
-        "config key",
-        "r",
-        "it was removed on 2026-08-08 with the `{r}` cell language: only `{python}` runs \
-         against a kernel now, so set `python:` (or `TALIESIN_PYTHON`) instead",
-    ),
-    (
-        "front-matter key",
-        "theorems",
-        "it was removed on 2026-08-08 with the theorem environments it configured: \
-         nothing counts theorems now, so delete the key and its `shared:` list",
-    ),
-    (
-        "shortcode",
-        "video",
-        "it was removed on 2026-08-08 and nothing replaces the wrapper: write the \
-         `<video controls muted loop playsinline preload=\"metadata\">` tag yourself, in a \
-         `<figure>` with a `<figcaption>` if it needs a caption",
-    ),
-    // --- The slide-deck engine, retired 2026-08-08. `_site.yml` keeps its own `footer:`
-    // and `logo:`; only the per-document deck chrome goes.
-    (
-        "front-matter key",
-        "format",
-        "it was removed on 2026-08-08 with the slide-deck engine: HTML is the only output, \
-         so delete the key — a `format: deck` document becomes an ordinary page",
-    ),
-    (
-        "front-matter key",
-        "footer",
-        "it was removed on 2026-08-08 with the slide-deck engine: it painted a per-slide \
-         overlay, and a website's footer is the `footer:` block in `_site.yml`",
-    ),
-    (
-        "cell option",
-        "code-line-numbers",
-        "it was removed on 2026-08-08 with the slide-deck engine, which was the only thing \
-         that stepped through the marked ranges — in BOTH spellings, so a fence attribute \
-         `{.python code-line-numbers=\"1|2\"}` is inert too (fence attributes have no \
-         validator, so that one is silent); nothing marks lines now, so show the code \
-         block once and write the narration as ordinary prose around it",
-    ),
-    (
-        "front-matter key",
-        "logo",
-        "it was removed on 2026-08-08 with the slide-deck engine: it painted a per-slide \
-         corner logo, and a website's logo is `logo:` in `_site.yml`",
-    ),
-    // --- The raw-injection family, retired 2026-08-02. `_site.yml head:` is the survivor,
-    // kept deliberately as the one escape hatch a published tool needs.
-    (
-        "front-matter key",
-        "css",
-        "it was removed on 2026-08-02: put the rules in `_site.yml head:`, which applies \
-         site-wide, or use a `theme:` for colours",
-    ),
-    (
-        "front-matter key",
-        "include-in-header",
-        "it was removed on 2026-08-02: `_site.yml head:` injects the same markup for the \
-         whole project, and there is no per-document form",
-    ),
-    (
-        "front-matter key",
-        "include-before-body",
-        "it was removed on 2026-08-02 with no per-document successor: markup that must \
-         precede the content is content, so write it in the document, and site-wide markup \
-         goes in `_site.yml head:`",
-    ),
-    (
-        "front-matter key",
-        "include-after-body",
-        "it was removed on 2026-08-02 with no per-document successor: markup that must \
-         follow the content is content, so write it in the document, and site-wide markup \
-         goes in `_site.yml head:`",
-    ),
-    (
-        "front-matter key",
-        "prose-lint",
-        "it was removed on 2026-08-02 with the opt-in doubled-word, weasel-word and \
-         banned-phrase checks it configured, and nothing replaces them, so delete the key",
-    ),
-    (
-        "execute key",
-        "echo",
-        "it was removed on 2026-08-02: write `#| echo: false` on the cells you mean",
-    ),
-    (
-        "execute key",
-        "include",
-        "it was removed on 2026-08-02 with no successor: `#| echo: false` plus simply not \
-         writing the cell already cover it",
-    ),
-    (
-        "listing key",
-        "sort",
-        "it was removed on 2026-08-02: newest first is the only order now, so delete the key",
-    ),
-    (
-        "hero key",
-        "image",
-        "it was removed on 2026-08-02: the hero banner is type, not a figure, so put the \
-         image in the page body as a normal figure",
-    ),
-    (
-        "hero key",
-        "image-alt",
-        "it was removed on 2026-08-02 with `hero.image`, whose alt text it carried",
-    ),
-    // --- `_site.yml`. Scope `config key` is what `site::config`'s validator labels a
-    // top-level key, so these are only recognized there.
-    (
-        "config key",
-        "css",
-        "it was removed on 2026-08-02: use `head:`, the one raw-injection hatch the config \
-         keeps",
-    ),
-    (
-        "config key",
-        "body-start",
-        "it was removed on 2026-08-02 with no successor: site-wide markup goes in `head:`",
-    ),
-    (
-        "config key",
-        "body-end",
-        "it was removed on 2026-08-02 with no successor: site-wide markup goes in `head:`, \
-         where a deferred script runs at the same point",
-    ),
-    (
-        "config key",
-        "output",
-        "it was removed on 2026-08-02: `build` writes `_site/` (`_book/` for a book), or \
-         wherever `--out` says",
-    ),
-    (
-        "config key",
-        "toc",
-        "it was removed on 2026-08-02 and the sidebar table of contents is now automatic: \
-         force it for one page with `toc:` in that page's own front matter",
-    ),
-    (
-        "config key",
-        "theorems",
-        "it was removed on 2026-08-02, and the per-document `theorems:` block that \
-         replaced it went on 2026-08-08 with the theorem environments themselves, so \
-         delete the key",
-    ),
-    (
-        "author key",
-        "orcid",
-        "it was removed on 2026-08-08 with the JSON-LD block that was its only reader: put \
-         the ORCID in the author's `url:`, which the byline links",
-    ),
-    (
-        "author key",
-        "email",
-        "it was removed on 2026-08-08 with the JSON-LD block that was its only reader, and \
-         nothing replaces it: it was never rendered, deliberately",
-    ),
-    (
-        "config key",
-        "publish",
-        "it was removed on 2026-08-08 with the `taliesin publish` verb: `build <dir> --out \
-         <dir>` writes a plain folder any static host serves",
-    ),
-    (
-        "front-matter key",
-        "datasets",
-        "it was removed on 2026-08-02, and so was the `dataset` shortcode this note used \
-         to send authors to; nothing replaces it",
-    ),
-    // --- The academic-publishing cluster, retired 2026-08-03 with the reader-facing
-    // cite-this box and the Google Scholar citation meta it fed. Citations themselves are
-    // untouched: `bibliography:` and `[@key]` are the load-bearing half and stay.
-    (
-        "front-matter key",
-        "doi",
-        "it was removed on 2026-08-03 with the appendix and Scholar metadata that were its \
-         only readers: write the DOI in the page body as an ordinary link",
-    ),
-    (
-        "front-matter key",
-        "links",
-        "it was removed on 2026-08-03 with the resource row it rendered: write the artefact \
-         links in the page body as ordinary Markdown links",
-    ),
-    (
-        "front-matter key",
-        "venue",
-        "it was removed on 2026-08-03 with the resource row: name the venue in the page body \
-         or in `subtitle:`",
-    ),
-    (
-        "front-matter key",
-        "award",
-        "it was removed on 2026-08-03 with the resource row that rendered its badge: say it \
-         in the page body or in `subtitle:`",
-    ),
-    (
-        "front-matter key",
-        "acknowledgments",
-        "it was removed on 2026-08-03 with the generated appendix: acknowledgments are \
-         prose, so write them as a final section of the document",
-    ),
-    (
-        "front-matter key",
-        "acknowledgements",
-        "it was removed on 2026-08-03 with the generated appendix (both spellings were \
-         accepted): write them as a final section of the document",
-    ),
-    (
-        "front-matter key",
-        "about",
-        "it was removed on 2026-07-17 and the landing banner is now `hero:`, which takes a \
-         different set of sub-keys (eyebrow / headline / lead / actions), so this is a \
-         rewrite rather than a rename",
-    ),
-    // --- Visual minimalism pass, 2026-08-03.
-    (
-        "listing key",
-        "categories",
-        "it was removed on 2026-08-03: page-level `categories:` still works and still \
-         becomes a `<category>` in the Atom feed",
-    ),
-    (
-        "callout kind",
-        "important",
-        "it was removed on 2026-08-03: use `warning` for a consequence, `note` for an aside",
-    ),
-    (
-        "callout kind",
-        "caution",
-        "it was removed on 2026-08-03: use `warning`",
-    ),
-    // --- The callout's presentation knobs, retired 2026-08-15 with the anatomy they varied.
-    (
-        "callout attribute",
-        "appearance",
-        "it was removed on 2026-08-15 with the callout's box and tinted title bar, the only \
-         things it varied: there is nothing",
-    ),
-    (
-        "callout attribute",
-        "icon",
-        "it was removed on 2026-08-15 with the bundled callout icons: there is nothing",
-    ),
-    // --- Surfaces with no user, retired 2026-08-03.
-    (
-        "cell option",
-        "fig-export",
-        "it was removed on 2026-08-03: it was one instance of a cell writing a file, so \
-         call `savefig(\"figures/x.pdf\")` (or the equivalent) in the cell body — a \
-         relative write lands next to the document either way",
-    ),
-];
-
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
 ///
@@ -372,7 +79,8 @@ pub(crate) const EXECUTE_KEYS: &[&str] = &["cache"];
 /// `listing:` sub-keys taliesin honors (see `site::frontmatter::parse_listing_spec`).
 ///
 /// No `sort:`. A listing is newest-first, which is what all four real listings wrote out
-/// longhand; see the `RETIRED_KEYS` entry.
+/// longhand, and `parse_listing_spec` does not read the key
+/// (`a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed` pins that).
 pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items"];
 
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
@@ -823,30 +531,10 @@ pub fn closest_of<'a>(key: &str, candidates: impl IntoIterator<Item = &'a str>) 
         .map(|(_, k)| k)
 }
 
-/// The retirement note for `(scope, key)` in [`RETIRED_KEYS`], or `None` if it was never
-/// retired (or was retired under a different scope). `pub` (rather than widening
-/// `RETIRED_KEYS` itself) so a test outside this crate can assert a retired construct is
-/// actually registered — the exact failure mode that produces silence instead of a
-/// diagnostic when a scope string typo slips through.
-pub fn retired_note(scope: &str, key: &str) -> Option<&'static str> {
-    RETIRED_KEYS
-        .iter()
-        .find(|(s, k, _)| *s == scope && *k == key)
-        .map(|(_, _, note)| *note)
-}
-
 /// Build an "unknown <what> `<key>`" message, appending "(did you mean `X`?)" when a
 /// known candidate is within edit distance 2. The single message format shared by the
 /// front-matter, cell-option, callout, and nested-config validators.
 pub(crate) fn unknown_key_message(what: &str, key: &str, candidates: &[&'static str]) -> String {
-    // A key we removed is still unknown, so the classified prefix stays (`codes::classify`
-    // resolves TAL-FM-KEY off it) — but it earns the reason instead of a rename hint.
-    if let Some((_, _, note)) = RETIRED_KEYS
-        .iter()
-        .find(|(scope, retired, _)| *scope == what && *retired == key)
-    {
-        return format!("unknown {what} `{key}`: {note}");
-    }
     match closest(key, candidates) {
         Some(s) => format!("unknown {what} `{key}` (did you mean `{s}`?)"),
         None => format!("unknown {what} `{key}`"),
@@ -903,21 +591,21 @@ mod tests {
         );
     }
 
-    /// `echo:`/`include:` were retired from `execute:` on 2026-08-02. A leftover one must
-    /// say so and name the per-cell form, not be answered with a rename to `cache`.
+    /// An unknown `execute:` child is flagged in ITS OWN scope, never against the
+    /// top-level key set: `echo:` was an `execute:` sub-key until 2026-08-02 and `#| echo:`
+    /// is still a live CELL option, so the two vocabularies must stay separate.
     #[test]
-    fn a_retired_execute_child_explains_itself() {
-        for (key, needle) in [("echo", "`#| echo: false`"), ("include", "no successor")] {
+    fn an_unknown_execute_child_is_flagged_in_its_own_scope() {
+        for key in ["echo", "include"] {
             let m = msgs(&format!("---\ntitle: X\nexecute:\n  {key}: false\n---\n"));
             let msg = m
                 .iter()
                 .find(|x| x.contains(&format!("`{key}`")))
-                .unwrap_or_else(|| panic!("no diagnostic for retired `{key}`: {m:?}"));
+                .unwrap_or_else(|| panic!("no diagnostic for unknown `{key}`: {m:?}"));
             assert!(
-                msg.contains("removed on 2026-08-02") && msg.contains(needle),
-                "`{key}` must say it was removed and what to write: {msg}"
+                msg.starts_with("unknown execute key"),
+                "must be scoped to `execute key`: {msg}"
             );
-            assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
         }
     }
 
@@ -959,16 +647,11 @@ mod tests {
         let msg = m
             .iter()
             .find(|x| x.contains("`categories`"))
-            .unwrap_or_else(|| panic!("no diagnostic for retired `listing.categories`: {m:?}"));
+            .unwrap_or_else(|| panic!("no diagnostic for `listing.categories`: {m:?}"));
         assert!(
             msg.starts_with("unknown listing key `categories`"),
             "must be scoped to `listing key`, not the generic front-matter scope: {msg}"
         );
-        assert!(
-            msg.contains("removed on 2026-08-03") && msg.contains("Atom feed"),
-            "must say it went and what page-level `categories:` still does: {msg}"
-        );
-        assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
     }
 
     #[test]
@@ -989,49 +672,6 @@ mod tests {
             a.iter()
                 .any(|m| m.contains("unknown front-matter key") && m.contains("about")),
             "a stale `about:` should warn now that the feature is gone, got {a:?}"
-        );
-    }
-
-    #[test]
-    fn a_retired_key_reads_as_a_removal_not_as_a_misspelling() {
-        // Removed vocabulary and a typo used to produce the same sentence, so an author
-        // carrying last month's front matter was told only that their key was unrecognized.
-        let a = msgs("---\ntitle: X\nabout:\n  template: jolla\n---\n");
-        assert!(
-            a.iter()
-                .any(|m| m.contains("`about`") && m.contains("removed") && m.contains("hero")),
-            "a removed key must name its successor: {a:?}"
-        );
-        // Retirement is scoped to where the key lived: `echo:` was an `execute:` sub-key,
-        // never a top-level one (and `#| echo:` is still a live CELL option).
-        let n = msgs("---\nexecute:\n  echo: false\n---\n");
-        assert!(
-            n.iter()
-                .any(|m| m.contains("`echo`") && m.contains("removed")),
-            "a retired sub-key must be recognized in its own scope: {n:?}"
-        );
-        // NEVER phrased as a did-you-mean, even though `about:` has a successor:
-        // `codes::extract_suggestion` lifts that exact phrase into a structured fix an
-        // agent applies mechanically, and `hero:` takes different sub-keys, so a blind
-        // rename would produce a document that is wrong in a new way.
-        for m in a.iter().chain(n.iter()) {
-            assert!(
-                !m.contains("did you mean `"),
-                "no machine-applied rename: {m}"
-            );
-        }
-        // The classified prefix has to survive, or `codes::classify` stops resolving these
-        // to TAL-FM-KEY (it keys off this substring).
-        assert!(
-            a.iter().any(|m| m.starts_with("unknown front-matter key")),
-            "diagnostic-code classification keys off this prefix: {a:?}"
-        );
-        // And an ordinary typo must still get its suggestion: the registry adds a case, it
-        // does not replace the did-you-mean path.
-        let t = msgs("---\ntreme: dark\n---\n");
-        assert!(
-            t.iter().any(|m| m.contains("did you mean `theme`")),
-            "a real typo still gets its suggestion: {t:?}"
         );
     }
 
@@ -1266,19 +906,16 @@ mod tests {
         assert_eq!(line, 3);
     }
 
+    /// `prose-lint:` names nothing this tool does (the linters went on 2026-08-02), so a
+    /// leftover one is flagged rather than silently accepted. What it must not do is LINT,
+    /// which `render::tests::prose_lint_is_retired_and_lints_nothing` pins.
     #[test]
-    fn prose_lint_key_is_retired_and_says_so() {
+    fn prose_lint_key_is_not_silently_accepted() {
         let w = validate_front_matter("---\ntitle: T\nprose-lint: true\n---\n");
-        let msg = &w
-            .iter()
-            .find(|x| x.message.contains("`prose-lint`"))
-            .expect("a retired key still warns")
-            .message;
         assert!(
-            msg.contains("removed on 2026-08-02") && msg.contains("nothing replaces them"),
-            "must say it went and that there is no successor: {msg}"
+            w.iter().any(|x| x.message.contains("`prose-lint`")),
+            "an unknown key still warns: {w:?}"
         );
-        assert!(!msg.contains("did you mean"), "not a rename hint: {msg}");
     }
 
     #[test]
@@ -1351,8 +988,8 @@ mod tests {
             "a page with no `image:` at all has nothing to warn about"
         );
 
-        // `hero.image` was retired on 2026-08-02, so it draws the retired-key diagnostic and
-        // must NOT also draw an alt-text one: telling an author to add `image-alt:` to a key
+        // `hero.image` was retired on 2026-08-02 and `parse_hero` stopped reading it, so it
+        // must NOT draw an alt-text warning: telling an author to add `image-alt:` to a key
         // that no longer exists is a second, contrary instruction on the same line.
         let src = "---\ntitle: A page\nhero:\n  headline: Hi\n  image: h.png\n---\n";
         assert!(
@@ -1363,9 +1000,8 @@ mod tests {
         assert!(
             validate_front_matter(src)
                 .iter()
-                .any(|w| w.message.contains("hero key `image`")
-                    && w.message.contains("removed on 2026-08-02")),
-            "it must still be diagnosed, as a retired key"
+                .any(|w| w.message.contains("hero key `image`")),
+            "it must still be diagnosed, as an unknown key"
         );
     }
 

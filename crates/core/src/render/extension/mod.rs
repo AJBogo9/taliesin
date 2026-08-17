@@ -103,24 +103,17 @@ fn expand_in_line(
                 continue;
             }
             // Nothing else expands here. Keep the invocation verbatim (nothing is lost),
-            // but warn: a typo'd — or RETIRED — shortcode name should be visible in the
-            // build log / preview diagnostics, not shipped as literal text into the page.
-            // `include` is handled in an earlier pass (`includes::resolve`); a leftover one
-            // means that pass already reported it, so don't double-warn.
+            // but warn: a typo'd shortcode name should be visible in the build log /
+            // preview diagnostics, not shipped as literal text into the page. `include` is
+            // handled in an earlier pass (`includes::resolve`); a leftover one means that
+            // pass already reported it, so don't double-warn. The `{{<` opener stays in the
+            // message: `codes::classify` keys `TAL-SHORTCODE` on it.
             let name = inner.split_whitespace().next().unwrap_or(inner);
             if name != "include" {
-                // A name this tool USED to expand gets its removal note instead of the bare
-                // "unknown" — the same distinction `RETIRED_KEYS` draws everywhere else, and
-                // read from that same scoped register (scope `shortcode`) so there is no
-                // second list to keep. The `{{<` opener stays in the message either way:
-                // `codes::classify` keys `TAL-SHORTCODE` on it.
-                let tail = match crate::frontmatter::retired_note("shortcode", name) {
-                    Some(note) => format!(": {note}"),
-                    None => " (left as literal text)".to_string(),
-                };
                 warnings.push(
                     Warning::new(format!(
-                        "unknown shortcode `{{{{< {name} >}}}}` at line {line_no}{tail}"
+                        "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
+                         (left as literal text)"
                     ))
                     .at(None, line_no as u32),
                 );
@@ -311,23 +304,6 @@ mod unknown_shortcode_tests {
             "unknown shortcode `{{< sidebar >}}` at line 3 (left as literal text)"
         );
         assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
-    }
-
-    #[test]
-    fn a_retired_shortcode_answers_with_its_removal_note_not_a_bare_unknown() {
-        // The register's whole job: a removal and a typo are different mistakes, and the
-        // author has to be told which one they made. Read out of the scoped `RETIRED_KEYS`
-        // under the `shortcode` scope, so there is no second list.
-        let w = warn_msgs("{{< video tour.mp4 caption=\"A tour\" >}}\n");
-        assert_eq!(w.len(), 1, "{w:?}");
-        assert!(
-            w[0].starts_with("unknown shortcode `{{< video >}}` at line 1: it was removed on"),
-            "must carry the register's own note: {w:?}"
-        );
-        assert!(
-            !w[0].contains("did you mean"),
-            "a retirement is not a did-you-mean: {w:?}"
-        );
     }
 
     #[test]

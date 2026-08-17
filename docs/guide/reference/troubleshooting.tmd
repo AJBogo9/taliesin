@@ -24,10 +24,10 @@ posts/intro.tmd:3: warning: unknown front-matter key `treme` (did you mean `them
 posts/intro.tmd:18: error: broken cross-reference: @fig-reslts (did you mean `@fig-results`?)
 ```
 
-A near-miss gets a did-you-mean, and something Taliesin has **withdrawn** gets the
-replacement to use instead, with the date it went. Those are different answers on purpose: a
-did-you-mean is a spelling correction an editor can apply for you (your editor offers it as a
-quick fix over `taliesin lsp`), a removal note is a paragraph you have to read.
+A near-miss gets a did-you-mean, which your editor offers as a quick fix over
+`taliesin lsp`. A name with no near neighbour gets none: Taliesin answers for its own
+vocabulary and does not guess at another tool's, so a key it has never had is reported as
+unknown and left for you to look up.
 
 ## Code cells show as source / "kernel unavailable"
 

@@ -20,8 +20,7 @@
 //! already does — the build dir is `_site`/`_book`, and the sidebar TOC is decided per page
 //! by heading count), and `css:`/`body-start:`/`body-end:` (raw injection at zero adoption,
 //! folded into the surviving `head:`). `theorems:` went with the book-wide numbering policy.
-//! Each is in `frontmatter::RETIRED_KEYS` under the `config key` scope, so a stale one is
-//! answered with what to do instead rather than a did-you-mean.
+//! None is read any more, and a stale one is reported as an unknown config key.
 
 use super::*;
 use serde::Deserialize;
@@ -385,12 +384,9 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: Con
         return;
     };
     let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
-        // Through `unknown_key_message`, not a bare did-you-mean: it consults
-        // `RETIRED_KEYS` first, so a key this config USED to honor is answered with what
-        // to do instead. Without it a retired `toc:` draws "did you mean `logo`?" — a
-        // confident instruction to write something unrelated. The `what` label is the
-        // register's scope column, so a `config key` entry is only consulted where it
-        // actually lived.
+        // Through `unknown_key_message` so the config speaks the same sentence the
+        // front-matter validator does, `what` and all: one wording for one kind of
+        // mistake, in whichever vocabulary the author was writing.
         warnings.push(format!(
             "{} {}",
             src.at(key),
@@ -542,55 +538,6 @@ mod config_tests {
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
-    }
-
-    /// Every key this config retired on 2026-08-02 must answer with its REASON, not with a
-    /// did-you-mean. The register is scoped, so these only resolve as `config key`; the
-    /// wiring that makes that happen is `validate_keys`' use of `unknown_key_message`, and
-    /// without it `toc:` drew "did you mean `logo`?" — an instruction to write something
-    /// unrelated. One assertion per retired key, because a missing register entry is
-    /// silent by construction.
-    #[test]
-    fn every_retired_config_key_explains_itself_instead_of_guessing() {
-        for (key, yaml, needle) in [
-            ("toc", "title: X\ntoc: true\n", "now automatic"),
-            // The needle is the INSTRUCTION, not the justification. It used to be "wrote
-            // the default" — a sentence about why the key went, which a note collapsed to
-            // one sentence correctly drops. What an author needs is where the build writes.
-            ("output", "title: X\noutput: _site\n", "`--out`"),
-            ("css", "title: X\ncss: extra.css\n", "use `head:`"),
-            (
-                "body-start",
-                "title: X\nbody-start: a.html\n",
-                "no successor",
-            ),
-            ("body-end", "title: X\nbody-end: a.html\n", "no successor"),
-            (
-                "theorems",
-                "title: X\ntheorems:\n  shared: [theorem]\n",
-                "delete the key",
-            ),
-        ] {
-            let mut w = Vec::new();
-            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
-            parse_native(&v, &mut w, ConfigSource(None));
-            let msg = w
-                .iter()
-                .find(|m| m.contains(&format!("`{key}`")))
-                .unwrap_or_else(|| panic!("retired `{key}:` drew no diagnostic at all: {w:?}"));
-            assert!(
-                msg.contains("removed on 2026-08-02"),
-                "`{key}:` must say it was removed, got: {msg}"
-            );
-            assert!(
-                msg.contains(needle),
-                "`{key}:` must say what to do instead ({needle:?}), got: {msg}"
-            );
-            assert!(
-                !msg.contains("did you mean"),
-                "a retired key must never be answered with a rename hint: {msg}"
-            );
-        }
     }
 
     /// `head:` is the survivor of the raw-injection family and must keep working.
@@ -776,9 +723,9 @@ mod config_tests {
     /// The book-vs-website `toc:` diagnostic is gone with the key itself: `_site.yml toc:` was
     /// retired on 2026-08-02 and the sidebar TOC is decided per page by `Site::page_toc`, which
     /// already returns `false` for a book unconditionally. A book that still carries the key is
-    /// answered by the retired register (asserted above), not by a special book-scope rule.
+    /// answered as an unknown config key, not by a special book-scope rule.
     #[test]
-    fn a_book_carrying_the_retired_toc_key_gets_the_retirement_message() {
+    fn a_book_carrying_the_toc_key_gets_no_special_book_scope_rule() {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("toc: true\nchapters:\n  - a.tmd\n").unwrap();
@@ -787,7 +734,6 @@ mod config_tests {
             .iter()
             .find(|m| m.contains("`toc`"))
             .unwrap_or_else(|| panic!("no diagnostic: {w:?}"));
-        assert!(msg.contains("now automatic"), "got: {msg}");
         assert!(
             !msg.contains("has no effect in a book"),
             "the old book-scope wording must not survive the key: {msg}"

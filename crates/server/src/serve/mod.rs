@@ -654,41 +654,12 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|p| panic_msg(&*p))
 }
 
-/// Flags this tool used to accept, each naming its successor or an explicit "nothing".
-///
-/// The CLI's flag register, beside `RETIRED_COMMANDS` (verbs). It exists for the same
-/// reason that one does: without an
-/// entry, a flag the author has in their fingers falls through to the did-you-mean below,
-/// and a retirement answered with "did you mean `--dir`?" sends them to a flag that does
-/// something else. Keyed on the flag alone, not on the verb: an author who types
-/// `build --host` should learn the flag is gone just as surely as one who types
-/// `preview --host`.
-///
-/// **One sentence per entry: the date, then the successor or "nothing".** Never phrased as
-/// a did-you-mean.
-const RETIRED_FLAGS: &[(&str, &str)] = &[
-    (
-        "--bare",
-        "`--bare` was removed on 2026-08-09: plain `build <file.tmd>` writes the same page \
-         with its scripts, and a reader who wants none can strip them.",
-    ),
-    (
-        "--host",
-        "`--host` was removed on 2026-08-09: the preview binds to loopback only. To read a \
-         draft on another device, `build` it and serve the folder yourself.",
-    ),
-];
-
-/// Build a hard-error message for an unrecognized `--flag`: a retired flag's removal note
-/// if [`RETIRED_FLAGS`] knows it, otherwise a `closest`-based "did you mean `--strict`?"
-/// when a known flag is within edit distance 2. Shared by the `build`/`preview` flag
-/// parsers so a typo'd flag fails loudly instead of being silently dropped. `known` is each
-/// parser's own accepted long-flag set. No `error:` prefix, so the caller frames it (raw
+/// Build a hard-error message for an unrecognized `--flag`: a `closest`-based "did you mean
+/// `--strict`?" when a known flag is within edit distance 2. Shared by the `build`/`preview`
+/// flag parsers so a typo'd flag fails loudly instead of being silently dropped. `known` is
+/// each parser's own accepted long-flag set. No `error:` prefix, so the caller frames it (raw
 /// `eprintln!` adds `error: `; `log::error` styles it).
 pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
-    if let Some((_, note)) = RETIRED_FLAGS.iter().find(|(f, _)| *f == flag) {
-        return (*note).to_string();
-    }
     match taliesin_core::closest(flag, known) {
         Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
         None => format!("unknown flag `{flag}`"),
@@ -809,41 +780,6 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     // `exec.rs`'s `kernel_failure_report`, and for the same reason). Done here, once,
     // rather than at each call site, so `build` and `preview` cannot drift or forget it.
     body.replace('\n', "\n          ")
-}
-
-#[cfg(test)]
-mod retired_flags {
-    use super::*;
-
-    /// A flag this tool used to accept answers with its removal note, never with a
-    /// did-you-mean, and is offered by no live parser. Derived from the register, as the
-    /// verb and `new`-kind registers are: adding an entry owes no test of its own.
-    #[test]
-    fn a_retired_flag_names_what_happened_instead_of_guessing() {
-        let live: &[(&str, &[&str])] = &[
-            ("build", crate::build::BUILD_FLAGS),
-            ("preview", crate::cli::SERVE_FLAGS),
-        ];
-        for (flag, note) in RETIRED_FLAGS {
-            assert!(!note.is_empty(), "`{flag}` retired with no note");
-            for (verb, known) in live {
-                assert!(
-                    !known.contains(flag),
-                    "`{flag}` is retired but still offered by `{verb}`"
-                );
-                let e = unknown_flag_error(flag, known);
-                assert!(e.contains(flag), "the error names the flag typed: {e}");
-                assert!(
-                    !e.contains("did you mean"),
-                    "the removal note replaces the did-you-mean, it does not follow it: {e}"
-                );
-                assert_eq!(
-                    e, **note,
-                    "a retired flag is answered by its register entry"
-                );
-            }
-        }
-    }
 }
 
 #[cfg(test)]

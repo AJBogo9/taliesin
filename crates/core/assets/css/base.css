@@ -677,9 +677,9 @@
      `::: {.column-page}` is the author's opt-in to the wider band. There is no full-bleed
      class any more: the one that existed needed `100vw`, a scrollbar-width correction and
      `overflow-x: clip` on `<html>`, none of which is a grid track, so it was cut with this
-     rewrite (spec §9). Its name and its removal note live in `RETIRED_DIV_CLASSES`, which
-     is also what stops this file naming it — `css_has_class_selector` reads a comment the
-     same way it reads a rule, deliberately, so the register is the one place it is spelled. */
+     rewrite (spec §9). It is deliberately not named here: a leftover fence carrying it is
+     a custom class like any other now, and a stylesheet that still spells the name would
+     style it back into half-working. */
   /* The track list is declared ON the grid container and not on `:root`, and that is not a
      style preference: a custom property's computed value is its specified value with every
      `var()` ALREADY SUBSTITUTED, so a list declared at `:root` bakes in `:root`'s

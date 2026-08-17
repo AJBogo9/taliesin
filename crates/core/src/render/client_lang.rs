@@ -39,8 +39,8 @@ pub struct ClientLang {
 /// multi-MB vendored payload and its own licence question). Two entries were withdrawn:
 /// `{pyodide}`, which paid the multi-MB price for a CPython WASM build, and `{glsl}`, whose
 /// shader enhancer cost no vendored bytes but served one purpose-built corpus page and
-/// nothing a person wrote to be read. See [`crate::diagnostics::RETIRED_CELL_LANGS`] for
-/// what an author who still has one gets told.
+/// nothing a person wrote to be read. Neither name is diagnosed any more: a fence in an
+/// unknown language renders as a listing, which is what a display fence has always done.
 pub(crate) const CLIENT_LANGS: &[ClientLang] = &[ClientLang {
     lang: "js",
     mime: "application/tali-js",

@@ -24,10 +24,9 @@ pub(super) fn resolve_theme(
     match name {
         // The three built-in mode names, retired 2026-08-13. They never carried override
         // CSS (both palettes always ship and are selected at runtime via `data-theme`), so
-        // all that is left to say is that they no longer select. `theme:` itself stays
-        // live for `.css` files and `_extensions/` bundles, which is why this is not a
-        // `RETIRED_KEYS` entry: all three registers key on the KEY, and what retired here
-        // is two of its values.
+        // all that is left to say is that they no longer select. This is a warning on a
+        // VALUE of a live key — `theme:` still takes a `.css` file or an `_extensions/`
+        // bundle — which is why it is spelled out here rather than being a key-level rule.
         "light" | "default" | "dark" => {
             warnings.push(Warning::new(format!(
                 "`theme: {name}` no longer selects a mode: the page follows the reader's \

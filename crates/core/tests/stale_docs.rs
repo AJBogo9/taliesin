@@ -621,14 +621,6 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
     );
 }
 
-/// The body of a `const NAME: … = &[ … ];` block, as raw source text.
-fn const_block(src: &str, name: &str) -> String {
-    let (_, rest) = src
-        .split_once(&format!("{name}: &[&str] = &["))
-        .unwrap_or_else(|| panic!("{name} moved or changed shape — update this gate"));
-    rest.split("\n];").next().unwrap_or_default().to_string()
-}
-
 /// Every double-quoted string literal in `block`, in order.
 fn string_literals(block: String) -> Vec<String> {
     block
@@ -637,114 +629,6 @@ fn string_literals(block: String) -> Vec<String> {
         .step_by(2)
         .map(str::to_string)
         .collect()
-}
-
-/// The retired keys as `(scope, key)` pairs, read out of `frontmatter.rs` rather than
-/// restated here, so retiring another key extends this gate automatically.
-///
-/// **The scope is load-bearing and must not be flattened away.** `RETIRED_KEYS` is scoped
-/// because the same word can be retired in one place and live in another: `toc:` is gone
-/// from `_site.yml` but is still a front-matter key, `theorems:` likewise, `image:` is gone
-/// from `hero:` while the top-level `image:` is live, and `echo:` is gone from `execute:`
-/// while `#| echo:` is a live cell option. A gate that matched on the bare key would fire on
-/// every one of those legitimate examples.
-fn retired_keys() -> Vec<(String, String)> {
-    let src = read("crates/core/src/frontmatter.rs");
-    let (_, table) = src
-        .split_once("RETIRED_KEYS: &[(&str, &str, &str)] = &[")
-        .expect("RETIRED_KEYS moved or changed shape — update this gate, do not delete it");
-    let table = table.split("\n];").next().unwrap_or_default();
-    // Each entry is (scope, key, note); the first two string literals are what we want.
-    let mut keys = Vec::new();
-    for entry in table.split("    (").skip(1) {
-        let mut lits = entry.split('"').skip(1).step_by(2);
-        if let (Some(scope), Some(key)) = (lits.next(), lits.next()) {
-            keys.push((scope.to_string(), key.to_string()));
-        }
-    }
-    keys
-}
-
-/// Item 146. A key the validator *rejects* must not appear in a shipped example.
-///
-/// A front-matter example inside the manual is read by no validator: `check` lints the
-/// corpus and the books' own front matter, never a YAML block quoted in prose. So the one
-/// surface where a reader learns the vocabulary is the one surface nothing checks.
-///
-/// Gated on the keys **both** validators reject: a top-level retirement (`front-matter key`
-/// or `config key`) that is not in `KNOWN_KEYS` and not in `NATIVE_KEYS`, matched at column
-/// 0. Anything narrower would be wrong, because a shipped example is prose — nothing tells
-/// this gate whether a given YAML block is front matter or a `_site.yml`. `toc:` and
-/// `theorems:` are exactly that case: retired from `_site.yml`, live in front matter, so a
-/// `toc: true` line in the manual is legitimate and must not fail.
-///
-/// Two residual gaps, both covered elsewhere rather than papered over here. A `toc:` shown
-/// inside a `_site.yml` example is not caught (`configuration.tmd` is the page that would
-/// carry one, and the `_site.yml` schema golden pins the real vocabulary). And a nested
-/// retirement (`hero key`, `execute key`, …) is not caught, since its key is indented and
-/// collides with live spellings elsewhere. Neither gap is covered by prose any more: the
-/// migration page that used to enumerate every retirement was deleted on 2026-08-08 with
-/// `quarto_migration_page.rs`, because the register IS the enumeration and a leftover key
-/// draws its own note with a file and a line — a reader who hits one is told what to do at
-/// the moment they need it, which no page can beat.
-#[test]
-fn shipped_docs_do_not_use_a_retired_front_matter_key() {
-    let keys = retired_keys();
-    assert!(
-        keys.iter()
-            .any(|(s, k)| s == "front-matter key" && k == "about"),
-        "expected the retired `about:` key in RETIRED_KEYS, got {keys:?} — if it was \
-         un-retired, this gate needs rewriting rather than deleting"
-    );
-    assert!(keys.len() >= 2, "only {} retired keys parsed", keys.len());
-
-    // The two live top-level vocabularies, read from the same consts the validators use.
-    let live_fm = string_literals(const_block(
-        &read("crates/core/src/frontmatter.rs"),
-        "KNOWN_KEYS",
-    ));
-    let live_cfg = string_literals(const_block(
-        &read("crates/core/src/site/config/mod.rs"),
-        "NATIVE_KEYS",
-    ));
-    assert!(
-        live_fm.contains(&"toc".to_string()) && !live_cfg.contains(&"toc".to_string()),
-        "this gate's premise is that a key can be live in one vocabulary and retired in the \
-         other; `toc` was the case it was written for (live_fm={live_fm:?})"
-    );
-
-    let top_level: Vec<&String> = keys
-        .iter()
-        .filter(|(scope, _)| scope == "front-matter key" || scope == "config key")
-        .map(|(_, key)| key)
-        .filter(|k| !live_fm.contains(k) && !live_cfg.contains(k))
-        .collect();
-    assert!(
-        top_level.len() >= 2,
-        "no unambiguously-retired top-level keys parsed out of {keys:?}"
-    );
-
-    let mut hits = Vec::new();
-    for (rel, text) in shipped_docs() {
-        for (n, line) in text.lines().enumerate() {
-            // Column 0 only: an indented `toc:` is a sub-key of something else, and a
-            // top-level retirement says nothing about it.
-            if line.starts_with(char::is_whitespace) {
-                continue;
-            }
-            for k in &top_level {
-                if line.starts_with(&format!("{k}:")) {
-                    hits.push(format!("{rel}:{}: {}", n + 1, line.trim()));
-                }
-            }
-        }
-    }
-    assert!(
-        hits.is_empty(),
-        "shipped doc(s) show a retired top-level key that the validator now rejects \
-         ({top_level:?}):\n{}",
-        hits.join("\n")
-    );
 }
 
 /// Item 146. Every CLI flag the reference documents must exist in the CLI.
@@ -847,32 +731,27 @@ fn reader_facing_docs() -> Vec<(String, String)> {
     docs
 }
 
-/// The retired verb names, read out of `main.rs` rather than restated here, so retiring
-/// another verb extends this gate automatically.
-fn retired_verbs() -> Vec<String> {
+/// The LIVE verb names, read out of `main.rs`'s `COMMANDS` rather than restated here, so
+/// cutting or adding a verb extends this gate automatically.
+///
+/// Read as text because `taliesin-server` is a binary-only crate with no `lib.rs`, so no
+/// test crate can import the const. `gate_script.rs` solves the same problem the same way,
+/// and it needs no production change.
+fn live_verbs() -> Vec<String> {
     let src = read("crates/server/src/main.rs");
     let (_, table) = src
-        .split_once("RETIRED_COMMANDS: &[(&str, &str)] = &[")
-        .expect("RETIRED_COMMANDS moved or changed shape: update this gate, do not delete it");
-    let table = table.split("\n];").next().unwrap_or_default();
-    // Entries are `(name, note)`, written both inline and split across lines; the first
-    // string literal of each is the name either way. The delimiter is anchored to a
-    // line start (`\n    (`, not `    (`) so a `(` inside a backslash-continued note's
-    // indentation, like publish's, cannot masquerade as the next tuple's open paren.
-    table
-        .split("\n    (")
-        .skip(1)
-        .filter_map(|entry| entry.split('"').nth(1).map(str::to_string))
-        .collect()
+        .split_once("const COMMANDS: &[&str] = &[")
+        .expect("COMMANDS moved or changed shape: update this gate, do not delete it");
+    let table = table.split("];").next().unwrap_or_default();
+    string_literals(table.to_string())
 }
 
 /// The built-in theme mode names that were retired on 2026-08-13, read out of the match arm
 /// in `resolve_theme` that warns about them.
 ///
-/// There is no register to read instead, and that absence is the whole reason this gate
-/// exists: all three retirement registers key on the KEY, and `theme:` is a **live** key
-/// whose three built-in **values** were retired. `RETIRED_KEYS` structurally cannot hold
-/// this, so `shipped_docs_do_not_use_a_retired_front_matter_key` is blind to it.
+/// Read out of the match arm because there is nowhere else to read it: `theme:` is a
+/// **live** key whose three built-in **values** were retired, so no vocabulary list in the
+/// tree carries the names and only the warning itself knows them.
 fn retired_theme_modes() -> Vec<String> {
     let src = read("crates/core/src/render/theme.rs");
     let (_, body) = src
@@ -903,94 +782,58 @@ fn retired_theme_modes() -> Vec<String> {
     panic!("the retired-mode match arm moved or changed shape: update this gate");
 }
 
-/// A reader-facing doc must not name a subcommand the binary no longer answers.
+/// A reader-facing doc must not tell a reader to type a command the binary does not answer.
 ///
-/// `CLAUDE.md` names this hole explicitly: a new subcommand has four registration sites in
-/// `main.rs`, each drift-gated, and a **fifth** in `docs/guide/reference/cli.tmd`'s table
-/// that nothing gates. Wave 13 left the retired `run` row standing through several edits;
-/// what eventually caught it was `documented_cli_flags_exist_in_the_cli` noticing the
-/// *flags* inside the row, so a verb with no flags would have shipped a documented command
-/// the binary does not answer with every gate green.
+/// The register this used to read (`RETIRED_COMMANDS`) went on 2026-08-17 with the author's
+/// FD2 ruling, so the check is INVERTED: instead of matching a closed list of dead verbs,
+/// every `` `taliesin <verb>` `` token in the manual must name a verb that is in `COMMANDS`
+/// today. That is the stronger direction — it catches an invented verb as well as a cut one
+/// — but it is narrower in one way the old spelling was not, and the difference is recorded
+/// rather than papered over: a **bare** backticked token (`` `run` `` with no prefix, which
+/// is the form wave 13's stale `cli.tmd` row actually took) can no longer be judged, since
+/// nothing distinguishes a dead verb from an ordinary word. That exact surface is covered
+/// twice over by `main.rs`'s `every_subcommand_has_a_row_in_the_cli_reference`, which walks
+/// the reference table in both directions and fails on a row naming a verb the binary does
+/// not answer.
 ///
-/// Matched as a **bare backticked token**, which is the form the defect actually took: the
-/// stale row wrote `` `preview` / `build` / `run` / `lsp` / `init` `` with no `taliesin`
-/// prefix anywhere on the line. Measured against seventeen retired verbs on 2026-08-14, the
-/// whole reader-facing corpus yielded exactly one hit, the true positive. A prose scan for
-/// `taliesin <word>` was tried first and rejected: it matched `taliesin renders`,
-/// `taliesin builds` and `taliesin server`, and missed this line entirely.
-///
-/// A single token also counts as a hit when it is `taliesin <verb>` with the retired verb
-/// as the remainder, since `` `taliesin run` `` is the most natural way to name a command
-/// in prose and the bare-token match alone would miss it. The prefix is anchored to the
-/// literal word `taliesin `, so `` `cargo run` `` does not collide with it; this is still a
-/// token-scoped match, not the rejected prose scan.
-///
-/// `COMMANDS`/`RETIRED_COMMANDS` are read as text because `taliesin-server` is a
-/// binary-only crate with no `lib.rs`, so no test crate can import them. `gate_script.rs`
-/// solves the same problem the same way, and it needs no production change.
-/// Whether a single backticked token names a retired subcommand: either the bare verb, or
-/// `taliesin <verb>` written as one token (the natural way to name a command in prose, e.g.
-/// `` `taliesin run` ``). The prefix is anchored to the literal word `taliesin `, so
-/// `` `cargo run` `` does not collide with it.
-fn names_a_retired_verb(tok: &str, retired: &[String]) -> bool {
-    retired.iter().any(|v| v == tok)
-        || tok
-            .strip_prefix("taliesin ")
-            .is_some_and(|rest| retired.iter().any(|v| v == rest))
-}
-
+/// The prefix is anchored to the literal word `taliesin `, so `` `cargo run` `` does not
+/// collide with it, and the first token after it is what must be a verb — `` `taliesin
+/// build --check-only` `` is fine.
 #[test]
-fn reader_facing_docs_do_not_name_a_retired_subcommand() {
-    let retired = retired_verbs();
+fn reader_facing_docs_only_name_subcommands_the_binary_answers() {
+    let live = live_verbs();
     assert!(
-        retired.iter().any(|v| v == "run") && retired.iter().any(|v| v == "serve"),
-        "RETIRED_COMMANDS parsed as {retired:?}: the shape changed, update this gate \
-         rather than deleting it"
+        live.iter().any(|v| v == "build") && live.iter().any(|v| v == "preview"),
+        "COMMANDS parsed as {live:?}: the shape changed, update this gate rather than \
+         deleting it"
     );
-    assert!(
-        retired.len() >= 10,
-        "only {} retired verbs parsed out of RETIRED_COMMANDS",
-        retired.len()
-    );
+    assert!(live.len() >= 5, "only {} live verbs parsed", live.len());
 
     let mut hits = Vec::new();
     for (rel, text) in reader_facing_docs() {
         for (line, tok) in backticked_located(&text) {
-            if names_a_retired_verb(&tok, &retired) {
+            let Some(rest) = tok.strip_prefix("taliesin ") else {
+                continue;
+            };
+            let Some(verb) = rest.split_whitespace().next() else {
+                continue;
+            };
+            // Flags and paths are arguments to a verb, never a verb: `taliesin --version`
+            // and `taliesin <file.tmd>` are both legitimate spellings in prose.
+            if verb.starts_with('-') || verb.starts_with('<') {
+                continue;
+            }
+            if !live.iter().any(|v| v == verb) {
                 hits.push(format!("{rel}:{line}: `{tok}`"));
             }
         }
     }
     assert!(
         hits.is_empty(),
-        "reader-facing doc(s) name a subcommand the binary no longer answers. Each is \
-         either teaching a dead command or listing one; rewrite the sentence rather than \
+        "reader-facing doc(s) name a subcommand the binary does not answer. Each is either \
+         teaching a dead command or inventing one; rewrite the sentence rather than \
          widening this gate:\n{}",
         hits.join("\n")
-    );
-}
-
-/// Regression pin for the `taliesin <verb>` prefix widening above: a single backticked
-/// token spelling a retired verb that way must be caught, and a same-shaped token naming a
-/// different binary must not collide with it.
-#[test]
-fn a_taliesin_prefixed_token_naming_a_retired_verb_is_a_hit() {
-    let retired = retired_verbs();
-    assert!(
-        retired.iter().any(|v| v == "run"),
-        "fixture assumes `run` is a retired verb"
-    );
-    assert!(
-        names_a_retired_verb("run", &retired),
-        "bare `run` must still be caught (the existing path)"
-    );
-    assert!(
-        names_a_retired_verb("taliesin run", &retired),
-        "`taliesin run` as one token must be caught (the new prefix path)"
-    );
-    assert!(
-        !names_a_retired_verb("cargo run", &retired),
-        "`cargo run` must not collide with the taliesin-prefixed check"
     );
 }
 

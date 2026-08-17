@@ -831,8 +831,8 @@ pub(crate) const SITE_MAP_METHOD: &str = "taliesin/siteMap";
 ///
 /// The message is the whole explanation now. It used to be joined by a catalogued cause + fix
 /// for the diagnostic's `TAL-*` code, and both went with that catalogue on 2026-08-08: every
-/// message that has a mechanical fix already names it inline (a did-you-mean, or a removal note
-/// out of the retirement register), so the second body was mostly a restatement to keep true.
+/// message that has a mechanical fix already names it inline (a did-you-mean), so the second
+/// body was mostly a restatement to keep true.
 fn resolve_hover(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     project: &mut crate::lsp_project::ProjectCache,

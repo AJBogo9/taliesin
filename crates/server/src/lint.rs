@@ -15,9 +15,9 @@
 //! Until 2026-08-08 this was `crates/server/src/check.rs`, the implementation of a `check`
 //! subcommand with five flags, an interpreter probe, an `--explain` catalogue and a 190-row
 //! message-substring table that derived a `TAL-*` code and a severity for every diagnostic.
-//! The verb is retired (`RETIRED_COMMANDS` points at `build --check-only`), the probe belongs
-//! to `doctor`, and severity is now a field on [`taliesin_core::render::Warning`] set by the
-//! validator that found the defect.
+//! The verb is gone (`build --check-only` is the gate), the probe belongs to `doctor`, and
+//! severity is now a field on [`taliesin_core::render::Warning`] set by the validator that
+//! found the defect.
 //!
 //! **Depends on:** [`taliesin_core`] for rendering + the `diagnostics`/`cite` validators
 //! + `Site`, [`crate::log`], and `serde_json` for the JSON formatter.
@@ -256,7 +256,6 @@ pub(crate) fn page_static_diagnostics(
     }
     out.extend(dx::validate_js_reactive_graph(blocks));
     out.extend(dx::validate_a11y(blocks));
-    out.extend(dx::validate_retired_cell_langs(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
     out.extend(dx::bare_citation_key_not_rendered(src, blocks, base));
     // No `csl:` rule here: it lives on the render path (`frontmatter::validate_front_matter`),

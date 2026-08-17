@@ -34,9 +34,9 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 ///
 /// Five kinds shrank to three on 2026-08-03 (visual minimalism pass, task 12):
 /// `important` and `caution` were a coloured box with a different word in it, the same
-/// as `warning`, and no reader could reliably tell the three apart. `important` and
-/// `caution` are registered in `frontmatter::RETIRED_KEYS` (scope `"callout kind"`) so a
-/// document that still writes one gets a located removal note instead of silence.
+/// as `warning`, and no reader could reliably tell the three apart. A document that still
+/// writes one gets the same unknown-kind diagnostic as any other name this tool does not
+/// define.
 pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 
 /// Structural feature classes a `:::` fenced div can carry. This is **not** a closed
@@ -45,10 +45,10 @@ pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning"];
 /// `.class` dispatch in `render/divs.rs`; a `vocab.rs` test pins `vocab::div_classes()`'s names
 /// as a subset.
 ///
-/// Three width escapes, and that is the whole set. The narrative widgets
+/// Two width escapes, and that is the whole set. The narrative widgets
 /// (`panel-tabset`/`code-walkthrough`/`scrolly`/`step`) and the five theorem kinds were
-/// withdrawn on 2026-08-08 and are registered in [`RETIRED_DIV_CLASSES`] below, which is
-/// what a leftover fence hits now.
+/// withdrawn on 2026-08-08; a leftover fence carrying one is a custom class like any
+/// other, styled by whatever CSS the author brings.
 pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &["column-margin", "column-page"];
 
 /// Input control types `.input type=` recognizes.
@@ -126,178 +126,12 @@ pub(crate) fn validate_div_class(
         if known.contains(&c.as_str()) {
             return None;
         }
-        // A class we REMOVED is still unknown, so it still warns — but a removal and a
-        // misspelling are different mistakes and the author has to be told which one they
-        // made. Checked ahead of the did-you-mean, and unconditionally: once `.columns`
-        // and `.column` were both withdrawn nothing survived within edit distance 2 of
-        // either, so the search below would answer a retired class with SILENCE.
-        if let Some((_, note)) = RETIRED_DIV_CLASSES.iter().find(|(retired, _)| retired == c) {
-            return Some(
-                Warning::new(format!("unknown div class `{c}`: {note}"))
-                    .at(file.clone(), line as u32),
-            );
-        }
         closest(c, known).map(|s| {
             Warning::new(format!("unknown div class `{c}` (did you mean `{s}`?)"))
                 .at(file.clone(), line as u32)
         })
     })
 }
-
-/// Div classes taliesin USED to dispatch on, as `(class, what to do instead)`.
-///
-/// The div sibling of `frontmatter::RETIRED_KEYS`, and it exists for the same reason plus a
-/// sharper one: div classes are an OPEN vocabulary, so a withdrawn class does not merely get
-/// the wrong hint, it gets no diagnostic at all — it reads as a custom class the author
-/// styles themselves, and the page silently loses its layout.
-///
-/// **No entry is phrased as a did-you-mean, even where a successor exists**, exactly as
-/// `RETIRED_KEYS` documents: `codes::extract_suggestion` lifts that phrase into a structured
-/// fix an agent applies mechanically, and none of these are mechanical renames. Rewriting
-/// `::: {.columns}` + `.column` children as `{layout-ncol=N}` deletes the child fences and
-/// moves the declaration from the class to an attribute, so a blind rename would trade a
-/// warning for a document that is broken in a new way.
-///
-/// **A note is ONE sentence: the date, then the successor or an explicit "nothing".** Adding
-/// an entry is the entire cost of withdrawing a class — the table-driven tombstone in this
-/// file's `mod tests` derives the rest (gone from the live vocabulary, warns with this note
-/// and no did-you-mean, CSS rule gone), so no hand-written test is owed.
-pub(crate) const RETIRED_DIV_CLASSES: &[(&str, &str)] = &[
-    // --- Theorem environments, retired 2026-08-08. Callouts are the surviving prose
-    // container; they take a `title=` and an `#sec-` id, but no number and no xref target,
-    // and that gap is the accepted cost of the removal.
-    (
-        "theorem",
-        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
-         a `::: {.callout-note title=\"Theorem\"}`, which carries no number and no `@thm-` \
-         cross-reference",
-    ),
-    (
-        "lemma",
-        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
-         a `::: {.callout-note title=\"Lemma\"}`, which carries no number and no `@lem-` \
-         cross-reference",
-    ),
-    (
-        "corollary",
-        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
-         a `::: {.callout-note title=\"Corollary\"}`, which carries no number and no `@cor-` \
-         cross-reference",
-    ),
-    (
-        "definition",
-        "it was removed on 2026-08-08 with the theorem environments: write the statement in \
-         a `::: {.callout-note title=\"Definition\"}`, which carries no number and no `@def-` \
-         cross-reference",
-    ),
-    (
-        "proof",
-        "it was removed on 2026-08-08 with the theorem environments and it was never \
-         numbered anyway, so write the proof as ordinary prose, or fold it behind a \
-         `::: {.callout-note collapse=\"true\"}`",
-    ),
-    // --- The narrative + layout widgets, retired 2026-08-08. `.step` and `.scrolly` went
-    // in one commit on purpose: the scrolly arm partitioned its children by the raw string
-    // `<div class="step"`, so cutting either alone left the other matching a generic div.
-    (
-        "panel-tabset",
-        "it was removed on 2026-08-08: nothing folds alternatives into tabs now, so give \
-         each tab's content its own `###` heading",
-    ),
-    (
-        "code-walkthrough",
-        "it was removed on 2026-08-08 with `.step`, which drove its line highlighting: show \
-         the code block once and write the narration as ordinary prose around it",
-    ),
-    (
-        "scrolly",
-        "it was removed on 2026-08-08 with `.step` and its sticky stage: the stage graphics \
-         become ordinary numbered figures with the step prose between them",
-    ),
-    (
-        "step",
-        "it was removed on 2026-08-08 with `.scrolly` and `.code-walkthrough`, its only \
-         containers, and nothing replaces it, so the contents become ordinary blocks",
-    ),
-    (
-        "fragment",
-        "it was removed on 2026-08-08 with the slide-deck engine: a page reveals nothing \
-         step by step, so the contents become ordinary blocks",
-    ),
-    (
-        "incremental",
-        "it was removed on 2026-08-08 with the slide-deck engine: the list inside it \
-         becomes a plain list",
-    ),
-    (
-        "notes",
-        "it was removed on 2026-08-08 with the slide-deck engine and its presenter view; \
-         speaker notes have nowhere to show on a page, so delete them or write them as prose",
-    ),
-    (
-        "fade-out",
-        "it was removed on 2026-08-08 with the slide-deck engine: it modified a \
-         `.fragment` reveal, and nothing replaces it",
-    ),
-    (
-        "highlight",
-        "it was removed on 2026-08-08 with the slide-deck engine: it modified a \
-         `.fragment` reveal, and nothing replaces it",
-    ),
-    (
-        "magic-move",
-        "it was removed on 2026-08-08 with the slide-deck engine: the code blocks inside \
-         it become ordinary consecutive code blocks",
-    ),
-    (
-        "debug",
-        "it was removed on 2026-08-08 along with the algorithm stepper and `#| trace:`, \
-         and nothing replaces it",
-    ),
-    (
-        "column-screen",
-        "it was removed on 2026-08-15 with the reading grid, which has no full-bleed track: \
-         use `.column-page`, which reaches 60rem",
-    ),
-    (
-        "columns",
-        "it was removed on 2026-08-02: `{layout-ncol=N}` is the same grid and the only \
-         spelling now, so the wrapper becomes `::: {layout-ncol=2}` and its `.column` \
-         children become plain blocks separated by a blank line",
-    ),
-    (
-        "column",
-        "it was removed on 2026-08-02 with `.columns`: under `{layout-ncol=N}` each direct \
-         child block is already a column, so the child fences go away entirely",
-    ),
-    (
-        "aside",
-        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
-    ),
-    (
-        "sidenote",
-        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
-    ),
-    (
-        "marginnote",
-        "it was removed on 2026-08-03: `.column-margin` is the only margin spelling now",
-    ),
-    (
-        "example",
-        "it was removed on 2026-08-03, ahead of the rest of the theorem environments: a \
-         plain `::: {.callout-note}` is the closest surviving spelling",
-    ),
-    (
-        "proposition",
-        "it was removed on 2026-08-03, ahead of the rest of the theorem environments: a \
-         plain `::: {.callout-note}` is the closest surviving spelling",
-    ),
-    (
-        "remark",
-        "it was removed on 2026-08-03: a plain `::: {.callout-note}` is the closest \
-         surviving spelling",
-    ),
-];
 
 /// Validate a fenced div that turned out EMPTY (no blocks between its `:::` fences). An empty
 /// GENERIC div is harmless (it's dropped), but an empty div that names a real feature — a
@@ -449,57 +283,32 @@ mod tests {
         })
     }
 
-    /// **The one tombstone for every retired `:::` vocabulary name.** Adding an entry to
-    /// `RETIRED_DIV_CLASSES` (or a `callout kind` entry to `RETIRED_KEYS`) is all a
-    /// retirement costs from here — this test covers it, at +1 line instead of the ~39 a
-    /// hand-written tombstone used to run to. It replaces three of those (the margin
-    /// aliases, the theorem kinds, and the callout kinds in
-    /// `crates/core/tests/retired_names.rs`), which between them asserted the same three
-    /// properties nine times over.
+    /// The live `:::` vocabulary is exactly the width escapes and the callout kinds.
     ///
-    /// For every retired name, all three halves of a retirement:
+    /// What is left of the retired-name tombstone this used to be: the registers it derived
+    /// from went on 2026-08-17 (the author's FD2 ruling — Taliesin answers for its own
+    /// vocabulary, not for the tools a name came from), so a withdrawn class is now an
+    /// unknown class like any other. The half that still earns its place is the live list:
+    /// a class silently re-added here starts dispatching a feature again, and the two
+    /// `assert_eq!`s below are what make that a test failure rather than a surprise.
     ///
-    /// 1. it is really gone from the LIVE dispatch vocabulary (else the retirement is a
-    ///    no-op and the class still renders its feature);
-    /// 2. it draws a located warning carrying the register's own note, and **never a
-    ///    "did you mean"** — `codes::extract_suggestion` lifts that exact phrase into a
-    ///    structured fix an agent applies mechanically, and none of these are mechanical
-    ///    renames. Silence is the failure mode being guarded: div classes are an OPEN
-    ///    vocabulary, so a plain removal from `DIV_FEATURE_CLASSES` earns no diagnostic
-    ///    at all and the author's page just quietly loses its layout;
-    /// 3. its CSS rule went with it, so a leftover really does render unstyled rather
-    ///    than half-working.
-    ///
-    /// Two vacuity controls, because a derived test is exactly the kind that passes
-    /// forever if its derivation is subtly wrong: the registers must be non-empty and
-    /// still carry a name each retirement was written for, and `css_has_class_selector`
-    /// must say YES to `.column-margin`, the survivor. Without that last one a helper
-    /// that always returned `false` would make half this test vacuous.
+    /// `css_has_class_selector` keeps its vacuity control: a helper that always answered
+    /// `false` would make the surviving CSS check below meaningless.
     #[test]
-    fn every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean() {
+    fn the_live_div_vocabulary_is_the_width_escapes_and_the_callout_kinds() {
         let base = crate::render::base_css();
-        let site = crate::render::site_css();
 
-        // Vacuity control for the CSS half: the helper must find a selector that IS there.
+        // Vacuity control: the helper must find a selector that IS there, and must not
+        // confuse a prefix for the whole name (the case the naive `contains` gets wrong).
         assert!(
             css_has_class_selector(base, "column-margin"),
             "the CSS selector check finds nothing, so every assertion below is vacuous"
         );
-        // …and must NOT confuse a prefix for the whole name. This is the case the naive
-        // `contains` spelling gets wrong, so it is pinned rather than left to a comment.
         assert!(
             !css_has_class_selector(base, "column"),
             "`.column` must not match `.column-margin` — the derivation is too loose"
         );
 
-        // Vacuity control for the registers themselves.
-        assert!(
-            RETIRED_DIV_CLASSES.len() >= 8
-                && RETIRED_DIV_CLASSES.iter().any(|(c, _)| *c == "columns")
-                && RETIRED_DIV_CLASSES.iter().any(|(c, _)| *c == "remark"),
-            "RETIRED_DIV_CLASSES lost entries it was written for — a name deleted from the \
-             register goes back to earning silence"
-        );
         assert_eq!(
             DIV_FEATURE_CLASSES,
             &["column-margin", "column-page"],
@@ -509,73 +318,6 @@ mod tests {
             CALLOUT_KINDS,
             &["note", "tip", "warning"],
             "callout vocabulary should be exactly 3"
-        );
-
-        // --- Retired `:::` feature/theorem classes. `.{name}` is the selector.
-        for (name, note) in RETIRED_DIV_CLASSES {
-            assert!(
-                !DIV_FEATURE_CLASSES.contains(name),
-                "`.{name}` is in RETIRED_DIV_CLASSES and still live — the retirement is a no-op"
-            );
-            let w = validate_div_class(&[name.to_string()], 3, None).unwrap_or_else(|| {
-                panic!("`.{name}` must warn; silence is the failure mode this test exists to catch")
-            });
-            assert_eq!(
-                w.message,
-                format!("unknown div class `{name}`: {note}"),
-                "`.{name}` must carry the register's own note"
-            );
-            assert!(
-                !w.message.contains("did you mean"),
-                "a retired class is not a did-you-mean: {}",
-                w.message
-            );
-            for (label, css) in [("base.css", base), ("site.css", site)] {
-                assert!(
-                    !css_has_class_selector(css, name),
-                    "`.{name}` is retired but still styled in {label}"
-                );
-            }
-        }
-
-        // --- Retired callout kinds. These live in `RETIRED_KEYS` (scope `callout kind`,
-        // the literal `validate_callout_kind` passes to `unknown_key_message`), not in
-        // `RETIRED_DIV_CLASSES`, and their selector is namespaced `.callout-{name}`.
-        let mut callout_kinds_seen = 0;
-        for (scope, name, note) in crate::frontmatter::RETIRED_KEYS {
-            if *scope != "callout kind" {
-                continue;
-            }
-            callout_kinds_seen += 1;
-            assert!(
-                !CALLOUT_KINDS.contains(name),
-                "`{name}` is a retired callout kind and still live"
-            );
-            let w = validate_callout_kind(name, 3, None)
-                .unwrap_or_else(|| panic!("the retired callout kind `{name}` must warn"));
-            assert!(
-                w.message.contains(note),
-                "`{name}` must carry the register's own note, got: {}",
-                w.message
-            );
-            assert!(
-                !w.message.contains("did you mean"),
-                "a retired callout kind is not a did-you-mean: {}",
-                w.message
-            );
-            // Only the class SELECTORS go. The underlying `--tali-callout-important`
-            // custom property stays defined: `.tali-error` / `.tali-js-error` read it.
-            for (label, css) in [("base.css", base), ("site.css", site)] {
-                assert!(
-                    !css_has_class_selector(css, &format!("callout-{name}")),
-                    "`.callout-{name}` is retired but still styled in {label}"
-                );
-            }
-        }
-        assert!(
-            callout_kinds_seen >= 2,
-            "only {callout_kinds_seen} retired callout kinds found in RETIRED_KEYS — the \
-             scope literal changed and this half of the test stopped running"
         );
     }
 

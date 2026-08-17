@@ -71,9 +71,9 @@ pub(crate) fn tag_attr<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
 ///
 /// A plain scan over the message, independent of which validator wrote it: every
 /// did-you-mean in this tree is spelled the same way on purpose, and this is what turns one
-/// into a structured `suggestion` an editor can apply as a quick fix. It is also why no
-/// retirement note may be *phrased* as a did-you-mean (see `RETIRED_KEYS`): a note is prose
-/// to read, not a token to substitute.
+/// into a structured `suggestion` an editor can apply as a quick fix — so a message that
+/// spells the phrase is promising a mechanical rename, and must not use it for anything
+/// else.
 pub fn extract_suggestion(message: &str) -> Option<String> {
     let key = "did you mean `";
     let at = message.find(key)? + key.len();

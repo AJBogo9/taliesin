@@ -92,17 +92,18 @@ fn an_error_writes_to_stderr_and_nothing_to_stdout() {
         "the did-you-mean goes to stderr: {stderr}"
     );
 
-    // …and a retired one, which carries its own note instead of a did-you-mean.
-    let (ok, stdout, stderr) = run(&["run", "."]);
-    assert!(!ok, "a retired command exits non-zero");
+    // …and one too far from every verb for a did-you-mean, which must still be an error
+    // rather than a silent success, and must still leave stdout clean.
+    let (ok, stdout, stderr) = run(&["frobnicate", "."]);
+    assert!(!ok, "an unrecognized command exits non-zero");
     assert!(
         stdout.is_empty(),
-        "a retired verb must write nothing to stdout, got {} lines:\n{stdout}",
+        "an unrecognized verb must write nothing to stdout, got {} lines:\n{stdout}",
         stdout.lines().count()
     );
     assert!(
-        stderr.contains("was removed"),
-        "the retirement note goes to stderr: {stderr}"
+        stderr.contains("unknown command") && !stderr.contains("did you mean"),
+        "no wild guess, and the error goes to stderr: {stderr}"
     );
 
     // The success paths must not move: help is what those are FOR, and it belongs on

@@ -200,9 +200,9 @@ fn validate_xrefs_flags_only_unresolved_markers() {
 /// their theorem kinds on 2026-08-03, and `thm`/`lem`/`cor`/`def` lost theirs on 2026-08-08
 /// when the theorem environments went entirely. The prefixes stay in [`XREF_LABELS`] on
 /// purpose, so a leftover `@thm-a` still resolves far enough to be reported broken rather
-/// than passing through as literal text (the silent fallthrough `RETIRED_DIV_CLASSES` exists
-/// to prevent). But they must not be *offered*: completing `@thm-` invites the author to
-/// write a reference guaranteed to break.
+/// than passing through as literal text, which is the silent fallthrough to avoid. But they
+/// must not be *offered*: completing `@thm-` invites the author to write a reference
+/// guaranteed to break.
 ///
 /// "Offered" reads the editor vocabulary, which is where the offer is actually made —
 /// `vocab::vocab()["xrefPrefixes"]`, served to the LSP's completion. It used to read

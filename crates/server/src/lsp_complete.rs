@@ -148,7 +148,7 @@ impl PathKind {
 /// The front-matter keys whose value is a path, and what kind.
 ///
 /// Every entry must be a key the tool still HAS. Four of the eight were not on 2026-08-17:
-/// `css` and the three `include-*` keys are all in `RETIRED_KEYS`, so completion inserted a
+/// `css` and the three `include-*` keys were all retired, so completion inserted a
 /// path for a key the same server then squiggled, and `logo` is a `_site.yml` key that no
 /// `.tmd` front matter ever accepts (the client's document selector is the `taliesin`
 /// language alone, so this list is never consulted for a config file). The comment above
@@ -1931,9 +1931,9 @@ mod tests {
     /// Every offered path key is a key the tool still has.
     ///
     /// **The defect (Fable audit FA18).** `PATH_KEYS` listed `css` and all three
-    /// `include-*` keys, every one of them in `RETIRED_KEYS`, so completing a value under
-    /// one inserted a path the same server's lint then squiggled. Nothing derived the list
-    /// and nothing pinned it, which is how it survived two retirement waves.
+    /// `include-*` keys, every one of them retired, so completing a value under one
+    /// inserted a path the same server's lint then squiggled. Nothing derived the list and
+    /// nothing pinned it, which is how it survived two retirement waves.
     ///
     /// Checked against `vocab()`, the OFFERED set, because a key completion does not offer
     /// is a key whose value position the author cannot reach from here either.

@@ -371,16 +371,9 @@ fn forward_xrefs_survive_the_backlink_deletion() {
     );
 }
 
-/// The one thing the retirement REGISTER cannot express, kept after the three
-/// vocabulary tombstones here collapsed into
-/// `render::validate::tests::every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`.
-///
-/// That test derives everything derivable from `RETIRED_DIV_CLASSES` and `RETIRED_KEYS`:
-/// the name is gone from the live vocabulary, it warns with the register's own note and
-/// never a "did you mean", and its CSS rule went with it. What it cannot derive is this:
-/// theorem kinds went 8 -> 5 on 2026-08-03, and the `@exm-`/`@prp-`/`@rem-` cross-reference
-/// prefixes deliberately resolve the OPPOSITE way from their div classes — they STAY in
-/// `cite::XREF_LABELS`.
+/// Theorem kinds went 8 -> 5 on 2026-08-03, and the `@exm-`/`@prp-`/`@rem-` cross-reference
+/// prefixes deliberately resolve the OPPOSITE way from their div classes: the classes are
+/// gone, and the prefixes STAY in `cite::XREF_LABELS`.
 ///
 /// That is a correction, not a decision anyone would reconstruct. Fix round 1 (2026-08-04):
 /// the first cut of the task also deleted the three prefixes, which was wrong — with the
@@ -426,105 +419,6 @@ fn the_cut_theorem_kinds_keep_their_xref_prefixes_so_a_stray_reference_errors_lo
     );
 }
 
-/// `{pyodide}` was withdrawn on 2026-08-04 (MVP scope pass): a vendored 15.7 MiB
-/// CPython/WASM runtime that could only ever ship the stdlib plus NumPy, since the tool
-/// does no network fetch, which is exactly the workload `{js}` already covers at zero
-/// marginal bytes. Adoption at withdrawal was author 0 / manual 1 / pin 1.
-///
-/// **Fence languages are an OPEN vocabulary**, so this needs the same kind of retirement
-/// register `RETIRED_KEYS` gives front matter and `RETIRED_DIV_CLASSES` gives fenced divs.
-/// Without one an author who leaves a `{pyodide}` cell in a document does not get silence
-/// (the generic `TAL-CODE-LANG` arm still fires) but gets something arguably worse: advice
-/// to "check the spelling", when the spelling was right and the capability is gone. This
-/// pins the specific note instead, through the full render pipeline rather than by reading
-/// the const, so it is the diagnostic an author actually sees.
-#[test]
-fn a_leftover_pyodide_cell_is_told_it_was_withdrawn_not_that_it_is_a_typo() {
-    let lang = format!("{}{}", "pyo", "dide");
-    assert!(
-        taliesin_core::diagnostics::retired_cell_lang(&lang).is_some(),
-        "`{lang}` must have a RETIRED_CELL_LANGS entry or an author is told to check the spelling"
-    );
-
-    let doc = taliesin_core::render::render_document_with_includes(
-        &format!("intro\n\n```{{{lang}}}\nimport numpy as np\n```\n"),
-        Path::new("."),
-    );
-    let ws = taliesin_core::diagnostics::validate_retired_cell_langs(&doc.blocks);
-    let w = ws
-        .iter()
-        .find(|w| w.message.contains("was removed"))
-        .unwrap_or_else(|| panic!("expected a retirement warning, got {:?}", ws));
-    // **The severity, which is the half a unit test alone missed.** A retired cell language
-    // is a WARNING: an ERROR fails `build --strict` on a document whose only sin is being out
-    // of date, which is measured behaviour and not a hypothetical: before this classification
-    // existed, a leftover cell reported as an error and failed the build. Until 2026-08-08 the
-    // severity was derived from the message by a substring table, so a reworded note could
-    // silently promote it; now it is a field, and this asserts the field.
-    assert_eq!(
-        w.severity,
-        taliesin_core::Severity::Warning,
-        "a retired cell language must not be an error: {}",
-        w.message
-    );
-    // The replacement must be NAMED. A retirement note that only says "gone" leaves the
-    // author with a broken document and no next step, which is the whole reason the
-    // register carries a note rather than a bare list of withdrawn spellings.
-    assert!(
-        w.message.contains("`{js}`") && w.message.contains("`{python}`"),
-        "the note must name both replacements: {}",
-        w.message
-    );
-    // Located, like every other member of this family: an unlocated warning cannot be
-    // clicked back to the offending fence.
-    assert_eq!(w.line, Some(3), "points at the fence, not the doc start");
-    // The generic spelling advice must NOT also fire: two warnings for one cell, one of
-    // them actively wrong, is the state this register exists to prevent.
-    assert!(
-        !w.message.contains("check the spelling"),
-        "the retirement note must REPLACE the generic unknown-language advice: {}",
-        w.message
-    );
-    assert_eq!(
-        ws.len(),
-        1,
-        "exactly one warning per withdrawn cell: {ws:?}"
-    );
-    // Kept from the deleted `the_vendored_browser_python_runtime_is_gone_from_the_tree`
-    // tombstone: its file-existence half asserted paths that no longer exist and could only
-    // fail if someone deliberately re-vendored a 15.7 MiB WASM runtime, but THIS half is a
-    // live invariant -- the language must stay out of the client-language registry, or an
-    // emitter could produce a wrapper for a runtime that ships no bytes.
-    assert!(
-        taliesin_core::render::client_lang(&lang).is_none(),
-        "`{lang}` is still a registered client language"
-    );
-}
-
-/// The client-side APIs that must SHIP, held positively.
-///
-/// This is what is left of the UI tombstones deleted on 2026-08-13. Fourteen tests asserted
-/// that a withdrawn feature's identifiers were absent from the bundle -- `taliInitLightbox`,
-/// `taliInitBookOutline`, `tali-cat-chip` and the rest. None of them had a register behind
-/// it (there is no `RETIRED_JS_FEATURES`, and `CLAUDE.md`'s register rule says not to
-/// hand-write a tombstone), and none could fail unless someone re-introduced a dead
-/// identifier by its exact name, which nothing would do by accident.
-///
-/// Three of those tests carried a positive assertion among the absences, and those were the
-/// half worth keeping: a deletion pass that took the pre-paint theme bootstrap with it would
-/// break a reader, and an absence test cannot notice that. Asserting what must ship catches
-/// the over-cut; asserting what must not ship catches nothing. (The second subject, the
-/// Settings menu's mounting API, was itself removed on 2026-08-13 with the theme picker it
-/// hosted: a page follows the reader's device.)
-///
-/// **The arrow-key chapter nav was the third subject, and it was removed on 2026-08-15.**
-/// This assertion caught that removal, which is what it was for — so the removal is recorded
-/// here rather than made silently. It was cut deliberately, not over-cut: it had been
-/// undiscoverable since its cheatsheet went, and it bound the arrow keys while
-/// `16-scroll-a11y.js` gives a wide `<pre>` `tabindex="0"` for the express purpose of letting
-/// the arrow keys scroll it. The same commit made that horizontal scrolling a designed
-/// behaviour — a code block now escapes to 84 columns and then scrolls — so the two fragments
-/// were no longer merely in tension, they were answering the same keypress differently.
 #[test]
 fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
     // The theme half of `theme.rs`'s pre-paint bootstrap, which ships in every rendered

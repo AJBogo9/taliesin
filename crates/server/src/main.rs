@@ -99,91 +99,9 @@ fn main() -> ExitCode {
 /// Every subcommand name, for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &["build", "doctor", "lsp", "init", "preview", "help"];
 
-/// Subcommands that used to exist, and the one line that says what replaced them.
-///
-/// The same job [`taliesin_core::RETIRED_KEYS`] does for front matter, for the same reason:
-/// a did-you-mean over the *surviving* names answers a retired verb with either silence or
-/// a wrong command, and both are worse than nothing when the person typing it is following
-/// an older page. Measured on the Wave 5 cuts: `render`, `blocks`, `symbols` and `serve`
-/// are all further than edit distance 2 from every survivor, so they got silence — while
-/// **`dev` is two edits from `new`**, so `taliesin dev .` answered a request for the preview
-/// server by suggesting the command that *scaffolds files*.
-///
-/// Retired names are deliberately NOT in [`COMMANDS`]: they must not be suggested for a
-/// typo of something else, only recognized when typed exactly.
-///
-/// **A note is ONE sentence naming the replacement, or saying there is none.** Adding an
-/// entry is the entire cost of retiring a verb; `a_retired_command_names_its_replacement_
-/// instead_of_guessing` below covers every entry in the table, so no per-verb test is owed.
-const RETIRED_COMMANDS: &[(&str, &str)] = &[
-    (
-        "render",
-        "`build <file.tmd> --stdout --no-exec` writes the same page to stdout",
-    ),
-    ("blocks", "`taliesin lsp` publishes the block model now"),
-    (
-        "symbols",
-        "`taliesin lsp` completes cross-reference targets after `@`",
-    ),
-    ("serve", "use `preview`"),
-    ("dev", "use `preview`"),
-    ("skim", "nothing; read the `.tmd` source"),
-    ("read", "nothing; read the `.tmd` source"),
-    (
-        "map",
-        "nothing on the CLI; `taliesin lsp` answers `taliesin/siteMap` for your editor",
-    ),
-    (
-        "features",
-        "`build <dir> --check-only --format json` is the machine surface",
-    ),
-    (
-        "vocab",
-        "`taliesin lsp` serves the same vocabulary as completions",
-    ),
-    (
-        "schema",
-        "nothing on the CLI; the VS Code companion bundles the `_site.yml` schema",
-    ),
-    (
-        "mcp",
-        "`build <dir> --check-only --format json`, run from your agent",
-    ),
-    (
-        "publish",
-        "`build <dir> --out <dir>` writes a plain folder any static host serves \
-         (Netlify, GitHub Pages, Cloudflare Pages, rsync)",
-    ),
-    (
-        "check",
-        "`build <file|dir> --check-only` lints without writing, and takes `--strict` \
-         and `--format json` the same way",
-    ),
-    (
-        "pdf",
-        "nothing; print the built HTML to PDF from your browser",
-    ),
-    (
-        "completions",
-        "nothing; type the subcommand out, or bind your own shell alias",
-    ),
-    (
-        "run",
-        "`preview <file.tmd>` executes the same cells against the same warm kernel and \
-         writes the same `_freeze/`, so a later `build` still replays without one",
-    ),
-    (
-        "new",
-        "`init` scaffolds the example post now; copy `posts/my-first-post/` for the next one",
-    ),
-];
-
-/// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the
-/// name is one this tool used to have, otherwise a did-you-mean within edit distance 2.
+/// The error for a command that is not one of [`COMMANDS`]: a did-you-mean within edit
+/// distance 2, or the longer-spelling rule below, or nothing.
 fn unknown_command_message(other: &str) -> String {
-    if let Some((_, note)) = RETIRED_COMMANDS.iter().find(|(name, _)| *name == other) {
-        return format!("`{other}` was removed: {note}");
-    }
     match taliesin_core::closest(other, COMMANDS).or_else(|| extended_command(other)) {
         Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
         None => format!("unknown command: `{other}`"),
@@ -448,43 +366,6 @@ mod dispatch_tests {
         assert_eq!(taliesin_core::closest("frobnicate", COMMANDS), None);
     }
 
-    /// A retired verb answers with what replaced it, and is never itself suggested.
-    ///
-    /// The measurement that made this a register rather than a comment: with `dev` merely
-    /// deleted, `taliesin dev .` fell through to the did-you-mean, and `dev` was exactly two
-    /// edits from the `new` verb — so a request to *preview* a project was answered with the
-    /// command that *scaffolded files into it*. `new` was itself cut on 2026-08-17, so that
-    /// particular collision is gone; the register is what keeps `dev` pointing at `preview`
-    /// rather than at whatever the distance rule finds next.
-    #[test]
-    fn a_retired_command_names_its_replacement_instead_of_guessing() {
-        assert!(
-            unknown_command_message("dev").contains("preview"),
-            "`dev` must point at preview: {}",
-            unknown_command_message("dev")
-        );
-        assert!(
-            !unknown_command_message("dev").contains("did you mean"),
-            "the retired note replaces the did-you-mean, it does not follow it"
-        );
-        assert!(unknown_command_message("render").contains("--stdout"));
-        assert!(unknown_command_message("symbols").contains("lsp"));
-        // A retired name is not a live command, or `main()` would dispatch it and the
-        // `--help`/COMMANDS gates would demand a page for it.
-        for (name, note) in RETIRED_COMMANDS {
-            assert!(
-                !COMMANDS.contains(name),
-                "`{name}` is retired but still listed in COMMANDS"
-            );
-            assert!(
-                !note.is_empty(),
-                "`{name}` retired with no replacement note"
-            );
-        }
-        // And an ordinary typo still gets its did-you-mean.
-        assert!(unknown_command_message("biuld").contains("did you mean `build`?"));
-    }
-
     /// A name that EXTENDS or ABBREVIATES a command gets its did-you-mean. Measured:
     /// `taliesin preview-site .` is **five** edits from `preview`, so the distance-2 rule
     /// answered the likelier of the two mistakes with silence while `preveiw` (two edits)
@@ -519,12 +400,11 @@ mod dispatch_tests {
         assert_eq!(extended_command("r"), None);
         // A name related to nothing still gets no suggestion.
         assert!(!unknown_command_message("frobnicate").contains("did you mean"));
-        // A retired verb keeps its replacement note; this rule never overrides it.
-        assert!(unknown_command_message("dev").contains("preview"));
-        assert!(!unknown_command_message("dev").contains("did you mean"));
-        // A retired name is never itself the suggestion: candidates are COMMANDS, which
-        // excludes the cut verbs, so `serve-site` resolves to nothing rather than `serve`.
+        // A cut verb is never itself the suggestion: candidates are COMMANDS, which holds
+        // only what the binary answers, so `serve-site` resolves to nothing rather than to
+        // the `serve` this tool used to have.
         assert_eq!(extended_command("serve-site"), None);
+        assert!(!unknown_command_message("dev").contains("did you mean"));
     }
 }
 
@@ -1055,16 +935,8 @@ mod cli_microcopy_tests {
                 "`{cmd}` help should show a `taliesin …` example: {help}"
             );
         }
-        // An unrecognized command has no focused help (falls back to top-level usage), and
-        // a *retired* one has none either: `dev`/`serve` are not spellings of `preview` any
-        // more, they are names the tool no longer answers to.
+        // An unrecognized command has no focused help (it falls back to top-level usage).
         assert!(subcommand_help("frobnicate").is_none());
-        for (retired, _) in RETIRED_COMMANDS {
-            assert!(
-                subcommand_help(retired).is_none(),
-                "`{retired}` was retired but still has a focused --help page"
-            );
-        }
         // `--jobs` is documented in build help.
         let build_help = subcommand_help("build").unwrap();
         assert!(

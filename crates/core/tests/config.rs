@@ -77,8 +77,8 @@ fn site_head_is_injected_and_the_retired_body_slots_are_not() {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains(&format!("`{key}`")) && w.contains("removed on 2026-08-02")),
-            "no retirement diagnostic for `{key}`: {:?}",
+                .any(|w| w.contains(&format!("`{key}`"))),
+            "no diagnostic for the inert `{key}`: {:?}",
             site.warnings
         );
     }

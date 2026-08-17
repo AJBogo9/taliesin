@@ -193,10 +193,9 @@ mod tests {
     use super::*;
 
     /// `hero.image:`/`image-alt:` were retired on 2026-08-02 and their two-column layout
-    /// deleted on 2026-08-08, so `parse_hero` no longer reads either key. The RETIRED_KEYS
-    /// entries (scope `hero key`) are what keeps a leftover diagnosing instead of going
-    /// silent; this pins that the parser really stopped consuming them, which is the half
-    /// a register entry cannot say.
+    /// deleted on 2026-08-08, so `parse_hero` no longer reads either key. Dropping a key
+    /// from `HERO_KEYS` only makes it *diagnosed*; this pins that the parser really stopped
+    /// consuming it, which is the half no vocabulary list can say.
     #[test]
     fn parse_hero_ignores_the_retired_image_keys() {
         let v: serde_yaml::Value = serde_yaml::from_str(

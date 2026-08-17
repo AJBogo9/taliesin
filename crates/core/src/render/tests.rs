@@ -371,11 +371,11 @@ fn layout_ncol_div_becomes_grid() {
 }
 
 #[test]
-fn a_retired_columns_div_says_removed_and_layout_ncol_still_works() {
+fn a_leftover_columns_div_builds_no_grid_and_layout_ncol_still_works() {
     // `.columns`/`.column` were withdrawn on 2026-08-02: two mechanisms for one job, and
-    // six weeks of daily writing adopted the other one. The diagnostic is the whole point
-    // of the removal — div classes are an OPEN vocabulary, so without a retired register a
-    // leftover `.columns` reads as a custom class and the page silently loses its layout.
+    // six weeks of daily writing adopted the other one. What matters is that the classes
+    // stopped being READ — a leftover one is a custom class like any other now, styled by
+    // whatever CSS the author brings.
     let doc = render_document(
         "::: {.columns}\n::: {.column}\nLeft\n:::\n\n::: {.column}\nRight\n:::\n:::\n",
     );
@@ -383,26 +383,6 @@ fn a_retired_columns_div_says_removed_and_layout_ncol_still_works() {
     assert!(
         !h.contains("tali-layout"),
         "`.columns` no longer builds a grid: {h}"
-    );
-    let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
-    let columns = msgs
-        .iter()
-        .find(|m| m.contains("`columns`"))
-        .expect("a leftover `.columns` must warn, not be silent");
-    assert!(
-        columns.contains("removed") && columns.contains("layout-ncol"),
-        "it reads as a removal and names what replaced it: {columns}"
-    );
-    // NOT a did-you-mean: `codes::extract_suggestion` lifts that phrase into a fix an
-    // agent applies mechanically, and this rewrite deletes the child fences rather than
-    // renaming anything, so a mechanical rename would break the document differently.
-    assert!(
-        !msgs.iter().any(|m| m.contains("did you mean")),
-        "a removal must never be phrased as a rename: {msgs:?}"
-    );
-    assert!(
-        msgs.iter().any(|m| m.contains("`column`")),
-        "the child fences the author must delete are named too: {msgs:?}"
     );
 
     // The control: the surviving spelling still lays out side by side, so this test
@@ -1469,12 +1449,8 @@ fn retired_front_matter_include_keys_inject_nothing_and_say_so() {
                 )
             });
         assert!(
-            msg.contains("removed on 2026-08-02"),
-            "`{key}` must say when it went: {msg}"
-        );
-        assert!(
-            msg.contains("head:"),
-            "`{key}` must point at the surviving hatch: {msg}"
+            msg.starts_with("unknown front-matter key"),
+            "`{key}` must be flagged as unknown, not silently inert: {msg}"
         );
     }
 }
@@ -2709,8 +2685,9 @@ fn a_duplicate_cross_reference_label_warning_is_located() {
 
 #[test]
 /// The opt-in prose linter was retired on 2026-08-02. A leftover `prose-lint:` must produce
-/// the retired-key diagnostic and NO lint warnings — the failure to avoid is a document
-/// that still looks linted because the key parsed.
+/// NO lint warnings — the failure to avoid is a document that still looks linted because the
+/// key parsed. (That the key itself is flagged as unknown is
+/// `frontmatter::tests::prose_lint_key_is_not_silently_accepted`.)
 fn prose_lint_is_retired_and_lints_nothing() {
     let doc = render_document("---\ntitle: T\nprose-lint: true\n---\n\nThis is very very good.\n");
     assert!(
@@ -2720,14 +2697,6 @@ fn prose_lint_is_retired_and_lints_nothing() {
                 || w.message.starts_with("banned term ")
         }),
         "no lint rule may still fire: {:?}",
-        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
-    );
-    assert!(
-        doc.warnings
-            .iter()
-            .any(|w| w.message.contains("`prose-lint`")
-                && w.message.contains("removed on 2026-08-02")),
-        "the retired key must say so: {:?}",
         doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
 }
@@ -6556,8 +6525,8 @@ fn a_callout_is_a_left_rule_and_a_kind_word() {
         BASE_CSS.contains("border-left: 2px solid var(--tali-border-strong)"),
         "the callout's own edge is the 2px rule the kind then colours"
     );
-    // The knobs stop being READ, not merely undocumented: a register entry alone leaves the
-    // key live, which is the half no gate derives.
+    // The knobs stop being READ, not merely undocumented — the half that actually changes
+    // what the page does, and the only half left now that the registers are gone.
     let html = render_html_page(
         "---\ntitle: T\n---\n\n::: {.callout-tip appearance=\"simple\" icon=\"false\"}\nBody.\n:::\n",
         "ca",
@@ -6570,12 +6539,6 @@ fn a_callout_is_a_left_rule_and_a_kind_word() {
         !html.contains("callout-icon"),
         "`icon=` and the icons it suppressed must both be gone: {html}"
     );
-    for key in ["appearance", "icon"] {
-        assert!(
-            crate::frontmatter::retired_note("callout attribute", key).is_some(),
-            "`{key}` needs its one-line register entry under the `callout attribute` scope"
-        );
-    }
 }
 
 /// A collapsed sidenote can get back to where the reader was. Below the margin breakpoint the
