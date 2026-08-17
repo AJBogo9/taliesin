@@ -12,6 +12,12 @@ against the release binary before filing them. Findings that got neither check a
 **[U]** and start with a verification step. Full structured findings: the audit session's
 scratchpad `audit-full.json` (not committed; this file supersedes it).
 
+**Landed 2026-08-17**, in four commits, each with `./tools/gates.sh` green before and
+after: FA1, FA2, FA3, FA5, FA6, FA7, FA9, FA10, FA11, FA12, FA14, FA17, FA18, FA19, FA24,
+FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16. Every fix that
+had a done-test was mutation-checked in both directions (revert the fix, watch the test go
+red). Deleted from this file per rule 3; what remains below is what remains.
+
 **Relationship to the other queues.** [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md)
 is the older defect queue (its batches 11-12 remain open; nothing here duplicates them,
 overlaps are cross-referenced). [backlog.md](backlog.md) is the release critical path and
@@ -24,7 +30,7 @@ promote or not.
 | | |
 |---|---|
 | `target/release/taliesin` | reports `0.3.0 (5b9684ae)`, i.e. current with HEAD at audit time |
-| `cargo test` / `./tools/gates.sh` | **not run by this audit** (read-only session; reproductions used the release binary and targeted greps). The first grinding session should run `./tools/gates.sh` first and record the verdict line here. |
+| `cargo test` / `./tools/gates.sh` | Run at the start of the first grinding session (2026-08-17): `PASSED — every gate ran and passed (12 gates).` Green again after each batch below landed. |
 | Working tree | clean, untouched by the audit |
 
 ## Rules for working this file
@@ -60,140 +66,28 @@ promote or not.
 
 ---
 
-# BATCH F1: the destructive sweep bypass (data loss)
+# BATCH F2: trust surfaces (gates that lie)
 
-## FA1 [A] RELEASE-BLOCKING: `build --out` can delete a stranger's directory and exit 0
-
-`is_taliesin_output`'s ownership fallback claims any directory containing
-`_assets/app.*.css`: the check is `name.starts_with("app.") && name.ends_with(".css")`
-(`build.rs`, grep `is_taliesin_output`), which matches `app.min.css`, a top-conventional
-stylesheet name, and any webpack/parcel `app.<hash>.css`. Once claimed,
-`unowned_output_entries` returns `None`, the refusal never fires, and `sweep_stale`
-deletes the user's files. Reproduced live by the refuter: a `victim/` containing only
-`_assets/app.min.css` plus the user's own files came out swept and overwritten, exit 0.
-This is a **bypass of the guard the landed Batch 1 (2026-08-13 queue) installed**; the
-guard's own comment names this disaster as its motivation. Real emitted names are
-`app.<1-16 lowercase hex>.css` (`write_asset_bundle`), so the fallback is strictly looser
-than what it recognizes.
-
-- Repro: `mkdir -p victim/_assets && touch victim/_assets/app.min.css && echo hi > victim/precious.txt`,
-  then `taliesin build <any site dir> --out victim --no-exec`; observe `swept`, exit 0,
-  `precious.txt` gone.
-- Fix: tighten the fallback to the actual emitted shape (lowercase-hex hash segment), or
-  require the claim marker outright; a foreign `_assets/app.min.css` must hit the refusal
-  path.
-- Done when: a failing test first (fixture above, in `stale_sweep.rs`'s lane) asserting
-  the build **refuses** and touches nothing; then green.
-- Effort: S.
-
-# BATCH F2: trust surfaces (exit codes and gates that lie)
-
-## FA2 [V] RELEASE-BLOCKING: site build exits 0 under `--strict` on a page it could not read or write, and keeps the stale page
-
-Reproduced: `chmod 444 _site/p2.html`, edit `p2.tmd`, `build . --strict --no-exec` prints
-`error cannot write ...: Permission denied`, then `built ... 1 page`, **exit 0**, and the
-output still holds the old body (the sweep keeps the failed page's URL). Same for an
-unreadable source. The unreadable-source early return hard-codes `problems: 0` and the
-write-failure arm increments neither `problems` nor `unparseable` (grep `cannot write` /
-`cannot read` in `build.rs`); the verdict is `unparseable == 0 && !strict_fail &&
-!kernel_fail`. The single-doc path already returns `ExitCode::FAILURE` on a write failure,
-so the two verbs disagree.
-
-- Fix: count both I/O arms into the exit verdict (plain build too, not just `--strict`: a
-  page that could not be written is not a built site).
-- Done when: failing integration test first (read-only output file; assert non-zero exit),
-  then green; `--check-only` behaviour unchanged (it already fails).
-- Effort: S.
-
-## FA3 [V] the vacuous-needle class: full-page assertions whose needles ship inside the inlined assets
-
-`a11y_chrome_emits_landmarks_and_a_skip_link` (`crates/core/tests/corpus.rs`, grep the
-name) pins `<main id="tali-main" tabindex="-1">` against a full rendered page; that exact
-string also sits in a comment in
-`crates/core/assets/js/code-enhance/06-skip-link.js:3`, which ships un-minified into the
-page. Reproduced on the test's own input: the needle occurs **twice**; delete the real
-`<main>` emission and the test stays green. Same genus [A]: `token_contract.rs`'s
-source-blob censuses ingest whole `.rs` files on `contains("<script")`, prose included
-(commit `5b9684ae`'s message records three checks passing on prose while dead JS shipped).
-
-- Fix: assert chrome needles against the page with `<script>`/`<style>` contents blanked
-  (one small test helper), or against `PageParts` before asset inlining. For
-  `token_contract.rs`, exclude comment lines from the census blob or anchor needles to
-  call-site shapes.
-- Done when: mutation-checked per the "gate the gate" rule: comment out the `<main>`
-  emission in `page.rs`, confirm the test goes red, restore. Sweep the other full-page
-  needles in `corpus.rs` (`tali-site-nav`, `tali-site-footer`, the `with_subresources`
-  counter) the same way.
-- Effort: S-M.
-
-## FA4 [V] RELEASE-BLOCKING: CI has never executed and the committed story about why is wrong
+## FA4 [V] RELEASE-BLOCKING: CI has never executed (the comment half landed; the rehearsal has not)
 
 `gh api repos/AJBogo9/taliesin/actions/permissions` returns `{"enabled":false}`: Actions
-is disabled at the **repository-settings level**. ci.yml's header says the per-job
-`private != true` guard makes skipped runs visible ("an inert CI never looks like a
-passing one"); in reality **no run is ever created**: zero executions since 2026-07-26,
-and release.yml has never fired. ~300 lines of YAML across 10 jobs and a 3-OS matrix
-execute for the first time on launch day. (Ties into S16/S17 in the 2026-08-13 queue:
-whatever repo the public flip creates, the workflows are unrehearsed.)
+is disabled at the **repository-settings level**, so **no run is ever created**. Re-measured
+2026-08-17: 382 runs exist, the newest from 2026-07-26, none since ci.yml was restored on
+2026-07-28; release.yml has never fired. ~300 lines of YAML across 10 jobs and a 3-OS
+matrix execute for the first time on launch day. (Ties into S16/S17 in the 2026-08-13
+queue: whatever repo the public flip creates, the workflows are unrehearsed.)
 
-- Fix: correct ci.yml's header to name the real off-switch; add "dry-run both workflows"
-  to the pre-flip sequence (a throwaway fork or the fresh repo pre-announcement; a
-  `workflow_dispatch` trigger makes this cheap).
-- Done when: the comment matches reality, and a rehearsal run of ci.yml and release.yml
-  (on a scratch tag) has completed once with logs read.
-- Effort: S for the comment, M for the rehearsal.
+**ci.yml's header was corrected on 2026-08-17** and now names the real off-switch and the
+unrehearsed consequence; the false "a skipped job is visible in the Actions UI" claim is
+gone. What is left is the rehearsal, which needs Actions turned back on and is therefore
+the author's call (billing on a private repo is why it is off).
 
-## FA5 [V] the corpus-deletion hole, and the accommodation that outlived its feature
-
-Nothing pins which corpus documents must exist: the sweeps iterate whatever is on disk
-with floors like `files.len() >= 5` against 82 docs, so most of the corpus can vanish
-before anything notices (CLAUDE.md's ordering rule warns about exactly this). The scar
-proving it bites: `corpus.rs` (grep `transclude`) still cites `corpus/transclude.tmd`
-("does exactly that") to justify re-arming the per-file sourcepos floor on every
-source-file alternation, but that document was deleted in wave 7 (`git log
---diff-filter=D -- corpus/transclude.tmd`), so the weakening now guards a feature that
-does not exist while blinding the check to out-of-order sourcepos.
-
-- Fix: (1) a manifest test: a checked-in sorted list of corpus doc paths compared against
-  the tree, so a deletion is a deliberate one-line diff in the same commit (the
-  `token_contract.rs` philosophy applied to documents). (2) Remove the re-arm
-  accommodation and the stale comment; restore the strict monotonic per-file check (run
-  the suite first to confirm no surviving document legitimately violates it).
-- Done when: manifest test mutation-checked (delete a doc locally, confirm red); ordering
-  check strict; comment gone.
-- Effort: S.
-
-## FA6 [V] the getting-started deploy workflow ships error-severity diagnostics with a green exit
-
-`grep -n "check-only\|--strict" docs/guide/using/getting-started.tmd` returns nothing;
-its GitHub Actions example and the Netlify/Vercel/Cloudflare bullets use bare
-`taliesin build .` (line ~208), which by design exits 0 on broken xrefs and missing
-images. The CLI reference's own "thorough two-stage CI gate"
-(`build . --check-only && build . --strict`) never reaches the chapter users copy from.
-
-- Fix: put `--check-only` into the copy-paste workflow and one sentence naming why.
-- Done when: the docs build green (`build docs/guide --check-only`) and the example
-  includes the gate. Optionally extend `stale_docs.rs` to assert deploy examples carry
-  it, mutation-checked per rule 5, or skip the gate and accept the docs fix alone.
-- Effort: S.
+- Done when: a rehearsal run of ci.yml and release.yml (a throwaway fork, or a scratch tag
+  once the repo is public; a `workflow_dispatch` trigger makes this cheap) has completed
+  once with its logs read.
+- Effort: M.
 
 # BATCH F3: execution and freeze integrity
-
-## FA7 [A] outputs computed downstream of a failed or interrupted cell are persisted to `_freeze/`
-
-The persist loop (`exec.rs`, grep `self.freeze.put`) skips only the `#| cache: false`
-position (`first_uncacheable`) and cells whose OWN output is an error (`is_uncacheable`).
-A cell that ran AFTER an upstream cell errored or was interrupted executed against
-half-mutated kernel state, and its output is persisted under a cumulative key asserting
-it follows from a complete upstream run. Durable stale hit inside the code-only axes the
-key claims to close; the refuter tried to kill this and reported every load-bearing claim
-checks out.
-
-- Fix: bound the persist range at the first errored/interrupted index in the run, the
-  same shape `first_uncacheable` already has.
-- Done when: failing test first (run A-errors, B-ok; assert B's key absent from the
-  written `_freeze/<page>.json`), in the `freeze_cold_replay.rs` lane; then green.
-- Effort: S.
 
 ## FA8 [A] the silence cap is reset by iopub traffic from other cells, and an ignored SIGINT leaves a runaway running
 
@@ -209,76 +103,7 @@ SIGINT path has no escalation if the kernel ignores it.
   chatty cell then silent `sleep`; assert interruption fires.
 - Effort: M.
 
-## FA9 [V] four doc pages still make the "stale hit impossible" overclaim that `freeze.rs` itself was corrected for
-
-`freeze.rs`'s module doc honestly bounds the claim ("impossible for the axes the key can
-see") and enumerates the out-of-band class. The shipped docs do not:
-`docs/guide/using/choosing.tmd:114`, `docs/guide/reference/cli.tmd:243`,
-`docs/guide/using/code.tmd:108`, `docs/internals/execution.tmd:141` (grep `stale hit`).
-FA7's fix narrows the true statement further.
-
-- Fix: align all four with freeze.rs's boundary sentence and the `#| cache: false`
-  escape hatch. **Hazard**: choosing.tmd carries census-gated numbers; touch only the
-  prose.
-- Done when: `build docs/guide --check-only` and `docs/internals` green; grep for the
-  absolute phrasing returns nothing.
-- Effort: S.
-
-# BATCH F4: the line model (the CR class)
-
-## FA10 [V] a lone `\r` silently collapses every later block's id, slug and source slice
-
-comrak counts a bare CR as a line ending (CommonMark); core's line model is
-`str::lines()`, which does not. Reproduced:
-`printf 'line one\rline two\n\n## A heading\n\npara.\n'` built with the release binary
-emits `<h2 id="section" data-block-id="b-cbf29ce48422">`: `section` is the empty-slug
-fallback and `b-cbf29ce48422` is fnv1a("") , i.e. `slice_lines` returned the wrong
-(empty) line for every block after the CR; the next block deduped to `-1` of the same
-empty hash. Zero diagnostics. **The LSP fixed exactly this class on 2026-08-13**
-(`lsp_pos::lines`, whose doc says std's split "disagrees on every buffer"); the fix
-stopped at the LSP boundary. Core sites (grep `.lines()` and `split('\n')` under
-`crates/core/src`): the `lines` vec in `render/mod.rs` (`render_internal_impl`),
-`includes.rs`'s LineOrigin map, `divs.rs`'s `preprocess`/`scan_div_spans`,
-`overlong_nesting`, `cell_extract::slice_lines`.
-
-- Fix: one shared comrak-compatible line splitter (relocate `lsp_pos::lines` into core,
-  re-export for the server), used at every site above. Alternatively normalize lone CRs
-  at ingest with a located warning; pick one, not both.
-- Done when: the repro doc renders `id="a-heading"` with a real content hash; unit test
-  in `render/tests.rs` pinning a lone-CR document's ids/slugs; grep shows core render
-  paths use only the shared splitter.
-- Effort: S-M.
-
-# BATCH F5: string surgery over finished HTML (one class, four fixes)
-
-## FA11 [A] `dedup_element_ids` rewrites `id="..."` inside escaped code text
-
-`rename_repeated_ids` scans flat HTML for ` id="` with no tag-vs-text state, and
-`escape_html` never escapes `"`, so a plain fence or inline code span SHOWING
-`<div id="example">` twice gets its visible text rewritten to `example-1`, steals the
-real element's anchor, and fires two bogus error-severity diagnostics (refuter reproduced
-end-to-end; plain/unknown-lang fences and inline code all reach the escaper verbatim).
-Severity medium only because the bogus errors at least block `--check-only`.
-
-- Fix: make the scan tag-aware (only match inside an open tag: same discipline
-  `open_tag_end`/`tag_end` already practice elsewhere in the module), or dedup on the
-  block model before emission.
-- Done when: failing test first: fence showing a duplicate id, assert text unchanged and
-  no diagnostic; the real duplicate-div case still renames and warns.
-- Effort: M.
-
-## FA12 [A] `rewrite_tmd_links` rewrites hrefs inside inline code samples the reader sees
-
-Raw `find("href=\"")` over finished page HTML (`site/links.rs`, grep
-`rewrite_tmd_links`). An inline code span containing `<a href="other.tmd">` displays as
-`other.html` in the built page (refuter reproduced). Fenced blocks survive only because
-syntect escapes quotes; prose survives only because smart punctuation curls them. Two
-accidents are the current defense.
-
-- Fix: same tag-context awareness as FA11 (share the helper).
-- Done when: failing test: inline code with a `.tmd` href survives verbatim; real links
-  still rewrite.
-- Effort: S-M.
+# BATCH F5: string surgery over finished HTML (two of four fixed)
 
 ## FA13 [A] the build scrapers: escaped prose publishes files, single-quoted attributes evade copying and warnings
 
@@ -295,18 +120,6 @@ its load-bearing guard exist in multiple hand-copies, so any fix must land N tim
   single-quoted `src` copied AND warned when remote); the copies collapsed to one helper.
 - Effort: M-L.
 
-## FA14 [A] offline-ref warnings inside an include name the parent file with the included file's line number
-
-The warning's location pairs the wrong file with the line (`build.rs` offline warnings;
-the include source map has the right answer). An author opens the named file at that
-line and finds nothing.
-
-- Fix: map through the per-file source map the way render warnings already do
-  (`map_origin` discipline).
-- Done when: failing test: offline ref inside an included partial warns with the
-  partial's path and line.
-- Effort: S.
-
 ## FA15 [A] the two line coordinate systems are still both bare `usize`
 
 CLAUDE.md calls pairing them "the bug that keeps happening"; the current defense is
@@ -322,74 +135,24 @@ the class.
 
 # BATCH F6: parity by construction
 
-## FA16 [V mechanism] the preview's page shell is a hand-aligned twin of the build's, and it already hardcodes `lang: "en"`
+## FA16 [V mechanism] the preview's page shell is a hand-aligned twin of the build's
 
 `serve_site/mod.rs` (grep `Kept structurally identical` and `byte-aligned`): the site
 shell exists twice, once in core `page.rs` for the build, once in `site_page_html` for
-the live preview, kept equal by comments; and the preview passes `lang: "en"` (grep
-`lang: "en"`) where the build honors front-matter `lang:`. The 2026-08-13 single-file
-TOC incident (CLAUDE.md records it) is this same genus: parity by duplicated
-orchestration.
+the live preview, kept equal by comments. The 2026-08-13 single-file TOC incident
+(CLAUDE.md records it) is this same genus: parity by duplicated orchestration.
+
+**The `lang` symptom landed 2026-08-17** (`PageDoc` carries the resolved lang and the
+shell reads it; `a_page_previews_with_the_lang_it_builds_with` pins it, mutation-checked).
+That was one invented value; the shell can still invent the next one, which is what this
+item is actually about.
 
 - Fix: extract one shared shell function in core that both paths call (the preview adds
-  its dev-menu on top); thread the real `lang` through.
-- Done when: the "byte-aligned" comments are deleted because there is nothing to align;
-  a non-`en` `lang:` page previews with the right `<html lang>`.
+  its dev-menu on top).
+- Done when: the "byte-aligned" comments are deleted because there is nothing to align.
 - Effort: M.
 
-## FA17 [U] the finishing sequence (`page_toc` -> warnings -> `finish_blocks` -> title) is written out ~4 times, and the copies allegedly disagree on ordering
-
-Finder claims `render_page_doc_warned` (core `site/mod.rs`) and `render_markdown_only`
-(serve_site) compute `page_toc` BEFORE `finish_blocks` while `build_page` (serve_site)
-computes it AFTER, benign today only by accident of the toc gates. **Verify first**:
-read the four sites, confirm the ordering difference and whether any input observes it
-(a page whose block count changes in `finish_blocks`/`expand_page`).
-
-- If confirmed: one finishing function in core, four callers; pin the order with a test
-  that would have caught the divergence.
-- If refuted: delete this item and record it in DO-NOT-REBUILD.md.
-- Effort: verify S, fix M.
-
 # BATCH F7: derive, don't police
-
-## FA18 [V] the LSP completion vocabulary rotted through the cut, outside every drift gate
-
-`NESTED_PARENTS` is duplicated verbatim in `lsp_complete.rs:15` and `lsp_nav.rs:16` and
-still lists `about` (retired 2026-07-17) and `prose-lint` (retired 2026-08-02).
-`PATH_KEYS` (`lsp_complete.rs`) offers path completion for `css` and all three
-`include-*` keys: none is in `KNOWN_KEYS`, all three `include-*` are in `RETIRED_KEYS`,
-so completion inserts what the same server's lint then squiggles. The comment above
-PATH_KEYS claims it is "sourced from what the renderer actually resolves": false,
-nothing derives it, nothing pins it.
-
-- Fix: derive both from core (`vocab`'s nested-vocabulary keys for NESTED_PARENTS;
-  KNOWN_KEYS-filtered path-typed keys for PATH_KEYS), single copy in one crate; or, at
-  minimum, one drift test pinning both against `KNOWN_KEYS`/`RETIRED_KEYS`,
-  mutation-checked per rule 5.
-- Done when: completing in a front-matter block offers no retired key; the duplicate
-  const is gone.
-- Effort: S-M.
-
-## FA19 [V facts] CLAUDE.md and gates.sh corrections, then the diet decision
-
-Three verified-stale facts and one wrong warning, all in the file every session loads:
-
-1. CLAUDE.md:22 says the Internals book is "six chapters plus an index"; the tree has
-   five plus an index (server.tmd folded into architecture.tmd on 2026-08-14).
-2. CLAUDE.md:489 references "the two `--help`-prose holes below"; nothing below matches
-   (grep `--help` in CLAUDE.md: one hit, line 489 itself).
-3. `tools/gates.sh:16` header says "ELEVEN gates" while the script runs twelve and
-   CLAUDE.md says twelve (the script's verdict line is the authority either way).
-4. CLAUDE.md's standing-freeze paragraph says the LRU eviction order is "not
-   test-guarded"; `exec_pool.rs`'s test module pins eviction order and cap
-   (`evicts_least_recently_built_beyond_cap`, `touching_a_page_keeps_it_warm`). Verify
-   whether "the build relies on it" means something beyond the pool; if not, correct the
-   claim (the freeze itself can stand, the fear should be accurate).
-
-Fix the four in one small commit. The larger diet (roughly 250 of 518 lines are incident
-narrative whose invariants named tests now enforce) is FD4, a decision, not this item.
-
-- Effort: S.
 
 ## FA20 [U anatomy verified] main.rs: one verb table instead of four hand-synced copies plus 678 lines of self-scanning police
 
@@ -467,42 +230,6 @@ mechanism.
 
 # BATCH F10: release hygiene
 
-## FA24 [V] RELEASE-BLOCKING-adjacent: comrak's default features compile oniguruma (C) plus a CLI stack core never uses
-
-Confirmed in `cargo tree`: `onig`/`onig_sys`, `clap`, `bon`, `emojis` are all present via
-`comrak = "0.52.0"` with default features, and onig wins the syntect backend over the
-workspace's deliberate pure-Rust `default-fancy` selection (the root Cargo.toml comment
-already suspects this). The manifest elsewhere bans a C build dependency (`ravif`/nasm)
-for breaking `cargo install`; this is the same class kept by accident.
-
-- Fix: `comrak = { version = "0.52.0", default-features = false }`; core sets only
-  runtime `Options`, none of which is feature-gated (verify: no use of comrak's syntect
-  plugin or CLI). Update the root Cargo.toml comment that documents the old state, and
-  deny.toml if it names onig.
-- Done when: `cargo tree | grep -i onig` empty; corpus + highlight tests green (syntect
-  now actually runs fancy-regex: watch for regex-dialect differences in the two-face
-  syntaxes; `highlight_langs.rs` is the canary); `cargo build` from a clean checkout on
-  a machine with no C toolchain assumption.
-- Effort: S (plus watching the canary).
-
-## FA25 [U] no `[profile.release]`: the shipped binary carries strippable symbols
-
-The release binary is ~32 MB; finder claims ~5 MB is strippable symbols and there is no
-`[profile.release]` in the workspace. Verify (`grep -rn 'profile.release' Cargo.toml`;
-`strip` a copy and diff sizes), then add `strip = true` (+ `lto = "thin"` if link time
-stays acceptable). Binary size is a dated, uninstrumented number by convention: measure,
-date it, do not gate it.
-
-- Effort: S.
-
-## FA26 [U] deny.toml and the root manifest document a dependency configuration that no longer exists
-
-Finder claims stale prose in both. Verify each named claim against `cargo tree` (FA24
-changes the answer for the syntect/onig paragraphs), fix what is actually stale, delete
-the item if nothing is.
-
-- Effort: S.
-
 ## FA27 [A] kernel startup preamble failures are silent
 
 ~270 lines of version-sensitive Python are embedded in `kernel.rs`; if the preamble
@@ -512,55 +239,6 @@ pointer to the cause.
 - Fix: surface a preamble stderr/exception as a located "kernel preamble failed"
   diagnostic naming the interpreter.
 - Done when: kernel-gated test with a poisoned preamble asserts the diagnostic.
-- Effort: S-M.
-
-## FA28 [A] `social_head` hand-rolls absolute URLs, drifting from `abs_page_url`'s percent-encoding
-
-Low: two spellings of URL assembly; a space-containing page path produces an invalid
-`og:url` in one of them. Unify on the shared helper (`site/meta.rs`, grep
-`social_head`).
-
-- Effort: S.
-
-## FA29 [U] doctor: exit 0 on a nonexistent project dir; `--format json` buries the two verdicts
-
-Two low UX claims, unverified: `doctor <nonexistent>` reports on the wrong environment
-and exits 0; the JSON output buries check verdicts under a ~150-entry package inventory.
-Verify both with the binary; fix is small if real (refuse the missing dir; hoist the
-verdicts to the top of the JSON object).
-
-- Effort: S.
-
-# BATCH F11: diagnostic precision
-
-## FA30 [V] broken-xref and broken-citation squiggles cover the whole line instead of the `@token`, which also disables their quick fix
-
-Author-observed on `corpus/diagnostics/refs.tmd:18` (`@fig-reslts`): the squiggle spans
-the line, not the reference. The plumbing for precise ranges exists end to end and is
-already used by the front-matter linter: `render::Warning` carries `col`/`end_col`
-("None = whole-line", `model.rs`), and `to_lsp` maps a columned diagnostic to an exact
-UTF-16 range (`lint.rs`, `to_lsp_uses_a_precise_span_when_columned`). The xref validator
-is the exception for a structural reason: it recovers anchors from the RENDERED HTML
-(`data-tali-xref="..."` markers) after the source is gone, so it only has the block's
-start line and files `w.at(file, line)` with no columns (`cite/validate.rs`, grep
-`broken cross-reference`); same for broken citations (`cite/render.rs`, grep
-`broken citation`). The compounding cost: `to_lsp` attaches the one-click-fix payload
-ONLY when a suggestion has a precise span (`lint.rs`, "ONLY when a suggestion has a
-precise column span"), so the did-you-mean the message already computed can never become
-a "Change to `@fig-results`" code action today.
-
-- Fix: after resolving the anchor name, locate the literal `@<anchor>` in the source
-  line the warning points at and set `col`/`end_col` (1-based Unicode-scalar columns per
-  the `Warning` field docs); if the token is not on that line (a multi-line block whose
-  ref sits later), scan the block's sourcepos span before falling back to whole-line.
-  Apply to both the xref and the citation site.
-- Done when: failing lint-level test first: a `refs.tmd`-shaped input yields a
-  broken-xref diagnostic whose `[col, end_col)` spans exactly `@fig-reslts`,
-  mutation-checked per rule 5 (widen the range in the fix, confirm red); the whole-line
-  fallback is pinned for a token the line-scan cannot find; and, verified while
-  implementing, the "Change to `@fig-results`" quick fix now appears for a columned
-  xref did-you-mean (the `suggestion` field must survive into `lint::Diagnostic` for
-  that; check `diag_from`).
 - Effort: S-M.
 
 ---
@@ -677,7 +355,12 @@ Killed by the refuter pass or by the orchestrator's own reproduction. Migrate to
    (dated record, not shipped surface).
 6. **"Process prose regrows faster than campaigns cut it."** The current
    docs/superpowers plans are an active campaign, not residue.
-7. **"~121 KB of comments ship to every reader."** Half wrong: CSS is minified on both
+7. **"`doctor --format json` buries the two verdicts under a ~150-entry package
+   inventory."** (FA29's second half.) Checked against the binary 2026-08-17: the object's
+   top-level keys are `checks`, `ok`, `packages`, and serde_json writes them in that order,
+   so both verdicts precede the inventory. The first half of FA29 (exit 0 on a nonexistent
+   project directory) did reproduce and is fixed.
+8. **"~121 KB of comments ship to every reader."** Half wrong: CSS is minified on both
    paths since 2026-08-09 (`minify.rs`, called by `page.rs` and `build.rs`). JS comments
    DO ship, but by recorded decision: the JS minifier was cut 2026-08-08 with reasoning
    in `minify.rs`'s module doc (mis-tokenization risk vs the CSS half carrying ~3/4 of
