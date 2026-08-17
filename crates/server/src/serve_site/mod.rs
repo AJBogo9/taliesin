@@ -667,7 +667,7 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
     // listing/about expansion, post decoration) so preview matches the build.
     let mut warnings = std::mem::take(&mut doc.warnings);
-    site.finish_blocks(page, &mut doc.blocks, &mut warnings);
+    site.finish_blocks(page, &mut doc.blocks, &mut warnings, Some(&src));
     // Resolved off the *finished* doc, exactly as the static build resolves it
     // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
     // `_site/` cannot name one tab three ways.
@@ -1176,7 +1176,7 @@ fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks:
     let mut discarded = Vec::new();
     {
         let site = project.site.lock();
-        site.finish_blocks(page, &mut pre, &mut discarded);
+        site.finish_blocks(page, &mut pre, &mut discarded, None);
     }
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
@@ -1327,7 +1327,7 @@ async fn build_page(
     let mut warnings = doc.warnings.clone();
     let (toc, tab_title) = {
         let site = project.site.lock();
-        site.finish_blocks(&page, &mut doc.blocks, &mut warnings);
+        site.finish_blocks(&page, &mut doc.blocks, &mut warnings, Some(&src));
         (
             site.page_toc(&page, doc.toc_explicit, &doc.blocks),
             // Re-resolved every build: an edit can add, change, or remove the front-matter

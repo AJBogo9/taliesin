@@ -125,7 +125,7 @@ fn citation_becomes_numbered_link_with_locator() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     assert!(
         blocks[0]
             .html
@@ -151,7 +151,7 @@ fn broken_citation_warns_only_when_a_bib_exists() {
     };
     // A non-empty bib + an unknown key -> one "broken citation" warning.
     let mut blocks = mk();
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(w[0].message.contains("@nosuchkey"));
@@ -162,6 +162,7 @@ fn broken_citation_warns_only_when_a_bib_exists() {
             &mut blocks2,
             &Bibliography::default(),
             &HashMap::new(),
+            None,
             None
         )
         .is_empty()
@@ -179,7 +180,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         cell: None,
         nested: Vec::new(),
     }];
-    let w = validate_xrefs(&broken);
+    let w = validate_xrefs(&broken, None);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(w[0].message.contains("@fig-gone") && w[0].message.contains("broken cross-reference"));
     // A resolved xref (marker already rewritten away) is not flagged.
@@ -191,7 +192,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         cell: None,
         nested: Vec::new(),
     }];
-    assert!(validate_xrefs(&ok).is_empty());
+    assert!(validate_xrefs(&ok, None).is_empty());
 }
 
 /// The two halves of a cross-reference retirement, which must not drift apart. Seven of the
@@ -239,7 +240,7 @@ fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
         cell: None,
         nested: Vec::new(),
     }];
-    let w = validate_xrefs(&leftover);
+    let w = validate_xrefs(&leftover, None);
     assert_eq!(
         w.len(),
         1,
@@ -264,7 +265,7 @@ fn block(html: &str) -> Block {
 fn broken_citation_suggests_the_nearest_bib_key() {
     // `bishop2006patern` is one deletion away from the bib's `bishop2006pattern`.
     let mut blocks = vec![block("<p>see [@bishop2006patern].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
@@ -278,7 +279,7 @@ fn broken_citation_suggests_the_nearest_bib_key() {
 #[test]
 fn a_citation_with_no_near_key_keeps_the_plain_message() {
     let mut blocks = vec![block("<p>see [@nosuchkey].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
@@ -296,7 +297,7 @@ fn broken_xref_suggests_the_nearest_anchor_of_the_same_kind() {
         block("<h2 id=\"sec-summary\">Summary</h2>"),
         block("<p>see <a href=\"#fig-reslts\" data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
-    let w = validate_xrefs(&blocks);
+    let w = validate_xrefs(&blocks, None);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
         w[0].message.contains("(did you mean `@fig-results`?)"),
@@ -312,7 +313,7 @@ fn a_broken_xref_never_suggests_an_anchor_of_a_different_kind() {
         block("<h2 id=\"sec-results\">Results</h2>"),
         block("<p>see <a href=\"#fig-reslts\" data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
-    let w = validate_xrefs(&blocks);
+    let w = validate_xrefs(&blocks, None);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
         !w[0].message.contains("did you mean"),
@@ -330,7 +331,7 @@ fn short_or_distant_anchor_names_get_no_suggestion() {
         block("<figure id=\"fig-appendix\"></figure>"),
         block("<p><a data-tali-xref=\"fig-c\">F</a><a data-tali-xref=\"fig-zzzzzzz\">F</a></p>"),
     ];
-    let w = validate_xrefs(&blocks);
+    let w = validate_xrefs(&blocks, None);
     assert_eq!(w.len(), 2, "got: {w:?}");
     for warning in &w {
         assert!(
@@ -351,7 +352,7 @@ fn the_anchor_scan_never_harvests_a_data_block_id() {
         block("<figure data-block-id=\"fig-reslts2\" id=\"fig-results\"></figure>"),
         block("<p><a data-tali-xref=\"fig-reslts\">Figure</a></p>"),
     ];
-    let w = validate_xrefs(&blocks);
+    let w = validate_xrefs(&blocks, None);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
         w[0].message.contains("(did you mean `@fig-results`?)"),
@@ -371,7 +372,7 @@ fn crossref_becomes_labelled_link() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     // Unresolved here: linked label, marked for cross-page resolution by a site.
     assert!(
         blocks[0].html.contains(
@@ -396,7 +397,7 @@ fn crossref_resolves_number_from_registry() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &Bibliography::default(), &xrefs, None);
+    process(&mut blocks, &Bibliography::default(), &xrefs, None, None);
     assert!(
         blocks[0]
             .html
@@ -417,7 +418,7 @@ fn citations_inside_code_are_left_alone() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     assert!(
         blocks[0].html.contains("[@bishop2006pattern]"),
         "code was rewritten"
@@ -542,7 +543,7 @@ fn manual_references_heading_suppresses_auto_heading() {
             nested: Vec::new(),
         },
     ];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     let refs = blocks.last().unwrap();
     // The list + anchors are still emitted...
     assert!(
@@ -584,7 +585,7 @@ fn no_manual_heading_keeps_auto_references_heading() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     assert!(blocks.last().unwrap().html.contains("<h2>References</h2>"));
 }
 
@@ -631,7 +632,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             nested: Vec::new(),
         },
     ];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
 
     let idx = |id: &str| {
         blocks
@@ -714,7 +715,7 @@ fn cite_key_and_bib_key_charsets_agree() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None);
+    process(&mut blocks, &b, &HashMap::new(), None, None);
     assert!(
         blocks[0]
             .html
@@ -797,7 +798,7 @@ fn para(html: &str) -> Block {
 #[test]
 fn a_declared_entry_that_is_never_cited_is_reported() {
     let mut blocks = vec![para("<p>Prose citing nothing.</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), Some(7));
+    let w = process(&mut blocks, &bib(), &HashMap::new(), Some(7), None);
     assert_eq!(w.len(), 1, "one warning for the set: {w:?}");
     assert!(
         w[0].message.contains("`@bishop2006pattern`") && w[0].message.contains("never cited"),
@@ -820,7 +821,7 @@ fn a_partly_cited_bibliography_reports_only_the_dead_entries() {
          @book{dead,\n  title = {Dead},\n  author = {B. Two},\n  year = {2002}\n}\n",
     );
     let mut blocks = vec![para("<p>See [@cited].</p>")];
-    let w = process(&mut blocks, &b, &HashMap::new(), Some(3));
+    let w = process(&mut blocks, &b, &HashMap::new(), Some(3), None);
     let uncited: Vec<&String> = w
         .iter()
         .map(|x| &x.message)
@@ -842,7 +843,7 @@ fn a_partly_cited_bibliography_reports_only_the_dead_entries() {
 #[test]
 fn a_cited_entry_is_not_reported_as_uncited() {
     let mut blocks = vec![para("<p>See [@bishop2006pattern].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
     assert!(
         !w.iter().any(|x| x.message.contains("never cited")),
         "a cited entry is in use: {w:?}"
@@ -861,7 +862,7 @@ fn the_uncited_lint_is_scoped_to_the_pages_own_layer() {
         "@book{page_only,\n  title = {Local},\n  author = {B. Two},\n  year = {2002}\n}\n",
     ));
     let mut blocks = vec![para("<p>Prose citing nothing.</p>")];
-    let w = process(&mut blocks, &shared, &HashMap::new(), None);
+    let w = process(&mut blocks, &shared, &HashMap::new(), None, None);
     assert_eq!(w.len(), 1, "{w:?}");
     assert!(
         w[0].message.contains("`@page_only`") && !w[0].message.contains("`@shared_only`"),
@@ -893,7 +894,7 @@ fn many_uncited_entries_collapse_into_one_capped_message() {
         .map(|i| format!("@book{{k{i},\n  title = {{T{i}}},\n  year = {{2000}}\n}}\n"))
         .collect();
     let mut blocks = vec![para("<p>Nothing cited.</p>")];
-    let w = process(&mut blocks, &parse_bib(&src), &HashMap::new(), None);
+    let w = process(&mut blocks, &parse_bib(&src), &HashMap::new(), None, None);
     assert_eq!(w.len(), 1, "{w:?}");
     let m = &w[0].message;
     assert!(
@@ -926,4 +927,82 @@ fn cited_keys_in_source_reads_bracketed_citations_only() {
         cited_keys_in_source("[@doe+roe:2020a]"),
         vec!["doe+roe:2020a"]
     );
+}
+
+/// A broken `@ref` is squiggled under the token, not across the line, and the
+/// whole-line fallback survives for a token the scan cannot find.
+///
+/// **The defect (Fable audit FA30, author-observed on `corpus/diagnostics/refs.tmd:18`).**
+/// The xref validator recovers its anchors from the RENDERED HTML, after the source is
+/// gone, so all it could say was which block the reference was in and it filed a
+/// whole-line warning. `Warning` has carried `col`/`end_col` all along and `lint.rs`'s
+/// `to_lsp` maps a columned diagnostic to an exact range; only the front-matter linter used
+/// it. The compounding cost was the quick fix: `to_lsp` attaches the one-click-fix payload
+/// ONLY for a precisely-columned diagnostic, so the did-you-mean this message already
+/// computes could never become a "Change to `@fig-results`" code action.
+#[test]
+fn a_broken_cross_reference_is_columned_to_its_own_token() {
+    let src = "---\ntitle: T\n---\n\n# H {#sec-summary}\n\n\
+               A paragraph that runs on\nand mentions @fig-reslts here.\n\n\
+               ![cap](a.png){#fig-results}\n";
+    let doc = crate::render_document(src);
+    let warnings = validate_xrefs(&doc.blocks, Some(src));
+    let w = warnings
+        .iter()
+        .find(|w| w.message.contains("@fig-reslts"))
+        .unwrap_or_else(|| panic!("no broken-xref warning: {warnings:?}"));
+    assert!(
+        w.message.contains("did you mean `@fig-results`"),
+        "the did-you-mean is what the fix payload is built from: {}",
+        w.message
+    );
+    // Line 8 of the source, not line 7 where the paragraph block starts: the scan covers
+    // the block's whole sourcepos span, because a reference is rarely on its first line.
+    assert_eq!(w.line, Some(8), "located to the line holding the token");
+    let line = src.lines().nth(7).expect("line 8");
+    let (col, end_col) = (w.col.expect("a column"), w.end_col.expect("an end column"));
+    assert_eq!(
+        &line[col as usize - 1..end_col as usize - 1],
+        "@fig-reslts",
+        "the span must cover exactly the token, in line {line:?}"
+    );
+
+    // The fallback is not a formality: with no source to scan, the warning must still be
+    // filed, whole-line, rather than dropped or given a guessed span.
+    let blind = validate_xrefs(&doc.blocks, None);
+    let w = blind
+        .iter()
+        .find(|w| w.message.contains("@fig-reslts"))
+        .expect("still reported");
+    assert_eq!((w.col, w.end_col), (None, None), "whole line, as before");
+}
+
+/// The same for a broken citation, which has the same structure and the same fix.
+#[test]
+fn a_broken_citation_is_columned_to_its_own_token() {
+    let dir = std::env::temp_dir().join(format!("tali-cite-col-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{knuth1984,\n title={Literate Programming},\n author={Knuth},\n year={1984}\n}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
+               A paragraph that runs on\nand cites [@knuth1985] here.\n";
+    let doc = crate::render_document_with_includes(src, &dir);
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("broken citation"))
+        .unwrap_or_else(|| panic!("no broken-citation warning: {:?}", doc.warnings));
+    assert_eq!(w.line, Some(7), "located to the line holding the key");
+    let line = src.lines().nth(6).expect("line 7");
+    let (col, end_col) = (w.col.expect("a column"), w.end_col.expect("an end column"));
+    assert_eq!(
+        &line[col as usize - 1..end_col as usize - 1],
+        "@knuth1985",
+        "the span must cover exactly the key, in line {line:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

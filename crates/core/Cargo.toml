@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-comrak = "0.52.0"
+comrak = { version = "0.52.0", default-features = false }
 katex = "0.4.6"
 serde = { workspace = true }
 serde_json = { workspace = true }

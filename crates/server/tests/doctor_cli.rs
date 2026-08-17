@@ -200,3 +200,34 @@ fn doctor_json_carries_a_package_manifest() {
         }
     }
 }
+
+/// `doctor` on a directory that is not there refuses, rather than answering about another.
+///
+/// **The defect (Fable audit FA29).** Interpreter resolution walks UP from the given
+/// directory looking for a `.venv`, so a typo'd path reported on the nearest ancestor's
+/// environment (in the worst case `/`) and exited 0: the one exit code a setup script reads
+/// as "this project is ready to run code cells". `build` has always refused a missing path.
+#[test]
+fn doctor_refuses_a_directory_that_does_not_exist() {
+    let missing = std::env::temp_dir().join(format!("tali-doctor-absent-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&missing);
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .arg("doctor")
+        .arg(&missing)
+        .output()
+        .expect("run doctor");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a missing project directory must not exit 0: {err}"
+    );
+    assert!(
+        err.contains("cannot read"),
+        "the refusal names the path it could not read: {err}"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).is_empty(),
+        "and reports on nothing"
+    );
+}

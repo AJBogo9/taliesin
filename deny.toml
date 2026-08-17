@@ -15,10 +15,12 @@ unsound = "all"
 # ignoring them here keeps cargo-deny's stricter gate meaningful, a NEW advisory (or any
 # *vulnerability*) still fails the build.
 ignore = [
-    # Both ride in through `syntect` (server-side syntax highlighting) via `comrak`, so we
-    # can't drop them without replacing the highlighter.
-    "RUSTSEC-2024-0320", # yaml-rust 0.4.5 unmaintained (syntect→comrak); no upgrade available
-    "RUSTSEC-2025-0141", # bincode 1.x unmaintained (syntect→comrak); no upgrade available
+    # Both ride in through `syntect` (server-side syntax highlighting), which is a direct
+    # workspace dependency, so we can't drop them without replacing the highlighter. The
+    # note read "via comrak" until 2026-08-17; comrak had its own copy of syntect through
+    # its default features, and turning those off left syntect where it always was.
+    "RUSTSEC-2024-0320", # yaml-rust 0.4.5 unmaintained (via syntect); no upgrade available
+    "RUSTSEC-2025-0141", # bincode 1.x unmaintained (via syntect); no upgrade available
     # Rides in through `zeromq` (warm Jupyter kernel transport, crates/server/src/kernel.rs).
     # The double-free is in scc's panicking-comparator path; our map keys are non-panicking
     # `Vec<u8>` identities and the peers are loopback-only, self-spawned kernels, so that path

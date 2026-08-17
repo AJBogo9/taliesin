@@ -12,7 +12,7 @@ fn broken_crossref_warning_is_located() {
     );
     // Standalone docs surface broken xrefs via `validate_xrefs` (the server runs it
     // after site-wide resolution); exercise that path directly here.
-    let xref_warnings = taliesin_core::cite::validate_xrefs(&doc.blocks);
+    let xref_warnings = taliesin_core::cite::validate_xrefs(&doc.blocks, None);
     let located = xref_warnings
         .iter()
         .find(|w| w.message.contains("@fig-nope"))

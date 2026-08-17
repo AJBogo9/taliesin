@@ -27,10 +27,15 @@ serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
 
-# Server-side syntax highlighting at render time. We select syntect's pure-Rust
-# fancy-regex backend, but comrak also pulls syntect with its default features,
-# so oniguruma (C) is in the tree and, via Cargo feature unification, is the
-# backend actually compiled in. We emit scope *classes* and color them in CSS,
+# Server-side syntax highlighting at render time, on syntect's pure-Rust fancy-regex
+# backend. That selection was defeated until 2026-08-17: comrak was taken with its
+# DEFAULT features, which pull syntect with its own defaults, so oniguruma (C) was in
+# the tree and, through Cargo feature unification, was the backend actually compiled
+# in — plus `clap`, `bon` and `emojis` for a CLI this crate never calls. Core uses
+# `comrak::nodes` and `parse_document` only, so `default-features = false` (see
+# `crates/core/Cargo.toml`) drops all four. A C build dependency is the same class this
+# manifest already refuses elsewhere for breaking `cargo install`; this one was kept by
+# accident rather than by decision. We emit scope *classes* and color them in CSS,
 # so the light/dark toggle restyles code without re-highlighting.
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
 
@@ -66,3 +71,20 @@ image = { version = "0.25", default-features = false, features = [
     "gif",
     "webp",
 ] }
+
+# The shipped binary carries no DWARF. There was no `[profile.release]` at all until
+# 2026-08-17, so every download included full debug info. Measured that day, same
+# machine, same commit: 31.0 MB as it shipped, 28.8 MB with the debug info dropped,
+# 24.9 MB with the symbol table dropped too. Dated and ungated by the convention in
+# CLAUDE.md: it measures the machine, so it is re-measured rather than asserted.
+#
+# `"debuginfo"` and not `true`, deliberately, at a cost of 3.9 MB. `true` also drops the
+# symbol table, which is what turns a user's `RUST_BACKTRACE=1` report from named frames
+# into hex addresses. One maintainer, pre-1.0, about to be public: an actionable bug
+# report is worth more than the megabytes.
+#
+# `lto` is deliberately NOT set. It is a link-time cost on every release build for a
+# size/speed win nothing here has measured, and the load-bearing performance numbers
+# (`tools/live-edit-bench`) are warm-server work that link-time inlining does not touch.
+[profile.release]
+strip = "debuginfo"

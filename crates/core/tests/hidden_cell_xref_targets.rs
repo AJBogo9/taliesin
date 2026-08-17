@@ -94,7 +94,7 @@ fn an_unresolvable_include_false_reference_is_reported_as_broken() {
     // themselves (`build.rs`, `check.rs`, `serve/mod.rs`), so the test calls it the
     // same way — as `located_warnings.rs` and `xref_didyoumean.rs` do.
     let d = doc(hidden_then_shown_figures());
-    let ws: Vec<String> = taliesin_core::cite::validate_xrefs(&d.blocks)
+    let ws: Vec<String> = taliesin_core::cite::validate_xrefs(&d.blocks, None)
         .into_iter()
         .map(|w| w.message)
         .collect();

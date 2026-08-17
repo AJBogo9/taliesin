@@ -1234,11 +1234,19 @@ fn render_internal_impl(
         bib_line,
         &mut warnings,
     );
+    // `src` here is the POST-INCLUDE BUFFER, while a block's line is the MAPPED line in the
+    // file the author wrote: pairing the two is the bug CLAUDE.md says keeps happening. The
+    // two agree line-for-line exactly when nothing was spliced in, and `origins` says so
+    // precisely — every line traced to the primary document (`file: None`) means the
+    // expansion added nothing. Under a real include, the citation warning keeps its
+    // whole-line span rather than a span into the wrong file's numbering.
+    let unexpanded = origins.is_none_or(|o| o.iter().all(|l| l.file.is_none()));
     warnings.extend(crate::cite::process(
         &mut blocks,
         &bib,
         &xref_registry,
         bib_line,
+        unexpanded.then_some(src),
     ));
     // No gathered endnote section: each note renders beside its own reference (see the
     // splice in the walk above). Keeping a trailing list as well would put every note's

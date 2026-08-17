@@ -339,7 +339,11 @@ fn collect_file_diagnostics_in_site(
     // `@sec-`/`@fig-`/`@tbl-` as an error while the same tree linted clean as a project.
     // Outside a project the scan is empty and nothing changes.
     let elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(path);
-    let xref = taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere);
+    // `src` so a broken `@ref` is squiggled under the token and not across the line, and
+    // so the did-you-mean it already computes can become a one-click fix (`to_lsp`
+    // attaches that payload only for a precisely-columned diagnostic).
+    let xref =
+        taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere, Some(src));
     let page = site.and_then(|s| s.page_for_input(path));
     let scope_kind = if page.is_some() {
         Scope::InSite
@@ -1032,6 +1036,45 @@ mod tests {
             diags.iter().map(|d| &d.message).collect::<Vec<_>>()
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The end-to-end payoff of a columned xref diagnostic: the one-click fix appears.
+    ///
+    /// **Fable audit FA30.** `to_lsp` attaches the fix payload ONLY when a suggestion has a
+    /// precise span, and the xref validator filed whole-line warnings, so the did-you-mean
+    /// it had already computed could never become a "Change to `@fig-results`" code action.
+    /// This runs the real editor path: buffer text in, LSP diagnostics out.
+    #[test]
+    fn a_broken_xref_offers_its_did_you_mean_as_a_one_click_fix() {
+        let dir = std::env::temp_dir().join(format!("tali-xref-fix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("refs.tmd");
+        let src = "---\ntitle: T\n---\n\n\
+                   ![cap](a.png){#fig-results}\n\n\
+                   A near-miss reference: see @fig-reslts.\n";
+        std::fs::write(&path, src).unwrap();
+
+        let diags = super::buffer_diagnostics_in_site(&path, src, None);
+        let d = diags
+            .iter()
+            .find(|d| d.message.contains("broken cross-reference"))
+            .unwrap_or_else(|| panic!("no broken-xref diagnostic: {diags:?}"));
+        let lines: Vec<&str> = crate::lsp_pos::lines(src).collect();
+        let lsp = d.to_lsp(&lines);
+        assert_eq!(
+            lsp.data,
+            Some(serde_json::json!({ "replacement": "@fig-results" })),
+            "the columned diagnostic must carry the fix the message already names: {lsp:?}"
+        );
+        // And the range is the token, so applying that replacement is correct.
+        let line = lines[lsp.range.start.line as usize];
+        let (a, b) = (
+            lsp.range.start.character as usize,
+            lsp.range.end.character as usize,
+        );
+        assert_eq!(&line[a..b], "@fig-reslts", "in line {line:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -612,7 +612,7 @@ impl Site {
     ) -> (String, Vec<Warning>) {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
-        self.finish_blocks(page, &mut doc.blocks, &mut warnings);
+        self.finish_blocks(page, &mut doc.blocks, &mut warnings, None);
         // Inline single-file page build: no `_assets/`, and no book archive alongside it.
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
@@ -630,7 +630,7 @@ impl Site {
     ) -> (String, Vec<Warning>) {
         doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
-        self.finish_blocks(page, &mut doc.blocks, &mut warnings);
+        self.finish_blocks(page, &mut doc.blocks, &mut warnings, None);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
@@ -916,11 +916,22 @@ impl Site {
     /// build, `render_page_doc`, and the live preview, so all three produce identical
     /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
     /// the caller (it reads blocks but doesn't mutate them).
-    pub fn finish_blocks(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
+    /// `src` is the page's own source text when the caller holds it, used only to narrow a
+    /// broken-cross-reference warning from the whole line to the `@anchor` itself. `None` is
+    /// a correct answer, not a gap: the warning keeps its whole-line span (which is what
+    /// `build`'s `file:line` output shows anyway), and the render entry points here are
+    /// handed a finished `RenderedDoc` rather than the text it came from.
+    pub fn finish_blocks(
+        &self,
+        page: &Page,
+        blocks: &mut Vec<Block>,
+        warnings: &mut Vec<Warning>,
+        src: Option<&str>,
+    ) {
         self.number_chapter(page, blocks);
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
-        warnings.extend(crate::cite::validate_xrefs(blocks));
+        warnings.extend(crate::cite::validate_xrefs(blocks, src));
         self.expand_page(page, blocks, warnings);
     }
 

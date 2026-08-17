@@ -406,7 +406,7 @@ fn the_cut_theorem_kinds_keep_their_xref_prefixes_so_a_stray_reference_errors_lo
         "---\ntitle: T\n---\n\nSee @exm-oldid, @prp-oldid, @rem-oldid.\n",
         std::path::Path::new("."),
     );
-    let xref_warnings = taliesin_core::cite::validate_xrefs(&dangling.blocks);
+    let xref_warnings = taliesin_core::cite::validate_xrefs(&dangling.blocks, None);
     for prefix in ["exm", "prp", "rem"] {
         let anchor = format!("{prefix}-oldid");
         assert!(

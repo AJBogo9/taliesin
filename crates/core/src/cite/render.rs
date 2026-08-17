@@ -87,15 +87,18 @@ pub fn process(
     bib: &Bibliography,
     xrefs: &HashMap<String, String>,
     bib_line: Option<u32>,
+    src: Option<&str>,
 ) -> Vec<Warning> {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
     // Track the block location where each cite key is first seen, for located warnings.
     // (file, line) pair per key; the RefCell lets the closure capture it alongside order/number.
-    type KeyLocMap = HashMap<String, (Option<String>, Option<u32>)>;
+    // `(file, start line, end line)`: the end line so a precise span can be found in a
+    // paragraph whose citation is not on the block's first line.
+    type KeyLoc = (Option<String>, Option<u32>, Option<u32>);
+    type KeyLocMap = HashMap<String, KeyLoc>;
     let key_loc: std::cell::RefCell<KeyLocMap> = std::cell::RefCell::new(HashMap::new());
-    let cur_loc: std::cell::RefCell<(Option<String>, Option<u32>)> =
-        std::cell::RefCell::new((None, None));
+    let cur_loc: std::cell::RefCell<KeyLoc> = std::cell::RefCell::new((None, None, None));
     let mut cite_key = |key: &str| -> usize {
         let n = *number.entry(key.to_string()).or_insert_with(|| {
             order.push(key.to_string());
@@ -110,7 +113,11 @@ pub fn process(
     };
 
     for b in blocks.iter_mut() {
-        *cur_loc.borrow_mut() = (b.source_file.clone(), sourcepos_start_line(&b.sourcepos));
+        *cur_loc.borrow_mut() = (
+            b.source_file.clone(),
+            sourcepos_start_line(&b.sourcepos),
+            super::sourcepos_end_line(&b.sourcepos),
+        );
         b.html = transform_html(&b.html, &mut cite_key, xrefs, CiteMode::Resolve);
     }
     let key_loc = key_loc.into_inner();
@@ -155,7 +162,7 @@ pub fn process(
                 // when a bibliography exists (else every cite would warn before one
                 // is set up; the missing-file case is its own warning).
                 if !bib.is_empty() {
-                    let (file, line) = key_loc.get(key).cloned().unwrap_or((None, None));
+                    let (file, line, end) = key_loc.get(key).cloned().unwrap_or((None, None, None));
                     // A near-miss key is the commonest way an author breaks a citation:
                     // point at the entry they meant instead of only naming the one they
                     // typed. The bibliography is in scope here, so no plumbing is needed.
@@ -163,9 +170,24 @@ pub fn process(
                         Some(near) => format!("broken citation: @{key} (did you mean `@{near}`?)"),
                         None => format!("broken citation: @{key} (not in the bibliography)"),
                     });
-                    warnings.push(match line {
-                        Some(l) => w.at(file, l),
-                        None => w,
+                    // The exact `@key`, not the whole line (see `cite::token_span`). Only
+                    // for the primary document: a block from an included file numbers its
+                    // lines in a file `src` is not.
+                    warnings.push(match (line, file.is_none(), src) {
+                        (Some(l), true, Some(s)) => {
+                            match super::token_span(
+                                s,
+                                l,
+                                end.unwrap_or(l),
+                                &format!("@{key}"),
+                                super::is_cite_key_char,
+                            ) {
+                                Some((tl, col, end_col)) => w.at(None, tl).span(col, end_col),
+                                None => w.at(None, l),
+                            }
+                        }
+                        (Some(l), _, _) => w.at(file, l),
+                        (None, _, _) => w,
                     });
                 }
                 format!("<code>{}</code>", esc(key))

@@ -33,11 +33,14 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     let cfg = &site.config;
     let title = page.title.as_deref().or(cfg.title.as_deref()).unwrap_or("");
     let desc = page.description.as_deref().or(cfg.description.as_deref());
-    let base = cfg.url.as_deref().map(|u| u.trim_end_matches('/'));
-    // The clean directory URL: an index page is served at its directory (`/posts/x/`), not
-    // at `/posts/x/index.html`.
-    let clean_url = page.url.strip_suffix("index.html").unwrap_or(&page.url);
-    let page_url = base.map(|b| format!("{b}/{clean_url}"));
+    let base = site.canonical_base();
+    // The clean directory URL, from `abs_page_url` and not a second hand-rolled copy of it.
+    // This assembled the string itself until 2026-08-17 and so skipped the percent-encoding
+    // the shared helper does: a page in a directory with a space shipped a raw space in its
+    // `og:url` while the sitemap's `<loc>` for the same page was correctly encoded. Pages
+    // are discovered from the filesystem and never slugified, so that path is reachable by
+    // naming a folder the way people name folders.
+    let page_url = site.abs_page_url(page);
     // The 404 page is not scraped content, so it advertises no image.
     let image = if page.url == "404.html" {
         None
@@ -46,7 +49,12 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
             if img.starts_with("http://") || img.starts_with("https://") {
                 Some(img.to_string())
             } else {
-                base.map(|b| format!("{b}/{}", img.trim_start_matches('/')))
+                base.map(|b| {
+                    format!(
+                        "{b}/{}",
+                        super::feed::percent_encode_path(img.trim_start_matches('/'))
+                    )
+                })
             }
         })
     };
@@ -142,6 +150,60 @@ mod tests {
         assert!(
             !html.contains("Site blurb."),
             "the site description must not override the page's: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `og:url` and the sitemap's `<loc>` must be the SAME string for the same page.
+    ///
+    /// **The defect (Fable audit FA28).** `social_head` assembled the absolute URL itself
+    /// instead of asking `abs_page_url`, so it skipped that helper's percent-encoding: a
+    /// page in a directory with a space published a raw space in `og:url` (an invalid URL a
+    /// scraper resolves however it likes) while the sitemap for the same page was correct.
+    /// Pages are discovered from the filesystem and never slugified, so the only thing
+    /// needed to reach it is a folder named the way people name folders.
+    #[test]
+    fn og_url_is_the_same_absolute_url_the_sitemap_publishes() {
+        let root = write_site(
+            "ogencode",
+            &[
+                (
+                    "_site.yml",
+                    "title: J
+url: https://ex.com
+",
+                ),
+                (
+                    "my posts/one.tmd",
+                    "---
+title: P
+image: my thumb.webp
+---
+
+Body.
+",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let page = site
+            .pages
+            .iter()
+            .find(|p| p.rel.contains("one"))
+            .expect("the page was discovered");
+        let want = site.abs_page_url(page).expect("an absolute url");
+        assert!(
+            want.contains("my%20posts"),
+            "the shared helper encodes the space: {want}"
+        );
+        let html = site.render_page(&page.rel).unwrap();
+        assert!(
+            html.contains(&format!(r#"<meta property="og:url" content="{want}">"#)),
+            "og:url must be the encoded one: {html}"
+        );
+        assert!(
+            html.contains(r#"content="https://ex.com/my%20posts/my%20thumb.webp""#),
+            "and so must og:image: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

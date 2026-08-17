@@ -1,6 +1,6 @@
 //! Static cross-reference validation: flag `data-tali-xref` markers left unresolved.
 
-use super::sourcepos_start_line;
+use super::{sourcepos_end_line, sourcepos_start_line, token_span};
 use crate::render::{Block, Severity, Warning};
 use std::collections::BTreeSet;
 
@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 ///
 /// A broken anchor that is a near-miss of one the page defines carries a did-you-mean.
 /// Renaming a label is the commonest way an author silently breaks their own document.
-pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
-    validate_xrefs_known_elsewhere(blocks, &BTreeSet::new())
+pub fn validate_xrefs(blocks: &[Block], src: Option<&str>) -> Vec<Warning> {
+    validate_xrefs_known_elsewhere(blocks, &BTreeSet::new(), src)
 }
 
 /// [`validate_xrefs`], plus a set of anchors known to be defined **on other pages of
@@ -28,14 +28,19 @@ pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
 pub fn validate_xrefs_known_elsewhere(
     blocks: &[Block],
     known_elsewhere: &BTreeSet<String>,
+    src: Option<&str>,
 ) -> Vec<Warning> {
     let marker = "data-tali-xref=\"";
     let anchors = local_anchors(blocks);
     // First occurrence wins for the reported location; dedup by anchor.
-    let mut seen: std::collections::BTreeMap<String, (Option<String>, Option<u32>)> =
-        std::collections::BTreeMap::new();
+    type Loc = (Option<String>, Option<u32>, Option<u32>);
+    let mut seen: std::collections::BTreeMap<String, Loc> = std::collections::BTreeMap::new();
     for b in blocks {
-        let loc = (b.source_file.clone(), sourcepos_start_line(&b.sourcepos));
+        let loc = (
+            b.source_file.clone(),
+            sourcepos_start_line(&b.sourcepos),
+            sourcepos_end_line(&b.sourcepos),
+        );
         let mut rest = b.html.as_str();
         while let Some(i) = rest.find(marker) {
             rest = &rest[i + marker.len()..];
@@ -48,15 +53,25 @@ pub fn validate_xrefs_known_elsewhere(
         }
     }
     seen.into_iter()
-        .map(|(a, (file, line))| {
+        .map(|(a, (file, line, end))| {
             let w = Warning::new(match suggest(&a, &anchors) {
                 Some(near) => format!("broken cross-reference: @{a} (did you mean `@{near}`?)"),
                 None => format!("broken cross-reference: @{a} (no such figure/section/\u{2026})"),
             })
             .severity(Severity::Error);
-            match line {
-                Some(l) => w.at(file, l),
-                None => w,
+            let Some(l) = line else { return w };
+            // The exact `@anchor`, not the whole line. Only for the primary document: a
+            // block from an included file numbers its lines in a file `src` is not.
+            match (file.is_none(), src) {
+                (true, Some(s)) => {
+                    // An anchor's own character set (`parse_xref`), not the cite key's.
+                    let anchor_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+                    match token_span(s, l, end.unwrap_or(l), &format!("@{a}"), anchor_char) {
+                        Some((tl, col, end_col)) => w.at(None, tl).span(col, end_col),
+                        None => w.at(None, l),
+                    }
+                }
+                _ => w.at(file, l),
             }
         })
         .collect()

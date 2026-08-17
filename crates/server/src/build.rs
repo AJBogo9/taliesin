@@ -769,7 +769,7 @@ fn build_page_executing(
         problems += crate::lint::blocking(&doc.warnings);
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
-        let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
+        let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks, Some(src));
         for w in &xrefs {
             log_located(w, label);
             diagnostics.push(crate::lint::diag_from(w, label));

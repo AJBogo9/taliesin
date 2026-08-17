@@ -305,6 +305,19 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
         }
     }
     let dir = Path::new(&dir);
+    // A path that is not there is a typo, and answering it is worse than refusing it: the
+    // interpreter resolution walks UP from `dir` looking for a `.venv`, so
+    // `doctor ~/blog/pots` happily reported on `~/blog`'s environment (or on `/`'s) and
+    // exited 0. The one question this verb answers is "is THIS project ready", and it
+    // cannot be answered about a directory that does not exist. `build` already refuses the
+    // same way (Fable audit FA29).
+    if !dir.exists() {
+        crate::log::error(&format!(
+            "cannot read {}: No such file or directory",
+            dir.display()
+        ));
+        return ExitCode::FAILURE;
+    }
 
     // Honour an `_site.yml` python: field + its config sanity, exactly as a build would; a
     // single-doc project (no `_site.yml`) has no field pins and no config check.

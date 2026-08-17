@@ -11,10 +11,6 @@
 //! server converts them to/from the wire's UTF-16 columns at its boundary (`lsp_pos`), so
 //! the answer is correct for all text, astral characters included.
 
-/// Front-matter parents whose immediate children have their own vocabulary (mirrors
-/// `lsp_complete`).
-const NESTED_PARENTS: &[&str] = &["execute", "listing", "about", "hero", "prose-lint"];
-
 /// The token under the cursor, with its 0-based `[start, end)` char span on the line.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Target {
@@ -339,7 +335,11 @@ fn nested_parent_of(lines: &[&str], line: usize, indent: usize) -> Option<String
                 .take_while(|c| is_word(*c) || *c == '-')
                 .collect();
             let has_colon = trimmed[key.len()..].starts_with(':');
-            return if has_colon && NESTED_PARENTS.contains(&key.as_str()) {
+            return if has_colon
+                && crate::lsp_complete::nested_parents()
+                    .iter()
+                    .any(|p| p == &key)
+            {
                 Some(key)
             } else {
                 None

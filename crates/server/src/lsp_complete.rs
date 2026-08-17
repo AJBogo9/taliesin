@@ -11,8 +11,23 @@
 //! `taliesin lsp`. Adding a completion here gives it to every editor at once. See
 //! `notes/2026-07-28-vscode-companion-audit.md`.
 
-/// Front-matter parents whose immediate children have their own vocabulary.
-const NESTED_PARENTS: &[&str] = &["execute", "listing", "about", "hero", "prose-lint"];
+/// Front-matter parents whose immediate children have their own vocabulary, DERIVED from
+/// core's `vocab()` instead of copied from it.
+///
+/// It was a hand-written list, duplicated verbatim in `lsp_nav.rs`, and it rotted through
+/// the cut: it still named `about` (retired 2026-07-17) and `prose-lint` (retired
+/// 2026-08-02) on 2026-08-17, outside every drift gate, so the server offered a nested
+/// vocabulary for two keys its own linter squiggles. The dotted `hero.actions` entry is a
+/// path into the map, not a parent word, so it is filtered out.
+pub(crate) fn nested_parents() -> &'static [String] {
+    static PARENTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    PARENTS.get_or_init(|| {
+        taliesin_core::vocab::vocab()["frontmatter"]["nested"]
+            .as_object()
+            .map(|m| m.keys().filter(|k| !k.contains('.')).cloned().collect())
+            .unwrap_or_default()
+    })
+}
 
 /// Build/vcs dirs never worth offering as a `{{< include >}}` target.
 const IGNORE_DIRS: &[&str] = &[".git", "target", "node_modules", "_site", "_freeze"];
@@ -100,12 +115,12 @@ pub(crate) enum CompletionContext {
 /// What a path position is for, which decides the extensions worth offering. A path
 /// completion that lists every file in the directory is barely better than none: the point
 /// is that `bibliography:` shows you the `.bib` files.
+/// `Style` (`css:`) and `Html` (the three `include-*` keys) went on 2026-08-17 with the
+/// retired keys that were their only callers.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum PathKind {
     Bibliography,
-    Style,
     Image,
-    Html,
     /// A markdown link target: another document, or anything else on disk.
     Link,
 }
@@ -115,9 +130,7 @@ impl PathKind {
     pub(crate) fn extensions(self) -> &'static [&'static str] {
         match self {
             PathKind::Bibliography => &["bib"],
-            PathKind::Style => &["css"],
             PathKind::Image => &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"],
-            PathKind::Html => &["html", "htm"],
             PathKind::Link => &[],
         }
     }
@@ -126,26 +139,25 @@ impl PathKind {
     pub(crate) fn detail(self) -> &'static str {
         match self {
             PathKind::Bibliography => "bibliography",
-            PathKind::Style => "stylesheet",
             PathKind::Image => "image",
-            PathKind::Html => "HTML partial",
             PathKind::Link => "file",
         }
     }
 }
 
-/// The front-matter keys whose value is a path, and what kind. Sourced from what the
-/// renderer actually resolves relative to the page, so a key that stops taking a path stops
-/// offering files.
+/// The front-matter keys whose value is a path, and what kind.
+///
+/// Every entry must be a key the tool still HAS. Four of the eight were not on 2026-08-17:
+/// `css` and the three `include-*` keys are all in `RETIRED_KEYS`, so completion inserted a
+/// path for a key the same server then squiggled, and `logo` is a `_site.yml` key that no
+/// `.tmd` front matter ever accepts (the client's document selector is the `taliesin`
+/// language alone, so this list is never consulted for a config file). The comment above
+/// claimed the list was "sourced from what the renderer actually resolves"; nothing derived
+/// it and nothing pinned it. `path_keys_are_live_front_matter_keys` pins it now.
 const PATH_KEYS: &[(&str, PathKind)] = &[
     ("bibliography", PathKind::Bibliography),
-    ("css", PathKind::Style),
     ("image", PathKind::Image),
-    ("logo", PathKind::Image),
     ("image-alt", PathKind::Image), // alt text, but authors reach for the file name first
-    ("include-in-header", PathKind::Html),
-    ("include-before-body", PathKind::Html),
-    ("include-after-body", PathKind::Html),
 ];
 
 /// The shortcodes offered by name, as `(name, description)`. Mirrors
@@ -763,7 +775,7 @@ fn nested_parent(doc_prefix: &str) -> Option<String> {
             let trimmed = line.trim();
             let key: String = trimmed.chars().take_while(|c| is_id_char(*c)).collect();
             let has_colon = trimmed[key.len()..].starts_with(':');
-            return if has_colon && NESTED_PARENTS.contains(&key.as_str()) {
+            return if has_colon && nested_parents().iter().any(|p| p == &key) {
                 Some(key)
             } else {
                 None
@@ -1143,11 +1155,18 @@ mod tests {
             }
         );
         assert_eq!(
-            ctx("css: ", "---\ncss: "),
+            ctx("image: fi", "---\nimage: fi"),
             CompletionContext::Path {
-                typed: String::new(),
-                kind: PathKind::Style
+                typed: "fi".to_string(),
+                kind: PathKind::Image
             }
+        );
+        // A RETIRED key offers no PATH. `css:` did until 2026-08-17, so the server
+        // completed a stylesheet path for a key its own lint squiggles. It now falls to the
+        // generic value context, which has no word list for it either.
+        assert!(
+            !matches!(ctx("css: ", "---\ncss: "), CompletionContext::Path { .. }),
+            "a retired key must not offer path completion"
         );
         // A key with a word list still gets the word list.
         assert_eq!(
@@ -1907,5 +1926,62 @@ mod tests {
         assert_eq!(values(""), vec!["intro.tmd".to_string()]);
         // Explicitly typing a dot: the dotfile is offered.
         assert_eq!(values(".d"), vec![".draft.tmd".to_string()]);
+    }
+
+    /// Every offered path key is a key the tool still has.
+    ///
+    /// **The defect (Fable audit FA18).** `PATH_KEYS` listed `css` and all three
+    /// `include-*` keys, every one of them in `RETIRED_KEYS`, so completing a value under
+    /// one inserted a path the same server's lint then squiggled. Nothing derived the list
+    /// and nothing pinned it, which is how it survived two retirement waves.
+    ///
+    /// Checked against `vocab()`, the OFFERED set, because a key completion does not offer
+    /// is a key whose value position the author cannot reach from here either.
+    #[test]
+    fn path_keys_are_live_front_matter_keys() {
+        let vocab = taliesin_core::vocab::vocab();
+        let offered: Vec<String> = vocab["frontmatter"]["keys"]
+            .as_array()
+            .expect("the offered key list")
+            .iter()
+            .map(|k| k["name"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert!(!offered.is_empty(), "no offered keys, so this pins nothing");
+        for (key, _) in PATH_KEYS {
+            assert!(
+                offered.iter().any(|k| k == key),
+                "`{key}` offers path completion but is not a front-matter key any more                  (offered: {offered:?})"
+            );
+        }
+    }
+
+    /// The nested parents are derived, so this pins the derivation rather than the list:
+    /// every parent is itself an offered key, and the retired ones are gone.
+    #[test]
+    fn nested_parents_are_offered_keys_and_carry_no_retired_name() {
+        let vocab = taliesin_core::vocab::vocab();
+        let offered: Vec<String> = vocab["frontmatter"]["keys"]
+            .as_array()
+            .expect("the offered key list")
+            .iter()
+            .map(|k| k["name"].as_str().unwrap_or_default().to_string())
+            .collect();
+        let parents = nested_parents();
+        assert!(
+            !parents.is_empty(),
+            "no nested parents, so this pins nothing"
+        );
+        for p in parents {
+            assert!(
+                offered.iter().any(|k| k == p),
+                "nested parent `{p}` is not an offered front-matter key"
+            );
+        }
+        for retired in ["about", "prose-lint"] {
+            assert!(
+                !parents.iter().any(|p| p == retired),
+                "`{retired}` was retired and must not be a nested parent"
+            );
+        }
     }
 }

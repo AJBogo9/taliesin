@@ -20,7 +20,7 @@ fn near_miss_references_suggest_the_intended_target() {
     let src = std::fs::read_to_string(dir.join("refs.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
 
-    let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
+    let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks, None);
     let xref_msgs = messages(&xrefs);
     for expected in [
         "broken cross-reference: @fig-reslts (did you mean `@fig-results`?)",

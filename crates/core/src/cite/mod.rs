@@ -241,3 +241,76 @@ pub(crate) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
         .ok()
         .filter(|&l| l > 0)
 }
+
+/// Parse the 1-based END line out of a `startLine:col-endLine:col` sourcepos, so a scan
+/// that wants the block's text has its whole extent and not just where it starts.
+pub(crate) fn sourcepos_end_line(sourcepos: &str) -> Option<u32> {
+    sourcepos
+        .split_once('-')?
+        .1
+        .split(':')
+        .next()?
+        .parse::<u32>()
+        .ok()
+        .filter(|&l| l > 0)
+}
+
+/// Where `token` (an `@anchor` or `@citekey`) sits in `src`, searched over the source lines
+/// `[start, end]`, as `(line, col, end_col)` with 1-based Unicode-scalar columns.
+///
+/// **Why the xref and citation validators need this** (Fable audit FA30). Both recover
+/// their subject from the RENDERED HTML, after the source is gone, so all they can say is
+/// which block it was in: they filed a whole-line warning and the editor drew a squiggle
+/// across the whole line rather than under `@fig-reslts`. The plumbing for a precise range
+/// existed end to end and was used by the front-matter linter only. The compounding cost is
+/// the one-click fix: `lint.rs` attaches the "Change to `@fig-results`" payload ONLY when a
+/// suggestion has a precise span, so the did-you-mean these messages already compute could
+/// never become a code action.
+///
+/// Returns `None` when the token is not in that range, and the caller keeps its whole-line
+/// location. That is the honest fallback: an id can be *produced* rather than written (a
+/// generated block, a ref inside an included file the caller does not hold), and a guessed
+/// span would be a wrong fix an agent applies mechanically.
+///
+/// The match must be delimited, or `@fig-a` would be located inside `@fig-abc`, and the
+/// delimiter is the caller's `boundary`: the two vocabularies genuinely differ. An anchor
+/// runs on `[A-Za-z0-9_-]` (`parse_xref`), so the `.` ending "see @fig-reslts." is a
+/// sentence period; a cite key also takes `.`, `:` and `/` (`is_cite_key_char`). Reusing one
+/// predicate for both put the sentence period inside the anchor and found nothing.
+pub(crate) fn token_span(
+    src: &str,
+    start: u32,
+    end: u32,
+    token: &str,
+    boundary: fn(char) -> bool,
+) -> Option<(u32, u32, u32)> {
+    for (idx, line) in src.lines().enumerate() {
+        let no = idx as u32 + 1;
+        if no < start || no > end {
+            continue;
+        }
+        let mut from = 0usize;
+        while let Some(rel) = line[from..].find(token) {
+            let at = from + rel;
+            from = at + token.len();
+            // A following id character means this is a longer name that merely starts the
+            // same way. A preceding one means the `@` is not the start of a reference.
+            let after_ok = line[at + token.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| !boundary(c));
+            // The renderer only reads an `@` that starts a word, so `bob@rem-server.com` is
+            // an address and not a `rem-` anchor. Same rule here, or the span would point at
+            // a token the renderer never treated as a reference.
+            let before_ok = line[..at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || boundary(c) || c == '@'));
+            if after_ok && before_ok {
+                let col = line[..at].chars().count() as u32 + 1;
+                return Some((no, col, col + token.chars().count() as u32));
+            }
+        }
+    }
+    None
+}
