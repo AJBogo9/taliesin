@@ -21,6 +21,18 @@ are about to add a paragraph here, it belongs in one of those files instead.
 Each of these was filed as a backlog item and is not a task. Kept because deleting them costs a
 session to rediscover.
 
+- **The four Fable-audit DECIDE calls were answered on 2026-08-17; none is open.** (FD1) `taliesin
+  new` is CUT — `init` writes the dated example post the verb used to scaffold, and the CLI is six
+  subcommands; do not propose a scaffolding verb again. (FD2) The five retirement registers
+  (`RETIRED_KEYS`, `RETIRED_DIV_CLASSES`, `RETIRED_COMMANDS`, `RETIRED_CELL_LANGS`,
+  `RETIRED_FLAGS`) are DELETED, both the private-history half and the other-tools half the census
+  recommended keeping: *"I want taliesin to be a lean completely separate tool from everything
+  else"*. An unknown name now gets a did-you-mean inside edit distance 2, a bare "unknown", or (div
+  classes, an open vocabulary) silence. **Do not reintroduce a register or a compatibility note**,
+  and do not re-file the known cost: `--host` draws "did you mean `--out`?" because `out` really is
+  two edits from `host`. (FD3) The first-run execution notice **stays exactly as it shipped**
+  2026-07-29, on the documented Jupyter-style trust model — not a defect, not a re-scope. (FD4)
+  CLAUDE.md was cut 524 → 346 lines; what survived is what changes what a session DOES.
 - **Two 2026-08-13 audit findings were refuted and must not be re-filed.** (1) "A block containing a
   `{{< input >}}` reports an end column past the end of its own source line"
   (`render/extension/mod.rs`). (2) "`codeAction`'s quick fix builds a buffer-rewriting
@@ -30,7 +42,8 @@ session to rediscover.
   rule. Confirmed findings from that round are the live queue in
   [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md).
 - **A derived "a retirement note's advice names a live construct" gate was considered on 2026-08-13
-  and declined; do not re-file.** Measured across `RETIRED_KEYS` + `RETIRED_DIV_CLASSES` +
+  and declined; do not re-file.** (Moot since 2026-08-17: the registers it would have guarded are
+  deleted — see the FD2 ruling above. Kept as the record of why it was declined on its own terms.) Measured across `RETIRED_KEYS` + `RETIRED_DIV_CLASSES` +
   `RETIRED_CELL_LANGS`: nine notes name another retired name, and eight are legitimate
   *removed-alongside* context (`.step` ↔ `.scrolly` ↔ `.code-walkthrough`, `.columns` ↔ `.column`,
   `.fade-out`/`.highlight` → `.fragment`) that no wording rule separates from advice — the notes have

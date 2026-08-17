@@ -12,9 +12,10 @@ against the release binary before filing them. Findings that got neither check a
 **[U]** and start with a verification step. Full structured findings: the audit session's
 scratchpad `audit-full.json` (not committed; this file supersedes it).
 
-**Landed 2026-08-17**, in four commits, each with `./tools/gates.sh` green before and
+**Landed 2026-08-17**, in seven commits, each with `./tools/gates.sh` green before and
 after: FA1, FA2, FA3, FA5, FA6, FA7, FA9, FA10, FA11, FA12, FA14, FA17, FA18, FA19, FA24,
-FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16. Every fix that
+FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus all four
+DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
 
@@ -243,95 +244,20 @@ pointer to the cause.
 
 ---
 
-# DECIDE: the author's calls, not code
+# DECIDE: answered 2026-08-17
 
-Recommendations recorded because leaving none is how these get answered by accident.
-Each cites the prior ruling it touches; none should be worked without the author's
-explicit go.
+All four calls were made by the author on 2026-08-17 and are recorded in
+[DO-NOT-REBUILD.md](DO-NOT-REBUILD.md). Nothing here is open.
 
-## FD1: `taliesin new` (revisits the 2026-08-13 "do not cut another feature" verdict)
-
-Anatomy (verified in outline): `cmd_new` produces one 12-line scaffold, carried by slug
-validation, a hand-rolled civil-date algorithm kept to avoid a date dependency, the
-`RETIRED_NEW_KINDS` register, and a 337-line integration suite. The standing directive
-says lean toward cutting; the 2026-08-13 audit verdict says the seven-verb journey has
-no hole and "do not cut another feature". Both are the author's own words, so only the
-author resolves them. If cut: fold one example post into `init`'s scaffold, add the
-`RETIRED_COMMANDS` entry, delete `new_cli.rs`. If kept: delete this item.
-
-## FD2: retirement-register audience split (RULED 2026-08-17: prune the private half, keep and reword the external half)
-
-The author raised this on 2026-08-17 ("no previous users, so no backwards
-compatibility"), which supersedes S15's "keep everything through 1.0". The premise is
-half right: the registers serve two audiences, and only one is the (empty) set of
-previous Taliesin users. The other is strangers typing vocabulary another tool taught
-them, who exist from day one of the public flip. The full census at `2827c3bb` (92
-entries), classified by "could a stranger ever type this name":
-
-**DELETE (~40, private history, can never fire for a public user):**
-- `RETIRED_COMMANDS`: `blocks`, `symbols`, `skim`, `read`, `map`, `features`, `vocab`,
-  `schema`, `mcp`
-- `RETIRED_KEYS`: `mounts`, `body-start`, `body-end`, `output` (config), `datasets`,
-  `prose-lint`, `fig-export`, hero `image`, hero `image-alt`, `venue`, `award`,
-  `links`, `theorems` (both scopes), config `r`, config `publish`, `acknowledgments`/
-  `acknowledgements` (judgment: plausible scholarly guess, lean delete)
-- `RETIRED_DIV_CLASSES`: `code-walkthrough`, `scrolly`, `step`, `fade-out`,
-  `highlight`, `debug`, `magic-move`, `sidenote`, `marginnote` (the last two are
-  tufte-css vocabulary, judgment, lean delete). Deleting an open-vocabulary class
-  entry is a true no-op for strangers: the class becomes CSS passthrough, correct for
-  a name that never did anything here.
-- `RETIRED_FLAGS`: `--bare`. `RETIRED_CELL_LANGS`: `glsl`, `pyodide` (judgment: a
-  quarto-live extension uses the name, lean delete).
-- `RETIRED_NEW_KINDS`: all three, resolved together with FD1 either way.
-
-**KEEP (~45, another tool's vocabulary, will fire for real newcomers):**
-- Quarto front-matter/config/cell vocabulary: `format`, `css` (both scopes),
-  `include-in-header`, `include-before-body`, `include-after-body`, execute `echo`,
-  execute `include`, config `toc`, `about`, `doi`, listing `sort`, listing
-  `categories`, callout `important`, `caution`, `appearance`, `icon`, input `range`,
-  cell option `code-line-numbers`, `footer`, `logo`, shortcode `video`, cell lang `r`
-- Quarto/reveal div classes: `theorem`, `lemma`, `corollary`, `definition`, `proof`,
-  `example`, `proposition`, `remark`, `panel-tabset`, `columns`, `column`,
-  `column-screen`, `aside`, `fragment`, `incremental`, `notes`
-- Guessable verbs: `render`, `serve`, `dev`, `publish`, `check`, `pdf` (the HTML-only
-  positioning answer, delivered at the moment of the ask), `run`, `completions`
-  (judgment, lean keep)
-- `--host` (every dev server has one; the note carries the loopback-only stance)
-
-**Plus a reword pass on the keep-set:** the notes read "it was removed on <date>",
-history a stranger does not share. Reword to the stranger's answer ("Taliesin renders
-HTML only; there is no `format:` key: ..."), same one-line register mechanism. Registers
-stay; `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
-derives the checks either way. Parser-side behavior pins whose key survives
-(`a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed`) stay; a behavior pin for
-a DELETED entry's key is re-checked: the read must already be gone, then the pin can go
-with the entry.
-
-- Done when: the delete-list entries are gone (each is one register line, per the
-  retirement rule); the keep-list notes read as answers, not tombstones; record the
-  ruling in DO-NOT-REBUILD.md so S15's superseded recommendation is not re-applied.
-- Effort: S-M (mechanical deletes; the reword is the judgment half).
-
-## FD3: the first-run execution notice (revisits a shipped 2026-07-29 decision)
-
-The one runtime acknowledgment that preview executes a document's code fires once per
-machine ever (TTY- and marker-gated), i.e. on the user's own first document, not when
-previewing someone else's. Options: reclassify it as onboarding UX and accept the
-documented Jupyter-style trust model (legitimate, matches the docs), or retarget the
-line at a threat-correlated signal (first execution of a document outside any previously
-previewed project). The notice shipped as designed, so this is a re-scope; default is
-keep as-is.
-
-## FD4: the CLAUDE.md diet (overlaps S12's judgment call on notes/)
-
-After FA19's fact fixes: roughly 250 of CLAUDE.md's 518 lines narrate incidents whose
-invariants named tests now enforce (the tests were verified to exist). The prose is
-advisory where a gate is load-bearing. Candidate rule: an incident paragraph survives
-only if it changes what a session DOES (a hazard, an order of operations), not what it
-knows happened. This is the author's voice and the author's file; recommendation is to
-cut to ~250 lines, but it is not a defect.
-
----
+- **FD1 — cut `taliesin new`.** Landed 2026-08-17: `init` writes the example post the
+  verb used to scaffold, and the CLI is six subcommands.
+- **FD2 — delete the retirement registers, BOTH halves.** The ruling went past the
+  recommendation: the author declined to keep the ~45 entries that answer another tool's
+  vocabulary ("I want taliesin to be a lean completely separate tool from everything
+  else"). Landed 2026-08-17.
+- **FD3 — keep the first-run execution notice as it shipped**, on the documented
+  Jupyter-style trust model. No code change; do not re-scope it.
+- **FD4 — cut CLAUDE.md.** Landed 2026-08-17: 524 → 346 lines.
 
 # Refuted or corrected: do not re-file
 
