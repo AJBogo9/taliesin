@@ -55,7 +55,6 @@ fn main() -> ExitCode {
         Some("doctor") => doctor::cmd_doctor(&args),
         Some("lsp") => lsp::cmd_lsp(&args),
         Some("init") => cli::cmd_init(&args),
-        Some("new") => cli::cmd_new(&args),
         Some("preview") => {
             runtime_dirs::sweep_stale_runtime_dirs();
             cli::cmd_serve(&args)
@@ -98,7 +97,7 @@ fn main() -> ExitCode {
 }
 
 /// Every subcommand name, for the unknown-command did-you-mean.
-const COMMANDS: &[&str] = &["build", "doctor", "lsp", "init", "new", "preview", "help"];
+const COMMANDS: &[&str] = &["build", "doctor", "lsp", "init", "preview", "help"];
 
 /// Subcommands that used to exist, and the one line that says what replaced them.
 ///
@@ -173,6 +172,10 @@ const RETIRED_COMMANDS: &[(&str, &str)] = &[
         "`preview <file.tmd>` executes the same cells against the same warm kernel and \
          writes the same `_freeze/`, so a later `build` still replays without one",
     ),
+    (
+        "new",
+        "`init` scaffolds the example post now; copy `posts/my-first-post/` for the next one",
+    ),
 ];
 
 /// The error for a command that is not one of [`COMMANDS`]: the retired-verb note when the
@@ -239,9 +242,8 @@ COMMANDS:
 
 Author
   init   [dir]               scaffold a starter site you can preview right away
-                             (writes _site.yml + index.tmd; default: current dir)
-  new post <slug> [--dir <root>] [--draft]
-                             scaffold one dated post, correct on its first save
+                             (writes _site.yml + index.tmd + one dated example
+                             post; default: current dir)
 
 Preview & build
   preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]
@@ -366,33 +368,17 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example (Neovim, via nvim-lspconfig or vim.lsp.start):\n\
              \x20 cmd = { \"taliesin\", \"lsp\" }\n"
         }
-        "new" => {
-            "taliesin new post <slug> [--dir <root>] [--draft]\n\
-             \n\
-             Scaffold one dated blog post that is correct on its first save: it renders, and\n\
-             `build --check-only` passes on it with no diagnostics. It lands in\n\
-             posts/<slug>/index.tmd, dated today. Refuses to overwrite an existing file.\n\
-             \n\
-             Run it inside a project: with no --dir, a current directory that no _site.yml\n\
-             encloses is refused rather than scaffolded into, since nothing would ever find\n\
-             the page. --dir says where the project is, and is obeyed as written.\n\
-             \n\
-             Flags:\n\
-             \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
-             \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
-             \n\
-             Example:\n\
-             \x20 taliesin new post my-first-post --draft\n"
-        }
         "init" => {
             "taliesin init [dir]\n\
              \n\
              Scaffold a starter project into dir (default the current directory) and print\n\
-             the preview hint: a `_site.yml` holding the title and an `index.tmd` you can\n\
-             preview immediately, and nothing else. Refuses to overwrite existing files.\n\
+             the preview hint: a `_site.yml` holding the title, an `index.tmd` you can\n\
+             preview immediately, and one dated post under posts/ that its listing shows.\n\
+             Nothing else. Refuses to overwrite existing files.\n\
              \n\
-             Add pages by dropping more .tmd files beside index.tmd; make it a book by\n\
-             listing them under chapters: in _site.yml.\n\
+             Add pages by dropping more .tmd files beside index.tmd; add posts by copying\n\
+             posts/my-first-post/; make it a book by listing pages under chapters: in\n\
+             _site.yml.\n\
              \n\
              Example:\n\
              \x20 taliesin init my-site\n"
@@ -448,12 +434,6 @@ pub(crate) fn usage_line(cmd: &str) -> String {
     }
 }
 
-/// Print [`usage_line`] to stderr and fail — the whole body of a missing-positional arm.
-pub(crate) fn usage_error(cmd: &str) -> std::process::ExitCode {
-    eprintln!("{}", usage_line(cmd));
-    std::process::ExitCode::FAILURE
-}
-
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
@@ -471,18 +451,16 @@ mod dispatch_tests {
     /// A retired verb answers with what replaced it, and is never itself suggested.
     ///
     /// The measurement that made this a register rather than a comment: with `dev` merely
-    /// deleted, `taliesin dev .` fell through to the did-you-mean, and `dev` is exactly two
-    /// edits from `new` — so a request to *preview* a project was answered with the command
-    /// that *scaffolds files into it*. The other four cuts got silence, which is only
-    /// marginally better for someone following an older page.
+    /// deleted, `taliesin dev .` fell through to the did-you-mean, and `dev` was exactly two
+    /// edits from the `new` verb — so a request to *preview* a project was answered with the
+    /// command that *scaffolded files into it*. `new` was itself cut on 2026-08-17, so that
+    /// particular collision is gone; the register is what keeps `dev` pointing at `preview`
+    /// rather than at whatever the distance rule finds next.
     #[test]
     fn a_retired_command_names_its_replacement_instead_of_guessing() {
-        // The bad suggestion this register exists to prevent is still one edit-distance
-        // lookup away, so assert the register wins rather than trusting it to.
-        assert_eq!(taliesin_core::closest("dev", COMMANDS), Some("new"));
         assert!(
             unknown_command_message("dev").contains("preview"),
-            "`dev` must point at preview, not at `new`: {}",
+            "`dev` must point at preview: {}",
             unknown_command_message("dev")
         );
         assert!(
@@ -752,7 +730,7 @@ mod cli_microcopy_tests {
     /// looked at.
     #[test]
     fn help_verb_with_a_subcommand_resolves_to_that_subcommands_help() {
-        for cmd in ["build", "preview", "new"] {
+        for cmd in ["build", "preview", "init"] {
             assert!(
                 subcommand_help(cmd).is_some(),
                 "`help {cmd}` needs a focused page to resolve to"
@@ -927,10 +905,11 @@ mod cli_microcopy_tests {
     fn every_parsed_flag_is_documented_in_its_subcommand_help() {
         let lists = parser_flag_lists();
         // A scan that finds nothing would pass every assertion below it. The floor was 7
-        // until wave 4 cut `publish` and `pdf`, each of which owned one const, and 6 until
-        // wave 9 retired `check` and folded its gate into `build --check-only`.
+        // until wave 4 cut `publish` and `pdf`, each of which owned one const, 6 until
+        // wave 9 retired `check` and folded its gate into `build --check-only`, and 5 until
+        // `new` was cut on 2026-08-17 with its `NEW_FLAGS`.
         assert!(
-            lists.len() >= 5,
+            lists.len() >= 4,
             "the flag-const scan collected only {} lists; the declaration shape moved",
             lists.len()
         );
@@ -1092,19 +1071,9 @@ mod cli_microcopy_tests {
             build_help.contains("--jobs"),
             "build help must document --jobs: {build_help}"
         );
-        // PL15: `new` help documents `--draft` (the scaffold advertises it).
-        let new_help = subcommand_help("new").unwrap();
-        assert!(
-            new_help.contains("--draft"),
-            "new help must document --draft: {new_help}"
-        );
-        // PL15: the missing-positional `usage:` one-liners derive from the `--help` synopsis, so
-        // they can't drift — the derived `new` synopsis carries the new flags, and the `build`
-        // synopsis carries `--format json` (the flag its old hand-written one-liner had dropped).
-        assert!(
-            command_synopsis("new").is_some_and(|s| s.contains("--draft")),
-            "the derived `new` usage synopsis must carry --draft"
-        );
+        // PL15: the missing-positional `usage:` one-liners derive from the `--help` synopsis,
+        // so they can't drift — the derived `build` synopsis carries `--format json`, the flag
+        // its old hand-written one-liner had dropped.
         assert!(
             command_synopsis("build").is_some_and(|s| s.contains("--format json")),
             "the derived `build` usage synopsis must carry --format json"

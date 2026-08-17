@@ -56,7 +56,7 @@ fn help_groups_commands_by_purpose() {
     // command row in `--help` carries: the list used to include the retired `run`, and
     // passed on the unanchored substring `"run "` matching ENV_HELP's prose "never run code
     // cells" — so the loop asserted a verb was documented by finding an unrelated sentence.
-    for cmd in ["init", "new", "preview", "build", "doctor", "lsp", "help"] {
+    for cmd in ["init", "preview", "build", "doctor", "lsp", "help"] {
         assert!(
             h.contains(&format!("  {cmd}")),
             "help dropped `{cmd}`:\n{h}"

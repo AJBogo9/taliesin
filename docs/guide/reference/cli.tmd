@@ -14,8 +14,7 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write **nothing**: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
-| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml` and an `index.tmd`, and nothing else; refuses to overwrite |
-| `new post <slug>` | Scaffold one dated post, correct on its first save; refuses to overwrite. Run it inside a project, or point `--dir <root>` at one — a current directory no `_site.yml` encloses is refused rather than scaffolded into |
+| `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml`, an `index.tmd` and one dated post under `posts/`, and nothing else; refuses to overwrite |
 | `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
 | `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and how (`_site.yml` `python:`, a `.venv`, `TALIESIN_PYTHON`, then `PATH`), whether `ipykernel` imports, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
 
@@ -310,27 +309,26 @@ published that way; only the gallery nests.
 emitted when a project `url:` is configured; the lint warns if a page sets a social
 `image:` with no `url:` to absolutize it against.
 
-## Starting from something: `init` and `new`
+## Starting from something: `init`
 
-`init` scaffolds a whole project, which is two files: a `_site.yml` holding the title and a
-hello-world `index.tmd`. `new` scaffolds a single dated post inside one:
+`init` scaffolds a whole project, which is three files: a `_site.yml` holding the title, a
+hello-world `index.tmd` whose `listing:` collects `posts/`, and one dated post in it.
 
 ```sh
-taliesin init my-site             # my-site/_site.yml + my-site/index.tmd
-taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
+taliesin init my-site   # _site.yml + index.tmd + posts/my-first-post/index.tmd
 ```
 
-Everything else is an edit to those two files rather than a starter you pick up front: add a
-page by dropping another `.tmd` beside `index.tmd`, add a top nav with a `nav:` block, and
-turn the project into a book by listing the pages under `chapters:`. See
+Everything after that is an edit to what you have rather than a starter you pick up front:
+write your next post by copying `posts/my-first-post/`, add a page by dropping another
+`.tmd` beside `index.tmd`, add a top nav with a `nav:` block, and turn the project into a
+book by listing the pages under `chapters:`. See
 [Configuration](frontmatter.tmd#project-site-yml).
 
 The scaffold is correct on its first save: it renders, and `build --check-only` passes on it
-with no diagnostics. That is not a promise, it is a test: `crates/server/tests/new_cli.rs`
+with no diagnostics. That is not a promise, it is a test: `crates/server/tests/init_cli.rs`
 runs the real binary and then the real lint over what it wrote, so a front-matter key the
-validator would reject cannot survive in the scaffold. A slug must be lowercase letters,
-digits and hyphens (it becomes the page's URL), and like `init`, `new` refuses to overwrite
-an existing file.
+validator would reject cannot survive in the scaffold. Like every write this tool makes,
+`init` refuses to overwrite an existing file.
 
 ## Inspecting a document: `build --stdout`
 

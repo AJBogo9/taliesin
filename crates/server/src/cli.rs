@@ -1,13 +1,13 @@
-//! Front-door subcommands: `init` (scaffold a starter site), `new` (scaffold one document)
-//! and `preview` (launch the live preview server).
+//! Front-door subcommands: `init` (scaffold a starter site) and `preview` (launch the
+//! live preview server).
 //!
-//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd`);
-//! `cmd_serve` parses the preview flags (`--open`/`--no-exec`/port) and starts the
-//! dev server.
+//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd` + one
+//! example post); `cmd_serve` parses the preview flags (`--open`/`--no-exec`/port) and
+//! starts the dev server.
 //!
-//! **How to use:** `main()` dispatches `init`, `new` and `preview` to `cmd_init` /
-//! `cmd_new` / `cmd_serve` here. The `serve`/`dev` spellings of `preview` were retired in
-//! Wave 5, which is why `cmd_serve` keeps a name its verb no longer has.
+//! **How to use:** `main()` dispatches `init` and `preview` to `cmd_init` / `cmd_serve`
+//! here. The `serve`/`dev` spellings of `preview` were retired in Wave 5, which is why
+//! `cmd_serve` keeps a name its verb no longer has.
 //!
 //! **Depends on:** [`crate::serve_site`] (the dev server), [`crate::serve`] (its shared
 //! plumbing + CLI error helpers) and [`crate::log`].
@@ -37,35 +37,56 @@ const INIT_SITE_YML: &str =
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
 /// points the new user at the next steps. `.tmd` is the native extension.
 ///
-/// The `listing:` block is what makes the two scaffolders COMPOSE. Without it, `init` then
-/// `new post` then `build` produced a post whose only appearance on the homepage was the
-/// instruction line below that names the command, reachable by typing its URL and by
-/// nothing else. It renders nothing at all until `posts/` has a document in it, so a fresh
-/// `init` still previews as a clean hello-world page with no empty section. `type:` is
-/// spelled out even though `list` is the default: it is the one knob a new author wants
-/// (swap it for `grid` and the homepage becomes a card grid), and a scaffold is read as an
-/// example.
+/// The `listing:` block is what wires the example post below into the homepage. Without
+/// it, the first post an author has is reachable by typing its URL and by nothing else,
+/// with the listing machinery already built and simply not pointed at the one directory
+/// the scaffold writes. `type:` is spelled out even though `list` is the default: it is
+/// the one knob a new author wants (swap it for `grid` and the homepage becomes a card
+/// grid), and a scaffold is read as an example.
 const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\nlisting:\n  contents: posts\n  type: list\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
-    - Scaffold a dated post with `taliesin new post my-first-post` (add `--draft` to hold it back).\n\
+    - Copy `posts/my-first-post/` to start another post (add `draft: true` to hold one back).\n\
     - Add more `.tmd` pages beside this one: each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` code cell to run live output.\n";
 
-/// The authored files `taliesin init` writes, as `(project-relative path, contents)`. Pure,
-/// so the CLI stays a thin wrapper over two constants.
+/// `posts/my-first-post/index.tmd` for the scaffold: one dated post, correct on its first
+/// save (it renders, and `build --check-only` passes on it with no diagnostics).
+///
+/// It was `taliesin new post <slug>`'s output until the verb was cut on 2026-08-17. A verb
+/// carried slug validation, a kind register and a 337-line integration suite to write this
+/// one file; a starter that already contains it costs a const, gives the author a template
+/// to copy for the next post, and leaves the homepage's `listing:` with something to show.
+/// Every front-matter key here is one the validator knows, which `init_cli.rs` asserts by
+/// running the real lint over what the real binary wrote.
+const INIT_POST_TMD: &str = "---\ntitle: \"My First Post\"\ndate: {date}\n\
+    description: \"One sentence: what a reader will understand by the end.\"\n\
+    categories: [writing]\n\
+    ---\n\n\
+    Open with the question this post answers.\n\n\
+    ## The first idea\n\n\
+    Save the file and the preview re-renders only the block you changed.\n";
+
+/// The authored files `taliesin init` writes, as `(project-relative path, contents)`. Pure
+/// (the date is passed in), so the CLI stays a thin wrapper over three constants.
 ///
 /// It took a `template` argument until Wave 8, selecting between this one-page starter and a
 /// `site` (nav + an About stub) and a `book` (three chapters). Both were shapes a writer
 /// reaches by adding a `nav:` block or a `chapters:` list to the config they already have:
 /// a menu in front of the first command anyone types, pinned by three corpus projects.
-fn init_files() -> Vec<(PathBuf, String)> {
-    [("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)]
-        .into_iter()
-        .map(|(name, contents)| (PathBuf::from(name), contents.to_string()))
-        .collect()
+fn init_files(today: &str) -> Vec<(PathBuf, String)> {
+    vec![
+        (PathBuf::from("_site.yml"), INIT_SITE_YML.to_string()),
+        (PathBuf::from("index.tmd"), INIT_INDEX_TMD.to_string()),
+        (
+            PathBuf::from("posts")
+                .join("my-first-post")
+                .join("index.tmd"),
+            INIT_POST_TMD.replace("{date}", today),
+        ),
+    ]
 }
 
 /// Every long flag `init` accepts, i.e. none: it drives the unknown-flag did-you-mean, and
@@ -73,7 +94,8 @@ fn init_files() -> Vec<(PathBuf, String)> {
 const INIT_FLAGS: &[&str] = &[];
 
 /// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
-/// current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint.
+/// current directory). Writes `_site.yml`, `index.tmd` and one dated example post, then
+/// prints the preview hint.
 ///
 /// It took `--json`/`--format` until 2026-08-13, printing a `{created, preview}` receipt.
 /// Neither appeared anywhere in the manual, `human` was a pure no-op, and
@@ -112,9 +134,8 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                 }
                 // The next step ends INSIDE the project when `init` was given a directory.
                 // It used to print `taliesin preview myblog`, which previews correctly but
-                // leaves the author in the parent — where the homepage's own next bullet,
-                // `taliesin new post my-first-post`, has no project to scaffold into. The
-                // two commands the tool teaches have to compose.
+                // leaves the author in the parent, one directory away from every path the
+                // scaffolded homepage names.
                 if where_ == "." {
                     println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview .");
                 } else {
@@ -138,12 +159,41 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         return Err(format!("cannot create {}: {e}", dir.display()));
     }
-    write_scaffold(dir, &init_files())
+    write_scaffold(dir, &init_files(&today_utc()))
+}
+
+/// Today's date as `YYYY-MM-DD`, **UTC**, for the scaffolded post's `date:`. Taliesin has
+/// no date dependency and does not want one for this (see the backlog's library-outsourcing
+/// ruling), so the civil date is derived from the Unix day number directly. Near midnight
+/// this can name yesterday or tomorrow in the author's local zone; the date is front matter
+/// they can edit.
+fn today_utc() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Days since 1970-01-01 -> `(year, month, day)`. Howard Hinnant's `civil_from_days`,
+/// exact for every date this program can see. Unit-tested against known days.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097); // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
 /// Write `files` (project-relative path → contents) under `root`, refusing to overwrite any
-/// existing target before writing any of them and creating parent dirs as needed. Shared by
-/// `init` (project scaffold) and `new` (document scaffold); returns the paths written.
+/// existing target before writing any of them and creating parent dirs as needed; returns
+/// the paths written.
 fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBuf>, String> {
     // Refuse to overwrite *any* target before writing *any*, so a partial scaffold never
     // lands on top of an existing project.
@@ -171,283 +221,6 @@ fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBu
         written.push(path);
     }
     Ok(written)
-}
-
-/// What `taliesin new` can scaffold: a dated blog post, which is the document shape this
-/// tool is for. The `deck` kind went with the slide-deck engine in Wave 5; `page` and
-/// `paper` went in Wave 8, leaving one, so there is no `NewKind` enum any more, on the
-/// precedent Wave 5 set when it deleted a one-variant `DocFormat` rather than keeping it.
-/// The positional survives (`taliesin new post <slug>`), because it is what a retired kind
-/// is typed into and what a second kind would be added to.
-const NEW_KINDS: &[&str] = &["post"];
-
-/// Kinds this verb used to scaffold, and the one line that says what to do instead.
-///
-/// The same job [`crate::RETIRED_COMMANDS`] does for a verb, and for the same reason: every
-/// one of these is edit-distance 3 or more from `post`, so a removed kind would otherwise
-/// fall through to "unknown kind `paper` (expected post)", which is technically true and
-/// silent about the fact that the tool used to do exactly what was asked.
-const RETIRED_NEW_KINDS: &[(&str, &str)] = &[
-    (
-        "deck",
-        "removed on 2026-08-08 with the slide-deck engine: write the talk as a page of prose",
-    ),
-    (
-        "page",
-        "removed on 2026-08-08: a page is a `.tmd` file with a `title:` in its front matter, \
-         so write it directly beside `index.tmd`",
-    ),
-    (
-        "paper",
-        "removed on 2026-08-08: scaffold a `post` and add `bibliography: [references.bib]` \
-         to its front matter",
-    ),
-];
-
-/// Accept the one live kind, or explain what happened to the one that was typed.
-fn parse_new_kind(raw: &str) -> Result<(), String> {
-    if NEW_KINDS.contains(&raw) {
-        return Ok(());
-    }
-    // A removal, not a misspelling: answering one of these with a did-you-mean would
-    // send the author to a kind that scaffolds something else entirely.
-    if let Some((_, note)) = RETIRED_NEW_KINDS.iter().find(|(name, _)| *name == raw) {
-        return Err(format!("`new {raw}` was {note}"));
-    }
-    Err(match taliesin_core::closest(raw, NEW_KINDS) {
-        Some(k) => format!("unknown kind `{raw}` (did you mean `{k}`?)"),
-        None => format!("unknown kind `{raw}` (expected post)"),
-    })
-}
-
-/// A slug names a file inside the project, so it may not climb out of it or reach into a
-/// subdirectory. Kept to the characters a URL wants anyway, which is what a page's path
-/// becomes.
-fn validate_slug(slug: &str) -> Result<(), String> {
-    if slug.is_empty() {
-        return Err("the slug is empty (try `taliesin new post my-first-post`)".to_string());
-    }
-    if !slug
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    {
-        return Err(format!(
-            "invalid slug `{slug}`: use lowercase letters, digits and hyphens \
-             (it becomes the page's URL)"
-        ));
-    }
-    Ok(())
-}
-
-/// `my-first-post` -> `My First Post`, the title an author would have typed anyway.
-fn title_from_slug(slug: &str) -> String {
-    slug.split('-')
-        .filter(|w| !w.is_empty())
-        .map(|w| {
-            let mut cs = w.chars();
-            match cs.next() {
-                Some(c) => c.to_ascii_uppercase().to_string() + cs.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Today's date as `YYYY-MM-DD`, **UTC**. Taliesin has no date dependency and does not
-/// want one for this (see the backlog's library-outsourcing ruling), so the civil date is
-/// derived from the Unix day number directly. Near midnight this can name yesterday or
-/// tomorrow in the author's local zone; the date is front matter they can edit.
-fn today_utc() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// Days since 1970-01-01 -> `(year, month, day)`. Howard Hinnant's `civil_from_days`,
-/// exact for every date this program can see. Unit-tested against known days.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097); // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-/// Per-invocation options for `taliesin new` (beyond the slug). `Default` is today's
-/// behavior, so an unflagged scaffold is byte-identical to before.
-#[derive(Clone, Copy, Default)]
-struct NewOpts {
-    /// `--draft`: mark the scaffold `draft: true`, holding it out of the published build.
-    draft: bool,
-}
-
-/// The files a `taliesin new post <slug>` writes, as `(project-relative path, contents)`.
-///
-/// Pure, so the CLI can stay a thin wrapper. Every front-matter key here is one the
-/// validator knows; a `check`-clean scaffold is asserted end-to-end (through the real
-/// binary, then the real `check`) by `crates/server/tests/new_cli.rs`.
-fn new_files(slug: &str, today: &str, opts: NewOpts) -> Vec<(PathBuf, String)> {
-    let title = title_from_slug(slug);
-    // `--draft` splices a `draft: true` line into the front matter (right after `title:`);
-    // default off emits nothing, keeping the unflagged scaffold byte-identical.
-    let draft = if opts.draft { "draft: true\n" } else { "" };
-    let body = format!(
-        "---\n\
-         title: \"{title}\"\n{draft}\
-         date: {today}\n\
-         description: \"One sentence: what a reader will understand by the end.\"\n\
-         categories: [writing]\n\
-         ---\n\
-         \n\
-         Open with the question this post answers.\n\
-         \n\
-         ## The first idea\n\
-         \n\
-         Save the file and the preview re-renders only the block you changed.\n"
-    );
-    vec![(PathBuf::from("posts").join(slug).join("index.tmd"), body)]
-}
-
-/// `taliesin new post <slug> [--dir <root>]`: scaffold one document, correct on its first
-/// save. Refuses to overwrite, exactly as `init` does.
-pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
-    let mut positional: Vec<&str> = Vec::new();
-    let mut root = ".".to_string();
-    // Whether the author *named* a root, as opposed to inheriting the default `.`. An
-    // explicit `--dir` is an instruction and is obeyed as written; the implicit default is
-    // the one that has to be checked, because nothing about it was chosen.
-    let mut dir_given = false;
-    let mut opts = NewOpts::default();
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            // `--dir` = the scaffold-input root (where the project lives). The undocumented
-            // `--out` alias was dropped — `--out` is the output-dir flag on build/publish.
-            "--dir" => {
-                if let Some(v) = it.next() {
-                    root = v.clone();
-                    dir_given = true;
-                }
-            }
-            // `--draft` marks the scaffold `draft: true` (held out of the published build).
-            "--draft" => opts.draft = true,
-            // Any leading dash is a flag, not a kind or a slug. `--` alone would be enough
-            // if `-y` had never existed; it did until Wave 8, and a leftover `taliesin new
-            // -y post x` must not be read as a request to scaffold a kind called `-y`.
-            s if s.starts_with('-') => {
-                log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
-                return ExitCode::FAILURE;
-            }
-            s => positional.push(s),
-        }
-    }
-
-    match positional.first() {
-        Some(k) => {
-            if let Err(e) = parse_new_kind(k) {
-                log::error(&e);
-                return ExitCode::FAILURE;
-            }
-        }
-        None => return new_usage(),
-    }
-
-    let slug: String = match positional.get(1) {
-        Some(s) => (*s).to_string(),
-        None => return new_usage(),
-    };
-    if let Err(e) = validate_slug(&slug) {
-        log::error(&e);
-        return ExitCode::FAILURE;
-    }
-    let root = Path::new(&root);
-    if !dir_given && let Err(e) = refuse_scaffold_outside_a_project(root, &slug) {
-        log::error(&e);
-        return ExitCode::FAILURE;
-    }
-    match write_new(root, &slug, opts) {
-        Ok(written) => {
-            for f in &written {
-                log::built(&f.display().to_string());
-            }
-            println!("{}", new_next_steps(&written[0]));
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            log::error(&e);
-            ExitCode::FAILURE
-        }
-    }
-}
-
-/// What to do with a freshly scaffolded document.
-fn new_next_steps(written: &Path) -> String {
-    format!("Preview it:\n  taliesin preview {}", written.display())
-}
-
-/// The `new` usage line, printed when a kind/slug is missing and there's no TTY to prompt at.
-/// Derived from `new`'s `--help` synopsis so the two can't drift.
-fn new_usage() -> ExitCode {
-    crate::usage_error("new")
-}
-
-/// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--draft"];
-
-/// Refuse to scaffold into a directory no project encloses.
-///
-/// `new` writes `posts/<slug>/index.tmd` relative to its root, and with no `--dir` that root
-/// is the CWD. Outside a project that produced a page nothing would ever see: no `_site.yml`
-/// means no page walker, so the post is absent from the site, absent from its listing, and
-/// announced with `built …` and exit 0. The only way to notice was to look at the
-/// filesystem.
-///
-/// It is the sequence the tool teaches itself that walked into it. `init myblog` leaves the
-/// author in the parent, and the homepage `init` writes says "Scaffold a dated post with
-/// `taliesin new post my-first-post`" — so the second command a new user types wrote its
-/// output beside the project it was meant for.
-///
-/// **No `--force`.** The escape hatch is `--dir`, which already exists and already means
-/// "scaffold here, I mean it"; a second knob for the same job is what the near-perfect-
-/// default rule forbids.
-fn refuse_scaffold_outside_a_project(root: &Path, slug: &str) -> Result<(), String> {
-    if taliesin_core::site::enclosing_site_root(root).is_some() {
-        return Ok(());
-    }
-    // Show the directory as the author sees it, not as `.`: canonicalize when we can, and
-    // fall back to what was typed when we cannot (a CWD that was deleted out from under us).
-    let shown = root
-        .canonicalize()
-        .unwrap_or_else(|_| root.to_path_buf())
-        .display()
-        .to_string();
-    let label1 = "to scaffold into an existing project:";
-    let label2 = "to start one here:";
-    let width = label1.chars().count().max(label2.chars().count());
-    // Same two-way shape `build`/`preview` print for the same mistake
-    // (`serve::not_a_project_error`), and hung under `log`'s 10-column tag gutter for the
-    // same reason: a multi-line error should read as one block.
-    let body = format!(
-        "{shown} has no _site.yml, so it is not a project.\n\
-         {label1:<width$} taliesin new post {slug} --dir <project>\n\
-         {label2:<width$} taliesin init"
-    );
-    Err(body.replace('\n', "\n          "))
-}
-
-/// Write the scaffold under `root`, refusing to overwrite any existing target before
-/// writing any of them (so a partial scaffold never lands on the author's work).
-fn write_new(root: &Path, slug: &str, opts: NewOpts) -> Result<Vec<PathBuf>, String> {
-    write_scaffold(root, &new_files(slug, &today_utc(), opts))
 }
 
 /// Parse the optional `[port]` positional: absent -> the 4321 default; a present but
@@ -641,9 +414,24 @@ mod tests {
 
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
+        let post = dir.join("posts").join("my-first-post").join("index.tmd");
         assert!(site_yml.exists(), "_site.yml written");
         assert!(index.exists(), "index.tmd written");
-        assert_eq!(written, vec![site_yml.clone(), index.clone()]);
+        assert!(post.exists(), "the example post written");
+        assert_eq!(written, vec![site_yml.clone(), index.clone(), post.clone()]);
+
+        // The post is dated, which is what the homepage's `listing:` orders on and what a
+        // feed needs. `{date}` is a placeholder in the const and must not survive into the
+        // file the author opens.
+        let body = fs::read_to_string(&post).unwrap();
+        assert!(
+            body.contains(&format!("date: {}", today_utc())),
+            "the example post carries today's date: {body}"
+        );
+        assert!(
+            !body.contains("{date}"),
+            "placeholder left unfilled: {body}"
+        );
 
         // The scaffold is a real, parseable site whose one page previews.
         let cfg = fs::read_to_string(&site_yml).unwrap();
@@ -677,7 +465,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod new_tests {
+mod date_tests {
     use super::*;
 
     #[test]
@@ -697,55 +485,5 @@ mod new_tests {
         let (y, rest) = t.split_at(4);
         assert!(y.parse::<u32>().unwrap() >= 2024, "got {t}");
         assert!(rest.starts_with('-') && rest[3..4] == *"-", "got {t}");
-    }
-
-    #[test]
-    fn a_slug_becomes_the_title_an_author_would_have_typed() {
-        assert_eq!(title_from_slug("my-first-post"), "My First Post");
-        assert_eq!(title_from_slug("about"), "About");
-        assert_eq!(title_from_slug("pca-2d"), "Pca 2d");
-    }
-
-    #[test]
-    fn a_slug_may_not_escape_the_project_or_carry_a_path() {
-        assert!(validate_slug("my-first-post").is_ok());
-        for bad in ["", "../evil", "a/b", "Upper", "has space", "dot.tmd"] {
-            assert!(validate_slug(bad).is_err(), "`{bad}` must be rejected");
-        }
-    }
-
-    #[test]
-    fn an_unknown_kind_suggests_the_nearest() {
-        assert!(parse_new_kind("post").is_ok());
-        let e = parse_new_kind("pots").unwrap_err();
-        assert!(e.contains("did you mean `post`?"), "got: {e}");
-        let e = parse_new_kind("zzzzzz").unwrap_err();
-        assert!(e.contains("expected post"), "got: {e}");
-    }
-
-    /// A kind this verb used to scaffold answers with what to do instead, never with a
-    /// did-you-mean. Every retired name is far enough from `post` that the distance rule
-    /// declines, which is the silence this register replaces, not a wrong suggestion it
-    /// overrides.
-    #[test]
-    fn a_retired_kind_names_what_to_do_instead() {
-        for (name, note) in RETIRED_NEW_KINDS {
-            assert_eq!(
-                taliesin_core::closest(name, NEW_KINDS),
-                None,
-                "`{name}` is supposed to be out of distance-2 reach of `post`"
-            );
-            assert!(!note.is_empty(), "`{name}` retired with no note");
-            let e = parse_new_kind(name).unwrap_err();
-            assert!(e.contains(name), "the error names the kind typed: {e}");
-            assert!(
-                !e.contains("did you mean"),
-                "the retired note replaces the did-you-mean, it does not follow it: {e}"
-            );
-            assert!(
-                !NEW_KINDS.contains(name),
-                "`{name}` is retired but still offered"
-            );
-        }
     }
 }

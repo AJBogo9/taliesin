@@ -656,8 +656,8 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
 
 /// Flags this tool used to accept, each naming its successor or an explicit "nothing".
 ///
-/// The fourth CLI retirement register, beside `RETIRED_COMMANDS` (verbs) and
-/// `RETIRED_NEW_KINDS` (`new` kinds). It exists for the same reason those do: without an
+/// The CLI's flag register, beside `RETIRED_COMMANDS` (verbs). It exists for the same
+/// reason that one does: without an
 /// entry, a flag the author has in their fingers falls through to the did-you-mean below,
 /// and a retirement answered with "did you mean `--dir`?" sends them to a flag that does
 /// something else. Keyed on the flag alone, not on the verb: an author who types
@@ -696,7 +696,7 @@ pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
 }
 
 /// One wording for a bad `--format` value, shared by every subcommand that takes
-/// `--format`/`--json` (`build`/`doctor`/`init`/`new`) so the same mistake reads
+/// `--format`/`--json` (`build`/`doctor`) so the same mistake reads
 /// identically everywhere. `got` is the offending value, or
 /// `None` when `--format` was given with nothing after it. No `error:` prefix — the caller
 /// frames it exactly like `unknown_flag_error` (raw `eprintln!`, or `log::error` styles it).
