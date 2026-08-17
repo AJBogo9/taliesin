@@ -581,14 +581,58 @@ no hole and "do not cut another feature". Both are the author's own words, so on
 author resolves them. If cut: fold one example post into `init`'s scaffold, add the
 `RETIRED_COMMANDS` entry, delete `new_cli.rs`. If kept: delete this item.
 
-## FD2: retirement-register audience split (defers to S15)
+## FD2: retirement-register audience split (RULED 2026-08-17: prune the private half, keep and reword the external half)
 
-S15 (2026-08-13 queue) already covers this with "keep through 1.0". One refinement from
-this audit if S15 is ever revisited: split entries by audience. Names another tool
-teaches (`format:`, `include-in-header:`, `.panel-tabset`, `serve`, `render`) earn their
-lines from Quarto migrants; names only this private repo's history ever taught (`skim`,
-`read`, `map`, `blocks`, `features`, the three `new` kinds) can never fire for a public
-user arriving at a fresh repo with no history. Do not act ahead of S15.
+The author raised this on 2026-08-17 ("no previous users, so no backwards
+compatibility"), which supersedes S15's "keep everything through 1.0". The premise is
+half right: the registers serve two audiences, and only one is the (empty) set of
+previous Taliesin users. The other is strangers typing vocabulary another tool taught
+them, who exist from day one of the public flip. The full census at `2827c3bb` (92
+entries), classified by "could a stranger ever type this name":
+
+**DELETE (~40, private history, can never fire for a public user):**
+- `RETIRED_COMMANDS`: `blocks`, `symbols`, `skim`, `read`, `map`, `features`, `vocab`,
+  `schema`, `mcp`
+- `RETIRED_KEYS`: `mounts`, `body-start`, `body-end`, `output` (config), `datasets`,
+  `prose-lint`, `fig-export`, hero `image`, hero `image-alt`, `venue`, `award`,
+  `links`, `theorems` (both scopes), config `r`, config `publish`, `acknowledgments`/
+  `acknowledgements` (judgment: plausible scholarly guess, lean delete)
+- `RETIRED_DIV_CLASSES`: `code-walkthrough`, `scrolly`, `step`, `fade-out`,
+  `highlight`, `debug`, `magic-move`, `sidenote`, `marginnote` (the last two are
+  tufte-css vocabulary, judgment, lean delete). Deleting an open-vocabulary class
+  entry is a true no-op for strangers: the class becomes CSS passthrough, correct for
+  a name that never did anything here.
+- `RETIRED_FLAGS`: `--bare`. `RETIRED_CELL_LANGS`: `glsl`, `pyodide` (judgment: a
+  quarto-live extension uses the name, lean delete).
+- `RETIRED_NEW_KINDS`: all three, resolved together with FD1 either way.
+
+**KEEP (~45, another tool's vocabulary, will fire for real newcomers):**
+- Quarto front-matter/config/cell vocabulary: `format`, `css` (both scopes),
+  `include-in-header`, `include-before-body`, `include-after-body`, execute `echo`,
+  execute `include`, config `toc`, `about`, `doi`, listing `sort`, listing
+  `categories`, callout `important`, `caution`, `appearance`, `icon`, input `range`,
+  cell option `code-line-numbers`, `footer`, `logo`, shortcode `video`, cell lang `r`
+- Quarto/reveal div classes: `theorem`, `lemma`, `corollary`, `definition`, `proof`,
+  `example`, `proposition`, `remark`, `panel-tabset`, `columns`, `column`,
+  `column-screen`, `aside`, `fragment`, `incremental`, `notes`
+- Guessable verbs: `render`, `serve`, `dev`, `publish`, `check`, `pdf` (the HTML-only
+  positioning answer, delivered at the moment of the ask), `run`, `completions`
+  (judgment, lean keep)
+- `--host` (every dev server has one; the note carries the loopback-only stance)
+
+**Plus a reword pass on the keep-set:** the notes read "it was removed on <date>",
+history a stranger does not share. Reword to the stranger's answer ("Taliesin renders
+HTML only; there is no `format:` key: ..."), same one-line register mechanism. Registers
+stay; `every_retired_vocabulary_name_is_gone_unstyled_and_diagnosed_without_a_did_you_mean`
+derives the checks either way. Parser-side behavior pins whose key survives
+(`a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed`) stay; a behavior pin for
+a DELETED entry's key is re-checked: the read must already be gone, then the pin can go
+with the entry.
+
+- Done when: the delete-list entries are gone (each is one register line, per the
+  retirement rule); the keep-list notes read as answers, not tombstones; record the
+  ruling in DO-NOT-REBUILD.md so S15's superseded recommendation is not re-applied.
+- Effort: S-M (mechanical deletes; the reword is the judgment half).
 
 ## FD3: the first-run execution notice (revisits a shipped 2026-07-29 decision)
 
