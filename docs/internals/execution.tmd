@@ -259,10 +259,13 @@ messages parented by that request, namely `stream` (stdout/stderr), `execute_res
 `display_data`, and `error`, until the kernel returns to `idle`.
 
 A **silence cap** (`TALIESIN_CELL_SILENCE`, default 600s) guards a wedged cell. It
-measures the gap since the last iopub message, not total runtime, so the budget
-resets on every line the cell prints: a forty-minute training run that logs an epoch
-line is alive, while a cell that has said nothing for ten minutes is the real
-runaway. An optional **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available
+measures the gap since the last iopub message **this cell's request is the parent
+of**, not total runtime, so the budget resets on every line the cell prints: a
+forty-minute training run that logs an epoch line is alive, while a cell that has
+said nothing for ten minutes is the real runaway. The parent header is load-bearing,
+not a detail: iopub is a broadcast channel, so a background thread an earlier cell
+left running keeps publishing under *its* parent header, and counting that as this
+cell's output would disarm the cap for the one cell it exists to govern. An optional **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available
 but **off by default**, since bounding total runtime is a cost decision, not a safety
 one.
 
@@ -273,14 +276,19 @@ why removing the wall-clock default costs no protection. On hit, `execute`
 SIGINTs the kernel (the `interrupt_mode: signal` path, which surfaces as a
 `KeyboardInterrupt` inside the cell) and then drains a short **grace window** (5s) so
 the resulting interrupt error and the trailing `idle` arrive and the channels resync,
-leaving the warm kernel usable for the *next* cell. If the kernel ignores SIGINT
-within the grace window, `execute` gives up on that message and returns what it has.
-The same interrupt-then-grace path also fires when the output caps trip
+leaving the warm kernel usable for the *next* cell. SIGINT is a request, though: a
+cell that installs its own handler, or sits in a C extension that never checks
+signals, outlives it. When a liveness cap's grace window runs out with the cell still
+not idle, `execute` stops waiting and **says so** — the page gets an
+`InterruptIgnored` output (the cell is still running inside the warm kernel, and
+nothing short of a restart reclaims it) and the console gets that kernel's pid, which
+is deliberately kept out of the page so two builds of one document cannot differ by a
+pid. The same interrupt-then-grace path also fires when the output caps trip
 (512 KB of stream text or 4096 output items), so a megabyte-spewing cell stops
-flooding the reader rather than being read and discarded. Setting the cap to `0`
-disables the wall-clock limit, but a per-output silent-hang backstop (60s with no new
-output) still ends a wait that would otherwise hang forever. `Drop` kills the child
-and removes the connection dir.
+flooding the reader rather than being read and discarded; there an expiring window is
+the wanted outcome, since the kernel has stopped talking. Setting either cap to `0`
+disables it, and with both off a silent cell is bounded by nothing but the kernel's
+own life. `Drop` kills the child and removes the connection dir.
 
 ## From a kernel message to HTML
 

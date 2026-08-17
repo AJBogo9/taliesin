@@ -12,10 +12,10 @@ against the release binary before filing them. Findings that got neither check a
 **[U]** and start with a verification step. Full structured findings: the audit session's
 scratchpad `audit-full.json` (not committed; this file supersedes it).
 
-**Landed 2026-08-17**, in eight commits, each with `./tools/gates.sh` green before and
-after: FA1, FA2, FA3, FA5, FA6, FA7, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18, FA19,
-FA24, FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus all
-four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
+**Landed 2026-08-17**, each with `./tools/gates.sh` green before and
+after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18,
+FA19, FA24, FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
+all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
 
@@ -86,22 +86,6 @@ the author's call (billing on a private repo is why it is off).
 - Done when: a rehearsal run of ci.yml and release.yml (a throwaway fork, or a scratch tag
   once the repo is public; a `workflow_dispatch` trigger makes this cheap) has completed
   once with its logs read.
-- Effort: M.
-
-# BATCH F3: execution and freeze integrity
-
-## FA8 [A] the silence cap is reset by iopub traffic from other cells, and an ignored SIGINT leaves a runaway running
-
-Two halves (`exec.rs`/`kernel.rs`, grep `TALIESIN_CELL_SILENCE`): the silence window is
-re-armed by any iopub output rather than output attributed to the executing cell's parent
-header, so one chatty cell disarms the cap for a silent runaway later in the run; and the
-SIGINT path has no escalation if the kernel ignores it.
-
-- Fix: scope the silence window to the executing cell's `parent_header.msg_id`; on an
-  ignored SIGINT (cap fires twice), surface a diagnostic naming the pid instead of
-  waiting forever.
-- Done when: kernel-gated test (the `TALIESIN_REQUIRE_KERNEL` lane) with a two-cell doc:
-  chatty cell then silent `sleep`; assert interruption fires.
 - Effort: M.
 
 # BATCH F5: string surgery over finished HTML (three of four fixed)

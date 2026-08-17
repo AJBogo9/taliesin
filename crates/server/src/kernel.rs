@@ -95,6 +95,16 @@ fn silence_timeout() -> Option<Duration> {
     })
 }
 
+/// How long a cell gets to answer an interrupt before the loop stops waiting on it: long
+/// enough for the `KeyboardInterrupt` + `Idle` that resync the channels, short enough that
+/// a cell which will never answer does not hold the page.
+///
+/// One constant for both interrupt sites, but they read its expiry differently. A cell the
+/// **flood cap** interrupted is still talking, so a window that runs dry is the wanted
+/// outcome. A cell a **liveness cap** interrupted has already gone quiet, so a window that
+/// runs out means SIGINT was not honoured — see [`Output::interrupt_ignored`].
+const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+
 /// How long to wait before the next liveness check, and which cap owns that
 /// budget. A zero budget means that cap has expired. `Duration::MAX` with
 /// [`CapKind::None`] means neither cap is armed, so the cell runs until it
@@ -541,6 +551,27 @@ impl Output {
         }
     }
 
+    /// A liveness cap interrupted the cell and the cell **did not stop**: it outlived
+    /// [`INTERRUPT_GRACE`] without reaching Idle, so it is still running inside the warm
+    /// kernel and every later cell queues behind it. SIGINT is a request (a cell may
+    /// install its own handler, or sit in a C extension that never checks signals), and
+    /// there is no second signal that stops the cell without killing the kernel — so this
+    /// says what happened instead of letting it read as a plain cap expiry.
+    ///
+    /// **Carries no pid**, though the pid is the one thing an operator wants: this string
+    /// is rendered into the built page, and a pid there makes two builds of the same
+    /// document differ. The pid goes to the console beside this, where no reader sees it.
+    pub(crate) fn interrupt_ignored() -> Self {
+        Output::Error {
+            ename: "InterruptIgnored".into(),
+            evalue: "cell ignored the interrupt and is still running in the kernel; restart \
+                     the kernel to reclaim it"
+                .into(),
+            traceback: vec![],
+            not_run: Some(crate::exec::NOT_RUN_TIMEOUT),
+        }
+    }
+
     /// The kernel process exited while this cell was in flight.
     pub(crate) fn kernel_died() -> Self {
         Output::Error {
@@ -862,8 +893,12 @@ impl Kernel {
         let wall = self.cell_cap;
         let silence = self.silence_cap;
         let started = Instant::now();
+        // Set when we have interrupted and are draining the resulting KeyboardInterrupt +
+        // Idle. `grace_after_cap` records which of the two interrupt sites put us here,
+        // because they read the window's expiry differently (see [`INTERRUPT_GRACE`]).
         let mut grace_until: Option<Instant> = None;
-        // Last time any iopub message arrived: the silence cap measures from here, so it
+        let mut grace_after_cap = false;
+        // Last time THIS cell produced output: the silence cap measures from here, so it
         // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
         // How many outputs have been handed to `on_output`. Flushed at the top of
@@ -887,16 +922,29 @@ impl Kernel {
                     silence,
                 ),
             };
+            // A cap's grace window ran out with this cell still not Idle: the interrupt was
+            // not honoured. The cell is STILL RUNNING in the warm kernel — nothing else this
+            // process can send stops it without killing the kernel — so report that and stop
+            // waiting, rather than dropping out silently as if the cap had done its job. The
+            // pid goes to the console (an operator can act on it) and not into the page (two
+            // builds of one document must not differ by a pid).
+            if grace_after_cap && budget.is_zero() {
+                if let Some(pid) = self.running_pid() {
+                    crate::log::warn(&format!(
+                        "kernel (pid {pid}) ignored the interrupt: a cell is still running \
+                         there. Restart the kernel, or kill that process."
+                    ));
+                }
+                outputs.push(Output::interrupt_ignored());
+                break;
+            }
             // Poll on a short interval (capped at the budget) so a kernel that EXITS
             // mid-cell is noticed within ~1s and reported as a distinct `KernelDied`,
             // instead of blocking the full budget and then mislabeling the crash as
             // "Timeout" (and interrupting a corpse). A healthy long cell just re-polls.
             let poll = budget.min(Duration::from_secs(1));
             let msg = match timeout(poll, self.iopub.read()).await {
-                Ok(Ok(msg)) => {
-                    last_msg = Instant::now();
-                    msg
-                }
+                Ok(Ok(msg)) => msg,
                 Ok(Err(e)) => return Err(io::Error::other(e)),
                 Err(_) => {
                     // No output this interval. Did the kernel process die?
@@ -909,9 +957,10 @@ impl Kernel {
                         continue;
                     }
                     if grace_until.is_some() {
-                        // Ignored SIGINT within the grace window; give up on this cell. The
-                        // channels may be desynced — the dev-menu "Restart kernel" is the
-                        // escape hatch.
+                        // The flood cap's grace window ran dry: the kernel has stopped
+                        // flooding us, which is what the interrupt was for. (A *liveness*
+                        // cap's window expiring is handled at the top of the loop, where a
+                        // quiet window means the interrupt was ignored.)
                         break;
                     }
                     // A cap expired. Both paths interrupt: a wedged cell must actually be
@@ -931,7 +980,8 @@ impl Kernel {
                     };
                     self.interrupt();
                     outputs.push(Output::timeout(note));
-                    grace_until = Some(Instant::now() + Duration::from_secs(5));
+                    grace_until = Some(Instant::now() + INTERRUPT_GRACE);
+                    grace_after_cap = true;
                     continue;
                 }
             };
@@ -940,6 +990,13 @@ impl Kernel {
             if !ours {
                 continue;
             }
+            // Re-arm the silence window HERE, past that filter, not on every read. iopub is
+            // a BROADCAST channel: a background thread an earlier cell left running, or a
+            // runaway this loop already gave up on, keeps publishing under its own parent
+            // header. Counting that traffic as this cell's output disarms the cap for the
+            // one cell it exists to govern, and the silent runaway then runs forever —
+            // nothing else stops it, since the wall-clock cap is off by default (FA8).
+            last_msg = Instant::now();
             // Past the item cap, stop accumulating (but keep draining): emit one
             // marker. Only an *output-producing* message trips this — not an Error or
             // the terminal Idle Status — so a cell that emits exactly MAX_OUTPUTS items
@@ -1019,7 +1076,7 @@ impl Kernel {
             // window for the resulting KeyboardInterrupt + Idle and stop.
             if capped && grace_until.is_none() {
                 self.interrupt();
-                grace_until = Some(Instant::now() + Duration::from_secs(5));
+                grace_until = Some(Instant::now() + INTERRUPT_GRACE);
             }
         }
         // Anything pushed on the way out (a cap's notice, `kernel_died`) still reaches
@@ -1819,6 +1876,126 @@ mod tests {
             assert!(
                 after.contains("alive 42"),
                 "kernel did not recover after a silence interrupt: {after}"
+            );
+        });
+    }
+
+    // FA8, first half: iopub is a BROADCAST channel, so output parented to an EARLIER
+    // cell keeps arriving while this one runs — from a background thread it left behind,
+    // or from a runaway the loop gave up on. Re-arming the silence window on that traffic
+    // disarms the cap for the cell it is supposed to govern, and the silent runaway then
+    // runs forever (the wall-clock cap is off by default, so nothing else stops it).
+    //
+    // The chatty thread runs under a `contextvars.copy_context()` captured DURING cell 1,
+    // which is what pins its output to cell 1's parent header: ipykernel's `OutStream`
+    // keeps the parent header in a `ContextVar` and reads it in `write()`, on the writing
+    // thread. Without the copied context a plain thread falls back to the global header —
+    // i.e. whichever cell is current — and there would be nothing to test.
+    #[test]
+    fn output_parented_to_an_earlier_cell_does_not_re_arm_the_silence_cap() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the cell caps.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(1));
+
+            // Cell 1 finishes immediately, leaving a thread that prints every 100 ms under
+            // cell 1's parent header for the next minute.
+            let first = render_outputs(
+                &k.execute(
+                    "import threading, time, contextvars\n\
+                     ctx = contextvars.copy_context()\n\
+                     def chat():\n    \
+                         for _ in range(600):\n        \
+                             print('tick', flush=True); time.sleep(0.1)\n\
+                     threading.Thread(target=lambda: ctx.run(chat), daemon=True).start()\n\
+                     print('started')",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(first.contains("started"), "cell 1 did not run: {first}");
+
+            // Cell 2 says nothing at all. Its 1s silence cap must fire on schedule even
+            // though the kernel is emitting a line every 100 ms the whole time.
+            let t = std::time::Instant::now();
+            let quiet = render_outputs(&k.execute("import time\ntime.sleep(60)").await.unwrap());
+            assert!(
+                quiet.contains("no output for 1s"),
+                "a silent cell outlived its silence cap while ANOTHER cell's output kept \
+                 arriving: the window is being re-armed by traffic that is not this cell's \
+                 (FA8): {quiet}"
+            );
+            assert!(
+                t.elapsed() < Duration::from_secs(20),
+                "silent cell ran {:?}, far past its 1s budget",
+                t.elapsed()
+            );
+        });
+    }
+
+    // FA8, second half: SIGINT is a request, not a guarantee. A cell that installs its own
+    // handler (or sits in a C extension that never checks signals) outlives the interrupt,
+    // and the loop then drops out of the grace window — which used to be SILENT, leaving a
+    // page that says "timeout" while the runaway still owns the warm kernel and every later
+    // cell queues behind it. Say so instead, and put the pid on the console.
+    #[test]
+    fn an_ignored_interrupt_is_reported_rather_than_read_as_a_plain_timeout() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the cell caps.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(1));
+
+            let t = std::time::Instant::now();
+            let out = render_outputs(
+                &k.execute(
+                    "import signal, time\n\
+                     signal.signal(signal.SIGINT, lambda *a: None)\n\
+                     time.sleep(120)",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                out.contains("no output for 1s"),
+                "the silence cap did not fire: {out}"
+            );
+            assert!(
+                out.contains("still running"),
+                "the interrupt was swallowed and the cell is still running in the kernel, \
+                 but the page says only that a cap fired (FA8): {out}"
+            );
+            // The cap (1s) plus the grace window plus the shell drain, and no longer: the
+            // point of the escalation is that it does not wait on a cell that will not stop.
+            assert!(
+                t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(15),
+                "the loop waited {:?} on a cell that ignored its interrupt",
+                t.elapsed()
             );
         });
     }

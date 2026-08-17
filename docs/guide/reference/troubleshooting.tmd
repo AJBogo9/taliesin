@@ -59,6 +59,13 @@ To bound a cell's *total* runtime regardless of output, set the optional
 `TALIESIN_CELL_TIMEOUT` (wall-clock seconds, off by default). The dev menu's
 **Restart kernel** drops and respawns the kernel if it's truly wedged.
 
+A cell can also *refuse* the interrupt, by installing its own SIGINT handler or by
+sitting inside a C extension that never checks for signals. The page then says
+**"cell ignored the interrupt and is still running in the kernel"**: the cell is
+occupying the warm kernel, every later cell queues behind it, and **Restart kernel**
+(or killing the interpreter, whose pid the server prints to the console) is what
+reclaims it.
+
 ## A cell ran, but I think the kernel crashed
 
 If a kernel process dies mid-session (a segfault in a native library, an
