@@ -254,6 +254,15 @@ client connections. `start()`:
    restyles inline figures to follow the page (lazily, the first time a cell uses
    matplotlib).
 
+A preamble that fails is **not** fatal — the kernel runs cells perfectly well without
+the bridge — but it is no longer silent either. That is several hundred lines of
+version-sensitive Python running against whatever interpreter you pointed the server at,
+and its failure surfaces cells later wearing a disguise: a `NameError` on `define`, or
+figures that quietly stop matching the page. So each preamble declares **what is lost if
+it does not run**, and a preamble that raises (or reports on stderr, which is how the
+matplotlib hook flags a failure it has to catch itself) prints one console line naming
+the interpreter, the error and the casualty.
+
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
 `display_data`, and `error`, until the kernel returns to `idle`.

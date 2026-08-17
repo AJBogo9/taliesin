@@ -14,7 +14,7 @@ scratchpad `audit-full.json` (not committed; this file supersedes it).
 
 **Landed 2026-08-17**, each with `./tools/gates.sh` green before and
 after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18,
-FA19, FA24, FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
+FA19, FA24, FA25, FA26, FA27, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
 all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
@@ -197,19 +197,6 @@ mechanism.
 - Done when: a committed instrument carries the project-scale save number either way
   (the numbers rule: no uninstrumented claims).
 - Effort: verify S-M, fix M.
-
-# BATCH F10: release hygiene
-
-## FA27 [A] kernel startup preamble failures are silent
-
-~270 lines of version-sensitive Python are embedded in `kernel.rs`; if the preamble
-fails on a future Python, the error is swallowed and cells misbehave downstream with no
-pointer to the cause.
-
-- Fix: surface a preamble stderr/exception as a located "kernel preamble failed"
-  diagnostic naming the interpreter.
-- Done when: kernel-gated test with a poisoned preamble asserts the diagnostic.
-- Effort: S-M.
 
 # BATCH F11: the committed-design residue
 

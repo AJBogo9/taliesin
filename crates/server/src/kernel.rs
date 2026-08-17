@@ -455,9 +455,27 @@ try:
                     pass
 
         _ip.events.register('pre_run_cell', _tali_pre)
-except Exception:
-    pass
+except Exception as _e:
+    # Caught, because a kernel that cannot theme a figure must still run cells — but
+    # SAID, on stderr, because the alternative is a `pass` that turns "this Python
+    # broke our hook" into "your figures stopped matching the page" months later
+    # (FA27). The Rust side reads this line back and names it on the console.
+    import sys as _sys
+    print('theme hook not installed:', _e, file=_sys.stderr)
 "#;
+
+/// One block of startup code, plus **what the author loses if it does not run**.
+///
+/// The second field is the whole reason this is a struct and not a bare `&str`. A
+/// preamble that fails leaves the kernel perfectly usable and one feature silently
+/// absent, so the symptom arrives cells later and wearing a disguise: a `NameError` on
+/// `define`, or figures that quietly stop matching the page. Naming the casualty at the
+/// moment of failure is what turns that into a pointer (FA27).
+struct Preamble {
+    /// What stops working, as a sentence that completes "…, so …".
+    provides: &'static str,
+    code: &'static str,
+}
 
 /// How to launch a Jupyter kernel for one language. The ZMQ protocol is
 /// language-agnostic, so only the spawn command, the kernel-spec name, and any
@@ -472,7 +490,7 @@ pub struct KernelSpec {
     argv: fn(&Path) -> Vec<String>,
     /// Code run once at startup (the Python->JS `define` bridge + matplotlib theme
     /// for Python; nothing for R yet).
-    preambles: &'static [&'static str],
+    preambles: &'static [Preamble],
 }
 
 impl KernelSpec {
@@ -503,7 +521,18 @@ impl KernelSpec {
                     format!("--IPKernelApp.parent_handle={}", std::process::id()),
                 ]
             },
-            preambles: &[OJS_DEFINE_PREAMBLE, MPL_THEME_PREAMBLE],
+            preambles: &[
+                Preamble {
+                    provides: "`define(...)` will not exist, so every `{js}` cell reading a \
+                               Python value fails",
+                    code: OJS_DEFINE_PREAMBLE,
+                },
+                Preamble {
+                    provides: "inline matplotlib figures will not follow the page's light/dark \
+                               palette",
+                    code: MPL_THEME_PREAMBLE,
+                },
+            ],
         }
     }
 }
@@ -618,6 +647,50 @@ pub(crate) fn start_error_is_transient(msg: &str) -> bool {
     !(m.contains("cannot launch") // spawn failed: the interpreter binary is missing
         || m.contains("no such file") // ditto (the OS error for a missing program)
         || m.contains("no module named")) // the kernel module (ipykernel/IRkernel) is absent
+}
+
+/// Run a spec's startup preambles against a live kernel and return one console line per
+/// preamble that did not run clean (empty when they all did).
+///
+/// Separate from [`Kernel::finish`], which only logs what comes back, so the detection is
+/// reachable from a test with a deliberately poisoned preamble: a rule about a failure
+/// nobody has ever seen fail is worth exactly what it is exercised by.
+async fn run_preambles(kernel: &mut Kernel, spec: &KernelSpec) -> Vec<String> {
+    let mut problems = Vec::new();
+    for preamble in spec.preambles {
+        let outcome = kernel.execute(preamble.code).await;
+        let detail = match &outcome {
+            Err(e) => Some(e.to_string()),
+            Ok(outputs) => outputs.iter().find_map(preamble_failure),
+        };
+        if let Some(detail) = detail {
+            problems.push(format!(
+                "kernel preamble failed on `{}` ({detail}), so {}",
+                spec.program.display(),
+                preamble.provides
+            ));
+        }
+    }
+    problems
+}
+
+/// What a preamble output says went wrong, or `None` for an output that is fine.
+///
+/// Two shapes count, because the ~270 lines of version-sensitive Python have two ways to
+/// break: an exception the interpreter raises out (the `define` bridge is unguarded, so a
+/// future syntax or API change lands here), and a line on **stderr**, which is how the
+/// matplotlib preamble reports a failure it has to catch itself — it must not abort the
+/// hook registration around it. Ordinary output is not a failure: a preamble that printed
+/// something would otherwise cry wolf at every kernel start.
+fn preamble_failure(out: &Output) -> Option<String> {
+    match out {
+        Output::Error { ename, evalue, .. } => Some(format!("{ename}: {evalue}")),
+        Output::Stream { stderr: true, text } => {
+            let line = text.lines().find(|l| !l.trim().is_empty())?;
+            Some(line.trim().to_string())
+        }
+        _ => None,
+    }
 }
 
 /// The error for a kernel process that exited during startup: read its stderr
@@ -833,9 +906,11 @@ impl Kernel {
             silence_cap: silence_timeout(),
         };
         // Language-specific startup (e.g. Python's `define` bridge + matplotlib theme);
-        // each preamble runs once against the warm kernel.
-        for preamble in spec.preambles {
-            let _ = kernel.execute(preamble).await;
+        // each preamble runs once against the warm kernel. A failure here is NOT fatal —
+        // the kernel runs cells perfectly well without the `define` bridge — but it must
+        // not be silent either, which it was until FA27.
+        for problem in run_preambles(&mut kernel, spec).await {
+            crate::log::warn(&problem);
         }
         Ok(kernel)
     }
@@ -1996,6 +2071,85 @@ mod tests {
                 t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(15),
                 "the loop waited {:?} on a cell that ignored its interrupt",
                 t.elapsed()
+            );
+        });
+    }
+
+    // FA27: the startup preambles are ~270 lines of version-sensitive Python run against
+    // whatever interpreter the author points us at, and their failure used to be dropped
+    // on the floor (`let _ = kernel.execute(...)`). The author then met the symptom cells
+    // later — a `NameError` on `define`, or figures that stopped matching the page — with
+    // nothing linking it to startup. A poisoned preamble stands in for the future Python
+    // that breaks a real one.
+    #[test]
+    fn a_failing_startup_preamble_names_the_interpreter_and_what_broke() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the preambles.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+
+            // The shipped preambles run clean on this interpreter: the check must not be
+            // one that fires on a healthy start.
+            let healthy = run_preambles(&mut k, &KernelSpec::python(&py)).await;
+            assert!(
+                healthy.is_empty(),
+                "the shipped preambles reported a problem on a working interpreter: {healthy:?}"
+            );
+
+            // Both ways a preamble breaks: raising out (the `define` bridge is unguarded)
+            // and reporting on stderr (the matplotlib hook catches its own failure so the
+            // rest of the kernel survives).
+            let mut poisoned = KernelSpec::python(&py);
+            poisoned.preambles = &[
+                Preamble {
+                    provides: "the bridge is gone",
+                    code: "raise RuntimeError('poisoned preamble')",
+                },
+                Preamble {
+                    provides: "the hook is gone",
+                    code: "import sys; print('theme hook not installed: nope', file=sys.stderr)",
+                },
+            ];
+            let problems = run_preambles(&mut k, &poisoned).await;
+            assert_eq!(
+                problems.len(),
+                2,
+                "both failure shapes report: {problems:?}"
+            );
+            assert!(
+                problems[0].contains("poisoned preamble")
+                    && problems[0].contains(&py.display().to_string())
+                    && problems[0].contains("the bridge is gone"),
+                "an exception must name the interpreter, the error and the casualty: {}",
+                problems[0]
+            );
+            assert!(
+                problems[1].contains("theme hook not installed")
+                    && problems[1].contains("the hook is gone"),
+                "a stderr report must be read back the same way: {}",
+                problems[1]
+            );
+
+            // A preamble that merely prints is not a failure.
+            let mut chatty = KernelSpec::python(&py);
+            chatty.preambles = &[Preamble {
+                provides: "nothing",
+                code: "print('hello from a preamble')",
+            }];
+            assert!(
+                run_preambles(&mut k, &chatty).await.is_empty(),
+                "ordinary preamble output must not be reported as a failure"
             );
         });
     }
