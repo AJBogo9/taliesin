@@ -58,17 +58,21 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)
     figure.rs        numbered figures + captions
     extension/       shortcode expansion: `{{< input >}}` (the only one that expands
-                     here; `{{< include >}}` is resolved a pass earlier). NOT
-                     `_extensions/`, which is a theme-CSS lookup in `theme.rs` and
-                     nothing else: there is no format-extension mechanism and no
-                     `format:` key — HTML is the only output
-    theme.rs         `--tali-*` CSS-variable themes (light/dark, extension themes) +
-                     `theme_head`, the pre-paint script. **Which palette paints is the
-                     reader's DEVICE and nothing else**: `theme_head()` takes NO
-                     argument, which makes that structural rather than a promise each
-                     call site keeps. Both palettes always ship; `html[data-theme]`
-                     selects one at paint, and `tali-theme`/`tali:themechange` survive
-                     only for the preview dev menu's toggle, never in a build
+                     here; `{{< include >}}` is resolved a pass earlier). There is no
+                     format-extension mechanism and no `format:` key — HTML is the only
+                     output. `_extensions/` was a theme-CSS lookup and nothing else, so
+                     it went with `theme:` on 2026-08-17 and no longer exists
+    theme.rs         `theme_head`, the pre-paint script, and NOTHING ELSE. **Which
+                     palette paints is the reader's DEVICE and nothing else**:
+                     `theme_head()` takes NO argument, which makes that structural
+                     rather than a promise each call site keeps. Both palettes always
+                     ship; `html[data-theme]` selects one at paint. **There is no author
+                     theme control at all** — the `theme:` key was CUT 2026-08-17 (a
+                     custom theme's `:root` was outranked by the dark palette's
+                     `html[data-theme="dark"]`, so it applied in light only for the 17
+                     tokens dark re-declares and in both modes for the other 28, silently
+                     either way). `tali-theme`/`tali:themechange` survive only for the
+                     preview dev menu's READER-side toggle, never in a build
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
                      favicon): RenderedDoc → standalone page for build + in-process render
   src/diff.rs      block-level diff (BlockOp) for incremental updates

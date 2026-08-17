@@ -53,7 +53,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("image", "Social-card and listing thumbnail image path."),
         ("image-alt", "Alt text for `image`."),
-        ("theme", "Named theme or theme overrides."),
         ("page-layout", "Page width and layout mode."),
         (
             "draft",
@@ -308,20 +307,6 @@ fn xref_prefixes() -> Value {
     )
 }
 
-/// Suggested VALUES for the front-matter keys that have a small, useful closed set, as
-/// `key -> [{name, description}]`. This is a completion aid, not a validated gate: a
-/// `theme:` may instead name an extension theme or a CSS file. Sourced from the recognizer
-/// so it can't drift from behaviour: `render::theme::resolve_theme` (the
-/// `dark`/`light`/`default` built-ins).
-fn frontmatter_value_vocab() -> Value {
-    json!({
-        "theme": [
-            { "name": "dark", "description": "Built-in dark theme." },
-            { "name": "light", "description": "Built-in light theme." },
-        ],
-    })
-}
-
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
     use crate::frontmatter::{
@@ -356,7 +341,6 @@ pub fn vocab() -> Value {
         "divAttributes": div_attributes(),
         "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
         "xrefPrefixes": xref_prefixes(),
-        "frontmatterValues": frontmatter_value_vocab(),
         // The one vocabulary taliesin does not own the grammar of. It is authoritative
         // anyway because KaTeX is IN the binary: `math_vocab`'s `every_command_renders`
         // renders each entry through `crate::math`, so an offered command that KaTeX
@@ -408,28 +392,6 @@ mod tests {
         check_named(&v["calloutKinds"], "calloutKinds");
         check_named(&v["divClasses"], "divClasses");
         check_named(&v["divAttributes"], "divAttributes");
-        check_named(&v["frontmatterValues"]["theme"], "frontmatterValues.theme");
-    }
-
-    /// The value vocab is a completion aid keyed by front-matter key. Pin its content (not
-    /// just via the golden file, which a bless could empty): `theme` must offer both
-    /// built-ins, mirroring `resolve_theme`. Removing a value fails here.
-    #[test]
-    fn frontmatter_values_offer_the_built_in_themes() {
-        let v = vocab();
-        let names = |k: &str| {
-            v["frontmatterValues"][k]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|e| e["name"].as_str().unwrap().to_string())
-                .collect::<Vec<_>>()
-        };
-        let theme = names("theme");
-        assert!(
-            theme.contains(&"dark".to_string()) && theme.contains(&"light".to_string()),
-            "theme values must offer dark + light: {theme:?}"
-        );
     }
 
     /// The reverse of `descriptions_present`: every entry in `frontmatter_key_descriptions`

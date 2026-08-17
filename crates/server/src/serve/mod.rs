@@ -865,13 +865,6 @@ mod protocol_contract {
     }
 
     #[test]
-    fn style_message_carries_css_for_hot_swap() {
-        let m = parse(protocol::style(":root{--tali-accent:#f00}"));
-        assert_eq!(m["type"], "style");
-        assert_eq!(m["css"], ":root{--tali-accent:#f00}");
-    }
-
-    #[test]
     fn located_diagnostic_serializes_file_line_and_frame() {
         let d = Diagnostic::error("bad yaml")
             .at(None, 3)

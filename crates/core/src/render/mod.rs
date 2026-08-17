@@ -100,8 +100,7 @@ mod text;
 pub(crate) use text::indexable_text;
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
-pub(crate) use theme::theme_head;
-mod page;
+pub(crate) mod page;
 use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
@@ -110,7 +109,7 @@ pub use page::{
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
-use theme::{detect_theme, resolve_theme, theme_style};
+use theme::theme_head;
 
 /// Render a `.tmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
@@ -506,7 +505,6 @@ fn render_internal_impl(
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
     // but skips the visible `<h1>` header (nav landing pages don't need it).
     let mut hide_title_block = false;
-    let mut theme: Option<String> = None;
     let mut bib_paths: Vec<String> = Vec::new();
     // Populated only by a project's `_site.yml head:` (merged in by `site::page_chrome`) and
     // by the chrome's own draft banner; a document's front matter has had no include keys
@@ -689,7 +687,6 @@ fn render_internal_impl(
                 bib_paths = bibliography_paths(fm);
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
-                theme = detect_theme(fm);
                 exec_cache = detect_execute_cache(fm);
                 continue;
             }
@@ -1322,8 +1319,6 @@ fn render_internal_impl(
     // LAST over the block list: every block that will ever be in the document is in it
     // by now (References, footnotes, the title block), so a section's end is final.
     mark_section_extents(&mut blocks);
-    let theme_css = resolve_theme(theme.as_deref(), base_dir, include_root, &mut warnings);
-    let theme_is_custom = !theme_css.trim().is_empty();
     RenderedDoc {
         title,
         subtitle,
@@ -1334,8 +1329,6 @@ fn render_internal_impl(
         // path overrides this via `page_toc` using `toc_explicit`.
         toc: toc_explicit.unwrap_or(false),
         toc_explicit,
-        theme_css,
-        theme_is_custom,
         includes,
         warnings,
         xref_numbers: xref_registry,

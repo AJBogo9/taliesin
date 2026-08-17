@@ -1854,31 +1854,24 @@ fn a_standalone_page_minifies_the_css_it_inlines() {
 }
 
 #[test]
-fn a_retired_theme_mode_cannot_still_force_the_page() {
-    // `theme:` stays live for `.css` files and `_extensions/` bundles, so what retired here
-    // is two of its VALUES — which no register models, since all three key on the key and
-    // not on the value. That leaves the half a register could never derive: the parser
-    // still honouring the value. `listing: sort:` answered "deleted" for eleven days while
-    // `parse_listing_spec` went on reversing the cards, so this pins the BEHAVIOUR (the
-    // page still resolves from the device) and not merely the message.
-    for mode in ["dark", "light"] {
-        let doc = render_document(&format!("---\ntheme: {mode}\n---\n\nProse.\n"));
-        assert!(
-            doc.warnings
-                .iter()
-                .any(|w| w.message.contains("follows the reader's device")),
-            "`theme: {mode}` must say it no longer forces a mode"
-        );
-        assert!(
-            doc.theme_css.trim().is_empty(),
-            "`theme: {mode}` must not inject override CSS"
-        );
-    }
-    // And the page it produces embeds the SAME pre-paint script as a page with no `theme:`
-    // at all. `theme_head()` takes no argument now, so this is what "nothing can force it"
-    // reduces to: there is no per-document input left for a mode to enter through.
+fn a_document_cannot_force_its_theme_because_the_key_is_gone() {
+    // The PARSER-side pin for the 2026-08-17 cut, which is the only thing that says a read
+    // is really gone: dropping a name from `KNOWN_KEYS` alone would merely make it
+    // *diagnosed* while the resolver went on honouring it — `listing: sort:` answered
+    // "deleted" for eleven days while `parse_listing_spec` kept reversing the cards.
+    //
+    // So this asserts both halves. `theme:` is no longer a known key (an author who writes
+    // one is told, rather than being silently ignored), and every page embeds the SAME
+    // pre-paint script whatever the front matter says. `theme_head()` takes no argument,
+    // so there is no per-document input a mode could enter through at all.
+    let doc = render_document("---\ntitle: x\ntheme: dark\n---\n\nProse.\n");
+    assert!(
+        doc.warnings.iter().any(|w| w.message.contains("theme")),
+        "`theme:` must be reported as a key this tool does not have: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
     let script = theme_head();
-    for src in ["---\ntheme: dark\n---\n\nProse.\n", "Prose.\n"] {
+    for src in ["---\ntitle: x\ntheme: dark\n---\n\nProse.\n", "Prose.\n"] {
         assert!(
             render_html_page(src, "doc").contains(&script),
             "every page must embed the one unforced pre-paint script"
@@ -2079,11 +2072,12 @@ fn no_toc_when_not_requested() {
 }
 
 #[test]
-fn missing_bibliography_and_theme_files_warn() {
-    // A named `.bib`/`.css` that can't be read is reported on the doc's
-    // `warnings` (the core's non-fatal error channel), not silently dropped.
+fn missing_bibliography_file_warns() {
+    // A named `.bib` that can't be read is reported on the doc's `warnings` (the core's
+    // non-fatal error channel), not silently dropped. The `theme: gone.css` half of this
+    // test went with the key on 2026-08-17.
     let doc = render_document_with_includes(
-        "---\ntitle: X\nbibliography: nope.bib\ntheme: gone.css\n---\n\nSee [@k].\n",
+        "---\ntitle: X\nbibliography: nope.bib\n---\n\nSee [@k].\n",
         std::path::Path::new("/taliesin-nonexistent-dir"),
     );
     assert!(
@@ -2093,109 +2087,6 @@ fn missing_bibliography_and_theme_files_warn() {
         "got: {:?}",
         doc.warnings
     );
-    assert!(
-        doc.warnings
-            .iter()
-            .any(|w| w.message.contains("theme file not found: gone.css")),
-        "got: {:?}",
-        doc.warnings
-    );
-    // A bare theme name (a possible built-in theme) must NOT warn.
-    let ok = render_document_with_includes(
-        "---\ntitle: X\ntheme: darkly\n---\n\ntext\n",
-        std::path::Path::new("/taliesin-nonexistent-dir"),
-    );
-    assert!(
-        ok.warnings.is_empty(),
-        "bare theme warned: {:?}",
-        ok.warnings
-    );
-}
-
-#[test]
-fn a_theme_extension_bundle_cannot_escape_the_project_root() {
-    // Item 85: the `_extensions/<name>/theme.css` arm read `base.join(ext)` with no
-    // containment at all, while the sibling `.css` arm went through `safe_join_in`. Two
-    // shapes escaped: a `../` climb, and an ABSOLUTE name — `Path::join` *replaces* the
-    // base on an absolute argument, so `theme: /etc` read `/etc/theme.css` outright. That
-    // is item 80's `mounts:` footgun in a second place.
-    //
-    //   <tmp>/proj/_extensions/ok/theme.css        the legitimate in-project bundle
-    //   <tmp>/outside/_extensions/evil/theme.css   a real file OUTSIDE the root
-    let uniq = format!(
-        "{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    );
-    let tmp = std::env::temp_dir().join(format!("tali-theme-85-{uniq}"));
-    let _ = std::fs::remove_dir_all(&tmp);
-    let base = tmp.join("proj");
-    let outside = tmp.join("outside/_extensions/evil");
-    std::fs::create_dir_all(&outside).unwrap();
-    std::fs::create_dir_all(base.join("_extensions/ok")).unwrap();
-    std::fs::write(outside.join("theme.css"), b".escaped{color:red}").unwrap();
-    std::fs::write(base.join("_extensions/ok/theme.css"), b".ok{color:green}").unwrap();
-
-    // The positive control, which is what stops this test from passing by refusing
-    // everything: a legitimate in-project bundle still loads, and still says nothing.
-    let mut w = Vec::new();
-    let css = resolve_theme(Some("ok"), Some(&base), Some(&base), &mut w);
-    assert!(
-        css.contains(".ok"),
-        "an in-project extension theme must still load: {css:?}"
-    );
-    assert!(w.is_empty(), "and must not warn: {w:?}");
-
-    // The climb. `_extensions/` consumes one `..`, so `../../` is what actually leaves
-    // `base` — worth spelling out, because `../` alone resolves back inside and would
-    // make this assertion pass for the wrong reason.
-    let mut w = Vec::new();
-    let css = resolve_theme(
-        Some("../../outside/_extensions/evil"),
-        Some(&base),
-        Some(&base),
-        &mut w,
-    );
-    assert!(
-        css.is_empty(),
-        "a climbing theme bundle must not be read: {css:?}"
-    );
-    assert!(
-        w.iter()
-            .any(|x| x.message.contains("outside the project root")),
-        "and the refusal is reported, not swallowed: {w:?}"
-    );
-
-    // The absolute form. Named as a bare directory (no `.css` suffix) so it lands on the
-    // extension arm rather than the file arm.
-    let mut w = Vec::new();
-    let css = resolve_theme(
-        Some(&outside.to_string_lossy()),
-        Some(&base),
-        Some(&base),
-        &mut w,
-    );
-    assert!(
-        css.is_empty(),
-        "an absolute theme bundle must not be read: {css:?}"
-    );
-    assert!(
-        w.iter()
-            .any(|x| x.message.contains("outside the project root")),
-        "and the refusal is reported: {w:?}"
-    );
-
-    // A bare unknown name is still silent: it may be a legacy built-in theme taliesin
-    // does not ship (`darkly`), which harmlessly falls back to the default. The refusal
-    // above must not have turned every miss into a warning.
-    let mut w = Vec::new();
-    let css = resolve_theme(Some("darkly"), Some(&base), Some(&base), &mut w);
-    assert!(css.is_empty() && w.is_empty(), "bare name: {css:?} {w:?}");
-
-    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]
@@ -2293,22 +2184,6 @@ fn both_palettes_ship_on_every_page_and_are_selected_by_data_theme() {
         "scoped dark CSS not shipped"
     );
     assert!(page.contains("--tali-bg: #14130F"), "dark vars missing");
-    assert!(
-        render_document("---\ntitle: x\n---\n\nx\n")
-            .theme_css
-            .is_empty(),
-        "a page with no custom theme must inline no override CSS"
-    );
-}
-
-#[test]
-fn theme_list_takes_first_entry() {
-    // `theme: [brand.css, extra.scss]` (list form) selects the base; the rest are layers.
-    assert_eq!(
-        detect_theme("theme: [brand.css, extra.scss]\n").as_deref(),
-        Some("brand.css"),
-        "first list entry should win"
-    );
 }
 
 #[test]

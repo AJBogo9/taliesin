@@ -99,7 +99,6 @@ const CORPUS_DOCS: &[&str] = &[
     "tech-blog/projects/iphone-premium-analysis/index.tmd",
     "tech-blog/projects/supercollider-mcp/index.tmd",
     "tech-blog/publications.tmd",
-    "theme-css/index.tmd",
 ];
 
 fn corpus_dir() -> PathBuf {

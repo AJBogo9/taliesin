@@ -13,14 +13,14 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **82 `.tmd` documents** in Taliesin's own corpus — **7,113 lines** of real
-writing, the largest sample that exists — **480 lines, 6.7%, carry any construct beyond
-plain CommonMark.** The other 93.3% is Markdown, and any Markdown tool reads it.
+Across the **81 `.tmd` documents** in Taliesin's own corpus — **7,097 lines** of real
+writing, the largest sample that exists — **480 lines, 6.8%, carry any construct beyond
+plain CommonMark.** The other 93.2% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
 | Attribute block (`{#sec-id}`, `{.unnumbered}`) | 106 | 1.5% |
-| Executable fence (` ```{python} `) | 103 | 1.4% |
+| Executable fence (` ```{python} `) | 103 | 1.5% |
 | Citation / cross-reference (`[@key]`, `@fig-x`) | 91 | 1.3% |
 | Cell option (`#\| label: fig-x`) | 80 | 1.1% |
 | Fenced div (`::: {.callout-note}`) | 76 | 1.1% |
@@ -130,7 +130,7 @@ project stops.
 
 What *does not* stop:
 
-- **Your source is Markdown**, 93.3% of it plain CommonMark, all of it in your repository.
+- **Your source is Markdown**, 93.2% of it plain CommonMark, all of it in your repository.
 - **Pages you already built keep working** — they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
@@ -141,8 +141,8 @@ and it is bounded by the table in [Your source stays yours](#sec-portability).
 
 The mitigation the project actually offers is dogfooding rather than a promise:
 **everything the author writes goes through this tool.** Both books of this manual, the
-public website and the regression corpus are `.tmd` rendered by Taliesin — **118 tracked
-`.tmd` files, 14,244 lines**, of which the 82-document corpus is re-rendered by every
+public website and the regression corpus are `.tmd` rendered by Taliesin — **112 tracked
+`.tmd` files, 12,904 lines**, of which the 81-document corpus is re-rendered by every
 `cargo test` run. The manual you are reading is not a description of the tool; it is
 output from it. A defect that breaks a page breaks the documentation for that page in the
 same commit.

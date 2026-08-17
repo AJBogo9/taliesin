@@ -20,11 +20,10 @@ Two themes ship in the binary and need no files:
 - **`light`** is the base `:root` palette: a white page with dark ink.
 - **`dark`** overrides the colour variables for a near-black page with light ink.
 
-**Neither is selected in front matter, and there is no key for it.** Both ship in every
-page and the reader's device decides which one paints, following the OS
-`prefers-color-scheme` and falling back to light when the OS expresses no preference.
-`theme:` itself is very much alive, for the custom `.css`/`.scss` files and
-`_extensions/` bundles described below.
+**Neither is selected in front matter, and there is no key for it** — not for the mode,
+and since 2026-08-17 not for a custom stylesheet either. Both palettes ship in every page
+and the reader's device decides which one paints, following the OS `prefers-color-scheme`
+and falling back to light when the OS expresses no preference.
 
 ::: {.callout-note}
 ## Two built-in palettes, and the device picks between them
@@ -190,105 +189,23 @@ a malformed SVG still serves with a `200` and still copies into the build while 
 as nothing. Escape them, or keep the CSS free of those characters.
 :::
 
-## Three ways to customize
+## Customizing is not a thing a document does
 
-From lightest touch to a full bundle.
+There is no `theme:` key, and no way for a page to pin itself to light or dark. Both
+palettes ship in every page and the reader's device chooses between them, so the choice
+belongs to whoever is reading rather than to whoever wrote it. `theme:` — a `.css`/`.scss`
+file, or an `_extensions/<name>/` bundle inlined after the base stylesheet — was removed on
+2026-08-17 along with `_extensions/` itself, which existed for nothing else.
 
-### a. Override a few variables for a whole project
+It was not removed for being unused. It was removed for meaning two different things at
+once. The dark palette is keyed on `html[data-theme="dark"]`, which outranks a theme file's
+`:root`, so overriding one of the 17 tokens the dark palette re-declares took effect in
+light only, while overriding any of the other 28 took effect in both modes whatever the
+colour did against a dark background. Nothing reported which half you had landed in, and
+the feature's own example set three tokens that were all in the first group — so it changed
+nothing at all in dark mode.
 
-Put a `:root` block in your project's `_site.yml` `head:`. Because the overrides land
-*after* the base stylesheet, they win:
-
-```yaml
-# _site.yml
-head:
-  text: "<style>:root { --tali-accent: #d6336c; --tali-accent-fill: #a61e4d; }</style>"
-```
-
-To recolour the dark theme too, override the same names inside
-`html[data-theme="dark"] { … }`.
-
-There is no per-document `css:` key. It was removed on 2026-08-02 (nothing used it), and
-the two remaining routes are better shaped for the job: `head:` for a project-wide tweak,
-and `theme:` below for anything longer than a couple of lines.
-
-### b. Point `theme:` at a `.css` or `.scss` file
-
-For more than a couple of lines, keep the overrides in a file beside the document
-and name it in `theme:`. The file is inlined after the base stylesheet, and on a
-preview edit the dev server hot-swaps it in place with no reload:
-
-```yaml
----
-title: "My post"
-theme: brand.css
----
-```
-
-```css
-/* brand.css (beside the .tmd) */
-:root {
-  --tali-accent: #d6336c;
-  --tali-accent-fill: #a61e4d;
-  --tali-font-body: 1.25rem/1.55 "Iowan Old Style", Georgia, serif;
-  --tali-measure: 36em;
-}
-html[data-theme="dark"] {
-  --tali-accent: #f06595;
-  --tali-accent-fill: #c2255c;
-}
-```
-
-A `.css`/`.scss` path that can't be read is flagged as a warning (a likely typo).
-The path must stay inside the project: an absolute path or one escaping the root is
-refused.
-
-There is no Sass compiler. A `.scss` file is read and inlined verbatim inside a
-`<style>` block, exactly like a `.css` file, so only plain-CSS-compatible content
-works: real SCSS syntax (nesting, `$variables`, `@mixin`, `@use`) will not parse. The
-`.scss` extension is accepted only so a file named that way is still found and inlined.
-
-### c. Ship a `_extensions/<name>/` theme bundle
-
-To reuse a theme across documents, a whole book, or a site, package it as a theme
-extension: a folder `_extensions/<name>/` whose `theme.css` holds the palette.
-Select it by bare name:
-
-```yaml
----
-title: "My post"
-theme: brand
----
-```
-
-The `theme.css` is inlined exactly like a plain `.css` file, so a bundle is simply a
-reusable place to keep a palette, selected by name from any document, book, or site.
-
-## A worked example
-
-Override the accent colour and the body font, in both light and dark, with a
-two-line front-matter block and a small file. Drop `brand.css` beside your `.tmd`:
-
-```css
-/* brand.css */
-:root {
-  --tali-accent: #e8590c;            /* warm orange accent */
-  --tali-accent-fill: #d9480f;       /* darker fill keeps white text AA-legible */
-  --tali-font-body: 1.25rem/1.55 "Charter", Georgia, serif;
-}
-html[data-theme="dark"] {
-  --tali-accent: #ff922b;
-  --tali-accent-fill: #e8590c;
-}
-```
-
-```yaml
----
-title: "My post"
-theme: brand.css
----
-```
-
-Now links, the focus ring, and the active markers are orange, the body sets in
-Charter, and both themes stay contrast-safe. Nothing else in the document needed
-touching, and the page still swaps light and dark instantly.
+`_site.yml`'s `head:` still injects markup into every page, which is where an analytics
+snippet or a verification `<meta>` belongs. It is not the theming hatch this section used
+to describe: a page that forces one palette through it is fighting its reader's device
+setting, and Taliesin no longer offers a supported way to do that.

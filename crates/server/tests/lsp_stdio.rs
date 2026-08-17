@@ -479,9 +479,9 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     .expect("corpus fixture");
     let text = std::fs::read_to_string(&doc).expect("read fixture");
     let uri = format!("file://{}", doc.display());
-    // Line 2 (0-based) is `treme: darkly`, an unknown front-matter key.
+    // Line 2 (0-based) is `langg: en`, an unknown front-matter key.
     assert!(
-        text.lines().nth(2).unwrap_or("").starts_with("treme:"),
+        text.lines().nth(2).unwrap_or("").starts_with("langg:"),
         "fixture moved"
     );
 
@@ -517,11 +517,11 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     let hover = response(&stdout, 2);
     let md = hover["contents"]["value"].as_str().unwrap_or("");
     assert!(
-        md.contains("unknown front-matter key `treme`"),
+        md.contains("unknown front-matter key `langg`"),
         "the diagnostic under the pointer: {hover:?}"
     );
     assert!(
-        md.contains("did you mean `theme`"),
+        md.contains("did you mean `lang`"),
         "the fix travels with it, inline in the message, which is the whole reason the \
          separate catalogue could go: {md:?}"
     );

@@ -130,8 +130,6 @@ pub struct PageParts<'a> {
     pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
     pub favicon: &'a str,
-    /// Extension / site theme CSS, raw (wrapped in `<style>` only when non-empty).
-    pub theme_css: &'a str,
     /// Also ship the multi-page site chrome CSS (navbar / footer / prev-next).
     pub with_site_css: bool,
     /// Ship the KaTeX stylesheet. The static build sets this only when the page
@@ -169,7 +167,6 @@ impl<'a> PageParts<'a> {
             title: "",
             lang: "en",
             favicon: "",
-            theme_css: "",
             with_site_css: false,
             ship_katex: false,
             extra_head: "",
@@ -381,7 +378,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {theme_init}
 {style_block}{katex_block}
 {js_head}
-{theme_css}
 {enhancer_registry}{include_in_header}
 {extra_head}</head>
 <body{body_class}>
@@ -401,7 +397,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         style_block = style_block,
         katex_block = katex_block,
         js_head = js_head_html,
-        theme_css = theme_style(p.theme_css),
         enhancer_registry = enhancer_registry,
         include_in_header = p.include_in_header,
         extra_head = p.extra_head,
@@ -696,7 +691,6 @@ fn html_page_inner(
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: &favicon,
-        theme_css: &doc.theme_css,
         with_site_css: site.is_some(),
         ship_katex,
         body_class: &body_class,
@@ -785,7 +779,6 @@ mod tests {
                 title: "T",
                 lang: "en",
                 favicon: "",
-                theme_css: "",
                 with_site_css: true,
                 ship_katex: false,
                 extra_head: "",
@@ -852,7 +845,6 @@ mod tests {
             title: "T",
             lang: "en",
             favicon: "",
-            theme_css: "",
             with_site_css: true,
             ship_katex: true,
             extra_head: "",
@@ -893,7 +885,6 @@ mod tests {
             title: "T",
             lang: "en",
             favicon: "",
-            theme_css: "",
             with_site_css: true,
             ship_katex: false,
             extra_head: "",

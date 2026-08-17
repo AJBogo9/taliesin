@@ -145,14 +145,6 @@ pub fn title(title: Option<&str>) -> String {
     serde_json::json!({ "type": "title", "title": title }).to_string()
 }
 
-/// Hot-swap the theme CSS in place (no reload): the client replaces the contents
-/// of `<style id="tali-theme">` (creating it if absent). Sent when only the theme
-/// CSS changed, so scroll position, the current deck slide, and open callouts all
-/// survive a theme edit.
-pub fn style(css: &str) -> String {
-    serde_json::json!({ "type": "style", "css": css }).to_string()
-}
-
 /// A fatal render/read error, shown in the preview banner.
 pub fn error(message: &str) -> String {
     serde_json::json!({ "type": "error", "message": message }).to_string()
@@ -266,8 +258,6 @@ pub struct Broadcast<'a> {
     /// chrome, living outside `doc.blocks`: no block op can carry it, and on a page whose
     /// title renders no block the diff is empty, so this is the only thing the tab hears.
     pub title_changed: bool,
-    /// The theme CSS changed — hot-swap the `<style>` after the body.
-    pub theme_changed: bool,
     /// The diagnostics list changed — push it after the body.
     pub diags_changed: bool,
 }
@@ -280,20 +270,16 @@ impl Broadcast<'_> {
     ///   1. body — one `full_render` when `remount`, otherwise one `op` per block op,
     ///      in diff order;
     ///   2. then `title` if `title_changed` **and not `remount`**;
-    ///   3. then `style` if `theme_changed`;
-    ///   4. then `diagnostics` if `diags_changed`.
+    ///   3. then `diagnostics` if `diags_changed`.
     ///
-    /// The theme/diagnostics messages ride *after* the body — including on the `remount`
-    /// path — so a save that both re-mounts and changes the theme still applies the new
-    /// theme: the re-mounted HTML carries the stale `<style>` body, and a `diagnostics`
-    /// update would be lost under a fresh `full_render` otherwise. This after-the-body
-    /// ordering is the load-bearing contract that was previously copy-pasted in both
-    /// servers.
+    /// The diagnostics message rides *after* the body — including on the `remount` path —
+    /// or an update would be lost under a fresh `full_render`. This after-the-body ordering
+    /// is the load-bearing contract that was previously copy-pasted in both servers.
     ///
-    /// `title` is the one message suppressed on `remount`, and the asymmetry is the point:
-    /// `full_render` carries a `title` field of its own, so it has already retitled the tab,
-    /// while it carries no CSS field — which is precisely why `style` must repeat. Sending
-    /// the title twice would be dead weight, not safety.
+    /// `title` is suppressed on `remount` because `full_render` carries a `title` field of
+    /// its own and has already retitled the tab; sending it twice would be dead weight.
+    /// (A `style` message rode here too until `theme:` was cut on 2026-08-17 — a page has
+    /// no author CSS to hot-swap now, so there is nothing after the body but diagnostics.)
     ///
     /// The message builders are closures because each server reads its own just-updated
     /// state and the `op`/`full_render` bodies differ by link-rewrite (identity for the
@@ -304,7 +290,6 @@ impl Broadcast<'_> {
         full_render: impl FnOnce() -> String,
         op: impl Fn(&BlockOp) -> String,
         title: impl FnOnce() -> String,
-        style: impl FnOnce() -> String,
         diagnostics: impl FnOnce() -> String,
     ) -> Vec<String> {
         let mut msgs = Vec::new();
@@ -315,9 +300,6 @@ impl Broadcast<'_> {
         }
         if self.title_changed && !self.remount {
             msgs.push(title());
-        }
-        if self.theme_changed {
-            msgs.push(style());
         }
         if self.diags_changed {
             msgs.push(diagnostics());
@@ -339,13 +321,7 @@ mod tests {
     }
 
     fn messages(b: super::Broadcast) -> Vec<String> {
-        b.messages(
-            || "FULL".into(),
-            label,
-            || "TITLE".into(),
-            || "STYLE".into(),
-            || "DIAG".into(),
-        )
+        b.messages(|| "FULL".into(), label, || "TITLE".into(), || "DIAG".into())
     }
 
     #[test]
@@ -363,17 +339,16 @@ mod tests {
             ops: &ops,
             remount: false,
             title_changed: false,
-            theme_changed: false,
             diags_changed: false,
         });
         assert_eq!(msgs, vec!["OP:update:a", "OP:remove:b"]);
     }
 
     #[test]
-    fn broadcast_remount_replaces_ops_and_keeps_theme_after_body() {
-        // The load-bearing case: a full re-mount that also changed the theme and the
-        // diagnostics. `full_render` replaces the ops, and `style`/`diagnostics` still
-        // ride AFTER it (the re-mounted HTML carries the stale <style>).
+    fn broadcast_remount_replaces_ops_and_keeps_diagnostics_after_body() {
+        // The load-bearing case: a full re-mount that also changed the diagnostics.
+        // `full_render` replaces the ops, and `diagnostics` still rides AFTER it, or the
+        // update would be lost under the fresh render.
         let ops = vec![BlockOp::Remove {
             target_id: "a".into(),
         }];
@@ -381,10 +356,9 @@ mod tests {
             ops: &ops,
             remount: true,
             title_changed: false,
-            theme_changed: true,
             diags_changed: true,
         });
-        assert_eq!(msgs, vec!["FULL", "STYLE", "DIAG"]);
+        assert_eq!(msgs, vec!["FULL", "DIAG"]);
     }
 
     #[test]
@@ -396,14 +370,13 @@ mod tests {
             ops: &[],
             remount: false,
             title_changed: true,
-            theme_changed: false,
             diags_changed: false,
         });
         assert_eq!(msgs, vec!["TITLE"]);
     }
 
     #[test]
-    fn broadcast_title_rides_after_the_body_like_style_and_diagnostics() {
+    fn broadcast_title_rides_after_the_body_like_diagnostics() {
         // The common shape: retitling also updates the rendered title block, so an op and a
         // title change ship together. The title must land AFTER the body, with the rest of
         // the chrome messages.
@@ -415,10 +388,9 @@ mod tests {
             ops: &ops,
             remount: false,
             title_changed: true,
-            theme_changed: true,
             diags_changed: false,
         });
-        assert_eq!(msgs, vec!["OP:update:a", "TITLE", "STYLE"]);
+        assert_eq!(msgs, vec!["OP:update:a", "TITLE"]);
     }
 
     #[test]
@@ -431,7 +403,6 @@ mod tests {
             ops: &[],
             remount: true,
             title_changed: true,
-            theme_changed: false,
             diags_changed: false,
         });
         assert_eq!(msgs, vec!["FULL"]);
@@ -445,7 +416,6 @@ mod tests {
             ops: &[],
             remount: false,
             title_changed: false,
-            theme_changed: false,
             diags_changed: true,
         });
         assert_eq!(msgs, vec!["DIAG"]);
@@ -457,7 +427,6 @@ mod tests {
             ops: &[],
             remount: false,
             title_changed: false,
-            theme_changed: false,
             diags_changed: false,
         });
         assert!(msgs.is_empty());

@@ -71,7 +71,6 @@ the regression net.
 | `reader/` | machine | Read-only reader enhancers: pre-paint theme, display preferences, the TOC scrollspy. |
 | `highlight.tmd` | machine | Per-language `tali-hl-` scope classes, including the highlighted-but-never-executed languages. Why `ts` and `toml` are the load-bearing cases is in `highlight_langs.rs`. |
 | `native-tmd.tmd` | machine | `.tmd` is the native **and only** source extension: the walker, the lint and the link rewrite recognize it, and a stray `.qmd` is not a source document. |
-| `theme-css/` | machine | `theme: brand.css` read relative to the document, and the `_extensions/<name>/theme.css` bundle branch resolved by bare name. |
 | `recipes/`, `render-fixes/` | machine | A data-to-figure recipe, and the regression page for individually-fixed render defects. |
 
 ## Two things worth knowing before you edit

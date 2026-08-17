@@ -535,7 +535,8 @@ fn is_repo_path_claim(tok: &str) -> bool {
 /// the paths nobody has noticed yet. What it caught when it landed: `serve.rs`,
 /// `serve_site.rs`, `cite.rs` and `diagnostics.rs` had all become module *directories*,
 /// `code-enhance.js` had been split into `code-enhance/` fragments, and a test table named
-/// `extensions.rs`, which is `theme_css.rs`.
+/// `extensions.rs`, which was by then `theme_css.rs` (itself deleted with the `theme:` key
+/// on 2026-08-17).
 ///
 /// `THIRD_PARTY.md` and `LICENSE-OUTPUT-EXCEPTION.md` joined the scanned set on 2026-08-10:
 /// they were outside every gate in the tree, and a stale path in a licence document is a
@@ -746,42 +747,6 @@ fn live_verbs() -> Vec<String> {
     string_literals(table.to_string())
 }
 
-/// The built-in theme mode names that were retired on 2026-08-13, read out of the match arm
-/// in `resolve_theme` that warns about them.
-///
-/// Read out of the match arm because there is nowhere else to read it: `theme:` is a
-/// **live** key whose three built-in **values** were retired, so no vocabulary list in the
-/// tree carries the names and only the warning itself knows them.
-fn retired_theme_modes() -> Vec<String> {
-    let src = read("crates/core/src/render/theme.rs");
-    let (_, body) = src
-        .split_once("fn resolve_theme(")
-        .expect("resolve_theme moved: update this gate, do not delete it");
-    for line in body.lines() {
-        let Some((pattern, _)) = line.split_once("=> {") else {
-            continue;
-        };
-        let parts: Vec<&str> = pattern.trim().split('|').map(str::trim).collect();
-        // The arm we want is *only* quoted literals alternated: `"a" | "b" | "c" => {`.
-        // Requiring that rules out the neighbouring `path if path.ends_with(".css") || …`
-        // arm, which also contains a pipe and quotes.
-        let all_literals = parts.len() >= 2
-            && parts.iter().all(|p| {
-                p.len() > 2
-                    && p.starts_with('"')
-                    && p.ends_with('"')
-                    && p[1..p.len() - 1].chars().all(|c| c.is_ascii_lowercase())
-            });
-        if all_literals {
-            return parts
-                .iter()
-                .map(|p| p.trim_matches('"').to_string())
-                .collect();
-        }
-    }
-    panic!("the retired-mode match arm moved or changed shape: update this gate");
-}
-
 /// A reader-facing doc must not tell a reader to type a command the binary does not answer.
 ///
 /// The register this used to read (`RETIRED_COMMANDS`) went on 2026-08-17 with the author's
@@ -834,96 +799,5 @@ fn reader_facing_docs_only_name_subcommands_the_binary_answers() {
          teaching a dead command or inventing one; rewrite the sentence rather than \
          widening this gate:\n{}",
         hits.join("\n")
-    );
-}
-
-/// Whether `line` is talking about the `theme:` key, either as prose or as a Markdown
-/// key-table row.
-///
-/// Two shapes, because a reader-facing doc names the key both ways. Prose writes the
-/// key with its colon (`theme: dark`), so a literal `theme:` substring catches that
-/// shape directly. A key-reference TABLE never does: its own key column is the bare
-/// key with no colon at all (`` | `theme` | string | ... | ``), so the substring check
-/// alone is structurally blind to exactly the row this gate most needs to see: that
-/// that blind spot is how a stale table cell in `frontmatter.tmd` (the book's own
-/// authoritative key reference) taught `theme: light`/`dark`/`default` as live values
-/// with every earlier version of this gate green. A table row is unambiguous: split on
-/// `|`, and the first non-empty cell IS the key being documented, so treating an exact
-/// (trimmed, unbackticked) `theme` there as theme context adds no prose false positive.
-fn line_theme_context(line: &str) -> bool {
-    if line.contains("theme:") {
-        return true;
-    }
-    let trimmed = line.trim_start();
-    if !trimmed.starts_with('|') {
-        return false;
-    }
-    let Some(first_cell) = trimmed.split('|').nth(1) else {
-        return false;
-    };
-    first_cell.trim().trim_matches('`') == "theme"
-}
-
-/// A reader-facing doc must not present a retired built-in mode as a value of `theme:`.
-///
-/// This is the gate that `shipped_docs_do_not_use_a_retired_front_matter_key` cannot be:
-/// `theme:` is live and its three built-in values are retired, while every retirement
-/// register keys on the key. That blind spot is how `formats.tmd` came to teach
-/// `theme: dark` while `theming.tmd` called the same value retired, in the same book, with
-/// every gate green.
-///
-/// Scoped to lines [`line_theme_context`] recognizes, prose or a key-table row, so
-/// ordinary prose about a `light` or `dark` palette elsewhere is untouched. Measured on
-/// 2026-08-14: two hits on the one stale prose line; widened on 2026-08-14 to also read
-/// `docs/guide/reference/frontmatter.tmd`'s own key table, which named the same three
-/// retired modes in its `theme` row and had escaped every earlier version of this gate
-/// because that row carries no literal `theme:` substring.
-#[test]
-fn reader_facing_docs_do_not_present_a_retired_theme_mode() {
-    let modes = retired_theme_modes();
-    assert_eq!(
-        modes.len(),
-        3,
-        "expected three retired built-in theme modes, parsed {modes:?}"
-    );
-
-    let mut hits = Vec::new();
-    for (rel, text) in reader_facing_docs() {
-        let lines: Vec<&str> = text.lines().collect();
-        for (line, tok) in backticked_located(&text) {
-            if modes.contains(&tok) && line_theme_context(lines[line - 1]) {
-                hits.push(format!("{rel}:{line}: `{tok}`: {}", lines[line - 1].trim()));
-            }
-        }
-    }
-    assert!(
-        hits.is_empty(),
-        "reader-facing doc(s) present a `theme:` value the renderer warns about (retired \
-         2026-08-13; both palettes ship and the reader's device selects one):\n{}",
-        hits.join("\n")
-    );
-}
-
-/// Regression pin for the exact shape that escaped every earlier version of the gate
-/// above: `docs/guide/reference/frontmatter.tmd`'s own `theme` key-table row, a
-/// backticked `` `theme` `` first cell with no colon anywhere on the line, naming
-/// retired modes as if they were still live values. Written as a literal fixture
-/// (not read from the file) so this pin stays meaningful even after the row itself is
-/// fixed.
-#[test]
-fn a_theme_key_table_row_with_no_colon_is_still_theme_context() {
-    let row = "| `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an \
-               installed `_extensions/<name>/` theme bundle. Unspecified (or any custom \
-               theme) follows the OS via `prefers-color-scheme`, falling back to light; \
-               only an explicit `light` (or `default`)/`dark` forces that mode |";
-    assert!(
-        !row.contains("theme:"),
-        "fixture must reproduce the exact defect shape: no colon anywhere on the line"
-    );
-    assert!(
-        line_theme_context(row),
-        "a key-table row whose first cell is `theme` (no colon) must count as theme \
-         context, or a stale key-table cell naming a retired mode slips past the gate \
-         again exactly as it did before"
     );
 }

@@ -24,11 +24,10 @@
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "title", title: ?string }} TitleMsg
- * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
  * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
  * @typedef {{ type: "cell-output-append", page: ?string, cell_id: string, op: "append"|"replace_last", html: string }} CellOutputAppendMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg|CellOutputAppendMsg} ServerMessage
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|BuildStateMsg|CellStateMsg|CellOutputAppendMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("tali-root");
@@ -1039,17 +1038,6 @@
         // tab label would discard every `{js}` cell's live state.
         setPageTitle(msg.title);
         break;
-      case "style": {
-        // Hot-swap theme CSS in place (no reload): scroll position survives.
-        let s = document.getElementById("tali-theme");
-        if (!s) {
-          s = document.createElement("style");
-          s.id = "tali-theme";
-          (document.head || document.documentElement).appendChild(s);
-        }
-        s.textContent = msg.css;
-        break;
-      }
       // Multi-page site: the project config (or a structural change) changed,
       // so the whole page is re-fetched rather than block-diffed.
       case "reload":

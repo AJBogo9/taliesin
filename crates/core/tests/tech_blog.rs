@@ -406,8 +406,8 @@ fn home_page_renders_marginalia_hero() {
 /// it would have passed on a page with no `css:` at all, the standing inlined-asset trap.
 /// The blog's `custom.css` is gone with it (the 2026-07-11 audit's own prescription: its
 /// last live rule *belonged in* base.css), so there is no longer a `css:` claim to make
-/// here. The `css:` mechanism keeps its own coverage in
-/// `theme_css::a_custom_css_theme_file_is_read_from_disk_and_inlined` and in `config.rs`.
+/// here — and `css:` has not been a front-matter key since 2026-08-02, which
+/// `frontmatter.rs` pins directly.
 ///
 /// **If one of the negative assertions below fails, suspect the bundled assets before the
 /// site config.** The same whole-page inlining cuts the other way: a *comment* in

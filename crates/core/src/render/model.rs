@@ -329,11 +329,6 @@ pub struct RenderedDoc {
     /// when set, `None` when absent. The site uses this so an explicit `toc: false`
     /// overrides the site-wide default (a plain `bool` can't tell "off" from "unset").
     pub toc_explicit: Option<bool>,
-    /// Resolved custom theme CSS (`.css`/`_extensions/`), empty for the built-in
-    /// light/dark themes. Inlined after the base stylesheet.
-    pub theme_css: String,
-    /// Whether a custom `theme:` (a CSS file or bundle) owns this doc's colours.
-    pub theme_is_custom: bool,
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
     /// `css` from the doc's front matter, injected into the page template.
     pub includes: PageIncludes,

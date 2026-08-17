@@ -227,6 +227,61 @@ pointer to the cause.
 - Done when: kernel-gated test with a poisoned preamble asserts the diagnostic.
 - Effort: S-M.
 
+# BATCH F11: the committed-design residue
+
+Opened 2026-08-17 by the author's no-backwards-compatibility ruling (recorded in
+[DO-NOT-REBUILD.md](DO-NOT-REBUILD.md)). Both items were the two open author calls the
+Fable audit left; the ruling answers the first and the second is a design question it
+raises rather than settles.
+
+## FA31 [V] the seven theorem xref prefixes: RULED CUT, one design question first
+
+`XREF_LABELS` (`crates/core/src/cite/render.rs`) holds 12 prefixes; **7** — `thm`, `lem`,
+`cor`, `def`, `prp`, `exm`, `rem` — name theorem environments retired 2026-08-03/08-08 that
+nothing can define a target for. `RETIRED_XREF_PREFIXES` subtracts them from the completion
+menu. They stay in the label table for one reason only: so a leftover `@thm-a` resolves far
+enough to draw a broken-cross-reference error instead of passing through as literal text.
+**That reason is a backwards-compatibility argument and the author has ruled it void.**
+
+**Measured against the release binary 2026-08-17**, on a real build, so the consequence is
+not in doubt:
+
+| written | published page | `--check-only --strict` |
+|---|---|---|
+| `@sec-one` (live) | linked "Section 1" | — |
+| `@thm-pythagoras` | linked "Theorem" | error: broken cross-reference |
+| `@figg-scree` (typo) | literal `@figg-scree` | **silent** |
+| `@Fig-scree` (wrong case) | literal `@Fig-scree` | **silent** |
+
+So deleting the seven moves row 2 to row 3 — and that also hits a **new** author who assumes
+theorem refs exist, which is not a migration case. The seven entries were papering over a
+general gap: **an unknown xref prefix is silent, always.** They fixed it for seven names.
+
+- **Open question, the author's** (asked 2026-08-17, not answered): should
+  `@<unknown>-<ident>` be diagnosed at all? Constraint that probably explains why no general
+  rule exists: `parse_xref` would treat `@rust-lang` in prose as an xref candidate, so a
+  blanket diagnostic false-fires on ordinary writing. Note the tool's usual answer
+  (did-you-mean inside edit distance 2) misfires here — `thm` is exactly 2 from `tbl`.
+- Do when answered: delete the 7 tuples + `RETIRED_XREF_PREFIXES`, invert `vocab.rs` to read
+  a positive live list, collapse `a_retired_xref_prefix_is_diagnosable_but_not_offered`.
+  **Check `corpus/theorem-book/` first** — it exists and may carry `@thm-`/`@exm-` refs that
+  the ruling says to rewrite rather than preserve.
+- Effort: S once the question is answered.
+
+## FA32 [V] `_site.yml`'s `head:` is the last documented forcing hatch, and is unused
+
+`head:` injects arbitrary markup into every page's `<head>`. It is used by **zero**
+documents in the tree (it is also one of the two entries on the recorded "unused offered
+vocabulary" tail). Deliberately left OUT of the 2026-08-17 `theme:` cut: it is a general
+head-injection key, not a theming key, so folding its removal into a theming commit would
+have decided a separate question silently. The theming recipe it used to teach was deleted
+from the guide with that commit.
+
+- Decide: does `head:` earn its keep for the things it is actually for (an analytics
+  snippet, a search-console `<meta>`), or does it go as unused surface? Weigh against the
+  standing cut directive; note it cannot be justified by adoption, since there is none.
+- Effort: S either way.
+
 ---
 
 # DECIDE: answered 2026-08-17

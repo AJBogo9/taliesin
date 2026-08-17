@@ -30,8 +30,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Images / social
     "image",
     "image-alt",
-    // Theme
-    "theme",
     "page-layout",
     // Drafts: `draft: true` holds a page (or book chapter) out of the published build
     // (output, nav, listings); the live preview still shows it, badged.
@@ -571,13 +569,13 @@ mod tests {
 
     #[test]
     fn flags_top_level_typo_with_suggestion_and_location() {
-        let w = validate_front_matter("---\ntreme: darkly\ntitle: X\n---\n\nbody\n");
+        let w = validate_front_matter("---\nlangg: en\ntitle: X\n---\n\nbody\n");
         assert_eq!(w.len(), 1, "got: {w:?}");
         assert_eq!(
             w[0].message,
-            "unknown front-matter key `treme` (did you mean `theme`?)"
+            "unknown front-matter key `langg` (did you mean `lang`?)"
         );
-        assert_eq!(w[0].line, Some(2), "`treme` is on file line 2");
+        assert_eq!(w[0].line, Some(2), "`langg` is on file line 2");
     }
 
     #[test]
@@ -893,7 +891,7 @@ mod tests {
     #[test]
     fn honored_keys_do_not_warn() {
         let w = validate_front_matter(
-            "---\ntitle: X\ntitle-block-style: none\ntheme: dark\npage-layout: full\n---\n",
+            "---\ntitle: X\ntitle-block-style: none\npage-layout: full\n---\n",
         );
         assert!(w.is_empty(), "honored keys must not warn, got: {w:?}");
     }

@@ -20,7 +20,6 @@ or not something taliesin implements.
 | `description:` | Summary for the meta description and the social-share unfurl | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `lang:` | BCP-47 language tag for `<html lang>` (default `en`) | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `categories:` | Tags for the page; each becomes a `<category>` in the Atom feed | [Configuration reference](frontmatter.tmd#document-front-matter) |
-| `theme:` | A `.css`/`.scss` file path, or an installed `_extensions/<name>/` bundle; the reader's device picks the built-in palette | [Theming](../using/theming.tmd) |
 | `page-layout:` | `full` widens the content column (for a listing index); the default is the reading-width column | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `image:` | The picture on a `listing:` card and the `og:image` a shared link unfurls with | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `image-alt:` | The `alt` text for that picture; required whenever `image:` is set | [Configuration reference](frontmatter.tmd#document-front-matter) |

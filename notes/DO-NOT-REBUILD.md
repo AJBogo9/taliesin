@@ -21,6 +21,31 @@ are about to add a paragraph here, it belongs in one of those files instead.
 Each of these was filed as a backlog item and is not a task. Kept because deleting them costs a
 session to rediscover.
 
+- **No backwards compatibility, ever — the author's standing ruling of 2026-08-17.** *"I have
+  no previous users. I want to completely commit to all design decisions that I make with
+  taliesin and then rewrite every single document to fit those decisions."* **Design every
+  change in the mindset that every Taliesin document will be written after the tool is
+  published.** A "someone's existing document still says X" argument is not a reason to keep
+  anything; the corpus and the two books are the author's to rewrite. This ruling is what
+  retired the `theme:` key below, and it settles the class in advance — do not re-open it per
+  feature.
+- **`theme:` is CUT (2026-08-17), and with it `_extensions/`, which existed for nothing else.
+  There is NO author-facing theme control and must not be one again.** The ruling: *"I don't
+  want that taliesin authors are able to force a theme. I only want 'auto' — the theme is
+  always chosen based on the reader's device."* The key was not merely unused: a custom theme
+  meant two different things at once, because `tokens-dark.css` keys the dark palette on
+  `html[data-theme="dark"]`, which outranks a theme file's `:root`. Overriding one of the **17**
+  tokens the dark palette re-declares applied in light only; overriding any of the other **28**
+  applied in both modes whatever the colour did on a dark ground — silently, either way. The
+  feature's own corpus pin (`corpus/theme-css`, deleted with it) set three tokens, all in the
+  17, so it was **inert in dark mode** and no test saw it, because every test read the light
+  render. **What survives and is NOT the same thing: the preview dev menu's toggle**, a
+  READER-side `localStorage` override written only by `web-client/client.js`, which never
+  ships in a build — so previewing either mode still works while a built page always follows
+  the device. Author control and reader control were always separate; only the first is gone.
+  Known limit, recorded so it is not rediscovered as a defect: this removes every *supported*
+  way to force a theme, not every way. A raw `<style>` in a document body reaches the built
+  page (measured), and closing that would mean breaking raw HTML, which is in the trust model.
 - **The four Fable-audit DECIDE calls were answered on 2026-08-17; none is open.** (FD1) `taliesin
   new` is CUT — `init` writes the dated example post the verb used to scaffold, and the CLI is six
   subcommands; do not propose a scaffolding verb again. (FD2) The five retirement registers

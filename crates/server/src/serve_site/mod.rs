@@ -240,7 +240,6 @@ struct PageDoc {
     /// built as Finnish, and the one place an author would notice the difference (a screen
     /// reader, a hyphenation dictionary) is not the preview.
     lang: String,
-    theme_css: String,
     /// The page's own front-matter `include-*`/`css` (merged after the site's).
     includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
@@ -701,7 +700,6 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         tab_title,
         toc,
         lang: doc.lang.clone().unwrap_or_default(),
-        theme_css: doc.theme_css,
         includes: doc.includes,
         blocks: doc.blocks,
         diagnostics,
@@ -719,9 +717,9 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // `tab_title` is the string the producer already resolved (`Site::page_title`) — the
     // very one the websocket re-asserts on connect, so the two cannot disagree. It is
     // deliberately NOT re-derived here if empty: that means the page has no live state at
-    // all (the arm below has no body and no theme either), and re-composing half the title
+    // all (the arm below has no body at all), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, lang, theme_css, body, page_includes, generation) = {
+    let (tab_title, toc, lang, body, page_includes, generation) = {
         let pages = project.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
@@ -729,7 +727,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
                 ps.doc.tab_title.clone(),
                 ps.doc.toc,
                 ps.doc.lang.clone(),
-                ps.doc.theme_css.clone(),
                 ps.doc.body_html(),
                 ps.doc.includes.clone(),
                 ps.doc.generation,
@@ -737,7 +734,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
             None => (
                 String::new(),
                 false,
-                String::new(),
                 String::new(),
                 String::new(),
                 Default::default(),
@@ -873,7 +869,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         // core's page builder does. Hardcoded to "en" until 2026-08-17.
         lang: if lang.is_empty() { "en" } else { &lang },
         favicon: &favicon,
-        theme_css: &theme_css,
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
@@ -1391,7 +1386,6 @@ async fn build_page(
     let recovered = std::mem::take(&mut ps.doc.errored);
     let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
     let diags_changed = ps.doc.diagnostics != diags;
-    let theme_changed = ps.doc.theme_css != doc.theme_css;
     // Compared BEFORE the assignment below overwrites it. The title is chrome, so it never
     // reaches the tab as a block op: a `title:`-only edit on a page that renders no title
     // block diffs to nothing, and even when it does render one, the body swapped while the
@@ -1400,7 +1394,6 @@ async fn build_page(
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
     ps.doc.lang = doc.lang.clone().unwrap_or_default();
-    ps.doc.theme_css = doc.theme_css;
     ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
     // client that server-rendered this page pre-exec re-mounts to pick up the outputs.
@@ -1417,14 +1410,12 @@ async fn build_page(
         ops: &ops,
         remount: recovered,
         title_changed,
-        theme_changed,
         diags_changed,
     }
     .messages(
         || full_render_json(&ps.doc),
         |op| op_json(op, generation),
         || protocol::title(Some(&ps.doc.tab_title)),
-        || protocol::style(&ps.doc.theme_css),
         || protocol::diagnostics(&ps.doc.diagnostics),
     );
     for m in messages {

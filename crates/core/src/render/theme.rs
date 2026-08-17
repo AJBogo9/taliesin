@@ -1,116 +1,24 @@
-//! Theming: resolve a doc's `theme:` (built-in light/dark, a `.css`/`.scss`
-//! file, or an installed `_extensions/<name>/theme.css`), the pre-paint
-//! `<head>` theme script (the dev toggle's wiring is NOT here; it lives beside its
-//! button in `web-client/client.js`), extension `theme:` layers, and the
-//! `<style>` wrappers. Split out of the render module; `use super::*` reaches
-//! the shared imports (Path, serde_yaml).
+//! Theming: the pre-paint `<head>` script, and nothing else.
+//!
+//! **There is no author-facing theme control.** Both palettes always ship and the reader's
+//! DEVICE picks between them, so a document cannot pin itself to one. The `theme:` front
+//! matter key — a `.css`/`.scss` file, or an `_extensions/<name>/theme.css` bundle inlined
+//! after the base stylesheet — was CUT on 2026-08-17 along with `_extensions/` itself,
+//! which existed for nothing else. It was not merely unused: a custom theme meant two
+//! different things depending on which token it touched, because `tokens-dark.css` keys the
+//! dark palette on `html[data-theme="dark"]` and outranks a theme file's `:root`. Overriding
+//! one of the 17 tokens the dark palette re-declares applied in light only; overriding any
+//! of the other 28 applied in both modes whatever the colour did on a dark ground. The
+//! feature's own corpus pin set three tokens, all in the 17, so it was inert in dark mode
+//! and nothing said so. **Do not re-add an author theme key**; a reader-side override is a
+//! different thing and still exists (see below).
+//!
+//! The dev toggle's wiring is NOT here — it lives beside its button in
+//! `web-client/client.js`, which never ships in a build. That toggle is unaffected by the
+//! cut: it is a READER-side override in `localStorage`, written only by the preview client,
+//! so previewing a page in either mode still works while a built page always follows the
+//! device. Author control and reader control were always different things.
 
-use super::*;
-
-/// A theme is an extension that ships CSS. Two minimal themes are built in
-/// (`light` is the default `:root`, `dark` overrides it); any other name
-/// resolves to a `.css`/`.scss` file or an installed `_extensions/<name>/`
-/// bundle, both relative to the document. Returns the override CSS to inline
-/// after the base stylesheet (empty for the default light theme).
-pub(super) fn resolve_theme(
-    theme: Option<&str>,
-    base_dir: Option<&Path>,
-    root: Option<&Path>,
-    warnings: &mut Vec<Warning>,
-) -> String {
-    let Some(name) = theme else {
-        return String::new();
-    };
-    match name {
-        // The three built-in mode names, retired 2026-08-13. They never carried override
-        // CSS (both palettes always ship and are selected at runtime via `data-theme`), so
-        // all that is left to say is that they no longer select. This is a warning on a
-        // VALUE of a live key — `theme:` still takes a `.css` file or an `_extensions/`
-        // bundle — which is why it is spelled out here rather than being a key-level rule.
-        "light" | "default" | "dark" => {
-            warnings.push(Warning::new(format!(
-                "`theme: {name}` no longer selects a mode: the page follows the reader's \
-                 device setting, so delete the key"
-            )));
-            String::new()
-        }
-        // A named `.css`/`.scss` that can't be read is a typo worth flagging.
-        // `try_join_in` refuses an absolute path or one escaping the project root, and
-        // keeps the reason: a refused theme whose file plainly exists must not be
-        // reported as "not found" or the author goes hunting for a typo that isn't there
-        // (the same distinction the bibliography reader draws, `render/mod.rs`).
-        path if path.ends_with(".css") || path.ends_with(".scss") => {
-            let Some(base) = base_dir else {
-                warnings.push(
-                    Warning::new(format!("theme file not found: {path}")).severity(Severity::Error),
-                );
-                return String::new();
-            };
-            match crate::includes::try_join_in(base, path, root) {
-                Ok(p) => match std::fs::read_to_string(&p) {
-                    Ok(css) => css,
-                    Err(_) => {
-                        warnings.push(
-                            Warning::new(format!("theme file not found: {path}"))
-                                .severity(Severity::Error),
-                        );
-                        String::new()
-                    }
-                },
-                Err(reason) => {
-                    warnings
-                        .push(Warning::new(refused_theme(path, reason)).severity(Severity::Error));
-                    String::new()
-                }
-            }
-        }
-        // An installed extension bundle: `_extensions/<name>/theme.css`, resolved through
-        // the SAME containment check as every other author-named path. A bare name isn't
-        // warned (it may be a legacy built-in theme taliesin doesn't ship, e.g. `darkly`,
-        // which harmlessly falls back to the default) — but a name that climbs out of the
-        // project is not a legacy theme, so a refusal is reported rather than swallowed.
-        ext => {
-            let Some(base) = base_dir else {
-                return String::new();
-            };
-            // `Path::join` REPLACES the base on an absolute argument, so `theme: /etc`
-            // used to read `/etc/theme.css` outright — item 80's `mounts:` footgun in a
-            // second place. Refuse it here rather than letting it be spliced into the
-            // relative bundle path below, where `_extensions//etc/theme.css` would
-            // normalize to something contained but silently wrong.
-            if Path::new(ext).is_absolute() || Path::new(ext).has_root() {
-                warnings.push(Warning::new(refused_theme(
-                    ext,
-                    crate::includes::Refused::OutsideRoot,
-                )));
-                return String::new();
-            }
-            match crate::includes::try_join_in(base, &format!("_extensions/{ext}/theme.css"), root)
-            {
-                Ok(p) => std::fs::read_to_string(&p).unwrap_or_default(),
-                Err(reason) => {
-                    warnings.push(Warning::new(refused_theme(ext, reason)));
-                    String::new()
-                }
-            }
-        }
-    }
-}
-
-/// How a refused `theme:` reads to the author. Names the boundary that rejected it, so
-/// the message distinguishes "your file is missing" from "your file is there and was
-/// deliberately not read" — the two have different fixes.
-fn refused_theme(named: &str, reason: crate::includes::Refused) -> String {
-    match reason {
-        crate::includes::Refused::OutsideRoot => {
-            format!("theme `{named}` is outside the project root and was not read")
-        }
-        crate::includes::Refused::SymlinkOutsideRepo => format!(
-            "theme `{named}` is a symlink whose target is outside the project repository \
-             and was not read"
-        ),
-    }
-}
 /// Inline `<head>` script (runs before paint, so no flash): set `<html data-theme>` from the
 /// reader's DEVICE (`prefers-color-scheme`), falling back to light when it expresses no
 /// preference, and keep following it live. Also defines `taliSetTheme`, which owns the
@@ -244,26 +152,4 @@ const THEME_HEAD_SCRIPT: &str = r#"<script>
 
 pub fn theme_head() -> String {
     THEME_HEAD_SCRIPT.to_string()
-}
-/// Detect the `theme:` front-matter value (top-level or nested under `format:`).
-pub(super) fn detect_theme(front_matter: &str) -> Option<String> {
-    front_matter.lines().find_map(|line| {
-        let v = line.trim().strip_prefix("theme:")?.trim();
-        // Take the first name from a scalar or a `[a, b]` list (the first
-        // entry is the base theme, the rest are SCSS layers).
-        let v = v.trim_start_matches('[').split([',', ']']).next()?.trim();
-        let v = v.trim_matches(['"', '\'']).trim();
-        (!v.is_empty()).then(|| v.to_string())
-    })
-}
-/// Wrap resolved theme override CSS in a `<style>` (empty string when there is
-/// no override, i.e. the default light theme).
-pub(super) fn theme_style(theme_css: &str) -> String {
-    if theme_css.trim().is_empty() {
-        String::new()
-    } else {
-        // The id lets the dev server hot-swap theme CSS in place (no reload) on a
-        // `.css`/theme edit; absent in a build with no custom theme, which is fine.
-        format!("<style id=\"tali-theme\">{theme_css}</style>")
-    }
 }
