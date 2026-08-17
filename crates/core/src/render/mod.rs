@@ -2979,57 +2979,260 @@ pub fn tag_end(html: &str) -> Option<usize> {
     None
 }
 
+/// One opening element tag in a finished page, as [`tags`] found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tag<'a> {
+    /// The tag name as written. Compare case-insensitively.
+    pub name: &'a str,
+    /// The whole opening tag, `<` through the `>` that closes it.
+    pub text: &'a str,
+    /// Byte offset of the `<` in the page [`tags`] was given.
+    pub at: usize,
+}
+
+/// One attribute of one [`Tag`], as [`attrs`] read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Attr<'a> {
+    /// The attribute name as written. Compare case-insensitively.
+    pub name: &'a str,
+    /// The value without its quotes, exactly as written — still entity-escaped, since
+    /// every caller compares it against markup the same pass emitted. Empty for a
+    /// valueless attribute (`defer`).
+    pub value: &'a str,
+    /// Byte offset of the attribute NAME in the page, for a caller that has to locate the
+    /// reference it just read.
+    pub at: usize,
+}
+
+/// The elements whose content is raw TEXT rather than markup, so [`tags`] steps over it
+/// whole. Deliberately just these two: they are what a built page inlines, and their
+/// content is the only place in one where `<img src="…">` can appear and mean nothing.
+const RAW_TEXT_ELEMENTS: &[&str] = &["script", "style"];
+
+/// Every opening tag in `html`, in document order — **the one tag walker**, and the answer
+/// to "what in this finished page is markup".
+///
+/// Skips, because none of it is an element with attributes: the document's visible TEXT,
+/// `<!-- comments -->`, closing tags, the doctype, and the raw-text content of
+/// [`RAW_TEXT_ELEMENTS`] (the `<script>`/`<style>` tags themselves are still yielded, just
+/// not what is between them). Quote-aware through [`tag_end`], in both quote kinds, so a
+/// `>` inside an attribute value does not end a tag.
+///
+/// **Why this exists (Fable audit FA11/FA12, then FA13).** Passes kept reading finished
+/// HTML with a bare `find("href=\"")` and no notion of tag-versus-text, and `escape_html`
+/// does not escape `"` — so a fenced or inline code sample that merely *shows*
+/// `<div id="example">` had its visible text rewritten to `example-1` (stealing the real
+/// element's anchor and firing two bogus error-severity diagnostics), a sample showing
+/// `<a href="other.tmd">` was published reading `other.html`, and the build's asset
+/// scrapers published a `.md` the page only ever *described*. The remaining defenses were
+/// accidents: syntect escapes quotes inside highlighted fences, and smart punctuation curls
+/// them in prose.
+///
+/// The raw-text rule is the same defect one layer along, and it is not hypothetical either:
+/// the mermaid and Plot bundles every page inlines build HTML out of string fragments
+/// (`<a href="'+e+'"`, `<img src="${e}"`), which a walker without it hands to the caller as
+/// file references.
+pub fn tags(html: &str) -> Tags<'_> {
+    Tags { html, i: 0 }
+}
+
+/// The iterator [`tags`] returns.
+pub struct Tags<'a> {
+    html: &'a str,
+    i: usize,
+}
+
+impl<'a> Iterator for Tags<'a> {
+    type Item = Tag<'a>;
+
+    fn next(&mut self) -> Option<Tag<'a>> {
+        while let Some(rel) = self.html[self.i..].find('<') {
+            let lt = self.i + rel;
+            let after = &self.html[lt + 1..];
+            if let Some(body) = after.strip_prefix("!--") {
+                // A comment. Its `>`s are text, so `tag_end` would stop early.
+                self.i = body.find("-->").map_or(self.html.len(), |n| lt + 4 + n + 3);
+                continue;
+            }
+            // `<` followed by anything but a name is text: an unescaped `<` in a raw-HTML
+            // block, a `<` in prose, a closing tag, the doctype. Carry on past it.
+            let Some(name) = tag_name(after) else {
+                self.i = lt + 1;
+                continue;
+            };
+            let Some(gt) = tag_end(&self.html[lt..]) else {
+                self.i = self.html.len(); // unterminated: nothing after it is a tag either
+                return None;
+            };
+            self.i = lt + gt + 1;
+            if RAW_TEXT_ELEMENTS
+                .iter()
+                .any(|r| name.eq_ignore_ascii_case(r))
+            {
+                self.i = raw_text_end(self.html, self.i, name);
+            }
+            return Some(Tag {
+                name,
+                text: &self.html[lt..lt + gt + 1],
+                at: lt,
+            });
+        }
+        self.i = self.html.len();
+        None
+    }
+}
+
+/// The element name `<` opens, given everything after that `<`. `None` when what follows is
+/// not a name at all (a closing tag, `<!DOCTYPE`, a bare `<` in text).
+fn tag_name(after_lt: &str) -> Option<&str> {
+    let b = after_lt.as_bytes();
+    if !b.first().is_some_and(u8::is_ascii_alphabetic) {
+        return None;
+    }
+    // A multi-byte character's lead byte is >= 0x80, so it fails this test and ends the
+    // name — the slice is always on a character boundary.
+    let end = b
+        .iter()
+        .position(|c| !(c.is_ascii_alphanumeric() || matches!(c, b'-' | b':' | b'_')))
+        .unwrap_or(b.len());
+    Some(&after_lt[..end])
+}
+
+/// Offset of the `</name` that ends a raw-text element opened before `from`, or the end of
+/// the document when it is never closed (which is what a browser does with one too).
+fn raw_text_end(html: &str, from: usize, name: &str) -> usize {
+    let mut i = from;
+    while let Some(rel) = html[i..].find("</") {
+        let at = i + rel;
+        let rest = &html[at + 2..];
+        if rest.len() >= name.len()
+            && rest.as_bytes()[..name.len()].eq_ignore_ascii_case(name.as_bytes())
+            && rest[name.len()..]
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_ascii_whitespace() || c == '>' || c == '/')
+        {
+            return at;
+        }
+        i = at + 2;
+    }
+    html.len()
+}
+
+/// Every attribute of `tag`, in source order.
+///
+/// Handles all three value forms HTML allows — `"double"`, `'single'` and unquoted — because
+/// raw HTML is in the trust model, so an author may hand-write any of them and a scan that
+/// knows only one silently drops the rest. An unquoted value ends at whitespace; a
+/// self-closing `/` therefore lands inside one, which no caller can act on and every caller
+/// then discards.
+pub fn attrs<'a>(tag: &Tag<'a>) -> Attrs<'a> {
+    // Everything past `<name`, up to but not including the `>` that closes the tag.
+    let from = 1 + tag.name.len();
+    Attrs {
+        body: &tag.text[from..tag.text.len() - 1],
+        base: tag.at + from,
+        i: 0,
+    }
+}
+
+/// The iterator [`attrs`] returns.
+pub struct Attrs<'a> {
+    body: &'a str,
+    base: usize,
+    i: usize,
+}
+
+impl<'a> Iterator for Attrs<'a> {
+    type Item = Attr<'a>;
+
+    fn next(&mut self) -> Option<Attr<'a>> {
+        let b = self.body.as_bytes();
+        loop {
+            // Between attributes: whitespace, and the `/` of a self-closing tag.
+            while self.i < b.len() && (b[self.i].is_ascii_whitespace() || b[self.i] == b'/') {
+                self.i += 1;
+            }
+            if self.i >= b.len() {
+                return None;
+            }
+            let name_at = self.i;
+            while self.i < b.len()
+                && !b[self.i].is_ascii_whitespace()
+                && !matches!(b[self.i], b'=' | b'/')
+            {
+                self.i += 1;
+            }
+            if self.i == name_at {
+                self.i += 1; // malformed (`<a =x>`): step past it rather than spin
+                continue;
+            }
+            let name = &self.body[name_at..self.i];
+            let mut j = self.i;
+            while j < b.len() && b[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if b.get(j) != Some(&b'=') {
+                // A valueless attribute (`defer`, `hidden`). `self.i` already sits past the
+                // name, so the next loop resumes correctly.
+                return Some(Attr {
+                    name,
+                    value: "",
+                    at: self.base + name_at,
+                });
+            }
+            j += 1;
+            while j < b.len() && b[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let (value, next) = match b.get(j) {
+                Some(&q @ (b'"' | b'\'')) => {
+                    let start = j + 1;
+                    match self.body[start..].find(q as char) {
+                        Some(len) => (&self.body[start..start + len], start + len + 1),
+                        None => (&self.body[start..], b.len()), // unterminated
+                    }
+                }
+                Some(_) => {
+                    let end = b[j..]
+                        .iter()
+                        .position(u8::is_ascii_whitespace)
+                        .map_or(b.len(), |n| j + n);
+                    (&self.body[j..end], end)
+                }
+                None => ("", b.len()),
+            };
+            self.i = next;
+            return Some(Attr {
+                name,
+                value,
+                at: self.base + name_at,
+            });
+        }
+    }
+}
+
 /// Rewrite the value of every `attr` that sits inside a real element tag, leaving the
 /// document's visible TEXT untouched. `attr` carries its own opening delimiter, e.g.
 /// `" id=\""` or `"href=\""`; `rewrite` is handed each value and returns its replacement.
 ///
-/// **Why this exists (Fable audit FA11/FA12).** Two passes rewrote finished HTML with a
-/// bare `find(attr)` and no notion of tag-versus-text, and `escape_html` does not escape
-/// `"`. So a fenced or inline code sample that merely *shows* `<div id="example">` had its
-/// visible text rewritten to `example-1` (stealing the real element's anchor and firing two
-/// bogus error-severity diagnostics), and a code sample showing `<a href="other.tmd">` was
-/// published reading `other.html`. Neither was hypothetical; both were reproduced. The
-/// remaining defenses were accidents: syntect escapes quotes inside highlighted fences, and
-/// smart punctuation curls them in prose.
-///
-/// The scan is quote-aware through [`tag_end`], so a `>` inside an attribute value does not
-/// end a tag, and it steps over `<!-- … -->` whole: a comment is not markup either.
+/// Tag-versus-text is [`tags`]'s job — see there for the defects that made it one — so this
+/// is only the per-tag rewrite. It reads the double-quoted form alone, which is what the
+/// renderer emits and all it ever rewrites; [`attrs`] is the reader that has to take an
+/// author's hand-written spelling as it comes.
 pub(crate) fn rewrite_attr_in_tags(
     html: &str,
     attr: &str,
     mut rewrite: impl FnMut(&str) -> String,
 ) -> String {
     let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-    while let Some(lt) = rest.find('<') {
-        let after = &rest[lt + 1..];
-        if let Some(body) = after.strip_prefix("!--") {
-            // A comment, emitted verbatim. Its `>`s are text, so `tag_end` would stop early.
-            let end = body.find("-->").map_or(rest.len(), |i| lt + 4 + i + 3);
-            out.push_str(&rest[..end]);
-            rest = &rest[end..];
-            continue;
-        }
-        // `<` followed by anything but a name, `/` or `!` is text (an unescaped `<` in a
-        // raw-HTML block, a `<` inside a script). Keep it and carry on past it.
-        let is_tag = after
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '/' | '!'));
-        let Some(gt) = is_tag.then(|| tag_end(&rest[lt..])).flatten() else {
-            out.push_str(&rest[..lt + 1]);
-            rest = &rest[lt + 1..];
-            continue;
-        };
-        out.push_str(&rest[..lt]);
-        out.push_str(&rewrite_attr_in_one_tag(
-            &rest[lt..lt + gt + 1],
-            attr,
-            &mut rewrite,
-        ));
-        rest = &rest[lt + gt + 1..];
+    let mut cursor = 0;
+    for tag in tags(html) {
+        out.push_str(&html[cursor..tag.at]);
+        out.push_str(&rewrite_attr_in_one_tag(tag.text, attr, &mut rewrite));
+        cursor = tag.at + tag.text.len();
     }
-    out.push_str(rest);
+    out.push_str(&html[cursor..]);
     out
 }
 

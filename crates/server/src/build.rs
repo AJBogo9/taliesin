@@ -2514,31 +2514,21 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
 /// `{{< video >}}`, which took the page-shell promoter that turned `data-src` into `src`
 /// with it — so nothing emits the attribute and nothing would load a file harvested from
 /// it. Its comment cited `corpus/media/screencast.tmd`, which does not exist either.
-/// **The whole-attribute guard below is unaffected and still load-bearing**: `src="` is a
-/// substring of the click-to-source `data-tali-src="`, which must stay unharvested.
+///
+/// Reading whole attributes off [`taliesin_core::render::tags`] is what keeps the
+/// click-to-source `data-tali-src="…"` — which *contains* `src="` — from publishing every
+/// post's own source, and it is now also what keeps a code sample and an inlined script
+/// from doing the same (Fable audit FA13).
 fn local_refs(html: &str) -> Vec<String> {
+    const HARVESTED: &[&str] = &["src", "href", "poster"];
     let mut out: Vec<String> = Vec::new();
-    let bytes = html.as_bytes();
-    for attr in ["src=\"", "href=\"", "poster=\""] {
-        let mut i = 0;
-        while let Some(pos) = html[i..].find(attr) {
-            let at = i + pos; // first byte of the attribute name
-            let start = at + attr.len();
-            let Some(len) = html[start..].find('"') else {
-                break;
-            };
-            let val = &html[start..start + len];
-            i = start + len;
-            // The match must *begin* an attribute name, not end one: `data-tali-src="…"`
-            // (the click-to-source attribute on listing cards) contains `src="`, and
-            // harvesting it published every post's `.tmd` source into `_site/`. Only a
-            // tag opener or whitespace can precede an attribute name; a multi-byte lead
-            // byte is neither, so the byte test is safe.
-            if at > 0 && bytes[at - 1] != b'<' && !bytes[at - 1].is_ascii_whitespace() {
+    for tag in taliesin_core::render::tags(html) {
+        for a in taliesin_core::render::attrs(&tag) {
+            if !HARVESTED.iter().any(|n| a.name.eq_ignore_ascii_case(n)) {
                 continue;
             }
-            if is_local_ref(val) && !out.iter().any(|v| v == val) {
-                out.push(val.to_string());
+            if is_local_ref(a.value) && !out.iter().any(|v| v == a.value) {
+                out.push(a.value.to_string());
             }
         }
     }
@@ -2622,22 +2612,6 @@ fn source_file_before(html: &str, offset: usize) -> Option<String> {
     Some(html[from..from + len].to_string())
 }
 
-/// Whether the tag opened just before byte `attr_at` in `html` has tag name `name` (ASCII,
-/// case-insensitive) — used to keep an external `href=` flag to `<link>` (a stylesheet/preload
-/// fetch), never `<a>`/`<area>`/`<base>` (navigation/base).
-fn tag_named_before(html: &str, attr_at: usize, name: &str) -> bool {
-    let Some(lt) = html[..attr_at].rfind('<') else {
-        return false;
-    };
-    let after = &html[lt + 1..];
-    after.len() >= name.len()
-        && after.as_bytes()[..name.len()].eq_ignore_ascii_case(name.as_bytes())
-        && after[name.len()..]
-            .chars()
-            .next()
-            .is_none_or(|c| c.is_ascii_whitespace() || c == '>' || c == '/')
-}
-
 /// Each dynamic `import("spec")` / `import('spec')` in `src`, as `(byte offset of `import`,
 /// specifier)`. Only the dynamic-call form (the `{js}` cell shape the audit found) is matched,
 /// with an `import` word boundary, so a substring like `reimport(` or a comment is ignored.
@@ -2699,37 +2673,17 @@ const FETCHING_LINK_RELS: &[&str] = &[
     "manifest",
 ];
 
-/// Whether the `<link>` enclosing the `href=` at `attr_at` is one the browser fetches, per
-/// [`FETCHING_LINK_RELS`]. Reads the whole tag rather than the text before `href`, because
-/// `rel=` may come on either side of it. A `<link>` with no `rel` at all does nothing, so it
-/// is not a fetch either.
-fn link_rel_fetches(html: &str, attr_at: usize) -> bool {
-    let Some(lt) = html[..attr_at].rfind('<') else {
-        return false;
-    };
-    let tag = match html[lt..].find('>') {
-        Some(gt) => &html[lt..lt + gt],
-        None => &html[lt..],
-    };
-    let bytes = tag.as_bytes();
-    let mut i = 0;
-    while let Some(pos) = tag[i..].find("rel=") {
-        let at = i + pos;
-        i = at + "rel=".len();
-        // Must begin an attribute name, so another attribute merely ending in `rel=` misses.
-        if at == 0 || !bytes[at - 1].is_ascii_whitespace() {
-            continue;
-        }
-        let rest = &tag[i..];
-        let value = match rest.chars().next() {
-            Some(q @ ('"' | '\'')) => rest[1..].split(q).next().unwrap_or(""),
-            _ => rest.split_ascii_whitespace().next().unwrap_or(""),
-        };
-        return value
-            .split_ascii_whitespace()
-            .any(|t| FETCHING_LINK_RELS.iter().any(|r| t.eq_ignore_ascii_case(r)));
-    }
-    false
+/// Whether `tag` is a `<link>` the browser fetches, per [`FETCHING_LINK_RELS`]. Reads the
+/// whole tag rather than the text before `href`, because `rel=` may come on either side of
+/// it. A `<link>` with no `rel` at all does nothing, so it is not a fetch either.
+fn link_rel_fetches(tag: &taliesin_core::render::Tag<'_>) -> bool {
+    taliesin_core::render::attrs(tag)
+        .filter(|a| a.name.eq_ignore_ascii_case("rel"))
+        .any(|a| {
+            a.value
+                .split_ascii_whitespace()
+                .any(|t| FETCHING_LINK_RELS.iter().any(|r| t.eq_ignore_ascii_case(r)))
+        })
 }
 
 /// Every external (network-fetched-at-view-time) reference left verbatim in built `html`: a
@@ -2739,7 +2693,6 @@ fn link_rel_fetches(html: &str, attr_at: usize) -> bool {
 /// a fetch), `data:` URIs, local/relative paths, or the tool's own inlined assets (the import
 /// scan reads only author `{js}` cell bodies). Each ref carries its enclosing block's line.
 fn external_refs(html: &str) -> Vec<ExternalRef> {
-    let bytes = html.as_bytes();
     let mut out: Vec<ExternalRef> = Vec::new();
     let push = |url: &str, off: usize, out: &mut Vec<ExternalRef>| {
         let line = sourcepos_line_before(html, off);
@@ -2756,33 +2709,22 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
         }
     };
     // (1) resource `src=` (always a fetch) and `<link href=>` (a stylesheet/preload fetch).
-    for attr in ["src=\"", "href=\""] {
-        let mut i = 0;
-        while let Some(pos) = html[i..].find(attr) {
-            let at = i + pos;
-            let start = at + attr.len();
-            let Some(len) = html[start..].find('"') else {
-                break;
-            };
-            let val = &html[start..start + len];
-            i = start + len;
-            // The match must *begin* an attribute name, so `data-tali-src="…"` (click-to-source)
-            // is not harvested — mirrors `local_refs`.
-            if at > 0 && bytes[at - 1] != b'<' && !bytes[at - 1].is_ascii_whitespace() {
+    for tag in taliesin_core::render::tags(html) {
+        for a in taliesin_core::render::attrs(&tag) {
+            let is_src = a.name.eq_ignore_ascii_case("src");
+            if !is_src && !a.name.eq_ignore_ascii_case("href") {
                 continue;
             }
-            if !is_external_fetch(val) {
+            if !is_external_fetch(a.value) {
                 continue;
             }
             // `href=` fetches only on a `<link>` — an `<a>`/`<area>`/`<base>` href is not one —
             // and only for a `rel` that really fetches (the tool's own `rel="alternate"` feed
             // autodiscovery is the one every page of a published site carries).
-            if attr == "href=\""
-                && !(tag_named_before(html, at, "link") && link_rel_fetches(html, at))
-            {
+            if !is_src && !(tag.name.eq_ignore_ascii_case("link") && link_rel_fetches(&tag)) {
                 continue;
             }
-            push(val, at, &mut out);
+            push(a.value, a.at, &mut out);
         }
     }
     // (2) remote / bare `{js}` `import()` specifiers — only inside author cell bodies, so the
@@ -2999,6 +2941,20 @@ mod mirror_tests {
         assert_eq!(external_refs(html), Vec::new());
     }
 
+    /// A hand-written raw-HTML tag may quote its attributes either way, and the offline
+    /// warning is the author's only signal that a "portable" `--out` folder still fetches at
+    /// view time. Reading `src="` alone meant a single-quoted remote resource was copied by
+    /// nothing and warned about by nothing: the folder shipped broken, silently.
+    #[test]
+    fn external_refs_sees_a_single_quoted_remote_resource() {
+        let html = "<p data-sourcepos=\"6:1-6:40\"><img src='https://cdn.test/pic.png'></p>";
+        let urls: Vec<String> = external_refs(html).into_iter().map(|r| r.url).collect();
+        assert_eq!(urls, vec!["https://cdn.test/pic.png".to_string()]);
+        let w = offline_ref_warnings(html, "posts/p.tmd");
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].starts_with("posts/p.tmd:6:"), "located: {}", w[0]);
+    }
+
     #[test]
     fn offline_ref_warnings_locate_the_source_and_stay_empty_for_local() {
         // The shared helper the single-doc AND site-build paths both emit through: located
@@ -3067,6 +3023,56 @@ mod mirror_tests {
         // The dev-only attributes are not references to deploy.
         assert!(!refs.contains(&"posts/a/index.tmd".to_string()), "{refs:?}");
         assert!(!refs.contains(&"_site.yml".to_string()), "{refs:?}");
+    }
+
+    /// A code sample that merely *shows* an attribute is TEXT, and the scrapers must read
+    /// tags only. `escape_html` does not escape `"`, so an inline `<code>` span showing
+    /// `<a href="draft.md">` puts a literal `href="` into the document's text — and the
+    /// substring scan harvested it, so `deploy_referenced_sources` published a file nothing
+    /// on the site linked. Exactly the FA11/FA12 defect one layer down: those were fixed on
+    /// the render side by `render::rewrite_attr_in_tags`, and the build scrapers never got
+    /// the same treatment.
+    #[test]
+    fn local_refs_reads_tags_not_prose_that_merely_shows_an_attribute() {
+        let refs = local_refs(
+            "<p>Write <code>&lt;a href=\"draft.md\"&gt;</code> to link a source.</p>\
+             <p><a href=\"real.md\">the real link</a></p>",
+        );
+        assert!(refs.contains(&"real.md".to_string()), "{refs:?}");
+        assert!(
+            !refs.contains(&"draft.md".to_string()),
+            "a code sample is not a reference: {refs:?}"
+        );
+    }
+
+    /// The other half of the same rule: a `<script>` body is raw text, not markup. Every
+    /// built page inlines mermaid and the `{js}` vendor bundles, whose source really does
+    /// build HTML out of string fragments (`<a href="'+e+'"`, `<img src="${e}"`), so a scan
+    /// with no notion of raw text harvests JS syntax as if it were a file.
+    #[test]
+    fn local_refs_ignores_html_built_inside_an_inlined_script() {
+        let refs = local_refs(
+            "<script>var t = '<a href=\"'+e+'\">' + '<img src=\"pic.png\">';</script>\
+             <img src=\"real.png\">",
+        );
+        assert_eq!(refs, vec!["real.png".to_string()], "{refs:?}");
+    }
+
+    /// A single-quoted attribute is valid HTML, and raw HTML is in the trust model, so
+    /// `<img src='pic.png'>` is something an author may hand-write. The scan only knew
+    /// `src="`, so the file was never copied and the portable folder shipped a broken image.
+    #[test]
+    fn copy_local_assets_bundles_a_single_quoted_attribute() {
+        let dir = tmp_dir("single-quote-copy");
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(dir.join("pic.png"), "x").unwrap();
+
+        let copied = copy_local_assets("<img src='pic.png' alt='a'>", &dir, &out);
+
+        assert!(out.join("pic.png").is_file(), "a single-quoted src bundles");
+        assert_eq!(copied, 1);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

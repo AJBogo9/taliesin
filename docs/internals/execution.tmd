@@ -339,7 +339,10 @@ build shapes do it differently:
 
 - **A single-document `build`** (`build doc.tmd --out <dir>`, or `build doc.tmd out.html`
   into another directory) runs `copy_local_assets` over the rendered HTML **after**
-  execution: it scans every `src=`/`href=` value (`local_refs`), keeps the local ones
+  execution: it reads every element's `src`/`href`/`poster` attribute (`local_refs`, over
+  the shared `render::tags` walker, so a code sample that merely *shows* an attribute and
+  the HTML an inlined script builds out of strings are text rather than references, and a
+  hand-written `src='…'` counts like any other), keeps the local ones
   (`is_local_ref` drops external URLs, `data:` URIs, in-page anchors), strips any
   `?query`/`#fragment`, and copies each existing file to the same relative path beside the
   page. Because the scan runs after the cells ran, a figure a cell freshly wrote is on

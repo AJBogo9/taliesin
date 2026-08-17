@@ -304,6 +304,15 @@ certifies nothing. Do not credit it for a check until the repo is public.
   the two ends independently emits spans like `39:1-6:25` on a paragraph comrak merged
   across an include boundary, which `client.js`'s `highlightAtLine` skips outright.
   `map_span` is the single answer to both ends.
+- **Read finished HTML through `render::tags` / `render::attrs`, never a bare
+  `find("src=\"")`.** `escape_html` does not escape `"`, so a code sample that merely
+  *shows* `<a href="x.md">` puts a real-looking attribute into the page's TEXT, and the
+  mermaid/Plot bundles every page inlines build HTML out of string fragments
+  (`<img src="${e}"`). A substring scan reads all of it as markup: that hand-rolled scan
+  has been the same bug four times (FA11, FA12, then both halves of FA13 — a stolen
+  anchor, a rewritten code sample, a never-linked `.md` published into a deploy, and a
+  single-quoted asset silently missing from a portable folder). The walker knows
+  tag-versus-text, skips `<script>`/`<style>` bodies, and reads all three value forms.
 - **A duplicate element id is RENAMED, never refused** (`dedup_element_ids`, the last
   id-assigning pass). The first definition keeps the author's own spelling, so every link
   and `@ref` they wrote still resolves; the duplicate draws an error-severity located

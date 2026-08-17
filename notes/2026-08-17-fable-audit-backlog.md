@@ -12,10 +12,10 @@ against the release binary before filing them. Findings that got neither check a
 **[U]** and start with a verification step. Full structured findings: the audit session's
 scratchpad `audit-full.json` (not committed; this file supersedes it).
 
-**Landed 2026-08-17**, in seven commits, each with `./tools/gates.sh` green before and
-after: FA1, FA2, FA3, FA5, FA6, FA7, FA9, FA10, FA11, FA12, FA14, FA17, FA18, FA19, FA24,
-FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus all four
-DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
+**Landed 2026-08-17**, in eight commits, each with `./tools/gates.sh` green before and
+after: FA1, FA2, FA3, FA5, FA6, FA7, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18, FA19,
+FA24, FA25, FA26, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus all
+four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
 
@@ -104,22 +104,7 @@ SIGINT path has no escalation if the kernel ignores it.
   chatty cell then silent `sleep`; assert interruption fires.
 - Effort: M.
 
-# BATCH F5: string surgery over finished HTML (two of four fixed)
-
-## FA13 [A] the build scrapers: escaped prose publishes files, single-quoted attributes evade copying and warnings
-
-Two confirmed defects plus a structural one in `build.rs`'s HTML/JS substring scanners
-(`local_refs`, `external_refs`, `copy_js_imports`, `dynamic_import_specifiers`, etc):
-escaped text content is harvested, so prose documenting HTML published a never-linked
-`.md` into the deploy; single-quoted raw-HTML attributes are invisible, so a portable
-`--out` folder ships broken with no offline warning; and the attribute-scan loop plus
-its load-bearing guard exist in multiple hand-copies, so any fix must land N times.
-
-- Fix: one shared, quote-aware (both quote kinds), text-vs-tag-aware attribute scanner
-  used by every scraper; no new dependency (rule 6).
-- Done when: failing tests for the two reproduced defeats (escaped-prose ref not copied;
-  single-quoted `src` copied AND warned when remote); the copies collapsed to one helper.
-- Effort: M-L.
+# BATCH F5: string surgery over finished HTML (three of four fixed)
 
 ## FA15 [A] the two line coordinate systems are still both bare `usize`
 

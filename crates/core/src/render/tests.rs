@@ -6842,3 +6842,74 @@ fn a_code_sample_showing_a_duplicate_id_is_left_alone() {
         "and still draw its diagnostic"
     );
 }
+
+/// [`tags`] answers "what in this finished page is markup", and everything it must NOT
+/// answer for is in one place here: prose, a code sample, a comment, a closing tag, the
+/// doctype, and the body of a raw-text element.
+#[test]
+fn the_tag_walker_reads_markup_and_never_text() {
+    let html = concat!(
+        "<!DOCTYPE html>",
+        "<!-- <img src=\"commented.png\"> -->",
+        "<p>Write <code>&lt;a href=\"sample.md\"&gt;</code> for a link.</p>",
+        "<script>var t = '<a href=\"'+e+'\">';</script>",
+        "<style>a[href=\"x\"] { color: red }</style>",
+        "<img src=\"real.png\">",
+    );
+    let names: Vec<&str> = tags(html).map(|t| t.name).collect();
+    // The `<script>`/`<style>` tags themselves are markup; what is between them is not.
+    // `<p>`, `<code>` and `<img>` are real; the doctype, the comment and `</p>` are not.
+    assert_eq!(names, vec!["p", "code", "script", "style", "img"]);
+
+    let values: Vec<&str> = tags(html)
+        .flat_map(|t| attrs(&t).collect::<Vec<_>>())
+        .map(|a| a.value)
+        .collect();
+    assert_eq!(values, vec!["real.png"], "only the one real reference");
+
+    // A tag really is located where it says it is.
+    let img = tags(html).find(|t| t.name == "img").unwrap();
+    assert_eq!(&html[img.at..img.at + img.text.len()], img.text);
+}
+
+/// [`attrs`] takes an author's hand-written spelling as it comes — raw HTML is in the trust
+/// model, so all three value forms are things a `.tmd` may really contain — and reads whole
+/// names, so `data-tali-src` is never read as `src`.
+#[test]
+fn the_attribute_reader_takes_every_value_form_and_whole_names() {
+    let html = "<video src='single.mp4' poster=\"double.png\" data-tali-src=\"post.tmd\" \
+                width=640 controls></video>";
+    let tag = tags(html).next().unwrap();
+    let got: Vec<(&str, &str)> = attrs(&tag).map(|a| (a.name, a.value)).collect();
+    assert_eq!(
+        got,
+        vec![
+            ("src", "single.mp4"),
+            ("poster", "double.png"),
+            ("data-tali-src", "post.tmd"),
+            ("width", "640"),
+            ("controls", ""),
+        ]
+    );
+    // Each attribute is located at its own name, which is what a caller reporting the
+    // reference it just read needs.
+    for a in attrs(&tag) {
+        assert!(html[a.at..].starts_with(a.name), "{a:?}");
+    }
+}
+
+/// A tag the author never closed, and a raw-text element the author never closed, each end
+/// the walk instead of wedging it or reading the rest of the document as attributes.
+#[test]
+fn the_tag_walker_terminates_on_unclosed_markup() {
+    assert_eq!(tags("<p>ok</p><img src=\"x.png\"").count(), 1);
+    let names: Vec<&str> = tags("<script>var a = 1;<img src=\"x.png\">")
+        .map(|t| t.name)
+        .collect();
+    assert_eq!(
+        names,
+        vec!["script"],
+        "an unclosed script swallows the rest"
+    );
+    assert_eq!(tags("a < b and c > d").count(), 0, "prose is not markup");
+}
