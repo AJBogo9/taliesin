@@ -610,9 +610,8 @@ impl Site {
         page: &Page,
         mut doc: render::RenderedDoc,
     ) -> (String, Vec<Warning>) {
-        doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
-        self.finish_blocks(page, &mut doc.blocks, &mut warnings, None);
+        doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
         // Inline single-file page build: no `_assets/`, and no book archive alongside it.
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
@@ -628,9 +627,8 @@ impl Site {
         mut doc: render::RenderedDoc,
         assets: render::ExternalAssets,
     ) -> (String, Vec<Warning>) {
-        doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
-        self.finish_blocks(page, &mut doc.blocks, &mut warnings, None);
+        doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
@@ -921,18 +919,29 @@ impl Site {
     /// a correct answer, not a gap: the warning keeps its whole-line span (which is what
     /// `build`'s `file:line` output shows anyway), and the render entry points here are
     /// handed a finished `RenderedDoc` rather than the text it came from.
+    ///
+    /// **Returns the page's `toc` flag, so the four callers cannot disagree about WHEN it
+    /// is computed** (Fable audit FA17). `page_toc` reads the block list, and three callers
+    /// asked it before this ran while `serve_site::build_page` asked it after. That was
+    /// benign only by accident of the gate's own short-circuit (`page_toc` consults the
+    /// blocks only for a page with no `listing:` and no `hero:`, which is exactly the page
+    /// `expand_page` leaves alone), i.e. by a coincidence between two functions that do not
+    /// know about each other. Returning it here retires the question instead of restating
+    /// the convention in four comments.
     pub fn finish_blocks(
         &self,
         page: &Page,
         blocks: &mut Vec<Block>,
         warnings: &mut Vec<Warning>,
         src: Option<&str>,
-    ) {
+        toc_explicit: Option<bool>,
+    ) -> bool {
         self.number_chapter(page, blocks);
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks, src));
         self.expand_page(page, blocks, warnings);
+        self.page_toc(page, toc_explicit, blocks)
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub

@@ -231,6 +231,15 @@ struct PageDoc {
     /// different title in reach is how the first one drifted.
     tab_title: String,
     toc: bool,
+    /// The page's front-matter `lang:`, empty when it declares none.
+    ///
+    /// Resolved here by the producer for the same reason `tab_title` is: the live shell is
+    /// a second assembly of the page and every value it does not carry, it invents. It
+    /// invented this one until 2026-08-17, hardcoding `lang: "en"` with a comment saying
+    /// "preview chrome defaults to English" — so a Finnish page previewed as English and
+    /// built as Finnish, and the one place an author would notice the difference (a screen
+    /// reader, a hyphenation dictionary) is not the preview.
+    lang: String,
     theme_css: String,
     /// The page's own front-matter `include-*`/`css` (merged after the site's).
     includes: taliesin_core::render::PageIncludes,
@@ -663,11 +672,17 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         site.chapter_for(page),
         Some(&site.render_defaults()),
     );
-    let toc = site.page_toc(page, doc.toc_explicit, &doc.blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
-    // listing/about expansion, post decoration) so preview matches the build.
+    // listing/about expansion, post decoration) so preview matches the build. It owns the
+    // `toc` decision too, so the four callers cannot compute it at four different points.
     let mut warnings = std::mem::take(&mut doc.warnings);
-    site.finish_blocks(page, &mut doc.blocks, &mut warnings, Some(&src));
+    let toc = site.finish_blocks(
+        page,
+        &mut doc.blocks,
+        &mut warnings,
+        Some(&src),
+        doc.toc_explicit,
+    );
     // Resolved off the *finished* doc, exactly as the static build resolves it
     // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
     // `_site/` cannot name one tab three ways.
@@ -685,6 +700,7 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     PageDoc {
         tab_title,
         toc,
+        lang: doc.lang.clone().unwrap_or_default(),
         theme_css: doc.theme_css,
         includes: doc.includes,
         blocks: doc.blocks,
@@ -705,13 +721,14 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body and no theme either), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, theme_css, body, page_includes, generation) = {
+    let (tab_title, toc, lang, theme_css, body, page_includes, generation) = {
         let pages = project.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => (
                 ps.doc.tab_title.clone(),
                 ps.doc.toc,
+                ps.doc.lang.clone(),
                 ps.doc.theme_css.clone(),
                 ps.doc.body_html(),
                 ps.doc.includes.clone(),
@@ -720,6 +737,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
             None => (
                 String::new(),
                 false,
+                String::new(),
                 String::new(),
                 String::new(),
                 Default::default(),
@@ -851,9 +869,9 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
         title: &tab_title,
-        // Preview chrome defaults to English; the built `_site/` honours each
-        // page's front-matter `lang:` via the core page builder.
-        lang: "en",
+        // The page's own `lang:`, exactly as the build reads it, falling back the same way
+        // core's page builder does. Hardcoded to "en" until 2026-08-17.
+        lang: if lang.is_empty() { "en" } else { &lang },
         favicon: &favicon,
         theme_css: &theme_css,
         with_site_css: true,
@@ -1176,7 +1194,7 @@ fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks:
     let mut discarded = Vec::new();
     {
         let site = project.site.lock();
-        site.finish_blocks(page, &mut pre, &mut discarded, None);
+        site.finish_blocks(page, &mut pre, &mut discarded, None, None);
     }
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
@@ -1327,9 +1345,15 @@ async fn build_page(
     let mut warnings = doc.warnings.clone();
     let (toc, tab_title) = {
         let site = project.site.lock();
-        site.finish_blocks(&page, &mut doc.blocks, &mut warnings, Some(&src));
+        let toc = site.finish_blocks(
+            &page,
+            &mut doc.blocks,
+            &mut warnings,
+            Some(&src),
+            doc.toc_explicit,
+        );
         (
-            site.page_toc(&page, doc.toc_explicit, &doc.blocks),
+            toc,
             // Re-resolved every build: an edit can add, change, or remove the front-matter
             // title or the leading `# H1` that names the tab.
             site.page_title(&page, &doc),
@@ -1375,6 +1399,7 @@ async fn build_page(
     let title_changed = ps.doc.tab_title != tab_title;
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
+    ps.doc.lang = doc.lang.clone().unwrap_or_default();
     ps.doc.theme_css = doc.theme_css;
     ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
@@ -2365,6 +2390,71 @@ mod project_tests {
             !chapter.contains("window.TALIESIN_TOC = true;"),
             "…and the client is not told to hydrate one: {chapter}"
         );
+    }
+
+    /// The preview honours a page's `lang:`, exactly as the build does.
+    ///
+    /// **The defect (Fable audit FA16).** The live shell is a hand-aligned twin of core's
+    /// page assembly, and it passed a literal `lang: "en"` with a comment calling it a
+    /// default. So a page declaring `lang: fi` previewed as English and built as Finnish:
+    /// a divergence between the two assemblies with nothing structural to stop it, in the
+    /// attribute a screen reader picks its voice from. Driven through the real preview
+    /// assembler and compared against the real build path, so it pins the AGREEMENT and not
+    /// one side's spelling.
+    #[test]
+    fn a_page_previews_with_the_lang_it_builds_with() {
+        let dir = std::env::temp_dir().join(format!("tali-preview-lang-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: L\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Etusivu\nlang: fi\n---\n\nTeksti.\n",
+        )
+        .unwrap();
+
+        let site = taliesin_core::site::Site::discover(&dir);
+        let page = site.page("index.tmd").expect("the page").clone();
+        let doc = render_markdown_only(&site, &page);
+        let mut pages = HashMap::new();
+        pages.insert(
+            page.rel.clone(),
+            PageState {
+                doc,
+                tx: tokio::sync::broadcast::channel(4).0,
+            },
+        );
+        let project = Arc::new(Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(pages),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+        });
+        let preview = site_page_html(&project, &page);
+        assert!(
+            preview.contains(r#"<html lang="fi""#),
+            "the preview must honour the page's lang: {}",
+            &preview[..preview.len().min(400)]
+        );
+
+        let built = {
+            let site = project.site.lock();
+            let src = std::fs::read_to_string(&page.input).unwrap();
+            let doc = taliesin_core::render_document_scoped_with_site(
+                &src,
+                &dir,
+                None,
+                Some(&site.render_defaults()),
+            );
+            site.render_page_doc_warned(&page, doc).0
+        };
+        assert!(
+            built.contains(r#"<html lang="fi""#),
+            "the build side of the comparison must be the one being matched: {}",
+            &built[..built.len().min(400)]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

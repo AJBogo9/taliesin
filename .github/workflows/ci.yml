@@ -19,10 +19,24 @@ name: CI
 # deletion — but publication has not happened yet, and this file has to be committed
 # before it can be inherited by the published history. The guard makes the workflow
 # inert while the repo is private and arms it the instant it is public, with no
-# follow-up commit to forget. A skipped job is visible in the Actions UI; that is
-# deliberate, so an inert CI never *looks* like a passing one.
+# follow-up commit to forget.
 # `github.event.repository` is absent for some event types, and `null != true` is
 # true, so the guard degrades toward RUNNING rather than toward silence.
+#
+# ── The guard is NOT what is stopping this workflow, and it never has been ──
+# Measured 2026-08-17: `gh api repos/<owner>/taliesin/actions/permissions` returns
+# `{"enabled": false}`. Actions is switched off at the REPOSITORY-SETTINGS level, which
+# was the actual remedy applied on 2026-07-26, so GitHub creates no workflow run at all:
+# 382 runs exist, the newest of them from 2026-07-26, and not one since this file was
+# restored on 2026-07-28. `release.yml` has never fired.
+#
+# This paragraph used to claim the opposite — "a skipped job is visible in the Actions
+# UI; that is deliberate, so an inert CI never *looks* like a passing one". There are no
+# skipped jobs to see, because there are no runs. The consequence is worth stating
+# plainly: ~300 lines of YAML across 10 jobs and a 3-OS matrix are UNREHEARSED, and the
+# publication flip is the first time any of it executes. Before that flip, turn Actions
+# back on (or push to a throwaway fork) and let ci.yml and release.yml complete once
+# with their logs read. Until then, credit this file for nothing.
 on:
   push:
     branches: [main]
