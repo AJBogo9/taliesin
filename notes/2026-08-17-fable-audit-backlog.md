@@ -531,6 +531,38 @@ verdicts to the top of the JSON object).
 
 - Effort: S.
 
+# BATCH F11: diagnostic precision
+
+## FA30 [V] broken-xref and broken-citation squiggles cover the whole line instead of the `@token`, which also disables their quick fix
+
+Author-observed on `corpus/diagnostics/refs.tmd:18` (`@fig-reslts`): the squiggle spans
+the line, not the reference. The plumbing for precise ranges exists end to end and is
+already used by the front-matter linter: `render::Warning` carries `col`/`end_col`
+("None = whole-line", `model.rs`), and `to_lsp` maps a columned diagnostic to an exact
+UTF-16 range (`lint.rs`, `to_lsp_uses_a_precise_span_when_columned`). The xref validator
+is the exception for a structural reason: it recovers anchors from the RENDERED HTML
+(`data-tali-xref="..."` markers) after the source is gone, so it only has the block's
+start line and files `w.at(file, line)` with no columns (`cite/validate.rs`, grep
+`broken cross-reference`); same for broken citations (`cite/render.rs`, grep
+`broken citation`). The compounding cost: `to_lsp` attaches the one-click-fix payload
+ONLY when a suggestion has a precise span (`lint.rs`, "ONLY when a suggestion has a
+precise column span"), so the did-you-mean the message already computed can never become
+a "Change to `@fig-results`" code action today.
+
+- Fix: after resolving the anchor name, locate the literal `@<anchor>` in the source
+  line the warning points at and set `col`/`end_col` (1-based Unicode-scalar columns per
+  the `Warning` field docs); if the token is not on that line (a multi-line block whose
+  ref sits later), scan the block's sourcepos span before falling back to whole-line.
+  Apply to both the xref and the citation site.
+- Done when: failing lint-level test first: a `refs.tmd`-shaped input yields a
+  broken-xref diagnostic whose `[col, end_col)` spans exactly `@fig-reslts`,
+  mutation-checked per rule 5 (widen the range in the fix, confirm red); the whole-line
+  fallback is pinned for a token the line-scan cannot find; and, verified while
+  implementing, the "Change to `@fig-results`" quick fix now appears for a columned
+  xref did-you-mean (the `suggestion` field must survive into `lint::Diagnostic` for
+  that; check `diag_from`).
+- Effort: S-M.
+
 ---
 
 # DECIDE: the author's calls, not code
