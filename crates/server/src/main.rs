@@ -48,17 +48,6 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     match args.get(1).map(String::as_str) {
-        Some("build") => {
-            runtime_dirs::sweep_stale_runtime_dirs();
-            build::cmd_build(&args)
-        }
-        Some("doctor") => doctor::cmd_doctor(&args),
-        Some("lsp") => lsp::cmd_lsp(&args),
-        Some("init") => cli::cmd_init(&args),
-        Some("preview") => {
-            runtime_dirs::sweep_stale_runtime_dirs();
-            cli::cmd_serve(&args)
-        }
         Some("--version" | "-V") => {
             println!(
                 "taliesin {} ({})",
@@ -67,160 +56,109 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        // `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`, which the
-        // intercept above already serves. Without this arm the `help` verb matched first
-        // and printed top-level usage, silently ignoring the subcommand.
-        Some("help") if args.get(2).and_then(|c| subcommand_help(c)).is_some() => {
-            print!("{}", subcommand_help(&args[2]).unwrap());
-            ExitCode::SUCCESS
-        }
-        // No command, or an explicit help request: print usage and succeed.
-        Some("--help" | "-h" | "help") | None => {
+        // No command, or an explicit help request: print usage and succeed. (`help` itself
+        // is a row in the table below, because it is a verb an author types and a verb the
+        // did-you-mean must be able to suggest.)
+        Some("--help" | "-h") | None => {
             usage();
             ExitCode::SUCCESS
         }
-        // An unrecognized command is an error (non-zero), not a silent success.
-        // Suggest the nearest valid command (reusing core's Levenshtein helper).
-        //
-        // **A pointer, not the whole help, and on stderr.** This arm used to call `usage()`,
-        // which is built from `println!` — so an error printed one line to stderr and 56 to
-        // stdout, and `taliesin buidl . 2>/dev/null` showed a wall of help with the error
-        // gone. The did-you-mean plus a pointer is the whole useful content on an error
-        // path; the other 55 lines are noise, and they are one `taliesin help` away. The
-        // unknown-*flag* path next door already worked this way.
-        Some(other) => {
-            log::error(&unknown_command_message(other));
-            eprintln!("          run `taliesin help` for the full list of commands");
-            ExitCode::FAILURE
-        }
+        Some(name) => match command(name) {
+            Some(c) => {
+                if c.sweeps_runtime_dirs {
+                    runtime_dirs::sweep_stale_runtime_dirs();
+                }
+                (c.run)(&args)
+            }
+            // An unrecognized command is an error (non-zero), not a silent success.
+            // Suggest the nearest valid command (reusing core's Levenshtein helper).
+            //
+            // **A pointer, not the whole help, and on stderr.** This arm used to call
+            // `usage()`, which is built from `println!` — so an error printed one line to
+            // stderr and 56 to stdout, and `taliesin buidl . 2>/dev/null` showed a wall of
+            // help with the error gone. The did-you-mean plus a pointer is the whole useful
+            // content on an error path; the other 55 lines are noise, and they are one
+            // `taliesin help` away. The unknown-*flag* path next door already worked this way.
+            None => {
+                log::error(&unknown_command_message(name));
+                eprintln!("          run `taliesin help` for the full list of commands");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
 
-/// Every subcommand name, for the unknown-command did-you-mean.
-const COMMANDS: &[&str] = &["build", "doctor", "lsp", "init", "preview", "help"];
-
-/// The error for a command that is not one of [`COMMANDS`]: a did-you-mean within edit
-/// distance 2, or the longer-spelling rule below, or nothing.
-fn unknown_command_message(other: &str) -> String {
-    match taliesin_core::closest(other, COMMANDS).or_else(|| extended_command(other)) {
-        Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
-        None => format!("unknown command: `{other}`"),
-    }
-}
-
-/// The command a typed name extends or abbreviates, for the cases edit distance cannot see.
-/// `taliesin preview-site .` is **five** edits from `preview`, so the distance-2 rule that
-/// catches `preveiw` answered the likelier mistake — a plausible longer spelling, the shape
-/// every other tool's `<verb>-<noun>` habit teaches — with silence.
+/// One subcommand: **everything** the CLI knows about it, in one place.
 ///
-/// Consulted only after [`taliesin_core::closest`] has declined, so no suggestion that
-/// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
-/// answer here either (`serve-site` must not resolve to the `serve` that was cut).
+/// The point of the struct is that there is no second list. This table used to exist four
+/// times over — the dispatch `match`, a `COMMANDS` name const, the `--help` command block
+/// and the `subcommand_help` match — and main.rs then spent more of its length policing
+/// that alignment than dispatching, including a test that read `include_str!("main.rs")`
+/// back and diffed the match arms against the const. Those gates went with their subject
+/// (FA20): a copy that cannot be made is a copy that needs no gate.
 ///
-/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `l`
-/// opens `lsp` alone only because `lint` is a flag rather than a verb, and picking a winner
-/// when two do match would teach a rule that is not real.
-fn extended_command(other: &str) -> Option<&'static str> {
-    if other.len() < 2 {
-        return None;
-    }
-    let mut hits = COMMANDS
-        .iter()
-        .copied()
-        .filter(|c| other.starts_with(c) || c.starts_with(other));
-    let first = hits.next()?;
-    hits.next().is_none().then_some(first)
+/// One copy still lives outside this binary — the row in
+/// `docs/guide/reference/cli.tmd`'s table — and that one keeps its gate, because nothing
+/// structural can reach it.
+struct Command {
+    /// The verb as typed.
+    name: &'static str,
+    /// The `COMMANDS:` group this prints under, or `None` for a verb the grouped list does
+    /// not carry as an entry (`help` is the help system, not a line inside it).
+    group: Option<&'static str>,
+    /// The description printed beside it. Wrapped by hand — the first line sits in the
+    /// description column and the rest are indented to meet it, so the prose can break
+    /// where it reads best rather than where a width counter says.
+    blurb: &'static str,
+    /// The focused `taliesin <cmd> --help` page: synopsis, flags, one example. `None` only
+    /// for `help`, which has no page of its own to print.
+    help: Option<&'static str>,
+    /// Sweep abandoned runtime dirs before running. True for the two verbs that can leave
+    /// one behind, so a crashed previous run is cleaned up by the next real one.
+    sweeps_runtime_dirs: bool,
+    /// What actually runs it.
+    run: fn(&[String]) -> ExitCode,
 }
 
-/// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
-/// diff it against the variables the code actually reads: `TALIESIN_MERMAID_URL` shipped
-/// user-facing but undocumented because nothing tied the two together.
-const ENV_HELP: &str = "\
-ENV: TALIESIN_PYTHON (python kernel),
-     TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
-     TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
-     TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
-     TALIESIN_NO_CLEAR,
-     TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
-     TALIESIN_NO_EXEC (=--no-exec, never run code cells),
-     TALIESIN_MERMAID_URL (override the url the live preview lazy-loads mermaid from)
-";
-
-/// The `USAGE:` + `COMMANDS:` block of [`usage`]. A const for the same reason [`ENV_HELP`]
-/// is one: `commands_help_lists_every_subcommand` diffs it against `COMMANDS`, and nothing
-/// else could. `skim` shipped with a focused `--help` page and a dispatch arm but was
-/// absent from this list for its whole life, so the only way to find it was to already
-/// know it existed.
-const COMMANDS_HELP: &str = "\
-USAGE:
-  taliesin <command> <file.tmd | dir> [args]
-  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)
-
-COMMANDS:
-
-Author
-  init   [dir]               scaffold a starter site you can preview right away
-                             (writes _site.yml + index.tmd + one dated example
-                             post; default: current dir)
-
-Preview & build
-  preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]
-                             live preview server, on loopback only (a dir previews
-                             the whole SITE with nav + hot reload;
-                             default port 4321 (or [port] / --port <N>), replacing
-                             this project's own running preview and stepping past
-                             anyone else's;
-                             --open launches a browser;
-                             --no-exec renders code cells as source,
-                             kernel and {js} alike, but does not strip raw
-                             HTML: see `Documents you did not write`)
-  build  <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only] [--strict] [--jobs <N>] [--no-exec] [--format json]
-                             render a self-contained HTML file (a dir builds the
-                             whole SITE to _site/); default <name>.html beside
-                             the source; --out <dir> writes a portable folder;
-                             --stdout writes the page to stdout instead of a file;
-                             --check-only lints and writes nothing (the
-                             pre-publish gate); --strict exits non-zero on a
-                             located warning, and on a cell error when cells
-                             actually run (they never do under --check-only,
-                             which is static); --jobs <N> caps
-                             parallel page renders (site build); --no-exec
-                             renders code cells as source
-                             (executable cells with no kernel otherwise FAIL)
-
-Inspect
-  doctor [dir] [--format human|json]  audit the environment for running code cells
-                             (the Python interpreter, ipykernel, _site.yml)
-
-Editor
-  lsp                        stdio LSP server: live .tmd diagnostics in any editor
-
-  help, --version            show this help / the version
-
-";
-
-fn usage() {
-    println!(
-        "taliesin {} ({})",
-        taliesin_core::VERSION,
-        env!("TALIESIN_GIT_SHA")
-    );
-    println!("A fast .tmd -> HTML renderer and live preview server.");
-    println!("Docs: https://github.com/AJBogo9/taliesin");
-    println!();
-    // Grouped by purpose (git/cargo/gh style; clig.dev): the everyday three sit apart from the
-    // ten an author rarely types. Flush-left section headers keep each command line unindented.
-    print!("{COMMANDS_HELP}");
-    print!("{ENV_HELP}");
-}
-
-/// Focused help for one subcommand (synopsis + its flags + a one-line example), or
-/// `None` for a name with no dedicated page (the caller falls back to `usage()`). Kept as
-/// a flat match to mirror the hand-rolled `usage()` style; printed by `main()` when
-/// `--help`/`-h` follows a known subcommand.
-fn subcommand_help(cmd: &str) -> Option<&'static str> {
-    let text = match cmd {
-        "preview" => {
+/// Every subcommand, **in the order `--help` prints them**.
+const COMMANDS: &[Command] = &[
+    Command {
+        name: "init",
+        group: Some("Author"),
+        blurb: "scaffold a starter site you can preview right away\n\
+                (writes _site.yml + index.tmd + one dated example\n\
+                post; default: current dir)",
+        help: Some(
+            "taliesin init [dir]\n\
+             \n\
+             Scaffold a starter project into dir (default the current directory) and print\n\
+             the preview hint: a `_site.yml` holding the title, an `index.tmd` you can\n\
+             preview immediately, and one dated post under posts/ that its listing shows.\n\
+             Nothing else. Refuses to overwrite existing files.\n\
+             \n\
+             Add pages by dropping more .tmd files beside index.tmd; add posts by copying\n\
+             posts/my-first-post/; make it a book by listing pages under chapters: in\n\
+             _site.yml.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin init my-site\n",
+        ),
+        sweeps_runtime_dirs: false,
+        run: cli::cmd_init,
+    },
+    Command {
+        name: "preview",
+        group: Some("Preview & build"),
+        blurb: "live preview server, on loopback only (a dir previews\n\
+                the whole SITE with nav + hot reload;\n\
+                default port 4321 (or [port] / --port <N>), replacing\n\
+                this project's own running preview and stepping past\n\
+                anyone else's;\n\
+                --open launches a browser;\n\
+                --no-exec renders code cells as source,\n\
+                kernel and {js} alike, but does not strip raw\n\
+                HTML: see `Documents you did not write`)",
+        help: Some(
             "taliesin preview <file.tmd | dir> [port] [--port <N>] [--open] [--no-exec]\n\
              \n\
              Live preview server, bound to loopback only. A file previews one document; a\n\
@@ -238,9 +176,27 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin preview index.tmd --open\n\
-             \x20 taliesin preview . --port 4400\n"
-        }
-        "build" => {
+             \x20 taliesin preview . --port 4400\n",
+        ),
+        sweeps_runtime_dirs: true,
+        run: cli::cmd_serve,
+    },
+    Command {
+        name: "build",
+        group: Some("Preview & build"),
+        blurb: "render a self-contained HTML file (a dir builds the\n\
+                whole SITE to _site/); default <name>.html beside\n\
+                the source; --out <dir> writes a portable folder;\n\
+                --stdout writes the page to stdout instead of a file;\n\
+                --check-only lints and writes nothing (the\n\
+                pre-publish gate); --strict exits non-zero on a\n\
+                located warning, and on a cell error when cells\n\
+                actually run (they never do under --check-only,\n\
+                which is static); --jobs <N> caps\n\
+                parallel page renders (site build); --no-exec\n\
+                renders code cells as source\n\
+                (executable cells with no kernel otherwise FAIL)",
+        help: Some(
             "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--stdout] [--check-only]\n\
              \x20                            [--strict] [--jobs <N>] [--no-exec] [--format json]\n\
              \n\
@@ -272,36 +228,17 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin build . --jobs 4\n\
              \x20 taliesin build post.tmd --stdout --no-exec > post.html\n\
              \x20 taliesin build docs/guide --check-only --strict\n\
-             \x20 taliesin build . --check-only --format json | jq\n"
-        }
-        "lsp" => {
-            "taliesin lsp\n\
-             \n\
-             Run a local, offline LSP (Language Server Protocol) server over stdio so any\n\
-             LSP editor (Neovim, Helix, Zed, VS Code) gets live .tmd diagnostics as you\n\
-             type — the same validators the build gate runs, on the unsaved buffer. Parse-only: no\n\
-             kernel, no code execution, read-only (it never edits your source). JSON-RPC on\n\
-             stdout, logs on stderr.\n\
-             \n\
-             Example (Neovim, via nvim-lspconfig or vim.lsp.start):\n\
-             \x20 cmd = { \"taliesin\", \"lsp\" }\n"
-        }
-        "init" => {
-            "taliesin init [dir]\n\
-             \n\
-             Scaffold a starter project into dir (default the current directory) and print\n\
-             the preview hint: a `_site.yml` holding the title, an `index.tmd` you can\n\
-             preview immediately, and one dated post under posts/ that its listing shows.\n\
-             Nothing else. Refuses to overwrite existing files.\n\
-             \n\
-             Add pages by dropping more .tmd files beside index.tmd; add posts by copying\n\
-             posts/my-first-post/; make it a book by listing pages under chapters: in\n\
-             _site.yml.\n\
-             \n\
-             Example:\n\
-             \x20 taliesin init my-site\n"
-        }
-        "doctor" => {
+             \x20 taliesin build . --check-only --format json | jq\n",
+        ),
+        sweeps_runtime_dirs: true,
+        run: build::cmd_build,
+    },
+    Command {
+        name: "doctor",
+        group: Some("Inspect"),
+        blurb: "audit the environment for running code cells\n\
+                (the Python interpreter, ipykernel, _site.yml)",
+        help: Some(
             "taliesin doctor [dir] [--format human|json]\n\
              \n\
              Audit whether the environment can run code cells: the Python interpreter\n\
@@ -312,11 +249,198 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin doctor\n\
-             \x20 taliesin doctor myproject --format json\n"
+             \x20 taliesin doctor myproject --format json\n",
+        ),
+        sweeps_runtime_dirs: false,
+        run: doctor::cmd_doctor,
+    },
+    Command {
+        name: "lsp",
+        group: Some("Editor"),
+        blurb: "stdio LSP server: live .tmd diagnostics in any editor",
+        help: Some(
+            "taliesin lsp\n\
+             \n\
+             Run a local, offline LSP (Language Server Protocol) server over stdio so any\n\
+             LSP editor (Neovim, Helix, Zed, VS Code) gets live .tmd diagnostics as you\n\
+             type — the same validators the build gate runs, on the unsaved buffer. Parse-only: no\n\
+             kernel, no code execution, read-only (it never edits your source). JSON-RPC on\n\
+             stdout, logs on stderr.\n\
+             \n\
+             Example (Neovim, via nvim-lspconfig or vim.lsp.start):\n\
+             \x20 cmd = { \"taliesin\", \"lsp\" }\n",
+        ),
+        sweeps_runtime_dirs: false,
+        run: lsp::cmd_lsp,
+    },
+    Command {
+        name: "help",
+        group: None,
+        blurb: "show this help",
+        help: None,
+        sweeps_runtime_dirs: false,
+        run: cmd_help,
+    },
+];
+
+/// The table row for `name`, or `None` when the binary answers no such verb.
+fn command(name: &str) -> Option<&'static Command> {
+    COMMANDS.iter().find(|c| c.name == name)
+}
+
+/// `taliesin help [command]`.
+///
+/// `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`, which the
+/// intercept in `main` already serves; this is the other spelling. A bare `help`, or a name
+/// with no focused page, prints top-level usage.
+fn cmd_help(args: &[String]) -> ExitCode {
+    match args.get(2).and_then(|c| subcommand_help(c)) {
+        Some(help) => print!("{help}"),
+        None => usage(),
+    }
+    ExitCode::SUCCESS
+}
+
+/// The error for a command that is not in [`COMMANDS`]: a did-you-mean within edit
+/// distance 2, or the longer-spelling rule below, or nothing.
+fn unknown_command_message(other: &str) -> String {
+    match taliesin_core::closest_of(other, COMMANDS.iter().map(|c| c.name))
+        .or_else(|| extended_command(other))
+    {
+        Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
+        None => format!("unknown command: `{other}`"),
+    }
+}
+
+/// The command a typed name extends or abbreviates, for the cases edit distance cannot see.
+/// `taliesin preview-site .` is **five** edits from `preview`, so the distance-2 rule that
+/// catches `preveiw` answered the likelier mistake — a plausible longer spelling, the shape
+/// every other tool's `<verb>-<noun>` habit teaches — with silence.
+///
+/// Consulted only after [`taliesin_core::closest`] has declined, so no suggestion that
+/// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
+/// answer here either (`serve-site` must not resolve to the `serve` that was cut).
+///
+/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `l`
+/// opens `lsp` alone only because `lint` is a flag rather than a verb, and picking a winner
+/// when two do match would teach a rule that is not real.
+fn extended_command(other: &str) -> Option<&'static str> {
+    if other.len() < 2 {
+        return None;
+    }
+    let mut hits = COMMANDS
+        .iter()
+        .map(|c| c.name)
+        .filter(|c| other.starts_with(c) || c.starts_with(other));
+    let first = hits.next()?;
+    hits.next().is_none().then_some(first)
+}
+
+/// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
+/// diff it against the variables the code actually reads: `TALIESIN_MERMAID_URL` shipped
+/// user-facing but undocumented because nothing tied the two together.
+const ENV_HELP: &str = "\
+ENV: TALIESIN_PYTHON (python kernel),
+     TALIESIN_CELL_SILENCE (per-cell seconds with NO output; default 600, 0 disables),
+     TALIESIN_CELL_TIMEOUT (per-cell wall-clock seconds; off by default, 0 disables),
+     TALIESIN_RENDER_TIMEOUT (per-render seconds; default 30, 0 disables),
+     TALIESIN_NO_CLEAR,
+     TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
+     TALIESIN_NO_EXEC (=--no-exec, never run code cells),
+     TALIESIN_MERMAID_URL (override the url the live preview lazy-loads mermaid from)
+";
+
+/// Where a command's description starts, in columns. Chosen once so every entry lines up:
+/// `  ` + a 6-wide name + ` ` puts the argument sketch at column 9, and anything wider than
+/// the column wraps its description onto the next line rather than pushing the whole grid
+/// right (which is what the hand-aligned `doctor` row used to do).
+const DESC_COL: usize = 29;
+
+/// The fixed head of [`commands_help`].
+const USAGE_HEADER: &str = "\
+USAGE:
+  taliesin <command> <file.tmd | dir> [args]
+  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)
+
+COMMANDS:
+";
+
+/// The argument sketch printed after a verb's name in the grouped list: its own focused
+/// help page's synopsis, with the leading `taliesin <verb> ` stripped.
+///
+/// Derived rather than stored, because the grouped list and the focused page were saying
+/// the same thing in two hand-synced places — the shape that let `preview --port <N>` be
+/// parsed, unit-tested and shell-completed while appearing in no help text at all. Empty
+/// for a verb that takes no arguments (`lsp`), which is also what a verb with no focused
+/// page gets.
+fn command_args(name: &str) -> String {
+    command_synopsis(name)
+        .and_then(|s| {
+            s.strip_prefix(&format!("taliesin {name} "))
+                .map(str::to_owned)
+        })
+        .unwrap_or_default()
+}
+
+/// The `USAGE:` + `COMMANDS:` block, **built from [`COMMANDS`]**.
+///
+/// This was a hand-maintained const until FA20, and the gate that diffed it against the
+/// verb list was the only thing standing between a reader and a verb they could not find:
+/// the since-retired `skim` shipped with a dispatch arm, a focused `--help` page and an
+/// integration test, and was absent from this list for its whole life. Generated, the list
+/// cannot disagree with the binary — so the gate is gone too, and what is left to test is
+/// the layout rule rather than the contents.
+///
+/// Grouped by purpose (git/cargo/gh style; clig.dev), flush-left headers, so the everyday
+/// verbs sit apart from the ones an author rarely types.
+fn commands_help() -> String {
+    let mut out = String::from(USAGE_HEADER);
+    let mut current = "";
+    for c in COMMANDS {
+        let Some(group) = c.group else { continue };
+        if group != current {
+            out.push_str(&format!("\n{group}\n"));
+            current = group;
         }
-        _ => return None,
-    };
-    Some(text)
+        let head = format!("  {:<6} {}", c.name, command_args(c.name));
+        let head = head.trim_end();
+        // Wide entries put their description on the next line; narrow ones share it.
+        if head.len() < DESC_COL {
+            out.push_str(&format!("{head:<DESC_COL$}"));
+        } else {
+            out.push_str(&format!("{head}\n{:DESC_COL$}", ""));
+        }
+        out.push_str(&c.blurb.replace('\n', &format!("\n{:DESC_COL$}", "")));
+        out.push('\n');
+    }
+    // `help` has no entry of its own (it is the page you are reading) and `--version` is a
+    // flag rather than a verb, so the pair share one trailing line.
+    out.push_str(&format!(
+        "\n  {:<DESC_COL_LESS_TWO$}show this help / the version\n\n",
+        "help, --version",
+        DESC_COL_LESS_TWO = DESC_COL - 2
+    ));
+    out
+}
+
+fn usage() {
+    println!(
+        "taliesin {} ({})",
+        taliesin_core::VERSION,
+        env!("TALIESIN_GIT_SHA")
+    );
+    println!("A fast .tmd -> HTML renderer and live preview server.");
+    println!("Docs: https://github.com/AJBogo9/taliesin");
+    println!();
+    print!("{}", commands_help());
+    print!("{ENV_HELP}");
+}
+
+/// Focused help for one subcommand (synopsis + its flags + a one-line example), or
+/// `None` for a name with no dedicated page (the caller falls back to `usage()`). Printed
+/// by `main()` when `--help`/`-h` follows a known subcommand.
+fn subcommand_help(cmd: &str) -> Option<&'static str> {
+    command(cmd)?.help
 }
 
 /// The synopsis for `cmd` — everything in [`subcommand_help`] before its first blank line
@@ -356,14 +480,20 @@ pub(crate) fn usage_line(cmd: &str) -> String {
 mod dispatch_tests {
     use super::*;
 
+    /// The verb names, for the did-you-mean assertions below.
+    fn names() -> Vec<&'static str> {
+        COMMANDS.iter().map(|c| c.name).collect()
+    }
+
     #[test]
     fn closest_command_suggests_nearest() {
+        let closest = |typed: &str| taliesin_core::closest(typed, &names());
         // A near-miss typo resolves to the intended command.
-        assert_eq!(taliesin_core::closest("biuld", COMMANDS), Some("build"));
-        assert_eq!(taliesin_core::closest("previw", COMMANDS), Some("preview"));
-        assert_eq!(taliesin_core::closest("innit", COMMANDS), Some("init"));
+        assert_eq!(closest("biuld"), Some("build"));
+        assert_eq!(closest("previw"), Some("preview"));
+        assert_eq!(closest("innit"), Some("init"));
         // Something far from every command yields no suggestion (not a wild guess).
-        assert_eq!(taliesin_core::closest("frobnicate", COMMANDS), None);
+        assert_eq!(closest("frobnicate"), None);
     }
 
     /// A name that EXTENDS or ABBREVIATES a command gets its did-you-mean. Measured:
@@ -386,7 +516,7 @@ mod dispatch_tests {
             // spent; the shorter prefixes would pass too, and the assertion below is what
             // would say so if that ever changed back.)
             assert_eq!(
-                taliesin_core::closest(typed, COMMANDS),
+                taliesin_core::closest(typed, &names()),
                 None,
                 "`{typed}` is supposed to be out of distance-2 reach"
             );
@@ -584,9 +714,10 @@ mod cli_microcopy_tests {
         );
 
         // `help` is the usage page itself, not a row in the table it prints.
-        let missing: Vec<&&str> = COMMANDS
+        let missing: Vec<&str> = COMMANDS
             .iter()
-            .filter(|c| **c != "help" && !documented.iter().any(|d| d == *c))
+            .map(|c| c.name)
+            .filter(|c| *c != "help" && !documented.iter().any(|d| d == c))
             .collect();
         assert!(
             missing.is_empty(),
@@ -594,10 +725,7 @@ mod cli_microcopy_tests {
             path.display()
         );
 
-        let unknown: Vec<&String> = documented
-            .iter()
-            .filter(|d| !COMMANDS.contains(&d.as_str()))
-            .collect();
+        let unknown: Vec<&String> = documented.iter().filter(|d| command(d).is_none()).collect();
         assert!(
             unknown.is_empty(),
             "{} documents a command the binary does not answer: {unknown:?}",
@@ -618,90 +746,6 @@ mod cli_microcopy_tests {
         }
         // A bare `help`, or `help <unknown>`, still falls back to top-level usage.
         assert!(subcommand_help("frobnicate").is_none());
-    }
-
-    /// The source of `main()`'s dispatch `match`, sliced out of this very file. Panics
-    /// rather than returning an empty region, so a rename of either marker fails loudly
-    /// instead of turning the gate below into a vacuous pass.
-    fn dispatch_region(src: &str) -> &str {
-        const START: &str = "match args.get(1).map(String::as_str) {";
-        const END: &str = "/// Every subcommand name";
-        let s = src.find(START).expect("main() dispatches on args.get(1)");
-        let e = src[s..]
-            .find(END)
-            .expect("the COMMANDS const follows main()")
-            + s;
-        &src[s..e]
-    }
-
-    /// Every command name a dispatch region matches on, from the string literals inside
-    /// each `Some(…)` pattern.
-    ///
-    /// Deliberately NOT line-based. rustfmt wraps a long or-pattern onto its own lines,
-    /// which splits `Some(` from its `=>`, and a line-based scan then silently collects
-    /// nothing: a gate that cannot fail is worse than no gate. Reading `Some(` up to the
-    /// `)` that closes it survives any wrapping, and stopping at that `)` keeps a string
-    /// inside a match guard from being mistaken for a command.
-    fn commands_in_dispatch(region: &str) -> std::collections::BTreeSet<String> {
-        let mut out = std::collections::BTreeSet::new();
-        let mut rest = region;
-        while let Some(i) = rest.find("Some(") {
-            rest = &rest[i + "Some(".len()..];
-            let Some(end) = rest.find(')') else { break };
-            // Flags (`--version`, `-h`) and hidden internal subcommands (`__complete`,
-            // underscore-prefixed) are not user-facing commands: never suggested, never in
-            // `COMMANDS`. A binding pattern (`Some(other)`) has no literal.
-            for lit in rest[..end].split('"').skip(1).step_by(2) {
-                if !lit.starts_with('-') && !lit.starts_with('_') {
-                    out.insert(lit.to_string());
-                }
-            }
-            rest = &rest[end..];
-        }
-        out
-    }
-
-    #[test]
-    fn the_dispatch_scan_survives_rustfmt_wrapping_and_guards() {
-        let set = |names: &[&str]| -> std::collections::BTreeSet<String> {
-            names.iter().map(|s| s.to_string()).collect()
-        };
-        // A long or-pattern, wrapped: `Some(` and `=>` land on different lines.
-        assert_eq!(
-            commands_in_dispatch("Some(\n    \"alpha\" | \"beta\",\n) => cmd(),"),
-            set(&["alpha", "beta"])
-        );
-        // A long guard, wrapped off the pattern's line.
-        assert_eq!(
-            commands_in_dispatch("Some(\"gamma\")\n    if x.is_some() =>\n{ }"),
-            set(&["gamma"])
-        );
-        // A string *inside* a guard is not a command.
-        assert_eq!(
-            commands_in_dispatch("Some(\"help\") if a.map(|s| s == \"delta\").is_some() => u(),"),
-            set(&["help"])
-        );
-        // Flags and binding patterns contribute nothing.
-        assert!(commands_in_dispatch("Some(\"--version\" | \"-V\") => v(),").is_empty());
-        assert!(commands_in_dispatch("Some(other) => fail(other),").is_empty());
-        // Hidden underscore-prefixed subcommands are excluded (like flags).
-        assert!(commands_in_dispatch("Some(\"__complete\") => c(),").is_empty());
-    }
-
-    /// Every name `main()` dispatches on is in `COMMANDS`, and vice versa. `COMMANDS` is
-    /// what the unknown-command did-you-mean searches, so a subcommand missing from it is
-    /// invisible: `taliesin symbol` would suggest nothing instead of `symbols`. Nothing
-    /// tied the two together, exactly as nothing tied `usage()`'s `ENV:` block to the
-    /// variables the code reads (see `env_help_lists_every_runtime_env_var`).
-    #[test]
-    fn every_dispatched_command_is_listed_in_commands() {
-        let dispatched = commands_in_dispatch(dispatch_region(include_str!("main.rs")));
-        let listed: std::collections::BTreeSet<String> =
-            COMMANDS.iter().map(|c| c.to_string()).collect();
-        assert_eq!(
-            dispatched, listed,
-            "the dispatch and COMMANDS disagree (left: dispatched, right: COMMANDS)"
-        );
     }
 
     /// Every `.rs` source under this crate, as `(path, text)`, sorted so a failure names the
@@ -846,93 +890,98 @@ mod cli_microcopy_tests {
         }
     }
 
-    /// Names in `COMMANDS` that are not a subcommand with a page of its own.
-    /// `subcommand_help_covers_documented_commands` skips them: `help` is the help system
-    /// rather than an entry in it. (The `dev`/`serve` aliases that used to live here were
-    /// retired in Wave 5 — one spelling, so there is nothing to resolve.)
-    const ALIASES_AND_META: &[&str] = &["help"];
-
-    /// Every subcommand is listed in `taliesin --help`, and everything listed there is a
-    /// real subcommand. The command half of the same link `env_help_lists_every_runtime_env_var`
-    /// makes for environment variables — and the one that was missing.
-    ///
-    /// The since-retired `skim` shipped with a dispatch arm, an entry in `COMMANDS`, a
-    /// focused `--help` page and an integration test, and was absent from the one list a user
-    /// reads to find out what the tool can do. Every other gate passed:
-    /// `subcommand_help_covers_documented_commands` only asks whether a *focused* page
-    /// exists, which it did.
+    /// The generated `--help` list. What used to need a gate — *is every verb listed, and is
+    /// every listing a verb* — is now structural: [`commands_help`] walks [`COMMANDS`], so
+    /// the two cannot disagree in either direction. What is left to check is the **layout
+    /// rule** that replaced the hand-alignment, since a generator can produce a list that is
+    /// complete and unreadable.
     #[test]
-    fn commands_help_lists_every_subcommand() {
-        // `help` is documented on the trailing `help, --version` line: listed, just not as
-        // a `  <name> ` entry of its own.
-        const LISTED_IN_PROSE: &[&str] = &["help"];
-        // A command's entry opens its line: two spaces, the name, then a space. Matching the
-        // bare name anywhere would pass on a mention inside another command's description
-        // (`preview`'s text names `--no-exec`, `build`'s names `--stdout`), which is exactly
-        // the false pass that let `skim` through.
-        let listed = |name: &str| COMMANDS_HELP.contains(&format!("\n  {name} "));
-
-        for cmd in COMMANDS.iter().filter(|c| !LISTED_IN_PROSE.contains(c)) {
-            assert!(
-                listed(cmd),
-                "`{cmd}` dispatches but is not listed in `taliesin --help`"
-            );
-        }
-        for name in LISTED_IN_PROSE {
-            assert!(
-                COMMANDS_HELP.contains(name),
-                "`{name}` must at least be mentioned in --help"
-            );
-        }
-
-        // And the other direction: every entry in the list is a command that exists. An
-        // entry lines up under the flush-left group headers, so it is a line starting with
-        // exactly two spaces whose first token is not a flag or a continuation.
-        let mut found = 0usize;
-        // Only the COMMANDS: section — the USAGE: synopsis above it is indented the same way
-        // and its first token is the binary's own name.
-        let (_, list) = COMMANDS_HELP
-            .split_once("COMMANDS:")
-            .expect("--help has a COMMANDS: section");
-        for line in list.lines() {
-            let Some(rest) = line.strip_prefix("  ") else {
+    fn the_help_list_is_generated_and_lines_its_descriptions_up() {
+        let help = commands_help();
+        for c in COMMANDS {
+            let Some(group) = c.group else {
+                // A verb with no group prints no entry of its own; `help` rides the trailing
+                // meta line instead, and must still be findable there.
+                assert!(
+                    help.contains(&format!("  {}, --version", c.name)),
+                    "`{}` has no group and no place on the meta line either:\n{help}",
+                    c.name
+                );
                 continue;
             };
-            let Some(name) = rest.split_whitespace().next() else {
-                continue;
-            };
-            if rest.starts_with(' ') || name.starts_with('-') || name.starts_with('(') {
-                continue; // a wrapped description line, a flag, or a parenthetical
+            assert!(
+                help.contains(&format!("\n{group}\n")),
+                "`{}`'s group `{group}` is not a header:\n{help}",
+                c.name
+            );
+            assert!(
+                help.contains(&format!("\n  {} ", c.name)),
+                "`{}` is in the table but not in the printed list:\n{help}",
+                c.name
+            );
+        }
+        // Every description — the first line of a blurb and every wrapped continuation —
+        // starts in the same column, whether it shares the entry's row or follows it. The
+        // hand-maintained list drifted here (`doctor`'s row sat at 38), which is exactly the
+        // kind of detail a generator should own.
+        let lines: Vec<&str> = help.lines().collect();
+        let indent = format!("{:DESC_COL$}", "");
+        for c in COMMANDS.iter().filter(|c| c.group.is_some()) {
+            let row = lines
+                .iter()
+                .position(|l| l.starts_with(&format!("  {} ", c.name)))
+                .unwrap_or_else(|| panic!("no entry row for `{}`:\n{help}", c.name));
+            let mut want = c.blurb.lines();
+            let first = want.next().expect("a blurb is never empty");
+            // A narrow entry shares its row with the first description line; a wide one
+            // pushes it to the next. Either way the text starts in the same column.
+            let mut next = row + 1;
+            if lines[row].get(DESC_COL..) != Some(first) {
+                assert_eq!(
+                    lines[next],
+                    format!("{indent}{first}"),
+                    "`{}`'s description starts neither at column {DESC_COL} of its own row \
+                     nor on the next line",
+                    c.name
+                );
+                next += 1;
             }
-            // `help, --version` is the one entry naming two things on one line.
-            let name = name.trim_end_matches(',');
-            assert!(
-                COMMANDS.contains(&name),
-                "--help lists `{name}`, which is not a subcommand"
-            );
-            found += 1;
+            for line in want {
+                assert_eq!(
+                    lines[next],
+                    format!("{indent}{line}"),
+                    "`{}`'s wrapped description line is not indented to the column",
+                    c.name
+                );
+                next += 1;
+            }
         }
-        // A floor: an extractor that stops matching is a gate that passes forever.
-        assert!(
-            found >= COMMANDS.len() - LISTED_IN_PROSE.len(),
-            "only {found} entries were extracted from --help; the parser has drifted"
-        );
     }
 
     /// Each covered subcommand has a focused help that names itself and shows an
     /// example; an unknown command has none.
     #[test]
     fn subcommand_help_covers_documented_commands() {
-        // Driven by COMMANDS, so a new subcommand cannot ship without focused help.
-        for cmd in COMMANDS.iter().filter(|c| !ALIASES_AND_META.contains(c)) {
-            let help = subcommand_help(cmd).unwrap_or_else(|| panic!("help for `{cmd}`"));
+        // Driven by COMMANDS, so a new subcommand cannot ship without focused help. `help`
+        // is the one row allowed to carry none: it is the help system, not an entry in it.
+        for c in COMMANDS {
+            let Some(help) = c.help else {
+                assert_eq!(
+                    c.name, "help",
+                    "`{}` ships with no focused --help page",
+                    c.name
+                );
+                continue;
+            };
             assert!(
-                help.contains(cmd),
-                "`{cmd}` help should name the subcommand: {help}"
+                help.contains(c.name),
+                "`{}` help should name the subcommand: {help}",
+                c.name
             );
             assert!(
                 help.contains("taliesin"),
-                "`{cmd}` help should show a `taliesin …` example: {help}"
+                "`{}` help should show a `taliesin …` example: {help}",
+                c.name
             );
         }
         // An unrecognized command has no focused help (it falls back to top-level usage).

@@ -100,7 +100,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    fragments, mermaid.js, tali-js.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
-  src/main.rs      subcommand dispatch + COMMANDS + the help surfaces
+  src/main.rs      the COMMANDS table (one row per verb: name, group, blurb, focused
+                   help, handler) + the dispatch and both help surfaces derived from it
   src/cli.rs       `init` (the scaffold) + `preview` arg parsing
   src/serve/       the dev server's SHARED layer, not a server: HTTP/asset plumbing,
                    port binding + the single-instance probe, security.rs's origin/Host/
@@ -345,11 +346,16 @@ certifies nothing. Do not credit it for a check until the repo is public.
   the crate's schema gated only by the companion's own `node --test`. **That last one
   lives outside `taliesin-core`**, so `cargo test --workspace` can be green while it is
   stale; only `./tools/gates.sh` catches it.
-- **A new subcommand has four registration sites in `main.rs`**, each drift-gated, and a
-  fifth in `docs/guide/reference/cli.tmd`'s table.
-  `every_subcommand_has_a_row_in_the_cli_reference` walks that table in both directions,
-  so a documented verb the binary does not answer fails too. Same genus as every ungated
-  prose claim in this file: grep, do not trust.
+- **A new subcommand is ONE row in `main.rs`'s `COMMANDS` table**, plus a row in
+  `docs/guide/reference/cli.tmd`'s table. It had four registration sites in `main.rs` until
+  FA20 (dispatch match, name const, help block, `subcommand_help` match) and ~156 lines of
+  tests that read `include_str!("main.rs")` back to keep them aligned; dispatch, the
+  did-you-mean, the grouped `--help` list and the focused page now all derive from the one
+  table, and the arg sketch derives from the focused page's own synopsis. Those gates were
+  deleted with their subject. The docs row is the copy nothing structural can reach, so it
+  keeps its gate: `every_subcommand_has_a_row_in_the_cli_reference` walks that table in
+  both directions, so a documented verb the binary does not answer fails too. Same genus as
+  every ungated prose claim in this file: grep, do not trust.
 - Minimal config: perfect the default before adding a knob. Aim for a near-perfect default
   experience so the user does not *need* to configure; prefer a better default over a new
   option. This is the deciding lens for any new user-facing control. **A reader-local

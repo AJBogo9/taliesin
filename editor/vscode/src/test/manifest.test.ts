@@ -132,12 +132,23 @@ test("no `qmd-fast` branding survives in the manifest or the extension source", 
   );
 });
 
-/** The subcommand names `main()` will accept, from `const COMMANDS` in the server crate. */
+/**
+ * The subcommand names `main()` will accept, from `const COMMANDS` in the server crate.
+ *
+ * The const holds one `Command { name: "…", … }` row per verb (it was a flat `&[&str]`
+ * until FA20 folded the four verb lists into one table), so the names are the `name:`
+ * fields — matching every string literal would now sweep up the help text too.
+ */
 function cargoCommands(): string[] {
   const src = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/main.rs"), "utf8");
-  const m = /const COMMANDS: &\[&str\] = &\[([\s\S]*?)\];/.exec(src);
+  const m = /const COMMANDS: &\[Command\] = &\[([\s\S]*?)\n\];/.exec(src);
   assert.ok(m, "crates/server/src/main.rs declares a COMMANDS const");
-  return [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  const names = [...m![1].matchAll(/^\s*name: "([^"]+)",/gm)].map((x) => x[1]);
+  assert.ok(
+    names.includes("build") && names.includes("preview"),
+    `COMMANDS parsed as [${names.join(", ")}]: the row shape changed, update this parser`
+  );
+  return names;
 }
 
 test("every taliesin subcommand the extension spawns is a real command", () => {

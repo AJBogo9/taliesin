@@ -622,16 +622,6 @@ fn shipped_docs_do_not_name_a_file_that_does_not_exist() {
     );
 }
 
-/// Every double-quoted string literal in `block`, in order.
-fn string_literals(block: String) -> Vec<String> {
-    block
-        .split('"')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_string)
-        .collect()
-}
-
 /// Item 146. Every CLI flag the reference documents must exist in the CLI.
 ///
 /// Scoped to the CLI reference on purpose: the README and CLAUDE.md legitimately name
@@ -741,10 +731,17 @@ fn reader_facing_docs() -> Vec<(String, String)> {
 fn live_verbs() -> Vec<String> {
     let src = read("crates/server/src/main.rs");
     let (_, table) = src
-        .split_once("const COMMANDS: &[&str] = &[")
+        .split_once("const COMMANDS: &[Command] = &[")
         .expect("COMMANDS moved or changed shape: update this gate, do not delete it");
-    let table = table.split("];").next().unwrap_or_default();
-    string_literals(table.to_string())
+    // One `name: "<verb>",` per row, ending at the const's own `\n];`. Every string literal
+    // used to be a verb; since FA20 the rows carry their blurb and focused help too, so the
+    // field name is the anchor.
+    let table = table.split("\n];").next().unwrap_or_default();
+    table
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("name: \""))
+        .filter_map(|l| l.split_once('"').map(|(name, _)| name.to_string()))
+        .collect()
 }
 
 /// A reader-facing doc must not tell a reader to type a command the binary does not answer.

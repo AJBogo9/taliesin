@@ -14,7 +14,7 @@ scratchpad `audit-full.json` (not committed; this file supersedes it).
 
 **Landed 2026-08-17**, each with `./tools/gates.sh` green before and
 after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA17, FA18,
-FA19, FA24, FA25, FA26, FA27, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
+FA19, FA20, FA24, FA25, FA26, FA27, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
 all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
@@ -120,24 +120,6 @@ item is actually about.
 - Fix: extract one shared shell function in core that both paths call (the preview adds
   its dev-menu on top).
 - Done when: the "byte-aligned" comments are deleted because there is nothing to align.
-- Effort: M.
-
-# BATCH F7: derive, don't police
-
-## FA20 [U anatomy verified] main.rs: one verb table instead of four hand-synced copies plus 678 lines of self-scanning police
-
-The 7-verb table exists as the dispatch match, the `COMMANDS` const, the help text block,
-and the `subcommand_help` match, plus an ungated fifth copy in
-`docs/guide/reference/cli.tmd`; main.rs then spends more than half its lines on tests
-that scan its own source via `include_str!("main.rs")` to keep the copies aligned.
-**Verify the four-copy count first**, then: one `const COMMANDS: &[Command]` (name,
-blurb, help text, handler fn pointer) from which dispatch, the const, and both help
-surfaces derive. No clap (rule 6); the hand-written microcopy survives as struct fields.
-The self-scanning gates whose subject disappears get deleted with it.
-
-- Done when: adding a hypothetical verb requires exactly one table row (plus its cli.tmd
-  row); `main.rs` shrinks by several hundred lines; behavior identical (`help_cli.rs`
-  and `new_cli.rs` suites green unchanged).
 - Effort: M.
 
 # BATCH F8: the browser client
