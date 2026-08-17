@@ -14,7 +14,7 @@ scratchpad `audit-full.json` (not committed; this file supersedes it).
 
 **Landed 2026-08-17**, each with `./tools/gates.sh` green before and
 after: FA1, FA2, FA3, FA5, FA6, FA7, FA8, FA9, FA10, FA11, FA12, FA13, FA14, FA15, FA17, FA18,
-FA19, FA20, FA24, FA25, FA26, FA27, FA28, FA29, FA30, plus the correctable halves of FA4 and FA16, plus
+FA19, FA20, FA24, FA25, FA26, FA27, FA28, FA29, FA30, FA16, plus the correctable half of FA4, plus
 all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
@@ -86,25 +86,6 @@ the author's call (billing on a private repo is why it is off).
 - Done when: a rehearsal run of ci.yml and release.yml (a throwaway fork, or a scratch tag
   once the repo is public; a `workflow_dispatch` trigger makes this cheap) has completed
   once with its logs read.
-- Effort: M.
-
-# BATCH F6: parity by construction
-
-## FA16 [V mechanism] the preview's page shell is a hand-aligned twin of the build's
-
-`serve_site/mod.rs` (grep `Kept structurally identical` and `byte-aligned`): the site
-shell exists twice, once in core `page.rs` for the build, once in `site_page_html` for
-the live preview, kept equal by comments. The 2026-08-13 single-file TOC incident
-(CLAUDE.md records it) is this same genus: parity by duplicated orchestration.
-
-**The `lang` symptom landed 2026-08-17** (`PageDoc` carries the resolved lang and the
-shell reads it; `a_page_previews_with_the_lang_it_builds_with` pins it, mutation-checked).
-That was one invented value; the shell can still invent the next one, which is what this
-item is actually about.
-
-- Fix: extract one shared shell function in core that both paths call (the preview adds
-  its dev-menu on top).
-- Done when: the "byte-aligned" comments are deleted because there is nothing to align.
 - Effort: M.
 
 # BATCH F8: the browser client

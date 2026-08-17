@@ -746,19 +746,16 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
 
-    let (base_cls, toc_nav, toc_flag) = if toc {
+    // The TOC rail is an empty landmark the client fills once it has the headings; the
+    // wrapper class that reserves the column for it is `SiteCtx::layout`'s business, not
+    // this path's.
+    let (toc_nav, toc_flag) = if toc {
         (
-            "tali-site-main has-toc",
             "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>",
             "window.TALIESIN_TOC = true;",
         )
     } else {
-        ("tali-site-main", "", "")
-    };
-    let main_cls = if chrome.wide {
-        format!("{base_cls} tali-wide")
-    } else {
-        base_cls.to_string()
+        ("", "")
     };
 
     // Absolute paths for click-to-source `vscode://file/…` links.
@@ -795,39 +792,15 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         taliesin_core::favicon_link(&chrome.favicon)
     };
 
-    // A book lays out a sticky topbar + off-canvas chapter drawer over a centred reading
-    // column (the live `#tali-root` + TOC), with prev/next-chapter under it; a website keeps
-    // the navbar-on-top layout. (Kept structurally identical to the build path in page.rs.)
-    let (body_class, layout) = match chrome.book_sidebar.as_deref() {
-        Some(sidebar) => {
-            // Keep this layout byte-aligned with the build path (`render/page.rs` book
-            // branch): a sticky topbar + off-canvas chapter drawer (`sidebar`), then the
-            // reading content centred in `.tali-book-main`. One column, always — a book
-            // has no right rail (item 76), so `toc_nav` is unreachable here (`page_toc`
-            // returns false for a book) and is deliberately not interpolated: the preview
-            // must not paint a surface the build does not.
-            (
-                "tali-book-body",
-                format!(
-                    "{sidebar}\n<div class=\"tali-book-main\">\n\
-                     <div class=\"tali-book-inner\">\n<main id=\"tali-root\">{body}</main>\n</div>\n\
-                     {post_nav}</div>\n{footer}",
-                    post_nav = chrome.post_nav_html,
-                    footer = chrome.footer_html,
-                ),
-            )
-        }
-        None => (
-            "tali-site",
-            format!(
-                "{navbar}\n<div class=\"{main_cls}\">\n<main id=\"tali-root\">{body}</main>\n\
-                 {toc_nav}\n{post_nav}\n</div>\n{footer}",
-                navbar = chrome.navbar_html,
-                post_nav = chrome.post_nav_html,
-                footer = chrome.footer_html,
-            ),
-        ),
-    };
+    // The chrome around the page — book topbar + drawer, or navbar on top — comes from the
+    // SAME shell the build calls (`SiteCtx::layout`), so the preview cannot paint a layout
+    // the build does not. All this path decides is what goes INSIDE: the live `#tali-root`
+    // mount the websocket client drives, and the empty `<nav id="TOC">` it fills. A book has
+    // no right rail (item 76), so `toc` is false there and `toc_nav` is empty.
+    let (body_class, layout) = chrome.layout(
+        &format!("<main id=\"tali-root\">{body}</main>\n{toc_nav}\n"),
+        toc,
+    );
 
     // The live body: the site chrome + the mountable `#tali-root`, plus the dev-menu
     // mount. The websocket client drives everything after first paint.
@@ -873,7 +846,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         // A live page can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
         extra_head: &extra_head,
-        body_class: &format!(" class=\"{body_class}\""),
+        body_class: &body_class,
         include_in_header: &includes.in_header,
         include_before_body: &includes.before_body,
         body: &body,
@@ -2381,6 +2354,84 @@ mod project_tests {
             !chapter.contains("window.TALIESIN_TOC = true;"),
             "…and the client is not told to hydrate one: {chapter}"
         );
+    }
+
+    /// The chrome skeleton of a page: the `<body>` class, then every wrapper element's
+    /// class in document order — which is all the site chrome IS. Read through
+    /// `render::tags`/`attrs` rather than a substring scan, because a page's own prose may
+    /// SHOW markup (`class="tali-site-main"` inside a code sample is text, not a wrapper).
+    ///
+    /// The `#TOC` rail is the ONE element the two paths legitimately spell differently — the
+    /// build inlines the finished `<nav id="TOC" class="tali-toc">`, the preview mounts an
+    /// empty landmark its client hydrates — so it is skipped, and what is compared for a
+    /// TOC page is the wrapper class that reserves its column.
+    fn chrome_skeleton(html: &str) -> Vec<String> {
+        taliesin_core::render::tags(html)
+            .filter(|t| matches!(t.name, "body" | "div" | "nav" | "main"))
+            .filter_map(|t| {
+                let attr = |name: &str| {
+                    taliesin_core::render::attrs(&t)
+                        .find(|a| a.name == name)
+                        .map(|a| a.value.to_string())
+                };
+                if attr("id").as_deref() == Some("TOC") {
+                    return None;
+                }
+                let class = attr("class")?;
+                class
+                    .split_whitespace()
+                    .any(|c| c.starts_with("tali-") || c == "has-toc")
+                    .then_some(format!("{}.{class}", t.name))
+            })
+            .collect()
+    }
+
+    /// The preview paints a page inside the SAME chrome the build does.
+    ///
+    /// FA16's actual subject. The `lang` test below pins one value the hand-aligned twin
+    /// invented; this pins the shell itself — where the navbar, the reading column, the TOC
+    /// rail, the prev/next and the footer go. Both paths call `SiteCtx::layout` now, and
+    /// what this guards is that they keep doing so. The CONTENTS are free to differ, as they
+    /// must: the build renders `<main id="tali-main">` with the finished TOC, the preview
+    /// mounts an empty `#tali-root` its websocket client drives.
+    #[test]
+    fn a_page_previews_inside_the_chrome_it_builds_inside() {
+        // A book chapter (topbar + drawer + centred column, no rail), a website page
+        // (navbar on top), and a page WITH a TOC rail, whose `has-toc` column class is the
+        // conditional the two paths computed separately.
+        for (project, rel) in [
+            ("tarn", "install.tmd"),
+            ("tech-blog", "index.tmd"),
+            ("analyst", "methods.tmd"),
+        ] {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../corpus")
+                .join(project);
+            let site = taliesin_core::site::Site::discover(&dir);
+            let page = site.page(rel).expect("corpus page").clone();
+            let built = {
+                let src = std::fs::read_to_string(&page.input).unwrap();
+                let doc = taliesin_core::render_document_scoped_with_site(
+                    &src,
+                    &dir,
+                    None,
+                    Some(&site.render_defaults()),
+                );
+                site.render_page_doc_warned(&page, doc).0
+            };
+            let preview = corpus_preview_page(project, rel);
+
+            let (want, got) = (chrome_skeleton(&built), chrome_skeleton(&preview));
+            // Anti-vacuity: a skeleton that reads as empty would make this pass forever.
+            assert!(
+                want.len() >= 2,
+                "{project}/{rel}: the build's chrome parsed as {want:?}; the scan drifted"
+            );
+            assert_eq!(
+                got, want,
+                "{project}/{rel} previews inside different chrome than it builds inside"
+            );
+        }
     }
 
     /// The preview honours a page's `lang:`, exactly as the build does.

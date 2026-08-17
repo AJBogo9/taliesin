@@ -6788,3 +6788,66 @@ fn the_tag_walker_terminates_on_unclosed_markup() {
     );
     assert_eq!(tags("a < b and c > d").count(), 0, "prose is not markup");
 }
+
+/// FA16: the one site shell, tested where it lives.
+///
+/// `a_page_previews_inside_the_chrome_it_builds_inside` (in the dev server) pins that the
+/// build and the preview call THIS function rather than two hand-aligned twins; by
+/// construction it cannot notice a change made inside the shell, because such a change
+/// moves both sides at once. So the shell's own answers are pinned here: which wrapper a
+/// book gets, which a website gets, and the two conditional classes on the website's
+/// content column, one of which (`tali-wide`, from `page-layout: full`) three shipped pages
+/// depend on and nothing else asserted.
+#[test]
+fn the_site_shell_wraps_a_book_and_a_website_differently() {
+    let website = SiteCtx {
+        navbar_html: "<nav id=\"bar\"></nav>".into(),
+        footer_html: "<footer></footer>".into(),
+        post_nav_html: "<nav id=\"post\"></nav>".into(),
+        ..SiteCtx::default()
+    };
+    let (class, html) = website.layout("<main>C</main>\n", false);
+    assert_eq!(class, " class=\"tali-site\"");
+    assert!(
+        html.starts_with("<nav id=\"bar\"></nav>\n<div class=\"tali-site-main\">\n<main>C</main>"),
+        "navbar, then the content column: {html}"
+    );
+    assert!(
+        html.ends_with("<nav id=\"post\"></nav></div>\n<footer></footer>\n"),
+        "prev/next inside the column, footer outside it: {html}"
+    );
+
+    // The TOC rail reserves its column through `has-toc`; `page-layout: full` widens.
+    let (_, plain) = website.layout("<main>C</main>\n", true);
+    assert!(
+        plain.contains("class=\"tali-site-main has-toc\""),
+        "{plain}"
+    );
+    let wide = SiteCtx {
+        wide: true,
+        ..website.clone()
+    };
+    assert!(
+        wide.layout("<main>C</main>\n", true)
+            .1
+            .contains("class=\"tali-site-main has-toc tali-wide\""),
+        "a `page-layout: full` page must widen its content column"
+    );
+
+    // A book: topbar + drawer chrome, a centred column, and NO navbar/rail wrapper at all.
+    let book = SiteCtx {
+        book_sidebar: Some("<div id=\"topbar\"></div>".into()),
+        footer_html: "<footer></footer>".into(),
+        ..website.clone()
+    };
+    let (class, html) = book.layout("<main>C</main>\n", false);
+    assert_eq!(class, " class=\"tali-book-body\"");
+    assert!(
+        html.starts_with("<div id=\"topbar\"></div>\n<div class=\"tali-book-main\">"),
+        "{html}"
+    );
+    assert!(
+        !html.contains("tali-site-main") && !html.contains("id=\"bar\""),
+        "a book must not paint the website's navbar or content column: {html}"
+    );
+}

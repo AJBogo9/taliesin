@@ -98,6 +98,62 @@ pub struct SiteCtx {
     pub is_home: bool,
 }
 
+impl SiteCtx {
+    /// Wrap a page's reading content in this site's chrome: **the one answer**, for the
+    /// static build and the live preview alike. Returns `(body class attribute, body)`.
+    ///
+    /// It exists because the shell existed twice — once here for the build, once in the dev
+    /// server's `site_page_html` — kept equal by comments that asked the next editor to keep
+    /// the two "byte-aligned" (FA16). Parity by proofreading is parity until someone edits
+    /// one of them; the `lang` a preview painted with drifted from the one it built with
+    /// exactly that way.
+    ///
+    /// What the two callers still supply for themselves is `content`, and only that: the
+    /// build passes a rendered `<main id="tali-main">` plus its rendered TOC, the preview
+    /// passes the live `<main id="tali-root">` mount plus the empty `<nav id="TOC">` its
+    /// client fills in. Where the navbar, the reading column, the TOC rail, the prev/next
+    /// and the footer GO is decided here, once.
+    pub fn layout(&self, content: &str, has_toc: bool) -> (String, String) {
+        match self.book_sidebar.as_deref() {
+            // Book: a centred reading column (content + optional TOC) under a sticky topbar;
+            // the chapter list is an off-canvas drawer, with prev/next-chapter under the
+            // column. One column, always: a book has no right rail (item 76), so there is no
+            // content+TOC grid to widen into and no empty track to reserve against it.
+            Some(sidebar) => (
+                " class=\"tali-book-body\"".to_string(),
+                format!(
+                    "{sidebar}\n<div class=\"tali-book-main\">\n\
+                     <div class=\"tali-book-inner\">\n{content}</div>\n{post_nav}</div>\n{footer}\n",
+                    post_nav = self.post_nav_html,
+                    footer = self.footer_html,
+                ),
+            ),
+            // Website: a full-width flex column (navbar, a centred content wrapper, footer)
+            // so the footer sits at the bottom of short pages and the chrome lines up with
+            // the reading column. The `has-toc` grid moves onto the wrapper, leaving the body
+            // free to be the flex shell.
+            None => {
+                let mut main_cls = String::from("tali-site-main");
+                if has_toc {
+                    main_cls.push_str(" has-toc");
+                }
+                if self.wide {
+                    main_cls.push_str(" tali-wide");
+                }
+                (
+                    " class=\"tali-site\"".to_string(),
+                    format!(
+                        "{nav}\n<div class=\"{main_cls}\">\n{content}{post_nav}</div>\n{footer}\n",
+                        nav = self.navbar_html,
+                        post_nav = self.post_nav_html,
+                        footer = self.footer_html,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 /// Apply the site-name `<title>` suffix policy: an inner page becomes "{title} · {site}"
 /// so each browser tab / search result names both the page and the site. The home (root
 /// index) and any page already titled exactly the site name stay bare — never "Name ·
@@ -621,42 +677,13 @@ fn html_page_inner(
             format!("<main id=\"tali-main\" tabindex=\"-1\">\n{reading}</main>\n{toc}\n"),
         )
     };
-    // Site mode: body becomes a full-width flex column (navbar, a centred content
-    // wrapper, footer) so the footer sits at the bottom of short pages and the
-    // chrome lines up with the reading column. The `has-toc` grid moves onto the
-    // wrapper, leaving the body free to be the flex shell.
+    // Site mode: the chrome wrapper, from the one shell the live preview also calls (see
+    // [`SiteCtx::layout`]). A standalone doc has no chrome and keeps its bare content.
     let body_content = match site {
-        // Book: a centred reading column (content + optional TOC) under a sticky topbar;
-        // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
-        Some(s) if s.book_sidebar.is_some() => {
-            body_class = " class=\"tali-book-body\"".to_string();
-            // `chrome` = the sticky topbar + the off-canvas chapter drawer; the reading
-            // content centres in `.tali-book-main` (the same ~70ch measure as a blog post).
-            // One column, always: a book has no right rail (item 76), so there is no
-            // content+TOC grid to widen into and no empty track to reserve against it.
-            format!(
-                "{chrome}\n<div class=\"tali-book-main\">\n\
-                 <div class=\"tali-book-inner\">\n{content}</div>\n{post_nav}</div>\n{footer}\n",
-                chrome = s.book_sidebar.as_deref().unwrap_or(""),
-                post_nav = s.post_nav_html,
-                footer = s.footer_html,
-            )
-        }
         Some(s) => {
-            let mut main_cls = String::from("tali-site-main");
-            if !toc.is_empty() {
-                main_cls.push_str(" has-toc");
-            }
-            if s.wide {
-                main_cls.push_str(" tali-wide");
-            }
-            body_class = " class=\"tali-site\"".to_string();
-            format!(
-                "{nav}\n<div class=\"{main_cls}\">\n{content}{post_nav}</div>\n{footer}\n",
-                nav = s.navbar_html,
-                post_nav = s.post_nav_html,
-                footer = s.footer_html,
-            )
+            let (cls, wrapped) = s.layout(&content, !toc.is_empty());
+            body_class = cls;
+            wrapped
         }
         None => content,
     };
