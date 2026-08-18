@@ -19,6 +19,12 @@ all four DECIDE calls (FD1, FD2, FD3, FD4). Every fix that
 had a done-test was mutation-checked in both directions (revert the fix, watch the test go
 red). Deleted from this file per rule 3; what remains below is what remains.
 
+**Landed 2026-08-18**: FA21, FA22, FA23, FA31, FA32 — the whole of batches F8, F9 and F11.
+FA21 was confirmed by measurement and fixed; FA22, FA23 and FA31's open question were
+author-delegated calls, decided toward the standing cut directive and recorded in
+[DO-NOT-REBUILD.md](DO-NOT-REBUILD.md) so they are not re-found. **Only FA4 remains**, and
+only its rehearsal half, which needs Actions switched back on.
+
 **Relationship to the other queues.** [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md)
 is the older defect queue (its batches 11-12 remain open; nothing here duplicates them,
 overlaps are cross-referenced). [backlog.md](backlog.md) is the release critical path and
@@ -69,7 +75,17 @@ promote or not.
 
 # BATCH F2: trust surfaces (gates that lie)
 
-## FA4 [V] RELEASE-BLOCKING: CI has never executed (the comment half landed; the rehearsal has not)
+## FA4 [V] RELEASE-BLOCKING, **DEFERRED BY THE AUTHOR to immediately before the release**: CI has never executed (the comment half landed; the rehearsal has not)
+
+> **Scheduled 2026-08-18, the author's call: do this just before the release, not now.** It is
+> not blocked on anything technical any more — only on Actions being switched back on, which
+> costs money on a private repo and therefore buys nothing until the tree is the one that
+> actually ships. Rehearsing early would also rehearse the *wrong tree*: the workflows run
+> against whatever exists at flip time, so a green run today expires with the next merge.
+>
+> **This is the last item in this file.** When it lands, rule 3 says delete the file.
+> `notes/backlog.md` item 100 carries a pointer to it so the release path does not depend on
+> anyone rereading this one.
 
 `gh api repos/AJBogo9/taliesin/actions/permissions` returns `{"enabled":false}`: Actions
 is disabled at the **repository-settings level**, so **no run is ever created**. Re-measured
@@ -83,123 +99,17 @@ unrehearsed consequence; the false "a skipped job is visible in the Actions UI" 
 gone. What is left is the rehearsal, which needs Actions turned back on and is therefore
 the author's call (billing on a private repo is why it is off).
 
-- Done when: a rehearsal run of ci.yml and release.yml (a throwaway fork, or a scratch tag
-  once the repo is public; a `workflow_dispatch` trigger makes this cheap) has completed
-  once with its logs read.
-- Effort: M.
+**Made cheap on 2026-08-18**: `ci.yml` now carries a `workflow_dispatch:` trigger
+(`release.yml` already had one), so the rehearsal is a Run-workflow click on a chosen branch
+rather than a scratch tag or a throwaway fork. Re-enabling Actions is still a billing
+decision and therefore still the author's — nothing else here is blocked on anything but that.
 
-# BATCH F8: the browser client
-
-## FA21 [U] `keepScroll`'s Y-restore defeats native scroll anchoring: edits above the viewport yank the page
-
-`web-client/client.js` (grep `keepScroll`): records `scrollY`, applies the op,
-force-restores. Chrome/Firefox scroll anchoring already keeps viewed content pixel-stable
-on above-viewport mutations; the restore reverts that adjustment, so the content shifts
-by the height delta: the exact yank the function's comment claims to prevent. Finder
-measured 245px shift through keepScroll vs 0px without, in a Chrome harness; the code
-path and the browser mechanism are confirmed, the measurement is not.
-
-- Verify first with the chrome-devtools MCP against a live preview (edit a block above
-  the viewport, watch the viewed block's rect). If confirmed: keep the X-restore
-  (that half fixed a real bug, the comment records it), drop or condition the Y-restore
-  (only restore when the mutation is below the viewport, or trust anchoring and pin Y
-  only for same-block updates).
-- Done when: the MCP loop shows a stable viewport across an above-viewport edit AND
-  across the original bug's reproduction (type one character while scrolled: no yank).
-- Effort: S-M.
-
-## FA22 [V gap] the client half of two load-bearing goals has zero executed coverage
-
-`web-client/` has no test files; the only check is `tsc`. The Rust half of the op
-protocol is contract-pinned; `applyOps`' Remove-before-Insert ordering, SetMeta, and
-state preservation are exercised by nothing executable. **Note the constraint before
-filing code**: wave 6 cut the headless-Chrome driver deliberately, so "add browser
-tests" re-adds a cut. Options, author's pick: (a) extract the pure op-application core
-into a function testable under `node --test` with a ~50-line DOM stub (the vscode
-companion already runs `node --test`, so the lane exists); (b) accept the gap
-deliberately and record it in DO-NOT-REBUILD.md so it stops being re-found by every
-audit.
-
-- Done when: either the node-level test exists and covers apply-ops ordering + SetMeta,
-  or the acceptance is recorded.
-- Effort: M for (a), S for (b).
-
-# BATCH F9: performance truth
-
-## FA23 [U] every save in a site preview renders the whole project, and the published warm-edit number measures one page
-
-Finder: `rebuild_project` calls `refresh_xrefs` on every non-structural save, whose
-harvest renders EVERY page to full HTML and keeps only the xref numbers
-(`site/mod.rs`, grep `harvest_xref_numbers`); the edited page renders up to three times
-along the path; the LSP process re-walks the project per didChange batch on top. The
-committed live-edit-bench measures the single-page render, so the headline number does
-not describe a book-sized save. Architecture lens converged independently on the same
-mechanism.
-
-- Verify first by measurement (the WS-batching precedent: measure, then decide): a
-  synthetic 100-200 page project, instrument save-to-reload. If the ceiling is fine,
-  record the number and close; if not: gate the harvest on the cheap
-  `scan_xref_targets` registry diff (skip the O(pages) render when the anchor set and
-  the edited page's own float/cell labels are unchanged), and extend live-edit-bench +
-  `regression.rs` with the project-scale number so it has a tripwire.
-- Done when: a committed instrument carries the project-scale save number either way
-  (the numbers rule: no uninstrumented claims).
-- Effort: verify S-M, fix M.
-
-# BATCH F11: the committed-design residue
-
-Opened 2026-08-17 by the author's no-backwards-compatibility ruling (recorded in
-[DO-NOT-REBUILD.md](DO-NOT-REBUILD.md)). Both items were the two open author calls the
-Fable audit left; the ruling answers the first and the second is a design question it
-raises rather than settles.
-
-## FA31 [V] the seven theorem xref prefixes: RULED CUT, one design question first
-
-`XREF_LABELS` (`crates/core/src/cite/render.rs`) holds 12 prefixes; **7** — `thm`, `lem`,
-`cor`, `def`, `prp`, `exm`, `rem` — name theorem environments retired 2026-08-03/08-08 that
-nothing can define a target for. `RETIRED_XREF_PREFIXES` subtracts them from the completion
-menu. They stay in the label table for one reason only: so a leftover `@thm-a` resolves far
-enough to draw a broken-cross-reference error instead of passing through as literal text.
-**That reason is a backwards-compatibility argument and the author has ruled it void.**
-
-**Measured against the release binary 2026-08-17**, on a real build, so the consequence is
-not in doubt:
-
-| written | published page | `--check-only --strict` |
-|---|---|---|
-| `@sec-one` (live) | linked "Section 1" | — |
-| `@thm-pythagoras` | linked "Theorem" | error: broken cross-reference |
-| `@figg-scree` (typo) | literal `@figg-scree` | **silent** |
-| `@Fig-scree` (wrong case) | literal `@Fig-scree` | **silent** |
-
-So deleting the seven moves row 2 to row 3 — and that also hits a **new** author who assumes
-theorem refs exist, which is not a migration case. The seven entries were papering over a
-general gap: **an unknown xref prefix is silent, always.** They fixed it for seven names.
-
-- **Open question, the author's** (asked 2026-08-17, not answered): should
-  `@<unknown>-<ident>` be diagnosed at all? Constraint that probably explains why no general
-  rule exists: `parse_xref` would treat `@rust-lang` in prose as an xref candidate, so a
-  blanket diagnostic false-fires on ordinary writing. Note the tool's usual answer
-  (did-you-mean inside edit distance 2) misfires here — `thm` is exactly 2 from `tbl`.
-- Do when answered: delete the 7 tuples + `RETIRED_XREF_PREFIXES`, invert `vocab.rs` to read
-  a positive live list, collapse `a_retired_xref_prefix_is_diagnosable_but_not_offered`.
-  **Check `corpus/theorem-book/` first** — it exists and may carry `@thm-`/`@exm-` refs that
-  the ruling says to rewrite rather than preserve.
-- Effort: S once the question is answered.
-
-## FA32 [V] `_site.yml`'s `head:` is the last documented forcing hatch, and is unused
-
-`head:` injects arbitrary markup into every page's `<head>`. It is used by **zero**
-documents in the tree (it is also one of the two entries on the recorded "unused offered
-vocabulary" tail). Deliberately left OUT of the 2026-08-17 `theme:` cut: it is a general
-head-injection key, not a theming key, so folding its removal into a theming commit would
-have decided a separate question silently. The theming recipe it used to teach was deleted
-from the guide with that commit.
-
-- Decide: does `head:` earn its keep for the things it is actually for (an analytics
-  snippet, a search-console `<meta>`), or does it go as unused surface? Weigh against the
-  standing cut directive; note it cannot be justified by adoption, since there is none.
-- Effort: S either way.
+- Done when: a rehearsal run of ci.yml and release.yml has completed once with its logs read,
+  **on the tree that is about to ship**.
+- Effort: S once Actions is on.
+- Order: after the pre-flight `./tools/gates.sh` re-run, before item 100's Phase 2 (the
+  irreversible half of the public flip). Both workflows have `workflow_dispatch`, so the
+  sequence is: enable Actions → Run workflow on the release branch → read both logs → flip.
 
 ---
 

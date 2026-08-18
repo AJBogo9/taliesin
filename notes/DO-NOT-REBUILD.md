@@ -21,6 +21,31 @@ are about to add a paragraph here, it belongs in one of those files instead.
 Each of these was filed as a backlog item and is not a task. Kept because deleting them costs a
 session to rediscover.
 
+- **`web-client/` has no unit tests, DELIBERATELY (FA22, ruled 2026-08-18), and the verification
+  path is the chrome-devtools MCP loop, not a DOM stub.** The op-application half of the client
+  is checked by driving a real preview in a real browser; `tsc` covers the types. Two reasons a
+  `node --test` stub was declined: it would need a fake `document`/`Element` whose assertions
+  restate the code, and the client's actual defects are browser-LAYOUT defects it structurally
+  cannot see — FA21, found and fixed the same day, was native scroll anchoring fighting a
+  force-restored `scrollY`, measured only because a real Chrome laid the page out. The client
+  also has no build step (`// @ts-check`, one served file), and making one function importable
+  would have traded that away for the one test worth writing. Do not re-file "the client has no
+  tests" without new evidence that a stub would have caught something real.
+- **An unknown cross-reference prefix is SILENT, and that is the decision (2026-08-18).**
+  `@thm-x`, `@figg-x` (typo) and `@Fig-x` (wrong case) all render as literal text and report
+  nothing. A blanket diagnostic is not available: `parse_xref` cannot tell `@rust-lang` in prose
+  from a misspelled reference, so it would false-fire on ordinary writing, and the tool's usual
+  did-you-mean misfires too (`thm` is exactly edit distance 2 from `tbl`). This was the open
+  question under FA31; the seven theorem prefixes that used to paper over it for seven names went
+  with it. Do not re-file "an unknown `@ref` should be diagnosed".
+- **The site-preview save is O(pages) and that is accepted, with an instrument (FA23, 2026-08-18).**
+  `refresh_xrefs` re-renders every page on every non-structural save: measured 47.6 ms for
+  `docs/guide` (16 pages), ~3 ms per real page, ~12.5 ms per heavy one — so ~2.5 s at 200 heavy
+  pages. `tools/live-edit-bench` carries the per-project row so the number cannot rot in prose,
+  and `docs/guide/using/choosing.tmd` states the scaling next to the one-document warm-edit
+  figure. NOT gated: a wall clock measures the machine, so it carries a date. The proposed
+  registry-diff gate was declined at current scale — the comment above `refresh_xrefs` records
+  two past bugs from gating that pass on the wrong signal.
 - **No backwards compatibility, ever — the author's standing ruling of 2026-08-17.** *"I have
   no previous users. I want to completely commit to all design decisions that I make with
   taliesin and then rewrite every single document to fit those decisions."* **Design every

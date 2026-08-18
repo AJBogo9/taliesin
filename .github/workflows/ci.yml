@@ -37,10 +37,18 @@ name: CI
 # publication flip is the first time any of it executes. Before that flip, turn Actions
 # back on (or push to a throwaway fork) and let ci.yml and release.yml complete once
 # with their logs read. Until then, credit this file for nothing.
+#
+# `workflow_dispatch` below exists FOR that rehearsal and for nothing else. Re-enabling
+# Actions is a billing decision, so it stays the author's; this at least makes the
+# rehearsal a Run-workflow click on a chosen branch rather than a scratch tag or a
+# throwaway fork. `release.yml` already carried one. Adding it bills nothing while the
+# repo is private — with Actions off, no run is created by any trigger.
 on:
   push:
     branches: [main]
   pull_request:
+  # The one-click rehearsal: see the paragraph above.
+  workflow_dispatch:
   # Weekly RustSec advisory scan even with no commits, so a newly-disclosed CVE
   # in a (possibly transitive) dependency surfaces on its own.
   schedule:

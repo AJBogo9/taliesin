@@ -191,6 +191,16 @@ anything client-side, and **delete the item from this file when it lands.**
      is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
      additionally gated on Phase 1's findings being signed off *and* on a green `./tools/gates.sh`.
      What still lands on this item:
+     - **Rehearse both workflows before Phase 2 — FA4, deferred here by the author on 2026-08-18.**
+       `ci.yml` and `release.yml` have **never executed once**: Actions is off at the
+       repository-settings level, so no run is created by any trigger, and ~300 lines of YAML
+       across the two files would first run on launch day against an audience. Both now carry
+       `workflow_dispatch`, so the step is: enable Actions → Run workflow on the release branch →
+       read both logs → flip. Deliberately not done earlier: the workflows run against whatever
+       tree exists at flip time, so an early green run expires with the next merge. Full entry
+       and done-condition in
+       [2026-08-17-fable-audit-backlog.md](2026-08-17-fable-audit-backlog.md), which exists for
+       this item alone and is deleted when it lands.
      - The spec's own D-checks, including the provenance check on corpus documents.
      - **Whether tags travel to the new public repo** (five local MIT tags were deleted on
        2026-07-28; none had ever been pushed).
