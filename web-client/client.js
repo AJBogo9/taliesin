@@ -757,16 +757,42 @@
     return t.content.firstElementChild;
   };
 
-  // Apply a mutation while keeping the scroll position pinned. `instant` overrides
-  // the page's smooth scroll-behavior so live re-renders never animate the restore.
+  // Apply a BLOCK op while leaving the reader's viewport where it was.
   //
-  // BOTH axes: the restore was `left: 0` for every caller, so any block op snapped a
-  // horizontally scrolled page back to the left margin while faithfully preserving the
-  // vertical position — the one half of "scroll position survives edits" that is easy to
-  // forget because Taliesin's own CSS clamps the document width. It is reachable through
-  // raw HTML with an explicit oversized width, a width-escape div, or a narrow / zoomed
-  // viewport, and there it fought the author on every save.
+  // The vertical offset is deliberately NOT restored, and that is the whole point of this
+  // function. `scrollY` and "what the reader is looking at" are the same thing only for a
+  // mutation at or below the viewport; for one ABOVE it they are opposites, and pinning
+  // the offset moves the content by the full height delta — the exact yank a restore looks
+  // like it prevents. The browser's own scroll anchoring already holds the viewed content
+  // still, so the job here is to not fight it: a programmatic scroll re-picks the anchor
+  // and cancels the adjustment the browser had pending.
+  //
+  // Measured against a live preview (2026-08-18, Chrome; `overflow-anchor` is unset
+  // anywhere in the CSS, so anchoring is on): growing a paragraph above the viewport moved
+  // the watched block from top 244 to top -965, exactly the 1209px the document changed by,
+  // with `scrollY` pinned at 3000 the whole time. Without the vertical restore the same
+  // edit left the watched block at top 56.828125 to the pixel while `scrollY` absorbed the
+  // delta. The bug this was built for — type one character while scrolled — is stable
+  // without it too, as is an in-viewport block that grows: the browser holds the edited
+  // block and everything above it and shifts only what follows.
+  //
+  // X still is restored, and only when the op actually moved it. The restore used to be
+  // `left: 0` for every caller, so a block op snapped a horizontally scrolled page back to
+  // the left margin; that is reachable through raw HTML with an explicit oversized width, a
+  // width-escape div, or a narrow / zoomed viewport. Guarding the call leaves the common
+  // case with no programmatic scroll at all, which is what keeps anchoring alone.
+  // `instant` overrides the page's smooth scroll-behavior so the restore never animates.
   const keepScroll = (/** @type {() => void} */ fn) => {
+    const x = window.scrollX;
+    fn();
+    if (window.scrollX !== x) window.scrollTo({ left: x, behavior: "instant" });
+  };
+
+  // The wholesale re-mount is the one case scroll anchoring cannot serve: `innerHTML`
+  // destroys every node, so no anchor element survives to hold the viewport against and
+  // the offset is the only thing left to restore. Both axes, as `keepScroll` used to do
+  // for everyone.
+  const keepScrollThroughRemount = (/** @type {() => void} */ fn) => {
     const y = window.scrollY;
     const x = window.scrollX;
     fn();
@@ -821,8 +847,9 @@
     const same = idx >= 0 ? landing.querySelectorAll(FOCUSABLE)[idx] : null;
     const target = /** @type {HTMLElement} */ (same || landing);
     if (!same && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
-    // `preventScroll`: `keepScroll` has already pinned the viewport, and focusing a node
-    // it just restored would scroll it back.
+    // `preventScroll`: focus is being restored to a node the reader never asked to be
+    // shown, so scrolling it into view would move the page under them — and would undo the
+    // scroll anchoring `keepScroll` exists to leave alone.
     target.focus({ preventScroll: true });
   };
 
@@ -938,7 +965,7 @@
           // and the tali-js runtime is rebuilt fresh, rather than re-pushing duplicate
           // cells onto a never-reset registry.
           resetJs();
-          keepScroll(() => { root.innerHTML = msg.body_html; });
+          keepScrollThroughRemount(() => { root.innerHTML = msg.body_html; });
         }
         scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
