@@ -65,23 +65,32 @@ appears here.
 | Whole-project build, `corpus/tech-blog` (17 pages) | **0.58 s** | 34.1 ms/page, the heaviest project in the tree |
 | `preview` time-to-ready, single document | **3–8 ms** | Process start to a serving socket |
 | `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
-| Warm edit: diff only | **0.75 ms** | The block diff for one keystroke-sized edit |
-| Warm edit: re-render + diff | **13 ms** | Against a 135 ms cold render of the same document |
-| Warm-edit payload | **32 KB** | Versus a 292 KB full page a reload would refetch |
+| Warm edit: diff only | **0.35 ms** | The block diff for one keystroke-sized edit |
+| Warm edit: re-render + diff | **12 ms** | One document, against a 113 ms cold render of it |
+| Warm-edit payload | **32 KB** | Versus a 287 KB full page a reload would refetch |
+| Cross-reference refresh, this guide (16 pages) | **48 ms** | Added to every save in a *site* preview |
 
 *(Build and ready figures measured 2026-08-10, best of three, release build, warm
 `_freeze/` cache. Each build figure is the duration the build prints for itself, and each
 page count is the one it reports — `find … -name '*.html'` is not the page count, since a
 project may ship its own `404.html` and `_`-prefixed files are never pages. The warm-edit
-rows come from `tools/live-edit-bench`, re-measured
-2026-08-02, best of twelve, release build; its committed `RESULTS.md` labels them
-indicative (the numbers vary by machine). The **structural** rows it also records, the op
-counts and payload bytes, are deterministic and gated by a regression test.)*
+and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-18, release
+build; its committed `RESULTS.md` labels them indicative (the numbers vary by machine). The
+**structural** rows it also records, the op counts and payload bytes, are deterministic and
+gated by a regression test.)*
 
 The number that matters is not any single row: it is that the warm edit is a **diff**, so
 its cost tracks what you changed rather than how large the document is. See [the block
 model](https://internals.taliesin.sh/block-model.html#why-the-diff-is-o-n-log-n) for the operation
 breakdown behind that payload figure.
+
+**The last row is the honest asterisk on that sentence.** Inside a multi-page project a
+save is not only the diff: the cross-reference registry is re-derived first, and its
+harvest renders every page to recover the cross-page figure and equation numbers. That pass
+is flat per page (about 3 ms for a page in this guide), so it scales with the size of the
+*project* while the diff scales with the size of the *edit*. At this guide's 16 pages it is
+48 ms; a 200-page project of heavy pages would pay around 2.5 s, which is the number to
+know before assuming the 12 ms row describes a book.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}
 

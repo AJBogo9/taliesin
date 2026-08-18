@@ -112,6 +112,69 @@ pub fn measure_live_edit(
     }
 }
 
+/// What one save costs a whole PROJECT, which is a different question from
+/// [`LiveEditMetrics`] and the reason both exist.
+///
+/// `measure_live_edit` measures the seam a single document goes through. Inside a site
+/// preview a save also pays `Site::refresh_xrefs`, whose harvest renders EVERY page to full
+/// HTML and keeps only the cross-page float numbers — so the per-save cost tracks the size
+/// of the *project*, not the size of the edit. Without this second measurement the headline
+/// warm-edit figure reads as if it described a book-sized save, and it does not.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProjectSaveMetrics {
+    pub project: String,
+    pub pages: usize,
+    /// Best-of-three `refresh_xrefs`, i.e. the whole-project pass every non-structural
+    /// save runs before the edited page is re-rendered.
+    pub xref_refresh_ns: u128,
+    pub xref_refresh_ns_per_page: u128,
+}
+
+/// Time `Site::refresh_xrefs` on a real project — the O(pages) pass a site-preview save
+/// runs. Best of three, so first-touch file-cache noise is out. Read-only: it discovers and
+/// renders in memory and writes nothing.
+pub fn measure_project_save(label: &str, root: &Path) -> Option<ProjectSaveMetrics> {
+    if !root.join("_site.yml").is_file() {
+        return None;
+    }
+    let mut site = taliesin_core::Site::discover(root);
+    let pages = site.pages.len();
+    let mut best = u128::MAX;
+    for _ in 0..3 {
+        let t = Instant::now();
+        site.refresh_xrefs();
+        best = best.min(t.elapsed().as_nanos());
+    }
+    Some(ProjectSaveMetrics {
+        project: label.to_string(),
+        pages,
+        xref_refresh_ns: best,
+        xref_refresh_ns_per_page: best / pages.max(1) as u128,
+    })
+}
+
+/// The project-scale table: one row per measured project, plus the per-page rate that makes
+/// the shape (linear in pages) readable rather than implied.
+pub fn project_markdown_report(ms: &[ProjectSaveMetrics]) -> String {
+    let mut s = String::from(
+        "## project-scale save: `Site::refresh_xrefs`\n\n\
+         Every non-structural save in a **site** preview runs this before the edited page is\n\
+         re-rendered, and its harvest renders every page. So this cost tracks the size of the\n\
+         project, not the size of the edit — the warm-edit rows above are one document.\n\n\
+         | project | pages | refresh_xrefs | per page |\n|---|---|---|---|\n",
+    );
+    for m in ms {
+        s.push_str(&format!(
+            "| `{}` | {} | {:.1} ms | {:.2} ms |\n",
+            m.project,
+            m.pages,
+            m.xref_refresh_ns as f64 / 1e6,
+            m.xref_refresh_ns_per_page as f64 / 1e6,
+        ));
+    }
+    s
+}
+
 /// A human-readable markdown table for one measurement (printed by the binary and
 /// snapshotted into `RESULTS.md`). Times shown in microseconds for readability.
 pub fn markdown_report(m: &LiveEditMetrics) -> String {

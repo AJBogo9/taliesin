@@ -1683,8 +1683,11 @@ fn rebuild_project(
     // the registry, so refreshing again would just burn the pass twice.
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
-    // pages rebuilt after it MUST see the fresh registry. It costs 27ms on the largest real
-    // book (`docs/guide`, 20 pages) — a re-scan plus one render per page, no code execution.
+    // pages rebuilt after it MUST see the fresh registry. A re-scan plus one render per page,
+    // no code execution, so it is O(pages) on every save: 47.6ms on the largest real book
+    // (`docs/guide`, 16 pages) re-measured 2026-08-18, and ~12.5ms per page on heavy pages,
+    // which extrapolates to ~2.5s at 200 of them. `tools/live-edit-bench` carries the number
+    // per project so this comment cannot drift the way its "27ms / 20 pages" predecessor did.
     // `refresh_xrefs` is all-or-nothing about a render panic, so a bad page cannot leave the
     // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
     // (unlike `build_page`) has none of its own.
