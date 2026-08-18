@@ -290,15 +290,15 @@ const vocab = {
   cellOptions: rustStrList(VALIDATE_RS, "CELL_OPTION_KEYS"),
   inputTypes: rustStrList(VALIDATE_RS, "INPUT_TYPES"),
   divClasses: rustStrList("crates/core/src/vocab.rs", "DIV_CLASS_NAMES"),
-  // `XREF_LABELS` is `&[(prefix, label)]`, so the pair list is read whole and the retired
-  // prefixes subtracted — the same filter `vocab::xref_prefixes` applies.
+  // `XREF_LABELS` is `&[(prefix, label)]`, so the pair list is read whole. There is no
+  // subtraction any more: the seven retired theorem prefixes and the `RETIRED_XREF_PREFIXES`
+  // list that filtered them back out were both deleted on 2026-08-18, so the table is the
+  // live set and `vocab::xref_prefixes` applies no filter either.
   xrefPrefixes: (() => {
     const src = fs.readFileSync(path.join(REPO_ROOT, "crates/core/src/cite/render.rs"), "utf8");
     const m = /const XREF_LABELS: &\[\(&str, &str\)\] = &\[([\s\S]*?)\];/.exec(src);
     assert.ok(m, "cite/render.rs declares XREF_LABELS");
-    const pairs = [...m![1].matchAll(/\(\s*"([^"]+)"\s*,/g)].map((x) => x[1]);
-    const retired = new Set(rustStrList("crates/core/src/cite/render.rs", "RETIRED_XREF_PREFIXES"));
-    const live = pairs.filter((p) => !retired.has(p));
+    const live = [...m![1].matchAll(/\(\s*"([^"]+)"\s*,/g)].map((x) => x[1]);
     assert.ok(live.length > 0, "no live xref prefixes parsed, so this gate proves nothing");
     return live.map((prefix) => ({ prefix }));
   })(),

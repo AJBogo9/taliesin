@@ -40,14 +40,14 @@ fn native_flat_config_parses_nav_footer_and_icon() {
     );
 }
 
-/// `_site.yml`'s `head:` is injected into every page's `<head>`. It is the ONE
-/// raw-injection hatch left after 2026-08-02, so this is the whole mechanism's net.
-///
-/// The companion assert is that the retired siblings are **inert and diagnosed**:
-/// `body-start:`/`body-end:` used to fill the two body slots, and an author who leaves one
-/// in place must not be left believing their markup still ships.
+/// The raw-injection family is gone entirely: **inert and diagnosed**, all three of them.
+/// `body-start:`/`body-end:` went on 2026-08-02 and `head:`, the last one, on 2026-08-18 at
+/// still-zero adoption. An author who leaves any of them in a `_site.yml` must not be left
+/// believing their markup still ships, which is why the silence half and the diagnostic half
+/// are asserted together — dropping the key from the known set alone would have produced a
+/// diagnostic while the parser went on injecting.
 #[test]
-fn site_head_is_injected_and_the_retired_body_slots_are_not() {
+fn the_retired_raw_injection_slots_are_inert_and_diagnosed() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
@@ -60,20 +60,17 @@ fn site_head_is_injected_and_the_retired_body_slots_are_not() {
     let site = Site::discover(&d.0);
     let html = site.render_page("index.tmd").expect("renders");
 
-    let head = &html[..html.find("</head>").expect("has </head>")];
-    assert!(
-        head.contains("probe-head"),
-        "head: must be injected inside <head>"
-    );
-    for probe in ["probe-body-start", "probe-body-end"] {
+    // Positive control: the page rendered, so an empty-needle search is not what passes.
+    assert!(html.contains("Content Anchor"), "the page still renders");
+    for probe in ["probe-head", "probe-body-start", "probe-body-end"] {
         assert!(
             !html.contains(probe),
-            "a retired body slot must inject nothing, found {probe}"
+            "a retired injection slot must inject nothing, found {probe}"
         );
     }
 
     // And it must say so, rather than dropping the markup in silence.
-    for key in ["body-start", "body-end"] {
+    for key in ["head", "body-start", "body-end"] {
         assert!(
             site.warnings
                 .iter()

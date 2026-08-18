@@ -327,10 +327,16 @@ certifies nothing. Do not credit it for a check until the repo is public.
   diagnostic has and would leave the preview rendering the invalid page anyway.
 - **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** It agrees
   with the validators for div classes (`DIV_CLASS_NAMES` and `render::DIV_FEATURE_CLASSES`
-  are the same **2** width escapes, and a test pins the subset relation), but
-  `xrefPrefixes` offers **5** of the **12** `XREF_LABELS`, because the other seven resolve
-  a label for a construct nothing can define any more. Answer "what does the tool support"
-  from the validator consts, never from `vocab`.
+  are the same **2** width escapes, and a test pins the subset relation) and, since
+  2026-08-18, for cross-references too: `xrefPrefixes` is `XREF_LABELS` entire, all **5** of
+  them, with no filter. The seven theorem prefixes the table used to carry (and `vocab`
+  subtract back out) were CUT with the backwards-compatibility argument that kept them —
+  `@thm-x` is now literal text that reports nothing, exactly like the `@figg-x` typo and the
+  `@Fig-x` wrong case that always were. **An unknown xref prefix is silent, always, and
+  deliberately**: `parse_xref` cannot tell `@rust-lang` in prose from a misspelled reference,
+  so a blanket diagnostic would false-fire on writing (and did-you-mean misfires here too —
+  `thm` is exactly edit distance 2 from `tbl`). Answer "what does the tool support" from the
+  validator consts, never from `vocab`.
 - **Taliesin answers for its own vocabulary and nothing else** (ruled 2026-08-17). The
   five retirement registers that named cut features and other tools' spellings are gone:
   an unknown key, cell option, callout kind, shortcode, div class, flag or verb gets a

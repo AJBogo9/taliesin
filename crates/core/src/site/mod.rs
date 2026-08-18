@@ -121,9 +121,6 @@ pub struct Site {
     /// Project-wide cross-reference targets (`sec-`/`fig-`/… anchor → page + number),
     /// so a `@sec-x` on one page resolves to its section on another (the book case).
     pub xref_targets: HashMap<String, XrefTarget>,
-    /// Site-wide `format: html:` includes (header/body/css), resolved once at
-    /// discovery relative to the site root and merged ahead of each page's own.
-    pub includes: render::PageIncludes,
     /// The project-wide `bibliography:` (`_site.yml`), resolved once at discovery against
     /// the site root: readable absolute `.bib` paths, in declaration order. Empty for a
     /// project that declares none. Laid **under** each page's own `bibliography:`, so a
@@ -358,18 +355,7 @@ impl Site {
             }
         }
 
-        // Resolve the site-wide `head:` include once, relative to the site root (where
-        // `_site.yml` and any file it references live).
-        let includes = render::includes_from_parts(
-            config.head.as_ref(),
-            Some(root),
-            // The site root is the explicit containment boundary (equivalent to the
-            // `_site.yml`-marker walk, but not dependent on it): a head include stays
-            // inside the project.
-            Some(root),
-        );
-
-        // Likewise once, and against the site root: a project-wide `.bib` path is written
+        // Once, and against the site root: a project-wide `.bib` path is written
         // relative to `_site.yml`, not to whichever page happens to be rendering, and a bad
         // one should be reported once rather than on every page.
         let bibliography = bibliography::resolve_shared(root, &config.bibliography, &mut warnings);
@@ -384,7 +370,6 @@ impl Site {
             pages,
             book,
             xref_targets,
-            includes,
             bibliography,
             warnings,
             config_warning_count,
@@ -512,9 +497,12 @@ impl Site {
             _ => String::new(),
         };
         let book = self.is_book();
-        // Per-page OpenGraph / Twitter-card / SEO meta, so a shared link renders a
-        // rich preview. Injected via the head include (no render/mod.rs change).
-        let mut includes = self.includes.clone();
+        // `PageIncludes` is now purely the chrome's own carrier for markup that belongs in
+        // the `<head>` or at the top of the body — per-page OpenGraph / Twitter-card / SEO
+        // meta so a shared link renders a rich preview, the feed links, the draft banner.
+        // It had one AUTHOR-configured source, `_site.yml`'s `head:`, cut 2026-08-18 at zero
+        // adoption; nothing an author writes reaches this any more.
+        let mut includes = render::PageIncludes::default();
         // A draft page (only reachable in preview — a built page is never `draft`) gets a
         // quiet top-of-body banner so the author knows it won't publish. Read-only view
         // affordance; no source write-back.
@@ -1078,12 +1066,20 @@ impl Site {
     /// permanently unknown (it rendered as a dead same-page link, silently).
     ///
     /// Whole-registry rather than per-page, which the numbers alone would allow (a float's
-    /// number depends only on its own page + chapter): MEASURED at 27ms for the largest real
-    /// book (`docs/guide`, 20 pages; `docs/internals` 17ms, `corpus/demo-book` 0.5ms), which
-    /// is not worth buying with incremental invalidation — that would have to re-derive the
-    /// scan's project-wide "first definition wins" ordering to know whether a dropped anchor
-    /// should fall through to another page's definition. A page-SET change re-runs `discover`
-    /// anyway.
+    /// number depends only on its own page + chapter). That is a cost decision and it is
+    /// INSTRUMENTED, not asserted: `tools/live-edit-bench` measures this pass per project and
+    /// publishes the row (re-measured 2026-08-18 — `docs/guide` 16 pages / 47.6 ms,
+    /// `docs/internals` 6 pages / 12.5 ms, `corpus/tech-blog` 17 pages / 56.7 ms). Buying it
+    /// back with incremental invalidation would have to re-derive the scan's project-wide
+    /// "first definition wins" ordering to know whether a dropped anchor should fall through
+    /// to another page's definition, which is not worth it at these sizes. A page-SET change
+    /// re-runs `discover` anyway.
+    ///
+    /// **The rate is flat per page (~3 ms for a real page, ~12.5 ms for a heavy one), so this
+    /// is O(pages) on EVERY save.** A 200-page project of heavy pages measured ~2.5 s. Nothing
+    /// here reaches that, and the gate is deliberately absent because a wall clock measures
+    /// the machine — but the extrapolation is the thing to check before assuming the
+    /// published one-document warm-edit figure describes a book-sized save.
     ///
     /// Deliberately does NOT rebuild the hover index (its own second render pass over the
     /// targets): it is equally frozen today, so leaving it is no regression, and doubling
@@ -1112,10 +1108,10 @@ impl Site {
 
     /// Render-harvest: render each page once (scoped to its chapter) and fill in the
     /// CROSS-PAGE facts the lightweight source-scan can't know — a figure / equation /
-    /// table / listing / theorem number is assigned only during render, so
-    /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`
-    /// (for those non-heading anchors), so a `@fig-x` / `@thm-x` to another page renders
-    /// "Figure&nbsp;2.3" / "Theorem&nbsp;2.1" instead of a bare "Figure" / "Theorem".
+    /// table / listing number is assigned only during render, so `scan_xref_targets` left
+    /// it empty. This enriches `xref_targets[anchor].number` (for those non-heading
+    /// anchors), so a `@fig-x` to another page renders "Figure&nbsp;2.3" instead of a bare
+    /// "Figure".
     ///
     /// It also *inserts* an anchor the scan cannot see at all: a float labelled by a
     /// cell directive (`#| label: fig-x`, `%%| label:`) is inside a fence the scan skips
@@ -1150,7 +1146,7 @@ impl Site {
                 // correctly ABSENT on a non-book website). Harvesting the render's flat
                 // per-page section counter here would fill an empty website target with
                 // a bare "1", which `rewrite_one_xref` then mislabels "Chapter 1". Only
-                // fig/eq/tbl/lst/thm need this render-time enrichment.
+                // fig/eq/tbl/lst need this render-time enrichment.
                 //
                 // `is_ref_anchor` keeps parity with the scan (`xref.rs`), because the
                 // render registry is LOOSER: the table-caption path registers any id, so
@@ -1158,8 +1154,8 @@ impl Site {
                 // rejects an unknown prefix), so admitting it would advertise a phantom
                 // target in `taliesin map --format json` and build it a hover card.
                 //
-                // An empty number means the render assigned none (an unnumbered theorem),
-                // and its `::: {.theorem #thm-x}` opener is scan-visible anyway.
+                // An empty number means the render assigned none, so there is nothing to
+                // enrich the target with and nothing worth inserting one for.
                 if !number.is_empty() && !anchor.starts_with("sec-") && xref::is_ref_anchor(&anchor)
                 {
                     updates.push((anchor, number, page.url.clone()));

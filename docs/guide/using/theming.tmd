@@ -205,7 +205,7 @@ colour did against a dark background. Nothing reported which half you had landed
 the feature's own example set three tokens that were all in the first group — so it changed
 nothing at all in dark mode.
 
-`_site.yml`'s `head:` still injects markup into every page, which is where an analytics
-snippet or a verification `<meta>` belongs. It is not the theming hatch this section used
-to describe: a page that forces one palette through it is fighting its reader's device
-setting, and Taliesin no longer offers a supported way to do that.
+`_site.yml`'s `head:`, which this section used to point at as the remaining way to reach
+the `<head>`, was itself removed on 2026-08-18 at zero adoption. There is now no supported
+way for a document to force one palette: a page that did would be fighting its reader's
+device setting, which is the whole point of the rule above.

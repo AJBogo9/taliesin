@@ -194,12 +194,12 @@ you.** Taliesin is honest about this rather than pretending to a sandbox it does
 
 - **Code cells execute.** `{python}` runs against a Jupyter kernel with your
   permissions; a `{js}` cell runs in your browser on the preview's origin.
-- **Raw HTML passes through**, because Markdown says it does. So does anything a project
-  injects via `_site.yml` `head:` — that markup is inserted verbatim.
+- **Raw HTML passes through**, because Markdown says it does. That markup is inserted
+  verbatim.
 - **`--no-exec` stops the code cells** — both kinds — and starts no kernel. It is *not* a
-  sanitizer: raw `<script>` in the document body and the `head:` injection still reach
-  the page. There is deliberately no HTML sanitizer and no CSP, because a
-  sanitizer that a document's own author can work around buys a false sense of safety.
+  sanitizer: raw `<script>` in the document body still reaches the page. There is
+  deliberately no HTML sanitizer and no CSP, because a sanitizer that a document's own
+  author can work around buys a false sense of safety.
 - **One thing is enforced rather than documented**: a `--check-only` lint never spawns an
   interpreter at all.
 

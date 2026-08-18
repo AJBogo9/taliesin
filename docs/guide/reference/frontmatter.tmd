@@ -65,15 +65,16 @@ or `{ file: … }` map, or a list of those.
 
 ### Raw-HTML includes
 
-There is no per-document raw-injection key. `css:`, `include-in-header:`,
-`include-before-body:` and `include-after-body:` were removed on 2026-08-02, along with
-the `_site.yml` `css:`, `body-start:` and `body-end:` beside them.
+**There is no raw-injection key, per document or project-wide.** `css:`,
+`include-in-header:`, `include-before-body:` and `include-after-body:` were removed on
+2026-08-02, along with the `_site.yml` `css:`, `body-start:` and `body-end:` beside them;
+`_site.yml`'s `head:`, kept back then as the one surviving hatch, went on 2026-08-18 when
+it was still reaching zero documents. A leftover `head:` is reported as an unknown config
+key and injects nothing.
 
-What survives is one hatch, project-wide: `_site.yml`'s
-[`head:`](#project-site-yml), which injects markup into every page's `<head>`. That is
-where an analytics snippet or a search-console `<meta>` goes. It is not a theming
-hatch: the [palette](../using/theming.tmd) ships both modes and the reader's device picks
-between them, so a document has no way to pin itself to one.
+Raw HTML written **in the document body** still passes through, because Markdown says it
+does. That is the remaining way to put markup on a page, and it is per page rather than
+project-wide by design.
 
 ### Contents, bibliography, and citations
 
@@ -346,7 +347,6 @@ description: "Notes on things"
 url: "https://example.com"
 favicon: favicon.svg
 logo: logo.svg           # brand image in the navbar (book: the topbar + chapter drawer)
-head: head.html          # raw markup for every page's <head> — the one escape hatch
 bibliography: refs.bib   # one .bib for every page (see below)
 
 nav:                     # a list is the left side; or { left: [...], right: [...] }

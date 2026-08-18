@@ -292,16 +292,17 @@ fn cell_languages() -> Value {
     )
 }
 
-/// The `@`-prefixes offered to an author and to an agent. Retired prefixes are filtered
-/// out: the renderer still resolves a *label* for `thm`/`lem`/`cor`/`def`/`prp`/`exm`/`rem`
-/// so a leftover `@thm-a` draws `TAL-XREF-UNDEF` instead of passing through silently, but
-/// nothing can define one of those targets since the theorem environments were retired.
-/// Offering them would tell a reader to write a reference that is guaranteed to be broken.
+/// The `@`-prefixes offered to an author and to an agent: [`XREF_LABELS`] entire, with no
+/// filter. It used to subtract a `RETIRED_XREF_PREFIXES` list of seven theorem prefixes the
+/// renderer still resolved a label for but nothing could define a target for; those tuples
+/// were deleted on 2026-08-18, so the table is a positive live list again and "what resolves"
+/// and "what is offered" are the same set by construction rather than by subtraction.
+///
+/// [`XREF_LABELS`]: crate::cite::XREF_LABELS
 fn xref_prefixes() -> Value {
     Value::Array(
         crate::cite::XREF_LABELS
             .iter()
-            .filter(|(prefix, _)| !crate::cite::RETIRED_XREF_PREFIXES.contains(prefix))
             .map(|(prefix, label)| json!({ "prefix": prefix, "label": label }))
             .collect(),
     )

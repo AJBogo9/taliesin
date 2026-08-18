@@ -47,8 +47,11 @@ fn tmp_dir(name: &str) -> PathBuf {
 /// - a `listing:` index over `posts/` → listing cards + the Atom feed (`index.xml`);
 /// - anchored headings + prose on every page → the full-text search index
 ///   (`search-index.js`);
-/// - two content pages defining eight `.theorem`/`.definition` xref targets, cross-page
-///   `@thm-…`/`@def-…` references → the xref registry resolved into each page;
+/// - two content pages defining eight figure/table xref targets, cross-page `@fig-…`/`@tbl-…`
+///   references → the xref registry resolved (and NUMBERED, via the render-harvest) into each
+///   linking page. These were `.theorem`/`.definition` divs and `@thm-`/`@def-` refs until
+///   2026-08-18; both constructs were cut, and because the refs then resolved to nothing while
+///   the build stayed byte-identical, this fixture went on passing with zero xref coverage.
 /// - a site `url:` → `sitemap.xml` + `robots.txt`.
 fn write_repro_site(root: &Path) {
     fs::create_dir_all(root.join("posts")).unwrap();
@@ -71,32 +74,32 @@ fn write_repro_site(root: &Path) {
     )
     .unwrap();
 
-    // Two content pages, four xref targets each (theorems + definitions), referenced
-    // cross-page below so the xref registry resolves all eight into the linking page.
+    // Two content pages, four xref targets each (figures + tables), referenced cross-page
+    // below so the xref registry resolves and numbers all eight into the linking page.
     fs::write(
         root.join("concepts.tmd"),
         "---\ntitle: Concepts\ndescription: \"Core definitions and theorems for reproducible builds.\"\n---\n\n\
          # Concepts {#sec-concepts}\n\n\
          Prose introducing the concepts so the section body is indexed for full-text search.\n\n\
-         ::: {.theorem #thm-alpha}\nThe alpha property holds for all reproducible builds.\n:::\n\n\
-         ::: {.definition #def-beta}\nA beta object is one whose bytes are seed-independent.\n:::\n\n\
+         ![The alpha property holds for all reproducible builds.](alpha.png){#fig-alpha}\n\n\
+         | Beta | Bytes |\n|---|---|\n| seed-independent | yes |\n\n: A beta object {#tbl-beta}\n\n\
          ## Details {#sec-details}\n\n\
          More prose about details, enough to populate the search body text for this section.\n\n\
-         ::: {.theorem #thm-gamma}\nGamma follows from alpha and beta together.\n:::\n\n\
-         ::: {.definition #def-delta}\nDelta is the closure of gamma under composition.\n:::\n",
+         ![Gamma follows from alpha and beta together.](gamma.png){#fig-gamma}\n\n\
+         | Delta | Closure |\n|---|---|\n| of gamma | under composition |\n\n: Delta {#tbl-delta}\n",
     )
     .unwrap();
     fs::write(
         root.join("theory.tmd"),
         "---\ntitle: Theory\ndescription: \"Theory page referencing the concepts across pages.\"\n---\n\n\
          # Theory {#sec-theory}\n\n\
-         By @thm-alpha and @def-beta the build is reproducible; see also @thm-gamma.\n\n\
-         ::: {.theorem #thm-epsilon}\nEpsilon bounds the divergence between two builds at zero.\n:::\n\n\
-         ::: {.definition #def-zeta}\nZeta is the set of all byte-identical outputs.\n:::\n\n\
+         By @fig-alpha and @tbl-beta the build is reproducible; see also @fig-gamma.\n\n\
+         ![Epsilon bounds the divergence between two builds at zero.](epsilon.png){#fig-epsilon}\n\n\
+         | Zeta | Outputs |\n|---|---|\n| byte-identical | all |\n\n: Zeta {#tbl-zeta}\n\n\
          ## Consequences {#sec-consequences}\n\n\
-         Prose about consequences referencing @def-delta and @thm-epsilon for cross links.\n\n\
-         ::: {.theorem #thm-eta}\nEta generalizes epsilon to N concurrent builders.\n:::\n\n\
-         ::: {.definition #def-theta}\nTheta is the fixed point of the reproducibility operator.\n:::\n",
+         Prose about consequences referencing @tbl-delta and @fig-epsilon for cross links.\n\n\
+         ![Eta generalizes epsilon to N concurrent builders.](eta.png){#fig-eta}\n\n\
+         | Theta | Fixed point |\n|---|---|\n| of the operator | yes |\n\n: Theta {#tbl-theta}\n",
     )
     .unwrap();
 
@@ -110,10 +113,10 @@ fn write_repro_site(root: &Path) {
             dir.join("index.tmd"),
             format!(
                 "---\ntitle: \"Post Number {i}\"\ndate: \"2026-01-{day:02}\"\n\
-                 description: \"Summary of post {i}, which references a theorem.\"\n\
+                 description: \"Summary of post {i}, which references a figure.\"\n\
                  categories: [cat{i}, shared]\n---\n\n\
                  # Post Number {i}\n\n\
-                 Body of post {i}. It relies on @thm-alpha and mentions @def-zeta for good measure.\n",
+                 Body of post {i}. It relies on @fig-alpha and mentions @tbl-zeta for good measure.\n",
                 day = i + 1,
             ),
         )
@@ -275,6 +278,21 @@ fn the_repro_site_populates_every_guarded_aggregate() {
     assert!(
         out.contains_key("sitemap.xml") && out.contains_key("robots.txt"),
         "sitemap.xml / robots.txt missing — the SEO aggregate path is not exercised"
+    );
+
+    // The xref registry, asserted rather than assumed. The fixture's doc comment claimed this
+    // path was covered while the refs quietly resolved to nothing for the whole time the
+    // `.theorem`/`@thm-` constructs were being retired out from under it — the build stayed
+    // byte-identical, so nothing failed. A ref that stops resolving now fails here.
+    let theory = text("theory.html");
+    assert!(
+        theory.contains("concepts.html#fig-alpha") && theory.contains("concepts.html#tbl-beta"),
+        "cross-page @fig-/@tbl- refs did not resolve to their defining page: {theory}"
+    );
+    assert!(
+        theory.contains("Figure&nbsp;1") && theory.contains("Table&nbsp;1"),
+        "the render-harvest did not number the cross-page targets (a bare kind word means \
+         `harvest_xref_numbers` found nothing): {theory}"
     );
 
     let _ = fs::remove_dir_all(&base);

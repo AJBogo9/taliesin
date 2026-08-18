@@ -38,8 +38,6 @@ fn parse_options() -> Options<'static> {
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
-mod doc_includes;
-pub use doc_includes::includes_from_parts;
 mod fm_extract;
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan

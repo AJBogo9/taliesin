@@ -13,9 +13,12 @@
 //!
 //!   - raw HTML in the body (`HtmlBlock` / `HtmlInline`) and `` ```{=html} ``
 //!     passthrough blocks (the AST emitter),
-//!   - the `include-in-header` / `-before-body` / `-after-body` / `css` markup
-//!     ([`render::PageIncludes`]), injected verbatim into the page template,
 //!   - the site `page-footer` item text (icon SVGs) in the chrome.
+//!
+//! There is no longer any AUTHOR-CONFIGURED raw injection: the
+//! `include-in-header`/`-before-body`/`-after-body`/`css` family went on 2026-08-02 and
+//! `_site.yml`'s `head:` on 2026-08-18, so [`render::PageIncludes`] now carries only the
+//! chrome's own markup (SEO meta, feed links, the draft banner).
 //!
 //! Code cells are likewise *executed* against a live kernel. None of this is a
 //! vulnerability under the intended use, but it means taliesin must **not** be

@@ -195,58 +195,68 @@ fn validate_xrefs_flags_only_unresolved_markers() {
     assert!(validate_xrefs(&ok, None).is_empty());
 }
 
-/// The two halves of a cross-reference retirement, which must not drift apart. Seven of the
-/// twelve prefixes name a construct nothing can define any more: `prp`/`exm`/`rem` lost
-/// their theorem kinds on 2026-08-03, and `thm`/`lem`/`cor`/`def` lost theirs on 2026-08-08
-/// when the theorem environments went entirely. The prefixes stay in [`XREF_LABELS`] on
-/// purpose, so a leftover `@thm-a` still resolves far enough to be reported broken rather
-/// than passing through as literal text, which is the silent fallthrough to avoid. But they
-/// must not be *offered*: completing `@thm-` invites the author to write a reference
-/// guaranteed to break.
-///
-/// "Offered" reads the editor vocabulary, which is where the offer is actually made —
-/// `vocab::vocab()["xrefPrefixes"]`, served to the LSP's completion. It used to read
-/// `cite::xref_prefixes`, a second filtered copy that existed for the feature catalogue and
-/// went with it in Wave 2.
+/// What resolves and what is offered are ONE list, by construction. [`XREF_LABELS`] used to
+/// carry seven extra theorem prefixes that `vocab` subtracted back out again, so the two
+/// answers were kept equal by a filter; the tuples went on 2026-08-18 and the filter with
+/// them, and this pins the equality that replaced it. A prefix added to the table without a
+/// construct that can define its target now shows up here as an offer nothing can satisfy.
 #[test]
-fn a_retired_xref_prefix_is_diagnosable_but_not_offered() {
+fn every_prefix_that_resolves_is_also_offered_and_the_reverse() {
     let offered: Vec<String> = crate::vocab::vocab()["xrefPrefixes"]
         .as_array()
         .expect("the vocabulary offers cross-reference prefixes")
         .iter()
         .map(|p| p["prefix"].as_str().unwrap_or_default().to_owned())
         .collect();
-    for p in RETIRED_XREF_PREFIXES {
-        assert!(
-            XREF_LABELS.iter().any(|(k, _)| k == p),
-            "`{p}` must stay in the label table, or a leftover `@{p}-x` goes silent"
-        );
-        assert!(
-            !offered.iter().any(|o| o == p),
-            "`{p}` must not be offered: no construct can define its target"
-        );
-    }
+    let resolving: Vec<String> = XREF_LABELS.iter().map(|(k, _)| (*k).to_owned()).collect();
+    assert_eq!(offered, resolving, "the two lists are the same list");
     // Positive control, so this cannot pass by both lists being empty.
     assert!(offered.iter().any(|o| o == "fig"), "offered: {offered:?}");
-    assert!(XREF_LABELS.iter().any(|(k, _)| *k == "fig"));
+}
 
-    // The anti-silence half is behaviour, not just table membership.
-    let leftover = vec![Block {
-        id: "x".into(),
-        sourcepos: "1:1-1:1".into(),
-        source_file: None,
-        html: "<a href=\"#prp-a\" class=\"tali-xref\" data-tali-xref=\"prp-a\">Proposition</a>"
-            .into(),
-        cell: None,
-        nested: Vec::new(),
-    }];
-    let w = validate_xrefs(&leftover, None);
-    assert_eq!(
-        w.len(),
-        1,
-        "a leftover retired reference is still reported: {w:?}"
+/// The seven theorem prefixes are gone from the READ, not merely from the vocabulary.
+/// Dropping a name from a table only makes it undiagnosed; the parser going on honouring it
+/// is what leaves a withdrawn construct quietly working, so the pin has to be behavioural.
+///
+/// A `@thm-a` is now literal text that reports nothing — the same treatment `@figg-scree`
+/// (a typo) and `@Fig-scree` (wrong case) have always had. That silence is the deliberate
+/// consequence recorded on [`XREF_LABELS`]: an unknown prefix cannot be diagnosed without
+/// false-firing on ordinary prose like `@rust-lang`.
+#[test]
+fn a_withdrawn_theorem_prefix_is_no_longer_read_at_all() {
+    for prefix in ["thm", "lem", "cor", "def", "prp", "exm", "rem"] {
+        assert!(
+            !crate::cite::is_xref_anchor(&format!("{prefix}-a")),
+            "`{prefix}-a` must no longer be a cross-reference anchor shape"
+        );
+        let doc = crate::render_document_with_includes(
+            &format!("---\ntitle: T\n---\n\nSee @{prefix}-a.\n"),
+            std::path::Path::new("."),
+        );
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            html.contains(&format!("@{prefix}-a")) && !html.contains("tali-xref"),
+            "`@{prefix}-a` must stay literal text, not a cross-reference link: {html}"
+        );
+        assert!(
+            !doc.warnings
+                .iter()
+                .any(|w| w.message.contains("cross-reference")),
+            "an unknown prefix reports nothing, like any other unknown word: {:?}",
+            doc.warnings
+        );
+    }
+    // Positive control: a LIVE prefix with no target still errors, so the silence above is
+    // about the prefix being unknown and not about the check having stopped running.
+    let live = crate::render_document_with_includes(
+        "---\ntitle: T\n---\n\nSee @fig-nope.\n",
+        std::path::Path::new("."),
     );
-    assert!(w[0].message.contains("@prp-a"));
+    let w = validate_xrefs(&live.blocks, None);
+    assert!(
+        w.iter().any(|x| x.message.contains("@fig-nope")),
+        "a dangling LIVE reference is still reported: {w:?}"
+    );
 }
 
 /// One block carrying `html`, at line 1. The did-you-mean tests only care about HTML.

@@ -3263,9 +3263,12 @@ mod tests {
         handshake(&client);
 
         let uri = Url::parse("file:///tmp/tali-lsp-comp-unnumbered.tmd").unwrap();
-        // `#thm-key` on a span: a real xref prefix, harvested from the buffer, but attached
-        // to nothing the render numbers.
-        let text = "---\ntitle: T\n---\n\n[anchored]{#thm-key}\n\nSee @\n".to_string();
+        // `#fig-key` on a span: a real xref prefix, harvested from the buffer, but attached
+        // to nothing the render numbers (a span is not a float). It was `#thm-key` until
+        // 2026-08-18; once the seven theorem prefixes were cut, `thm` was no longer a
+        // prefix at all, so this went on passing while testing the UNKNOWN-prefix path
+        // instead of the one it documents.
+        let text = "---\ntitle: T\n---\n\n[anchored]{#fig-key}\n\nSee @\n".to_string();
         did_open(&client, &uri, text);
         let _ = recv_publish(&client);
 
@@ -3273,7 +3276,7 @@ mod tests {
         let items = complete_at(&client, &uri, 49, 6, 5);
         let hit = items
             .iter()
-            .find(|i| i.label == "thm-key")
+            .find(|i| i.label == "fig-key")
             .expect("the unnumbered target's anchor should still be offered");
         assert_eq!(
             hit.detail.as_deref(),

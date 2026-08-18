@@ -45,7 +45,7 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
 /// excluded from search (the author's 404 chrome page) or its source can't be read.
 ///
 /// `chapter` is the page's book chapter number (`Site::chapter_for`), so the indexed text
-/// carries the numbers the rendered page shows ("Theorem 2.1", not "Theorem 1"). Rendering
+/// carries the numbers the rendered page shows ("Figure 2.1", not "Figure 1"). Rendering
 /// unscoped here made every snippet in a book contradict its own target and hid a search
 /// for the number the reader can actually see.
 ///

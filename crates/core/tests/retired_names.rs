@@ -371,47 +371,19 @@ fn forward_xrefs_survive_the_backlink_deletion() {
     );
 }
 
-/// Theorem kinds went 8 -> 5 on 2026-08-03, and the `@exm-`/`@prp-`/`@rem-` cross-reference
-/// prefixes deliberately resolve the OPPOSITE way from their div classes: the classes are
-/// gone, and the prefixes STAY in `cite::XREF_LABELS`.
+/// `.tali-thm-style-remark` was the only kind-specific style selector among the theorem
+/// kinds cut on 2026-08-03 (`example` and `proposition` reused the surviving
+/// `definition`/`plain` styles), so it is the one CSS leftover the `.{name}` derivation
+/// cannot see.
 ///
-/// That is a correction, not a decision anyone would reconstruct. Fix round 1 (2026-08-04):
-/// the first cut of the task also deleted the three prefixes, which was wrong — with the
-/// prefix gone, `@exm-x` never reaches `parse_xref`'s `Some` branch, so it degraded
-/// silently to literal text (no link, no error, nothing). They are kept precisely BECAUSE
-/// their div classes are gone: every such reference is now necessarily dangling, which the
-/// ordinary "broken cross-reference" path already reports for free. A register entry would
-/// be the wrong instrument here, so nothing derived can cover it.
+/// This test also carried the `@exm-`/`@prp-`/`@rem-` half of that retirement, which
+/// asserted the prefixes STAYED in `cite::XREF_LABELS` so a stray reference would error
+/// rather than degrade to literal text. That was a backwards-compatibility argument, the
+/// author ruled it void, and all seven theorem prefixes were deleted on 2026-08-18. The
+/// replacement pin is `cite::tests::a_withdrawn_theorem_prefix_is_no_longer_read_at_all`,
+/// which asserts the opposite outcome on purpose.
 #[test]
-fn the_cut_theorem_kinds_keep_their_xref_prefixes_so_a_stray_reference_errors_loudly() {
-    for prefix in ["exm", "prp", "rem"] {
-        let anchor = format!("{prefix}-x");
-        assert!(
-            taliesin_core::cite::is_xref_anchor(&anchor),
-            "`@{anchor}` must still be a recognized cross-reference SHAPE (its div class \
-             is gone, but the prefix survives so a stray reference errors loudly instead \
-             of degrading to silent text)"
-        );
-    }
-    // Nothing anywhere can define these anchors any more, so the reference must be
-    // reported as broken rather than passing through as text.
-    let dangling = taliesin_core::render_document_with_includes(
-        "---\ntitle: T\n---\n\nSee @exm-oldid, @prp-oldid, @rem-oldid.\n",
-        std::path::Path::new("."),
-    );
-    let xref_warnings = taliesin_core::cite::validate_xrefs(&dangling.blocks, None);
-    for prefix in ["exm", "prp", "rem"] {
-        let anchor = format!("{prefix}-oldid");
-        assert!(
-            xref_warnings.iter().any(|w| w
-                .message
-                .contains(&format!("broken cross-reference: @{anchor}"))),
-            "`@{anchor}` must be reported as a broken cross-reference, not silence: {xref_warnings:?}"
-        );
-    }
-    // `.tali-thm-style-remark` was the only kind-specific style selector among the three
-    // cut kinds (`example` and `proposition` reused the surviving `definition`/`plain`
-    // styles), so it is the one CSS leftover the `.{name}` derivation cannot see.
+fn the_cut_theorem_kinds_leave_no_style_selector_behind() {
     let css = taliesin_core::render::base_css();
     assert!(
         !css.contains(".tali-thm-style-remark"),

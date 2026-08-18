@@ -174,7 +174,9 @@ page chrome the reader never authored:
   (only when the document actually uses math) the KaTeX stylesheet, all `include_str!`d
   into the binary so a built page is self-contained with no CDN.
 - A **skip-to-content link** when the body carries the focusable `<main id="tali-main">`,
-  plus any markup the project's `_site.yml` `head:` injects.
+  plus the chrome's own head markup (per-page OpenGraph/SEO meta and the feed links). No
+  author-configured markup reaches the `<head>`: `_site.yml`'s `head:` was the last such
+  hatch and went on 2026-08-18.
 - For a page with `{js}` cells, the vendored d3 + Observable Plot libs and the `{js}`
   enhancer (gated on the rendered body, so a page without `{js}` carries none of it).
 

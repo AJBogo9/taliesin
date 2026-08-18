@@ -47,8 +47,8 @@ The core stays lean; two seams let you add behaviour without touching it:
    earlier pass. Any other name is left verbatim, with a warning, so a typo is visible
    rather than shipped as literal text.
 2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
-   `fn(root)` that runs after every (re)mount; load it with a `<script>` in your project's
-   `_site.yml` `head:`. The built-in copy buttons and `mermaid.js` use this same public
+   `fn(root)` that runs after every (re)mount; load it with a `<script defer src>` written
+   as raw HTML in the page. The built-in copy buttons and `mermaid.js` use this same public
    API, so a third-party enhancer is indistinguishable from core's.
 
 ### The client enhancer contract
@@ -66,7 +66,7 @@ full:
   preview), again **after every incremental block op** (the client calls
   `taliEnhancers.run(root)` on the swapped-in DOM, so a re-rendered block is enhanced just
   like a fresh one), and **immediately on registration** if the page is already mounted
-  (the case when a deferred script in `head:` loads after the first mount).
+  (the case when a deferred script loads after the first mount).
 - **Idempotency is mandatory.** Because the same `fn` re-runs on every change, it must do
   nothing the second time it sees a node. The convention is a marker `data-` attribute:
   check for it, bail if present, set it once you've decorated. An enhancer that appends a
@@ -89,8 +89,18 @@ window.taliEnhancers.register(function (root) {
 });
 ```
 
-Ship that file and load it with a `<script defer>` from your project's `_site.yml`
-`head:`, and it is wired into the same mount cycle the built-ins use.
+Ship that file next to the page and load it with a raw-HTML `<script defer src>` line in
+the `.tmd` itself:
+
+```html
+<script defer src="my-enhancer.js"></script>
+```
+
+The build harvests every `src=` it can see, so the file is copied into the output beside
+the page, and the enhancer is wired into the same mount cycle the built-ins use. To share
+one across a project, put that line in an `_includes/` partial and `{{< include >}}` it
+from each page — `_site.yml` had a project-wide `head:` for this until 2026-08-18, when it
+was cut at zero adoption.
 
 ## The editor
 

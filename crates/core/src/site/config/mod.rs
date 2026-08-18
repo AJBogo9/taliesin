@@ -8,7 +8,6 @@
 //! url: "https://…"            # site URL
 //! favicon: favicon.svg
 //! logo: logo.svg             # brand image in the navbar / book topbar
-//! head: head.html            # raw markup for every page's <head> — the ONE escape hatch
 //! nav:                       # a list ⇒ left side; or { left: […], right: […] }
 //!   - { text: Blog, href: blog.tmd }
 //! footer:                    # a string ⇒ left text; or { left/center/right }
@@ -19,8 +18,10 @@
 //! Six keys were retired on 2026-08-02: `output:` and `toc:` (both wrote what the tool
 //! already does — the build dir is `_site`/`_book`, and the sidebar TOC is decided per page
 //! by heading count), and `css:`/`body-start:`/`body-end:` (raw injection at zero adoption,
-//! folded into the surviving `head:`). `theorems:` went with the book-wide numbering policy.
-//! None is read any more, and a stale one is reported as an unknown config key.
+//! folded into `head:`). `theorems:` went with the book-wide numbering policy. `head:`
+//! itself — the last raw-injection hatch, and still at zero adoption two weeks later —
+//! followed on 2026-08-18. None is read any more, and a stale one is reported as an
+//! unknown config key.
 
 use super::*;
 use serde::Deserialize;
@@ -47,12 +48,6 @@ pub struct SiteConfig {
     /// project needs exactly this one line. The same key name a deck's front matter
     /// already uses (`render::deck::deck_overlay_html`).
     pub logo: Option<String>,
-    /// `head:` — raw markup injected into every page's `<head>`. The **one** raw-injection
-    /// hatch the tool keeps (analytics, a search-console `<meta>`, a custom stylesheet);
-    /// the per-document `css:`/`include-*` family and `body-start:`/`body-end:` were retired
-    /// on 2026-08-02 at zero adoption. Deliberately not a knob with a default to perfect: it
-    /// exists precisely for what the tool cannot anticipate.
-    pub head: Option<serde_yaml::Value>,
     pub nav: Navbar,
     pub footer: Option<Footer>,
     /// Ordered chapter list (book only): a file name or `{ part, chapters }`.
@@ -123,12 +118,11 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     // with enough headings (`Site::page_toc`), and a page's own front-matter `toc:` still
     // forces it either way. A site-wide switch in front of an auto-gate was a knob in
     // front of a decision the page already makes.
-    //
-    // `head:` is the ONE raw-injection hatch that survives (analytics, search-console
-    // verification, a custom stylesheet) — a published tool needs exactly one, and the
-    // per-document `css:`/`include-*` family plus `body-start:`/`body-end:` went with the
-    // rest on 2026-08-02 at measured zero adoption.
-    "head",
+    // No `head:`, retired 2026-08-18. It was the last raw-injection hatch (the
+    // per-document `css:`/`include-*` family and `body-start:`/`body-end:` went on
+    // 2026-08-02), kept then on the argument that a published tool needs exactly one. Two
+    // weeks later it was still used by zero documents in the tree, so it went the same way
+    // as the six it outlived: an escape hatch nobody reaches for is surface, not capability.
     "nav",
     "footer",
     "chapters",
@@ -317,7 +311,6 @@ fn parse_native(
         url: str_of("url"),
         favicon: str_of("favicon"),
         logo: str_of("logo"),
-        head: value.get("head").cloned(),
         nav: nav_from(value.get("nav")),
         footer: footer_from(value.get("footer")),
         chapters,
@@ -540,15 +533,24 @@ mod config_tests {
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
     }
 
-    /// `head:` is the survivor of the raw-injection family and must keep working.
+    /// The raw-injection family is gone ENTIRELY, `head:` included (2026-08-18). Dropping
+    /// a key from the known set only makes it diagnosed; this pins that the read is gone
+    /// too, so a project that still carries the key is told so and gets no injection.
     #[test]
-    fn head_is_the_one_raw_injection_hatch_that_stays() {
+    fn head_is_no_longer_read_and_is_diagnosed_as_unknown() {
         let mut w = Vec::new();
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\nhead: |\n  <meta name=\"x\" content=\"y\">\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
-        assert!(cfg.head.is_some(), "head: parses");
-        assert!(w.is_empty(), "head: is a recognized key: {w:?}");
+        assert_eq!(
+            cfg.title.as_deref(),
+            Some("X"),
+            "the rest of the config still parses"
+        );
+        assert!(
+            w.iter().any(|d| d.contains("head")),
+            "`head:` must draw the unknown-key diagnostic: {w:?}"
+        );
     }
 
     /// The silent-chapter-drop fix. `site::book::push_chapter_entry` consumes an entry only

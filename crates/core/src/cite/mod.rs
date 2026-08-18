@@ -32,13 +32,13 @@ mod validate;
 mod tests;
 
 pub use parse::{parse_bib, parse_bib_warned};
+pub(crate) use render::XREF_LABELS;
 /// Whether an id's prefix names a cross-reference kind, i.e. whether `@id` can resolve.
 /// Public so `taliesin symbols` can offer only anchors an author can actually write
 /// after `@`, instead of reimplementing the prefix list outside `taliesin-core`.
 pub use render::is_xref_anchor;
 pub use render::link_xrefs_in_fragment;
 pub use render::process;
-pub(crate) use render::{RETIRED_XREF_PREFIXES, XREF_LABELS};
 
 pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};
 

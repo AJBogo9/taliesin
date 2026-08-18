@@ -333,12 +333,9 @@ fn brace_blocks(line: &str) -> Vec<&str> {
 }
 /// Whether an id is a cross-reference anchor (`sec-`, `fig-`, …).
 pub(super) fn is_ref_anchor(id: &str) -> bool {
-    [
-        "sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "lem-", "cor-", "prp-", "def-", "exm-",
-        "rem-",
-    ]
-    .iter()
-    .any(|p| id.starts_with(p))
+    ["sec-", "fig-", "tbl-", "eq-", "lst-"]
+        .iter()
+        .any(|p| id.starts_with(p))
 }
 /// Every anchor a page's ALREADY-RENDERED blocks cite, on this page or another, resolved
 /// or not — read back off the `#anchor` fragment of each `class="tali-xref"` link's
@@ -590,7 +587,7 @@ mod tests {
     fn brace_id_ignores_a_hash_inside_a_quoted_attribute_value() {
         // a `#word` inside a quoted `title=` is prose, not an id — it must not invent a target.
         assert_eq!(
-            brace_id(r#"::: {.theorem title="see #thm-ghost below"}"#),
+            brace_id(r#"::: {.callout-note title="see #sec-ghost below"}"#),
             None
         );
     }
@@ -598,8 +595,8 @@ mod tests {
     #[test]
     fn brace_id_finds_the_real_id_after_a_quoted_value_containing_a_hash() {
         assert_eq!(
-            brace_id(r#"::: {.theorem title="bound #thm-fake" #thm-real}"#).as_deref(),
-            Some("thm-real")
+            brace_id(r#"::: {.callout-note title="bound #sec-fake" #sec-real}"#).as_deref(),
+            Some("sec-real")
         );
     }
 
@@ -609,7 +606,10 @@ mod tests {
             brace_id("## Setup {#sec-x .unnumbered}").as_deref(),
             Some("sec-x")
         );
-        assert_eq!(brace_id("::: {.theorem #thm-x}").as_deref(), Some("thm-x"));
+        assert_eq!(
+            brace_id("::: {.callout-note #sec-y}").as_deref(),
+            Some("sec-y")
+        );
     }
 
     /// A website has no section numbering, so a cross-page `@sec-` has no number to
@@ -769,7 +769,7 @@ mod tests {
     fn xref_anchors_in_reads_same_page_cross_page_and_unresolved_alike() {
         let blocks = [
             // Same-page resolved (no page prefix before `#`).
-            block(r##"<a href="#thm-local" class="tali-xref">Theorem&nbsp;1</a>"##),
+            block(r##"<a href="#tbl-local" class="tali-xref">Table&nbsp;1</a>"##),
             // Cross-page resolved (the site-level rewrite prefixed the page).
             block(
                 r#"<p>see <a href="../methods.html#sec-methods" class="tali-xref">Chapter&nbsp;2</a></p>"#,
@@ -783,7 +783,7 @@ mod tests {
         assert_eq!(
             got,
             std::collections::HashSet::from([
-                "thm-local".to_string(),
+                "tbl-local".to_string(),
                 "sec-methods".to_string(),
                 "fig-ghost".to_string(),
             ])
@@ -804,12 +804,12 @@ mod tests {
     #[test]
     fn xref_anchors_in_dedups_repeated_citations() {
         let blocks = [
-            block(r##"<a href="#thm-kl" class="tali-xref">Theorem&nbsp;2.1</a>"##),
-            block(r##"<p>again, <a href="#thm-kl" class="tali-xref">Theorem&nbsp;2.1</a></p>"##),
+            block(r##"<a href="#tbl-kl" class="tali-xref">Table&nbsp;2.1</a>"##),
+            block(r##"<p>again, <a href="#tbl-kl" class="tali-xref">Table&nbsp;2.1</a></p>"##),
         ];
         assert_eq!(
             xref_anchors_in(&blocks),
-            std::collections::HashSet::from(["thm-kl".to_string()])
+            std::collections::HashSet::from(["tbl-kl".to_string()])
         );
     }
 

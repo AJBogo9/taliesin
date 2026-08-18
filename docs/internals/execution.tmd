@@ -37,9 +37,9 @@ kernel language until Wave 6, and the shape is what makes a third cheap.
 untouched, so every code cell previews as highlighted source with no kernel started and
 no "kernel unavailable" notice. The render pass reads the same flag for `{js}` cells
 (`taliesin_core::render::no_exec_in_force`), so a browser-side cell is left as source too.
-It is a *code-cell* switch, not a sandbox: raw `<script>` and whatever `_site.yml`'s
-`head:` injects still reach the page, so `--no-exec` is for **skimming** an untrusted
-document, not for trusting it. Otherwise it groups the cells by language (preserving
+It is a *code-cell* switch, not a sandbox: raw `<script>` in the document body still
+reaches the page, so `--no-exec` is for **skimming** an untrusted document, not for
+trusting it. Otherwise it groups the cells by language (preserving
 document order), runs each language's cells, and splices an **output block after each
 cell**:
 
