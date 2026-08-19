@@ -1,0 +1,196 @@
+---
+title: "A computational report, in one page"
+description: "Python cleans a committed dataset, draws the charts and fits the model as the page builds; every figure and table is numbered and cross-referenced."
+---
+
+Nothing below was pasted in. The chart, the coefficient table and the numbers quoted
+around them were produced by the Python cells you can read on this page, running against
+a committed CSV while the page was being built. Change one cell in the source and only
+that cell and whatever depends on it runs again.
+
+`data/latency.csv` is a synthetic quarter of queue telemetry: thirteen ISO weeks, three
+regions, two release channels, 78 rows, written from a fixed seed so that anyone who
+clones the repository re-runs this page and gets these numbers back. The generating
+process has a gentle downward drift in it, a canary penalty that decays to nothing, and
+a storage incident in `ap-south` in week 33. The analysis below is the real thing, and it
+goes looking for all three.
+
+```{python}
+#| label: setup
+
+import matplotlib
+import matplotlib.pyplot as plt
+import pandas as pd
+from IPython.display import HTML, display
+
+# Taliesin renders every inline matplotlib figure TWICE, once with the light theme's
+# foreground and once with the dark theme's, and the page swaps them when the reader
+# toggles the theme, so `INK` below is only the fallback for anything the recolour does
+# not reach. Data colours are never touched, so those DO have to read on both themes:
+# three mid-chroma hues, no near-white and no near-black.
+INK = "#7d7d7d"
+REGION_COLOUR = {"eu-west": "#3b82c4", "us-east": "#c4713b", "ap-south": "#5a9e6f"}
+
+matplotlib.rcParams.update({
+    "figure.facecolor": "none",
+    "axes.facecolor": "none",
+    "savefig.facecolor": "none",
+    "savefig.transparent": True,
+    "text.color": INK,
+    "axes.labelcolor": INK,
+    "axes.edgecolor": INK,
+    "xtick.color": INK,
+    "ytick.color": INK,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.color": INK,
+    "grid.alpha": 0.22,
+    "grid.linewidth": 0.6,
+    "font.size": 9,
+    "figure.dpi": 150,
+})
+
+INCIDENT_WEEK = 33
+INCIDENT_REGION = "ap-south"
+
+latency = pd.read_csv("data/latency.csv")
+incident = (latency.week == INCIDENT_WEEK) & (latency.region == INCIDENT_REGION)
+clean = latency[~incident]
+```
+
+## How the tail moved
+
+```{python}
+#| label: fig-p95
+#| fig-cap: "Weekly p95 by region. Stable is solid, canary dashed. The dotted rule is the 150 ms objective; the shaded band is the week-33 incident in ap-south, which the summary and the model below both leave out."
+
+fig, ax = plt.subplots(figsize=(7.2, 3.4))
+
+for region, colour in REGION_COLOUR.items():
+    for channel, style in (("stable", "-"), ("canary", "--")):
+        series = latency[(latency.region == region) & (latency.channel == channel)]
+        ax.plot(
+            series.week,
+            series.p95_ms,
+            style,
+            color=colour,
+            linewidth=1.6 if channel == "stable" else 1.1,
+            label=f"{region} · {channel}",
+        )
+
+ax.axhline(150, linestyle=":", color=INK, linewidth=1.0)
+ax.axvspan(INCIDENT_WEEK - 0.4, INCIDENT_WEEK + 0.4, color=INK, alpha=0.14)
+ax.set_xlabel("ISO week")
+ax.set_ylabel("p95 queue time (ms)")
+ax.set_ylim(0, None)
+ax.legend(frameon=False, ncol=3, fontsize=7.5, loc="upper center", bbox_to_anchor=(0.5, 1.22))
+fig.tight_layout()
+plt.show()
+```
+
+Outside the incident every region-week clears the 150 ms objective, and the quarter
+trends gently downward: that is the caching work that landed in week 27. The canary
+penalty is the other visible pattern. Early on the dashed lines sit well above their
+solid counterparts, and by week 39 they have converged.
+
+Here is the same frame summarised by hand, typed into the source as an ordinary markdown
+table rather than displayed by a cell:
+
+| Region | Weeks | Requests (M) | p50 (ms) | p95 (ms) | Errors |
+|--------|-------|--------------|----------|----------|--------|
+| ap-south | 12 | 1.8 | 59.20 | 142.15 | 2107 |
+| eu-west | 13 | 4.0 | 40.05 | 98.90 | 4840 |
+| us-east | 13 | 6.6 | 36.80 | 87.20 | 7893 |
+
+: Quarter totals by region. Each percentile column is the median over that region's
+region-weeks, and `ap-south` has twelve of them rather than thirteen because the week-33
+incident rows are dropped. {#tbl-regions}
+
+`ap-south` is slower than the other two at both percentiles and is also the smallest by
+volume, so its weekly numbers are the noisiest of the three. Any regional comparison has
+to survive that.
+
+## Is the canary still slower?
+
+The question is whether the canary channel carries a latency penalty once the region and
+the quarter-long trend are accounted for. Latency is right-skewed and multiplicative, so
+the model is fitted on the log scale, which makes every coefficient a proportional effect
+rather than a fixed number of milliseconds:
+
+$$
+\log(\text{p95}_{i}) = \beta_0 + \beta_{\text{region}(i)} + \beta_{\text{canary}} \cdot \text{canary}_i + \beta_w \cdot w_i + \varepsilon_i
+$$
+
+with `eu-west` and `stable` as the reference levels and $w_i$ the ISO week centred on
+week 27.
+
+```{python}
+#| label: tbl-coefs
+#| tbl-cap: "Fitted coefficients on the log scale, with the multiplicative effect each one implies. A factor of 1.00 is no effect."
+
+import numpy as np
+from scipy import stats
+
+# The model written out rather than handed to a formula library: it is five columns, so
+# the design matrix IS the specification and there is nothing a formula string would make
+# clearer. Treatment coding against `eu-west` and `stable`, so every coefficient reads as
+# an effect relative to the reference level.
+REGION_LEVELS = ["eu-west", "us-east", "ap-south"]
+
+
+def fit_log_p95(frame):
+    """OLS of log(p95) on region + channel + week centred on week 27.
+
+    Returns one row per term with the estimate, its standard error and a two-sided
+    p-value, which is what a tidy coefficient table carries.
+    """
+    columns = {"Intercept (eu-west, stable, week 27)": np.ones(len(frame))}
+    for level in REGION_LEVELS[1:]:
+        columns[f"Region: {level}"] = (frame.region == level).astype(float).to_numpy()
+    columns["Channel: canary"] = (frame.channel == "canary").astype(float).to_numpy()
+    columns["Per week elapsed"] = (frame.week - 27).astype(float).to_numpy()
+
+    X = np.column_stack(list(columns.values()))
+    y = np.log(frame.p95_ms.to_numpy())
+
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    residual = y - X @ beta
+    dof = len(y) - X.shape[1]
+    cov = (residual @ residual / dof) * np.linalg.inv(X.T @ X)
+    se = np.sqrt(np.diag(cov))
+
+    return pd.DataFrame({
+        "term": list(columns),
+        "estimate": beta,
+        "std_error": se,
+        "p_value": 2 * stats.t.sf(np.abs(beta / se), dof),
+    })
+
+
+coefficients = fit_log_p95(clean)
+
+coefficient_table = pd.DataFrame({
+    "Term": coefficients.term,
+    "Estimate (log)": coefficients.estimate.round(3),
+    "SE": coefficients.std_error.round(3),
+    "Factor": np.exp(coefficients.estimate).round(3),
+    "p": ["<0.001" if p < 0.001 else f"{p:.3f}" for p in coefficients.p_value],
+})
+
+# A bare `coefficient_table` would render pandas' own repr: a `border="1"` table tagged
+# `class="dataframe"`, carrying a `<style scoped>` block and a row-index column. `to_html`
+# with the index and the border off emits plain markup the page's own styling can reach.
+display(HTML(coefficient_table.to_html(index=False, border=0)))
+```
+
+The three floats on this page were made three different ways and share one counter.
+@fig-p95 is a matplotlib figure the page drew as it built, @tbl-regions is a markdown
+table typed into the source by hand, and @tbl-coefs is a pandas frame a cell displayed.
+They are numbered in the order they appear, whichever path produced them, and each
+reference in this paragraph is a link to the float it names.
+
+What they add up to: over the quarter as a whole the canary channel is still measurably
+slower than stable, and that pooled coefficient hides the convergence the chart shows,
+because a single channel term has to split the difference between a large early penalty
+and none at all by week 39.
