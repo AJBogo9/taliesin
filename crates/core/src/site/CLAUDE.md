@@ -23,8 +23,7 @@ Conventions:
 - Submodules use `use super::*`; expose an item to `mod.rs`/siblings via a `pub(crate) use`
   re-export in `mod.rs` (parents can't see a child's private items).
 - One project per `Site`, and one project per deploy: this repo's four sites (marketing,
-  the two docs books, the gallery) publish separately and link by absolute URL
-  (`tools/publish.sh`). The gallery is the only one that writes other projects under its
-  own output (its three exhibits), one `build … --out <out>/<prefix>` each, **parent
-  first**, because the parent's stale-output sweep deletes anything under its output it
-  did not itself write.
+  the two docs books, the gallery) build and deploy alone and link to each other by
+  absolute URL (`tools/publish.sh`). Nothing is composed into another project's output.
+  The gallery is a flat, self-contained project of one-page demos, not a parent that
+  writes others under its own output.

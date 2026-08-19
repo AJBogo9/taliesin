@@ -1765,12 +1765,15 @@ fn build_site(
 /// Cloudflare Pages project and reach each other by absolute URL, because Pages has no
 /// subpath deploy and a composed tree would have to be re-uploaded whole on every change.
 ///
-/// The gallery is the one project that still writes others under its own output (its three
-/// exhibits), and `tools/publish.sh` does that with one `build … --out <out>/<prefix>` per
-/// exhibit, parent first, because the parent's sweep deletes what it did not write. That
-/// script is run by `.githooks/pre-push` and it resolves every exhibit link against the
-/// built output, because the reason the `mounts:` key existed at all was a deploy whose
-/// call-to-action 404'd from a script nobody ran (item 149).
+/// Until 2026-08-19 the gallery was the one project that wrote others under its own output
+/// (its three exhibits), one `build … --out <out>/<prefix>` per exhibit, parent first,
+/// because the parent's sweep deletes what it did not write, and `tools/publish.sh` did
+/// that composing. That is gone: the gallery is now a flat, self-contained project of
+/// one-page demos, and nothing this repo publishes composes another project into its own
+/// output any more. Nested builds (`build <dir> --out <parent-out>/<prefix>`) remain a
+/// plain capability of this function for any future consumer; no deploy exercises it
+/// today. The reason `.githooks/pre-push` still runs `tools/publish.sh --check` as a gate
+/// is item 149: a deploy whose call-to-action once 404'd from a script nobody ran.
 async fn build_site_async(
     root: &Path,
     out_override: Option<&str>,
@@ -2353,9 +2356,8 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
 
 /// The marker `build` writes into its output directory and reads back to recognise that
 /// directory as its own on the next run. Dot-prefixed, so [`mirror_assets`] never copies
-/// one into a nested deploy and [`sweep_stale`] never deletes it — which is also what
-/// lets the gallery deploy (`tools/publish.sh`, parent first) survive the parent's
-/// sweep and rebuild each exhibit into its own prefix.
+/// one into a nested deploy and [`sweep_stale`] never deletes it, which is what lets a
+/// nested `build <dir> --out <parent-out>/<prefix>` survive the parent's own sweep.
 const OUTPUT_MARKER: &str = ".taliesin-build";
 
 const OUTPUT_MARKER_BODY: &str = "\

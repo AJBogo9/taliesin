@@ -528,8 +528,9 @@ mod config_tests {
 
     /// `external-prefixes:` was the gallery composition's one config key (cut 2026-08-19
     /// when the gallery became self-contained). The read is gone, not just the docs: a
-    /// `_site.yml` still carrying it draws the unknown-key diagnostic, and links into a
-    /// formerly external prefix are reported broken like any other.
+    /// `_site.yml` still carrying it draws the unknown-key diagnostic, which is all this
+    /// test asserts. Links into a formerly external prefix are broken like any other now,
+    /// structurally, since the field no longer exists to declare one.
     #[test]
     fn external_prefixes_is_no_longer_read_and_is_diagnosed_as_unknown() {
         let mut w = Vec::new();

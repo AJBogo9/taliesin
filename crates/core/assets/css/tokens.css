@@ -6,26 +6,27 @@
      Keep in sync: nothing else should declare these tokens.
      =========================================================================== */
   :root {
-    /* The ground is a warm off-white and the ink a warm near-black, so nothing on screen
-       sits at either end of the luminance range. Stated honestly: this is a brand and
-       preference choice. The most recent controlled test of tinted grounds found no
-       reading-performance effect in English, so it must never be defended as legibility,
-       and never with blue light. Every value carries its measured WCAG ratio.
+    /* The ground is pure white and the ink a warm near-black. Stated honestly: this is a
+       brand and preference choice, not a legibility claim. The most recent controlled test
+       of tinted grounds found no reading-performance effect in English, so a tint must
+       never be defended as legibility, and plain white must not be defended that way
+       either: the choice here is made on looks alone. Every value carries its measured
+       WCAG ratio.
 
        There is NO chrome accent. Colour on a Taliesin page means DATA: a plot, a syntax
        token, an error. Links are the ink with a hairline underline. */
     --tali-bg: #FFFFFF;                 /* white */
-    --tali-fg: #22201A;                 /* 15.49:1 */
-    --tali-muted: #5F5C54;              /* 6.35:1  — the machine voice */
+    --tali-fg: #22201A;                 /* 16.28:1 */
+    --tali-muted: #5F5C54;              /* 6.68:1  — the machine voice */
     --tali-inline-code: #3A362E;        /* 10.66:1 on the code ground */
     --tali-code-bg: #F4F1EB;            /* ink 4% over paper */
-    --tali-border: #D9D7D2;             /* 1.37:1 — a decorative separator, not a control */
-    --tali-border-strong: #8B887F;      /* 3.37:1 — clears the 3:1 non-text floor */
+    --tali-border: #D9D7D2;             /* a decorative separator, not a control */
+    --tali-border-strong: #8B887F;      /* 3.54:1 — clears the 3:1 non-text floor */
     --tali-link: #22201A;
     /* Load-bearing: `--tali-link` is the ink, so this hairline is the ONLY cue distinguishing a
-       link from body text. #A8A49B (2.36:1) was too faint; this is `--tali-border-strong`'s
-       value, reused rather than invented. */
-    --tali-underline: #8B887F;          /* 3.37:1 — clears the 3:1 non-text floor */
+       link from body text. #A8A49B was too faint; this is `--tali-border-strong`'s value,
+       reused rather than invented. */
+    --tali-underline: #8B887F;          /* 3.54:1 — clears the 3:1 non-text floor */
     --tali-flash: rgba(34, 32, 26, .08);
     /* `--tali-accent` is NOT a second chrome colour: this theme has none. It survives as a
        token only because ~30 call sites (the focus ring, xref markers, sidenote numbers, the
@@ -55,8 +56,8 @@
        safe where Plan 2's `:root` track list was not: THAT one read a property engaged on a
        DESCENDANT and baked in the root's zero.)
 
-       Scored 2026-08-15 on the ground each sits on: live 6.56 light / 8.68 dark, warn 7.08 /
-       8.34, error 7.28 / 7.09. All six clear 4.5:1 as text. What they replace did not — the
+       Scored 2026-08-19 on the ground each sits on: live 6.90 light / 8.68 dark, warn 7.45 /
+       8.34, error 7.66 / 7.09. All six clear 4.5:1 as text. What they replace did not — the
        literals here were picked for a dark UI and met the warm paper for the first time when
        Plan 1 landed: live scored 2.42:1, cell-done 2.48:1, and the amber 2.18:1 while being
        used as the alert LABEL. `warming` and `warn` shared one literal, which is why there are

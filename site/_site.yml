@@ -5,8 +5,8 @@
 # The Guide, the Internals book and the Gallery are separate Taliesin projects with their
 # own domains, and the links below are absolute URLs into them: outbound links, exactly
 # like the GitHub one, not a composed tree. Nothing assembles several projects into this
-# output, so there is no `external-prefixes:` here and every link on every page of this
-# site resolves in `preview site` exactly as it does in the deploy.
+# output, and every link on every page of this site resolves in `preview site` exactly as
+# it does in the deploy.
 title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.sh"
