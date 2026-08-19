@@ -270,15 +270,8 @@ impl Site {
             if in_footer && target.ends_with(".xml") {
                 continue;
             }
-            // A prefix another project supplies in the composed deploy, and a raw file on
-            // disk: both are the same judgements the body-link resolver makes.
-            if self
-                .config
-                .external_prefixes
-                .iter()
-                .any(|p| target == *p || target.starts_with(&format!("{p}/")))
-                || self.root.join(&target).is_file()
-            {
+            // A raw file on disk: the same judgement the body-link resolver makes.
+            if self.root.join(&target).is_file() {
                 continue;
             }
             let where_ = if in_footer { "footer" } else { "nav" };
@@ -1110,7 +1103,7 @@ mod tests {
         );
     }
 
-    /// The four ways a chrome href is legitimately not a page. Each of these shipped in a
+    /// The three ways a chrome href is legitimately not a page. Each of these shipped in a
     /// real `_site.yml` before the validator existed, so each is a false positive the
     /// validator would otherwise invent.
     #[test]
@@ -1120,9 +1113,8 @@ mod tests {
             &[
                 (
                     "_site.yml",
-                    "title: Site\nurl: https://ex.com\nexternal-prefixes:\n  - docs/guide\n\
+                    "title: Site\nurl: https://ex.com\n\
                      nav:\n  left:\n    - { text: About, href: about.tmd }\n\
-                     \x20   - { text: Guide, href: \"docs/guide/\" }\n\
                      \x20   - { text: Code, href: \"https://github.com/x/y\" }\n\
                      \x20   - { text: Mail, href: \"mailto:a@b.c\" }\n\
                      \x20   - { text: Top, href: \"#top\" }\n\
@@ -1138,8 +1130,8 @@ mod tests {
         let ws = site.validate_chrome_links();
         assert!(
             ws.is_empty(),
-            "a real page, an external-prefix project, an absolute URL, a mailto, a bare \
-             fragment, a raw asset on disk and an href-less item are all fine: {ws:?}"
+            "a real page, an absolute URL, a mailto, a bare fragment, a raw asset on disk \
+             and an href-less item are all fine: {ws:?}"
         );
     }
 

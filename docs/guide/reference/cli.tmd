@@ -293,11 +293,11 @@ taliesin build docs --out my-site/_site/docs    # the book, nested at /docs
 
 Build the parent first. A build sweeps whatever sits under its `--out` target that it did
 not itself write, so a book built before the site would be swept away by the site's own
-build. Add the nested prefix to the parent's `external-prefixes:` so its link checker stops
-at links it cannot see, and resolve those links yourself against the built output.
+build. The parent cannot see the nested project's pages, so any link it writes into the
+nested prefix is reported as broken; resolve such links yourself against the built output.
 
-**Prefer separate deploys where your host allows them.** Nesting is worth it when the pages
-genuinely belong to one site (a gallery and its exhibits), and a cost otherwise: the parent
+**Prefer separate deploys where your host allows them.** Nesting keeps every page under
+one domain, and costs you the checks: the parent
 can no longer verify the nested links, and `preview` serves the parent alone, so every link
 into a nested project 404s while you write. Publishing each project to its own domain and
 linking between them with absolute URLs avoids both, and on hosts that deploy a directory

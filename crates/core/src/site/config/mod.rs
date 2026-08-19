@@ -62,10 +62,6 @@ pub struct SiteConfig {
     ///
     /// Empty = no shared bibliography, which is the pre-existing per-document-only world.
     pub bibliography: Vec<String>,
-    /// `external-prefixes:` — URL prefixes another project provides in the composed deploy.
-    /// Link validation treats a target under one of these as satisfied rather than broken.
-    /// See `NATIVE_KEYS` for why this is not `mounts:` coming back.
-    pub external_prefixes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -130,24 +126,6 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     // No `theorems:`. The book-wide numbering policy went with front-matter
     // `theorems.numbered` on 2026-08-02; `shared:` is per-chapter and stays there.
     "bibliography",
-    // `external-prefixes:` — URL prefixes this project LINKS INTO but does not itself
-    // contain, because another project is written under them at publish time
-    // (`tools/publish.sh`). Link validation stops at the prefix instead of reporting a
-    // broken link for every one of them.
-    //
-    // This is NOT `mounts:` returning (cut 2026-08-09). That key did three things: served
-    // sub-projects under a prefix in preview, recursed into them on build, and made their
-    // links resolve. The routing layer and the build recursion (with its cycle guard) stay
-    // cut — this is the third part alone, a declaration with no behaviour attached beyond
-    // silencing a check that cannot see the composed tree. `tools/publish.sh --check`
-    // still resolves every one of these links for real, against the built output, and is
-    // what pre-push and `tools/gates.sh` run.
-    //
-    // ONE project in this repo sets it, and that is the point: since 2026-08-16 the four
-    // sites publish separately and link by absolute URL, so `gallery/` is the only place
-    // left where one project's output contains another's. A second user of this key is a
-    // sign the composition is spreading again.
-    "external-prefixes",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -316,11 +294,6 @@ fn parse_native(
         chapters,
         python: str_of("python"),
         bibliography: crate::site::frontmatter::string_list(value.get("bibliography")),
-        external_prefixes: crate::site::frontmatter::string_list(value.get("external-prefixes"))
-            .into_iter()
-            .map(|p| p.trim_matches('/').to_string())
-            .filter(|p| !p.is_empty())
-            .collect(),
     }
 }
 
@@ -550,6 +523,27 @@ mod config_tests {
         assert!(
             w.iter().any(|d| d.contains("head")),
             "`head:` must draw the unknown-key diagnostic: {w:?}"
+        );
+    }
+
+    /// `external-prefixes:` was the gallery composition's one config key (cut 2026-08-19
+    /// when the gallery became self-contained). The read is gone, not just the docs: a
+    /// `_site.yml` still carrying it draws the unknown-key diagnostic, and links into a
+    /// formerly external prefix are reported broken like any other.
+    #[test]
+    fn external_prefixes_is_no_longer_read_and_is_diagnosed_as_unknown() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\nexternal-prefixes:\n  - tarn\n").unwrap();
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        assert_eq!(
+            cfg.title.as_deref(),
+            Some("X"),
+            "the rest of the config still parses"
+        );
+        assert!(
+            w.iter().any(|d| d.contains("external-prefixes")),
+            "`external-prefixes:` must draw the unknown-key diagnostic: {w:?}"
         );
     }
 

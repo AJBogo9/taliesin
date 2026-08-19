@@ -787,21 +787,6 @@ impl Site {
                     continue;
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
-                    // A prefix another project is built under inside this one's output
-                    // (`_site.yml`'s `external-prefixes:`). This project cannot see those
-                    // pages and never will; `tools/publish.sh --check` resolves them for
-                    // real, against the built output, and is what pre-push and
-                    // `tools/gates.sh` run. Without this the gallery's own pre-publish gate
-                    // would be permanently red on links that all resolve, which trains an
-                    // author to ignore the one command that would catch a real one.
-                    if self
-                        .config
-                        .external_prefixes
-                        .iter()
-                        .any(|p| target_url == *p || target_url.starts_with(&format!("{p}/")))
-                    {
-                        continue;
-                    }
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: a raw source file that exists under the root
                     // (`notes.md`, `data.csv`) is a legitimate target, and the build ships
