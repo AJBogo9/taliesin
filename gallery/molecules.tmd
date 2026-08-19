@@ -1,0 +1,227 @@
+---
+title: "Molecules"
+description: "A ball-and-stick molecule viewer with a picker, spin, and fullscreen."
+toc: false
+---
+
+Ball-and-stick, CPK-colored, real 3D coordinates. Pick a molecule, drag to spin,
+scroll to zoom, ⛶ for fullscreen. Every atom and bond is a three.js mesh built by
+the `{js}` cell below.
+
+{{< include _includes/three-scene.tmd >}}
+
+```{js}
+//| name: caffeineXYZ
+//| echo: false
+// 24 atoms, Ångström, from PubChem CID 2519 (Caffeine, public-domain 3D conformer).
+return `O 0.4700 2.5688 0.0006
+O -3.1271 -0.4436 -0.0003
+N -0.9686 -1.3125 0.0000
+N 2.2182 0.1412 -0.0003
+N -1.3477 1.0797 -0.0001
+N 1.4119 -1.9372 0.0002
+C 0.8579 0.2592 -0.0008
+C 0.3897 -1.0264 -0.0004
+C 0.0307 1.4220 -0.0006
+C -1.9061 -0.2495 -0.0004
+C 2.5032 -1.1998 0.0003
+C -1.4276 -2.6960 0.0008
+C 3.1926 1.2061 0.0003
+C -2.2969 2.1881 0.0007
+H 3.5163 -1.5787 0.0008
+H -1.0451 -3.1973 -0.8937
+H -2.5186 -2.7596 0.0011
+H -1.0447 -3.1963 0.8957
+H 4.1992 0.7801 0.0002
+H 3.0468 1.8092 -0.8992
+H 3.0466 1.8083 0.9004
+H -1.8087 3.1651 -0.0003
+H -2.9322 2.1027 0.8881
+H -2.9346 2.1021 -0.8849`;
+```
+
+```{js}
+//| name: molecules
+//| echo: false
+
+const makeScene3D = tali.get("makeScene3D");
+
+// --- element display data -------------------------------------------------
+const CPK = { H: 0xffffff, C: 0x222222, N: 0x3050f8, O: 0xff0d0d, P: 0xff8000 };
+const RADII = { H: 0.25, C: 0.40, N: 0.40, O: 0.40, P: 0.50 };
+const BOND_R = 0.09;
+
+function dist(a, b) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+// --- molecule builders ----------------------------------------------------
+function water() {
+  const d = 0.96, a = 104.5 * Math.PI / 180;
+  return {
+    atoms: [
+      { el: "O", pos: [0, 0, 0] },
+      { el: "H", pos: [ d * Math.sin(a / 2), d * Math.cos(a / 2), 0] },
+      { el: "H", pos: [-d * Math.sin(a / 2), d * Math.cos(a / 2), 0] },
+    ],
+    bonds: [[0, 1], [0, 2]],
+  };
+}
+
+function benzene() {
+  const rC = 1.39, rH = rC + 1.09;
+  const atoms = [], bonds = [];
+  for (let i = 0; i < 6; i++) {
+    const t = i * Math.PI / 3;
+    atoms.push({ el: "C", pos: [rC * Math.cos(t), rC * Math.sin(t), 0] });
+  }
+  for (let i = 0; i < 6; i++) {
+    const t = i * Math.PI / 3;
+    atoms.push({ el: "H", pos: [rH * Math.cos(t), rH * Math.sin(t), 0] });
+    bonds.push([i, (i + 1) % 6]); // ring
+    bonds.push([i, i + 6]);       // C-H
+  }
+  return { atoms, bonds };
+}
+
+// C60: truncated icosahedron. Vertices are even (cyclic) permutations of
+// (0,±1,±3φ), (±1,±(2+φ),±2φ), (±φ,±2,±(2φ+1)); bonds = the 90 shortest edges.
+function buckyball() {
+  const P = (1 + Math.sqrt(5)) / 2;
+  const base = [[0, 1, 3 * P], [1, 2 + P, 2 * P], [P, 2, 2 * P + 1]];
+  const evenPerms = (v) => [v, [v[1], v[2], v[0]], [v[2], v[0], v[1]]];
+  const signs = (v) => {
+    const out = [];
+    for (const sx of [1, -1]) for (const sy of [1, -1]) for (const sz of [1, -1])
+      out.push([sx * v[0], sy * v[1], sz * v[2]]);
+    return out;
+  };
+  const set = new Set(), verts = [];
+  for (const b of base) for (const p of evenPerms(b)) for (const s of signs(p)) {
+    const key = s.map((n) => n.toFixed(3)).join(",");
+    if (!set.has(key)) { set.add(key); verts.push(s); }
+  }
+  const R = 3.5, norm = Math.hypot(...verts[0]);
+  const atoms = verts.map((p) => ({ el: "C", pos: p.map((n) => n * R / norm) }));
+  let min = Infinity;
+  for (let i = 0; i < atoms.length; i++)
+    for (let j = i + 1; j < atoms.length; j++) {
+      const dd = dist(atoms[i].pos, atoms[j].pos);
+      if (dd < min) min = dd;
+    }
+  const bonds = [];
+  for (let i = 0; i < atoms.length; i++)
+    for (let j = i + 1; j < atoms.length; j++)
+      if (dist(atoms[i].pos, atoms[j].pos) < min * 1.05) bonds.push([i, j]);
+  return { atoms, bonds };
+}
+
+// Idealized B-form DNA double helix (schematic): two backbones as P atoms on a
+// helix, base pairs as N-N rungs. Not a real PDB structure.
+function dna(turns = 2.5, perTurn = 10) {
+  const n = Math.round(turns * perTurn);
+  const R = 1.0, rise = 0.34 * 3, twist = 2 * Math.PI / perTurn, off = Math.PI;
+  const atoms = [], bonds = [], strandA = [], strandB = [];
+  for (let i = 0; i < n; i++) {
+    const y = i * rise - (n * rise) / 2, t = i * twist;
+    strandA.push(atoms.length);
+    atoms.push({ el: "P", pos: [R * Math.cos(t), y, R * Math.sin(t)] });
+    strandB.push(atoms.length);
+    atoms.push({ el: "P", pos: [R * Math.cos(t + off), y, R * Math.sin(t + off)] });
+  }
+  for (let i = 0; i < n; i++) {
+    const t = i * twist, y = i * rise - (n * rise) / 2;
+    const na = atoms.length;
+    atoms.push({ el: "N", pos: [0.45 * R * Math.cos(t), y, 0.45 * R * Math.sin(t)] });
+    const nb = atoms.length;
+    atoms.push({ el: "N", pos: [0.45 * R * Math.cos(t + off), y, 0.45 * R * Math.sin(t + off)] });
+    bonds.push([strandA[i], na], [na, nb], [nb, strandB[i]]);
+    if (i > 0) bonds.push([strandA[i - 1], strandA[i]], [strandB[i - 1], strandB[i]]);
+  }
+  return { atoms, bonds };
+}
+
+// Parse a minimal XYZ block ("El x y z" per line); bonds inferred by distance.
+function parseXYZ(text) {
+  const atoms = text.trim().split("\n").map((line) => {
+    const [el, x, y, z] = line.trim().split(/\s+/);
+    return { el, pos: [+x, +y, +z] };
+  });
+  const bonds = [];
+  for (let i = 0; i < atoms.length; i++)
+    for (let j = i + 1; j < atoms.length; j++)
+      if (dist(atoms[i].pos, atoms[j].pos) < 1.75) bonds.push([i, j]);
+  return { atoms, bonds };
+}
+
+const MOLECULES = {
+  water:    { label: "Water (H₂O)",     build: water },
+  benzene:  { label: "Benzene (C₆H₆)",  build: benzene },
+  caffeine: { label: "Caffeine",        build: () => parseXYZ(tali.get("caffeineXYZ")) },
+  dna:      { label: "DNA (schematic)", build: () => dna() },
+  c60:      { label: "Buckyball (C₆₀)", build: buckyball },
+};
+
+// --- render ---------------------------------------------------------------
+let THREEref;
+
+function populate(g, mol) {
+  const T = THREEref;
+  const sphereGeo = new T.SphereGeometry(1, 24, 16);
+  for (const a of mol.atoms) {
+    const r = RADII[a.el] ?? 0.4;
+    const m = new T.Mesh(sphereGeo, new T.MeshStandardMaterial({
+      color: CPK[a.el] ?? 0xdd77ff, roughness: 0.35, metalness: 0.1,
+    }));
+    m.scale.setScalar(r);
+    m.position.set(...a.pos);
+    g.add(m);
+  }
+  for (const [i, j] of mol.bonds) {
+    const pi = new T.Vector3(...mol.atoms[i].pos);
+    const pj = new T.Vector3(...mol.atoms[j].pos);
+    const mid = pi.clone().add(pj).multiplyScalar(0.5);
+    const len = pi.distanceTo(pj);
+    const cyl = new T.Mesh(
+      new T.CylinderGeometry(BOND_R, BOND_R, len, 12),
+      new T.MeshStandardMaterial({ color: 0x999999, roughness: 0.5 }),
+    );
+    cyl.position.copy(mid);
+    cyl.quaternion.setFromUnitVectors(
+      new T.Vector3(0, 1, 0), pj.clone().sub(pi).normalize());
+    g.add(cyl);
+  }
+}
+
+const el = document.createElement("div");
+let group, showFn;
+
+makeScene3D((scene, THREE, ctx) => {
+  THREEref = THREE;
+  const key = new THREE.DirectionalLight(0xffffff, 0.9);
+  key.position.set(5, 8, 6);
+  scene.add(key);
+
+  group = new THREE.Group();
+  scene.add(group);
+
+  showFn = (name) => {
+    ctx.rebuild(group, (g) => populate(g, MOLECULES[name].build()));
+    ctx.frameObject(group, 1.6);
+  };
+  showFn("c60");
+}, invalidation, {
+  // Below the 1.0 default: CPK white (hydrogen) needs real modelling to read as a sphere
+  // on a white page, and flat ambient light would blow it out to a featureless blob.
+  ambientIntensity: 0.55,
+  controls: [{
+    type: "select",
+    label: "Molecule",
+    value: "c60",
+    options: Object.entries(MOLECULES).map(([value, m]) => ({ value, label: m.label })),
+    onChange: (name) => showFn(name),
+  }],
+}).then((node) => el.appendChild(node));
+
+return el;
+```
