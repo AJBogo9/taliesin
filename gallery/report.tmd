@@ -184,11 +184,11 @@ coefficient_table = pd.DataFrame({
 display(HTML(coefficient_table.to_html(index=False, border=0)))
 ```
 
-The three floats on this page were made three different ways and share one counter.
-@fig-p95 is a matplotlib figure the page drew as it built, @tbl-regions is a markdown
-table typed into the source by hand, and @tbl-coefs is a pandas frame a cell displayed.
-They are numbered in the order they appear, whichever path produced them, and each
-reference in this paragraph is a link to the float it names.
+The three floats on this page were made three different ways, and the two tables share
+one counter. @fig-p95 is a matplotlib figure the page drew as it built, @tbl-regions is a
+markdown table typed into the source by hand, and @tbl-coefs is a pandas frame a cell
+displayed. They are numbered in the order they appear, whichever path produced them, and
+each reference in this paragraph is a link to the float it names.
 
 What they add up to: over the quarter as a whole the canary channel is still measurably
 slower than stable, and that pooled coefficient hides the convergence the chart shows,
