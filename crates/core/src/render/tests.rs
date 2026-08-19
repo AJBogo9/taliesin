@@ -4081,9 +4081,10 @@ fn the_dev_ui_carries_no_generated_design_tells_either() {
 /// for a dark UI and never measured against the paper.
 ///
 /// MEASURED 2026-08-15 on the branch tip, before this commit: `#3fb950` (live) scored 2.42:1
-/// on `#FBF9F5`, `#2bb673` (cell done) 2.48:1, and `#d9a23a` 2.18:1 — the last of which is
-/// used as TEXT (the alert label and the count badge), where the floor is 4.5:1. Three of the
-/// five failed their own floor. That is why §8 says *scored* and not merely *named*.
+/// on the paper (since replaced by `#FFFFFF`), `#2bb673` (cell done) 2.48:1, and `#d9a23a`
+/// 2.18:1 — the last of which is used as TEXT (the alert label and the count badge), where
+/// the floor is 4.5:1. Three of the five failed their own floor. That is why §8 says *scored*
+/// and not merely *named*.
 ///
 /// Three tokens and not four: `warming` and `warn` were the same literal, so a fourth name
 /// would be a second spelling of one value (ruling R1).
@@ -4481,7 +4482,7 @@ fn mix_over(fg: &str, pct: f64, bg: &str) -> String {
 #[test]
 fn callout_family_meets_its_contrast_floors_in_every_theme() {
     for (theme, css, bg, fg) in [
-        ("light", TOKENS_CSS, "#fbf9f5", "#22201a"),
+        ("light", TOKENS_CSS, "#ffffff", "#22201a"),
         ("dark", TOKENS_DARK_CSS, "#14130f", "#eae7e0"),
     ] {
         for kind in ["note", "tip", "warning"] {
@@ -4510,7 +4511,7 @@ fn callout_family_meets_its_contrast_floors_in_every_theme() {
 #[test]
 fn diagnostic_surfaces_stay_legible_and_distinct_from_each_other() {
     for (theme, css, bg, fg) in [
-        ("light", TOKENS_CSS, "#fbf9f5", "#22201a"),
+        ("light", TOKENS_CSS, "#ffffff", "#22201a"),
         ("dark", TOKENS_DARK_CSS, "#14130f", "#eae7e0"),
     ] {
         let warn = color_after(css, "--tali-callout-warning:");

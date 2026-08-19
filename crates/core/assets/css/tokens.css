@@ -14,7 +14,7 @@
 
        There is NO chrome accent. Colour on a Taliesin page means DATA: a plot, a syntax
        token, an error. Links are the ink with a hairline underline. */
-    --tali-bg: #FBF9F5;                 /* paper */
+    --tali-bg: #FFFFFF;                 /* white */
     --tali-fg: #22201A;                 /* 15.49:1 */
     --tali-muted: #5F5C54;              /* 6.35:1  — the machine voice */
     --tali-inline-code: #3A362E;        /* 10.66:1 on the code ground */
@@ -35,7 +35,7 @@
        the same rule: a *filled* surface is the ink, and text drawn on it is the paper. Do
        not give this a hue again — that is the brand blue this palette replaced. */
     --tali-accent: #22201A;
-    --tali-accent-fill: #22201A; --tali-on-accent: #FBF9F5;
+    --tali-accent-fill: #22201A; --tali-on-accent: #FFFFFF;
     --tali-edge-shadow: rgba(0, 0, 0, .16);
     color-scheme: light;
     /* Three callout kinds; the left rule and the mono kind-word carry the meaning.

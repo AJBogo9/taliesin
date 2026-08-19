@@ -9,6 +9,6 @@
       .ink { fill: #EAE7E0 }
     }
   </style>
-  <rect class="ground" width="64" height="64" fill="#FBF9F5"/>
+  <rect class="ground" width="64" height="64" fill="#FFFFFF"/>
   <path class="ink" d="M14 16h36v7H36.5v32h-9V23H14z" fill="#22201A"/>
 </svg>

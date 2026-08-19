@@ -248,7 +248,7 @@ try:
         # The background is only used for artists that paint their OWN backing and so
         # cannot just be made transparent: a legend frame. Everything else is set to
         # 'none' and lets the page show through.
-        _TALI_LIGHT = ('#22201a', '#d9d7d2', '#fbf9f5')
+        _TALI_LIGHT = ('#22201a', '#d9d7d2', '#ffffff')
         _TALI_DARK = ('#eae7e0', '#33312b', '#14130f')
         _tali_orig_png = [None]  # the real Figure->png formatter, captured once
 

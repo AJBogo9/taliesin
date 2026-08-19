@@ -80,7 +80,7 @@ const THEME_HEAD_SCRIPT: &str = r#"<script>
     var c = choice();
     return c === "auto" ? DEVICE() : c;
   }
-  var BG = { dark: '#14130f', light: '#fbf9f5' };
+  var BG = { dark: '#14130f', light: '#ffffff' };
   function apply(){
     var mode = pref();
     var el = document.documentElement;
@@ -90,7 +90,7 @@ const THEME_HEAD_SCRIPT: &str = r#"<script>
     // frame. Without this the canvas stays white until the inline <style> parses,
     // which shows as a white flash on every (cross-page) navigation in dark mode.
     el.style.colorScheme = mode === "dark" ? "dark" : "light";
-    el.style.background = BG[mode] || '#fbf9f5';
+    el.style.background = BG[mode] || '#ffffff';
     // Keep the mobile browser-chrome tint (`<meta name="theme-color">`) in lockstep with the
     // canvas, so a dark page no longer sits under a white status bar. Reuse the same BG map
     // (single source, no duplicated hex) and follow the in-page toggle, not just the OS. The
@@ -99,7 +99,7 @@ const THEME_HEAD_SCRIPT: &str = r#"<script>
       var head = document.head || document.getElementsByTagName("head")[0];
       var mc = document.querySelector('meta[name="theme-color"]');
       if (!mc && head) { mc = document.createElement("meta"); mc.setAttribute("name", "theme-color"); head.appendChild(mc); }
-      if (mc) mc.setAttribute("content", BG[mode] || '#fbf9f5');
+      if (mc) mc.setAttribute("content", BG[mode] || '#ffffff');
     } catch(e) {}
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render when the mode changes. The detail carried a `choice` field
