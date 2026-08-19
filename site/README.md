@@ -79,9 +79,8 @@ have that failure by construction, and
 `crates/core/tests/cross_site_links.rs` resolves every one of them against the source tree
 so a renamed page or a changed `url:` fails `cargo test` rather than a reader's click.
 
-The **gallery** is the one project that still writes others under its own output (its three
-exhibits), which `tools/publish.sh` builds parent-first because the parent's sweep deletes
-what it did not write. The `analyst` exhibit is the only one whose pages **execute**: it
+The **gallery** is a flat, self-contained project: five one-page demos plus an index,
+nothing composed into its output. `report.tmd` is the only page whose cells **execute**: it
 needs a python with `ipykernel` (`TALIESIN_PYTHON`) plus
 `pandas`/`numpy`/`scipy`/`matplotlib`. Without them its figures and tables build as "cell
 did not run" placeholders.

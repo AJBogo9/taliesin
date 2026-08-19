@@ -303,7 +303,7 @@ into a nested project 404s while you write. Publishing each project to its own d
 linking between them with absolute URLs avoids both, and on hosts that deploy a directory
 as a whole site (Cloudflare Pages, Netlify, GitHub Pages) it is also the only way to
 publish one project without re-uploading the others. Taliesin's own four sites are
-published that way; only the gallery nests.
+published that way; none of them nests.
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
 `og:url` / `og:image` tags, `sitemap.xml`, `robots.txt`, and the Atom feeds are only

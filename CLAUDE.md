@@ -93,9 +93,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    robots.txt (seo.rs), the five-tag OpenGraph head (meta.rs), Cmd-K
                    search (search.rs), cross-refs (xref.rs). ONE project per build and
                    ONE PROJECT PER DEPLOY: the four sites publish separately and link by
-                   absolute URL (tools/publish.sh). Only gallery/ nests others under its
-                   output, parent first (the parent's sweep deletes output it did not
-                   itself write)
+                   absolute URL (tools/publish.sh)
   assets/          bundled offline: css/ (base, dark, site), js/ (code-enhance/
                    fragments, mermaid.js, tali-js.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
@@ -188,8 +186,8 @@ docs/            project's own manual: TWO sibling book projects, authored in .t
                  docs/internals/ = Internals book. docs/ itself is just a container
                  (no _site.yml). Each publishes to its OWN domain
                  (guide/internals.taliesin.sh), not under the marketing site.
-gallery/         the exhibit index: its own project + domain, the ONE project that
-                 builds others (corpus/{tarn,descent,analyst}) under its output
+gallery/         short one-page demos (its own project + domain): a flat,
+                 self-contained site; nothing is composed into its output
 corpus/          the real .tmd docs (the spec); cargo test renders them all
 ```
 
