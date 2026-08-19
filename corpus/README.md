@@ -26,22 +26,22 @@ iterate over whatever exists.
 
 ## What you verify by eye
 
-**Three of these nineteen projects are the ones a person looks at**, and they are not chosen
-by taste: they are the three exhibits `tools/publish.sh` deploys to gallery.taliesin.sh, which
-is where a defect is public. `tarn/` at `/tarn`, `descent/` at `/descent`, `analyst/` at
-`/analyst`. Plus one post out of `tech-blog/`, sampled rather than swept, because 19
-near-identical posts do not each earn an eyeball.
+**One project here is looked at by a person**: one post out of `tech-blog/`, sampled
+rather than swept, because 19 near-identical posts do not each earn an eyeball. It is
+human-facing but deliberately not deployed, so no script can derive it; its row says so.
+
+Nothing else is deployed anywhere. Since 2026-08-19 the gallery is a self-contained demo
+site (`gallery/`), and `tarn/`, `descent/` and `analyst/` remain here purely as goldens:
+their pins (`tarn.rs`, `descent.rs`, `analyst.rs`) are what a defect in them breaks.
 
 Everything else is checked by machine, and looking at it is wasted effort rather than diligence:
 the diagnostics documents produce a warnings list and not a page, `layout/structure.tmd` pins
 `data-section-end`, `native-tmd.tmd` exercises the walker. The `Pass` column below answers this
 per document.
 
-**The column is derived, not maintained.** `the_readme_marks_the_same_visual_set_the_deploy_ships`
-reads the `GALLERY_EXHIBITS` block out of `tools/publish.sh`, so publishing a new exhibit moves
-that project into the visual pass whether or not anyone remembers to, and a new corpus project
-with no row here fails the test rather than sitting unclassified. `tech-blog/` is the one hand-named member:
-it is human-facing and deliberately not deployed, so no script can derive it.
+**The column is derived, not maintained.** `the_readme_marks_only_tech_blog_as_looked_at`
+walks every corpus entry and asserts it is `machine` unless it is `tech-blog/`, so a new corpus
+project with no row here fails the test rather than sitting unclassified.
 
 This thins nothing. All 82 documents still render under the sweeps above, and the two that get
 stronger with every document added are untouched. The column governs a person's attention, not
@@ -53,9 +53,9 @@ the regression net.
 |---|---|---|
 | `tech-blog/` | eye | The author's real deployed blog (19 docs): `_site.yml`, navbar/footer, listings, the `hero:` homepage header, `.tmd`→`.html` link rewriting, a `logo:` brand image, a draft post, and the three heavy posts (`em-algorithm` math, `pca-geometry` `{js}`+Three.js, `fourier-transform` Python→`{js}` bridge + raw `{=html}` audio). The only realistic multi-page workload in the suite. |
 | `demo-book/` | machine | The book format, purpose-built and small: `chapters:` with a `part:` and `{ file:, text: }` label overrides, chapter and section numbering, prev/next, a draft appendix, a brand logo in both book slots, and chapter-scoped numbering for **two** float kinds (figures and display equations) with cross-page refs to each. |
-| `tarn/` | eye | A larger book: Guide + API **Reference** parts including a nested one, deep install subsections, cross-page guide→reference links, and a full-text Cmd-K index that spans the whole book and carries each record's chapter number and heading path. Pinned by `tarn.rs`; the marketing site's `/gallery/tarn` exhibit. |
-| `analyst/` | eye | A two-page computational report that **executes**: `{python}` cleans and charts one committed CSV, and one table counter is shared by the authored `: caption {#tbl-}` path and the executed `#\| label: tbl-` path in document order, with cross-page refs to cell-produced floats. `/gallery/analyst`. |
-| `descent/` | eye | A single-page explorable explanation: `{{< input >}}` sliders driving a draggable `{js}` graphic, a select-driven scene walk, a reactive Observable Plot chart, math, and two numbered theme-adaptive SVG figures. `/gallery/descent`. |
+| `tarn/` | machine | A larger book: Guide + API **Reference** parts including a nested one, deep install subsections, cross-page guide→reference links, and a full-text Cmd-K index that spans the whole book and carries each record's chapter number and heading path. Pinned by `tarn.rs`. |
+| `analyst/` | machine | A two-page computational report that **executes**: `{python}` cleans and charts one committed CSV, and one table counter is shared by the authored `: caption {#tbl-}` path and the executed `#\| label: tbl-` path in document order, with cross-page refs to cell-produced floats. |
+| `descent/` | machine | A single-page explorable explanation: `{{< input >}}` sliders driving a draggable `{js}` graphic, a select-driven scene walk, a reactive Observable Plot chart, math, and two numbered theme-adaptive SVG figures. |
 | `single-page-report/` | machine | One page assembled from seven `subsections/` includes, with cross-refs, a bibliography, `toc: true`, and document-order figure numbering across both cell figures and labelled image figures. |
 | `diagnostics/` | machine | Six documents that deliberately trip the validators: typo'd / unguessable / inert keys (`typos.tmd`), the static check-superset (`check-superset.tmd`), widget shapes, links, refs and a11y. Exempt from the clean-vocabulary sweeps. |
 | `agent/executed-read.tmd` | machine | The lone-document fixture: `standalone_document_chrome.rs` (preview and build must agree on a single document's page chrome) and the project-refusal message both name it. |

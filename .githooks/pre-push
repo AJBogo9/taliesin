@@ -100,11 +100,9 @@ cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
 # each other by absolute URL rather than by composition (Cloudflare Pages has no subpath
 # deploy, so a composed tree would have to be re-uploaded whole on every change).
 #
-# What is left to verify is the gallery, the one project that still writes other projects
-# under its own output. `--check` builds all four with --no-exec into temp dirs and fails
-# if any gallery exhibit link has nothing behind it. build.rs recorded that an unrun script
-# had already shipped this project's call-to-action with a 404 once (item 149), which is
-# why this runs here rather than by hand.
+# `--check` lints and builds all four with --no-exec into temp dirs. build.rs recorded
+# that an unrun script had already shipped this project's call-to-action with a 404 once
+# (item 149), which is why this runs here rather than by hand.
 echo "  [5/5] tools/publish.sh --check"
 tools/publish.sh --check
 echo "pre-push: all checks passed."
