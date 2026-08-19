@@ -364,24 +364,24 @@
      row, so a 7-node chain measures ~1590px against a ~704px column. The reader saw three
      nodes, a fourth sliced mid-word, and a scrollbar. Four of the five diagrams on
      docs/internals/architecture.tmd overflowed, one by 882px.
-     The column is centred in the viewport and the margins either side are genuinely empty
-     (the chapter nav is a `position: fixed` drawer, not an in-flow sidebar), so an oversized
-     diagram borrows that space: `width: max-content` takes its natural width, the `left`/
-     `translateX` pair re-centres it on the viewport, and `max-width` caps it at the glass.
-     Only then does `svg { max-width: 100% }` scale, so at 1440px the worst case fits at ~88%
-     instead of losing half of itself. A diagram narrower than the column is untouched:
-     max-content is its natural width and the same centring is a no-op.
-     Gated on 64rem because below that there is no spare margin to borrow, and scaling into a
-     phone-width column is exactly the few-px-label failure the rule above avoids: narrow
-     screens keep the scroll-inside-the-box behavior. */
+
+     The answer to that was to borrow the empty margins by hand — `width: max-content`, a
+     `left: 50%` / `translateX(-50%)` pair to re-centre, `max-width: calc(100vw - 3rem)` to
+     cap at the glass — and it was WRONG in a way only a measurement shows. `left: 50%` is
+     50% of the CONTAINING BLOCK, which is the 640px figure, not the viewport it says it
+     re-centres on. On `docs/internals/architecture.html` at 1600px that put a 1552px diagram
+     at x = -13: 13px of it off the left edge of the page, with `documentElement.scrollWidth`
+     still 1585, so the page did not even scroll to reveal it. Silently clipped, and the
+     four diagrams on that page sat at four different left edges (-13, 230, 338, 599).
+
+     A diagram is band content like a code block, so it takes the band by name — the same
+     empty margins, expressed as the grid track that already describes them, BOUNDED, and
+     sharing its edges with every other wide box on the page. All that is left here is the
+     scale: at 64rem and up `svg { max-width: 100% }` fits the diagram to whatever the band
+     gave it, and below that the band's side tracks have collapsed to nothing anyway, so the
+     `max-width: none` above keeps the scroll-inside-the-box behavior a phone needs (scaling
+     a dagre chain into a phone column is the few-px-label failure, not a fix for it). */
   @media (min-width: 64rem) {
-    pre.mermaid {
-      width: max-content;
-      max-width: calc(100vw - 3rem);
-      position: relative;
-      left: 50%;
-      transform: translateX(-50%);
-    }
     pre.mermaid svg { max-width: 100%; }
   }
   blockquote { border-left: 3px solid var(--tali-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--tali-muted); }
@@ -637,15 +637,34 @@
      `--tali-note-w` while the track is still 0 lands in the page gutter, on top of nothing
      that reserved room for it.
 
+     AND ONLY ON A PAGE THAT HAS A NOTE, which is what `:has()` buys. The column used to be
+     reserved on every non-rail page whether or not one note existed on it, and the count is
+     not close: 2 of the 46 pages the four sites publish carry a `.column-margin` or a
+     footnote (measured 2026-08-19). On the other 44 the grid held 20rem + 3.75rem empty for
+     nobody, and that reservation is exactly what the code band could not have. Reserving it
+     on demand is what lets the band be symmetric on almost every page instead of always
+     growing one way past a column that is usually not there.
+
+     The `:not(:has(…))` spelling is deliberately absent: the DEFAULT is the free band, and
+     the reservation is the addition, so an engine without `:has()` drops this rule and gets
+     the symmetric band everywhere — a page whose note then overlaps the band, rather than a
+     page whose band silently collapses. Both are wrong there; only one is visible.
+
      `float` and not grid placement, because a footnote note is a `<span>` INSIDE a
      paragraph and can never be a grid item — but a float with a negative right margin lands
      exactly in the track the grid holds empty for it, and several notes hanging off one
      paragraph push each other DOWN the column in document order, where absolutely
      positioned notes would stack on top of one another. */
   @media (min-width: 66rem) {
-    body:not(.has-toc):not(.tali-site):not(.tali-book-body),
-    .tali-site-main:not(.has-toc), .tali-book-main {
-      --tali-note-w: 20rem; --tali-note-gap: 3.75rem; }
+    :is(body:not(.has-toc):not(.tali-site):not(.tali-book-body),
+        .tali-site-main:not(.has-toc), .tali-book-main):has(.column-margin, .tali-sidenote) {
+      --tali-note-w: 20rem; --tali-note-gap: 3.75rem;
+      /* The margin column IS the right side band, so the band cannot keep it. The whole
+         width moves to the left side instead and the anchor moves with it: a box narrower
+         than the band lines its RIGHT edge up with the prose here, where on a free page it
+         centres. Same band, same page, one edge shared with the text either way. */
+      --tali-side-l: calc(var(--tali-band) - 40rem); --tali-side-r: 0;
+      --tali-band-span: bleed-start / text-end; --tali-band-anchor: end; }
     :is(body:not(.has-toc):not(.tali-site):not(.tali-book-body),
         .tali-site-main:not(.has-toc), .tali-book-main) .tali-sidenote {
       display: block; float: right; clear: right; width: var(--tali-note-w);
@@ -670,15 +689,28 @@
      :is(…)`, `.tali-site-main.has-toc > main :is(…)`), their two narrow-screen
      re-overrides, and the two rules that killed margin notes beside a TOC rail.
 
-     Five tracks. Prose sits in `text`. A code block or an author escape spans `bleed` —
-     the band to the LEFT plus the text track. The margin column is `note`, permanently
-     reserved so a floated note has somewhere to go that nothing else may occupy.
+     Seven tracks. Prose sits in `text`. Everything that does not fit the measure spans the
+     BAND, and where the band starts and ends is `--tali-band-span`: `bleed-start /
+     bleed-end` takes both side bands (the default), `bleed-start / text-end` stops at the
+     prose on a page whose margin column has claimed the right one. The two spellings are
+     the SAME WIDTH, `--tali-band`, because the side tracks are re-split rather than resized
+     — so a code block is the same size on every page of a site and only its anchor moves.
+     `note` sits inside the band's span and is reserved only when a note exists to fill it.
 
-     Why the escape grows LEFT rather than centring: the margin column owns the right band,
-     and a box centred on the page runs its text under a note's text. The tree already ruled
-     exactly this for the TOC rail on a measurement (a `.column-page` reached x=1331 while
-     the rail began at x=1111 at 1702px). With the margin column permanent, the same answer
-     holds everywhere — which is precisely what lets three copies become one.
+     Why the band is SYMMETRIC by default, where the escape used to grow left only. That
+     rule was correct for its premise: a box centred on the page runs its text under a
+     note's text, and the margin column was reserved on every page. It no longer is (see the
+     engage rule above), and the count is 2 of 46, so on 44 published pages there was
+     nothing on the right to collide with and the band was hanging off one side of a page it
+     could have been centred on. Where a note IS present the old answer is still the right
+     one and still applies, unchanged.
+
+     A TOC RAIL NEEDS NO RULE HERE AT ALL, and that is the property this grid was built for:
+     the rail is a track of the OUTER grid (`body.has-toc`, `.tali-site-main.has-toc`), so
+     the band and the rail are in different grids and cannot overlap however wide the band
+     gets. The measurement that once forced escapes back into the flow beside a rail (a
+     `.column-page` reaching x=1331 against a rail starting at x=1111 at 1702px) describes
+     the layout where both competed for one container, which is the one this replaced.
 
      `100% - 2rem` on the text track, not a bare `100%`: a percentage track resolves against
      the whole container, so `100%` lets the text claim every pixel and leaves the two 1rem
@@ -707,10 +739,11 @@
   #tali-main, #tali-root, #tali-main > article {
     --tali-prose-cols:
       minmax(1rem, 1fr)
-      [bleed-start] minmax(0, var(--tali-bleed))
-      [text-start] min(var(--tali-measure), 100% - 2rem) [text-end bleed-end]
+      [bleed-start] minmax(0, var(--tali-side-l))
+      [text-start] min(var(--tali-measure), 100% - 2rem) [text-end]
       var(--tali-note-gap)
       [note-start] var(--tali-note-w) [note-end]
+      minmax(0, var(--tali-side-r)) [bleed-end]
       minmax(1rem, 1fr);
     display: grid; grid-template-columns: var(--tali-prose-cols); }
   :is(#tali-main, #tali-root, #tali-main > article) > * { grid-column: text; }
@@ -721,30 +754,99 @@
      silently render every block full-bleed. This rule follows the `> *` rule above at equal
      specificity, so source order is what makes it win. */
   #tali-main > article { grid-column: 1 / -1; }
-  :is(#tali-main, #tali-root, #tali-main > article) > :is(pre, .column-page) {
-    grid-column: bleed; }
-  /* Code leaves the prose measure, and it grows LEFT from the text column's right edge.
-     At the measure a `pre` fits 55 columns inside its padding against PEP 8's 79, so the
-     code on the page was clipped and scrolled in every render of this design; in the bleed
-     band it fits 84 (measured: JetBrains Mono's advance is exactly .6em, and .92em of a
-     20px body is 11.04px per column).
+  /* THE BAND'S OCCUPANTS. Every one of them is machine-shaped content carrying an intrinsic
+     width the 40rem prose measure does not fit: source code, a numbered listing, a cell's
+     output, a data table, a generated diagram, and the author's explicit `.column-page`.
+     Prose is not on the list and never will be — the measure is a spec invariant.
 
-     `width: max-content` with a `min-width` floor of the measure is what keeps a two-line
-     snippet from becoming a 960px slab: a short block is exactly as wide as the prose and
-     sits where it does today, and only a block that needs the room takes it.
-     `justify-self: end` is why it grows left — the right edge stays flush with the text
-     column, which is what makes the escape collision-free against the margin column. */
-  /* A code block FILLS the band rather than being fitted to its longest line, so every
-     `pre` on a page shares one left edge. Fitting was tried and measured worse on both
-     counts: three blocks on one page came out at two different left edges (a ragged column
-     of grey boxes), and the floor that was meant to keep a short snippet at the prose width
-     resolved to 589px instead of 640 — `--tali-measure` is `32em` OF THE BODY FACE, and on a
-     `pre` an `em` is the MONO size (18.4px), so the token silently means something else here
-     than it does anywhere else. Uniform width needs neither bound and cannot be read wrong.
+     THE NESTING IS THE POINT OF THE LIST. It named `pre` alone, which reaches a fence at the
+     top level and nothing else, so a `#| code-fold: true` cell (wrapped in `<details>`), a
+     `#| lst-label:` listing (wrapped in `<figure>`) and every cell output (wrapped in
+     `.tali-output`) rendered at the bare measure — 55 columns, against 59% of the corpus's
+     code blocks having a line longer than that. Measured at 1600px on 2026-08-19, before
+     this list grew: `em-algorithm`'s folded cell was 640px wide with 546px of its content
+     behind a scrollbar, `a-star`'s output hid 188px, and one page put code boxes at two
+     different left edges — the ragged column the FILLS rule below exists to prevent, caused
+     by the rule that was meant to enforce it. */
+  :is(#tali-main, #tali-root, #tali-main > article)
+    > :is(pre, .column-page, details.tali-code-fold, figure.tali-listing, .tali-output,
+          table, figure.tali-figure:has(> pre.mermaid)) {
+    grid-column: var(--tali-band-span); }
+  /* FILLED versus FITTED. The band is a CEILING, not a size, and almost nothing in it wants
+     to be the ceiling.
+
+     A code box is as wide as its longest line, floored at the measure and capped at the
+     band, and it is placed by `--tali-band-anchor` like everything else. So the box's width
+     carries information — a wide box means wide code — and a two-line snippet is exactly the
+     prose width and sits exactly where the prose sits, instead of being a 1136px slab with
+     900px of empty ground in it.
+
+     FITTING WAS TRIED BEFORE AND RULED AGAINST, and what changed is the ANCHOR, not the
+     taste. The objection was a ragged column of grey boxes at two different left edges, and
+     it was correct while the band was right-anchored: boxes of different widths sharing
+     their right edge miss their left one by the difference. Centred, the same set of boxes
+     shares an axis with each other and with the prose, and the raggedness is symmetric,
+     which reads as centred rather than as misaligned. Beside a margin note the band is
+     right-anchored again — and so is the fitted box, so the shared edge there is the right
+     one, which is also the prose's. Either way one edge or one axis is common.
+
+     The other half of that ruling was a real bug and is fixed rather than argued with: the
+     floor was `min-width: var(--tali-measure)` and resolved to 589px instead of 640, because
+     the token is `32em` OF THE BODY FACE and an `em` inside a `pre` is the MONO size
+     (18.4px). `40rem` is that conversion done once, the same fix the caption cap below
+     carries. `min()` against `100%` so the floor can never exceed the band it sits in: a
+     bare 40rem floor outranks `max-width` (CSS 2.2 §10.4) and would overhang every viewport
+     narrower than the measure.
+
+     A `table` is fitted for the same reason and needs no floor: it draws its own cell
+     borders, so a narrow one reads as a small table where a narrow filled box would read as
+     a fragment. Fitting matters most there because the squeeze was the common case: 36 of
+     the 39 top-level tables the four sites publish were rendering below their natural width
+     at the measure (measured 2026-08-19), and a squeezed table is a TALLER table —
+     `docs/guide/reference/frontmatter.html` lost 12.3% of its page height and
+     `cheatsheet.html` 16.4% purely from letting its tables have the room.
+
+     `.column-page` and a diagram figure are the exceptions that stay FILLED, and both are
+     `justify-self`'s own default rather than a declaration: `.column-page` is the author
+     saying "make this wide", which fitting would refuse, and the mermaid figure is the box
+     that BOUNDS an oversized diagram, so shrinking it to content is circular.
 
      `border-box` because the global reset is content-box: without it `pre`'s own 2 x .5U of
      padding is added OUTSIDE the track and the box overhangs by 31px. */
   :is(#tali-main, #tali-root, #tali-main > article) > pre { box-sizing: border-box; }
+  :is(#tali-main, #tali-root, #tali-main > article)
+    > :is(pre, details.tali-code-fold, figure.tali-listing, .tali-output, table) {
+    justify-self: var(--tali-band-anchor); }
+  :is(#tali-main, #tali-root, #tali-main > article)
+    > :is(pre, details.tali-code-fold, figure.tali-listing, .tali-output) {
+    width: max-content; min-width: min(40rem, 100%); max-width: 100%; }
+  /* A plot or a result table inside a widened output box centres on the same axis as
+     everything else. Without this they sit at the band's left edge, which is 246px left of
+     the prose on a free page — the one place where widening a box could make a figure look
+     misplaced rather than roomier. A cell output is only ever as wide as the interpreter
+     drew it (matplotlib's default figsize is 8in, so ~790px against the band's 1136), so
+     unlike a `pre` these are FITTED and the auto margins are what places them.
+
+     `width: min-content` on the wrapping figure was tried for the caption and MEASURED
+     wrong: `.tali-output img` carries `max-height` + `object-fit: contain`, so the image's
+     min-content contribution is not its own width and three figures collapsed to 68-97px,
+     the width of the caption's longest word. The caption keeps the box width instead. */
+  :is(#tali-main, #tali-root, #tali-main > article) > .tali-output :is(img, table) {
+    margin-inline: auto; }
+  /* AND ITS CAPTION IS STILL PROSE. `figcaption` is the serif at .92rem (see the caption
+     rule far above), so a caption stretched across the band is 96 characters — the one
+     number this entire layout exists to avoid. It keeps the measure and centres as a block,
+     which puts it on the same axis as the figure it describes; its text stays left-aligned,
+     because it is a sentence and not a label.
+
+     `40rem` and not `var(--tali-measure)`: the token is `32em` OF THE BODY FACE, and an `em`
+     inside a .92rem caption is 14.7px, so the token here would resolve to 471px and mean
+     something else than it does anywhere else. Converted once, as tokens.css already does
+     for the note tracks. */
+  :is(#tali-main, #tali-root, #tali-main > article)
+    > :is(.tali-output, figure.tali-listing, figure.tali-figure)
+      :is(figcaption, .tali-listing-caption) {
+    max-width: 40rem; margin-inline: auto; }
   .tali-output { margin: 0 0 var(--tali-u); }
   /* An output slot that never filled leaves no trace. A cell folded inside a `:::` div
      gets its output element emitted at RENDER time (the slot the executor writes into,

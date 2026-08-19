@@ -6504,7 +6504,7 @@ fn the_margin_column_breakpoint_is_the_sum_of_its_tracks() {
 /// binary, which is what the hash below is for.
 const JETBRAINS_MONO_ADVANCE_EM: f64 = 0.6;
 
-/// Read a numeric token value out of a sheet, e.g. `--tali-bleed: 20rem;` → 20.0.
+/// Read a numeric token value out of a sheet, e.g. `--tali-band: 71rem;` → 71.0.
 #[cfg(test)]
 fn token_len(css: &str, tok: &str, unit: &str) -> f64 {
     let v = css
@@ -6523,18 +6523,24 @@ fn token_len(css: &str, tok: &str, unit: &str) -> f64 {
 
 /// A code block must leave the prose measure. At the measure a `pre` fits 55 columns inside
 /// its own padding, against PEP 8's 79 and Black's 88 — so the code a reader meets was
-/// clipped and scrolled in every render of this design. The grid gives `pre` the `bleed`
-/// band; this asserts the capacity that buys, computed from the tokens rather than asserted
-/// in prose.
+/// clipped and scrolled in every render of this design. The grid gives it the band; this
+/// asserts the capacity that buys, computed from the tokens rather than asserted in prose.
+///
+/// The floor is 100 because that is what `--tali-band` is DEFINED as (100 columns plus the
+/// `pre`'s own padding, see tokens.css), so this is the arithmetic checking the token's own
+/// claim rather than an independent preference. It is deliberately not the corpus's widest
+/// line: that would be circular, and it is 106, which this does not fit.
 #[test]
 fn a_code_block_escapes_the_measure_and_clears_pep8() {
     let measure_em = token_len(TOKENS_CSS, "--tali-measure:", "em"); // 32em OF THE BODY
-    let bleed_rem = token_len(TOKENS_CSS, "--tali-bleed:", "rem");
+    let band_rem = token_len(TOKENS_CSS, "--tali-band:", "rem");
     let mono_em = token_len(TOKENS_CSS, "--tali-mono-size:", "em");
     let u_rem = token_len(TOKENS_CSS, "--tali-u:", "rem");
 
-    // The body is 1.25rem, so an `em` of the body face is 20px and a `rem` is 16px.
-    let track_px = measure_em * 20.0 + bleed_rem * 16.0;
+    // The body is 1.25rem, so an `em` of the body face is 20px and a `rem` is 16px. The band
+    // is the WHOLE width of the box, not an overhang added to the measure — that is the
+    // change this arithmetic tracks.
+    let track_px = band_rem * 16.0;
     // `pre`'s padding is .5U on each side, asserted literally so this arithmetic cannot
     // drift away from the sheet it describes.
     assert!(
@@ -6546,9 +6552,9 @@ fn a_code_block_escapes_the_measure_and_clears_pep8() {
     let cols = content_px / col_px;
     let at_measure = (measure_em * 20.0 - u_rem * 16.0) / col_px;
     assert!(
-        cols >= 79.0,
-        "a code block fits {cols:.0} columns ({at_measure:.0} at the bare measure); PEP 8 \
-         is 79. Either the bleed band, the measure, the mono size or pre's padding moved."
+        cols >= 100.0,
+        "a code block fits {cols:.0} columns ({at_measure:.0} at the bare measure); the band \
+         is defined as 100. Either --tali-band, the mono size or pre's padding moved."
     );
 }
 

@@ -35,31 +35,40 @@ change of layout.
 | Track | What sits in it | Width |
 | --- | --- | --- |
 | gutter | nothing; it is the page edge | at least 1rem, then whatever is left over |
-| bleed band | the left half of an escape | up to 20rem |
+| left side band | the left part of the band | half of what the band has over the measure |
 | text | prose, and everything that did not ask to escape | the reading measure |
-| gutter + margin column | a footnote or a `.column-margin` aside | 3em, then 16em |
+| gutter + margin column | a footnote or a `.column-margin` aside | 3em, then 16em, and only on a page that has one |
+| right side band | the right part of the band, where no note has claimed it | the other half |
 | gutter | nothing | at least 1rem |
 :::
 
 That table is the reason the feature is one grid rather than three copies of an
 arithmetic. A block does not compute a width: it names the column it belongs to, and the
-grid resolves what that means in whatever container the page happens to be. The same five
+grid resolves what that means in whatever container the page happens to be. The same seven
 tracks serve a single document, a website page, a book chapter and a page with a
 table-of-contents rail.
 
-An escape grows *leftward*, keeping its right edge flush with the prose. That used to be
-the special case for the two table-of-contents layouts and is now simply the rule: the
-margin column owns the band on the right permanently, so a block centred on the page
-would run its text under a note's. Growing left is collision-free by construction, and it
-recovers the same width either way.
+**The band is a ceiling, not a size.** A block takes only the width its content needs: a
+code box is as wide as its longest line, floored at the reading measure so a two-line
+snippet still lines up with the prose, and capped at 100 columns. Where it sits depends
+only on whether the page reserved a margin column. Most pages do not, so nothing owns the
+right band and every box centres on the prose, sharing one axis with it however much their
+widths differ. This page *does* have a note, so here the right band is the note's and the
+boxes are right-aligned to the prose instead, sharing that edge. Either way one edge or
+one axis is common, and a block never runs under a note.
+
+A table-of-contents rail needs no rule at all. It is a column of the *outer* grid, so it
+cannot be reached from inside this one however wide the band grows.
 
 ## It is a plain class {#sec-plain}
 
 It is not a new block type, so it needs no `:::` container of its own when the thing being
 widened is already a block. It applies to a table, a figure, a `pre`, or a div alike, and
 the block keeps its own identity, which is what lets a cross-reference still resolve
-through one. A code block does not need it at all: `pre` takes the bleed band on its own,
-because the measure fits 55 columns of code and PEP 8 asks for 79.
+through one. Most of what wants the room does not need the class either: a code block, a
+folded cell, a numbered listing, a cell's output, a data table and a generated diagram all
+take the band on their own, because the measure fits 55 columns of code and PEP 8 asks for
+79.
 
 ::: {.column-page}
 ```python

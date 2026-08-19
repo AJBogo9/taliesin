@@ -100,12 +100,34 @@
        track list, not two spellings of one. base.css engages them. */
     --tali-note-w: 0;
     --tali-note-gap: 0;
-    /* How far a code block or a `::: {.column-page}` may grow, and it grows LEFT: with a
-       permanent margin column on the right, left is the only direction that cannot run
-       under a note. 20rem + the 40rem measure = 60rem, which is exactly the cap the three
-       retired copies of the escape formula each carried as `min(60rem, ...)` - the number
-       survives the rewrite, only its expression changes. */
-    --tali-bleed: 20rem;
+    /* THE BAND: how wide a code block, a table, a diagram or a `::: {.column-page}` may
+       get. It is a WIDTH and not a one-sided overhang, which is what lets the same number
+       describe both of the positions base.css puts it in.
+
+       100 mono columns: 100 x 11.04px (JetBrains Mono's .6em advance of the derived 18.4px
+       mono) + 31px for the `pre`'s own 2 x .5U of padding = 1135px, rounded up to 71rem so
+       the count lands at 100 rather than 99.9.
+
+       WHY 100 and not the corpus's own widest line, which is 106 (a pinning that would be
+       circular). It is the top of the range every comparable tool lands in, MEASURED at a
+       1600px viewport on 2026-08-19: Quarto renders 94 columns, Material for MkDocs 84,
+       Tailwind's docs 74, Observable Framework ~93 — all of them at their body width, with
+       no escape at all. Taliesin needs the escape because its prose face is 20px where
+       Quarto's is 17px and Material's 17.6px, so .92em of it is a 11.04px column against
+       their ~8.9-9.6px. The band buys back what the larger reading face costs. */
+    --tali-band: 71rem;
+    /* The two side bands. They always sum to the band minus the measure, so they are
+       DERIVED and cannot drift from it; base.css re-splits them when a margin note claims
+       the right one. 40rem is `--tali-measure` converted once (32em x 1.25rem), the same
+       conversion the note tokens above state, because an `em` here would resolve against
+       the root's 16px and silently mean something else. */
+    --tali-side-l: calc((var(--tali-band) - 40rem) / 2);
+    --tali-side-r: calc((var(--tali-band) - 40rem) / 2);
+    /* Where the band's occupants sit, as ONE token rather than a second placement rule per
+       branch: the band is the same width either way, so only its anchor moves. base.css
+       flips both of these together on a page that has a margin note. */
+    --tali-band-span: bleed-start / bleed-end;
+    --tali-band-anchor: center;
 
     /* The vertical unit IS the line box: U = 1.55 x 1.25rem, so the rhythm is the leading.
        The TARGET is that every vertical space is a small multiple of U and nothing else,

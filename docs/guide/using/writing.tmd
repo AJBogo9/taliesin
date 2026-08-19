@@ -198,8 +198,12 @@ is simply wrong for.
 | `.column-page` | Widens the block up to the full page width | A wide table, a multi-panel plot, a diagram whose labels only fit at size |
 :::
 
-A code block needs no escape: `pre` takes the wider column by itself, because the reading
-measure fits 55 columns of code and PEP 8 asks for 79.
+Most of what wants the room needs no escape. A code block, a folded cell, a numbered
+listing, a cell's output, a data table and a Mermaid diagram all take the wider band by
+themselves, because the reading measure fits 55 columns of code and PEP 8 asks for 79.
+The band is a ceiling rather than a size: a box is as wide as its content needs, never
+narrower than the prose and never wider than 100 columns. It centres on the prose unless a
+margin note has claimed the right side, in which case it right-aligns to the prose instead.
 
 Neither escape is a new block type: `.column-margin` and `.column-page` are plain
 classes, so they work on a table, a figure, a listing, or a bare div, and the block keeps

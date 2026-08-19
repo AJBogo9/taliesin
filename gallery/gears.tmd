@@ -1,0 +1,164 @@
+---
+title: "A mechanical part, parametric"
+description: "Two meshed gears built from primitives inside one {js} cell: sliders drive the tooth count and the speed, and the geometry rebuilds live."
+toc: false
+---
+
+Two gears, meshed and spinning, every vertex computed in the `{js}` cell below. Change
+the tooth count and the geometry rebuilds; change the speed and the mesh keeps its
+ratio. Drag to orbit, scroll to zoom.
+
+{{< include _includes/three-scene.tmd >}}
+
+{{< input name="teeth" type="slider" min="8" max="24" step="1" value="12" label="teeth (driver)" >}}
+{{< input name="speed" type="slider" min="0" max="2" step="0.1" value="0.6" label="speed" >}}
+
+```{js}
+//| name: gears
+//| echo: false
+
+// A "once" cell: no `//| input:`, so the DAG builds it a single time and never tears it
+// down. The sliders reach it through tali.value() + tali.onInput() instead, because a
+// sink cell would drop the WebGL context and the reader's camera on every slider tick.
+const makeScene3D = tali.get("makeScene3D");
+
+const MODULE   = 0.25;                  // tooth size; pitch radius = teeth * MODULE / 2
+const PRESSURE = (20 * Math.PI) / 180;  // pressure angle, the flank's slope at the pitch circle
+const ADDENDUM = 0.8;                   // tip circle,  r + ADDENDUM * MODULE
+const DEDENDUM = 1.0;                   // root circle, r - DEDENDUM * MODULE
+const BACKLASH = 0.02;                  // tooth thinning, as a fraction of the circular pitch
+const FLANK    = 14;                    // samples along one involute flank
+const FOV      = 40;
+
+// One gear's outer contour in its own frame, as [x, y] pairs, with tooth 0 centred on
+// local angle 0. The flanks are true involutes of the base circle, which is the reason
+// two of these actually mesh: contact slides along one straight line of action, so a
+// tooth stays clear of the tooth it is pushing at every angle, not merely at the
+// instant one tooth sits on the line of centres. A straight-sided tooth is much less
+// code and visibly digs into its neighbour below about 16 teeth.
+function gearOutline(n) {
+  const r  = (n * MODULE) / 2;          // pitch radius
+  const rb = r * Math.cos(PRESSURE);    // base circle: the involute starts here
+  const ra = r + ADDENDUM * MODULE;     // tip circle
+  const rf = r - DEDENDUM * MODULE;     // root circle
+  const p  = Math.PI * MODULE;          // circular pitch: the SAME arc on both gears,
+                                        // which is what lets them share a tooth spacing
+  const inv = (a) => Math.tan(a) - a;
+  // Half the tooth's angular thickness at radius x. At the pitch circle it is a quarter
+  // of the circular pitch less the backlash; away from it the involute does the rest.
+  const hp = (p / 2 - BACKLASH * p) / 2 / r;
+  const half = (x) => hp + inv(PRESSURE) - inv(Math.acos(Math.min(rb / x, 1)));
+  const step = (2 * Math.PI) / n;
+
+  const flank = [];                     // [radius, half-angle], root -> tip
+  const rStart = Math.max(rf, rb);
+  if (rf < rb) flank.push([rf, half(rb)]);   // straight fillet below the base circle
+  for (let k = 0; k <= FLANK; k++) {
+    const x = rStart + ((ra - rStart) * k) / FLANK;
+    flank.push([x, half(x)]);
+  }
+
+  const pts = [];
+  const at = (rad, ang) => pts.push([rad * Math.cos(ang), rad * Math.sin(ang)]);
+  for (let i = 0; i < n; i++) {
+    const c = i * step;
+    for (const [x, h] of flank) at(x, c - h);                  // up the leading flank
+    for (let k = flank.length - 1; k >= 0; k--) at(flank[k][0], c + flank[k][1]);
+    const from = c + flank[0][1], to = c + step - flank[0][1]; // and round the root
+    for (let k = 1; k < 4; k++) at(rf, from + ((to - from) * k) / 4);
+  }
+  return { pts, r, ra, rf, bore: Math.max(rf * 0.4, MODULE) };
+}
+
+function gearGeometry(THREE, n) {
+  const { pts, bore } = gearOutline(n);
+  const shape = new THREE.Shape();
+  pts.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+  shape.closePath();
+  const hub = new THREE.Path();
+  hub.absarc(0, 0, bore, 0, Math.PI * 2, true);
+  shape.holes.push(hub);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: MODULE * 2, bevelEnabled: false });
+  geo.translate(0, 0, -MODULE);         // extrusion runs 0..depth; centre it on z = 0
+  return geo;
+}
+
+let THREE_, ctx_, pair, driver, driven;
+let phase = 0, ratio = 0.5, theta = 0;
+let speed = tali.value("speed");
+let last  = performance.now();
+
+// The helper calls onFrame with no arguments, so the frame's own budget is ours to
+// measure. Both rotations are set ABSOLUTELY from one accumulator: accumulating the
+// driven gear's angle separately would let rounding walk the two out of mesh.
+function onFrame() {
+  const now = performance.now();
+  const dt  = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (!driver) return;
+  theta += speed * dt;
+  driver.rotation.z = theta;
+  driven.rotation.z = phase - theta * ratio;
+}
+
+function build(n) {
+  const n2 = n * 2;                     // the driven gear: twice the teeth, half the rate
+  ratio = n / n2;
+  phase = Math.PI / n2;                 // half of the driven gear's tooth pitch, so the
+                                        // teeth interleave instead of colliding tip to tip
+  const o1 = gearOutline(n), o2 = gearOutline(n2);
+  const d  = o1.r + o2.r;               // centres one pitch-radius sum apart
+  const x0 = -(d + o2.ra - o1.ra) / 2;  // ... placed so the pair straddles the origin
+  ctx_.rebuild(pair, (g) => {
+    driver = new THREE_.Mesh(gearGeometry(THREE_, n), new THREE_.MeshStandardMaterial({
+      color: 0x4a7dbd, roughness: 0.45, metalness: 0.25,
+    }));
+    driven = new THREE_.Mesh(gearGeometry(THREE_, n2), new THREE_.MeshStandardMaterial({
+      color: 0xc0863a, roughness: 0.45, metalness: 0.25,
+    }));
+    driver.position.x = x0;
+    driven.position.x = x0 + d;
+    g.add(driver, driven);
+  });
+  driver.rotation.z = theta;
+  driven.rotation.z = phase - theta * ratio;
+  // Only the camera's DISTANCE follows the assembly's new size: a teeth change keeps
+  // whatever angle the reader orbited to, which ctx.frameObject would throw away.
+  const span = d + o1.ra + o2.ra;
+  ctx_.camera.position.setLength((span / 2) / Math.tan((FOV * Math.PI) / 360) * 1.05);
+  ctx_.ctrl.update();
+}
+
+tali.onInput("teeth", () => { if (ctx_) build(Math.round(tali.value("teeth"))); });
+tali.onInput("speed", () => { speed = tali.value("speed"); });
+
+const el = document.createElement("div");
+
+makeScene3D((scene, THREE, ctx) => {
+  THREE_ = THREE;
+  ctx_ = ctx;
+  const key = new THREE.DirectionalLight(0xffffff, 1.15);
+  key.position.set(4, 7, 9);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+  fill.position.set(-7, -4, 5);
+  scene.add(fill);
+  pair = new THREE.Group();
+  scene.add(pair);
+  build(Math.round(tali.value("teeth")));
+}, invalidation, {
+  cameraPos: [6, 4, 7],
+  fov: FOV,
+  // The assembly triples in span between 8 teeth and 24, so the fixed defaults would
+  // clamp the zoom out from under the biggest pair.
+  minDistance: 3,
+  maxDistance: 60,
+  far: 300,
+  // Below the 1.0 default: flat ambient light washes out the tooth flanks, and the
+  // flanks are the whole point of the picture.
+  ambientIntensity: 0.45,
+  onFrame,
+}).then((node) => el.appendChild(node));
+
+return el;
+```
