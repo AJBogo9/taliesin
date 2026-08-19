@@ -1,0 +1,144 @@
+---
+title: "The craft of an API page"
+description: "What documentation looks like when the page format helps: a line-by-line code reading, versioned callouts, definitions in place, and checked cross-references."
+---
+
+One page of documentation for Tarn, a small dataframe library that does not exist,
+written to show what a page can carry when the format helps: a query read line by line,
+install instructions per package manager and per OS, callouts that name a version,
+definitions where the reader meets them, and cross-references the build checks.
+
+## Reading a query line by line {#sec-craft-reading}
+
+The best thing a page can do early is walk one real example slowly. Here is a whole
+query: load a CSV of sales rows, keep the recent ones, total revenue by region. It is
+four lines, and every line is lazy until the last. Install Tarn first if you have not
+(@sec-craft-install).
+
+```python
+frame  = tarn.read_csv("sales.csv")                # a lazy Frame, nothing read yet
+recent = frame.filter(col("year") >= 2020)         # a predicate, still lazy
+totals = recent.groupby("region").sum("revenue")   # the aggregation, still lazy
+result = totals.collect()                          # run it: this is where work happens
+```
+
+**Line 1.** `read_csv` returns a lazy `Frame`. No file is opened yet; the frame just
+records where its data will come from.
+
+**Line 2.** `filter` keeps matching rows. The predicate `col("year") >= 2020` is itself a
+value, built from `col`; see [`Frame.filter`](#fn-craft-filter) below. Still nothing has
+run.
+
+**Line 3.** `groupby(...).sum(...)` is the aggregation. It appends two more steps to the
+plan.
+
+**Line 4.** `collect()` is the first line that touches data. With the whole plan in hand,
+Tarn reads only the `year`, `region`, and `revenue` columns and applies the filter as it
+scans, which is why laziness pays off.
+
+You do not need Python for a one-off, and the page says so where the question comes up
+rather than three pages later. The CLI reads the same query language and prints the same
+table:
+
+```bash
+tarn query sales.csv \
+  --filter 'year >= 2020' \
+  --groupby region --sum revenue
+```
+
+## Installing it {#sec-craft-install}
+
+Tarn ships two ways: a Python **library** you import, and a standalone **command-line
+tool** for one-off queries against a file. Both read the same query language, so what you
+learn in one carries over to the other.
+
+::: {.callout-tip}
+Most projects want the library. Reach for the CLI when all you need is to slice a CSV
+from a shell script.
+:::
+
+### The library
+
+Install into whichever environment manager your project already uses. Tarn has no
+required dependencies beyond Arrow, which the wheels bundle.
+
+```bash
+pip install tarn                     # pip
+conda install -c conda-forge tarn    # conda
+uv add tarn                          # uv
+```
+
+::: {.callout-note}
+Tarn needs Python 3.10 or newer for the library. The CLI has no such requirement, since
+it carries its own runtime.
+:::
+
+### The command-line tool
+
+The `tarn` binary is self-contained: it bundles its own Python runtime, so it does not
+touch your project environment.
+
+```bash
+brew install tarn                              # macOS
+curl -LsSf https://tarn.dev/install.sh | sh    # Linux
+scoop install tarn                             # Windows
+```
+
+## One reference entry {#sec-craft-reference}
+
+A reference entry is a different genre from a walkthrough: a signature, one paragraph,
+the parameters, the return value, and the version history in the same place, where a
+reader still on an older release will actually see it.
+
+### `Frame.filter` {#fn-craft-filter}
+
+```python
+Frame.filter(predicate: Expr) -> Frame
+```
+
+Keep the rows where `predicate` is true. Build predicates with `col` and the comparison
+operators, for example `col("year") >= 2020`.
+
+- **predicate**: a boolean `Expr` over the frame's columns.
+- **Returns**: a new `Frame` with the matching rows.
+
+::: {.callout-note title="Since v0.4"}
+Frames are backed by Arrow arrays, so a slice or a column selection is zero-copy: the
+child frame points into the same memory as its parent until one of them is written.
+:::
+
+::: {.callout-warning title="Deprecated since v0.5"}
+`Frame.where()` is deprecated and will be removed in v1.0. Use `Frame.filter` instead: it
+takes the same predicate and reads the same way.
+:::
+
+## Glossary {#sec-craft-glossary}
+
+Six words the rest of the documentation leans on, defined where a reader meets them
+instead of in a separate document they would have to go and find.
+
+**Collect**: run a plan and materialise its result. The only operation that reads data;
+everything else builds a plan.
+
+**Expression (`Expr`)**: a description of a per-row computation, built from `col()` and
+combinators. An expression carries no data, and is bound to a frame only when the query
+runs.
+
+**Frame**: a lazy table of named columns. Every method returns a new frame rather than
+mutating the receiver.
+
+**Grouping key**: the tuple of column values defining one output row of an aggregation.
+
+**Plan**: the tree of operations a frame has accumulated, visible with `explain()` and
+executed by `collect()`.
+
+**Pushdown**: moving a filter or a column selection down the plan toward the reader, so
+that less data is read.
+
+Everything above is plain `.tmd` source. The walkthrough in @sec-craft-reading is one
+fenced code block, highlighted while the page was built, followed by ordinary paragraphs;
+the callouts are fenced divs that name their kind, so a version note and a deprecation
+warning do not read alike; the definitions in @sec-craft-glossary sit in the prose. And
+the two references in this sentence are checked: each resolves to the section it names,
+and renaming either heading fails the pre-publish check instead of shipping a link that
+goes nowhere.
