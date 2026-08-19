@@ -28,7 +28,6 @@ const ADDENDUM = 0.8;                   // tip circle,  r + ADDENDUM * MODULE
 const DEDENDUM = 1.0;                   // root circle, r - DEDENDUM * MODULE
 const BACKLASH = 0.02;                  // tooth thinning, as a fraction of the circular pitch
 const FLANK    = 14;                    // samples along one involute flank
-const FOV      = 40;
 
 // One gear's outer contour in its own frame, as [x, y] pairs, with tooth 0 centred on
 // local angle 0. The flanks are true involutes of the base circle, which is the reason
@@ -122,11 +121,23 @@ function build(n) {
   });
   driver.rotation.z = theta;
   driven.rotation.z = phase - theta * ratio;
-  // Only the camera's DISTANCE follows the assembly's new size: a teeth change keeps
-  // whatever angle the reader orbited to, which ctx.frameObject would throw away.
+  // Re-fit the camera, keeping whatever ANGLE the reader orbited to: an assembly that
+  // triples in span between 8 teeth and 24 has to be re-framed, but ctx.frameObject
+  // would also swing the camera back to its own fixed three-quarter direction.
+  // The pair is much wider than it is tall, so the WIDTH is what has to fit, and that
+  // is the HORIZONTAL field of view: fitting the span to the vertical one instead left
+  // the assembly a quarter smaller than the canvas it had.
+  const cam = ctx_.camera, ctrl = ctx_.ctrl;
+  const tanY = Math.tan((cam.fov * Math.PI) / 360);
   const span = d + o1.ra + o2.ra;
-  ctx_.camera.position.setLength((span / 2) / Math.tan((FOV * Math.PI) / 360) * 1.05);
-  ctx_.ctrl.update();
+  const dist = 1.06 * Math.max((span / 2) / (tanY * cam.aspect), o2.ra / tanY);
+  // Measured from the CURRENT target, then re-centred on the pair, so a reader who has
+  // panned off the assembly still gets a sane frame back instead of a camera swung out
+  // to `dist` from an origin they are no longer looking at.
+  const offset = cam.position.clone().sub(ctrl.target).setLength(dist);
+  ctrl.target.set(0, 0, 0);             // the pair's own centre, by construction of x0
+  cam.position.copy(offset);
+  ctrl.update();
 }
 
 tali.onInput("teeth", () => { if (ctx_) build(Math.round(tali.value("teeth"))); });
@@ -147,8 +158,9 @@ makeScene3D((scene, THREE, ctx) => {
   scene.add(pair);
   build(Math.round(tali.value("teeth")));
 }, invalidation, {
-  cameraPos: [6, 4, 7],
-  fov: FOV,
+  // Nearly down the gear axis: the interleaved teeth are the picture, and a hard 3/4
+  // view foreshortens the line of centres until the mesh is the hardest thing to see.
+  cameraPos: [1.5, 2.5, 8],
   // The assembly triples in span between 8 teeth and 24, so the fixed defaults would
   // clamp the zoom out from under the biggest pair.
   minDistance: 3,
