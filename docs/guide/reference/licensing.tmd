@@ -34,14 +34,14 @@ In short:
   copyright line, or an offer of source anywhere in a page you build.
 - **Publishing is not a section 13 trigger.** Hosting output that contains Taliesin's
   runtime does not, by itself, oblige you to offer anyone source.
-- **It applies however you produced the output** — `build` or `preview`.
+- **It applies however you produced the output**, `build` or `preview` alike.
 
 You may publish, sell, host or relicense what you build, under any terms you choose.
 
 ## What the AGPL still covers
 
 Taliesin itself. If you modify Taliesin and run *that* as a network service, you owe its
-users the corresponding source — which is the whole point of choosing the AGPL, and the
+users the corresponding source, which is the whole point of choosing the AGPL and the
 part the exception deliberately leaves intact. The runtime assets are AGPL **as source in
 the repository**; the exception speaks only to the copies that land in a built document.
 

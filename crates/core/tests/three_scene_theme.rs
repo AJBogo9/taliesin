@@ -204,10 +204,16 @@ fn same_variant_three_scene_copies_stay_byte_identical() {
     let mut extended: Vec<&(String, String)> = Vec::new();
     let mut base: Vec<&(String, String)> = Vec::new();
     for c in &copies {
-        if ["autoRotate", "loadGLTF", "frameObject", "function rebuild("]
-            .iter()
-            .all(|m| c.1.contains(m))
-        {
+        // `autoRotate` ALONE, since 2026-08-19. The classifier used to require
+        // `loadGLTF`/`frameObject`/`function rebuild(` as well, and those three were dead in
+        // the only extended copy: no page passed a `ctx` member to them, and the site's one
+        // caller that declares `ctx` never reads it. That made the classifier the sole reason
+        // 43 lines of unreachable WebGL survived, and it inlined them into the search index of
+        // both including pages. A marker list must identify a variant, not pin its contents.
+        // `autoRotate` is the honest discriminator: the extended copy sets it, the base copy
+        // has no such option at all. (`controls` would NOT work as a second marker: the base
+        // copy carries it inside its OrbitControls import URL.)
+        if ["autoRotate"].iter().all(|m| c.1.contains(m)) {
             extended.push(c);
         } else {
             base.push(c);

@@ -13,8 +13,8 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **81 `.tmd` documents** in Taliesin's own corpus — **7,097 lines** of real
-writing, the largest sample that exists — **480 lines, 6.8%, carry any construct beyond
+Across the **81 `.tmd` documents** in Taliesin's own corpus, **7,097 lines** of real
+writing, the largest sample that exists, **480 lines, 6.8%, carry any construct beyond
 plain CommonMark.** The other 93.2% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
@@ -35,20 +35,17 @@ the script that measured it was not, and by August its document and line counts 
 reproduced.)*
 
 **None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
-predates Taliesin, which means the 6.7% is not stranded either — it is the same syntax
+predates Taliesin, which means the 6.8% is not stranded either: it is the same syntax
 another Pandoc-family tool already parses. `.tmd` is a file extension, not a format, and
 the same argument runs backwards: a project arriving from Quarto brings its sentences,
 fenced cells, `#|` options, `:::` divs, math, citations and cross-references across
 unchanged. `taliesin build . --check-only` names the short list of vocabulary that differs, with a file
 and a line for each, which is a better migration assistant than any page could be.
 
-Two exits exist today, and this is the first place either of them is called one:
-
-- **The Markdown itself.** Plain text, in your repository, under your version control. No
-  database, no proprietary container, no export step.
-- **The built HTML.** `taliesin build` writes a self-contained page with no runtime
-  dependency on Taliesin — no CDN, no server, no build step to reproduce. It keeps working
-  whether or not this project does.
+**One thing it cannot flag is an unknown cross-reference prefix.** Only `@fig-`, `@tbl-`,
+`@sec-`, `@eq-` and `@lst-` are references here; anything else (`@thm-`, `@def-`) is left
+as literal text on purpose, because `@rust-lang` in a sentence is indistinguishable from a
+typo. Grep your source for those prefixes before you migrate.
 
 ## The speed story, in absolutes {#sec-speed}
 
@@ -63,7 +60,7 @@ appears here.
 | Whole-project build, `docs/internals` (6 pages) | **0.13 s** | Parse, render, highlight, math, search index, assets |
 | Whole-project build, this guide (16 pages) | **0.25 s** | Including executed cells replayed from `_freeze/` |
 | Whole-project build, `corpus/tech-blog` (17 pages) | **0.58 s** | 34.1 ms/page, the heaviest project in the tree |
-| `preview` time-to-ready, single document | **3–8 ms** | Process start to a serving socket |
+| `preview` time-to-ready, single document | **3 to 8 ms** | Process start to a serving socket |
 | `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
 | Warm edit: diff only | **0.35 ms** | The block diff for one keystroke-sized edit |
 | Warm edit: re-render + diff | **12 ms** | One document, against a 113 ms cold render of it |
@@ -72,8 +69,8 @@ appears here.
 
 *(Build and ready figures measured 2026-08-10, best of three, release build, warm
 `_freeze/` cache. Each build figure is the duration the build prints for itself, and each
-page count is the one it reports — `find … -name '*.html'` is not the page count, since a
-project may ship its own `404.html` and `_`-prefixed files are never pages. The warm-edit
+page count is the one it reports (`find … -name '*.html'` is not the page count, since a
+project may ship its own `404.html` and `_`-prefixed files are never pages). The warm-edit
 and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-18, release
 build; its committed `RESULTS.md` labels them indicative (the numbers vary by machine). The
 **structural** rows it also records, the op counts and payload bytes, are deterministic and
@@ -117,7 +114,7 @@ retrofitted.
   mechanism here: a per-cell cumulative content hash.
 
 **The strongest claim is the one nobody else makes.** Cached-output systems in this space
-carry a standing complaint that the cache can serve a *stale* result — an output produced
+carry a standing complaint that the cache can serve a *stale* result: an output produced
 by code that has since changed. Taliesin's cache key is the cumulative hash of a cell's own
 code plus every upstream cell in its language plus the interpreter's identity, so editing
 anything upstream invalidates that cell and everything downstream. **For the axes the key
@@ -140,7 +137,7 @@ project stops.
 What *does not* stop:
 
 - **Your source is Markdown**, 93.2% of it plain CommonMark, all of it in your repository.
-- **Pages you already built keep working** — they are static HTML with no runtime
+- **Pages you already built keep working**: they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
 
@@ -150,7 +147,7 @@ and it is bounded by the table in [Your source stays yours](#sec-portability).
 
 The mitigation the project actually offers is dogfooding rather than a promise:
 **everything the author writes goes through this tool.** Both books of this manual, the
-public website and the regression corpus are `.tmd` rendered by Taliesin — **112 tracked
+public website and the regression corpus are `.tmd` rendered by Taliesin: **112 tracked
 `.tmd` files, 12,904 lines**, of which the 81-document corpus is re-rendered by every
 `cargo test` run. The manual you are reading is not a description of the tool; it is
 output from it. A defect that breaks a page breaks the documentation for that page in the

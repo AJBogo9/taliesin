@@ -18,46 +18,26 @@ np.arange(5).sum()
 
 On save, **only cells whose source changed (plus downstream cells) re-execute**,
 and the kernel never cold-starts. `{python}` cells run against a warm kernel: point
-the server at a Python with `ipykernel` via `TALIESIN_PYTHON`. A cell in any other
-language, or with no kernel available, renders as highlighted source rather than
+the server at a Python with `ipykernel` via `TALIESIN_PYTHON`
+([one-time setup](getting-started.tmd#set-up-a-kernel-for-code-execution)). A cell in any
+other language, or with no kernel available, renders as highlighted source rather than
 failing. The first cell of a session pays the interpreter's own start-up (booting
 Python and importing what the cell reaches for); every edit after that reuses the
 kernel that boot produced.
 
-::: {.callout-tip}
-## Setting up a kernel
+**Output streams into the preview as the cell produces it**, beside a running-elapsed
+badge, so a training loop's epoch lines appear as they are printed rather than all at
+once at the end. Progress bars that redraw with a carriage return (tqdm and friends)
+render as one updating line, not one line per frame.
 
-Code execution needs a Jupyter kernel. A one-time Python setup:
-
-```sh
-python3 -m venv .venv && . .venv/bin/activate
-pip install ipykernel numpy matplotlib   # + whatever your cells import
-export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
-```
-
-Now `preview`/`build` run `{python}` cells against that interpreter. No kernel is
-fine too: cells just render as highlighted source, and the preview shows a quiet
-"kernel unavailable" note instead of failing.
-:::
-
-A cell that takes a while does not make you wait blind. **Output streams into the
-preview as the cell produces it**, so a training loop printing an epoch line, or a
-progress bar redrawing itself, shows up live beside a running-elapsed badge rather
-than appearing all at once at the end. Nothing is required to opt in: print as you
-go and you can watch it. Progress bars that redraw with a carriage return (tqdm and
-friends) render as one updating line, not one line per frame.
-
-The kernel is resilient: if it crashes mid-session the server detects the dead
-process and respawns it on the next run, and a wedged cell is interrupted instead
-of locking up the kernel. The cap is on **silence**, not on runtime:
-`TALIESIN_CELL_SILENCE` (default 600 seconds) is how long a cell may produce no
-output at all before it is sent SIGINT. The budget resets on every line a cell
-prints, so a long-running job that reports progress runs to completion however
-long it takes, with no configuration. (To bound total runtime regardless of
-output, set the optional `TALIESIN_CELL_TIMEOUT`.) The dev menu's **Restart
-kernel** action drops the kernel,
-re-runs every cell against a fresh one, and reloads so `define` values
-re-bind.
+The kernel is resilient: if it crashes mid-session the server respawns it on the next
+run, and a wedged cell is interrupted instead of locking up the kernel. The cap is on
+**silence**, not on runtime: a cell that produces no output at all for
+`TALIESIN_CELL_SILENCE` seconds (default 600) is sent SIGINT, and the budget resets on
+every line the cell prints, so a long job that reports progress runs to completion
+however long it takes. The dev menu's **Restart kernel** action drops the kernel,
+re-runs every cell against a fresh one, and reloads so `define` values re-bind. See
+[Troubleshooting](../reference/troubleshooting.tmd) for the symptoms these answer.
 
 ### `echo`, `include`, and `cache`: three different switches
 
@@ -71,32 +51,23 @@ helps to keep them straight:
 | `#\| include: false` | yes | no | no | yes |
 | `#\| cache: false` | yes | yes | yes | **never** |
 
-`echo: false` hides the source listing only; the cell still runs and its output
-still appears. Use it when the reader should see a plot or a table but not the
-code that made it.
+`echo: false` hides the source listing only, for when the reader should see a plot or a
+table but not the code that made it.
 
 `include: false` goes further and hides *both* source and output, but the cell
-**still executes** (kernel state is kept), so a later cell still sees its
-variables. This is the option for a setup cell whose result you never want to
-see but whose state you need downstream, not a way to skip a cell: there is no
-per-cell "don't run" option, because the cells form one sequential program
-against a single kernel, and skipping one mid-stream would leave the ones after
-it referring to undefined state. To skip execution entirely, run the whole
-document with `--no-exec` / `TALIESIN_NO_EXEC`.
+**still executes** (kernel state is kept), so a later cell still sees its variables.
+This is the option for a setup cell whose result you never want to see but whose state
+you need downstream. To skip execution entirely, run the whole document with
+`--no-exec` / `TALIESIN_NO_EXEC`.
 
 `cache: false` is orthogonal to both: the cell runs and shows normally, but its
 output is never frozen, and everything downstream of it re-runs and is likewise
 never cached (a downstream output follows from this cell's *value*, which the
-cache key cannot see: only its code). Reach for it whenever a cell's result
-depends on something that is not the cell's own code: a data file it reads, an
-environment variable, a network resource, the clock, or a sample without a fixed
-seed.
+cache key cannot see: only its code).
 
 ```python
 #| include: false
 #| cache: false
-# Runs for its side effects; nothing appears on the page. cache: false because
-# the result depends on data.csv, which the cache key cannot see (below).
 import pandas as pd
 df = pd.read_csv("data.csv")
 ```
@@ -105,11 +76,9 @@ df = pd.read_csv("data.csv")
 ## The cache key sees your code, not your data
 
 The `_freeze/` key is built from cell code, every upstream cell's code, and the
-interpreter's identity. That makes a stale hit impossible on those axes: edit a cell
-or anything above it and the old output cannot come back. It also means the key is
-blind to everything a cell reads that
-*is not* code: a CSV or Parquet file, an environment variable, a config file, a
-URL it fetches, the clock, an installed library you upgraded in place.
+interpreter's identity, which means it is blind to everything a cell reads that
+*is not* code: a data file, an environment variable, a URL it fetches, the clock, an
+installed library you upgraded in place.
 
 Edit `data.csv` without touching a line of Python and the numbers on the page will
 not change, because as far as the cache is concerned nothing happened. Mark any
@@ -119,109 +88,89 @@ To force one fresh run without editing anything, use the dev-menu **Restart
 kernel** or run with `TALIESIN_NO_CACHE`.
 :::
 
-::: {.callout-note}
-`cache` also exists as a document-wide default under the `execute:` front-matter
-key (`echo` and `include` do not: every real document says those per cell). A
-per-cell `#|` option always overrides the document default. See the
+`cache` (and only `cache`) also exists as a document-wide default under the `execute:`
+front-matter key, and a per-cell `#|` option always overrides it. See the
 [cell-options reference](../reference/cell-options.tmd) for the full option table
 and the [Configuration reference](../reference/frontmatter.tmd) for `execute:`.
-:::
 
 ### Captions: figures, listings, and tables
 
-`#| fig-cap:` adds a caption *and* makes the output a numbered figure, so a
-`#| label: fig-x` cell can be cross-referenced as `@fig-x`. Two siblings caption
-the other kinds of output:
-
-- `#| lst-cap:` captions a code *listing* (pair it with a `#| label: lst-x`
-  to reference it as `@lst-x`).
-- `#| tbl-cap:` captions a *table* the cell prints (pair it with `#| label: tbl-x`
-  for `@tbl-x`).
-
-```python
-#| label: tbl-summary
-#| tbl-cap: "Summary statistics by group"
-import pandas as pd
-from IPython.display import HTML, display
-
-summary = df.groupby("group").mean().reset_index()
-display(HTML(summary.to_html(index=False, border=0)))
-```
+`#| fig-cap:` captions a cell's output *and* numbers it as a figure; `#| lst-cap:` and
+`#| tbl-cap:` do the same for a code *listing* and for a table the cell publishes. Pair
+any of them with a matching `#| label: fig-x` / `lst-x` / `tbl-x` and the output is
+cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. The
+[cell-options reference](../reference/cell-options.tmd#every-option) has the
+routing rules.
 
 ### Publishing a table, rather than printing one
 
-`#| tbl-cap:` captions whatever the cell **publishes**, and the shortest way to
-write a table in either language publishes something you did not mean. Both traps
-are quiet: the page builds, the lint is clean, and the defect is visible
-only in the rendered output.
+`#| tbl-cap:` captions whatever the cell **publishes**, and the shortest way to write a
+table publishes something you did not mean. The trap is quiet: the page builds, the
+lint is clean, and the defect is visible only in the rendered output.
 
-In Python, a bare `df` on its own line emits pandas' own repr: a table tagged
-`border="1"` and `class="dataframe"`, a row-index column, and a `<style scoped>`
-block. `scoped` was removed from the HTML standard and no current browser
-implements it, so that style element applies to the whole page instead of to its
-own table. `to_html(index=False, border=0)`, as above, emits plain markup that the
-page's own table styling reaches. Keep the index when its labels carry meaning (a
-`describe()` table, where they name the statistic) and drop it when it is a bare
-row number.
+A bare `df` on its own line emits pandas' own repr: a table tagged `border="1"` and
+`class="dataframe"`, a row-index column, and a `<style scoped>` block, which no browser
+scopes, so it leaks to the whole page. Publish the markup yourself instead:
+`to_html(index=False, border=0)` on a DataFrame, or any other HTML string handed to
+`display(HTML(…))`, emits plain markup that the page's own table styling reaches. Keep
+the index when its labels carry meaning (a `describe()` table, where they name the
+statistic) and drop it when it is a bare row number. @tbl-summary below is a hand-built
+HTML string published exactly that way.
 
-In R, `knitr::kable(format = "html")` returns HTML as a *string*. A Jupyter R
-kernel prints that string, so the reader gets the markup as text (`<table>` and
-all, escaped) in a code block. The same call works under knitr/rmarkdown, which
-splices the string in itself, and that is what makes this a trap rather than an
-obvious mistake. Publish it as HTML instead:
+```{python}
+#| label: tbl-summary
+#| tbl-cap: "Mean and standard deviation of 1000 normal draws, by seed"
+import numpy as np
+from IPython.display import HTML, display
 
-```r
-#| label: tbl-coefs
-#| tbl-cap: "Fitted coefficients"
-IRdisplay::display_html(as.character(
-  kable(tidy(fit), format = "html")
-))
+rows = ""
+for seed in (0, 1, 2):
+    x = np.random.default_rng(seed).normal(size=1000)
+    rows += f"<tr><td>{seed}</td><td>{x.mean():+.3f}</td><td>{x.std():.3f}</td></tr>"
+display(HTML(f"<table><tr><th>seed</th><th>mean</th><th>sd</th></tr>{rows}</table>"))
 ```
-
-`corpus/analyst/` uses both idioms, with a comment at each one saying why.
 
 ### Folded code
 
 `#| code-fold: true` collapses a listing behind a summary (label it with
-`code-summary`), so long setup code stays out of the way until clicked:
+`code-summary`), so long setup code stays out of the way until clicked, as
+@lst-setup does:
 
 ```{python}
+#| label: lst-setup
+#| lst-cap: "A setup cell, folded behind its summary."
 #| code-fold: true
 #| code-summary: "Show the setup"
 import numpy as np
 rng = np.random.default_rng(0)
 draws = rng.normal(size=10_000)
-round(float(draws.mean()), 3), round(float(draws.std()), 3)
+(round(float(draws.mean()), 3),
+ round(float(draws.std()), 3))
 ```
 
 ### Writing a figure to disk
 
-Inline `{python}` figures are themed for the web (transparent background, neutral
-grey axes that read on light **and** dark), but that theming never touches global
-`rcParams`, so a plain `fig.savefig("x.pdf")` in a cell already writes a clean,
-print-ready figure (black on white):
+Inline `{python}` figures are themed for the web (@fig-loss below has a transparent
+background and neutral grey axes that read on light **and** dark), but that theming
+never touches global `rcParams`, so a plain `fig.savefig("x.pdf")` in a cell already
+writes a clean, print-ready figure (black on white):
 
 ```{python}
 #| label: fig-loss
 #| fig-cap: "Loss curve"
-import matplotlib.pyplot as plt, numpy as np
+import matplotlib.pyplot as plt, numpy as np, os
 fig, ax = plt.subplots()
 ax.plot(np.arange(40), np.exp(-0.1 * np.arange(40)))
 ax.set_xlabel("iteration"); ax.set_ylabel("loss")
+os.makedirs("figures", exist_ok=True)
 fig.savefig("figures/loss.pdf")
 plt.show()
 ```
 
-Use a vector format (`.pdf`/`.svg`) for line art so it stays sharp at any size;
-`.png` at a high `dpi=` for raster content (spectrograms, heatmaps). A cell runs with
-its **document's directory** as the working directory, so a relative path lands beside
-the source rather than wherever you launched Taliesin — create the folder yourself
-(`os.makedirs("figures", exist_ok=True)`). Then in LaTeX:
-`\includegraphics[width=\columnwidth]{figures/loss.pdf}`.
+A cell runs with its **document's directory** as the working directory, so a relative
+path lands beside the source rather than wherever you launched Taliesin.
 
 ## Live, browser-side content
 
-`{js}` cells run in your browser rather than against the kernel: reactive inputs,
-a Python-to-JS bridge for handing kernel-computed values to a `{js}` cell, and
-full 3-D scenes (Three.js/WebGL) are all `{js}` cells with no kernel involved. See
+`{js}` cells run in your browser rather than against the kernel. See
 [Interactive and explorable documents](interactive.tmd).

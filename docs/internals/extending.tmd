@@ -11,9 +11,9 @@ byte-identical output.
 ## The guiding principle: a lean core
 
 The core stays small and predictable; power lives at the edges. Before adding to
-the core, ask whether it can be an **extension** or a **client enhancer** instead.
-Server-side transforms (parsing, the block model, the diff) belong in the core;
-presentation and optional features should ride the extension points below.
+the core, ask whether it can be a **client enhancer** instead. Server-side transforms
+(parsing, the block model, the diff) belong in the core; presentation and optional
+behaviour should ride the extension point below.
 
 ## Conventions
 
@@ -32,24 +32,27 @@ presentation and optional features should ride the extension points below.
   warnings`, `cargo test --workspace`, `build docs/{guide,internals} --check-only` and
   `tools/publish.sh --check`. That hook is the only gate that runs
   automatically today, and it does not exist in a fresh clone. Run
-  `./tools/gates.sh` for the rest — `cargo audit`, `cargo deny check`, the `tsc`
+  `./tools/gates.sh` for the rest: `cargo audit`, `cargo deny check`, the `tsc`
   type-checks and the live-kernel suite, because those *skip silently* without
   their interpreter and the script refuses to report success unless each one really
   ran.
 
-## The two extension points
+## The one extension point
 
-The core stays lean; two seams let you add behaviour without touching it:
+There is exactly one seam that lets you add behaviour without editing the core, and being
+honest about that is the point of this section.
 
-1. **Declarative shortcodes** (`render/extension/`). `{{< name args >}}` invocations
-   expand to inline HTML at pipeline stage 2. One is built in here — `{{< input … >}}`, a
-   reactive control that feeds the `{js}` graph — and `{{< include >}}` is resolved by an
-   earlier pass. Any other name is left verbatim, with a warning, so a typo is visible
-   rather than shipped as literal text.
-2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
-   `fn(root)` that runs after every (re)mount; load it with a `<script defer src>` written
-   as raw HTML in the page. The built-in copy buttons and `mermaid.js` use this same public
-   API, so a third-party enhancer is indistinguishable from core's.
+**Shortcodes are not it.** `{{< name args >}}` invocations expand to inline HTML at
+pipeline stage 2 (`render/extension/`), but `SHORTCODE_NAMES` is a closed vocabulary of
+two: `{{< input … >}}`, the reactive control that feeds the `{js}` graph, and
+`{{< include >}}`, which an earlier pass resolves. Any other name is left verbatim with a
+warning, so a typo is visible rather than shipped as literal text. Adding a third means
+editing the core, which is the opposite of an extension point.
+
+**Client enhancers are** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
+`fn(root)` that runs after every (re)mount; load it with a `<script defer src>` written
+as raw HTML in the page. The built-in copy buttons and `mermaid.js` use this same public
+API, so a third-party enhancer is indistinguishable from core's.
 
 ### The client enhancer contract
 
@@ -99,7 +102,7 @@ the `.tmd` itself:
 The build harvests every `src=` it can see, so the file is copied into the output beside
 the page, and the enhancer is wired into the same mount cycle the built-ins use. To share
 one across a project, put that line in an `_includes/` partial and `{{< include >}}` it
-from each page — `_site.yml` had a project-wide `head:` for this until 2026-08-18, when it
+from each page. `_site.yml` had a project-wide `head:` for this until 2026-08-18, when it
 was cut at zero adoption.
 
 ## The editor

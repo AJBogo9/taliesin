@@ -9,8 +9,8 @@ here is client-side and offline, built from the same block model as the rest of
 the page, and the preview stays read-only: a reader interacts with the output,
 never the source.
 
-The examples below are shown as source listings. Each feature has a runnable
-counterpart in the corpus (`corpus/reactive/`, `corpus/descent/`, `corpus/layout/`).
+The fenced examples below are source listings; the `{{< input >}}` section runs live
+on this page.
 
 ## Reactive `{js}` cells
 
@@ -46,38 +46,29 @@ return tali.value("n") ** 2;
 return document.createTextNode("n squared = " + tali.get("squared"));
 ```
 
-When an input changes, Taliesin re-runs exactly the cells downstream of it, once
-each, in dependency order, following `//| name` edges. This is one controlled pass,
-not a continuously-recomputing dataflow engine: cycles are detected and shown as an
-error rather than run. `Plot` and `d3` are available as globals for drawing; a cell
-returns a DOM node (mounted for you) or builds into `tali.container`, and an
-`invalidation` promise lets long-running cells (animations, WebGL) tear down before
-a re-run.
+When an input changes, Taliesin re-runs exactly the cells downstream of it, once each,
+in dependency order, following `//| name` edges; a cycle is reported as an error rather
+than run. `Plot` and `d3` are available as globals for drawing, and a cell either
+returns a DOM node (mounted for you) or builds into `tali.container`.
 
-A `viewof` input doesn't need to flow through a `//| name` cell first: a consumer
-can list it directly in `//| input:`. Drag the slider to add odd harmonics to a
-square-wave Fourier synthesis and watch the curve sharpen:
+::: {.callout-warning}
+## Gate teardown on `invalidation`, never on DOM attachment
 
-```js
-//| viewof: harmonics
-const wrap = document.createElement("label");
-wrap.append("Harmonics ");
-const input = document.createElement("input");
-input.type = "range";
-input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
-wrap.append(input);
-return wrap;
-```
+The node a cell returns is mounted **after** the cell body finishes, so a guard like
+`if (!node.isConnected) return;` inside the body always fires and the cell never paints.
+An init gated on `offsetWidth` or `getBoundingClientRect()` is the same mistake.
+`invalidation` is the signal that works: it is a promise resolving when the cell is
+about to re-run or leave the page, whether or not the node ever reached the DOM, so it
+is where you cancel animation frames and dispose GPU resources. If you genuinely need
+post-mount measurements, take them inside a `requestAnimationFrame` callback.
+:::
+
+A `viewof` input doesn't need to flow through a `//| name` cell first: a consumer can
+list it directly in `//| input:`.
 
 ```js
-//| input: harmonics
-const harmonics = tali.value("harmonics");
-return Plot.lineY(
-  Array.from({length: 500}, (_, t) =>
-    d3.range(1, harmonics + 1).reduce(
-      (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
-  {curve: "basis", stroke: "#3A5578"}
-).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
+//| input: n
+return document.createTextNode("n = " + tali.value("n"));
 ```
 
 ## Inputs without boilerplate: `{{< input >}}`
@@ -87,11 +78,11 @@ value becomes a reactive node, so a `{js}` cell reacts with `//| input:` and no
 control-building code. Five of them are ordinary form fields:
 
 ```markdown
-{{< input name="k" type="slider" min="1" max="10" step="1" value="3" label="k" >}}
+{{< input name="k" type="slider" min="1" max="10" step="1" value="3" >}}
 {{< input name="n" type="number" min="0" max="100" value="20" label="n" >}}
 {{< input name="on" type="checkbox" value="true" label="enabled" >}}
 {{< input name="q" type="text" value="hello" label="query" >}}
-{{< input name="c" type="select" options="alpha,beta,gamma" value="beta" label="channel" >}}
+{{< input name="c" type="select" options="red,green,blue" value="red" >}}
 ```
 
 | Argument | Required | Default | Effect |
@@ -112,84 +103,28 @@ that updates as you drag, so the reader always sees the current value beside the
 `number` shares its numeric `min`/`max`/`step`/`value` attributes but renders as a spinner
 with no readout.
 
-A **`select`** gives a closed set of choices, picked from the `options=` list.
-`value` picks the initially selected option:
+Here is the first shortcode of that block running live, with the consuming cell under
+it. Drag the slider and the curve redraws.
 
-```markdown
-{{< input name="palette" type="select" options="viridis,magma,cividis" value="magma" label="Palette" >}}
-```
+{{< input name="k" type="slider" min="1" max="10" step="1" value="3" >}}
 
-That publishes a reactive node `palette` whose value is the chosen string. A chart cell
-then reacts to it:
-
-```js
-//| input: palette
-const name = tali.value("palette");          // "viridis" | "magma" | "cividis"
-return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
+```{js}
+//| input: k
+const k = tali.value("k");
+const ys = Array.from({length: 400}, (_, t) => Math.sin(2 * Math.PI * k * t / 400));
+return Plot.lineY(ys, {curve: "basis"})
+  .plot({height: 160, marginLeft: 40, x: {label: "t"}, y: {label: "amplitude"}});
 ```
 
 ## Interactive 3-D with a `{js}` cell
 
-A `{js}` cell mounts whatever DOM node it returns, and that node can be a WebGL
-canvas. So a full interactive 3-D scene, spin, zoom, fullscreen, is just a cell that
-imports a 3-D library and returns its renderer's canvas. The shape is always the same:
-
-```js
-const THREE = await import("https://esm.sh/three@0.163.0");
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(620, 500);
-
-const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, 620 / 500, 0.1, 100);
-camera.position.set(4, 3, 6);
-scene.add(new THREE.AmbientLight(0xffffff, 1));
-scene.add(new THREE.Mesh(
-  new THREE.IcosahedronGeometry(1.5, 0),
-  new THREE.MeshStandardMaterial({ color: 0x3a5578, flatShading: true }),
-));
-
-(function animate() {
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-})();
-
-invalidation.then(() => renderer.dispose());   // clean up when the cell re-runs
-
-return renderer.domElement;   // the cell mounts the canvas
-```
-
-Two things make this idiomatic. `invalidation` is a promise the cell provides that
-resolves when the cell is about to re-run or leave the page, so it is where you cancel
-animation frames and dispose GPU resources. And because a cell returns a node rather
-than printing markup, you can attach controls, an `OrbitControls` from three.js, a
-`<select>`, sliders, straight to the same container.
-
-::: {.callout-warning}
-## Gate teardown on `invalidation`, never on DOM attachment
-
-The node a cell returns is mounted **after** the cell body finishes. Inside the body it
-is not yet in the document, so a guard like this silently does nothing on the first
-paint:
-
-```js
-const node = document.createElement("div");
-if (!node.isConnected) return;      // always true here — the cell never renders
-```
-
-That reads like a defensive check and behaves like an early return. The same mistake
-appears as an init gated on `offsetWidth`, on `getBoundingClientRect()`, or on a
-`ResizeObserver` that has not fired yet: none of them has a useful answer until the node
-is mounted, and none of them is how you learn the cell is finished. `invalidation` is,
-and it works whether or not the node ever reaches the DOM. If you genuinely need
-post-mount measurements (a canvas sized to its container), take them inside a
-`requestAnimationFrame` callback, which runs after the mount.
-:::
-
-The data for a scene like this can come from a `{python}` cell instead of being
-computed in the browser: compute coordinates or a mesh in the kernel and hand
-them to the `{js}` cell that renders them. That handoff is its own pattern,
-covered next.
+Any node a cell returns is mounted, and that node can be a WebGL canvas, so a full
+interactive 3-D scene is just a cell that imports a 3-D library and returns its
+renderer's canvas. Three things to get right: construct the renderer with
+`alpha: true`, or its clear colour paints an opaque slab over the page in one theme or
+the other; cancel animation frames and dispose GPU resources on `invalidation`; and
+note that a library fetched over the network (three.js from a CDN, say) is your own
+trade against the offline default, so such a page needs `http(s)`, not `file://`.
 
 ## The Python → JS bridge
 
@@ -208,7 +143,8 @@ a reload. Guard against the value not having arrived yet with an early `return`.
 # sample a noisy sine wave
 import math, random
 random.seed(7)
-signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in range(120)]
+signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3)
+          for i in range(120)]
 define(signal=signal)
 ```
 
@@ -220,7 +156,3 @@ return Plot.plot({
   marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#3A5578"})]
 });
 ```
-
-The landing page's rotating surface is built exactly this way, and so is the PCA
-explainer in the sample blog: a `{js}` cell in a plain `.tmd` file, reading numbers a
-`{python}` cell computed.

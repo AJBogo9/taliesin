@@ -5,10 +5,10 @@ page-layout: full
 hero:
   eyebrow: "A dev server for technical writing"
   headline: "Taliesin"
-  lead: "One .tmd file becomes a live post, a book, or a website — and only the block you changed re-renders."
+  lead: "One .tmd file becomes a live post, a book, or a website, and only the block you changed re-renders."
   actions:
-    - { text: "Read the docs", href: "https://guide.taliesin.sh/", primary: true }
-    - { text: "Explore the features", href: "features.tmd" }
+    - { text: "Get started", href: "https://guide.taliesin.sh/using/getting-started.html", primary: true }
+    - { text: "See it live", href: "showcase.tmd" }
 ---
 
 Taliesin is built around one idea: writing technical content should feel as
@@ -66,18 +66,21 @@ else {
 return host;
 ```
 
-This scene is live WebGL, authored in the one `{js}` cell above. Drag to orbit it.
-See more, with the source beside each, on [the showcase](showcase.tmd).
+This scene is live WebGL. Drag to orbit it. It is the `{js}` cell above plus a shared
+`makeScene3D` helper that `{{< include >}}` pulls in from `_includes/three-scene.tmd`,
+which loads Three.js from esm.sh, so the scene needs network access. More of them, and
+the source, on [the showcase](showcase.tmd).
 
 ```sh
-taliesin preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
+taliesin preview post.tmd   # http://127.0.0.1:4321, updating as you save
 ```
 
-## One source, many outputs
+## One source, three shapes
 
-Write once in plain text and choose the output in the front matter. Every format
-shares the same block model, the offline math and highlighting, and the live edit
-loop, so anything you learn for one carries to the rest.
+Write once in plain text, and the shape follows the structure: one file is a post, a
+directory with a `_site.yml` is a website, and a `chapters:` list makes it a book. All
+three render to HTML and share the same block model, the offline math and highlighting,
+and the live edit loop, so anything you learn for one carries to the rest.
 
 ::: {.feature-list}
 ::: {.feature}
@@ -85,7 +88,7 @@ loop, so anything you learn for one carries to the rest.
 Prose, math, figures, citations, and cross-references, with executable Python
 cells and live interactive graphics.
 
-[See an example →](formats.tmd#blog-posts)
+[See the gallery →](https://gallery.taliesin.sh/)
 :::
 
 ::: {.feature}
@@ -101,7 +104,7 @@ very docs are a Taliesin book.
 Navbar, footer, OpenGraph, Cmd-K search, and opt-in post listings with an Atom feed per
 dated listing. This whole site is a Taliesin website, built by the same `build` you run.
 
-[How this site is built →](formats.tmd#websites)
+[Recipes for books and sites →](https://guide.taliesin.sh/using/recipes.html)
 :::
 :::
 
@@ -111,15 +114,51 @@ A `{python}` cell runs against a warm kernel. Change a parameter and only
 that cell (and the figure it produced) re-renders. The rest of the page never
 moves, and the kernel never cold-starts.
 
-<figure class="tali-figure">
-<video src="assets/live-code-dark.mp4" controls muted loop playsinline preload="metadata"
-       aria-label="Screencast"></video>
-<figcaption>One value changes in the source; the matplotlib figure updates in place, scroll preserved.</figcaption>
-</figure>
+@fig-live is not a screenshot of that: it is the output of a cell in this page's own
+source, executed by the same `build` that wrote the HTML you are reading.
 
-## Built the way you would build yours
+```{python}
+#| label: fig-live
+#| fig-cap: "Drawn by a Python cell in this page's source as the site was built. Change the number of cycles, save, and only this figure re-renders."
+import numpy as np
+import matplotlib.pyplot as plt
 
-There is nothing here a screenshot could fake: **this landing page, the surface you
-spun at the top of it, and the [documentation book](https://guide.taliesin.sh/) it links to are all
-built and served by Taliesin**, from plain `.tmd` files in one repository. If it reads
-well here, the framework is doing its job.
+cycles = 6
+t = np.linspace(0, 1, 600)
+fig, ax = plt.subplots(figsize=(8, 3))
+ax.plot(t, np.sin(2 * np.pi * cycles * t) * np.exp(-2.2 * t), lw=2)
+ax.set_xlabel("t")
+ax.set_ylabel("amplitude")
+plt.show()
+```
+
+## Three more things worth knowing
+
+::: {.feature-list}
+::: {.feature}
+### Click to source
+Ctrl-click (Cmd-click on Mac) anything in the preview and your editor jumps to the line
+it came from, even across files pulled in with `{{< include >}}`. It is the one bridge
+back: the `.tmd` stays the only place you edit.
+:::
+
+::: {.feature}
+### Bundled, not fetched
+Fonts, KaTeX and its font files, syntax highlighting and the vendored plotting libraries
+are all compiled into the binary and written into the page. Taliesin itself never fetches
+anything at runtime, so a built page renders the same offline. Anything *you* `import()`
+from a `{js}` cell is your own network call, which is why the scene above says so when it
+cannot reach esm.sh.
+:::
+
+::: {.feature}
+### Output you can host anywhere
+One command turns a document into a single self-contained HTML file, or a portable folder
+with its local assets copied alongside. Point it at a directory instead and you get a
+whole site or book as static files, with no server runtime and nothing to reproduce.
+:::
+:::
+
+This page, the surface you spun at the top of it, and the
+[documentation book](https://guide.taliesin.sh/) it links to are all built and served by
+Taliesin, from plain `.tmd` files in one repository.

@@ -20,8 +20,8 @@ taliesin build . --check-only --strict   # …and advice fails the run too
 ```
 
 ```
-posts/intro.tmd:3: warning: unknown front-matter key `treme` (did you mean `theme`?)
-posts/intro.tmd:18: error: broken cross-reference: @fig-reslts (did you mean `@fig-results`?)
+post.tmd:3: warning: unknown front-matter key `titel` (did you mean `title`?)
+post.tmd:18: error: broken cross-reference: @fig-los (did you mean `@fig-loss`?)
 ```
 
 A near-miss gets a did-you-mean, which your editor offers as a quick fix over
@@ -31,8 +31,10 @@ unknown and left for you to look up.
 
 ## Code cells show as source / "kernel unavailable"
 
-There is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python that has
-`ipykernel`:
+Run [`taliesin doctor`](cli.tmd#checking-the-environment-doctor) first: it names which
+Python was resolved, which of the five sources chose it, and whether `ipykernel` imports.
+The usual answer is that there is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python
+that has `ipykernel`:
 
 ```sh
 pip install ipykernel
@@ -85,36 +87,28 @@ the interpreter and the next save within a few tries recovers on its own; or hit
 
 ## Outputs look stale, or I want to force a clean re-run
 
-Cell outputs are cached in `_freeze/` (gitignored) keyed by a cumulative content
-hash, so an unchanged cell (and everything upstream) restores from disk instead of
-re-executing. The key folds in this cell's code, every same-language cell above it,
-and the interpreter id, so a real edit always busts the cache: there are no stale
-hits to clear by hand. Two escape hatches exist if you suspect the cache anyway:
+Cell outputs are cached in `_freeze/` (gitignored), and the cache is correct by
+construction: errors and `#| cache: false` cells are never persisted, and an edit to
+your code always busts the key, so there are no stale hits to clear by hand. Two escape
+hatches exist if you suspect it anyway:
 
 - The dev menu's **Restart kernel** forces the next run to ignore disk-cache hits
   and re-execute every cell against a fresh kernel (then re-persist), so it doubles
   as a "re-run everything from scratch" button.
 - `TALIESIN_NO_CACHE` ignores the cache entirely and never writes it, so every run
-  re-executes. Reach for it when comparing timings, when a cell has a hidden
-  non-determinism you're debugging (a clock, a random seed, an external fetch), or
-  to confirm a result reproduces from cold rather than from a replayed output:
+  re-executes. Reach for it to compare timings, or to confirm a result reproduces
+  from cold rather than from a replayed output:
 
   ```sh
   TALIESIN_NO_CACHE=1 taliesin build report.tmd
   ```
 
-  Note the cache is already correct by construction (errors and `#| cache: false`
-  cells are never persisted), so this is a debugging tool, not a routine step.
-
 ## Diagrams / `{js}` cells don't render
 
-Both run offline. Mermaid is vendored (inlined into a single-file build, written into the
-folder a `--out` build produces, served same-origin in preview) and `{js}` cells have
-d3 + Plot bundled, so a network is not what is missing.
-What still needs `http(s)` rather than `file://` is a `{js}` cell that `import()`s a
-relative helper module, because the browser blocks module imports on `file://`. Use
-`preview` (or a deployed/served build). Prose, math, and executed figures render
-regardless.
+Both run offline: Mermaid is vendored and `{js}` cells have d3 + Plot bundled, so a
+network is not what is missing. What still needs `http(s)` rather than `file://` is a
+`{js}` cell that `import()`s a relative helper module: the browser blocks module imports
+on `file://`, so use `preview` or a served build.
 
 ## "Port already in use"
 

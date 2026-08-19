@@ -19,22 +19,25 @@ the deliverable as the table. Nothing here is claimed on the strength of an inte
 
 ## Scope
 
-**Product:** Taliesin 0.2.0 — the HTML output of `taliesin build`.
+**Product:** the HTML output of `taliesin build`, audited at **0.2.0**.
 **Standard:** WCAG 2.1 Level AA.
 **Report date:** 2026-07-28.
 
+Read it as a report on the version it names: the current release is **0.3.0**, the palette
+and the chrome have both changed since the report date, and the table has not been re-run.
+
 **Evaluation methods.** Automated conformance testing (Lighthouse, which embeds axe-core)
 over built output: 54 pages across three projects **as they stood at the report date**,
-desktop and mobile, in **both** the
-light and dark themes. Plus the project's own static rule set
-(`crates/core/src/diagnostics/a11y.rs`) and a manual audit pass on 2026-07-25.
+desktop and mobile, in **both** the light and dark themes. Plus the project's own static
+rule set (`crates/core/src/diagnostics/a11y.rs`) and a manual audit pass on 2026-07-25.
 
 **What this covers, precisely.** It evaluates the **chrome and layout Taliesin
-generates** — the navigation, the reading controls, the theme system, the page
-scaffolding. It cannot evaluate what you write. Alt text, heading order, link text and
-media captions are the author's responsibility; Taliesin *lints* for two of them (a missing
-or placeholder `alt`, and a heading-level skip) on every build and through
-`build --check-only`, but a linter cannot guarantee an author wrote a good description.
+generates**: the navigation, the search palette, the chapters drawer, the theme
+palettes, the page scaffolding. It cannot evaluate what you write. Alt text, heading
+order, link text and media captions are the author's responsibility; Taliesin *lints* for
+two of them (a missing or placeholder `alt`, and a heading-level skip) on every build and
+through `build --check-only`, but a linter cannot guarantee an author wrote a good
+description.
 
 ## Conformance table
 
@@ -45,7 +48,7 @@ or placeholder `alt`, and a heading-level skip) on every build and through
 | 1.4.3 Contrast (Minimum) | Supports | Zero contrast violations in **both** themes, desktop and mobile |
 | 1.4.10 Reflow | Supports | No horizontal overflow at mobile widths (measured 2026-07-26) |
 | 1.4.11 Non-text Contrast | Supports | No violations |
-| 2.1.1 Keyboard | **Partially supports** | The reader controls and the Cmd-K palette are keyboard-first and pinned by tests, but a full keyboard walkthrough of every surface has not been run |
+| 2.1.1 Keyboard | **Partially supports** | The skip link and the Cmd-K palette are keyboard-first and pinned by tests, but a full keyboard walkthrough of every surface has not been run |
 | 2.4.2 Page Titled | Supports | Titles compose as `"{page} · {site}"`, page name first |
 | 2.4.4 Link Purpose | Supports | No violations. The static ambiguous-link-text lint was cut on 2026-08-08 (it named something an author reads back in the preview), so this rests on the audit rather than on a linter |
 | 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted on every page |
@@ -66,7 +69,7 @@ each is an absence of evidence.
 - **No standalone axe-core run.** Lighthouse runs a weighted subset, and that weighting
   has demonstrably hidden a real defect here before.
 - **1.2.x (time-based media), 3.2.x and 3.3.x** were not assessed.
-- **The live preview was not audited** — only built output. The preview is a development
+- **The live preview was not audited**, only built output. The preview is a development
   surface, not a published one.
 
 ## Reader controls
@@ -105,10 +108,10 @@ None of these is a character-key shortcut (a single key fired with no modifier),
 WCAG 2.1.4's requirement to make character-key shortcuts switchable off does not
 apply, and no off-switch is owed.
 
-Keyboard focus is always visible: every interactive control (links, buttons, and
-tabs) shares one consistent focus ring, shown only for keyboard or assistive-technology
-focus and never on a mouse click. The ring is a single theme token, so it follows the
-active palette, including the high-contrast modes below.
+Keyboard focus is always visible: every interactive control shares one consistent focus
+ring, shown only for keyboard or assistive-technology focus and never on a mouse click.
+The ring is a single theme token, so it follows the active palette, including the
+high-contrast modes below.
 
 **Landmarks and dialogs.** Each `<nav>` on a page carries a distinguishing accessible
 name (the table of contents announces as "Table of contents", separate from the

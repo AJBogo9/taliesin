@@ -15,8 +15,8 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write **nothing**: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml`, an `index.tmd` and one dated post under `posts/`, and nothing else; refuses to overwrite |
-| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting — see [below](#any-lsp-editor-except-the-colours) |
-| `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and how (`_site.yml` `python:`, a `.venv`, `TALIESIN_PYTHON`, then `PATH`), whether `ipykernel` imports, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
+| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting (see [below](#any-lsp-editor-except-the-colours)) |
+| `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and [why that one](#checking-the-environment-doctor), whether `ipykernel` imports, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
 
 A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
 directory a project (see [Configuration](frontmatter.tmd#project-site-yml)). Point `preview` or
@@ -52,7 +52,7 @@ accepting a flag that describes output it will not produce.
 
 **It is a static check, and its clean verdict says so.** A project with executable cells
 gets `no static problems found · N code cells not run` rather than a bare "no problems
-found", because a gate that never starts a kernel cannot promise those cells run — the
+found", because a gate that never starts a kernel cannot promise those cells run: the
 publish `build` is what proves that, and the two-stage
 `taliesin build . --check-only && taliesin build . --strict` below is how you get both.
 
@@ -85,8 +85,8 @@ resolves inside the project. (The `file` in `--format json` stays relative to th
 since whoever passed the target can resolve against it.)
 
 ```sh
-taliesin build . --check-only                    # fails (exit 1) on any error or warning
-taliesin build . --check-only --strict           # …and on suggestions too
+taliesin build . --check-only            # fails (exit 1) on any error or warning
+taliesin build . --check-only --strict   # …and on suggestions too
 taliesin build . --check-only --format json > problems.json
 ```
 
@@ -109,7 +109,7 @@ than reporting advice as a problem beside an exit `0`:
 ## One thing fails a plain `build`: unparseable YAML
 
 A `build` without `--check-only` or `--strict` writes its output and exits `0` even when it
-reported problems — a dead link or a missing image ships, and the closing tally names
+reported problems: a dead link or a missing image ships, and the closing tally names
 `--strict` as the flag that would have failed it. **The exception is a front-matter or
 `_site.yml` block that does not parse**, which fails the build unconditionally. Nothing in
 such a block is read, so the page ships without the `title:`, `bibliography:` or `listing:`
@@ -145,7 +145,7 @@ At a glance, here is everything the lint looks at, grouped by what it protects:
 | **Local media** | Missing local images (`src`/`href`) and `<video>` files |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
-| **Bibliography** | A `.bib` entry declared but never cited — severity `suggestion`, so it never fails the run without `--strict` |
+| **Bibliography** | A `.bib` entry declared but never cited (severity `suggestion`, so it never fails the run without `--strict`) |
 
 **Every one of those names a defect you cannot see in the rendered page.** That is the test
 this set is kept by.
@@ -183,7 +183,8 @@ is logged.
 | Flag | Effect |
 |---|---|
 | `--open` | Launch the default browser at the preview URL |
-| `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does **not** strip raw HTML — see below |
+| `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does **not** strip raw HTML (see below) |
+| `--port <N>` | Serve on port N. The same thing as the `[port]` positional, and it wins when both are given (`--port=<N>` works too) |
 
 ### Documents you did not write
 
@@ -196,7 +197,7 @@ you.** Taliesin is honest about this rather than pretending to a sandbox it does
   permissions; a `{js}` cell runs in your browser on the preview's origin.
 - **Raw HTML passes through**, because Markdown says it does. That markup is inserted
   verbatim.
-- **`--no-exec` stops the code cells** — both kinds — and starts no kernel. It is *not* a
+- **`--no-exec` stops the code cells**, both kinds, and starts no kernel. It is *not* a
   sanitizer: raw `<script>` in the document body still reaches the page. There is
   deliberately no HTML sanitizer and no CSP, because a sanitizer that a document's own
   author can work around buys a false sense of safety.
@@ -213,6 +214,8 @@ and a container or a throwaway user is the right answer for *trusting* one.
 | `--out <dir>` | Write a portable `<dir>/index.html` + copied assets instead of a single file |
 | `--strict` | Exit non-zero if any cell errored or any located warning fired (a CI gate; the page is still written) |
 | `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
+| `--no-exec` | Render code cells as source instead of running them. Without it, a build whose document *has* executable cells and no usable kernel fails, so this is how to ask for source-only output on purpose |
+| `--format json` | Emit `{diagnostics: […]}` to stdout instead of only the log. It is not exclusive to `--check-only`: a writing build reports the same way |
 
 A `build` already content-gates the optional enhancer scripts (mermaid, `{js}`) to the
 constructs a page actually uses, so a prose page ships less JavaScript without losing any
@@ -328,6 +331,47 @@ runs the real binary and then the real lint over what it wrote, so a front-matte
 validator would reject cannot survive in the scaffold. Like every write this tool makes,
 `init` refuses to overwrite an existing file.
 
+## Checking the environment: `doctor`
+
+`doctor` answers one question, the one a stuck reader has: **can this machine run my code
+cells?** It resolves the interpreter each language would run on, probes it, and validates
+`_site.yml`, all without rendering anything.
+
+```
+taliesin doctor  ·  is your environment ready to run code cells?
+
+  ✓  python  /home/me/proj/.venv/bin/python (.venv)
+             Python 3.12.3  ·  ipykernel present
+  ✓  config  _site.yml is valid
+
+  python cells will execute.
+```
+
+A failure names the interpreter it found, why that one, and the command that fixes it:
+
+```
+  ⚠  python  python3 (python3)
+             Python 3.12.3  ·  ipykernel MISSING
+             .venv search: searched /home/me/proj, /home/me; stopped at /home/me
+             fix: python3 -m pip install ipykernel
+```
+
+The line in parentheses is **where the interpreter came from**, and the search is ordered.
+First match wins:
+
+1. `python:` in `_site.yml`, resolved against the directory holding that file.
+2. A `.venv/bin/python` (then `python3`) in the project directory itself.
+3. `TALIESIN_PYTHON`.
+4. The nearest `.venv` in an ancestor directory, walking up.
+5. `python3` on `PATH`.
+
+A project `.venv` therefore outranks `TALIESIN_PYTHON` while an *ancestor* one does not,
+which is why the trail line reports where the walk looked and where it stopped: the
+common surprise is a venv one directory too far up. `--format json` prints the same
+findings as an object for a script to read, and the exit code is deliberately narrow:
+non-zero only when an interpreter you **configured** is broken, because a machine with no
+project venv is a fact worth reporting, not a failure.
+
 ## Inspecting a document: `build --stdout`
 
 A way to look at a document in a terminal instead of a browser, which is handy for
@@ -342,14 +386,16 @@ taliesin build post.tmd --stdout | grep -c data-block-id   # count emitted block
 ```
 
 It is an ordinary build, so it runs the document's code cells. Add `--no-exec` for the
-static dump — highlighted source with an empty output block, no plots, and any `@fig-`
+static dump: highlighted source with an empty output block, no plots, and any `@fig-`
 reference to a computed figure left dangling:
 
 ```sh
 taliesin build post.tmd --stdout --no-exec > post.html
 ```
 
-`{js}` cells are unaffected either way, since they run in the browser.
+`--no-exec` covers `{js}` cells too: a reactive cell is a code cell whose runtime happens
+to be the browser rather than a kernel, so it is rendered as highlighted source and never
+handed to the page. Asking for no execution and getting some anyway would be the surprise.
 
 The page carries the same `data-block-id` + `data-sourcepos` attributes that drive
 click-to-source and incremental updates, so this is the way to confirm a block carries
@@ -379,7 +425,7 @@ cmd = { "taliesin", "lsp" }
 ```
 
 ```toml
-# Helix — ~/.config/helix/languages.toml
+# Helix: ~/.config/helix/languages.toml
 [language-server.taliesin]
 command = "taliesin"
 args = ["lsp"]
@@ -407,8 +453,8 @@ somewhere and wonder why your document is grey:
 
 So outside VS Code, point your editor at **Markdown** for the colours (as the Helix
 snippet above does) and let the LSP supply everything Markdown cannot know. You lose
-highlighting on the `.tmd`-specific syntax — `::: {.callout-note}` fences, `#|` cell
-options, `[@citekey]`, `@fig-` references — and keep it for the Markdown the rest of the
+highlighting on the `.tmd`-specific syntax (`::: {.callout-note}` fences, `#|` cell
+options, `[@citekey]`, `@fig-` references) and keep it for the Markdown the rest of the
 document is.
 
 **Zed needs an extension, and there is not one yet.** Zed's `lsp` setting re-points a
@@ -440,6 +486,7 @@ which is where the same findings are already checked before publishing.
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
+| `NO_COLOR` | Any value disables ANSI colour in the console output of every verb; colour is off anyway when the stream is not a terminal |
 | `TALIESIN_MERMAID_URL` | Point the Mermaid loader at a different copy of the library. Builds and previews are already offline without it (the library is vendored and either inlined, written into the output folder, or served from a same-origin route), so this is for pinning a specific Mermaid version or serving your own copy; on load failure a visible `[data-mermaid-error]` banner shows the diagram source |
 
 Without a kernel, cells render as highlighted source and the preview shows a

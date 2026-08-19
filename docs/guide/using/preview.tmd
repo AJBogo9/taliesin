@@ -5,11 +5,8 @@ description: "What survives a save (scroll position, kernel state, a running can
 
 The reason Taliesin exists is the edit loop: change the source, and the preview
 reflects it *immediately*, without reloading the page, losing your scroll, or
-resetting any live content already on screen.
-
-"Immediately" is the one word in this chapter worth checking rather than believing.
-@sec-speed gives it in absolute milliseconds on one machine, with no comparison ratio
-attached.
+resetting any live content already on screen. See @sec-speed for what
+"immediately" is in milliseconds.
 
 ## Incremental updates
 
@@ -37,10 +34,8 @@ add cursor sync without forking anything. The in-repo **VS Code companion**
 ## Click-to-source is VS Code only
 
 The deep link is `vscode://` and there is no configuration key for it, so Ctrl-click does
-nothing in Neovim, Helix or Zed. Those editors get everything `taliesin lsp` serves
-(completion, hover, go-to-definition, outline, folding, diagnostics) and the live preview
-itself; it is the browser→editor jump that has one target. An editor that hosts the preview
-and speaks the `tali-goto` `postMessage` protocol gets the jump without the deep link.
+nothing in Neovim, Helix or Zed. Those editors get everything `taliesin lsp` serves and the
+live preview itself; it is the jump from the page back to the editor that has one target.
 :::
 
 **Getting the companion.** It is **not on the VS Code Marketplace**; you build the `.vsix`
@@ -52,8 +47,7 @@ code --install-extension taliesin-companion-<version>.vsix
 ```
 
 Then make sure the `taliesin` binary is on your `PATH`, or point the extension's
-`taliesin.path` setting at it. The companion versions independently of the tool, so its
-number will not match `taliesin --version`; `editor/vscode/README.md` says why.
+`taliesin.path` setting at it.
 
 **A chapter of a book previews as the book.** Open the preview on any page that lives
 under a `_site.yml` and the companion serves the whole project and opens it at that
@@ -61,43 +55,30 @@ page's URL, so you get the nav, the breadcrumb and working cross-page links inst
 orphan page. One server serves every chapter: opening a second one reveals the preview you
 already have, moved to that chapter. Moving your cursor into another chapter's file moves
 the preview to it too, and Ctrl-clicking a block resolves against the page you are looking
-at, not the one you opened. Nothing to configure — whether a document is in a project is a
-fact about the directory it sits in.
+at, not the one you opened.
 
-The two directions have names, and they behave differently on purpose. **Inverse search**
-(preview → editor) is the Ctrl-click above. **Forward search** (editor → preview) is split:
-moving your cursor *marks* the matching block in the preview and deliberately does **not**
-move the page, so scrolling somewhere to compare two figures survives your next keystroke.
-When you do want the preview to come to you, press **`Ctrl+Alt+J`**
-(**Taliesin: Reveal Cursor in Preview**), which scrolls it there and leaves the keyboard
-focus in your editor.
+The other direction, editor to preview, is split. Moving your cursor *marks* the matching
+block in the preview and deliberately does **not** move the page, so scrolling somewhere to
+compare two figures survives your next keystroke. When you do want the preview to come to
+you, press **`Ctrl+Alt+J`** (**Taliesin: Reveal Cursor in Preview**), which scrolls it
+there and leaves the keyboard focus in your editor.
 
 ::: {.callout-tip}
 ## Reuse the editor tab instead of opening a new one
 
-The `vscode://` deep link routes through VS Code's normal "open in the active editor
-group" logic, so by default a second Ctrl-click can land the same file in a *new* tab
-rather than moving the cursor in the tab you already have open. VS Code offers no URL
-flag to change this, but one editor setting fixes it: add
-`"workbench.editor.revealIfOpen": true` to your `settings.json` and repeated
-Ctrl-clicks reveal the existing tab and jump the cursor instead of duplicating it. (The
-VS Code companion opens through the editor API and reuses the tab without this
-setting.)
+If repeated Ctrl-clicks from a browser preview open new tabs instead of moving the cursor
+in the tab you already have, add `"workbench.editor.revealIfOpen": true` to your
+`settings.json`. The companion does not need it.
 :::
 
 ## What the editor does while you write
-
-The companion is a thin client over `taliesin lsp`, so everything below is answered by the
-same binary that builds the document and enforced by the same vocabulary the build uses. A
-completion cannot suggest something the validator would reject.
 
 - **Completion** for front-matter keys and values, cell options and their values, cell
   languages, div classes, cross-references, citations, shortcode names, anchor ids, math
   commands, and file paths anywhere a path is legal.
 - **Div attributes, narrowed to the class you wrote.** `::: {.callout-note ` offers
-  `title=` and `collapse=` — the two a callout reads. A plain div offers `layout-ncol=`
-  and neither of those, because a `collapse=` outside a callout would be recommending
-  something that renders no differently.
+  `title=` and `collapse=`, the two a callout reads; a plain div offers `layout-ncol=`
+  and neither of those.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
 - **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
@@ -111,9 +92,7 @@ are the protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or
 
 - **Folding** follows the document's own structure instead of indentation. Front matter,
   each heading down to the next of equal or shallower level, `:::` divs and code fences
-  each fold as a unit. Without it an editor folds `.tmd` by *indentation*, which means
-  nothing in a format whose nesting is heading level and fences: collapsing a chapter to
-  its headings is the point.
+  each fold as a unit, so you can collapse a chapter to its headings.
 - **Go to definition crosses files.** `F12` on `@sec-priors` jumps to the chapter that
   defines it, not just to a definition in the file you are in. Your **open buffer still
   wins**: an anchor you just typed and have not saved resolves to where you typed it, never
@@ -129,16 +108,13 @@ you have never opened. A `suggestion` lands as information rather than as an err
 advice is not a defect.
 
 That task is the one thing the squiggles cannot do for you: the language server only sees
-files you have opened, so a chapter you have not touched all week is invisible to it. (Until
-2026-08-08 the companion also badged every `.tmd` in the Explorer with its worst severity,
-re-linting the whole project on every save to decorate a tree you are not reading. The
-Problems panel holds the same findings, on demand.)
+files you have opened, so a chapter you have not touched all week is invisible to it.
 
 ## The dev menu
 
 Every live preview carries a small **dev menu**: a `</>` button tucked in the
-bottom corner of the page, styled after the Next.js dev indicator. It belongs to
-the preview only, so a static `build` never ships it.
+bottom corner of the page. It belongs to the preview only, so a static `build`
+never ships it.
 
 The button itself is a **connection light**: a coloured dot that reads *live* while
 the websocket is connected, *reconnecting* while the server restarts, and *error*
@@ -152,9 +128,8 @@ Click it to expand a panel with the preview-only tools:
   `TALIESIN_PYTHON` or install a missing package and want a clean replay.
 - A reminder that **Ctrl-click (Cmd-click on Mac)** opens any block's source in
   your editor.
-- A **theme toggle** (light/dark). It is the only theme control anywhere in
-  Taliesin and it belongs to the preview alone, so a built page never carries one:
-  what a reader sees is their own device setting.
+- A **theme toggle** (light/dark), for the preview only: see
+  [Theming](theming.tmd) for what a reader's built page does instead.
 - The **diagnostics** list (detailed below), each entry click-to-source, with the
   button's badge tracking the count.
 
@@ -171,21 +146,14 @@ The loop surfaces what is happening without you watching the terminal:
   last good content, so a broken save is impossible to miss. It clears on the
   next successful render.
 - The watcher follows the whole document, not just the served file: editing an
-  included subsection, the `.bib`, or **theme CSS** refreshes the preview too, and
-  a theme/CSS edit **hot-swaps in place** (no reload), so your scroll position
-  survive.
+  included subsection or the `.bib` re-renders the pages that depend on it.
 
 ## Reading on any screen
 
-The reading layout is responsive, so the same document works on a laptop and a
-phone. Wide tables, long code, display math, and embedded canvases scroll within
-their own box instead of stretching the page; type and spacing tighten on narrow
-screens; in-page links scroll smoothly; and everything honours
-`prefers-reduced-motion`.
-
-On a phone the table of contents drops the sticky sidebar and appears inline,
-after the article, rather than floating alongside it — there is no separate
-button or sheet to open.
+The reading layout is responsive: wide tables, long code, display math and embedded
+canvases scroll within their own box instead of stretching the page, motion honours
+`prefers-reduced-motion`, and on a phone the table of contents leaves the sticky
+sidebar and appears inline after the article.
 
 The preview binds to **loopback only**, so it is reachable from the machine running
 it and nowhere else. To read a draft on a phone, `build` it and serve the folder from

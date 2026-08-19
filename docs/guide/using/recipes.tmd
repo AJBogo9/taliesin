@@ -5,12 +5,9 @@ description: "Whole working projects to copy rather than fragments to assemble: 
 
 Two complete, copyable setups: a personal blog and a documentation book. Each one shows
 the directory layout, the config, and the key front matter, with notes on the parts
-that bite. Copy the closest one and edit it down.
-
-Every key used below is real. If you want the full list of what each one does, the
-[configuration](../reference/frontmatter.tmd) and [cell options](../reference/cell-options.tmd)
-references are the source of truth; this page is the "here is a working whole"
-companion to them.
+that bite. Copy the closest one and edit it down; the
+[configuration](../reference/frontmatter.tmd) and
+[cell options](../reference/cell-options.tmd) references have the full list of keys.
 
 ## Books, sites, and the difference
 
@@ -24,9 +21,6 @@ The two forms navigate differently, too. A page with `toc: true` gets a table of
 contents built from its own headings, a sidebar rail on a wide screen. A book gets no
 such rail: its Chapters drawer lists every chapter instead, since what a reader
 of a book needs is the neighbouring chapters, not the current one's headings.
-
-The two recipes below are one of each: a blog built from pages and a `listing:`, and a
-documentation book built from a `chapters:` list.
 
 ## 1. A personal blog
 
@@ -60,7 +54,6 @@ title: "Jane Doe"
 description: "Notes on things I'm learning"
 url: "https://example.com"
 favicon: favicon.svg
-toc: true
 nav:
   - { text: Blog, href: blog.tmd }
   - { text: About, href: about.tmd }
@@ -88,8 +81,6 @@ listing:
   type: grid
 ---
 
-I write about things I am working to understand.
-
 ## Recent posts
 
 ::: {#recent}
@@ -98,10 +89,8 @@ I write about things I am working to understand.
 [View all posts →](blog.tmd)
 ```
 
-The full index, `blog.tmd`, is a listing with nothing else on the page. `page-layout:
-full` widens the column so the card grid breathes, and `title-block-style: none`
-keeps the title metadata (for the tab and social card) while hiding the big visible
-`<h1>`:
+The full index, `blog.tmd`, is a listing-only page, widened, with the visible `<h1>`
+suppressed:
 
 ```yaml
 ---
@@ -114,8 +103,8 @@ listing:
 ---
 ```
 
-Each post supplies what the card shows — title, date, description, image, and a
-badge per category — through its own front matter:
+Each post supplies what the card shows (title, date, description, image, and a badge
+per category) through its own front matter:
 
 ```yaml
 ---
@@ -129,10 +118,9 @@ categories: [machine learning, statistics]
 ```
 
 ::: {.callout-note}
-Newest first is the only order, and there is nothing to configure (the `sort:` key was
-retired on 2026-08-02 because every listing that set it wrote the default). A post with
-no `date:` still appears, but undated posts cluster deterministically at the end and ties
-break on file path, so give every post a date if order matters.
+Newest first is the only order, and there is nothing to configure. A post with no `date:`
+still appears, but undated posts cluster at the end and ties break on file path, so date
+every post whose order matters.
 :::
 
 ## 2. A documentation book
@@ -150,11 +138,10 @@ handbook/
 └── reference.tmd
 ```
 
-The presence of `chapters:` in `_site.yml` is what makes the project a book: no
-`type:` key needed. Taliesin numbers the chapters, builds the Chapters drawer, wires
-prev/next navigation, and resolves cross-references across chapters. A chapter entry
-is a bare filename, a `{ part:, chapters: }` group header, or a `{ file:, text: }`
-mapping whose `text:` overrides the chapter label:
+Taliesin numbers the chapters, builds the Chapters drawer, wires prev/next navigation,
+and resolves cross-references across chapters. The full grammar of a chapter entry is in
+[Configuration](../reference/frontmatter.tmd#project-site-yml); the `_site.yml` for the
+tree above is:
 
 ```yaml
 title: "The Handbook"
@@ -170,9 +157,9 @@ chapters:
   - reference.tmd
 ```
 
-The Chapters drawer is a book's whole navigation: it lists every chapter, so a book has
-no right-hand "on this page" rail (`toc:` is a website key and warns here). The Cmd-K
-(Ctrl-K) search palette indexes every chapter. The book output directory defaults to
+The Chapters drawer is a book's whole navigation, so a chapter's own `toc:` is simply
+ignored: it is a page key, and it is not a `_site.yml` key at all. The Cmd-K (Ctrl-K)
+search palette indexes every chapter, and the book output directory defaults to
 `_book/` instead of `_site/`. The chapter pages themselves need no special front
 matter; a plain `title:` is enough:
 
@@ -183,24 +170,4 @@ title: "Introduction"
 ```
 
 Without an explicit `text:` override, the chapter label is the chapter's first `#`
-heading, then its front-matter `title:`, then the file name. These very docs are a
-book built this way: open the Chapters drawer and press Cmd-K to try the search.
-
-::: {.callout-note}
-There is no `_metadata.yml` cascade. The root `_site.yml` sets defaults (like
-`bibliography:`) and a chapter's own front matter overrides them, two levels, no
-directory merge.
-:::
-
-## Where to go next
-
-- [Running code](code.tmd): cells, outputs, and the execution cache for any recipe
-  with `{python}`.
-- [Interactive content](interactive.tmd): live `{js}` cells and reactive inputs to
-  add to a post.
-- [Configuration reference](../reference/frontmatter.tmd): every per-page `---` key
-  the recipes set (`listing:`, `hero:`, `image:`, and the rest) and every `_site.yml`
-  key, in full.
-- [Cell options reference](../reference/cell-options.tmd): every `#|` cell option,
-  including the `label:`/`fig-cap:` keys that number a figure produced by code.
-- [CLI reference](../reference/cli.tmd): every command and flag used above.
+heading, then its front-matter `title:`, then the file name.

@@ -65,10 +65,7 @@ option it does not implement) is reported as a **located warning** with a
 notes.tmd:14: unknown cell option `labl` (did you mean `label`?)
 ```
 
-The cell still renders exactly as before, the warning just points at the line. In
-live preview you can click it straight to the source. The build surfaces the
-same warning as a publish gate. (Front-matter and `_site.yml` keys are validated
-the same way; see the [Configuration reference](frontmatter.tmd).)
+The cell still renders exactly as before; the warning just points at the line.
 
 ## Every option
 
@@ -110,27 +107,15 @@ The document-wide `execute:` default (`cache:` only) is in the
 
 ## `{js}` reactive options
 
-The three `{js}`-only options wire a cell into the in-browser reactive graph
-instead of the kernel. They run client-side, so `echo` / `include` / `cache` (which
-are about the Python kernel) are not honoured on a `{js}` cell. A `{js}` cell
-renders only its output container; its source is never shown as a listing, so there
-is nothing for `echo` to hide.
+`name`, `viewof` and `input` wire a cell into the in-browser reactive graph instead of
+the kernel. They run client-side, so `echo` / `include` / `cache` (which are about the
+Python kernel) are not honoured on a `{js}` cell: it renders only its output container,
+and its source is never shown as a listing, so there is nothing for `echo` to hide.
 
-- `//| viewof: NAME` makes the cell return a DOM control and registers its value
-  under `NAME`. Other cells read it with `tali.value("NAME")`.
-- `//| name: NAME` publishes the cell's return value under `NAME` for other cells.
-  Other cells read it with `tali.get("NAME")`.
-- `//| input: A, B` re-runs the cell whenever input `A`, input `B`, or a matching
-  Python `define` value changes.
+The two readers of the graph are not interchangeable. `tali.value("NAME")` reads an
+input value: a `viewof`, an `{{< input >}}` control, or a `define` value.
+`tali.get("NAME")` reads a value published by another cell's `//| name:`.
 
-The two readers are not interchangeable. `tali.value("NAME")` reads an input value: a
-`viewof`, an `{{< input >}}` control, or a `define` value. `tali.get("NAME")` reads
-a value published by another cell's `//| name:`.
-
-A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control
-defines is flagged as a dangling reactive input, and a cycle among
-`{js}` cells (each consuming the other) is flagged too. The dangling-input check is
-suppressed when the doc has a `{python}` cell that calls `define(`, since that call
-could publish the name at runtime; the cycle check always runs. See
-[Interactive and explorable documents](../using/interactive.tmd) for the full
-reactive walkthrough.
+A dangling `//| input:` and a cycle between `{js}` cells are both publish-blocking lints,
+described in the [CLI reference](cli.tmd). For the full reactive walkthrough, see
+[Interactive and explorable documents](../using/interactive.tmd).

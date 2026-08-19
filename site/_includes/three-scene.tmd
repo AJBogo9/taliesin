@@ -1,6 +1,5 @@
 ```{js}
 //| name: makeScene3D
-//| echo: false
 
 return async function makeScene3D(buildScene, invalidation, opts = {}) {
   const THREE = await import("https://esm.sh/three@0.163.0");
@@ -19,7 +18,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     maxDistance      = 20,
     ambientIntensity = 1.0,
     onFrame          = null,
-    controls         = null,   // NEW: [{type:'select'|'range', ...}]
+    controls         = null,   // [{ type: 'range', label, min, max, step, value, onInput }]
     autoRotate       = false,
   } = opts;
 
@@ -38,47 +37,6 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   camera.position.set(...cameraPos);
   scene.add(new THREE.AmbientLight(0xffffff, ambientIntensity));
 
-  const O = new THREE.Vector3(0, 0, 0);
-
-  // A sprite label BAKES its text into a canvas texture, so a theme-following label has to
-  // be repainted on a toggle, not merely re-rendered. `cssColor` is optional: omit it and
-  // the label takes the page's text colour and keeps following it across a theme change.
-  const themedLabels = [];
-  const pageFg = () =>
-    getComputedStyle(document.documentElement).getPropertyValue("--tali-fg").trim() || "#1a1a1a";
-
-  function paintLabel(canvas, text, cssColor) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "bold 26px sans-serif";
-    ctx.fillStyle = cssColor;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    // The 320px texture is minified ~3x on screen, so mipmapping thins the glyphs toward
-    // the background: on the old dark slab that only dulled them, on paper it washed them
-    // out. Stroking before the fill keeps enough ink to survive the downsample.
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = cssColor;
-    ctx.strokeText(text, 160, 36);
-    ctx.fillText(text, 160, 36);
-  }
-
-  function spriteLabel(text, cssColor, scale = 1.6) {
-    const c = document.createElement("canvas");
-    c.width = 320; c.height = 72;
-    paintLabel(c, text, cssColor || pageFg());
-    const tex = new THREE.CanvasTexture(c);
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex, transparent: true, depthTest: false
-    }));
-    spr.scale.set(scale, 0.36, 1);
-    if (!cssColor) themedLabels.push(() => { paintLabel(c, text, pageFg()); tex.needsUpdate = true; });
-    return spr;
-  }
-
-  function onThemeChange() { for (const repaint of themedLabels) repaint(); }
-  window.addEventListener("tali:themechange", onThemeChange);
-
   const ctrl = new OrbitControls(camera, renderer.domElement);
   ctrl.target.set(...target);
   ctrl.enableDamping = true;
@@ -88,51 +46,8 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   ctrl.autoRotate      = autoRotate;
   ctrl.autoRotateSpeed = 0.6;
 
-  // NEW: dispose + repopulate a group without tearing down the scene
-  function rebuild(group, populate) {
-    for (let i = group.children.length - 1; i >= 0; i--) {
-      const c = group.children[i];
-      c.geometry?.dispose?.();
-      if (Array.isArray(c.material)) c.material.forEach((m) => m.dispose());
-      else c.material?.dispose?.();
-      group.remove(c);
-    }
-    populate(group);
-  }
-
-  // NEW: fit the camera to an object's bounding box
-  function frameObject(obj, fit = 1.4) {
-    const box    = new THREE.Box3().setFromObject(obj);
-    const size   = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const dist   = (maxDim / 2) / Math.tan((fov * Math.PI) / 360) * fit;
-    ctrl.target.copy(center);
-    const dir = new THREE.Vector3(1, 0.6, 1).normalize();
-    camera.position.copy(center).addScaledVector(dir, dist);
-    ctrl.minDistance = dist * 0.25;
-    ctrl.maxDistance = dist * 5;
-    camera.near = Math.max(0.01, dist / 100);
-    camera.far  = dist * 100;
-    camera.updateProjectionMatrix();
-    ctrl.update();
-  }
-
-  // NEW: load a glTF/glb, add to scene, auto-frame
-  async function loadGLTF(url) {
-    const { GLTFLoader } = await import(
-      "https://esm.sh/three@0.163.0/examples/jsm/loaders/GLTFLoader"
-    );
-    const gltf = await new Promise((res, rej) =>
-      new GLTFLoader().load(url, res, undefined, rej)
-    );
-    scene.add(gltf.scene);
-    frameObject(gltf.scene);
-    return gltf.scene;
-  }
-
-  const ctx = { O, spriteLabel, ctrl, camera, renderer, scene, rebuild, frameObject, loadGLTF };
-  await buildScene(scene, THREE, ctx);   // NEW: await — buildScene may be async
+  // `await`: buildScene may be async
+  await buildScene(scene, THREE, { ctrl, camera, renderer, scene });
 
   ctrl.update();
 
@@ -148,7 +63,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   container.style.cssText =
     `position:relative;display:inline-block;width:${width}px;max-width:100%;`;
 
-  // NEW: optional controls toolbar (rendered above the canvas)
+  // optional controls toolbar (rendered above the canvas)
   if (controls && controls.length) {
     const bar = document.createElement("div");
     bar.style.cssText =
@@ -157,29 +72,17 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
       const wrap = document.createElement("label");
       wrap.style.cssText = "display:inline-flex;gap:6px;align-items:center;";
       wrap.append(c.label + ":");
-      if (c.type === "select") {
-        const sel = document.createElement("select");
-        for (const o of c.options) {
-          const opt = document.createElement("option");
-          opt.value = o.value; opt.textContent = o.label;
-          if (o.value === c.value) opt.selected = true;
-          sel.appendChild(opt);
-        }
-        sel.addEventListener("change", () => c.onChange(sel.value));
-        wrap.appendChild(sel);
-      } else if (c.type === "range") {
-        const fmt = (v) => (Math.round(+v * 100) / 100).toString();
-        const inp = document.createElement("input");
-        inp.type = "range";
-        inp.min = c.min; inp.max = c.max; inp.step = c.step ?? 1; inp.value = c.value;
-        const out = document.createElement("output");
-        out.textContent = fmt(c.value);
-        inp.addEventListener("input", () => {
-          out.textContent = fmt(inp.value);
-          c.onInput(parseFloat(inp.value));
-        });
-        wrap.append(inp, out);
-      }
+      const fmt = (v) => (Math.round(+v * 100) / 100).toString();
+      const inp = document.createElement("input");
+      inp.type = "range";
+      inp.min = c.min; inp.max = c.max; inp.step = c.step ?? 1; inp.value = c.value;
+      const out = document.createElement("output");
+      out.textContent = fmt(c.value);
+      inp.addEventListener("input", () => {
+        out.textContent = fmt(inp.value);
+        c.onInput(parseFloat(inp.value));
+      });
+      wrap.append(inp, out);
       bar.appendChild(wrap);
     }
     container.appendChild(bar);
@@ -191,10 +94,8 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   // instead of being a fixed dark chip sitting on a white page.
   const btnStyle = [
     "padding:4px 10px", "cursor:pointer",
-    // OPAQUE, and in the theme's own mono. This was a translucent ground with a
-    // a blur behind it — the last one in the tree after spec §3 banned them,
-    // surviving here because the tell probe scans stylesheets and this is an authored `.tmd`.
-    // A <button> also inherits no font, so "Fullscreen" rendered in the UA's Arial.
+    // Opaque, in the theme's own mono: a <button> inherits no font, so without this
+    // the label rendered in the UA's default face.
     "background:var(--tali-bg)",
     "color:var(--tali-fg)",
     "font:400 .78rem/1.3 var(--tali-font-mono)",
@@ -237,7 +138,6 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     ctrl.dispose();
     renderer.dispose();
     document.removeEventListener("fullscreenchange", onFSChange);
-    window.removeEventListener("tali:themechange", onThemeChange);
   });
 
   return container;

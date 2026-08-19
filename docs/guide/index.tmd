@@ -7,12 +7,9 @@ description: "The user guide: how to write, preview, execute and publish a .tmd 
 
 **A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
 posts, papers, books, and whole websites) with executable code blocks and an
-editing loop that updates the instant you save.**
-
-Taliesin is built around one idea: writing technical content should feel as
-immediate as editing code. You save the file, and only the block you changed
-re-renders: your scroll position, your live 3D canvas, your warm kernel all stay
-exactly as they were. No cold start, no full-page flash, no waiting.
+editing loop that updates the instant you save.** It reads the Markdown/Pandoc
+syntax you already know, and makes one trade: do one thing, author HTML, and make
+the edit loop instant.
 
 ## Three things it gets right
 
@@ -30,67 +27,34 @@ That loop is the whole product; everything below is what you can put inside it.
 
 This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
-companion book, [Internals](https://internals.taliesin.sh/), covers how it works inside.
-
-## Coming from Jupyter?
-
-Taliesin reads the Markdown/Pandoc `.tmd` syntax you already know, but it makes a
-particular trade: **do one thing, author HTML, and make the edit loop instant.**
-
-- vs **Jupyter**: you write in plain text files (versionable, diffable) with real
-  prose, math, citations, and cross-references (not notebook JSON) while still
-  getting live, cached, in-place code execution.
-
-It is intentionally small: one author's HTML workflow, kept fast.
+companion book, [Internals](https://internals.taliesin.sh/), covers how it works inside,
+and the [Gallery](https://gallery.taliesin.sh/) has whole projects you can open and read.
 
 ## Get running
 
-taliesin builds from source with a Rust toolchain (`cargo build --release`) — a
-first build takes a few minutes; after that the binary is warm. Put
-`target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script that
-rebuilds on source changes before running it) so you can call it from
-anywhere. To execute code cells you also point it at a Jupyter kernel: see
-[Executable content](using/code.tmd#code-cells).
-
 ```sh
-# live preview, updating as you save
-cargo run -p taliesin-server -- preview post.tmd 4321
-
-# build a self-contained HTML file (code cells are executed)
-cargo run -p taliesin-server -- build post.tmd
-
-# point either command at a directory to get a whole multi-page site
-cargo run -p taliesin-server -- preview blog/
+taliesin preview post.tmd 4321   # live preview, updating as you save
+taliesin build post.tmd          # one self-contained HTML file, code cells executed
+taliesin preview blog/           # a directory instead: a whole multi-page site
 ```
 
-Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with
-your scroll preserved. The server binds to loopback only.
-
-One block model drives every output, a standalone page, a site page, or a book chapter:
-
-```{mermaid}
-flowchart LR
-  Q[".tmd"] --> BM["block model"]
-  BM --> H["HTML page"]
-  BM --> S["website + nav"]
-  BM --> K["book + TOC"]
-```
+Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with your
+scroll preserved. The server binds to loopback only. [Getting
+started](using/getting-started.tmd) installs the binary and sets up a kernel.
 
 ## What it is (and isn't)
 
 ::: {.callout-note}
 ## Scope
 
-taliesin renders to **HTML only**: there is no PDF path and no format matrix. It
-is a focused tool for one author's writing workflow. The "spec" is a small corpus
-of real documents: when those render
-correctly, the tool is done. That focus is the point: it stays fast, small, and
-predictable.
+Taliesin renders to **HTML only**: there is no PDF path and no format matrix. It
+is one author's writing workflow, kept small and fast on purpose. [Choosing
+Taliesin](using/choosing.tmd) is the chapter on what that buys and what it costs.
 :::
 
-The rest of this guide tours what you can put on a page: [the live preview
-loop](using/preview.tmd), [executable content](using/code.tmd) (Python cells),
-[interactive content](using/interactive.tmd) (`{js}` cells, 3D graphics), [rich
+Start with [Getting started](using/getting-started.tmd). The rest of this guide
+tours what you can put on a page: [the live preview loop](using/preview.tmd), [executable
+content](using/code.tmd) (Python cells), [interactive
+content](using/interactive.tmd) (`{js}` cells, 3D graphics), [rich
 writing](using/writing.tmd) (math, diagrams, figures, citations), and [recipes for
-books and sites](using/recipes.tmd). For how
-Taliesin works inside, read the companion [Internals](https://internals.taliesin.sh/) book.
+books and sites](using/recipes.tmd).

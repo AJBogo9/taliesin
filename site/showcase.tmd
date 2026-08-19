@@ -1,13 +1,11 @@
 ---
 title: "See it live"
-description: "Interactive demos of Taliesin, every one a real capability with its source beside it."
+description: "Interactive demos of Taliesin, every one a real capability running live in your browser."
 page-layout: full
 ---
 
-Everything below runs in your browser, right here on this page, which is itself a
-Taliesin document. Each demo shows its **Result** and then the real **Source** that
-produced it, so what you scroll past is the exact `.tmd` cell. No screenshots, no
-video.
+Everything below runs in your browser, on a page that is itself a Taliesin document.
+Its full source is [on GitHub](https://github.com/AJBogo9/taliesin/blob/main/site/showcase.tmd).
 
 {{< include _includes/three-scene.tmd >}}
 
@@ -15,83 +13,15 @@ video.
 
 A parametric wave-interference mesh, rendered with WebGL. Drag to orbit, scroll to
 zoom, and move the sliders to reshape it in real time. The renderer is transparent,
-so it follows the page theme, and the whole thing is the `{js}` cell under
-**Source** below, around forty lines of plain text.
-
-### The surface
+so it follows the page theme. Both 3D demos share a `makeScene3D` helper that
+`{{< include >}}` pulls in from `_includes/three-scene.tmd`; it loads Three.js from
+esm.sh, so the two scenes need network access.
 
 {{< input name="detail" type="slider" min="16" max="80" step="4" value="48" label="detail" >}}
 {{< input name="twist" type="slider" min="0" max="6" step="0.2" value="2" label="twist" >}}
 {{< input name="amplitude" type="slider" min="0" max="1.4" step="0.05" value="0.7" label="amplitude" >}}
 
 ```{js}
-//| echo: false
-const makeScene3D = tali.get("makeScene3D");
-const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const host = document.createElement("div");
-host.style.minHeight = "460px";
-
-const build = async () => {
-  let el;
-  try {
-    let S = null, mesh = null, lastN = -1, lastT = NaN, lastA = NaN;
-    el = await makeScene3D((scene, THREE) => {
-      S = { scene, THREE };
-      const key = new THREE.DirectionalLight(0xffffff, 1.1);
-      key.position.set(4, 6, 5);
-      scene.add(key);
-    }, invalidation, {
-      width: 640, height: 460, cameraPos: [0, 5.5, 7.5],
-      ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
-      onFrame: () => {
-        if (!S) return;
-        const n = Math.round(tali.value("detail") ?? 48);
-        const twist = +(tali.value("twist") ?? 2);
-        const amp = +(tali.value("amplitude") ?? 0.7);
-        if (n !== lastN) {
-          lastN = n; lastT = NaN;
-          if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
-          const geo = new S.THREE.PlaneGeometry(6, 6, n, n);
-          mesh = new S.THREE.Mesh(geo, new S.THREE.MeshStandardMaterial({
-            color: 0x3a5578, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
-          }));
-          mesh.rotation.x = -Math.PI / 2.3;
-          S.scene.add(mesh);
-        }
-        if (twist !== lastT || amp !== lastA) {
-          lastT = twist; lastA = amp;
-          const p = mesh.geometry.attributes.position;
-          for (let i = 0; i < p.count; i++) {
-            const x = p.getX(i), y = p.getY(i), r = Math.hypot(x, y);
-            p.setZ(i, amp * Math.sin(r * twist) * Math.cos(x * 0.9));
-          }
-          p.needsUpdate = true;
-          mesh.geometry.computeVertexNormals();
-        }
-      },
-    });
-  } catch (e) {
-    el = document.createElement("p");
-    el.className = "tali-muted";
-    el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
-  }
-  host.replaceChildren(el);
-};
-
-if (reduce) build();
-else {
-  const io = new IntersectionObserver((es, o) => {
-    if (es[0].isIntersecting) { o.disconnect(); build(); }
-  });
-  io.observe(host);
-  invalidation.then(() => io.disconnect());
-}
-return host;
-```
-
-### The surface, in source
-
-```js
 //| echo: false
 const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -164,8 +94,6 @@ the vendored Observable Plot, and both react to the same slider:
 
 $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 
-### The chart
-
 {{< input name="harmonics" type="slider" min="1" max="24" step="1" value="5" label="N (harmonics)" >}}
 
 ```{js}
@@ -173,31 +101,37 @@ $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 //| echo: false
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
-  d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+  d3.range(1, N + 1).reduce(
+    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1),
+    0));
 return Plot.lineY(ys, { curve: "basis", stroke: "#3A5578" })
-  .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
+  .plot({ height: 240, marginLeft: 40,
+          x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
-### The chart, in source
+### The cell that draws it
+
+A `{js}` cell renders only its output, never a listing of itself, so the cell above
+is reprinted here as it appears in the `.tmd`:
 
 ```js
 //| input: harmonics
 //| echo: false
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
-  d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+  d3.range(1, N + 1).reduce(
+    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1),
+    0));
 return Plot.lineY(ys, { curve: "basis", stroke: "#3A5578" })
-  .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
+  .plot({ height: 240, marginLeft: 40,
+          x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
 ## Chaos you can hold in your hand
 
 The Lorenz attractor, integrated live in the browser and drawn as it grows. Drag to
 orbit, and move the σ / ρ / β sliders to watch a deterministic system fold into a
-two-winged strange attractor, and then collapse. The whole thing is the `{js}` cell
-under **Source** below.
-
-### The attractor
+two-winged strange attractor, and then collapse.
 
 ```{js}
 //| echo: false
@@ -262,76 +196,3 @@ makeScene3D((scene, THREE, ctx) => {
 
 return el;
 ```
-
-### The attractor, in source
-
-```js
-//| echo: false
-
-const makeScene3D = tali.get("makeScene3D");
-
-const P = { sigma: 10, rho: 28, beta: 8 / 3 };
-const N = 8000, dt = 0.006, SCALE = 0.14;
-
-// integrate the Lorenz system (RK4) into a flat Float32Array of xyz points
-function integrate({ sigma, rho, beta }) {
-  const f = (s) => [
-    sigma * (s[1] - s[0]),
-    s[0] * (rho - s[2]) - s[1],
-    s[0] * s[1] - beta * s[2],
-  ];
-  let s = [0.1, 0, 0];
-  const pts = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) {
-    const k1 = f(s);
-    const k2 = f(s.map((v, j) => v + dt / 2 * k1[j]));
-    const k3 = f(s.map((v, j) => v + dt / 2 * k2[j]));
-    const k4 = f(s.map((v, j) => v + dt * k3[j]));
-    s = s.map((v, j) => v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]));
-    pts[i * 3 + 0] = s[0] * SCALE;
-    pts[i * 3 + 1] = (s[2] - 25) * SCALE;
-    pts[i * 3 + 2] = s[1] * SCALE;
-  }
-  return pts;
-}
-
-let geom, drawn = 0, THREEref;
-
-function rebuildLine() {
-  const pts = integrate(P);
-  geom.setAttribute("position", new THREEref.BufferAttribute(pts, 3));
-  geom.setDrawRange(0, 0);
-  drawn = 0;
-}
-
-const el = document.createElement("div");
-
-makeScene3D((scene, THREE, ctx) => {
-  THREEref = THREE;
-  geom = new THREE.BufferGeometry();
-  const mat = new THREE.LineBasicMaterial({ color: 0x3f7fbf });
-  scene.add(new THREE.Line(geom, mat));
-  rebuildLine();
-}, invalidation, {
-  cameraPos: [0, 0, 9], fov: 45, target: [0, 0, 0],
-  minDistance: 3, maxDistance: 25,
-  onFrame: () => { if (!geom) return; drawn = Math.min(drawn + 40, N); geom.setDrawRange(0, drawn); },
-  controls: [
-    { type: "range", label: "σ", min: 1, max: 20, step: 0.5, value: P.sigma,
-      onInput: (v) => { P.sigma = v; rebuildLine(); } },
-    { type: "range", label: "ρ", min: 1, max: 50, step: 1, value: P.rho,
-      onInput: (v) => { P.rho = v; rebuildLine(); } },
-    { type: "range", label: "β", min: 0.5, max: 5, step: 0.1, value: P.beta,
-      onInput: (v) => { P.beta = v; rebuildLine(); } },
-  ],
-}).then((node) => el.appendChild(node));
-
-return el;
-```
-
-## It is all just Taliesin
-
-Every demo on this page is plain text in one `.tmd` file, served by Taliesin itself,
-exactly like this whole site. Nothing here is a screenshot or a recording. See the
-full feature set on the [Features](features.tmd) page, or open the **Guide** in the
-nav to start writing your own.

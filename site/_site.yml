@@ -14,8 +14,6 @@ favicon: favicon.svg
 
 nav:
   left:
-    - { text: "Features", href: features.tmd }
-    - { text: "Document types", href: formats.tmd }
     - { text: "See it live", href: showcase.tmd }
     - { text: "Gallery", href: "https://gallery.taliesin.sh/" }
     - { text: "Guide", href: "https://guide.taliesin.sh/" }

@@ -26,13 +26,11 @@ a rewrite. Nothing clever lives in the client.
 Three properties fall out of that design, and they are what the rest of this book
 explains in detail:
 
-- **Click-to-source.** Every block carries the source position it came from, so the
-  preview can map any rendered element back to its line, even across included files.
-- **Block-level incremental updates.** A save diffs the new block model against the
-  old and ships only the differences, so live state (scroll position, a spinning 3D
-  canvas, a warm kernel) survives an edit.
-- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean a save
-  re-runs only the code that actually changed.
+- **Click-to-source.** Every block carries the source position it came from.
+- **Block-level incremental updates.** A save ships only the blocks that changed, so
+  live state survives the edit.
+- **No per-edit startup cost.** A warm server and a warm Jupyter kernel, kept across
+  saves.
 
 ## Our running example
 
@@ -61,22 +59,21 @@ system, prose and a heading to render, math to typeset, code to highlight and to
 get diffed, cached, and pushed to the browser. When a chapter needs a concrete
 edit, we turn one knob: the cooling constant `tau`, from 10 to 12.
 
-And because this book is itself built with Taliesin, that cell is not a screenshot.
-The curve below is drawn by running `post.tmd`'s code right here, as the page
-renders, the very pipeline the rest of the book describes:
+And because this book is itself built with Taliesin, that cell is not a screenshot:
+@fig-cooling is drawn by running `post.tmd`'s own code as this page renders, through
+the very pipeline the rest of the book describes.
 
 ```{python}
 #| echo: false
+#| label: fig-cooling
+#| fig-cap: "post.tmd's cooling curve, drawn by running its cell as this page was built."
 import numpy as np
 import matplotlib.pyplot as plt
 
 t = np.linspace(0, 30, 200)
-fig, ax = plt.subplots(figsize=(6, 3.2), tight_layout=True)
-ax.plot(t, 20 + 70 * np.exp(-t / 10), lw=2, color="#5b8cff")  # tau = 10 minutes
-ax.set_xlabel("minutes")
-ax.set_ylabel("temperature (°C)")
-for spine in ("top", "right"):
-    ax.spines[spine].set_visible(False)
+plt.plot(t, 20 + 70 * np.exp(-t / 10))   # tau = 10 minutes
+plt.xlabel("minutes")
+plt.ylabel("temperature (°C)")
 plt.show()
 ```
 
@@ -84,17 +81,15 @@ plt.show()
 
 The chapters build on each other, roughly from the outside in:
 
-- **[Architecture](architecture.tmd)** is the map: the crates, the data flow, and
-  what happens on a save.
-- **[The rendering pipeline](rendering.tmd)** follows a `.tmd` from raw text to a
-  block model to HTML, including the offline-first decisions (math, highlighting and
-  themes all resolved server-side).
-- **[The block model](block-model.tmd)** is the load-bearing data structure, and the
-  websocket message contract that rides on it.
-- **[Code execution & the kernel](execution.tmd)** covers the warm Jupyter kernel,
-  the execution plan, and the persistent output cache.
-- **[Extending Taliesin](extending.tmd)** is the conventions and the two seams meant
-  to be extended.
+- **[Architecture](architecture.tmd)**: the crates, the data flow, a save end to end.
+- **[The rendering pipeline](rendering.tmd)**: raw text to a block model to HTML, with
+  math and highlighting resolved offline.
+- **[The block model](block-model.tmd)**: the load-bearing structure and the websocket
+  contract that rides on it.
+- **[Code execution & the kernel](execution.tmd)**: the warm kernel, the execution plan,
+  the persistent output cache.
+- **[Extending Taliesin](extending.tmd)**: the conventions, and the one seam meant to be
+  extended without touching the core.
 
 If you read only one chapter, read [Architecture](architecture.tmd). It frames
 everything else.

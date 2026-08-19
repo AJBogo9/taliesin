@@ -4,9 +4,16 @@ The Taliesin landing site, **built by Taliesin itself** with **nothing but Markd
 + YAML — no custom CSS**. It's the framework's own dogfood test: if this looks good
 on the defaults, the framework is doing its job.
 
-Pages: `index.tmd` (landing), `features.tmd`, `formats.tmd` and `showcase.tmd`. Config is
+Pages: `index.tmd` (landing) and `showcase.tmd` (the live demos). Config is
 `_site.yml` (native flat schema). There is intentionally no stylesheet. The gallery moved
 out to its own project and domain on 2026-08-16 (`gallery/`, see below).
+
+`features.tmd` and `formats.tmd` were cut on 2026-08-19. Between them, 11 of 16 feature
+boxes restated `index.tmd`, and `formats.tmd` was `index.tmd`'s "three shapes" section
+retold at 2.5x length, section for section. The three facts they uniquely held
+(click-to-source, bundled-not-fetched, host-anywhere output) moved into `index.tmd`, and
+the "Get started" button that only `formats.tmd` carried is now the hero's primary action.
+Anything enumerative belongs one click away on guide.taliesin.sh, not on the landing site.
 
 > Placeholder to update before going live: the GitHub links in `_site.yml`
 > (currently `github.com/AJBogo9/taliesin`). `url:` is now the registered
@@ -17,7 +24,9 @@ out to its own project and domain on 2026-08-16 (`gallery/`, see below).
 - **Hero** — the `hero:` front-matter block (`eyebrow` / `headline` / `lead` /
   `actions`) renders the top of each page. No HTML.
 - **Sections** — plain `##` headings + prose, the way any Taliesin doc reads.
-- **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
+- **Ruled sections** — `::: {.feature-list}` with `::: {.feature}` children (fenced divs).
+  Not cards: `.feature-grid` was retired with the card era and nothing styles it, so a page
+  still authoring it renders a bare `<div>`. A gate in `render/tests.rs` pins that.
 - **Screencasts** — a hand-written `<video>` in a `<figure class="tali-figure">`, which
   base.css frames and captions. One clip per slot: the `{{< video >}}` shortcode and its
   theme-matched light/dark pair were retired on 2026-08-08.
@@ -80,6 +89,15 @@ did not run" placeholders.
 Deploy any `_site/` to any static host with directory indexing.
 
 ## The screencasts
+
+**No page ships one today.** The landing page proved "the output re-runs in place"
+with `assets/live-code-dark.mp4` until 2026-08-19, and a screencast is theme-locked
+while the page's palette follows the reader's device, so a dark capture rendered as a
+black slab for every reader whose OS says light. It was replaced by a real `{python}`
+cell, which is the thing itself rather than a recording of it and costs 745 KB less.
+The three files still in `assets/` are referenced by nothing and predate the rename
+from qmd-fast; the recorder below is kept because the *edit loop* is the one thing a
+static build genuinely cannot show, so a light-and-dark pair may earn its place again.
 
 `assets/{live-edit,live-code}-{light,dark}.mp4` are produced by the scripted
 recorder (non-destructively) from demo specs. The optional 3rd arg picks the theme

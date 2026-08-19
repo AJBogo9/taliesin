@@ -42,8 +42,7 @@ that.
 
 ## How a save flows
 
-Change `tau` from 10 to 12 in `post.tmd` and save. That edit flows through the
-pipeline as @fig-save-flow shows, and crucially, only the **changed** blocks reach
+Change `tau` from 10 to 12 in `post.tmd` and save. Only the **changed** blocks reach
 the preview: the heading and the paragraph stay put, and only the plot the cell
 redraws crosses the wire.
 
@@ -59,18 +58,6 @@ spliced in. (`{js}` cells are the exception: they run in the browser, never
 through `exec.rs`, so a `{js}` block crosses the wire as-is. See
 [Interactive cells](rendering.tmd).)
 
-```{mermaid}
-%%| label: fig-save-flow
-%%| fig-cap: "A save is re-render → execute → diff: outputs are spliced in before the diff runs."
-flowchart LR
-  save["Save .tmd"] --> watch["File watcher<br/>(debounced)"]
-  watch --> parse["Re-render<br/>(parse + block model)"]
-  parse --> exec["Execute cells<br/>(splice output blocks in)"]
-  exec --> diff["Diff by block id"]
-  diff --> ws["Websocket:<br/>changed blocks only"]
-  ws --> dom["Preview updates<br/>in place"]
-```
-
 The same save as an interaction over time, module by module, is @fig-save-seq:
 
 ```{mermaid}
@@ -79,7 +66,7 @@ The same save as an interaction over time, module by module, is @fig-save-seq:
 sequenceDiagram
   autonumber
   participant FS as .tmd file
-  participant SV as serve/mod.rs (watcher)
+  participant SV as serve_site/mod.rs (watcher)
   participant RN as render/ (core)
   participant EX as exec + kernel
   participant DF as diff.rs
@@ -95,26 +82,19 @@ sequenceDiagram
   CL->>CL: swap blocks in place (scroll + live state kept)
 ```
 
-Read the order off the sequence: `render/` produces a block list, `exec.rs`
-consumes *that* list and returns a longer one with output blocks woven in, and
-only then does `diff.rs` run. So `RN -->> EX` and `EX -->> RN` are not a render
-loop; they are the execution step, and the block list `diff.rs` finally sees is
-the post-execution one. This is why an edit to a code cell shows its *new plot*
-incrementally: the cell re-runs, its output block re-renders, and the diff swaps
-just that output element.
-
-The two crates split cleanly: **`taliesin-core` does all the thinking and touches
-no network** (it parses, models, and renders), while **`taliesin-server` is the
-long-running process** (CLI, websocket, file watcher, executor, kernel pool). The
-browser client is a thin layer that mounts blocks and applies the ops the server
-sends.
+The round trip between `render/` and `exec + kernel` in that diagram is the execution
+step, not a render loop: the block list `diff.rs` finally sees is the post-execution one.
 
 One server handles a project and a single document alike (a document resolves to
 the project it belongs to, or becomes a project of itself): navigation between
-pages is an ordinary full page load (no SPA), and only the visited page keeps a
-warm kernel. The multi-page subsystem (page discovery, chrome, cross-page
-references) lives a layer up, in `crates/core/src/site/`, whose `mod.rs` header is
-the entry point to read.
+pages is an ordinary full page load (no SPA), and warm kernels are **pooled**.
+`serve_site/exec_pool.rs` keeps the six most-recently-built pages' executors alive
+(`MAX_WARM_PAGES`) in a deterministic LRU and drops the rest, so revisiting a recent
+chapter reuses its kernel while an unbounded map cannot grow one 80 to 150 MB kernel
+per page visited; an evicted page pays a cold start on its next edit, and nothing
+else. The multi-page subsystem (page discovery, chrome, cross-page references) lives
+a layer up, in `crates/core/src/site/`, whose `mod.rs` header is the entry point to
+read.
 
 Three parts of that pipeline are worth a closer look: the watcher that starts it,
 the isolation that keeps one bad build from taking down the session, and the guards
@@ -134,10 +114,9 @@ without the skip each write would kick a redundant rebuild. The skip list is mat
 against the path *relative to the project root*, never the whole path: the watcher deals
 in absolute event paths, and a project can perfectly well live under a directory someone
 else called `_site` or `.git`. Scanning the whole path vetoed every event in such a
-project, which is hot reload dead, silently, with each page still serving 200. The
-filter as a whole keeps an unrelated save (an editor swap file, a build-output write)
-from triggering a wasteful 0-op rebuild. A burst of saves is debounced so several files
-coalesce into one rebuild.
+project, which is hot reload dead, silently, with each page still serving 200. Unrelated
+saves (an editor swap file, a build-output write) are filtered out, and a burst of
+saves is debounced.
 
 ### Panic isolation
 
@@ -176,15 +155,9 @@ the preview.
 
 ## The codebase map
 
-The dependency shape first, who leans on whom (@fig-modules). The server
-orchestrates and owns the runtime; the core does all the rendering and never
-touches the network; the browser client only mounts blocks and applies ops. Most
-arrows are *uses / calls* (a solid arrow), but watch the dashed one: `exec.rs`
-does not *call* `diff.rs`. The relationship is **data flow**, not a function
-call. `exec.rs` produces the post-execution block list and `serve/mod.rs` /
-`serve_site/mod.rs` then hand it to `diff.rs`. The arrow says "the blocks `exec`
-produces are what `diff` consumes," which is exactly the re-render → execute →
-diff ordering above.
+The dependency shape first, who leans on whom (@fig-modules): the server orchestrates
+and owns the runtime, the core does all the rendering and never touches the network, and
+the browser client only mounts blocks and applies ops.
 
 ```{mermaid}
 %%| label: fig-modules
@@ -197,16 +170,18 @@ flowchart TB
   subgraph server["crates/server · Taliesin (binary)"]
     direction TB
     MAIN["main.rs · CLI"]
-    SRV["serve/mod.rs<br/>shared layer"]
-    SITE["serve_site/mod.rs<br/>site / book"]
+    SITE["serve_site/<br/>THE dev server"]
+    SRV["serve/<br/>shared HTTP + guards"]
+    BLD["build.rs"]
+    LSP["lsp*.rs<br/>offline, kernel-free"]
     PR["protocol.rs<br/>shared ws contract"]
     EX["exec.rs · executor"]
     KR["kernel.rs<br/>warm ZMQ kernel"]
-    MAIN --> SRV
     MAIN --> SITE
-    SRV --> EX
+    MAIN --> BLD
+    MAIN --> LSP
+    SITE --> SRV
     SITE --> EX
-    SRV --> PR
     SITE --> PR
     EX --> KR
   end
@@ -218,7 +193,7 @@ flowchart TB
     SM["site/<br/>multi-page projects"]
     INC["includes.rs"]
     FM["frontmatter.rs"]
-    CI["cite.rs"]
+    CI["cite/"]
     MA["math.rs"]
     HL["highlight.rs"]
     RN --> INC
@@ -229,12 +204,12 @@ flowchart TB
     SM --> RN
   end
 
-  CL <-->|ws JSON| SRV
   CL <-->|ws JSON| SITE
-  SRV --> RN
-  SRV --> DF
+  SITE --> RN
   SITE --> SM
   SITE --> DF
+  BLD --> RN
+  LSP --> RN
   EX -.->|"output blocks<br/>(data flow, not a call)"| DF
 ```
 
@@ -249,7 +224,6 @@ classDiagram
   class RenderedDoc {
     Option~String~ title
     bool toc
-    Vec~Warning~ warnings
     Vec~Block~ blocks
   }
   class Block {
@@ -272,13 +246,7 @@ classDiagram
     Remove
     SetMeta
   }
-  class Warning {
-    String message
-    Option~String~ file
-    Option~u32~ line
-  }
   RenderedDoc "1" *-- "many" Block : blocks
-  RenderedDoc "1" o-- "many" Warning : warnings
   Block "1" o-- "0..1" Cell : cell
   Block ..> BlockOp : diff emits
 ```
@@ -289,7 +257,3 @@ and a second copy is what goes stale. Start at `crates/core/src/render/mod.rs` f
 the pipeline, `crates/core/src/site/mod.rs` for multi-page projects, and
 `crates/server/src/serve_site/mod.rs` for the dev server. Each opens with a header
 describing what it owns.
-
-The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a
-`.tmd` becomes blocks) and [extending Taliesin](extending.tmd) (the conventions
-and the two seams meant to be extended).

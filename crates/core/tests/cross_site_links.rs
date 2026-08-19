@@ -18,6 +18,13 @@
 //!    `url:`. This catches a typo'd or renamed subdomain.
 //! 2. Every path under such a link must exist as a page in the project that declares that
 //!    origin. This is the item-149 guard, restored at full strength.
+//! 3. Every `#fragment` on such a link must be an element id that page actually renders.
+//!    The scan dropped the fragment until 2026-08-19, which left the deep links between the
+//!    two books checked as far as the filename and no further: a renamed heading kept the
+//!    gate green and broke the reader's jump. The id set is read out of the RENDERED page
+//!    through `render::tags`/`render::attrs`, never a substring scan, because these pages
+//!    are documentation about markup and several of them print `id="…"` inside a code
+//!    sample that a naive `find` would accept as the real thing.
 //!
 //! Deliberately NOT a network check: it resolves against the source tree, so it is offline,
 //! deterministic and true before the first deploy exists.
@@ -87,9 +94,10 @@ fn declared_origins() -> BTreeMap<String, PathBuf> {
     out
 }
 
-/// Every `https://…taliesin.sh…` occurrence in `text`, as `(origin, path)`. The path keeps
-/// its leading slash and drops any fragment.
-fn taliesin_links(text: &str) -> Vec<(String, String)> {
+/// Every `https://…taliesin.sh…` occurrence in `text`, as `(origin, path, fragment)`. The
+/// path keeps its leading slash; the fragment is returned separately (empty when absent)
+/// so check 3 can resolve it against the target page.
+fn taliesin_links(text: &str) -> Vec<(String, String, String)> {
     const MARK: &str = "https://";
     let mut out = Vec::new();
     let mut rest = text;
@@ -109,8 +117,15 @@ fn taliesin_links(text: &str) -> Vec<(String, String)> {
         if host != "taliesin.sh" && !host.ends_with(".taliesin.sh") {
             continue;
         }
-        let path = path.split('#').next().unwrap_or("");
-        out.push((format!("{MARK}{host}"), path.to_string()));
+        let (path, fragment) = match path.split_once('#') {
+            Some((p, f)) => (p, f),
+            None => (path, ""),
+        };
+        out.push((
+            format!("{MARK}{host}"),
+            path.to_string(),
+            fragment.to_string(),
+        ));
     }
     out
 }
@@ -129,6 +144,28 @@ fn source_for(path: &str) -> String {
     }
 }
 
+/// Every element id the page at `tmd` renders. Read off the RENDERED body through the
+/// tag walker rather than off the source, so it needs no copy of `slugify`'s rules (a
+/// second copy is a thing that drifts) and so an `id="…"` that a code sample merely
+/// *displays* is text, not an anchor (`escape_html` leaves `\"` alone), which is how the
+/// same substring scan has been the same bug four times elsewhere in this tree.
+fn rendered_ids(tmd: &Path) -> Vec<String> {
+    let Ok(src) = std::fs::read_to_string(tmd) else {
+        return Vec::new();
+    };
+    let base = tmd.parent().unwrap_or(Path::new("."));
+    let html = taliesin_core::render_document_with_includes(&src, base).body_html();
+    let mut out = Vec::new();
+    for tag in taliesin_core::render::tags(&html) {
+        for attr in taliesin_core::render::attrs(&tag) {
+            if attr.name.eq_ignore_ascii_case("id") && !attr.value.is_empty() {
+                out.push(attr.value.to_string());
+            }
+        }
+    }
+    out
+}
+
 #[test]
 fn every_cross_site_link_resolves_to_a_page_of_the_project_that_declares_its_origin() {
     let origins = declared_origins();
@@ -141,6 +178,8 @@ fn every_cross_site_link_resolves_to_a_page_of_the_project_that_declares_its_ori
     );
 
     let mut checked = 0usize;
+    let mut fragments_checked = 0usize;
+    let mut ids: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
     let mut problems: Vec<String> = Vec::new();
 
     for doc in shipped_documents() {
@@ -152,7 +191,7 @@ fn every_cross_site_link_resolves_to_a_page_of_the_project_that_declares_its_ori
             .unwrap_or(&doc)
             .display()
             .to_string();
-        for (origin, path) in taliesin_links(&text) {
+        for (origin, path, fragment) in taliesin_links(&text) {
             checked += 1;
             let Some(project) = origins.get(&origin) else {
                 problems.push(format!(
@@ -176,6 +215,25 @@ fn every_cross_site_link_resolves_to_a_page_of_the_project_that_declares_its_ori
                         .unwrap_or(&target)
                         .display()
                 ));
+                continue;
+            }
+            // Check 3. Only a `.tmd` has ids to render; an asset path has none to check.
+            if fragment.is_empty() || target.extension().is_none_or(|x| x != "tmd") {
+                continue;
+            }
+            fragments_checked += 1;
+            let page_ids = ids
+                .entry(target.clone())
+                .or_insert_with(|| rendered_ids(&target));
+            if !page_ids.iter().any(|id| id == &fragment) {
+                problems.push(format!(
+                    "{rel} links to `{origin}{path}#{fragment}`, and `{}` renders no element \
+                     with that id: the link opens the right page at the wrong place",
+                    target
+                        .strip_prefix(repo_root())
+                        .unwrap_or(&target)
+                        .display()
+                ));
             }
         }
     }
@@ -192,5 +250,13 @@ fn every_cross_site_link_resolves_to_a_page_of_the_project_that_declares_its_ori
         checked >= 15,
         "the scan collected {checked} cross-site links, expected >= 15 — it is not looking \
          where the links are"
+    );
+    // Anti-vacuity for check 3: measured at 2 on 2026-08-19 (choosing.tmd -> block-model's
+    // `#why-the-diff-is-o-n-log-n`, block-model.tmd -> choosing's `#sec-speed`). A scan that
+    // stops splitting fragments off would satisfy the loop above without checking anything.
+    assert!(
+        fragments_checked >= 2,
+        "the scan checked {fragments_checked} cross-site anchor(s), expected >= 2: the \
+         fragment half of this gate is not running"
     );
 }

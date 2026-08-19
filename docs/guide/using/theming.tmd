@@ -1,211 +1,61 @@
 ---
 title: "Theming"
-description: "Restyling a document by overriding a handful of variables, and why the light/dark choice belongs to the reader's device rather than to either of you."
+description: "Two built-in palettes picked by the reader's device, the variables a diagram or a hand-written widget can read, and how to keep an SVG out of the wrong palette."
 ---
 
-A theme in Taliesin is not a stylesheet you wrestle with, it is a small set of CSS
-custom properties (`--tali-*`). The whole document, the navbar, footer, callouts,
-diagrams, figures, and syntax-highlighted code all read those variables, so
-retuning one value restyles everything at once, and the light/dark switch is just
-a swap of the values: nothing re-renders.
+A Taliesin page is painted from a small set of CSS custom properties. The ones a
+hand-written widget is most likely to want are `--tali-bg` (the page), `--tali-fg` (body
+text), `--tali-muted` (secondary text), `--tali-border` (hairlines), `--tali-code-bg` (the
+code ground) and `--tali-accent`, the emphasis colour, which resolves to the ink rather
+than to a hue: colour on a Taliesin page means data, so there is no chrome accent.
 
-Not everything is a variable. Prose also gets quiet typographic polish that needs no
-configuration: balanced headings and captions, pretty last-line wrapping, and figures
-that keep their caption attached.
+Two palettes ship inside every page, light and dark, and **the reader's device decides
+which one paints**: the page follows the OS `prefers-color-scheme` and falls back to light
+when the OS expresses no preference. There is no `theme:` key and no way for a page to pin
+itself to one palette, because the choice belongs to whoever is reading. See
+[Reader controls](../reference/accessibility.tmd#reader-controls) for why the per-page
+picker went away.
 
-## The built-in themes
+There is no theme file either. The one way a page ships CSS of its own is a `<style>`
+element inside a [raw `{=html}` block](writing.tmd#raw-html-passthrough) in the body, and
+an override written for both palettes has to say so: the dark values are keyed on
+`html[data-theme="dark"]`, which outranks a plain `:root` rule, so a `:root` override
+takes effect in light only for any token the dark palette re-declares.
 
-Two themes ship in the binary and need no files:
+## Diagram colours (Mermaid)
 
-- **`light`** is the base `:root` palette: a white page with dark ink.
-- **`dark`** overrides the colour variables for a near-black page with light ink.
+Mermaid bakes its colours into the SVG as it renders, so CSS cannot restyle a finished
+diagram. Taliesin reads the diagram's config from CSS variables instead and re-renders on
+a light/dark switch, so diagrams follow the built-in palettes with nothing to set. For
+full colour control, set `--tali-mermaid-theme: base` (Mermaid's `base` theme is the one
+built to be customised) and any of `--tali-mermaid-bg`, `--tali-mermaid-node`,
+`--tali-mermaid-node-border`, `--tali-mermaid-text` and `--tali-mermaid-line`.
 
-**Neither is selected in front matter, and there is no key for it** — not for the mode,
-and since 2026-08-17 not for a custom stylesheet either. Both palettes ship in every page
-and the reader's device decides which one paints, following the OS `prefers-color-scheme`
-and falling back to light when the OS expresses no preference.
-
-::: {.callout-note}
-## Two built-in palettes, and the device picks between them
-
-Light and Dark are the whole built-in set. A warm low-contrast "sepia" palette
-shipped for a while and was removed: a third palette is a third of every rule and
-every contrast measurement, for a preference a reader can already get from their
-system. Which of the two a reader sees follows their device and nothing else; see
-[Reader controls](../reference/accessibility.tmd#reader-controls) for why the picker
-that used to sit in the top-right corner went away.
-:::
-
-## How the switch works
-
-It comes down to one attribute, `data-theme` on `<html>`, and CSS does the rest.
-The base palette lives in a `:root` block and `html[data-theme="dark"]` supplies
-override values for the same `--tali-*` names.
-A pre-paint `<head>` script reads the device preference before the first frame and sets
-that attribute, so a reader never sees a flash of the wrong palette, and it keeps listening
-so a mid-read change to the OS setting flips the page live. Crucially,
-**syntax highlighting recolours with no re-highlight**: code is highlighted once,
-server-side, into scope classes (`tali-hl-keyword`, `tali-hl-string`, …), and the dark
-theme simply restyles those classes, so a toggle is pure CSS with nothing to
-recompute. The same holds for math, figures (a light/dark image swap), and callouts:
-all **fully offline**, the colours baked into the page, no CDN and no client re-run.
-
-**Diagrams are the one exception.** Mermaid bakes its colours into the rendered SVG, so
-a diagram cannot be recoloured by CSS alone: it listens for the theme change (the
-`tali:themechange` event) and re-runs from its stashed source under the new palette. The
-library itself is vendored like everything else, so this costs no network either.
-
-## The variable reference
-
-Every knob a theme can turn, with its light and dark values.
-
-### Colours
-
-| Variable | Light | Dark | Role |
-|:--|:--|:--|:--|
-| `--tali-bg` | `#FBF9F5` | `#14130F` | Page background |
-| `--tali-fg` | `#22201A` | `#EAE7E0` | Body text |
-| `--tali-muted` | `#5F5C54` | `#D0CCC3` | Secondary / metadata text |
-| `--tali-inline-code` | `#3A362E` | `#DBD7CE` | Inline `code` in running prose |
-| `--tali-underline` | `#A8A49B` | `#6E6B63` | The hairline under a prose link |
-| `--tali-accent` | `#22201A` | `#EAE7E0` | The emphasis colour: the ink, not a hue |
-| `--tali-accent-fill` | `#22201A` | `#EAE7E0` | Filled active/pressed surfaces |
-| `--tali-on-accent` | `#FBF9F5` | `#14130F` | Text on a filled accent surface |
-| `--tali-link` | `#22201A` | `#EAE7E0` | Links |
-| `--tali-code-bg` | `#F4F1EB` | `#1C1A15` | Code-block / inline-code background |
-| `--tali-border` | `#D9D7D2` | `#33312B` | Hairlines, card + control borders |
-| `--tali-border-strong` | `#8B887F` | `#7C7972` | A control boundary (clears the 3:1 floor) |
-| `--tali-edge-shadow` | `rgba(0,0,0,.16)` | `rgba(255,255,255,.14)` | Scroll-edge shading on a wide `pre`/table |
-| `--tali-flash` | `rgba(34,32,26,.08)` | `rgba(234,231,224,.08)` | Live-edit pulse on a re-rendered block |
-
-::: {.callout-note}
-## Why the accent is the ink
-
-There is no chrome accent. Colour on a Taliesin page means **data** — a plot, a
-syntax token, an error — so `--tali-accent` carries no hue of its own: it resolves to
-the ink, and `--tali-on-accent` to the paper, in whichever palette is painting. The
-name survives because roughly thirty call sites (the focus ring, cross-reference
-markers, sidenote numbers, the active nav item, callout edges) ask for "the emphasis
-colour". Give it a hue and you are back to the brand blue this palette replaced.
-:::
-
-### Callout accents
-
-One value per callout kind sets that callout's border and icon colour; the
-title-bar tint is derived from it with `color-mix`, so light and dark both work
-from a single definition (no per-kind dark override needed).
-
-| Variable | Light value | Kind |
-|:--|:--|:--|
-| `--tali-callout-note` | `#5F5C54` | note |
-| `--tali-callout-tip` | `#3F6152` | tip |
-| `--tali-callout-warning` | `#7A4A18` | warning |
-
-### Fonts, layout, and focus
-
-| Variable | Default | Role |
-|:--|:--|:--|
-| `--tali-font-body` | `1.25rem/1.55 "Literata", Georgia, serif` | Body font (size, leading, stack). Headings inherit it too — there is no separate heading font |
-| `--tali-font-mono` | `"JetBrains Mono", ui-monospace, monospace` | Code font, and every label/nav/caption-number/chip Taliesin draws itself |
-| `--tali-measure` | `32em` | Reading-column max width, in `em` of the body font (≈ 640px / 40rem at the default size) |
-| `--tali-focus` | `2px solid var(--tali-accent)` | Keyboard-focus ring for every control |
-| `--tali-focus-offset` | `2px` | Offset of that ring |
-
-::: {.callout-tip}
-## One token, every control
-
-`--tali-focus` is the single focus ring for links, buttons, tabs, the reader menu,
-and the reader controls, applied via `:focus-visible`. Retune it once and every
-interactive element follows.
-:::
-
-### Diagram colours (Mermaid)
-
-Mermaid bakes its colours into the SVG when it renders, so they cannot be
-restyled with ordinary CSS. Instead Taliesin reads the diagram's config from a
-second set of CSS variables and re-renders the diagram on a light/dark switch, so
-you theme diagrams from the same theme file, with no JavaScript.
-
-| Variable | Role | Default |
-|:--|:--|:--|
-| `--tali-mermaid-theme` | Mermaid theme name (`default`, `dark`, `neutral`, `forest`, `base`) | `dark` in dark mode, else `default` |
-| `--tali-mermaid-bg` | Diagram background | the Mermaid theme's |
-| `--tali-mermaid-node` | Node fill | the Mermaid theme's |
-| `--tali-mermaid-node-border` | Node border | the Mermaid theme's |
-| `--tali-mermaid-text` | Node text | the Mermaid theme's |
-| `--tali-mermaid-line` | Edges and arrows | the Mermaid theme's |
-
-Set nothing and diagrams follow the built-in light and dark themes. For full
-colour control, choose `--tali-mermaid-theme: base` (Mermaid's `base` theme is the
-one built to be customised) and point the colour variables at the rest of your
-palette:
-
-```css
-html[data-theme="dark"] {
-  --tali-mermaid-theme: base;
-  --tali-mermaid-bg: var(--tali-bg);
-  --tali-mermaid-node: var(--tali-code-bg);
-  --tali-mermaid-node-border: var(--tali-border);
-  --tali-mermaid-text: var(--tali-fg);
-  --tali-mermaid-line: var(--tali-muted);
-}
-```
-
-The zoom (click-to-enlarge) backdrop uses `--tali-bg`, so an enlarged diagram
-matches the page.
-
-### An `.svg` file you wrote yourself
+## An `.svg` file you wrote yourself
 
 A figure written as `![Caption](diagram.svg)` is embedded as `<img src="diagram.svg">`,
 and an `<img>` is **style-isolated**: the SVG is a separate document, so nothing inside it
-can see the page's `--tali-*` variables or the `data-theme` attribute the toggle sets.
-This is a browser rule, not a Taliesin one. Inline `{js}` graphics and Mermaid diagrams
-are part of the page and follow the toggle normally; an `<img>`-embedded SVG cannot.
+can see the page's `--tali-*` variables or its `data-theme` attribute. This is a browser
+rule, not a Taliesin one. Inline `{js}` graphics and Mermaid diagrams are part of the page
+and follow the palette normally; an `<img>`-embedded SVG cannot.
 
-The consequence worth knowing: an SVG that themes itself with
+So an SVG that themes itself with `@media (prefers-color-scheme: dark)` follows the
+reader's operating system, which is the same signal the page follows: on screen the two
+agree. They come apart in print, where the stylesheet forces the light palette while an
+OS-dark reader's SVG stays dark.
 
-```css
-@media (prefers-color-scheme: dark) { … }
-```
+Two ways to write a figure that is right in both palettes:
 
-follows the reader's **operating system**, not the page. For most readers those agree. For
-a reader who has deliberately set the page to light while their OS is dark, they disagree,
-and the figure comes out in the wrong palette on an otherwise correct page.
+- **Use a palette that works on both.** Mid-tone strokes and fills that hold contrast
+  against a light and a dark background alike, and no `prefers-color-scheme` block. This
+  is the cheapest option and the one to reach for by default:
+  `corpus/demo-book/structure.svg` is written this way, with `#888` strokes and no
+  `prefers-color-scheme` block anywhere in it.
+- **Draw it in the page instead.** A `{js}` cell or a Mermaid diagram renders into the
+  document, so a `var(--tali-*)` in the markup it emits follows the palette live. Right
+  for a figure whose colours genuinely have to match the page.
 
-Two ways to write a figure that is right either way:
-
-- **Use a palette that works on both.** Mid-tone strokes and fills, chosen to hold contrast
-  against a light and a dark background alike, and no `prefers-color-scheme` block. This is
-  the cheapest option and the one to reach for by default. `corpus/demo-book/structure.svg`
-  is written this way: `#888` strokes, no `prefers-color-scheme` block anywhere in it.
-- **Draw it in the page instead.** A `{js}` cell (or a Mermaid diagram) renders into the
-  document, reads `--tali-*` directly, and re-renders on `tali:themechange`. Right for a
-  figure whose colours genuinely have to match the page.
-
-::: {.callout-note}
-An `<style>` block inside an `.svg` file is parsed as **XML**, not as CDATA. A bare `<`,
-`>` or `&` anywhere in it — including inside a CSS comment — makes the file malformed, and
-a malformed SVG still serves with a `200` and still copies into the build while rendering
-as nothing. Escape them, or keep the CSS free of those characters.
-:::
-
-## Customizing is not a thing a document does
-
-There is no `theme:` key, and no way for a page to pin itself to light or dark. Both
-palettes ship in every page and the reader's device chooses between them, so the choice
-belongs to whoever is reading rather than to whoever wrote it. `theme:` — a `.css`/`.scss`
-file, or an `_extensions/<name>/` bundle inlined after the base stylesheet — was removed on
-2026-08-17 along with `_extensions/` itself, which existed for nothing else.
-
-It was not removed for being unused. It was removed for meaning two different things at
-once. The dark palette is keyed on `html[data-theme="dark"]`, which outranks a theme file's
-`:root`, so overriding one of the 17 tokens the dark palette re-declares took effect in
-light only, while overriding any of the other 28 took effect in both modes whatever the
-colour did against a dark background. Nothing reported which half you had landed in, and
-the feature's own example set three tokens that were all in the first group — so it changed
-nothing at all in dark mode.
-
-`_site.yml`'s `head:`, which this section used to point at as the remaining way to reach
-the `<head>`, was itself removed on 2026-08-18 at zero adoption. There is now no supported
-way for a document to force one palette: a page that did would be fighting its reader's
-device setting, which is the whole point of the rule above.
+One more trap: a `<style>` block inside an `.svg` file is parsed as **XML**, not as CDATA.
+A bare `<`, `>` or `&` anywhere in it, including inside a CSS comment, makes the file
+malformed, and a malformed SVG still serves with a `200` and still copies into the build
+while rendering as nothing.

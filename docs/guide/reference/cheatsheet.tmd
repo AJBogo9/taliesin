@@ -5,7 +5,7 @@ description: "Every construct on one page: front matter, cells, divs, references
 
 *Reference: Cheat sheet · [CLI](cli.tmd) · [Configuration](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · [Licensing](licensing.tmd)*
 
-Every construct taliesin supports fits in the six tables below. Anything you can
+Every construct taliesin supports fits in the seven tables below. Anything you can
 write that is not named on this page is either plain CommonMark, which just works,
 or not something taliesin implements.
 
@@ -44,6 +44,7 @@ reference](frontmatter.tmd#document-front-matter).
 | `{js}` | Runs in the browser, wired into the reactive graph | [Interactive documents](../using/interactive.tmd#reactive-js-cells) |
 | `{mermaid}` | Renders a diagram client-side | [Rich writing](../using/writing.tmd#diagrams) |
 | `{=html}` | Raw HTML, emitted verbatim | [Rich writing](../using/writing.tmd#raw-html-passthrough) |
+| `{bash}` `{sql}` `{julia}` `{rust}` | Highlighted, never executed. Unlike a plain ` ```bash ` fence these take `#\|` options, so a `label:` plus `lst-cap:` turns one into a numbered listing | [Executable content](../using/code.tmd#code-cells) |
 | `#\|` | Leading cell-option prefix (most languages) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
 | `//\|` | Leading cell-option prefix (`{js}`) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
 | `%%\|` | Leading cell-option prefix (`{mermaid}`) | [Cell-options reference](cell-options.tmd#how-options-are-written) |
@@ -69,11 +70,33 @@ reference](frontmatter.tmd#document-front-matter).
 
 | Syntax | What it does | Chapter |
 |---|---|---|
-| `::: {.callout-note}` | A blue informational callout | [Rich writing](../using/writing.tmd#callouts) |
-| `::: {.callout-tip}` | A green tip callout | [Rich writing](../using/writing.tmd#callouts) |
-| `::: {.callout-warning}` | An amber warning callout | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.callout-note}` | An informational aside | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.callout-tip}` | A tip or a recommendation | [Rich writing](../using/writing.tmd#callouts) |
+| `::: {.callout-warning}` | A caution the reader should not skip | [Rich writing](../using/writing.tmd#callouts) |
 | `::: {.column-margin}` | Floats into the right margin on a wide screen, folds into the flow on a narrow one | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
 | `::: {.column-page}` | Widens a block up to the page width | [Rich writing](../using/writing.tmd#footnotes-and-sidenotes) |
+
+**Three attributes go inside the braces.** `title="…"` sets a callout's heading (else a
+leading heading, else the kind) and `collapse="true"` folds it into a native `<details>`
+(`"false"` starts it open); both are callout-only. `layout-ncol=3` lays a **plain** div's
+blocks out as an N-column grid. Any class this table does not name is passed straight
+through to the `<div>` for your own CSS, and is not diagnosed.
+
+## Math
+
+| Syntax | What it does | Chapter |
+|---|---|---|
+| `$…$` | Inline math, in running text | [Rich writing](../using/writing.tmd#math) |
+| `$$…$$` | Display math, standing on its own | [Rich writing](../using/writing.tmd#math) |
+| `$$…$$ {#eq-x}` | A **numbered** display equation, cross-referenceable as `@eq-x` | [Rich writing](../using/writing.tmd#math) |
+
+All three render server-side with KaTeX at build time, fonts inlined, so a built page
+needs no network. The last row is the one worth seeing: @eq-cheat below is written that
+way, and this sentence references it.
+
+$$
+e^{i\pi} + 1 = 0
+$$ {#eq-cheat}
 
 ## References
 

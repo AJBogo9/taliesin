@@ -5,7 +5,8 @@ bibliography: ../references.bib
 ---
 
 Everything you'd reach for in a technical post works out of the box, rendered
-server-side and shipped offline: no CDN, no client re-run on a theme toggle.
+server-side and shipped offline: no CDN, no client re-run when the reader's device
+flips to dark.
 
 ## Prose and typography
 
@@ -13,39 +14,27 @@ Standard Markdown works as expected: **bold**, *italic*, ~~strikethrough~~,
 `inline code`, [links](https://example.com), nested lists, blockquotes, and pipe
 tables with per-column alignment:
 
-| Capability | Status | Where |
+| Cell language | Runs | Output |
 |:--|:--:|--:|
-| Block model + diff | ✅ | `crates/core` |
-| Live `{js}` cells | ✅ | native enhancer + vendored d3/Plot |
-| PDF / non-HTML output | ❌ | out of scope |
+| `{python}` | in a warm Jupyter kernel | spliced back as blocks |
+| `{js}` | in the reader's browser | mounted live |
+| `{mermaid}` | in the browser, lazily | a rendered diagram |
 
 > Smart typography turns straight quotes into curly ones and handles ellipses…,
 > matching the look of a hand-written post.
 
-Code blocks are syntax-highlighted **server-side** (in Rust, via syntect) and get
-a hover **Copy** button. Highlighting ships fully offline: the colours are emitted
-as scope classes the theme styles, so the exported HTML needs no CDN, the first
-paint is already coloured, and the light/dark toggle restyles code with nothing to
-re-run.
-
-A fence whose language token isn't recognised still renders, just unhighlighted, with
-no warning: check the label yourself if a block you expected to be highlighted looks
-flat (a common cause is a typo like ` ```pyton `). When a block is meant to be plain
-(a terminal transcript, sample output), label it `text` or `console` and it renders
-exactly the same, deliberately.
-
-An info string may carry **attributes after the language** in the form other tools use
-(` ```rust,ignore `, ` ```python should_panic `, ` ```rust,no_run,edition2021 `). Taliesin
-reads the language from the first token and ignores the rest, so code pasted from an
-mdBook, rustdoc, Pandoc, Docusaurus or GitHub project highlights as it did there instead of
-losing its colours. Nothing acts on the attributes: they are another tool's instructions,
-kept so the source stays portable in both directions.
+Code blocks are syntax-highlighted **server-side** and get a hover **Copy** button.
+A fence whose language token isn't recognised still renders, just unhighlighted and
+with no warning, so check the label if a block you expected to be highlighted looks
+flat (a common cause is a typo like ` ```pyton `). The language is read from the first
+token and the rest of the info string is ignored, so a pasted ` ```rust,ignore ` still
+highlights. When a block is meant to be plain (a terminal transcript, sample output),
+label it `text` or `console`.
 
 ```rust
-/// Every rendered block carries a content-hash id and its source range.
 struct Block {
-    id: String,        // stable across edits while the content is unchanged
-    sourcepos: String, // "startLine:startCol-endLine:endCol"
+    id: String,
+    sourcepos: String,
     html: String,
 }
 ```
@@ -55,26 +44,16 @@ struct Block {
 Math renders server-side with KaTeX and ships fully offline (the fonts are inlined
 at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text; display
 math stands alone; and a labelled equation is **numbered and cross-referencable**.
-The discrete Fourier transform [@cooley1965] is given by @eq-dft:
+Multi-line `aligned` environments work too. The discrete Fourier transform
+[@cooley1965] is given by @eq-dft:
 
 $$
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-2\pi i k n / N}
 $$ {#eq-dft}
 
-Multi-line aligned environments work too:
-
-$$
-\begin{aligned}
-  \nabla \cdot \mathbf{E} &= \rho/\varepsilon_0 \\
-  \nabla \times \mathbf{B} &= \mu_0\mathbf{J} + \mu_0\varepsilon_0 \frac{\partial \mathbf{E}}{\partial t}
-\end{aligned}
-$$
-
 ## Diagrams
 
-A `{mermaid}` code block renders client-side with mermaid.js, loaded lazily the
-first time a diagram appears.
-Diagrams-from-code is a first-class feature, not an afterthought; the colours are
+A `{mermaid}` code block renders client-side with mermaid.js; the colours are
 CSS-driven, so they follow the theme. Adding `%%| label: fig-…` and `%%| fig-cap:`
 turns a diagram into a numbered, captioned figure you can cross-reference, just
 like an image. As @fig-render shows, one block model feeds three render targets:
@@ -89,35 +68,9 @@ flowchart LR
   BM --> K["book + TOC"]
 ```
 
-Every mermaid diagram type works (**sequence**, **state**, class, ER, gantt,
-and more), so you can document a protocol or a state machine from a few lines of
-text. Here is the live-edit loop as a sequence diagram:
-
-```{mermaid}
-sequenceDiagram
-  autonumber
-  participant E as Editor
-  participant S as Server
-  participant P as Preview
-  E->>S: save .tmd
-  S->>S: re-parse + diff by block id
-  S-->>P: only the changed blocks
-  P->>P: swap them in (scroll kept)
-  Note over P: live canvases keep their state
-```
-
-…and the warm kernel's lifecycle as a state diagram:
-
-```{mermaid}
-stateDiagram-v2
-  [*] --> Idle
-  Idle --> Running: run changed cell(s)
-  Running --> Idle: outputs spliced back
-  Running --> Interrupted: exceeds timeout
-  Interrupted --> Idle
-  Idle --> Respawned: process died
-  Respawned --> Idle: re-run all cells
-```
+Every diagram type mermaid supports works the same way (sequence, state, class, ER,
+gantt, and the rest); the syntax for each is in
+[mermaid's own documentation](https://mermaid.js.org/intro/).
 
 ## Figures and captions
 
@@ -143,11 +96,6 @@ ax.plot(
     components, explained,
     color="#7A3B52", linewidth=2, linestyle="--", marker="o", markersize=4,
 )
-ax.annotate(
-    "elbow", xy=(3, 15), xytext=(3.6, 27),
-    color="#7A3B52", fontsize=11,
-    arrowprops=dict(arrowstyle="->", color="#7A3B52"),
-)
 ax.set_xlabel("Principal component")
 ax.set_ylabel("Variance explained (%)")
 ax.set_xticks(list(components))
@@ -158,26 +106,22 @@ plt.show()
 
 ### What an image gets without asking
 
-Point at a `.png`, `.jpg` or `.gif` and the rest is automatic. There is nothing to
-configure and nothing to pre-process.
+Point at a `.png`, `.jpg`/`.jpeg`, `.gif` or `.webp` and the rest is automatic. There
+is nothing to configure and nothing to pre-process.
 
-**Its box is reserved before it loads.** Every local raster image is emitted with the
+![A training loss curve falling from 1.0 to near zero over forty iterations.](figures/loss.png){#fig-loss-png}
+
+**Its box is reserved before it loads.** @fig-loss-png above is emitted with the
 intrinsic `width` and `height` read from the file itself, so the prose below it never
 jumps as the image arrives. This happens in the preview too, which is the point: a
 preview that does not shift the way the built page shifts is not previewing it.
 
-**Your bytes ship as you wrote them.** The build copies each image across unchanged; it
-derives no smaller copies and re-encodes nothing, so what a reader downloads is the file
-you pointed at. If that matters for a page, shrink or re-encode the source yourself before
-you reference it — `cwebp`, `avifenc` or an export dialogue all do it better than a
-document tool guessing on your behalf, and the result is a file you can look at.
+Images are copied across unchanged, so shrink or re-encode the source yourself if the
+byte count matters.
 
-**The first image stays eager.** Later images get `loading="lazy"`, but the first one on
-the page does not: it is the most likely largest-contentful-paint element, and deferring
-it would delay the very thing lazy-loading is meant to help.
-
-An `.svg` is the one exception to the box-reservation rule above: it has no intrinsic
-pixel size to state, so nothing is emitted for it.
+`.svg` and `.avif` are the exceptions to the box-reservation rule above: an SVG has no
+intrinsic pixel size to state, and AVIF decoding is deliberately not compiled in, so
+nothing is emitted for either.
 
 ## Callouts
 
@@ -226,9 +170,7 @@ you need it, so reading one costs a glance instead of a jump to the end and back
 
 Narrow the window past the point where there is a margin to put a note in and the notes
 fold away; tapping a number reveals that one in place. Print does the same, since paper
-has no reader to tap. This is the default, not a setting: it is the placement a screen
-makes possible and paper never did, and reaching for a `footnotes:` knob to get it would
-be a worse default hiding behind a configuration key.
+has no reader to tap.
 
 Notes are for asides short enough to sit in a narrow column, and a definition carrying
 block content (a list, a quote, a code block) is flattened to its text with a warning,
@@ -245,29 +187,23 @@ written; narrow the window and it collapses to an indented note. Math works here
 $\sigma^2 = \operatorname{Var}(X)$.
 :::
 
-The body keeps flowing in the reading column while the margin note sits alongside the
-paragraph it annotates, so a digression never interrupts the main thread.
-
-The opposite move on the same axis is to make a block *wider* than the reading column.
-`::: {.column-page}` widens up to the page width. It is for content the ~70-character
-measure is simply wrong for: a wide table, a multi-panel plot, a diagram whose labels
-only fit at size.
+The opposite move on the same axis is to make a block *wider* than the reading column:
+`::: {.column-page}` widens up to the page width, for content the ~70-character measure
+is simply wrong for.
 
 ::: {.column-page}
-| Escape | Width | Use it for |
+| Class | What it does | Reach for it when |
 | --- | --- | --- |
-| *(none)* | the reading measure | prose, which is what the measure is tuned for |
-| `.column-page` | up to the page width | a wide table, a figure that needs the room |
+| `.column-margin` | Floats the block into the right margin on a wide screen, folds it into the flow on a narrow one | An aside with no footnote marker to hang it off |
+| `.column-page` | Widens the block up to the full page width | A wide table, a multi-panel plot, a diagram whose labels only fit at size |
 :::
 
 A code block needs no escape: `pre` takes the wider column by itself, because the reading
 measure fits 55 columns of code and PEP 8 asks for 79.
 
-It is not a new block type — it is a plain class, so it works on a table, a figure, a
-listing, or a bare div, and the block keeps its identity (a `@fig-` cross-reference
-still resolves through one). An escape grows leftward rather than centring, keeping its
-right edge flush with the text: the margin column owns the band on the right, and a block
-centred on the page would run its text under a note's.
+Neither escape is a new block type: `.column-margin` and `.column-page` are plain
+classes, so they work on a table, a figure, a listing, or a bare div, and the block keeps
+its identity (a `@fig-` cross-reference still resolves through one).
 
 ## Reusing a partial
 
@@ -276,13 +212,9 @@ centred on the page would run its text under a note's.
 ```
 
 Splices another file's contents into this one before parsing, as if you had pasted
-it in place. Written inside a fenced code block, as in the examples on this page, the
-directive is left unexpanded rather than firing: the same rule keeps any `{{< … >}}`
-shortcode literal inside a fence or an inline code span. The directive must be alone
-on its own line (leading and trailing whitespace is fine); a `{{< include … >}}` with
-other text on the line is left as ordinary content. The path is resolved relative to
-the file that holds the directive, so a partial can itself include further partials
-and the relative paths still make sense at each level.
+it in place. The directive must be alone on its line, and it is left literal inside a
+fence or an inline code span (which is why the examples on this page do not fire). The
+path is resolved relative to the file that holds the directive.
 
 Includes are how you keep one author bio, one license footer, or one shared figure
 in a single file and pull it into many pages. Because the splice happens before the
@@ -317,17 +249,13 @@ A `{=html}` block is emitted verbatim, so you can drop in markup the Markdown
 grammar doesn't cover (custom widgets, embeds, audio players):
 
 ```{=html}
-<div style="display:flex;gap:.6rem;align-items:center;padding:.7rem 1rem;border-radius:10px;
-            color:var(--tali-fg);border:1px solid var(--tali-border);
-            background:linear-gradient(90deg,rgba(99,102,241,.16),rgba(236,72,153,.16));
-            font:600 14px ui-sans-serif,system-ui">
-  <span style="font-size:1.5rem">🔌</span>
-  <span>This badge is raw HTML, passed through by a <code>{=html}</code> block, not escaped. Its
-        inline styles use the page's theme variables, so it tracks light/dark too.</span>
+<div style="padding:.7rem 1rem;border-radius:10px;color:var(--tali-fg);
+            background:var(--tali-code-bg);border:1px solid var(--tali-border)">
+  This badge is raw HTML, not escaped. Its inline styles read the page's theme
+  variables, so it tracks light and dark with everything else.
 </div>
 ```
 
-## From a diagnostic back to the line
-
-A `page.tmd:12:` location in the preview or in build/lint output is **clickable**, so a
-diagnostic in the terminal takes you to the line.
+The palette is exposed as CSS custom properties you can use the same way:
+`--tali-fg`, `--tali-bg`, `--tali-muted`, `--tali-border`, `--tali-code-bg` and
+`--tali-accent`.

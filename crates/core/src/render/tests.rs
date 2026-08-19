@@ -3768,10 +3768,22 @@ fn the_landing_page_is_a_masthead_and_prose() {
 
     // And the page itself, not only its stylesheet: §15.2 calls this a rewrite of index.tmd.
     let index = std::fs::read_to_string(repo_root().join("site/index.tmd")).expect("index.tmd");
-    assert!(
-        !index.contains("{.feature-grid}"),
-        "the three-card feature grid is still authored in the landing page"
-    );
+    // EVERY page of the marketing site, not just the landing page. `.feature-grid` is a class
+    // nothing styles, so a page still authoring it renders a bare `<div>` and silently loses the
+    // ruled-section layout. This checked `index.tmd` alone until 2026-08-19, and `features.tmd`
+    // sat on four dead `{.feature-grid}` wrappers the whole time with every gate green.
+    for entry in std::fs::read_dir(repo_root().join("site")).expect("site/") {
+        let path = entry.expect("entry").path();
+        if path.extension().is_some_and(|x| x == "tmd") {
+            let src = std::fs::read_to_string(&path).expect("page");
+            assert!(
+                !src.contains("{.feature-grid}"),
+                "{} still authors the retired `.feature-grid`; it is `.feature-list` that \
+                 carries the ruled-section layout",
+                path.display()
+            );
+        }
+    }
     assert_eq!(
         index.matches("{.btn").count(),
         0,

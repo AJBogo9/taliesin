@@ -6,6 +6,19 @@ author: "Andreas Bogossian"
 # for canonical links, sitemap.xml and robots.txt.
 url: "https://guide.taliesin.sh"
 
+# The Guide and the Internals book are separate deploys on separate domains, so a reader
+# who lands on a chapter from a search engine has no route to any other Taliesin property
+# unless the chrome gives them one. The links are absolute for the same reason every
+# cross-site link in this repo is (`crates/core/tests/cross_site_links.rs` resolves them).
+footer:
+  left:
+    - { text: "Built with Taliesin" }
+  right:
+    - { text: "Taliesin", href: "https://taliesin.sh/" }
+    - { text: "Internals", href: "https://internals.taliesin.sh/" }
+    - { text: "Gallery", href: "https://gallery.taliesin.sh/" }
+    - { icon: github, href: "https://github.com/AJBogo9/taliesin" }
+
 chapters:
   - index.tmd
   - part: "Using Taliesin"

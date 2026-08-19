@@ -3,9 +3,6 @@ title: "Getting started"
 description: "The first hour with Taliesin, in steps that each end in something you can open in a browser."
 ---
 
-This chapter takes you from nothing to a published page: install the tool, set up
-a kernel for code, write your first document, and put it online.
-
 ## Install
 
 Taliesin builds from source with a Rust toolchain. Windows is not supported. From the
@@ -15,21 +12,15 @@ repo:
 cargo build --release
 ```
 
-That compiles 257 crates in about 1m 43s at `-j3`; the result is one ~32 MB
-binary with KaTeX, its fonts, the syntax definitions and every bundled script
-inside it, so nothing is fetched at runtime. (Measured 2026-08-10, cold, on one
-machine — the same figures `README.md` gives, because there is only one build.)
+A first build takes a few minutes and produces one self-contained binary with
+KaTeX, its fonts, the syntax definitions and every bundled script inside it, so
+nothing is fetched at runtime.
 
 The binary is `target/release/taliesin`. Put it on your `PATH` (a symlink, or a
 small wrapper script that rebuilds on source changes before running it) so you
 can just say `taliesin preview …` from any directory. Every command below works
 either way: substitute `cargo run -p taliesin-server --` for `taliesin` if you'd
 rather not install it on `PATH`.
-
-**Prebuilt binaries come from tags.** Each `v*` tag attaches a `.tar.gz` per target
-(Linux x86-64, macOS Apple silicon, macOS Intel) with a `.sha256` beside it. If
-[the releases page](https://github.com/AJBogo9/taliesin/releases) is empty, no tag has
-been cut yet and building from source above is the way in.
 
 ## Set up a kernel (for code execution)
 
@@ -44,29 +35,13 @@ export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
 
 A document's `{python}` cells run against one warm kernel, reused across edits.
 Without a kernel, cells render as highlighted source and the preview shows a quiet
-"kernel unavailable" note instead of failing, so you can always start writing and
-add a kernel later. The kernel setup is covered in more depth (and with
-the same callout) in [Executable content](code.tmd).
+"kernel unavailable" note instead of failing, so you can start writing now and add
+a kernel later. Streaming output, caching and the silence cap are in
+[Executable content](code.tmd).
 
-## Environment variables
-
-Every knob the server reads from the environment, in one place. None are required:
-the defaults work, and the only ones most projects ever set are the kernel paths.
-
-| Variable | Default | What it does |
-|---|---|---|
-| `TALIESIN_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
-| `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). The budget resets on every line printed, so a long job that reports progress is never interrupted; `0` disables the cap |
-| `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell **wall-clock** cap in seconds, off by default; bounds total runtime regardless of output |
-| `TALIESIN_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
-| `TALIESIN_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
-| `TALIESIN_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
-| `TALIESIN_MERMAID_URL` | the vendored copy | Point the Mermaid loader at a different copy of the library (a relative path next to the site, or an absolute one). Diagrams are already offline without it |
-
-`TALIESIN_*` variables that have a `--flag` equivalent (`--no-exec`)
-are read on the same run; the flag and the variable mean the same thing, so use
-whichever fits (the variable is handy in CI). The kernel paths come up most; the
-rest are situational.
+`TALIESIN_PYTHON` is the only environment variable most projects ever set. Every
+other one the server reads is tabled in the [CLI reference](../reference/cli.tmd),
+and none is required to start; `taliesin help` prints the same list.
 
 ## Scaffold a project (the fast path)
 
@@ -74,17 +49,15 @@ The quickest way to a previewable project is `init`, which scaffolds one into a
 directory (the current one by default):
 
 ```sh
-taliesin init my-site        # see below for what lands in it
+taliesin init my-site        # _site.yml + index.tmd + posts/my-first-post/index.tmd
 taliesin preview my-site     # live, immediately
 ```
 
-You get two things and nothing else: a minimal `_site.yml`, and a hello-world `index.tmd`.
-Every larger shape is an edit to those: another `.tmd` beside `index.tmd` is another page,
-a `nav:` block is a top nav, and a `chapters:` list makes it a book.
-
-`init` refuses to overwrite: if either already exists it stops without touching
-anything, so re-running it never clobbers your work. When you'd rather start from a
-single document, skip straight to the next section.
+You get three files and nothing else: a minimal `_site.yml`, a hello-world `index.tmd`
+whose `listing:` collects `posts/`, and one dated post under `posts/my-first-post/`.
+Every larger shape is an edit to those, which the
+[CLI reference](../reference/cli.tmd) spells out. `init` refuses to overwrite: if any
+of them already exists it stops without touching anything.
 
 ## Your first document
 
@@ -137,8 +110,8 @@ Point `build`/`preview` at a **directory** instead and you get a whole
 multi-page site or book (see [Recipes](recipes.tmd)):
 
 ```sh
-taliesin build blog/                     # -> blog/_site/   (one .html per page)
-taliesin build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
+taliesin build blog/         # -> blog/_site/  (one .html per page)
+taliesin build docs/         # -> docs/_book/  (a book, if _site.yml says so)
 ```
 
 ### Where the build goes
@@ -152,21 +125,15 @@ taliesin build docs/                     # -> docs/_book/   (a book, if _site.ym
 | `build site/ --out public` | the same site, into `public/` instead of the default |
 
 A site/book build (and the `--out` form) copies the local files your pages
-*reference* (images, audio, videos, vendored scripts) next to the HTML, so the
-output folder is self-contained and you can copy or `rsync` it as-is. The walker
-**skips** what isn't deliverable: `.tmd` sources, `.bib`, `.Rproj`, anything whose
-name starts with `_` or `.` (so `_freeze/` and dotfiles stay out), `*_cache` /
-`*_files` working directories, and the output directory itself. A built-in
-`404.html` is emitted unless you supply your own `404.tmd`. One command builds one
-project; to put two projects under one domain, build each into its own subdirectory of
-the deploy (parent first, since its sweep deletes what it did not write). The full set of
-flags is in the [CLI reference](../reference/cli.tmd);
-common build-and-deploy patterns live in [Recipes](recipes.tmd).
+*reference* (images, audio, videos, vendored scripts) next to the HTML and leaves
+behind what isn't deliverable (the source files nothing links to, and anything
+whose name starts with `_` or `.`, so `_freeze/` stays out), so the output folder
+is self-contained and you can copy or `rsync` it as-is. A built-in `404.html` is
+emitted unless you supply your own `404.tmd`. The full set of flags is in the
+[CLI reference](../reference/cli.tmd); common build-and-deploy patterns live in
+[Recipes](recipes.tmd).
 
 ## Publish it
-
-The build output is **plain static HTML + assets** with no server runtime, so it
-deploys anywhere that serves files.
 
 Run `taliesin build <dir> --check-only` first, wherever you deploy from. A plain
 `build` writes the page and exits 0 even when a cross-reference resolves to nothing or
@@ -174,71 +141,13 @@ an image is missing, by design; `--check-only` is the verb that turns those into
 non-zero exit, and it writes nothing. The two-stage form is in the
 [CLI reference](../reference/cli.tmd).
 
-- **GitHub Pages.** Build into `docs/` (or push `_site/`) on your default branch
-  and enable Pages, or use an action that runs `taliesin build . --check-only` and then
-  `taliesin build`, uploading the output directory as the Pages artifact.
-- **Netlify / Vercel / Cloudflare Pages.** Set the build command to
-  `cargo run -p taliesin-server -- build <dir> --check-only && cargo run -p
-  taliesin-server -- build <dir>` and the publish directory to the emitted
-  `_site/` / `_book/`.
-- **Any static host / `rsync`.** Copy the output folder as-is. The `--out <dir>`
-  form and the site/book builds copy referenced local assets next to the HTML, so
-  the folder is self-contained.
-
-### Deploy with GitHub Actions
-
-A copy-paste workflow that builds on every push and publishes to GitHub Pages.
-Enable **Settings → Pages → Source: GitHub Actions** once, then drop this in
-`.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy
-on:
-  push: { branches: [main] }
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency: { group: pages, cancel-in-progress: true }
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install Taliesin
-        # point at wherever Taliesin lives; add --tag vX.Y for reproducible builds
-        run: cargo install --git https://github.com/AJBogo9/taliesin --locked taliesin-server
-      - name: Check before publishing
-        # `build` exits 0 on a broken cross-reference or a missing image: it writes
-        # the page anyway and leaves the verdict to this. Without it the deploy is
-        # the first place you find out.
-        run: taliesin build . --check-only
-      - name: Build the site
-        run: taliesin build .          # website -> _site/   (a book emits _book/)
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: _site }
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@v4
-```
-
-`build` **executes code cells**, so if your pages run `{python}`, add a step to
-install that interpreter plus `ipykernel` and set `TALIESIN_PYTHON`, otherwise those
-cells render as source in CI.
-
-::: {.callout-note}
-The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened
-from `file://`): a cell's relative `import()` and Three.js's module are blocked on
-`file://`. (d3 and Plot are bundled, so they need no network.) Once deployed (or
-under `preview`) they are fully live.
-:::
+The output is **plain static HTML + assets** with no server runtime, so on any host
+you control you upload the folder as-is. On **GitHub Pages**, build into `docs/` on
+your default branch or publish `_site/` as the Pages artifact. On a host that builds
+for you (**Netlify**, **Vercel**, **Cloudflare Pages**), install the binary in the
+build command
+(`cargo install --git https://github.com/AJBogo9/taliesin --locked taliesin-server`),
+then run `taliesin build <dir> --check-only && taliesin build <dir>` and set the
+publish directory to the emitted `_site/` or `_book/`. A hosted builder has no Python
+of its own: install one plus `ipykernel` and set `TALIESIN_PYTHON` in that same
+command, or `{python}` cells ship as highlighted source.

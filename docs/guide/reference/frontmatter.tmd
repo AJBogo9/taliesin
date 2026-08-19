@@ -53,14 +53,14 @@ or `{ file: … }` map, or a list of those.
 | `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
 | `categories` | list | Tags for the page; each becomes a `<category>` in the Atom feed |
 
-### Output, format, and theming
+### Layout, social card, and drafts
 
 | Key | Type | Meaning |
 |---|---|---|
-| `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
+| `page-layout` | string | `full` is the only accepted value, and on a site page it adds a `tali-wide` class to the content wrapper. **It no longer changes the measure**: the width override went with the card grid it existed for, so a page that sets it reads at the same reading-width column as one that does not. Any other value warns |
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
-| `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`** — an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
-| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `build --check-only` — a page that does not ship should not fail a pre-flight, and the lint names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
+| `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`**: an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
+| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `build --check-only`, since a page that does not ship should not fail a pre-flight, and the lint names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
 ### Raw-HTML includes
@@ -97,7 +97,7 @@ in their own sections below.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `listing` | map | Turns the page into an index: a card per document under `contents:`. See [`listing:`](#listing-an-index-page) |
+| `listing` | map | Turns the page into an index: a card per document under `contents:`. See [`listing:`](#listing-an-index-page), and [Recipes](../using/recipes.tmd) for one in context |
 | `hero` | map | A hero banner at the top of a landing page (eyebrow, headline, lead, call-to-action buttons). See [`hero:`](#hero-a-landing-banner) |
 
 ## `author:` (who wrote it) {#sec-authors}
@@ -160,7 +160,7 @@ author:
 
 **A contribution is declared beside the name, not in a list of its own.** Every other
 tool makes you write a separate block keyed by author name, which then has to match a
-name you typed somewhere else — and silently drops the statement when the two
+name you typed somewhere else, and silently drops the statement when the two
 spellings drift apart. As an `author:` sub-key it cannot miss, and an author who
 declares none simply contributes no row. Declare none at all and there is no appendix.
 
@@ -232,7 +232,7 @@ the Atom feed:
 title: "A post about rust"
 date: 2026-06-20
 categories: [rust, performance]   # these become <category> in the Atom feed
-image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
+image: cover.png                  # card thumbnail on a grid/list listing
 image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
 ---
 ```
@@ -289,7 +289,7 @@ One deliberate exception:
 ## Editor autocomplete
 
 `taliesin lsp` completes every key on this page, shows its description on hover, and
-flags an unknown one as you type — the same closed set the validator enforces at render
+flags an unknown one as you type: the same closed set the validator enforces at render
 time, so the editor and the renderer always agree. Any LSP editor gets it; the VS Code
 companion starts the server for you. See [Preview](../using/preview.tmd).
 
@@ -305,27 +305,27 @@ title: "Decoding the loss curve"
 subtitle: "What the wiggles mean"
 author: "Andreas Bogossian"
 date: "2026-06-27"
-description: "A close read of a training run."   # og:description + <meta description>
-lang: en                                          # <html lang> (default en)
-categories: [machine-learning, training]          # tags -> Atom feed <category>
+description: "A close read of a training run."   # og:description + meta desc
+lang: en                                  # <html lang> (default en)
+categories: [machine-learning, training]  # tags -> Atom feed <category>
 
 # --- Output / format ---
-page-layout: full                                 # widen the column (default: reading width)
+page-layout: full                         # widen the column (default: reading)
 
 # --- Social / images ---
-image: cover.png                                   # listing-card image; og:image on a site with a url:
-image-alt: "A loss curve trending down"           # alt text for this post's listing card image
+image: cover.png                          # listing card + og:image (needs url:)
+image-alt: "A loss curve trending down"   # alt text for that card image
 
 # --- Contents / citations ---
-toc: true                                          # force the TOC on (otherwise automatic)
-bibliography: refs.bib                              # enables [@key] + References
+toc: true                                 # force the TOC on (else automatic)
+bibliography: refs.bib                    # enables [@key] + References
 
 # --- Code execution defaults (a cell's #| cache overrides this) ---
 execute:
-  cache: true                                       # use the _freeze/ cache (default)
+  cache: true                             # use the _freeze/ cache (default)
 
 # --- Drafts ---
-draft: false                                        # true: preview shows it, build excludes it
+draft: false                              # true: preview shows it, build skips
 ---
 ```
 
@@ -346,10 +346,10 @@ title: "My Site"
 description: "Notes on things"
 url: "https://example.com"
 favicon: favicon.svg
-logo: logo.svg           # brand image in the navbar (book: the topbar + chapter drawer)
+logo: logo.svg           # brand image in the navbar (a book: topbar + drawer)
 bibliography: refs.bib   # one .bib for every page (see below)
 
-nav:                     # a list is the left side; or { left: [...], right: [...] }
+nav:                     # a list is the left side; or { left, right }
   - { text: Blog,     href: blog.tmd }
   - { text: Projects, href: projects.tmd }
 
@@ -364,7 +364,6 @@ A **book**: just add `chapters:` (its presence makes it a book; no `type:`):
 ```yaml
 title: "My Book"
 author: "Me"
-toc: true
 chapters:
   - index.tmd
   - part: "Part One"     # group chapters under a part header
@@ -383,8 +382,6 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
 | `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
-| `image` | Deprecated; the social-card image is now auto-generated per page |
-| `head` | Raw markup injected into every page's `<head>`: a path, a `{ text: … }` / `{ file: … }` map, or a list of those. The **one** raw-injection hatch — analytics, a search-console `<meta>`, a custom stylesheet |
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
@@ -395,7 +392,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 **A shared bibliography.** `bibliography:` in `_site.yml` is read by every page, so a
 series of posts citing one reference file declares it once instead of repeating the
 line in each front matter. It is a *layer*, not a fallback: a page that also declares
-its own `bibliography:` gets both, with the page's entry winning on a shared key — the
+its own `bibliography:` gets both, with the page's entry winning on a shared key, the
 way to correct one reference for one post without editing the file every other page
 reads.
 
@@ -429,15 +426,20 @@ importable. A single `.tmd` with no `_site.yml` uses the same order minus the fi
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 `email`.
 
-**Table of contents.** A site-wide `toc: true` shows the right-hand "on this page"
-list only on pages with **at least three headings**, so a short page doesn't get a
-near-empty rail. To override the auto-gate, set `toc:` in a page's own front matter:
-an explicit `toc: true` / `toc: false` always wins. On narrow screens the list appears
+**Table of contents.** `toc:` is a **page** key, not a `_site.yml` key. The site-wide
+form was retired on 2026-08-02: it sat in front of a gate that already answers the same
+question per page, and answered it worse. Writing `toc:` in a `_site.yml` is an
+**unknown config key error**, in a website and a book alike; delete it.
+
+Left out of a page's front matter, the rail is **automatic**: an article page earns one
+by carrying at least **three** headings and being neither a listing nor a hero page, so a
+short page never gets a near-empty rail. An explicit `toc: true` / `toc: false` in the
+page's own front matter always wins over that gate. On narrow screens the list appears
 inline after the article instead of floating as a sidebar.
 
-`toc:` is a **website** key. A book has no right-hand rail: the Chapters drawer is its
-navigation instead, so a second, shallower list beside the text earned nothing. Writing
-`toc:` in a book's `_site.yml` warns and does nothing; delete the key.
+**A book never shows one**, whatever any page says: the Chapters drawer is its
+navigation, and it is strictly more detailed than the rail was. That gate sits ahead of
+the page key on purpose, so a chapter's `toc: true` cannot reinstate a removed surface.
 
 **Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
 mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). The
@@ -453,8 +455,10 @@ same key set Taliesin validates against at render time, so the editor and the re
 always agree.
 
 The VS Code companion ships a copy of that schema and wires it up for you, so with the
-companion installed there is nothing to do. In any other editor, save the schema somewhere
-your YAML language server can reach and add the modeline at the very top:
+companion installed there is nothing to do. In any other editor, copy
+`crates/core/assets/schema/tali-site.schema.json` out of the repository (the companion's
+bundled copy is the same file, at `editor/vscode/schema/tali-site.schema.json`) to
+somewhere your YAML language server can reach, then add the modeline at the very top:
 
 ```yaml
 # yaml-language-server: $schema=tali-site.schema.json
@@ -464,15 +468,6 @@ title: My site
 **Front matter needs no schema here.** It lives inside a `.tmd` file, where no YAML
 language server looks; `taliesin lsp` is what completes and validates it, the same key
 set, from the same validator, in any LSP editor. See [Preview](../using/preview.tmd).
-
-## Page blocks (sites)
-
-Two front-matter blocks turn a page into something special: `listing:` (an
-index of other pages) and `hero:` (a landing banner). Both are page-level
-front-matter keys, so they are documented once, in the [document front
-matter](#document-front-matter) part above: [`listing:`](#listing-an-index-page)
-and [`hero:`](#hero-a-landing-banner). A `listing:` shown in context is also in
-[Recipes](../using/recipes.tmd).
 
 ## Project structure & reserved names
 
@@ -492,7 +487,7 @@ my-site/
 │   └── _disclaimer.tmd
 │   └── my-theme/
 ├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (gitignored)
-└── _site/               # build output (_book/ for a book; elsewhere with build --out)
+└── _site/               # build output (_book/ for a book; else build --out)
 ```
 
 Reserved names, all skipped by page discovery:

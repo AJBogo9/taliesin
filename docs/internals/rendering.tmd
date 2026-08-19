@@ -29,7 +29,7 @@ flowchart TB
    the expanded text, which file + line it came from. Cycles are detected and left
    in place. This is what makes click-to-source work *across files*.
 2. **Shortcode expansion** (`render/extension/`). The built-in `{{< input >}}` tag
-   expands to its HTML template — it is the only shortcode that expands here, since
+   expands to its HTML template, the only shortcode that expands here since
    `{{< include >}}` was resolved a pass earlier. It is
    **line-preserving** (each tag opens and closes on one line, the template's
    newlines collapsed) so the source map from stage 1 stays valid.
@@ -54,7 +54,7 @@ flowchart TB
    `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id** and a
    `data-sourcepos` mapped back through the source map. A `` ```{lang} `` fence is
    recognised as an executable **cell** and recorded for the server to run later. The
-   front-matter node is where metadata and the theme are resolved.
+   front-matter node is where the document's metadata is resolved.
 6. **Regroup divs** (`render/divs.rs`). The flat blocks are wrapped back into
    callout / layout-grid / generic container blocks using the spans from stage 3.
    Inner blocks keep their own ids and sourcepos, so click-to-source works inside a
@@ -67,40 +67,29 @@ flowchart TB
    the table block. After that, `[@key]` citations and `@fig-`/`@sec-`/… cross-references
    are resolved against the bibliography and the cross-reference registry.
 
-The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, theme, TOC
-flag, includes, and any non-fatal `warnings`.
+The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, subtitle, TOC
+flag, includes, the cross-reference number map, and any non-fatal `warnings`. Every
+block in it carries the three data attributes the rest of the system keys off,
+`data-block-id` (hashed from the block's raw Markdown source by `make_id`),
+`data-sourcepos`, and `data-source-file` on included blocks. [The block
+model](block-model.tmd) is the chapter on them; `crates/core/tests/corpus.rs` enforces
+the contract over every corpus document.
 
-## The block contract
+## Two line coordinate systems
 
-Every emitted block carries three data attributes, and **the whole system depends
-on them** (`crates/core/tests/corpus.rs` enforces it):
+After stage 1 there are two kinds of line number, and confusing them is the bug that
+keeps happening. A post-include **buffer** line (what `group_divs` matches `:::` spans
+in, what comrak's `sourcepos` reports) is a `BufLine`: a newtype in `render/model.rs`
+with no `Display` and no conversion, so it cannot be formatted into a `data-sourcepos`
+or passed to `Warning::at`. The way out is `map_origin` / `map_span`, which return the
+author's own file and line; past that point there is only one system left, so the source
+side stays a bare number.
 
-- `data-block-id`: a content hash. Because it's content-derived, an unchanged
-  block keeps its id across edits and is never touched by the diff.
-- `data-sourcepos`: the original source range (drives click-to-source).
-- `data-source-file`: present only on blocks pulled in from an include.
-
-### The id formula
-
-`make_id` (`render/mod.rs`) computes the id from the block's **raw Markdown source**,
-trimmed of surrounding whitespace, not from its rendered HTML. It hashes that text with
-**64-bit FNV-1a** (`fnv1a`, the same small deterministic algorithm `freeze.rs` uses for
-the execution cache, stable across runs and Taliesin versions), then formats the id as
-`b-` followed by the **first 12 hex digits** of the 16-digit hash (e.g. `b-3af19c0e21d4`).
-
-Two blocks with identical source text therefore hash to the same base id. To keep
-`data-block-id` unique within a document (the diff's whole correctness rests on it),
-`dedup_with_suffix` appends a positional `-N` to the second and later occurrences:
-`b-…`, then `b-…-1`, `b-…-2`. So the first copy keeps the clean hash and only the
-duplicates carry a tiebreak, which means inserting an *identical* paragraph above an
-existing one renumbers only the duplicates, not every block below.
-
-Hashing source text rather than position is the load-bearing choice: insert a paragraph
-at the top of the document and every block below it keeps its id, so the diff sees one
-insertion instead of a wholesale renumber, and an unchanged block is never repainted. A
-generated block that has no source text of its own (the synthesized title header, the
-References block, the footnotes section) skips the hash and uses a fixed id and an empty
-`data-sourcepos`.
+The compiler holds that line, rather than a convention, because both halves of the
+mistake are invisible: an unmapped line paired with a `data-source-file` lands N lines
+off inside a real, openable file, and mapping the two ends of a range *separately* emits
+spans like `39:1-6:25` on a paragraph comrak merged across an include boundary, which
+the client silently skips. `map_span` maps both ends together, which answers both.
 
 ## Citations & cross-references
 
@@ -117,27 +106,27 @@ chapter) are resolved a layer up, in the site subsystem (`crates/core/src/site/x
 Markdown footnotes (`[^name]`) are the one construct whose **content is written in one
 place and rendered in another**, and the mechanism is worth being precise about:
 
-- A footnote **reference** (`[^name]` in the prose) is rendered *in place*, inline, as a
-  superscript link (`<sup class="tali-fnref"><a href="#fn-name">N</a></sup>`) by the
-  per-node emitter (`emit.rs`). It stays inside its surrounding block.
-- A footnote **definition** (`[^name]: the note text`) is *not* rendered where the author
-  wrote it. It renders as a margin sidenote spliced in immediately after its own
-  reference, which is the only position CSS can float it into the margin from: no
-  selector can relocate an end-of-document element to sit beside an arbitrary earlier
-  one, so the move happens at render time. There is no gathered endnote section.
+- A footnote **reference** (`[^name]`) renders *in place*, as a superscript link inside
+  its surrounding block (`emit.rs`).
+- A footnote **definition** (`[^name]: …`) does *not*.[^sidenote] It is spliced in as a
+  margin sidenote immediately after its own reference, the only position CSS can float
+  into the margin from: no selector can relocate an end-of-document element to sit beside
+  an arbitrary earlier one, so the move happens at render time. There is no gathered
+  endnote section.
 
-Two consequences fall out of that, and both are load-bearing.
+[^sidenote]: This note is the demonstration. Its text was written under the bullet list
+  in the source, and it renders here, in the margin beside the bullet that references it.
 
 comrak moves every definition to the end of the document, so a walk that met a reference
 first would not yet have seen its definition. `render_internal_impl` therefore runs a
 **pre-pass** over the root's children collecting definitions into a map before the main
-walk begins — the same shape as the heading-level pre-scan just above it.
+walk begins, the same shape as the heading-level pre-scan just above it.
 
 More subtly: **a block id is hashed from the block's source lines, not from its emitted
 HTML**. A note's source lives somewhere else entirely while its text renders inside the
 referencing block, so the definitions a block displays are folded into that block's hash
 input. Without that fold, editing a note would leave every block id identical, the diff
-would emit no operation, and the live preview would silently keep showing the old note —
+would emit no operation, and the live preview would silently keep showing the old note:
 a failure with no error and no visible symptom except staleness. Only the notes a block
 actually displays are folded in, so editing one note does not churn the ids of blocks
 that reference a different one.
@@ -150,15 +139,9 @@ invariant the block swap depends on.
 
 ## Incremental updates
 
-On a save the server re-runs the pipeline and calls `diff_blocks(old, new)`
-(`diff.rs`): an LCS over the block-id sequences finds the stable anchors, and the
-gaps between them become `Update` / `Insert` / `Remove` ops. Only those ops cross
-the websocket, so the browser swaps a handful of elements while everything
-else, including live canvases, stays put. (Code-cell *outputs* are blocks too,
-keyed to the cell id, so re-running a cell updates only its output block.) Our
-`tau` edit is the smallest case of all: only the cell's code changed, so the cell
-re-runs and its output block re-renders, while the heading and the paragraph keep
-their ids and are never touched.
+On a save the server re-runs this whole pipeline and hands the fresh block list to
+`diff_blocks(old, new)`, which turns it into the handful of ops that cross the
+websocket. [The block model](block-model.tmd) is that algorithm.
 
 ## Output assembly
 
@@ -168,15 +151,16 @@ into a single fixed HTML shell (the `PAGE_TEMPLATE` `format!` string) that suppl
 page chrome the reader never authored:
 
 - A **pre-paint theme bootstrap** in `<head>` (`theme_head`): a tiny inline `<script>`
-  that reads the saved theme/reader preferences and sets `data-theme` on `<html>`
-  *before the first paint*, so a dark-mode reader never sees a white flash.
+  that reads the reader's *device* preference (`prefers-color-scheme`) and sets
+  `data-theme` on `<html>` *before the first paint*, so a dark-mode reader never sees a
+  white flash, then keeps following the OS live. Both palettes always ship and the device
+  alone decides: there is no author theme key and no reader toggle in a built page.
 - The **bundled offline assets**: `base.css`, the dark layer, the optional site CSS, and
   (only when the document actually uses math) the KaTeX stylesheet, all `include_str!`d
   into the binary so a built page is self-contained with no CDN.
 - A **skip-to-content link** when the body carries the focusable `<main id="tali-main">`,
   plus the chrome's own head markup (per-page OpenGraph/SEO meta and the feed links). No
-  author-configured markup reaches the `<head>`: `_site.yml`'s `head:` was the last such
-  hatch and went on 2026-08-18.
+  author-configured markup reaches the `<head>`.
 - For a page with `{js}` cells, the vendored d3 + Observable Plot libs and the `{js}`
   enhancer (gated on the rendered body, so a page without `{js}` carries none of it).
 
@@ -205,9 +189,22 @@ and show a diagnostic instead of running. A Python cell's `define(...)` bridges
 values across via a `<script type="tali-define">` blob the enhancer ingests,
 re-running dependents when it lands after first paint.
 
-Two decisions keep this cheap and robust. The page assembler ships the vendored
-d3 + Observable Plot libs (UMD globals) **only when a page actually contains `{js}`
-cells** (gated on the rendered body), so a page without them carries no extra weight.
-And because every `{js}` cell is a block with a content-hash id, an unedited cell is
-**never touched by the diff**, so it keeps its runtime state across a save, the same
-live-state guarantee a Three.js canvas gets.
+That graph is running in this page. The slider is a `{{< input >}}`, the cell under it
+declares `//| input: tau`, and dragging one re-runs exactly the other, redrawing our
+running example's cooling curve in the browser rather than in the kernel:
+
+{{< input name="tau" type="slider" min="5" max="20" step="1" value="10" label="cooling constant tau (minutes)" >}}
+
+```{js}
+//| input: tau
+const tau = tali.value("tau");
+const curve = Array.from({ length: 200 }, (_, i) => {
+  const t = (i * 30) / 199;
+  return { t, temp: 20 + 70 * Math.exp(-t / tau) };
+});
+return Plot.plot({
+  height: 200, marginLeft: 44,
+  x: { label: "minutes" }, y: { label: "°C", domain: [15, 95] },
+  marks: [Plot.lineY(curve, { x: "t", y: "temp", stroke: "#5b8cff" })],
+});
+```
