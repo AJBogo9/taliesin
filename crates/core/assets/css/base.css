@@ -616,9 +616,23 @@
      1rem gutter + 32em measure + 3em gutter + 16em note + 1rem gutter = 66rem (1056px).
      The spec's stated ~1022px is the same sum without the two page gutters.
      NOT on a page with a TOC rail: there the same sum gains 2.5rem + 14rem = 82.5rem, and
-     below that the text track would have to shrink under the measure to keep the column —
-     the measure is a spec invariant and the margin column is a feature. A rail page keeps
+     below that the text track would have to shrink under the measure to keep the column.
+     The measure is a spec invariant and the margin column is a feature. A rail page keeps
      the collapsed form it has always had.
+
+     THE `body` ARM IS THE SINGLE-DOCUMENT CONTAINER, and the three `:not()`s on it are
+     load-bearing rather than defensive. `has-toc` lands on `body` only for a single
+     document; a PROJECT puts it on the wrapper (`.tali-site-main has-toc`) and leaves the
+     body as `.tali-site`. So a bare `body:not(.has-toc)` matched every site page ever
+     rendered, set the token there, and let it INHERIT straight past the
+     `.tali-site-main:not(.has-toc)` exclusion sitting beside it, which made that exclusion
+     dead text for as long as it existed. Measured on `corpus/tech-blog/posts/a-star`: the
+     grid reserved `note 320px` + `gap 60px` on a rail page, and since the bleed track is
+     `minmax(0, …)` it is the band that absorbed the loss: 109px of bleed instead of 320,
+     so a `pre` got 749px against the 960px this design states it fits 84 columns in. Nine
+     site pages across the corpus were in that state and not one of them used the margin
+     column, so the column that squeezed the code was reserved for nobody.
+
      The track and the float engage TOGETHER, on the same selector list: a float sized from
      `--tali-note-w` while the track is still 0 lands in the page gutter, on top of nothing
      that reserved room for it.
@@ -629,9 +643,11 @@
      paragraph push each other DOWN the column in document order, where absolutely
      positioned notes would stack on top of one another. */
   @media (min-width: 66rem) {
-    body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main {
+    body:not(.has-toc):not(.tali-site):not(.tali-book-body),
+    .tali-site-main:not(.has-toc), .tali-book-main {
       --tali-note-w: 20rem; --tali-note-gap: 3.75rem; }
-    :is(body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main) .tali-sidenote {
+    :is(body:not(.has-toc):not(.tali-site):not(.tali-book-body),
+        .tali-site-main:not(.has-toc), .tali-book-main) .tali-sidenote {
       display: block; float: right; clear: right; width: var(--tali-note-w);
       margin: .3rem calc(-1 * (var(--tali-note-w) + var(--tali-note-gap)))
               var(--tali-u) var(--tali-note-gap);
@@ -643,7 +659,8 @@
        this grid at all and a float with a negative margin is the only way it reaches the
        band. Two mechanisms, one geometry, and the reason is structural rather than
        stylistic. */
-    :is(body:not(.has-toc), .tali-site-main:not(.has-toc), .tali-book-main)
+    :is(body:not(.has-toc):not(.tali-site):not(.tali-book-body),
+        .tali-site-main:not(.has-toc), .tali-book-main)
       :is(#tali-main, #tali-root, #tali-main > article) > .column-margin {
       grid-column: note; margin: 0 0 var(--tali-u); padding-left: 0; border-left: 0; }
   }
