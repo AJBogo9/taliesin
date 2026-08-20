@@ -152,21 +152,22 @@ with `data-block-id` + `data-sourcepos` on every block.
   environments; CSS + fonts bundled inline, fully offline.
 - `{{< include >}}` resolution with a per-file source map (`data-source-file`), so
   click-to-source jumps into the included file.
-- Callouts, `layout-ncol` grids, attributed `.btn` links, raw `{=html}` passthrough.
+- Callouts, `layout-ncol` grids, raw `{=html}` passthrough.
 - Citations (`[@key]`) + an auto-generated References section, and cross-references
   (`@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`) into numbered, labelled anchor links.
 - **Print-clean matplotlib.** Inline figures are web-themed without tainting global
   `rcParams`, so a `savefig` inside the same cell stays black-on-white.
 - Live **`{js}`** cells (a tiny native enhancer with vendored d3 + Observable Plot,
-  no Observable runtime), **mermaid** diagrams, themes (light/dark + custom), and a
-  responsive reading layout (print stylesheet).
+  no Observable runtime), **mermaid** diagrams, and a responsive reading layout
+  (print stylesheet). Light and dark palettes both ship and the reader's device
+  selects one, with no per-site theme control to configure.
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
   a redesigned navbar/footer + book chapter prev/next, `.tmd`→`.html` link rewriting,
   `listing:` post-card indexes, and `hero:` landing banners. Live preview navigates
   between pages and hot-reloads the edited one.
 - **Live diagnostics** in the preview's dev panel: broken includes, missing kernels,
-  config typos (with did-you-mean), and an advisory client-side accessibility audit
-  (missing alt text, heading skips, low contrast), each click-to-source.
+  config typos (with did-you-mean), and an advisory server-side accessibility audit
+  (missing alt text, heading skips), each click-to-source.
 
 Mermaid and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.

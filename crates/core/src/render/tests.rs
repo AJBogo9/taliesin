@@ -6879,3 +6879,51 @@ fn the_site_shell_wraps_a_book_and_a_website_differently() {
         "a book must not paint the website's navbar or content column: {html}"
     );
 }
+
+/// Constructs Taliesin no longer implements, which the README must not advertise.
+///
+/// **Why this is a pin and not a register.** Nothing user-facing reads this list; it
+/// exists because the README's feature list is *prose*, and no structural gate reaches
+/// prose. `the_reference_page_documents_every_known_key` walks `KNOWN_KEYS` into the
+/// guide and would not have caught any entry below, because none of these constructs is
+/// a front-matter key.
+///
+/// Every entry shipped in the README after its code was cut, which is the whole
+/// argument for the file: a reader's first two minutes with the project are spent here,
+/// and the project's own rule is that no claim about the tool ships without a committed
+/// instrument.
+const WITHDRAWN_README_PHRASES: &[(&str, &str)] = &[
+    (
+        "+ custom",
+        "the `theme:` key was CUT 2026-08-17: both palettes always ship and the reader's \
+         device selects one at paint, so there is no author theme control at all",
+    ),
+    (
+        ".btn",
+        "link attribute blocks `[text](url){.class}` were CUT in 093d8b0c, so there is no \
+         way to attribute a link and no `.btn` class to attach",
+    ),
+    (
+        "low contrast",
+        "contrast checking only ever ran in the client-side a11y scanner (447d7dd2), which \
+         was deleted 2026-08-15 (f1371e0e); the server-side validator in \
+         `diagnostics/a11y.rs` documents body-text contrast as intentionally out of scope, \
+         since it needs computed CSS rather than a static block-model fact",
+    ),
+];
+
+#[test]
+fn the_readme_does_not_advertise_withdrawn_constructs() {
+    let path = repo_root().join("README.md");
+    let src = std::fs::read_to_string(&path).unwrap();
+    let found: Vec<String> = WITHDRAWN_README_PHRASES
+        .iter()
+        .filter(|(phrase, _)| src.contains(phrase))
+        .map(|(phrase, why)| format!("{phrase:?}: {why}"))
+        .collect();
+    assert!(
+        found.is_empty(),
+        "README.md advertises constructs the tool no longer implements:\n  {}",
+        found.join("\n  ")
+    );
+}
