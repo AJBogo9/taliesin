@@ -10,17 +10,33 @@ and minor versions carried breaking changes; the 0.x entries below were written 
 
 ## [1.0.0] - 2026-08-20
 
-The scope is closed. This is the first public release, and 1.0 marks the feature set as
-final for this tool's one use case rather than announcing a feature release. The entries
-below continue the 2026-08 reduction campaign; the visual redesign, the restructured
-two-book manual, and the new gallery site that also shipped in this window are not
-itemized here.
+The scope is closed. This is the first public release: 1.0 states that the feature set is
+final for this tool's one use case, not that nothing changed since 0.3.0. Alongside the
+scope-closing cuts below, this release also ships a full visual redesign and a new public
+gallery site.
+
+### Added
+
+- **A full visual redesign** ("Instrument"): the tool now owns its typography (Literata for
+  prose, JetBrains Mono for code and labels, replacing borrowed system fonts) and its
+  colour (two palettes designed rather than inverted from each other, an owned
+  syntax-highlighting palette replacing a borrowed one, every text colour shipped with a
+  computed WCAG contrast ratio). Reading measure, heading scale and spacing scale are all
+  derived from one system instead of copied per component, and the favicon now follows the
+  reader's device like every other painted surface.
+- **A public gallery site**, its own project and domain: five self-contained one-page demos
+  (a gradient-descent explainer, a parametric meshed-gears model, an executed data report,
+  an API-documentation craft piece, and a molecules demo), plus an index that dogfoods
+  `listing:` with theme-aware card thumbnails.
 
 ### Changed
 
 - **The project is public**, and the version says the scope is closed. Feature requests are
   closed by design from here; bug reports are welcome. See "Project status" in `README.md`.
 - The CLI is **six subcommands**: `preview`, `build`, `init`, `doctor`, `lsp`, `help`.
+- **The four public sites deploy separately** instead of composing into one domain's
+  subpaths: the marketing site, both docs books, and the gallery each build, preview and
+  publish as their own project on their own domain, linking to each other by absolute URL.
 
 ### Removed
 
