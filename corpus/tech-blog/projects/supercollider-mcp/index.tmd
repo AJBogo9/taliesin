@@ -10,7 +10,7 @@ categories:
   - Music
 ---
 
-[GitHub](https://github.com/AJBogo9/supercollider-mcp){.btn .btn-outline-secondary .btn-sm}
+<a href="https://github.com/AJBogo9/supercollider-mcp" class="btn btn-outline-secondary btn-sm">GitHub</a>
 
 The AI boom has influenced basically every generative/creative industry, music included. Tools like Suno are impressive, but they hand you a finished track. What if you want to iterate on the product and get more control of what comes out? LLMs are good at producing code, but they are not designed to produce sound directly. So why not ask an LLM to produce code that produces sound? There exist tools that fit this description. SuperCollider is an audio platform that allows you to write code to produce sound.
 

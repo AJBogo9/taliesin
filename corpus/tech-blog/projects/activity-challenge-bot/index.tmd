@@ -10,7 +10,7 @@ categories:
   - Backend
 ---
 
-[GitHub](https://github.com/AJBogo9/activity-challenge-bot){.btn .btn-outline-secondary .btn-sm}
+<a href="https://github.com/AJBogo9/activity-challenge-bot" class="btn btn-outline-secondary btn-sm">GitHub</a>
 
 A Telegram bot that runs guild-based fitness competitions across Aalto University societies. Members log activities through the bot, which scores them with a point system derived from the 2024 Physical Activity Compendium so that a swim, a run, and a gym session are all comparable on one leaderboard.
 

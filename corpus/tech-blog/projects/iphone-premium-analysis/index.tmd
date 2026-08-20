@@ -9,7 +9,7 @@ categories:
   - Machine Learning
 ---
 
-[GitHub](https://github.com/AJBogo9/phone-price-prediction){.btn .btn-outline-secondary .btn-sm}
+<a href="https://github.com/AJBogo9/phone-price-prediction" class="btn btn-outline-secondary btn-sm">GitHub</a>
 
 A regression study asking a simple question: are Apple devices priced above what their hardware alone would justify? I trained models on 1,359 smartphones to predict price from hardware specifications, then compared the predictions against actual iPhone prices.
 

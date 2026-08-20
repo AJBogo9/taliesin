@@ -64,7 +64,7 @@ pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
-use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
+use divs::{group_divs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
@@ -1167,9 +1167,6 @@ fn render_internal_impl(
             html = strip_heading_attr(&html);
         } else {
             emit(node, &attrs, &mut html);
-            // Apply Pandoc attribute blocks trailing a link (`[t](u){.btn}`) onto
-            // the `<a>`, dropping the literal `{...}` comrak left as text.
-            html = apply_link_attrs(&html);
             // Drop a stray trailing `\` (a hard break at the end of a block): strict
             // CommonMark leaves it literal, but Pandoc drops it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
@@ -2376,35 +2373,6 @@ fn strip_heading_attr(html: &str) -> String {
     html.to_string()
 }
 
-/// Apply a Pandoc attribute block trailing a link — `<a ...>text</a>{.btn #id}`
-/// — onto the `<a>` (merging classes + setting an id) and drop the literal `{...}`
-/// comrak leaves as text. The inline analogue of [`strip_heading_attr`]; only
-/// `.class`/`#id` blocks are consumed (anything else, e.g. `{x}`, is left as-is).
-fn apply_link_attrs(html: &str) -> String {
-    if !html.contains("</a>") {
-        return html.to_string();
-    }
-    let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-    while let Some(pos) = rest.find("</a>") {
-        let end = pos + "</a>".len();
-        out.push_str(&rest[..end]);
-        let after = &rest[end..];
-        let trimmed = after.trim_start();
-        if let Some(body) = trimmed.strip_prefix('{')
-            && let Some(close) = body.find('}')
-            && let Some((classes, id)) = parse_pandoc_attrs(&body[..close])
-        {
-            inject_attrs_into_last_tag(&mut out, "<a ", &classes, id.as_deref());
-            rest = &body[close + 1..];
-            continue;
-        }
-        rest = after;
-    }
-    out.push_str(rest);
-    out
-}
-
 /// Drop a literal backslash left right before a block-closing tag — a trailing
 /// `\` hard break that comrak keeps (CommonMark) but Pandoc drops (e.g. a
 /// CV line ending `2025–2027 \`). Scoped to block closers so inline `\` is untouched.
@@ -2440,26 +2408,6 @@ fn strip_trailing_hardbreak(html: &str) -> String {
         };
     }
     html.to_string()
-}
-
-/// Insert `class`/`id` attributes into the last opening `tag` already written to
-/// `out` (e.g. the `<a ` that precedes a just-emitted `</a>`).
-fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], id: Option<&str>) {
-    let Some(start) = out.rfind(tag) else {
-        return;
-    };
-    let Some(rel_gt) = out[start..].find('>') else {
-        return;
-    };
-    let gt = start + rel_gt;
-    let mut ins = String::new();
-    if !classes.is_empty() {
-        ins.push_str(&format!(" class=\"{}\"", escape_attr(&classes.join(" "))));
-    }
-    if let Some(i) = id {
-        ins.push_str(&format!(" id=\"{}\"", escape_attr(i)));
-    }
-    out.insert_str(gt, &ins);
 }
 
 /// Fold Pandoc table captions into their tables. A `: caption {#tbl-x}` paragraph

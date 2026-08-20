@@ -1,30 +1,10 @@
 //! `:::` fenced-div preprocessing and container building: scan div spans,
 //! strip the fence markers (line-preserving) so inner content parses as normal
-//! blocks, then regroup blocks into callouts/columns/etc. Also the Pandoc
-//! attribute parsers. Split out of the render module; `use super::*` reaches
+//! blocks, then regroup blocks into callouts/columns/etc. Also `parse_attrs`, the
+//! fenced-div attribute parser. Split out of the render module; `use super::*` reaches
 //! the block model + helpers (Block, FlatBlock, DivAttrs, make_id, escaping).
 
 use super::*;
-
-/// Parse a `.class #id` attribute block. Returns `None` unless every token is a
-/// `.class` or `#id` (so non-attribute braces are left untouched).
-pub(crate) fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>)> {
-    let s = s.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let mut classes = Vec::new();
-    let mut id = None;
-    for tok in s.split_whitespace() {
-        if let Some(c) = tok.strip_prefix('.').filter(|c| !c.is_empty()) {
-            classes.push(c.to_string());
-        } else {
-            let i = tok.strip_prefix('#').filter(|i| !i.is_empty())?;
-            id = Some(i.to_string());
-        }
-    }
-    Some((classes, id))
-}
 
 /// Blank out fenced-div markers (`::: {...}` / `:::`) without changing
 /// the line count, so the inner content parses as ordinary blocks and every

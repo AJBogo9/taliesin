@@ -32,7 +32,9 @@ Anything enumerative belongs one click away on guide.taliesin.sh, not on the lan
   theme-matched light/dark pair were retired on 2026-08-08.
 - **Live graphics** — `{js}` cells (the spinnable surface on the landing page, the
   reactive plots and the Lorenz attractor on `showcase.tmd`).
-- **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.
+- **Buttons** — the `hero:` front matter's `actions:`, which emit `a.btn` directly.
+  Elsewhere, a raw `<a href="…" class="btn btn-primary btn-lg">`: the link attribute
+  block (`[Text](href){.btn}`) was cut on 2026-08-20.
 - **Closing CTA** — a `::: {.hero}` fenced div.
 
 The theme (serif body, sans headings, light/dark toggle) is the Taliesin default.

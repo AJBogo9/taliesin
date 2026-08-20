@@ -10,7 +10,7 @@ categories:
   - Statistics
 ---
 
-[GitHub](https://github.com/AJBogo9/bayesian-fatality-analysis){.btn .btn-outline-secondary .btn-sm}
+<a href="https://github.com/AJBogo9/bayesian-fatality-analysis" class="btn btn-outline-secondary btn-sm">GitHub</a>
 
 A study of fatality-rate patterns across aircraft manufacturers, fitting hierarchical and non-hierarchical Bayesian models in R with `brms` (Stan backend) to 1,766 aviation crashes spanning 40 manufacturers from 1976 to 2024.
 

@@ -1,8 +1,7 @@
 //! Standalone-image figures: detect an image-only paragraph as a `<figure>`,
 //! emit the numbered figure / figcaption, and the mermaid-diagram variant.
 //! Split out of the render module; `use super::*` reaches the shared AST types
-//! and helpers (AstNode, NodeValue, emit_children, parse_pandoc_attrs, html
-//! escaping).
+//! and helpers (AstNode, NodeValue, emit_children, parse_attrs, html escaping).
 
 use super::*;
 
