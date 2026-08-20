@@ -26,7 +26,7 @@ jobs:
   # Create the (draft-free) release once, so the matrix jobs below only upload. Doing it
   # inside the matrix would race three jobs against one `gh release create`.
   create:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
 
   build:
     needs: create
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:

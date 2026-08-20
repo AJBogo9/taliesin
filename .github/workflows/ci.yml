@@ -38,11 +38,21 @@ name: CI
 # back on (or push to a throwaway fork) and let ci.yml and release.yml complete once
 # with their logs read. Until then, credit this file for nothing.
 #
-# `workflow_dispatch` below exists FOR that rehearsal and for nothing else. Re-enabling
-# Actions is a billing decision, so it stays the author's; this at least makes the
-# rehearsal a Run-workflow click on a chosen branch rather than a scratch tag or a
-# throwaway fork. `release.yml` already carried one. Adding it bills nothing while the
-# repo is private — with Actions off, no run is created by any trigger.
+# `workflow_dispatch` below exists FOR that rehearsal, and now for the guard condition
+# itself too. Re-enabling Actions is a billing decision, so it stays the author's; this
+# at least makes the rehearsal a Run-workflow click on a chosen branch rather than a
+# scratch tag or a throwaway fork. `release.yml` already carried one. Adding it bills
+# nothing while the repo is private: with Actions off, no run is created by any trigger.
+#
+# The guard used to be ONE condition (`github.event.repository.private != true`), which
+# made that first sentence false: the workflow_dispatch event payload includes
+# `repository`, so on a private repo the condition evaluated false and every job
+# SKIPPED. A manual dispatch produced a green checkmark certifying nothing, and the only
+# way to actually rehearse was deleting the guards on a throwaway branch. The guard is
+# now TWO conditions: `github.event.repository.private != true || github.event_name ==
+# 'workflow_dispatch'`. A deliberate manual dispatch now runs every job regardless of
+# visibility; the automatic triggers (push, pull_request, schedule) still skip on a
+# private repo, so the billing protection the guard exists for is unchanged.
 on:
   push:
     branches: [main]
@@ -56,7 +66,7 @@ on:
 
 jobs:
   test:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +115,7 @@ jobs:
   # turns the canary test into a HARD FAIL if the interpreter ever goes missing, so the exec
   # stack can never silently re-skip back to zero coverage.
   kernel:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,19 +136,25 @@ jobs:
         env:
           TALIESIN_PYTHON: python
           TALIESIN_REQUIRE_KERNEL: "1"
-          # `cell_timeout()` caches TALIESIN_CELL_TIMEOUT on its first read (process-global
-          # OnceLock). The runaway-interrupt test needs a short cap, but under parallel test
-          # execution another kernel test can read the default (120s) first, so the runaway
-          # cell then runs the full 120s and the test fails. Pinning the cap job-wide makes
-          # the first read deterministic; every other kernel cell here finishes in well under 3s.
-          TALIESIN_CELL_TIMEOUT: "3"
+          # `cell_timeout()` memoizes TALIESIN_CELL_TIMEOUT on first read (process-global
+          # OnceLock), so this value governs every kernel test that does not set its own
+          # `cell_cap` on the Kernel, which is most of them. The floor is
+          # `a_first_build_publishes_the_body_before_the_cells_finish`
+          # (crates/server/src/serve_site/mod.rs), whose cell sleeps 8s on purpose, to prove
+          # the early publish beats the cell rather than racing it, so the cap has to clear
+          # 8s with margin for a slow shared runner. The runaway-interrupt tests (exec.rs,
+          # kernel.rs) are NOT governed by this value: each one sets `cell_cap` or
+          # `silence_cap` directly on the Kernel, specifically so the OnceLock's read order
+          # cannot make them flaky (see kernel.rs's own comment on
+          # kernel_executes_state_errors_and_interrupts_runaway_cell).
+          TALIESIN_CELL_TIMEOUT: "30"
         run: cargo test -p taliesin-server
 
   # Type-check the preview client JS (client.js + the sibling shipped scripts:
   # search.js, toc-spy.js). They carry `// @ts-check` and have silently
   # regressed to tsc errors before a release; this gate keeps them honest.
   typecheck:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +179,7 @@ jobs:
   # rotting. A heavier @vscode/test-electron e2e existed here as a local/F5 check until
   # 2026-08-09, when it went for running under no script, hook or workflow.
   editor-vscode:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -188,7 +204,7 @@ jobs:
   # deprecated but currently advisory-free; this is the backstop that tells us if
   # that (or any transitive dep) ever grows a CVE — at which point we migrate.
   audit:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,7 +216,7 @@ jobs:
   # new dep with a disallowed license or a banned source fails the build, not just a CVE).
   # Verified locally against the current tree — advisories/licenses/bans/sources all ok.
   deny:
-    if: github.event.repository.private != true
+    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
