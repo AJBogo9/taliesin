@@ -283,9 +283,12 @@ skips it, and `git push --no-verify` bypasses. `gate_script.rs` cross-checks the
 (`every_pre_push_command_is_also_run_by_the_gate_script`,
 `every_docs_book_is_linted_by_every_gate_file`), so a third book cannot inherit a hole.
 
-`.github/workflows/ci.yml` exists but **every job is guarded on
-`github.event.repository.private != true`**, so while this repo is private it is inert and
-certifies nothing. Do not credit it for a check until the repo is public.
+`.github/workflows/ci.yml` and `release.yml` guard every job on
+`github.event.repository.private != true || github.event_name == 'workflow_dispatch'`:
+while this repo is private, the automatic triggers (push/PR/schedule) still skip, but a
+manual `workflow_dispatch` runs every job regardless. Both workflows have been dispatched
+and gone fully green this way (verified 2026-08-20). Credit a dispatched run for what it
+verified; an automatic trigger still will not fire until the repo is public.
 
 ## Conventions
 

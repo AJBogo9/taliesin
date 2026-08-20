@@ -23,20 +23,26 @@ name: CI
 # `github.event.repository` is absent for some event types, and `null != true` is
 # true, so the guard degrades toward RUNNING rather than toward silence.
 #
-# ── The guard is NOT what is stopping this workflow, and it never has been ──
-# Measured 2026-08-17: `gh api repos/<owner>/taliesin/actions/permissions` returns
-# `{"enabled": false}`. Actions is switched off at the REPOSITORY-SETTINGS level, which
-# was the actual remedy applied on 2026-07-26, so GitHub creates no workflow run at all:
-# 382 runs exist, the newest of them from 2026-07-26, and not one since this file was
-# restored on 2026-07-28. `release.yml` has never fired.
+# ── Both workflows have now actually run ──
+# Measured 2026-08-17: `gh api repos/<owner>/taliesin/actions/permissions` returned
+# `{"enabled": false}`. Actions was switched off at the REPOSITORY-SETTINGS level, which
+# was the actual remedy applied on 2026-07-26, so GitHub created no workflow run at all
+# regardless of the guard above: 382 runs existed, the newest of them from 2026-07-26,
+# and not one since this file was restored on 2026-07-28. `release.yml` had never fired
+# either.
 #
-# This paragraph used to claim the opposite — "a skipped job is visible in the Actions
-# UI; that is deliberate, so an inert CI never *looks* like a passing one". There are no
-# skipped jobs to see, because there are no runs. The consequence is worth stating
-# plainly: ~300 lines of YAML across 10 jobs and a 3-OS matrix are UNREHEARSED, and the
-# publication flip is the first time any of it executes. Before that flip, turn Actions
-# back on (or push to a throwaway fork) and let ci.yml and release.yml complete once
-# with their logs read. Until then, credit this file for nothing.
+# That is no longer the state. Actions is enabled again (re-measured 2026-08-20), and a
+# manual `workflow_dispatch` of each workflow has completed and gone fully green on this
+# branch: CI run 32395506257 (six jobs: test, kernel, typecheck, editor-vscode, audit,
+# deny) and Release run 32395509519 (four jobs, including both macOS targets), both
+# SUCCESS against the same tree. The rehearsal was not a formality — it caught and fixed
+# two real defects the guard's absence had kept invisible: a job-wide cell timeout
+# shorter than one of the kernel job's own fixtures ever needed, and a `.gitignore` rule
+# that hid a hand-authored image from every fresh clone while a warm local build stayed
+# green. The ~300 lines of YAML across 10 jobs and a 3-OS matrix are REHEARSED, not
+# theoretical, going into publication. Credit a dispatched run for what it verified; an
+# automatic push/PR trigger still will not create a run until the repository itself is
+# public, per the guard below.
 #
 # `workflow_dispatch` below exists FOR that rehearsal, and now for the guard condition
 # itself too. Re-enabling Actions is a billing decision, so it stays the author's; this
