@@ -102,7 +102,30 @@ fn occurrence_is_exempt(lower: &str, at: usize, q: &str) -> bool {
     if rest.starts_with("-fast") || rest.starts_with("fast") {
         return true;
     }
+    // ENCODING NOISE inside a `data:…;base64,` payload. The alphabet is
+    // [A-Za-z0-9+/=], so a long enough run eventually spells any three-letter token —
+    // the same incidental hit the vendored `mermaid.min.js` skip in `walk` records,
+    // except in a first-party text file (the gallery's SVG thumbnails inline their
+    // webp captures this way), which no file-level skip may allowlist. Bounded per
+    // occurrence: the run must be unbroken base64 back to the marker itself, so a
+    // reintroduction in the MIME type (`data:application/<tok>-js;base64,…`) still
+    // offends.
+    if in_base64_payload(lower, at) {
+        return true;
+    }
     false
+}
+
+/// Is the occurrence at `at` inside the payload of a `data:…;base64,` URI — i.e. does
+/// walking left over base64-alphabet bytes land exactly on the `;base64,` marker?
+fn in_base64_payload(lower: &str, at: usize) -> bool {
+    let bytes = lower.as_bytes();
+    let is_b64 = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'=');
+    let mut i = at;
+    while i > 0 && is_b64(bytes[i - 1]) {
+        i -= 1;
+    }
+    lower[..i].ends_with(";base64,")
 }
 
 fn walk(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) {
@@ -229,6 +252,9 @@ fn the_guard_detects_a_reintroduction() {
         format!("application/{q}-js"),
         format!("_{q}_render(fig)"),
         format!("id=\"{q}-title-block\""),
+        // A retired MIME type stays flagged even beside a base64 marker: the hit sits
+        // before `;base64,`, outside the payload the exemption covers.
+        format!("src=\"data:application/{q}-js;base64,aaaa\""),
     ] {
         assert!(
             line_offends(&bad, &q),
@@ -241,6 +267,7 @@ fn the_guard_detects_a_reintroduction() {
         format!("assert!(!is_source_path(Path::new(\"a/b/index.{q}\")));"),
         format!("if (/{q}-fast|{q}Fast/i.test(line))"),
         format!("lives in the separate `{q}-fast-testbed` repo, not here."),
+        format!("href=\"data:image/webp;base64,uklgr{q}jjaabx\""),
     ] {
         assert!(
             !line_offends(&ok, &q),
