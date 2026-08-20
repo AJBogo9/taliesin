@@ -188,7 +188,7 @@ anything client-side, and **delete the item from this file when it lands.**
      now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
      history is what gets published.)
      **Purged:** superseded by ruling D-8 and design sections 4.2/4.3, no longer money and
-     strategy documents only. The set is now **15 paths** for the public repo: the money and
+     strategy documents only. The set is now **16 paths** for the public repo: the money and
      strategy documents (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md`, both
      git-**tracked** while their own headers say they must not be, plus five dated audits and
      `todo.md`), **and third-party-rights material**: `corpus/bayesian-website/` is a named
@@ -271,7 +271,7 @@ anything client-side, and **delete the item from this file when it lands.**
        `categories`, `readme`, `homepage`, `documentation` are blank in every manifest. The `.crate`
        size blocker is discharged — the vendored pyodide payload that caused it was deleted outright
        on 2026-08-04, so the crate is under the cap on its own bytes.
-     - Cold build is **2m11s, 268 crates, 2.6 GB peak RSS at `-j4`** for one ~38 MB binary. The
+     - Cold build cost is re-measured in `README.md` for the 1.0 release; the figures that used to sit here were undated and are superseded. The
        audience for a documentation tool is not the population that will install a Rust toolchain and
        wait it out, which is exactly why the release workflow exists.
 

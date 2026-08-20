@@ -43,7 +43,7 @@ of every commit** in the rewritten history.
 Rewrite A's set plus the seven money and strategy documents at both their `notes/` and
 pre-move root spellings, `todo.md`, and `notes/2026-07-28-public-flip-audit.md`.
 
-**All 15 purged paths return 0 commits.**
+**All 16 purged paths return 0 commits.**
 
 Sensitive-content sweep across the whole rewritten object graph, by `git log -S`:
 
@@ -70,7 +70,7 @@ Sensitive-content sweep across the whole rewritten object graph, by `git log -S`
 | `build docs/internals --check-only` | no static problems found, exit 0 |
 | `docs/guide/using/figures/loss.png` | present (the asset the CI rehearsal rescued survived) |
 
-## Two findings that change Phase 2
+## Three findings that change Phase 2
 
 ### 1. A long-literal replacement missed, and only a broad sweep caught it
 
@@ -84,7 +84,27 @@ the long literal matched.** The fix was to redact on the short two-word key, whi
 unambiguous here (the author's own CV names the university alone, which is legitimately
 public and must not be redacted).
 
-### 2. Stale branches would publish
+### 2. The redaction list handled the surname but not the given name
+
+Caught by the whole-branch review, after the first dry run reported clean. The Class 1 list
+held the co-author's SURNAME only, so a rewrite that removed every trace of the surname still
+published "[REDACTED-NAME] ***REMOVED***" in `notes/AUDITS.md` and in the historical
+`crates/core/src/site/cite_this.rs` fixture, both of which are kept rather than path-purged.
+
+Worse, a test fixture stored the given name on its own line as `given: Some("[REDACTED-NAME]".into())`,
+which neither full-name form (`[REDACTED-NAME]`, `[REDACTED-NAME]`) matches, so even adding those
+left it behind. **The bare given name had to be listed too.**
+
+Two lessons, both now recorded in the enumeration document:
+- **`--replace-text` order is load-bearing.** filter-repo applies entries in file order, so
+  full-name forms must precede the bare surname or the longer forms never match.
+- **Redacting a person requires every form their name takes**, including the ones split
+  across structured fields where the parts never appear adjacent.
+
+Re-verified after the correction: `[REDACTED-NAME]`, `[REDACTED-NAME]`, `***REMOVED***`, `FeedbackFruits` and the
+competitor figures all return 0 across every commit of the rewritten history (2,116 commits).
+
+### 3. Stale branches would publish
 
 The mirror carries roughly 40 local branches, most of them finished feature branches
 (`cut/wave-1-antidrift`, `batch-9-cli-correctness`, and so on). A mirror push publishes all of

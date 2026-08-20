@@ -19,7 +19,7 @@ verified, and the gate has not been crossed. Phase 2 needs one instruction from 
 | CI, final tree | run `32395506257` | **success**, 6 of 6 jobs |
 | Release, final tree | run `32395509519` | **success**, 4 of 4 jobs, both macOS targets |
 | Rewrite A (archive) | `git-filter-repo` on a mirror clone | 4 paths at 0 commits; co-author surname 0 hits across every blob of every commit |
-| Rewrite B (public) | `git-filter-repo` on a mirror clone | 15 paths at 0 commits; all 8 sensitive string classes at 0 |
+| Rewrite B (public) | `git-filter-repo` on a mirror clone | 16 paths at 0 commits; all sensitive string classes at 0, given name included |
 | Rewritten history builds | `cargo test -p taliesin-core --no-fail-fast` in a clone | **50 suites, 827 passed, 0 failed, 0 ignored** |
 | Rewritten history lints | `build docs/{guide,internals} --check-only` in a clone | `no static problems found`, exit 0 both |
 | Browser, 4 projects | chrome-devtools MCP at 390x844 / 900x1440 | 0 console errors, 0 broken images |
@@ -41,6 +41,10 @@ Detail: `2026-08-20-workflow-rehearsal-log.md`, `2026-08-20-rewrite-dry-run.md`,
 - **`notes/backlog.md`'s redaction coverage is medium confidence**, not high. The literal
   strings were verified against today's wording and two named historical blobs, not against
   every historical version. See the mitigation below.
+- **The redaction list was wrong twice and both times a sweep caught it, not the list.** It
+  first missed a phrase by one word, then handled the co-author's surname while leaving the
+  given name. Both are fixed and re-verified at 0, but the pattern is the point: after
+  pushing, sweep the real remote rather than trusting the list.
 
 ---
 
