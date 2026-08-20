@@ -142,11 +142,13 @@ jobs:
           # `a_first_build_publishes_the_body_before_the_cells_finish`
           # (crates/server/src/serve_site/mod.rs), whose cell sleeps 8s on purpose, to prove
           # the early publish beats the cell rather than racing it, so the cap has to clear
-          # 8s with margin for a slow shared runner. The runaway-interrupt tests (exec.rs,
-          # kernel.rs) are NOT governed by this value: each one sets `cell_cap` or
-          # `silence_cap` directly on the Kernel, specifically so the OnceLock's read order
-          # cannot make them flaky (see kernel.rs's own comment on
-          # kernel_executes_state_errors_and_interrupts_runaway_cell).
+          # 8s with margin for a slow shared runner. The runaway-interrupt tests are NOT
+          # governed by this value, for two different reasons: the four in kernel.rs set
+          # `cell_cap`/`silence_cap` directly on the Kernel, bypassing the OnceLock (see its
+          # own comment on kernel_executes_state_errors_and_interrupts_runaway_cell); the one
+          # in exec.rs (an_interrupt_from_outside_the_run_loop_stops_the_running_cell) drives
+          # a bare Executor and ends its sleep with a manual interrupt_pid() call within tens
+          # of ms of a marker file appearing, long before any wall-clock cap could matter.
           TALIESIN_CELL_TIMEOUT: "30"
         run: cargo test -p taliesin-server
 
