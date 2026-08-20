@@ -45,6 +45,7 @@ cd "$(git rev-parse --show-toplevel)"
 purge_re='(^|/)(STARTUP-PLAN|FUNDING-RESEARCH)\.md$'
 purge_re+='|(pmf-audit|due-diligence-audit|demand-positioning-audit|launch-critique|adoption-friction-audit)\.md$'
 purge_re+='|(^|/)phase-2-inputs/'
+purge_re+='|(^|/)corpus/bayesian-website/'
 zero='0000000000000000000000000000000000000000'
 offenders=""
 for line in "${refs[@]}"; do
