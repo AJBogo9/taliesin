@@ -3662,9 +3662,12 @@ fn the_marketplace_icon_is_the_mark_in_two_owned_colours() {
         "{rel}: malformed palette of {} bytes",
         palette.len()
     );
-    for rgb in palette.chunks_exact(3) {
+    // `as_chunks::<3>()` rather than `chunks_exact(3)`: clippy 1.98 added
+    // `chunks_exact_to_as_chunks`, which is deny-by-default here under `-D warnings`.
+    // Stable since 1.88, so it also builds on the older toolchain this machine runs.
+    for rgb in palette.as_chunks::<3>().0 {
         assert!(
-            rgb == PAPER || rgb == INK,
+            rgb.as_slice() == PAPER || rgb.as_slice() == INK,
             "{rel} paints #{:02X}{:02X}{:02X}, which is neither the mark's paper nor its ink. \
              Spec §7: one letterform, two colours, no third colour and no gradient",
             rgb[0],
