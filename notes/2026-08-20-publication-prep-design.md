@@ -200,10 +200,31 @@ predecessor path from before the move to `notes/`, and naming only one spelling 
 pre-move blobs in the rewrite.
 
 Plus `--replace-text` for whatever restatements of the purged documents' commercial
-conclusions survive in files that are **not** purged, and for the roughly 11 commit subjects
-that name the purged documents. Most of the seven known restatements live under `notes/` in
-files that are themselves purged, so re-run 4.1 to find what actually remains rather than
-carrying the audit's list forward.
+conclusions survive in files that are **not** purged. Most of the seven known restatements
+live under `notes/` in files that are themselves purged, so re-run 4.1 to find what actually
+remains rather than carrying the audit's list forward.
+
+**Correction, 2026-08-20.** This paragraph originally continued "and for the roughly 11
+commit subjects that name the purged documents". That was wrong twice over, and both halves
+mattered.
+
+*Mechanically:* `--replace-text` cannot reach a commit subject. It rewrites blob contents.
+Commit and tag messages are a separate surface needing `--replace-message`, which the input
+set did not have. Pass each rewrite's existing `replace-text` file to **both** flags; the
+syntax is identical, and reusing one file removes any chance of the two drifting.
+
+*By count:* the real number is not 11. Measured against the current history, **49** commits
+survive the path purge carrying a message that names a purged document, and only 6 are
+pruned as empty. The great majority are the "keep" class ruling D2-8 already settled, naming
+a filename or a round name as provenance. But the rights-touching subset was real: with
+`--replace-text` alone the co-author's full name, surname and given name, plus the
+university/platform literal, survived in three message bodies and would have published.
+
+*Method lesson, the one worth carrying:* the first two redaction defects were wrong
+**entries**; this one was a wrong **surface**, and no amount of re-reading the list would
+have found it. Enumerate the surfaces a rewrite touches (blob contents, commit and tag
+messages, path names, ref names, author identity) and sweep each one, with a known-positive
+control so a table of zeroes is distinguishable from a broken probe.
 
 ### 4.3 The finding that changes the purge set
 

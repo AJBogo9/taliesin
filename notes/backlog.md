@@ -208,10 +208,14 @@ anything client-side, and **delete the item from this file when it lands.**
      `todo.md`), **and third-party-rights material**: `corpus/bayesian-website/` is a named
      co-author's joint academic work plus a university's own copyrighted assignment brief
      committed verbatim, so it comes off both repository copies entirely, not just the public
-     one (D-8). Plus the roughly 11 commit subjects and the in-tree restatements that name any
-     of them. The exact, ready-to-paste argument list lives in
-     `.superpowers/sdd/2026-08-20-publication-prep-plan/purge-enumeration.md` (gitignored, not
-     `notes/`, because it concentrates the same sensitive material it exists to remove).
+     one (D-8). Plus the in-tree restatements that name any of them, and a `--replace-message`
+     pass for the commit messages that do (**not** `--replace-text`, which reaches blobs only;
+     see the design's 4.2 correction). The exact, ready-to-paste argument list lives in
+     **`~/Documents/personal/taliesin-private/purge-enumeration.md`**, outside git, because it
+     concentrates the same sensitive material it exists to remove. Two earlier spellings of
+     that location are dead and appear in older notes: `.superpowers/sdd/...` and
+     `notes/2026-08-20-purge-enumeration.md`, the latter being purge-set entry B-11 itself.
+     **The go/no-go dossier is the only document that names the path correctly; trust it.**
      **Execution status: NOT STARTED, and not to be started without a separate instruction.** Phase 1
      is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
      additionally gated on Phase 1's findings being signed off *and* on a green `./tools/gates.sh`.

@@ -845,11 +845,11 @@ which is a third party's rights and not merely private."
 ### Task 8: Re-run the D1/D2 enumeration against the current tree
 
 **Files:**
-- Create: `notes/2026-08-20-purge-enumeration.md`
+- Create: `~/Documents/personal/taliesin-private/purge-enumeration.md`
 
 **Interfaces:**
 - Consumes: the repaired tree from Task 7.
-- Produces: `notes/2026-08-20-purge-enumeration.md`, containing the exact `--path` and
+- Produces: `~/Documents/personal/taliesin-private/purge-enumeration.md`, containing the exact `--path` and
   `--replace-text` arguments Task 9 uses. Task 9 must not invent arguments of its own.
 
 **Background.** The flip audit's D1 and D2 tables are reads of the 2026-07-28 tree plus a
@@ -908,7 +908,7 @@ Record each. These need a message callback or a `--replace-text` entry covering 
 
 - [ ] **Step 5: Write the enumeration document**
 
-`notes/2026-08-20-purge-enumeration.md` must contain, ready to paste:
+`~/Documents/personal/taliesin-private/purge-enumeration.md` must contain, ready to paste:
 
 1. The complete `--path` list for **Rewrite A** (archive): every spelling of
    `corpus/bayesian-website` only.
@@ -920,7 +920,15 @@ Record each. These need a message callback or a `--replace-text` entry covering 
    an unrun search. (D4 and D8 of the original audit did this and it is why their empty
    results are trustworthy.)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit**. **SUPERSEDED. Do NOT commit the enumeration.**
+
+The enumeration was written to `notes/` and committed as this step describes, and that was
+wrong: it concentrates the co-author's name, the university's copyrighted text and the
+commercial figures into one file, so it became purge-set entry B-11 and had to be rewritten
+back out of history. It now lives permanently at
+`~/Documents/personal/taliesin-private/purge-enumeration.md`, outside git, alongside the two
+`replace-text` files and the ruling ledger. `.githooks/pre-push` refuses a push that re-adds
+this class of file. The block below is kept only as the record of what was originally done.
 
 ```bash
 git add notes/2026-08-20-purge-enumeration.md
@@ -943,7 +951,7 @@ list Task 9 pastes from; it invents no arguments of its own."
 - Create: `notes/2026-08-20-rewrite-dry-run.md`
 
 **Interfaces:**
-- Consumes: `notes/2026-08-20-purge-enumeration.md` from Task 8.
+- Consumes: `~/Documents/personal/taliesin-private/purge-enumeration.md` from Task 8.
 - Produces: `notes/2026-08-20-rewrite-dry-run.md`, quoted by Task 11's dossier.
 
 **THE HARD RULE FOR THIS TASK: `git filter-repo` runs on a CLONE. Never on the working
@@ -977,17 +985,25 @@ never be safe in the working repository.
 
 - [ ] **Step 3: Run Rewrite A (archive: the bayesian directory only)**
 
-Paste the `--path` arguments from `notes/2026-08-20-purge-enumeration.md` section 1. The
+Paste the `--path` arguments from `~/Documents/personal/taliesin-private/purge-enumeration.md` section 1. The
 shape is:
 
 ```bash
 cd /tmp/taliesin-rewrite-a.git
+PRIV=~/Documents/personal/taliesin-private
 ~/.local/bin/git-filter-repo --invert-paths \
   --path corpus/bayesian-website/ \
-  --path-glob 'corpus/bayesian-website/*'
+  --path-glob 'corpus/bayesian-website/*' \
+  --replace-text    "$PRIV/replace-text-rewrite-a.txt" \
+  --replace-message "$PRIV/replace-text-rewrite-a.txt"
 ```
 
 Add any additional spellings Task 8 found.
+
+**Both flags, same file.** `--replace-text` rewrites blob contents and `--replace-message`
+rewrites commit and tag messages. Rewrite A needs the message pass too: `fa6a8e88`'s message
+body names the co-author, and D-8 puts the third-party material off GitHub entirely, archive
+included.
 
 - [ ] **Step 4: Verify Rewrite A**
 
@@ -1004,11 +1020,12 @@ alarmed at).
 
 - [ ] **Step 5: Run Rewrite B (public: everything)**
 
-Paste the `--path` arguments from `notes/2026-08-20-purge-enumeration.md` section 2, and
+Paste the `--path` arguments from `~/Documents/personal/taliesin-private/purge-enumeration.md` section 2, and
 the `--replace-text` file from section 3 if there is one.
 
 ```bash
 cd /tmp/taliesin-rewrite-b.git
+PRIV=~/Documents/personal/taliesin-private
 ~/.local/bin/git-filter-repo --invert-paths \
   --path corpus/bayesian-website/ \
   --path notes/STARTUP-PLAN.md --path STARTUP-PLAN.md \
@@ -1018,10 +1035,19 @@ cd /tmp/taliesin-rewrite-b.git
   --path notes/2026-07-28-demand-positioning-audit.md \
   --path notes/2026-07-28-launch-critique.md \
   --path notes/2026-07-27-adoption-friction-audit.md \
-  --path todo.md
+  --path todo.md \
+  --replace-text    "$PRIV/replace-text-rewrite-b.txt" \
+  --replace-message "$PRIV/replace-text-rewrite-b.txt"
 ```
 
-**Use Task 8's list, not this sketch, if the two disagree.**
+**Use Task 8's list, not this sketch, if the two disagree.** The sketch above lists 11
+paths; the enumeration's Rewrite B list is **16**, and the five it omits here
+(`corpus/bayesian-book/`, `corpus/expected/bayesian-book.html`, the enumeration document
+itself, `notes/2026-07-28-public-flip-audit.md` and `notes/mvp-waves/W9-notes-hygiene.md`)
+are exactly the ones found late. Paste the enumeration's ready-to-paste fragment.
+
+**Both flags, same file**, for the reason given under Step 3. `--replace-text` alone left
+the co-author's name in three commit message bodies.
 
 - [ ] **Step 6: Verify Rewrite B**
 

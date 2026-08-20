@@ -105,7 +105,12 @@ CI run in the project's history.
 - `release.yml` has still never fired on a real `v*` tag. Both its runs were
   `workflow_dispatch` on a branch, so the tag-derived naming path is unexercised and artifacts
   were named `taliesin-rehearse-2-<target>` rather than `taliesin-v1.0.0-<target>`.
-- No release was published. The rehearsal proves the build and package steps, not the upload
-  to a real GitHub Release.
+- ~~No release was published.~~ **CORRECTED 2026-08-20: two Releases WERE published.**
+  `gh release list` returns `rehearse-2` (flagged Latest) and `rehearse-workflows`, each with
+  all six expected assets: three targets, `.tar.gz` plus `.sha256`, authored by
+  `github-actions[bot]`. So the `create` job, the upload and the packaging ARE proven end to
+  end. What stays unexercised is narrower than this bullet claimed: the `v*` trigger and the
+  tag-derived asset naming, nothing else. Both Releases follow the rename into the private
+  archive and reach no public repo.
 - CI ran against branch `rehearse-2`, not against the tree that will actually flip. It must be
   re-run against the final tree, which is Task 10 Step 4 of the publication-prep plan.

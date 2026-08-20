@@ -71,7 +71,10 @@ none.
   compile, link and package on both Apple targets. It does not prove they run.
 - **`release.yml` has never fired on a real `v*` tag.** Both runs were `workflow_dispatch` on
   a branch, so the tag-derived naming path is unexercised and artifacts were named for the
-  branch rather than for a version. No GitHub Release has ever been published.
+  branch rather than for a version. ~~No GitHub Release has ever been published.~~
+  **CORRECTED 2026-08-20: two were.** `rehearse-2` (Latest) and `rehearse-workflows`, each
+  with all six expected assets. The create/upload/package path is proven; only the `v*`
+  trigger and the tag-derived naming are untested.
 - **The four sites were built and previewed, never deployed.** taliesin.sh has no DNS A
   record, and the Cloudflare Pages custom-domain binding is unexercised.
 - **The 1440x900 desktop band was not screenshotted** for every project. The design is

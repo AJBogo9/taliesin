@@ -3,8 +3,9 @@
 Both rewrites executed end to end on throwaway mirror clones under `/tmp`. **Nothing was
 pushed, and `git filter-repo` never touched the working repository.**
 
-The exact `--path` and `--replace-text` arguments are NOT reproduced here. They live in the
-gitignored execution workspace, deliberately, because the argument list concentrates a third
+The exact `--path`, `--replace-text` and `--replace-message` arguments are NOT reproduced
+here. They live at `~/Documents/personal/taliesin-private/`, outside git, deliberately,
+because the argument list concentrates a third
 party's name, a university's copyrighted text and the author's commercial figures into one
 file. This document records paths, counts and verdicts only.
 
@@ -70,7 +71,7 @@ Sensitive-content sweep across the whole rewritten object graph, by `git log -S`
 | `build docs/internals --check-only` | no static problems found, exit 0 |
 | `docs/guide/using/figures/loss.png` | present (the asset the CI rehearsal rescued survived) |
 
-## Three findings that change Phase 2
+## Four findings that change Phase 2
 
 ### 1. A long-literal replacement missed, and only a broad sweep caught it
 
@@ -104,13 +105,60 @@ Two lessons, both now recorded in the enumeration document:
 Re-verified after the correction: `[REDACTED-NAME]`, `[REDACTED-NAME]`, `***REMOVED***`, `FeedbackFruits` and the
 competitor figures all return 0 across every commit of the rewritten history (2,116 commits).
 
-### 3. Stale branches would publish
+### 2b. `--replace-text` never touched the commit messages (found 2026-08-20, after the above)
 
-The mirror carries roughly 40 local branches, most of them finished feature branches
-(`cut/wave-1-antidrift`, `batch-9-cli-correctness`, and so on). A mirror push publishes all of
-them. **Phase 2 must decide explicitly** whether the public repository gets every branch or
-only `main`. Publishing 40 stale branches is untidy rather than dangerous, but it is a
-decision, not a default.
+The two defects above were wrong **entries** in the list. This one is a wrong **surface**, and
+re-reading the list could never have found it.
 
-Also: the throwaway `rehearse-2` branch used for the workflow rehearsal must be deleted before
-the flip, or it publishes too.
+`--replace-text` rewrites blob contents. Commit and tag messages are a separate surface,
+reached only by `--replace-message`, and no such file was ever passed. The dry run's own
+verification could not see the gap either: it swept with `git log -S`, and **`-S` searches
+diffs, not messages.**
+
+Checking all 19 literal keys against all 2,168 commit messages found **6 hits across 3
+commits**: `fa6a8e88` carries the co-author's full name, surname and given name; `4ee1a1c8`
+and `c2cce9ad` carry the given name, and `c2cce9ad` also the university/platform literal.
+`4ee1a1c8` and `c2cce9ad` are the fix-wave commits written to fix the redaction, which quoted
+the name while explaining that it needed redacting.
+
+**Fixed** by passing each rewrite's existing `replace-text` file to `--replace-message` as
+well. One file, two flags, so the lists cannot drift.
+
+**Re-run end to end on a fresh mirror clone**, full 16-path list plus both flags:
+
+| Check | Rewritten | Control (un-rewritten) |
+|---|---|---|
+| Commits | 2,168 → 2,120 (48 pruned empty) | 2,168 |
+| All 16 purged paths | 0 commits each | n/a |
+| 19 keys vs every object | **0** | **679** |
+| 19 keys vs every commit message | **0** | **5** |
+
+The control column is the point: an earlier version of the object scan reported 0 on the
+un-rewritten repo too, because `git cat-file --batch-all-objects` streams binary blobs and
+grep silently switched to binary mode. **`grep -a` is load-bearing here.** A sweep with no
+known-positive row is a broken probe, exactly as `notes/backlog.md` warns.
+
+This run also rehearses **B-13** (`notes/mvp-waves/W9-notes-hygiene.md`) for the first time.
+The enumeration flagged that the original dry run carried 15 paths and the list had since
+grown to 16; that gap is now closed.
+
+**The surfaces a rewrite touches, all five now swept:** blob contents (0), commit and tag
+messages (0), path names (0 of 1,543 distinct paths ever committed), ref names (both tags are
+lightweight, so they carry no message object), author identity (one, unchanged).
+
+### 3. Stale branches would publish: RESOLVED 2026-08-20 by deleting them
+
+The mirror carried the local branches, most of them finished feature branches
+(`cut/wave-1-antidrift`, `batch-9-cli-correctness`, and so on), and a mirror push publishes
+all of them.
+
+Re-measured before acting: **31, not "roughly 40", and every one was fully contained in
+`main`** with zero commits ahead. They were names carrying no content. 29 were deleted with
+`git branch -d`, which refuses anything unmerged; the name+SHA restore list for all 31 is at
+`~/Documents/personal/taliesin-private/deleted-branches-2026-08-20.txt`. `debug-mode` remains
+because a clean worktree at `../taliesin-debug` pins it. There is nothing left to decide.
+
+Also corrected: the rehearsal residue on the remote is **two tags and two published Releases**,
+not a branch. `git push origin :refs/heads/rehearse-2` fails, because no such remote branch
+exists. Neither tag is in the local repository, and the mirror clones the local repository, so
+they never reach the public repo; they follow the rename into the private archive.
