@@ -81,8 +81,8 @@ in the tab you already have, add `"workbench.editor.revealIfOpen": true` to your
   and neither of those.
 - **Lists and blockquotes continue on Enter**, keeping the marker you chose (`-`, `*`, `+`,
   `>`, and task items). Pressing Enter on an empty item is how you leave the list.
-- **`_site.yml` is validated** against the bundled JSON Schema, if you have the Red Hat YAML
-  extension installed. Outside VS Code, wire the same schema up with one comment line
+- **`_site.yml` completion is your YAML language server's job**, not Taliesin's: the config
+  schema is a file you point it at with one comment line, the same step in every editor
   (see [Configuration](../reference/frontmatter.tmd#project-site-yml)).
 
 ### What the document's structure gets you
@@ -99,16 +99,18 @@ are the protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or
   to the older copy on disk. Hovering a cross-chapter reference names the page that defines
   it, since the *number* belongs to that page and is not known here.
 
-### Build and check without leaving the editor
+### Checking the pages you have not opened
 
-`Run Task` (`Ctrl+Shift+P`, "Tasks: Run Task") offers **check**, **build** and **build
---out** for the project you are in. Their output is parsed, so the check task fills the
-**Problems** panel with real, clickable locations for **every page**, including the ones
-you have never opened. A `suggestion` lands as information rather than as an error, because
-advice is not a defect.
+The squiggles cannot do this one for you: the language server only sees files you have
+opened, so a chapter you have not touched all week is invisible to it. Run the project
+lint in the terminal instead:
 
-That task is the one thing the squiggles cannot do for you: the language server only sees
-files you have opened, so a chapter you have not touched all week is invisible to it.
+```sh
+taliesin build . --check-only
+```
+
+Every located line it prints is **clickable** in VS Code's integrated terminal, straight to
+the file and line, whether or not that page has ever been open.
 
 ## The dev menu
 

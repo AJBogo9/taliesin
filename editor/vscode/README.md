@@ -77,13 +77,16 @@ list must equal `vocab.calloutKinds` exactly, in order.
 
 ## What is left in TypeScript
 
-Two things the LSP has no concept of:
+The things the LSP has no concept of:
 
 - **The live preview + bidirectional source sync** (`server.ts`, `webview.ts`, the
   `openPreview` half of `extension.ts`). It owns a webview, spawns `taliesin preview`, and
   bridges click-to-source.
-- **Editor commands** (`commands.ts`): *Diagnose Setup (doctor)*,
-  *Restart Language Server*, *Show Language Server Log*.
+- **Editor commands over the language client** (`client.ts`): *Restart Language Server*
+  and *Show Language Server Log*. A *Diagnose Setup* command that typed `taliesin doctor`
+  into a terminal went on 2026-08-20; typing it is the identical audit.
+- **Clickable diagnostic locations in the terminal** (`termlinks.ts`, `diaglink.ts`), which
+  is how a project-wide `--check-only` run reaches pages you never opened.
 
 Plus the parts that are pure manifest: the grammar, the snippets, and
 `language-configuration.json`.

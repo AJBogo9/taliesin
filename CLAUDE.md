@@ -349,13 +349,17 @@ certifies nothing. Do not credit it for a check until the repo is public.
   from `KNOWN_KEYS`/`HERO_KEYS`/… only makes it *diagnosed*, and a key the parser still
   honours goes on working (`listing: sort:` really did reverse the cards for eleven days
   after it was "retired"). A parser-side pin is the only thing that says the read is gone.
-- **A new front-matter key trips FOUR drift gates.** `KNOWN_KEYS`,
-  `the_reference_page_documents_every_known_key` (→
-  `docs/guide/reference/frontmatter.tmd`), `vocab.rs` + its `descriptions_present`, and —
-  for a `_site.yml` key — `editor/vscode/schema/tali-site.schema.json`, a bundled COPY of
-  the crate's schema gated only by the companion's own `node --test`. **That last one
-  lives outside `taliesin-core`**, so `cargo test --workspace` can be green while it is
-  stale; only `./tools/gates.sh` catches it.
+- **A new front-matter key trips THREE drift gates**, all inside `taliesin-core`:
+  `KNOWN_KEYS`, `the_reference_page_documents_every_known_key` (→
+  `docs/guide/reference/frontmatter.tmd`), and `vocab.rs` + its `descriptions_present`.
+  A `_site.yml` key also has to reach `crates/core/assets/schema/tali-site.schema.json`,
+  but that file is GENERATED from `site::NATIVE_KEYS` by the bless path in `schema.rs`
+  (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib schema`) and golden-locked by
+  `site_schema_matches_committed`, so it cannot drift by hand. The companion's bundled
+  COPY of it was CUT 2026-08-20 with `contributes.yamlValidation`, and with it the one
+  gate that lived outside `taliesin-core` (the one only `./tools/gates.sh` could catch):
+  it needed the Red Hat YAML extension, which was installed on no machine that mattered,
+  so it had never validated anything.
 - **A new subcommand is ONE row in `main.rs`'s `COMMANDS` table**, plus a row in
   `docs/guide/reference/cli.tmd`'s table. It had four registration sites in `main.rs` until
   FA20 (dispatch match, name const, help block, `subcommand_help` match) and ~156 lines of

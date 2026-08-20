@@ -13,10 +13,7 @@ import {
 } from "./paths";
 import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
-import { registerCommands } from "./commands";
 import { registerTerminalLinks } from "./termlinks";
-import { registerTasks } from "./tasks";
-import { registerDoctorHint } from "./doctorhint";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
 /** Module-level, not per-activation: `openPreview` is a free function and both it and the
@@ -72,19 +69,11 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
   registerLanguageClient(context);
-  registerCommands(context);
-  // The smallest surface here: a diagnostic location in the terminal becomes clickable.
+  // The smallest surface here: a diagnostic location in the terminal becomes clickable, which
+  // is also how a project-wide `--check-only` run reaches files that are not open. (Task
+  // definitions and Problems-panel matchers for the same run went on 2026-08-20: this workflow
+  // is terminal-first, and a clickable terminal line already carries every located finding.)
   registerTerminalLinks(context);
-  // The project lint and `build` as tasks, so project-wide findings reach the Problems panel
-  // for files that are not open. The language server only ever diagnoses buffers it has been
-  // sent. (Explorer badges showing each file's worst severity went on 2026-08-08: they re-lint
-  // the whole project on every save to decorate a tree the author is not reading, and the
-  // Problems panel already holds the same findings.)
-  registerTasks(context);
-  // A cell that could not run for want of a kernel is the one diagnostic with a command
-  // behind it. Offer that command, once per session, instead of leaving `doctor` reachable
-  // only to whoever already knows it exists.
-  registerDoctorHint(context);
 }
 
 /**

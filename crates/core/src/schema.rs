@@ -4,10 +4,12 @@
 //! is generated from the SAME closed-set const the validator uses (`site::NATIVE_KEYS`), so
 //! the schema cannot drift from what the validator enforces. It is regenerated ONLY via the
 //! bless path in this module's tests (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib
-//! schema`), never hand-edited. The VS Code companion ships a copy of the committed file and
-//! wires it through `yamlValidation`; anywhere else, point a YAML language server at it with
-//! a `# yaml-language-server:` modeline. (`taliesin init` wrote a copy into a `.taliesin/`
-//! dot-directory of its own until Wave 8, which nobody's project ever kept.)
+//! schema`), never hand-edited. It is a file an author points a YAML language server at with
+//! a `# yaml-language-server:` modeline, and that is the only way it is ever consumed,
+//! VS Code included. (`taliesin init` wrote a copy into a `.taliesin/` dot-directory of
+//! its own until Wave 8, which nobody's project ever kept; the companion shipped a second
+//! copy wired through `contributes.yamlValidation` until 2026-08-20, which needed the Red Hat
+//! YAML extension and so had never validated anything on the machine that mattered.)
 //!
 //! **Front matter has no schema here, and needs none.** It lives inside a `.tmd` file, where
 //! no YAML language server ever looks — `taliesin lsp` is what completes and validates it,

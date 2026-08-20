@@ -433,9 +433,9 @@ navigation, and it is strictly more detailed than the rail was. That gate sits a
 the page key on purpose, so a chapter's `toc: true` cannot reinstate a removed surface.
 
 **Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
-mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). The
-drift-locked Draft 2020-12 `_site.yml` schema itself ships alongside the editor
-autocomplete support described below.
+mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). That check is
+what the tool itself enforces; the drift-locked Draft 2020-12 schema described below is
+for your editor, and is optional.
 
 ## Editor autocomplete (config schema)
 
@@ -445,11 +445,9 @@ hovers, and flag unknown keys as you type, before you render. The schema describ
 same key set Taliesin validates against at render time, so the editor and the renderer
 always agree.
 
-The VS Code companion ships a copy of that schema and wires it up for you, so with the
-companion installed there is nothing to do. In any other editor, copy
-`crates/core/assets/schema/tali-site.schema.json` out of the repository (the companion's
-bundled copy is the same file, at `editor/vscode/schema/tali-site.schema.json`) to
-somewhere your YAML language server can reach, then add the modeline at the very top:
+Wiring it up is the same one step in every editor, VS Code included: copy
+`crates/core/assets/schema/tali-site.schema.json` out of the repository to somewhere your
+YAML language server can reach, then add the modeline at the very top:
 
 ```yaml
 # yaml-language-server: $schema=tali-site.schema.json

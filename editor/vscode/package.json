@@ -48,51 +48,6 @@
         }
       }
     ],
-    "walkthroughs": [
-      {
-        "id": "taliesin.getStarted",
-        "title": "Get started with Taliesin",
-        "description": "Preview a .tmd document live, and let the editor carry the format.",
-        "steps": [
-          {
-            "id": "taliesin.setup",
-            "title": "Check your setup",
-            "description": "The companion answers nothing on its own: it is a client over `taliesin lsp`. Confirm the binary is there.\n[Diagnose Setup](command:taliesin.doctor)",
-            "media": {
-              "markdown": "walkthroughs/setup.md"
-            },
-            "completionEvents": [
-              "onCommand:taliesin.doctor"
-            ]
-          },
-          {
-            "id": "taliesin.preview",
-            "title": "Open a live preview",
-            "description": "Block-level updates as you type, and Ctrl+click to jump from the preview back to the source line.\n[Open Preview](command:taliesin.openPreview)",
-            "media": {
-              "markdown": "walkthroughs/preview.md"
-            },
-            "completionEvents": [
-              "onCommand:taliesin.openPreview"
-            ]
-          },
-          {
-            "id": "taliesin.write",
-            "title": "Let the editor help you write",
-            "description": "Completion for classes, attributes, paths, cell options and math, wherever each one is legal.",
-            "media": {
-              "markdown": "walkthroughs/write.md"
-            }
-          }
-        ]
-      }
-    ],
-    "yamlValidation": [
-      {
-        "fileMatch": "_site.yml",
-        "url": "./schema/tali-site.schema.json"
-      }
-    ],
     "grammars": [
       {
         "language": "taliesin",
@@ -145,11 +100,6 @@
       {
         "command": "taliesin.showServerLog",
         "title": "Show Language Server Log",
-        "category": "Taliesin"
-      },
-      {
-        "command": "taliesin.doctor",
-        "title": "Diagnose Setup (doctor)",
         "category": "Taliesin"
       }
     ],
@@ -225,61 +175,7 @@
           "description": "Log the traffic between the editor and `taliesin lsp` to the Taliesin Language Server output channel."
         }
       }
-    },
-    "taskDefinitions": [
-      {
-        "type": "taliesin",
-        "required": [
-          "command"
-        ],
-        "properties": {
-          "command": {
-            "type": "string",
-            "enum": [
-              "check",
-              "build",
-              "build --out"
-            ],
-            "description": "Which Taliesin command this task runs. All three target the project root."
-          }
-        }
-      }
-    ],
-    "problemMatchers": [
-      {
-        "name": "taliesin",
-        "owner": "taliesin",
-        "source": "taliesin",
-        "severity": "info",
-        "fileLocation": [
-          "relative",
-          "${workspaceFolder}"
-        ],
-        "pattern": {
-          "regexp": "^([^\\s:][^:]*):(\\d+): (error|warning|suggestion): (.*)$",
-          "file": 1,
-          "line": 2,
-          "severity": 3,
-          "message": 4
-        }
-      },
-      {
-        "name": "taliesin-unlocated",
-        "owner": "taliesin",
-        "source": "taliesin",
-        "severity": "info",
-        "fileLocation": [
-          "relative",
-          "${workspaceFolder}"
-        ],
-        "pattern": {
-          "regexp": "^([^\\s:][^:]*): (error|warning|suggestion): (.*)$",
-          "file": 1,
-          "severity": 2,
-          "message": 3
-        }
-      }
-    ]
+    }
   },
   "capabilities": {
     "untrustedWorkspaces": {

@@ -21,9 +21,11 @@ use std::process::ExitCode;
 ///
 /// It carried a `# yaml-language-server: $schema=` modeline until Wave 8, pointing at a
 /// copy of the bundled schema that `init` wrote into a `.taliesin/` dot-directory. Both are
-/// gone: the VS Code companion already ships that schema and wires it through
-/// `yamlValidation`, and a project acquiring an unexplained dot-directory to serve every
-/// *other* editor was the wrong trade for the one config file `taliesin lsp` does not serve.
+/// gone, and stay gone: a project acquiring an unexplained dot-directory and a modeline for
+/// the one config file `taliesin lsp` does not serve was the wrong trade, and it buys
+/// nothing without a YAML language server installed to read either. An author who wants that
+/// completion copies the schema out of the repository and writes the modeline themselves
+/// (`docs/guide/reference/frontmatter.tmd`). The tool's own `_site.yml` files carry none.
 ///
 /// `url:` is commented rather than absent because the scaffolded `index.tmd` carries a
 /// `listing:` of dated posts — explicitly a blog, the one shape that wants a feed. Atom
