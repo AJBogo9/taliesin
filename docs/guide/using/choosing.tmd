@@ -13,20 +13,20 @@ set of adjectives.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands. Here is the measurement.
 
-Across the **81 `.tmd` documents** in Taliesin's own corpus, **7,106 lines** of real
-writing, the largest sample that exists, **480 lines, 6.8%, carry any construct beyond
-plain CommonMark.** The other 93.2% is Markdown, and any Markdown tool reads it.
+Across the **81 `.tmd` documents** in Taliesin's own corpus, **7,095 lines** of real
+writing, the largest sample that exists, **476 lines, 6.7%, carry any construct beyond
+plain CommonMark.** The other 93.3% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
-| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 106 | 1.5% |
-| Executable fence (` ```{python} `) | 103 | 1.4% |
+| Executable fence (` ```{python} `) | 103 | 1.5% |
+| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 102 | 1.4% |
 | Citation / cross-reference (`[@key]`, `@fig-x`) | 91 | 1.3% |
 | Cell option (`#\| label: fig-x`) | 80 | 1.1% |
 | Fenced div (`::: {.callout-note}`) | 76 | 1.1% |
 | Shortcode (`{{< include … >}}`) | 24 | 0.3% |
 
-*(Measured 2026-08-19 over `corpus/**/*.tmd`; a line using two constructs is counted once
+*(Measured 2026-08-20 over `corpus/**/*.tmd`; a line using two constructs is counted once
 in the total and once per family, so the family rows sum to more than the total.
 **Reproduce it with `python3 tools/portability-census.py`**, which is where these numbers
 come from and which spells out each family's definition. The script is committed for a
