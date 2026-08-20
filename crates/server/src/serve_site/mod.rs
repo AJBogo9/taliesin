@@ -231,15 +231,6 @@ struct PageDoc {
     /// different title in reach is how the first one drifted.
     tab_title: String,
     toc: bool,
-    /// The page's front-matter `lang:`, empty when it declares none.
-    ///
-    /// Resolved here by the producer for the same reason `tab_title` is: the live shell is
-    /// a second assembly of the page and every value it does not carry, it invents. It
-    /// invented this one until 2026-08-17, hardcoding `lang: "en"` with a comment saying
-    /// "preview chrome defaults to English" — so a Finnish page previewed as English and
-    /// built as Finnish, and the one place an author would notice the difference (a screen
-    /// reader, a hyphenation dictionary) is not the preview.
-    lang: String,
     /// The chrome's own markup for this page (SEO meta, feed links, the draft banner).
     /// No longer anything the AUTHOR wrote: the front-matter `include-*`/`css` family went
     /// on 2026-08-02 and `_site.yml`'s `head:` on 2026-08-18, so nothing merges here.
@@ -701,7 +692,6 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     PageDoc {
         tab_title,
         toc,
-        lang: doc.lang.clone().unwrap_or_default(),
         includes: doc.includes,
         blocks: doc.blocks,
         diagnostics,
@@ -721,26 +711,18 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body at all), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, lang, body, page_includes, generation) = {
+    let (tab_title, toc, body, page_includes, generation) = {
         let pages = project.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => (
                 ps.doc.tab_title.clone(),
                 ps.doc.toc,
-                ps.doc.lang.clone(),
                 ps.doc.body_html(),
                 ps.doc.includes.clone(),
                 ps.doc.generation,
             ),
-            None => (
-                String::new(),
-                false,
-                String::new(),
-                String::new(),
-                Default::default(),
-                0,
-            ),
+            None => (String::new(), false, String::new(), Default::default(), 0),
         }
     };
     let chrome = { project.site.lock().page_chrome(page) };
@@ -840,9 +822,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
         title: &tab_title,
-        // The page's own `lang:`, exactly as the build reads it, falling back the same way
-        // core's page builder does. Hardcoded to "en" until 2026-08-17.
-        lang: if lang.is_empty() { "en" } else { &lang },
         favicon: &favicon,
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
@@ -1368,7 +1347,6 @@ async fn build_page(
     let title_changed = ps.doc.tab_title != tab_title;
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
-    ps.doc.lang = doc.lang.clone().unwrap_or_default();
     ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
     // client that server-rendered this page pre-exec re-mounts to pick up the outputs.
@@ -2393,9 +2371,9 @@ mod project_tests {
 
     /// The preview paints a page inside the SAME chrome the build does.
     ///
-    /// FA16's actual subject. The `lang` test below pins one value the hand-aligned twin
-    /// invented; this pins the shell itself — where the navbar, the reading column, the TOC
-    /// rail, the prev/next and the footer go. Both paths call `SiteCtx::layout` now, and
+    /// FA16's actual subject. The `lang` test below pins the one value the hand-aligned twin
+    /// used to invent (now inert on both sides, and asserted so); this pins the shell itself
+    /// — where the navbar, the reading column, the TOC rail, the prev/next and the footer go. Both paths call `SiteCtx::layout` now, and
     /// what this guards is that they keep doing so. The CONTENTS are free to differ, as they
     /// must: the build renders `<main id="tali-main">` with the finished TOC, the preview
     /// mounts an empty `#tali-root` its websocket client drives.
@@ -2439,17 +2417,22 @@ mod project_tests {
         }
     }
 
-    /// The preview honours a page's `lang:`, exactly as the build does.
+    /// A `lang:` in the front matter changes nothing, in either assembly.
     ///
-    /// **The defect (Fable audit FA16).** The live shell is a hand-aligned twin of core's
-    /// page assembly, and it passed a literal `lang: "en"` with a comment calling it a
-    /// default. So a page declaring `lang: fi` previewed as English and built as Finnish:
-    /// a divergence between the two assemblies with nothing structural to stop it, in the
-    /// attribute a screen reader picks its voice from. Driven through the real preview
-    /// assembler and compared against the real build path, so it pins the AGREEMENT and not
-    /// one side's spelling.
+    /// **The parser-side pin for the 2026-08-20 cut.** `lang:` was withdrawn, and
+    /// withdrawing a construct means deleting the READ, not just the vocabulary entry --
+    /// dropping a key from `KNOWN_KEYS` alone only makes it *diagnosed*, while a parser
+    /// that still honours it goes on working. So this asserts the read is gone: a page
+    /// declaring `lang: fi` paints `<html lang="en">` on BOTH paths.
+    ///
+    /// It is the same test that used to pin the opposite claim (Fable audit FA16: the live
+    /// shell hardcoded `lang: "en"` while the build read the front matter, so a Finnish page
+    /// previewed as English and built as Finnish). What made that possible was two
+    /// assemblies each supplying their own value. Neither supplies one now -- both inherit
+    /// the single `en` in `PageParts::defaults()` -- so the drift axis is closed
+    /// structurally, and this test is what says so.
     #[test]
-    fn a_page_previews_with_the_lang_it_builds_with() {
+    fn a_declared_lang_is_inert_on_both_the_preview_and_the_build() {
         let dir = std::env::temp_dir().join(format!("tali-preview-lang-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -2480,8 +2463,8 @@ mod project_tests {
         });
         let preview = site_page_html(&project, &page);
         assert!(
-            preview.contains(r#"<html lang="fi""#),
-            "the preview must honour the page's lang: {}",
+            preview.contains(r#"<html lang="en""#) && !preview.contains(r#"lang="fi""#),
+            "`lang:` names no read now, so the preview must paint the baseline `en`: {}",
             &preview[..preview.len().min(400)]
         );
 
@@ -2497,9 +2480,19 @@ mod project_tests {
             site.render_page_doc_warned(&page, doc).0
         };
         assert!(
-            built.contains(r#"<html lang="fi""#),
-            "the build side of the comparison must be the one being matched: {}",
+            built.contains(r#"<html lang="en""#) && !built.contains(r#"lang="fi""#),
+            "the build must paint the same baseline, from the same const: {}",
             &built[..built.len().min(400)]
+        );
+
+        // ...and the withdrawn key draws the generic unknown-key diagnostic, so an author
+        // who writes it is told rather than silently ignored.
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let ws = taliesin_core::frontmatter::validate_front_matter(&src);
+        assert!(
+            ws.iter()
+                .any(|w| w.message.contains("unknown front-matter key `lang`")),
+            "a withdrawn key must be diagnosed, not silently accepted: {ws:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -1392,17 +1392,28 @@ fn front_matter_without_title_yields_no_blocks() {
     assert!(render_document("---\nfoo: bar\n---\n").blocks.is_empty());
 }
 
+/// `<html lang>` is `en`, from one const, whatever the front matter says.
+///
+/// The parser-side pin for the `lang:` cut (2026-08-20): the key named a real read until
+/// then, so asserting it is merely *unknown* would not catch a parser that still honoured
+/// it. Both page builders inherit `PageParts::defaults()` now and neither passes a value,
+/// which is what makes preview/build parity structural instead of a promise (see
+/// `serve_site`'s `a_declared_lang_is_inert_on_both_the_preview_and_the_build`).
 #[test]
-fn front_matter_lang_sets_html_lang_attr() {
-    // `lang:` drives `<html lang>` (for screen readers + SEO); absent falls back to en.
+fn html_lang_is_the_en_baseline_and_front_matter_cannot_change_it() {
+    let declared = render_html_page("---\ntitle: Bonjour\nlang: fr\n---\n\nSalut.\n", "f");
     assert!(
-        render_html_page("---\ntitle: Bonjour\nlang: fr\n---\n\nSalut.\n", "f")
-            .contains("<html lang=\"fr\">"),
-        "front-matter lang not applied to <html>"
+        declared.contains("<html lang=\"en\">"),
+        "a declared `lang:` must not reach the page: {}",
+        &declared[..declared.len().min(300)]
+    );
+    assert!(
+        !declared.contains("lang=\"fr\""),
+        "no trace of the withdrawn value anywhere in the page"
     );
     assert!(
         render_html_page("---\ntitle: Hi\n---\n\nHi.\n", "f").contains("<html lang=\"en\">"),
-        "missing lang should default to en"
+        "and a page that declares nothing paints the same baseline"
     );
 }
 

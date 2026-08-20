@@ -13,7 +13,6 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
     let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
 
     let expected = [
-        "unknown front-matter key `langg` (did you mean `lang`?)",
         "unknown execute key `cach` (did you mean `cache`?)",
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
         "unknown callout kind `warnign` (did you mean `warning`?)",

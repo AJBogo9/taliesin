@@ -1,6 +1,5 @@
 ---
 title: "Diagnostics: typo coverage"
-langg: en
 csl: ieee.csl
 execute:
   cach: true
@@ -17,9 +16,9 @@ This document deliberately uses misspelled keys to pin Taliesin's schema validat
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
 
 The front matter covers three *different* mistakes on purpose, because they need three
-different messages: a **typo** gets a did-you-mean (`langg`, `cach`, `max-itemz`), a name
-with no near neighbour gets no guess at all rather than a wrong one (`theorems:` is far
-from every live key, so the distance rule declines), and a **recognized but inert** key
+different messages: a **typo** gets a did-you-mean (`cach`, `max-itemz`), a name with no
+near neighbour gets no guess at all rather than a wrong one (`theorems:` is far from every
+live key, so the distance rule declines), and a **recognized but inert** key
 gets neither, because there is nothing to rename (`csl:` parses, and has never had an
 effect). An unknown PARENT key takes its children with it: nothing below `theorems:` is
 validated, because the block itself names nothing.

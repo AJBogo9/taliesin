@@ -18,7 +18,6 @@ or not something taliesin implements.
 | `author:` | A name, a list of names, or a structured list with affiliations | [Configuration reference](frontmatter.tmd#sec-authors) |
 | `date:` | Publication date; sorts a `listing:` | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `description:` | Summary for the meta description and the social-share unfurl | [Configuration reference](frontmatter.tmd#document-front-matter) |
-| `lang:` | BCP-47 language tag for `<html lang>` (default `en`) | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `categories:` | Tags for the page; each becomes a `<category>` in the Atom feed | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `page-layout:` | `full` widens the content column (for a listing index); the default is the reading-width column | [Configuration reference](frontmatter.tmd#document-front-matter) |
 | `image:` | The picture on a `listing:` card and the `og:image` a shared link unfurls with | [Configuration reference](frontmatter.tmd#document-front-matter) |

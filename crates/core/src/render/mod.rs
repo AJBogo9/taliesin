@@ -498,7 +498,6 @@ fn render_internal_impl(
     let mut date: Option<String> = None;
     let mut authors: Vec<crate::author::Author> = Vec::new();
     let mut description: Option<String> = None;
-    let mut lang: Option<String> = None;
     let mut toc_explicit: Option<bool> = None;
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
     // but skips the visible `<h1>` header (nav landing pages don't need it).
@@ -693,7 +692,6 @@ fn render_internal_impl(
                     }
                 }
                 description = extract_field(fm, "description");
-                lang = extract_field(fm, "lang");
                 bib_paths = bibliography_paths(fm);
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
@@ -1340,7 +1338,6 @@ fn render_internal_impl(
     RenderedDoc {
         title,
         subtitle,
-        lang,
         description,
         is_article,
         // Standalone default: a TOC only when the page asked for one. The site

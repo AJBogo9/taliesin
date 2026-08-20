@@ -25,7 +25,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "author",
     "date",
     "description",
-    "lang",
     "categories",
     // Images / social
     "image",
@@ -563,17 +562,6 @@ mod tests {
             .into_iter()
             .map(|w| w.message)
             .collect()
-    }
-
-    #[test]
-    fn flags_top_level_typo_with_suggestion_and_location() {
-        let w = validate_front_matter("---\nlangg: en\ntitle: X\n---\n\nbody\n");
-        assert_eq!(w.len(), 1, "got: {w:?}");
-        assert_eq!(
-            w[0].message,
-            "unknown front-matter key `langg` (did you mean `lang`?)"
-        );
-        assert_eq!(w[0].line, Some(2), "`langg` is on file line 2");
     }
 
     #[test]

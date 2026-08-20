@@ -46,7 +46,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "description",
             "Short summary used for listings and social cards.",
         ),
-        ("lang", "Content language (BCP-47), for example `en`."),
         (
             "categories",
             "Tags for the page; each becomes a `<category>` in the Atom feed.",

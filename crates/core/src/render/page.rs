@@ -182,7 +182,11 @@ pub struct PageParts<'a> {
     pub mode: OutputMode,
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
-    /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
+    /// BCP-47 language tag for `<html lang>`. Always the `en` from [`PageParts::defaults`]
+    /// since the `lang:` front-matter key was cut on 2026-08-20: NO caller sets it, which is
+    /// what makes build/preview parity structural rather than a promise each one keeps.
+    /// (FA16 was exactly that promise being broken -- the preview hardcoded `en` while the
+    /// build read the front matter, so a `lang: fi` page previewed as English.)
     pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
     pub favicon: &'a str,
@@ -716,7 +720,6 @@ fn html_page_inner(
     assemble_html_page(&PageParts {
         mode,
         title: &t,
-        lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: &favicon,
         with_site_css: site.is_some(),
         ship_katex,

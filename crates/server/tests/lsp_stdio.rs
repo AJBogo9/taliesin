@@ -479,9 +479,15 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     .expect("corpus fixture");
     let text = std::fs::read_to_string(&doc).expect("read fixture");
     let uri = format!("file://{}", doc.display());
-    // Line 2 (0-based) is `langg: en`, an unknown front-matter key.
+    // Line 4 (0-based) is `  cach: true`, an unknown `execute:` sub-key. (This was line 2's
+    // `langg: en` until the `lang:` key was cut on 2026-08-20 and the fixture lost its
+    // top-level typo; `cach` is the surviving one whose message carries an inline fix.)
     assert!(
-        text.lines().nth(2).unwrap_or("").starts_with("langg:"),
+        text.lines()
+            .nth(4)
+            .unwrap_or("")
+            .trim_start()
+            .starts_with("cach:"),
         "fixture moved"
     );
 
@@ -504,7 +510,7 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
             "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
             "params": {
                 "textDocument": { "uri": uri },
-                "position": { "line": 2, "character": 2 }
+                "position": { "line": 4, "character": 3 }
             }
         })),
         frame(serde_json::json!({
@@ -517,11 +523,11 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     let hover = response(&stdout, 2);
     let md = hover["contents"]["value"].as_str().unwrap_or("");
     assert!(
-        md.contains("unknown front-matter key `langg`"),
+        md.contains("unknown execute key `cach`"),
         "the diagnostic under the pointer: {hover:?}"
     );
     assert!(
-        md.contains("did you mean `lang`"),
+        md.contains("did you mean `cache`"),
         "the fix travels with it, inline in the message, which is the whole reason the \
          separate catalogue could go: {md:?}"
     );

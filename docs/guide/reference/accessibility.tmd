@@ -53,7 +53,7 @@ description.
 | 2.4.4 Link Purpose | Supports | No violations. The static ambiguous-link-text lint was cut on 2026-08-08 (it named something an author reads back in the preview), so this rests on the audit rather than on a linter |
 | 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted on every page |
 | 2.5.3 Label in Name | Supports | The search control's visible `⌘K` hint is `aria-hidden`, so it is not part of the accessible name |
-| 3.1.1 Language of Page | Supports | Page builders always set `lang`, honouring a front-matter `lang:` |
+| 3.1.1 Language of Page | Supports | Every page builder emits `<html lang="en">`, from one constant that no front matter can override |
 | 4.1.2 Name, Role, Value | **Supports** | Clean on every audited page |
 
 ## Not evaluated

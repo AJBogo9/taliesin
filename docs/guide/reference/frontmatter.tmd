@@ -50,7 +50,6 @@ or `{ file: … }` map, or a list of those.
 | `author` | string, list, or list of maps | Author name(s). A string or list of strings is a plain byline; the [structured form](#sec-authors) adds affiliations and links |
 | `date` | string | Publication date (shown in the title block; sorts a `listing:`) |
 | `description` | string | Summary used for the `<meta name="description">` and the `og:description` a shared link unfurls with |
-| `lang` | string | BCP-47 language tag for `<html lang>` (default `en`) |
 | `categories` | list | Tags for the page; each becomes a `<category>` in the Atom feed |
 
 ### Layout, social card, and drafts
@@ -306,7 +305,6 @@ subtitle: "What the wiggles mean"
 author: "Andreas Bogossian"
 date: "2026-06-27"
 description: "A close read of a training run."   # og:description + meta desc
-lang: en                                  # <html lang> (default en)
 categories: [machine-learning, training]  # tags -> Atom feed <category>
 
 # --- Output / format ---
