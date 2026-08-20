@@ -40,8 +40,10 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 them cut or superseded). **`CLAUDE.md` remains the authority on any count**; take a gate count
 from `./tools/gates.sh`'s own verdict line and never from prose here.
 
-**The whole file is now one sequence: ship the thing.** The four items below are ordered, and the
-order is the plan, not a ranking. 100 → 148 → 149 → 170. Item 103 closed 2026-08-20.
+**Taliesin 1.0.0 was published on 2026-08-20.** The repository is public, the history is
+published, the tag is cut and the release assets are verified. What remains is item 100's
+single un-runnable step (deleting `taliesin-old`, which needs an interactive `gh auth
+refresh`), then 149's README image and 170's marketing site. Items 103 and 148 are closed.
 
 **Pre-flight is DISCHARGED for the current tree, and it re-arms on every merge.**
 `./tools/gates.sh` ran green on 2026-08-07 (all 9 gates, twice: once at `87af6aa6` as a baseline and
@@ -161,140 +163,67 @@ anything client-side, and **delete the item from this file when it lands.**
 
 ### The release — in sequence
 
-> **⚠ START HERE. The prep is DONE; only the irreversible half remains.**
-> Read [2026-08-20-flip-go-no-go.md](2026-08-20-flip-go-no-go.md) first. It carries the
-> verdict, the exact Phase 2 command sequence, what was verified with its quoted output, and
-> what was deliberately NOT verified. Supporting records:
-> [design](2026-08-20-publication-prep-design.md) (the 8 decisions and the binding spec),
+> **⚠ THE FLIP IS DONE, 2026-08-20.** `AJBogo9/taliesin` is public, `v1.0.0` is released.
+> The dossier that drove it is [2026-08-20-flip-go-no-go.md](2026-08-20-flip-go-no-go.md),
+> kept as the record of what was verified and what was not. Supporting records:
+> [design](2026-08-20-publication-prep-design.md),
 > [plan](2026-08-20-publication-prep-plan.md),
 > [workflow rehearsal](2026-08-20-workflow-rehearsal-log.md),
 > [rewrite dry run](2026-08-20-rewrite-dry-run.md),
 > [final verification](2026-08-20-final-verification.md).
 >
-> **The `--path` and `--replace-text` arguments are NOT in this repository.** They are in
-> `~/Documents/personal/taliesin-private/`, deliberately: the enumeration concentrates a third
-> party's name, a university's copyrighted text and the author's commercial figures into one
-> file. That directory also holds the full ruling ledger. **Do not sort the replace-text
-> files**, `filter-repo` applies entries in order and the full-name forms must precede the
-> bare surname.
+> **The operational files stay OUT of this repository**, at
+> `~/Documents/personal/taliesin-private/`: both `--path` lists, both `replace-text` files
+> (each passed to `--replace-text` AND `--replace-message`), the ruling ledger and the
+> un-rewritten bundle. **Do not sort the replace-text files** and do not re-add them here;
+> `.githooks/pre-push` refuses that class of file.
+>
+> **The lesson that nearly cost the most:** the redaction list was wrong three times. Twice
+> it was a wrong ENTRY, caught by a content sweep. The third time it was a wrong SURFACE,
+> `--replace-text` never touching commit messages, and only enumerating the surfaces found
+> it. Blob contents, commit and tag messages, path names, ref names, author identity.
 >
 > **Item 103 is CLOSED**, ruled 2026-08-20: keep the name, accept the SEO cost, and always
 > publish as "Taliesin, the `.tmd` dev server" so the disambiguator travels.
 
+100. **The public flip: DONE 2026-08-20, except one step only the author can run.**
+     `AJBogo9/taliesin` is public at 2,122 commits with the full single-author history.
+     `AJBogo9/taliesin-private-archive` holds the complete record minus the third-party
+     material (D-8). Both were verified by cloning them back from GitHub: all 16 purged
+     paths at 0 commits, and every redaction key at 0 across BOTH surfaces, objects and
+     commit messages. One author, `321b658d` intact.
+     - **THE ONE THING LEFT, and it needs your hands.** `AJBogo9/taliesin-old` (the
+       original, still private) has NOT been deleted: the `gh` token lacks the
+       `delete_repo` scope and refreshing it is an interactive OAuth flow. It still holds
+       the un-rewritten history, which means **the co-author's joint work and the
+       university's assignment brief are still on GitHub's servers**, which is exactly
+       what ruling D-8 forbids. Not a public exposure (the repo is private), but it is a
+       rights question, so do it soon:
+       ```sh
+       gh auth refresh -h github.com -s delete_repo
+       gh repo delete AJBogo9/taliesin-old --yes
+       ```
+       Safe to do: the 36 MB un-rewritten bundle at
+       `~/Documents/personal/taliesin-private/taliesin-full-2026-08-20.bundle` was written
+       and verified (cloned back, identical tree hash) before anything was renamed, and the
+       archive repo carries 2,168 commits. Delete this item when that command returns.
+     - **Working-copy hazard, already defused, worth knowing.** After the rename the old
+       `origin` URL resolved to the NEW PUBLIC repo while the local tree still held the
+       un-rewritten history, so a force-push would have published the purge set.
+       `~/Documents/personal/taliesin`'s `origin` now points at the private archive
+       instead. **That directory is the pre-publication artifact, not the public repo.**
+       A clone of the public repo is at `~/Documents/personal/taliesin-public`; swap the
+       two directories when convenient.
 
-100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** The
-     design spec was deleted with `docs/superpowers/` on 2026-08-09 (R6-1) and lives in git
-     history; the findings it produced are in the 2026-07-28 public-flip audit (that document
-     is itself purge-set, per ruling R-12, so it is not linked here).
-     The ruling threads the needle both earlier routes missed: **the history IS published** (the
-     single-author commit record is the evidence a grant applicant wants), and `git rm` in a new
-     commit leaves a file in every commit that ever held it. Mechanism: relocate the purged docs to
-     `~/Documents/personal/taliesin-private/`, rewrite history, rename this remote to
-     `taliesin-private-archive` (stays private, complete backup), create a **new public**
-     `AJBogo9/taliesin` and push the rewritten history there. No force-push, no destructive remote
-     op, and the private blobs never reach the public repo at all. Zero forks and never having been
-     public is what makes it cheap.
-     **Kept, not purged:** security audits, `.claude/`, `LESSONS.md` — for the stated goal those
-     are the exhibit. (`AGENTS.md` and `docs/superpowers/` were on this list. `AGENTS.md` stays
-     deleted from `HEAD` (wave 2); `docs/superpowers/` was deleted from `HEAD` by R6-1 on
-     2026-08-09 but regrew, and on 2026-08-20 its 6 files were relocated to `notes/superpowers/`
-     rather than deleted again, so that content is back in the "kept" set, just under `notes/`
-     now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
-     history is what gets published.)
-     **Purged:** superseded by ruling D-8 and design sections 4.2/4.3, no longer money and
-     strategy documents only. The set is now **16 paths** for the public repo: the money and
-     strategy documents (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md`, both
-     git-**tracked** while their own headers say they must not be, plus five dated audits and
-     `todo.md`), **and third-party-rights material**: `corpus/bayesian-website/` is a named
-     co-author's joint academic work plus a university's own copyrighted assignment brief
-     committed verbatim, so it comes off both repository copies entirely, not just the public
-     one (D-8). Plus the in-tree restatements that name any of them, and a `--replace-message`
-     pass for the commit messages that do (**not** `--replace-text`, which reaches blobs only;
-     see the design's 4.2 correction). The exact, ready-to-paste argument list lives in
-     **`~/Documents/personal/taliesin-private/purge-enumeration.md`**, outside git, because it
-     concentrates the same sensitive material it exists to remove. Two earlier spellings of
-     that location are dead and appear in older notes: `.superpowers/sdd/...` and
-     `notes/2026-08-20-purge-enumeration.md`, the latter being purge-set entry B-11 itself.
-     **The go/no-go dossier is the only document that names the path correctly; trust it.**
-     **Execution status: NOT STARTED, and not to be started without a separate instruction.** Phase 1
-     is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
-     additionally gated on Phase 1's findings being signed off *and* on a green `./tools/gates.sh`.
-     What still lands on this item:
-     - **Rehearse both workflows before Phase 2 — FA4, deferred here by the author on 2026-08-18.**
-       `ci.yml` and `release.yml` have **never executed once**: Actions is off at the
-       repository-settings level, so no run is created by any trigger, and ~300 lines of YAML
-       across the two files would first run on launch day against an audience. Both now carry
-       `workflow_dispatch`, so the step is: enable Actions → Run workflow on the release branch →
-       read both logs → flip. Deliberately not done earlier: the workflows run against whatever
-       tree exists at flip time, so an early green run expires with the next merge. Full entry
-       and done-condition in
-       [2026-08-17-fable-audit-backlog.md](2026-08-17-fable-audit-backlog.md), which exists for
-       this item alone and is deleted when it lands.
-     - The spec's own D-checks, including the provenance check on corpus documents.
-     - **Whether tags travel to the new public repo** (five local MIT tags were deleted on
-       2026-07-28; none had ever been pushed).
-     - **Whether to prune `notes/`.** Half-answered: `docs/superpowers/` was deleted on 2026-08-09
-       (R6-1, 97 files / 35,585 lines / 2.8 MB), which took the worst of it — the 1,129,527-byte
-       `2026-07-03-quarto-design-decisions-catalog.md`, adversarial self-critique sitting under
-       `docs/`, where a visitor reads it as "the manual". `notes/` is not under `docs/` and has no
-       such misreading, so its 97 tracked files are a separate call. (`docs/superpowers/` itself
-       regrew after R6-1 to 6 files / 336 KB and was relocated into `notes/superpowers/` on
-       2026-08-20 rather than deleted again, so it is now literally part of this same `notes/`
-       tally and this same prune question.) The remediation plan files it
-       as tier 2, needing an explicit ruling.
-     - **A procedure collision to fix in the same change:** `***REMOVED***
-       (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
-       `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
-       next session follows it.
-     - **Phase 1 RAN 2026-08-03:** findings in the 2026-07-28 public-flip audit (purge-set
-       per R-12, not linked here), 61 findings over the ten
-       dimensions. **D2's verdict is `--replace-text` across all history, not a link-repair commit**:
-       seven restatements of the purged docs' commercial conclusions exist ONLY in history, where a
-       commit on top cannot reach them. Two of the seven sit at paths already absent from `HEAD`
-       (`todo.md`, `2026-07-02-tmd-editor-grammar-plan.md`) and are cheaper to add to
-       `--invert-paths` than to string-match. D4 (secrets) and D8 (tone) came back **empty**, with
-       what was searched enumerated so an empty dimension is distinguishable from an unrun one.
-       The reversible half was applied the same day; what is left is the irreversible half only.
-     - **`git grep -Il "/home/bogo"` → 14 files** (re-measured 2026-08-09 after R6-1; it was 21 on
-       2026-08-05 and 11 on 2026-07-28). All 14 are now in `notes/`, the `docs/superpowers/plans/`
-       half having gone with the archive. Low impact (the username is public via git author
-       metadata) but it is
-       the failure mode `LESSONS.md` warns about.
-     - **Phase 2's tooling prerequisite is discharged:** `git-filter-repo` 2.47.0 is installed at
-       `~/.local/bin/git-filter-repo` (verified 2026-08-05). The audit's prerequisite table and the
-       Phase 2 inputs README both still say "not installed", and the inputs README **contradicts
-       itself** (its own rehearsal section records the full rewrite running under 2.47.0). Trust the
-       binary, not either note. *(Item **25**, the pre-public flip procedure, is folded into this
-       item.)*
-
-148. **Cut a tag, then verify the release assets exist.** (Flip-gated, and the ordering is measured.)
-     `.github/workflows/release.yml` builds Linux x86-64, macOS arm64 and macOS x86-64 on a `v*` tag
-     and attaches a tarball + `.sha256` with `LICENSE` + `THIRD_PARTY.md` inside; the README states
-     the matrix (Windows explicitly unsupported). **No tag has ever been cut**, and `README.md:59-66`
-     marks three platforms "built and released" against **zero** releases (`git tag -l 'v*'` is empty
-     locally and on the remote). Owner ruled 2026-08-03 that the audience is **strangers evaluating a
-     product**, so this is a launch blocker rather than cosmetic, and the resolution is
-     flip-then-tag, not softening the table.
-     - **ORDERING CONSTRAINT, measured 2026-08-03: the flip must come BEFORE the tag.**
-       `release.yml` triggers solely on `tags: ["v*"]` **and both its jobs are guarded on
-       `github.event.repository.private != true`** (`:27`, `:41`), so tagging while private builds
-       nothing and produces no release — silently. Sequence: flip public → push a `v*` tag → verify
-       the release assets exist → only then is the README true.
-     - **Never tag before the licence is settled**, and cut a release tag only from a tree whose
-       `LICENSE` matches `Cargo.toml`.
-     - **Package managers are a separate decision, after the tag.** crates.io `taliesin` /
-       `taliesin-core` / `taliesin-server` are all 404 (all three names free); no Homebrew, Nix or
-       install script. `cargo publish` will reject this workspace as-is: `Cargo.toml:14` declares
-       `taliesin-core = { path = "crates/core" }` with **no `version`**, and `keywords`,
-       `categories`, `readme`, `homepage`, `documentation` are blank in every manifest. The `.crate`
-       size blocker is discharged — the vendored pyodide payload that caused it was deleted outright
-       on 2026-08-04, so the crate is under the cap on its own bytes.
-     - Cold build cost is re-measured in `README.md` for the 1.0 release; the figures that used to sit here were undated and are superseded. The
-       audience for a documentation tool is not the population that will install a Rust toolchain and
-       wait it out, which is exactly why the release workflow exists.
-
-149. **Launch presentation.** (All gated on the flip; each is small once it is.)
-     - **`homepageUrl` is empty** although `taliesin.sh` is bought and already set as `url:` in
+149. **Launch presentation.** (The flip discharged most of it.) `homepageUrl` is set to
+     `https://taliesin.sh`, the description carries the disambiguator, `CODE_OF_CONDUCT.md`
+     and the issue templates shipped, and **v1.0.0 is released with all six assets**
+     (three targets, `.tar.gz` plus `.sha256`, tag-derived names correct). The Linux
+     binary was downloaded, checksum-verified, executed and used to render a document, so
+     the README's install section is now true and tested rather than asserted. **What is
+     left is the README's only-image-is-a-badge problem**: the four screencasts are MP4 and
+     need a GIF conversion or an uploaded asset URL.
+     - ~~**`homepageUrl` is empty**~~ although `taliesin.sh` is bought and already set as `url:` in
        `site/_site.yml`. Re-measured 2026-08-05 via `gh repo view`: the description is a real
        one-line description and there are **6 topics**, and the four screencasts **do** appear on
        pages a visitor sees — both halves of the filed "dead first impression" were rot. Still true:
