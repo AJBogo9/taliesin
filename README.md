@@ -29,14 +29,15 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is
   Markdown in your repository, and built pages are static HTML that needs no runtime.
-- **Speed, in absolutes and with no multiplier.** A 7-page book builds in **0.13 s**
-  (18.1 ms/page); `preview` is serving in **3–8 ms** for a single document and **≈130 ms**
-  for a 19-page book; a warm keystroke-sized edit diffs in **0.7 ms** and ships a **32 KB**
-  patch instead of a 292 KB page reload, and **53** of its 55 ops are metadata-only patches
-  that never touch a DOM node — those 53 plus the one `insert` for the newly typed
-  paragraph total ~3.2 KB — which is why live state survives the edit. These measure
-  Taliesin's work only — a batch compiler doing a cold Pandoc pass is doing different work,
-  so no ratio is quoted.
+- **Speed, in absolutes and with no multiplier** (build and preview figures measured
+  2026-08-10, warm-edit figures re-measured 2026-08-18). A 6-page book (`docs/internals`)
+  builds in **0.13 s** (21.7 ms/page); `preview` is serving in **3–8 ms** for a single
+  document and **≈130 ms** for a 16-page book; a warm keystroke-sized edit diffs in
+  **0.35 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
+  **53** of its 55 ops are metadata-only patches that never touch a DOM node — those 53
+  plus the one `insert` for the newly typed paragraph total ~3.2 KB — which is why live
+  state survives the edit. These measure Taliesin's work only — a batch compiler doing a
+  cold Pandoc pass is doing different work, so no ratio is quoted.
 - **One maintainer, and the scope is closed.** No support contract, no release cadence, no
   bus factor above one. 1.0 means the feature set is final for this tool's one use case,
   not that a team stands behind it. What that risk is bounded by: Markdown source you
@@ -93,10 +94,14 @@ kernel layer is Unix-only. **Prebuilt binaries come from tags:** each `v*` tag a
 [the releases page](https://github.com/AJBogo9/taliesin/releases) is empty, no tag has been
 cut yet and building from source is the way in.
 
-**What that costs, measured 2026-08-10, so it is not a surprise:** a cold release build
-compiles **257 crates in about 1m 43s** at `-j3`, and produces a single ~32 MB self-contained
-binary (it embeds KaTeX with its fonts, the syntax-highlighting definitions, and every
-bundled stylesheet and script, which is why rendered pages need no network). Nothing is
+**What that costs, measured 2026-08-20 on a genuine cold build, so it is not a surprise:**
+`cargo clean` followed by `cargo build --release -p taliesin-server` compiles **229 crates
+in about 1m 34s** (16-core machine, cargo's default parallelism) and produces a single
+~30 MB self-contained binary (30,138,576 bytes; it embeds KaTeX with its fonts, the
+syntax-highlighting definitions, and every bundled stylesheet and script, which is why
+rendered pages need no network). `Cargo.lock` lists 299 packages across the whole
+workspace, higher than the 229 actually compiled because it also covers the separate
+benchmark tool and dev-only dependencies the shipped binary never links. Nothing is
 fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your
 `PATH` to call `taliesin` from anywhere.
 
@@ -124,7 +129,7 @@ warm kernel reused across edits:
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-taliesin init my-site        # _site.yml + index.tmd, and nothing else
+taliesin init my-site        # _site.yml, index.tmd, and one dated example post
 taliesin preview my-site     # live preview at http://localhost:4321
 ```
 
