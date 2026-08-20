@@ -113,7 +113,7 @@ Then put the `taliesin` binary on your `PATH`, or point the `taliesin.path` sett
 it does not track the workspace `Cargo.toml`. It is a separate MIT package with its own VS
 Code `engines` constraint and its own reasons to ship, and the thing it actually has to
 agree with is the binary's LSP surface, not the tool's release number. So a companion at
-0.1.0 beside a tool at 0.3.0 is not drift, and this sentence is here so it stops reading
+0.1.0 beside a tool at 1.0.0 is not drift, and this sentence is here so it stops reading
 like it.
 
 ## Develop / run

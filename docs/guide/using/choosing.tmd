@@ -129,14 +129,15 @@ cell `#| cache: false` and it re-runs every time, along with everything downstre
 
 Read this part before you commit a book to it.
 
-**Taliesin has one maintainer and is pre-1.0.** That is the plain fact, and no roadmap
-changes it. What it means concretely: there is no support contract, no release cadence you
-can plan around, and no second person who knows the codebase. If the maintainer stops, the
-project stops.
+**Taliesin has one maintainer, and the scope is closed.** That is the plain fact, and 1.0
+does not change it: the version means the feature set is final for this tool's one use
+case, not that a team stands behind it. What it means concretely: there is no support
+contract, no release cadence you can plan around, and no second person who knows the
+codebase. If the maintainer stops, the project stops.
 
 What *does not* stop:
 
-- **Your source is Markdown**, 93.2% of it plain CommonMark, all of it in your repository.
+- **Your source is Markdown**, 93.3% of it plain CommonMark, all of it in your repository.
 - **Pages you already built keep working**: they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.

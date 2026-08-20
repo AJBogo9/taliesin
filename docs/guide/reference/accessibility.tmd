@@ -23,7 +23,7 @@ the deliverable as the table. Nothing here is claimed on the strength of an inte
 **Standard:** WCAG 2.1 Level AA.
 **Report date:** 2026-07-28.
 
-Read it as a report on the version it names: the current release is **0.3.0**, the palette
+Read it as a report on the version it names: the current release is **1.0.0**, the palette
 and the chrome have both changed since the report date, and the table has not been re-run.
 
 **Evaluation methods.** Automated conformance testing (Lighthouse, which embeds axe-core)
