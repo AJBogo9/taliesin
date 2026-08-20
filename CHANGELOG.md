@@ -1,12 +1,54 @@
 # Changelog
 
-All notable changes to Taliesin are recorded here. This project follows a
-loose [semantic versioning](https://semver.org/) while pre-1.0: minor versions
-may carry new features and small behavior changes; the load-bearing invariants
-(content-hash block model, click-to-source, single editing surface, HTML-only
-output) are kept stable.
+All notable changes to Taliesin are recorded here. From 1.0 this project follows
+[semantic versioning](https://semver.org/): a breaking change to the load-bearing
+invariants (content-hash block model, click-to-source, single editing surface, HTML-only
+output) or to the CLI's six verbs needs a major version. Before 1.0 the policy was looser
+and minor versions carried breaking changes; the 0.x entries below were written under it.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-08-20
+
+The scope is closed. This is the first public release, and 1.0 marks the feature set as
+final for this tool's one use case rather than announcing a feature release. The entries
+below continue the 2026-08 reduction campaign; the visual redesign, the restructured
+two-book manual, and the new gallery site that also shipped in this window are not
+itemized here.
+
+### Changed
+
+- **The project is public**, and the version says the scope is closed. Feature requests are
+  closed by design from here; bug reports are welcome. See "Project status" in `README.md`.
+- The CLI is **six subcommands**: `preview`, `build`, `init`, `doctor`, `lsp`, `help`.
+
+### Removed
+
+Continuing the 2026-08 reduction campaign:
+
+- The `lang:` and `csl:` front-matter keys, `page-layout: full`, and link attribute blocks
+  (`[text](url){.class}`).
+- The `theme:` key and all author theme control. Both palettes always ship and the reader's
+  device selects one at paint.
+- The `taliesin new` verb: `init` now scaffolds the same dated starter post directly, which
+  is why the CLI above is six subcommands rather than the seven `0.3.0` shipped.
+- The seven retired theorem cross-reference prefixes (already unable to resolve to
+  anything), and the `head:` and `external-prefixes:` site config keys.
+- The retirement registers that echoed another tool's spelling for a withdrawn key, verb,
+  or class. An unrecognized one now gets a plain did-you-mean or "unknown", the same
+  treatment a typo already got.
+- The reader-facing code-download aside on pages with code cells, which offered every
+  cell's source as a script; the source was already on the page and in view-source.
+- The missing-local-video lint and the uncited-entry lint.
+- Five VS Code companion features: the first-kernel-failure doctor hint, the build/check
+  tasks and their Problems-panel matchers, the Diagnose Setup command, the Get Started
+  walkthrough, and the bundled `_site.yml` schema copy. The terminal path replaces the task
+  provider: every located diagnostic line in the integrated terminal is clickable.
+
+### Fixed
+
+- `README.md` no longer advertises constructs the tool deleted, and a test now keeps it
+  that way.
 
 ## [0.3.0] - 2026-08-10
 

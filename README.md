@@ -37,9 +37,27 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   paragraph total ~3.2 KB — which is why live state survives the edit. These measure
   Taliesin's work only — a batch compiler doing a cold Pandoc pass is doing different work,
   so no ratio is quoted.
-- **One maintainer, pre-1.0.** No support contract, no release cadence, no bus factor above
-  one. What that risk is bounded by: Markdown source you already hold, built HTML with no
-  dependency on this tool, and an AGPL-3.0 licence that makes a fork always available.
+- **One maintainer, and the scope is closed.** No support contract, no release cadence, no
+  bus factor above one. 1.0 means the feature set is final for this tool's one use case,
+  not that a team stands behind it. What that risk is bounded by: Markdown source you
+  already hold, built HTML with no dependency on this tool, and an AGPL-3.0 licence that
+  makes a fork always available.
+
+## Project status
+
+**Taliesin 1.0 is feature-complete for its one use case:** rendering `.tmd` to HTML for one
+author's writing workflow. The scope is deliberately closed.
+
+- **Bug reports are welcome.** Something rendering wrongly, a crash, a diagnostic that
+  fires on valid source: please open an issue.
+- **Feature requests are closed by design**, not by backlog order. The tool is built around
+  subtraction, and a 2026-08 campaign cut roughly 40% of the tree to get here. Adding an
+  output format (PDF, LaTeX, Word, ePub) is out of scope permanently; HTML is the only
+  target.
+- **Security reports go through `SECURITY.md`**, privately, not as a public issue.
+
+`CONTRIBUTING.md` has the scope rules in full. If you want something the tool will not do,
+the AGPL licence means forking is always available and is often the honest answer.
 
 ## Architecture (at a glance)
 
