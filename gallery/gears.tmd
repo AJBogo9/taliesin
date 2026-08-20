@@ -1,6 +1,8 @@
 ---
 title: "A mechanical part, parametric"
 description: "Two meshed gears built from primitives inside one {js} cell: sliders drive the tooth count and the speed, and the geometry rebuilds live."
+image: thumbs/gears.svg
+image-alt: "Two meshed 3D gears, a small blue driver turning a large bronze wheel, under tooth-count and speed sliders."
 toc: false
 ---
 

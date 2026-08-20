@@ -2,45 +2,11 @@
 title: "Gallery"
 description: "Short one-page demos of what Taliesin can do: reactive graphics, executed reports, 3D scenes, and the craft of a good page."
 toc: false
+listing:
+  contents: .
+  type: grid
 ---
 
 Every page here is one `.tmd` file, rendered by Taliesin. No screenshots, no mockups:
-open a demo and poke at the real thing.
-
-## Gradient descent, by hand
-
-An explorable explanation on a single page. Drag the starting point, work the step-size
-and momentum sliders, and watch a reactive graphic, a live Observable Plot chart and the
-math respond as you move.
-
-[Open the explainer →](descent.tmd)
-
-## A computational report
-
-The one page here that runs code as it builds. Python cleans a committed dataset, draws
-the charts and fits the model; the figures and tables are numbered in document order and
-cross-referenced from the prose.
-
-[Open the report →](report.tmd)
-
-## Molecules
-
-A ball-and-stick molecule viewer built entirely inside one `{js}` cell: real 3D
-coordinates, CPK colors, drag to spin, scroll to zoom.
-
-[Open the viewer →](molecules.tmd)
-
-## A mechanical part, parametric
-
-Two gears built from primitives, meshed and spinning. Sliders drive the tooth count and
-the speed, and the geometry rebuilds live.
-
-[Open the part →](gears.tmd)
-
-## The craft of an API page
-
-What documentation looks like when the page format helps: a line-by-line reading of real
-code, version and deprecation callouts, a glossary that defines terms in place, and
-cross-references the build has already checked.
-
-[Open the page →](api-craft.tmd)
+open a demo and poke at the real thing. Even this index is dogfood: the cards below are
+a `listing:` block, built from each page's own front matter.

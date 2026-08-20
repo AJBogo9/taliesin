@@ -1,6 +1,8 @@
 ---
 title: "The craft of an API page"
 description: "What documentation looks like when the page format helps: a line-by-line code reading, versioned callouts, definitions in place, and checked cross-references."
+image: thumbs/api-craft.svg
+image-alt: "A documentation page walking a four-line query line by line, with highlighted code."
 ---
 
 One page of documentation for Tarn, a small dataframe library that does not exist,

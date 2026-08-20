@@ -1,6 +1,8 @@
 ---
 title: "Gradient descent, by hand"
 description: "An interactive, scrollable explainer: watch gradient descent pick its way down a loss surface as you change the learning rate, the momentum, and where it starts."
+image: thumbs/descent.svg
+image-alt: "A contour plot of a loss surface with a descent path stepping into the minimum, under step-size and momentum sliders."
 ---
 
 # Gradient descent, by hand

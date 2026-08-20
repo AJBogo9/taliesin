@@ -1,6 +1,8 @@
 ---
 title: "A computational report, in one page"
 description: "Python cleans a committed dataset, draws the charts and fits the model as the page builds; every figure and table is numbered and cross-referenced."
+image: thumbs/report.svg
+image-alt: "A line chart of weekly p95 queue times by region, drawn by the page's own Python cell."
 ---
 
 Nothing below was pasted in. The chart, the coefficient table and the numbers quoted

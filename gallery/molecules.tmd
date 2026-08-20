@@ -1,6 +1,8 @@
 ---
 title: "Molecules"
 description: "A ball-and-stick molecule viewer with a picker, spin, and fullscreen."
+image: thumbs/molecules.svg
+image-alt: "A ball-and-stick buckyball molecule rendered in 3D."
 toc: false
 ---
 
