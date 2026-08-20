@@ -176,6 +176,11 @@ content search against the current tree before building the filter-repo invocati
 
 ### 4.2 The purge set
 
+The exact, ready-to-paste `--path`/`--replace-text` argument list lives in the execution
+workspace (`.superpowers/sdd/`), not in `notes/`: it is itself a concentration of the
+same third-party and commercial sensitivities this purge exists to remove, so it cannot
+sit in the directory being published.
+
 Purged from all history with `--invert-paths`:
 
 | Path(s) | Why |
