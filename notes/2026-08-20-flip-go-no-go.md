@@ -87,13 +87,23 @@ replacements verify.
    gh repo delete AJBogo9/taliesin-old
 ```
 
-The exact `--path` and `--replace-text` arguments are in the execution workspace at
-`.superpowers/sdd/2026-08-20-publication-prep-plan/purge-enumeration.md`. They are
-deliberately NOT in `notes/`: that file concentrates a third party's name, a university's
-copyrighted text and the author's commercial figures into one place, and it purges itself in
-both rewrites.
+The exact arguments live OUTSIDE this repository, in
+`~/Documents/personal/taliesin-private/`:
 
-**Do not hand-type the arguments.** Paste them.
+| File | What it is |
+|---|---|
+| `purge-enumeration.md` | The full derivation: both `--path` lists, both `--replace-text` classes, per-row reasoning and confidence |
+| `replace-text-rewrite-a.txt` | Ready to pass to Rewrite A as `--replace-text` |
+| `replace-text-rewrite-b.txt` | Ready to pass to Rewrite B as `--replace-text` |
+| `2026-08-20-sdd-ledger.md` | Every ruling taken during this work, with its reasoning and its cost if wrong |
+
+They are deliberately NOT in `notes/` and NOT in git: the enumeration concentrates a third
+party's name, a university's copyrighted text and the author's commercial figures into one
+place, and it purges itself in both rewrites.
+
+**Do not hand-type the arguments.** Paste them. **Do not sort the `--replace-text` files:**
+`filter-repo` applies entries in file order, and the full-name forms must precede the bare
+surname or they never match.
 
 ---
 
