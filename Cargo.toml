@@ -3,10 +3,10 @@ resolver = "3"
 members = ["crates/core", "crates/server", "tools/live-edit-bench"]
 
 [workspace.package]
-# 0.3.0, not 0.2.1: the scope-reduction campaign removed eleven CLI verbs and about half
-# the document feature set, which is breaking under any reading. Pre-1.0, so a minor
-# carries breaking changes — CHANGELOG.md's own stated policy.
-version = "0.3.0"
+# 1.0.0: the scope is closed. The 2026-08 reduction campaign finished at Phase 4, the
+# feature set is final for the tool's one use case, and the first public tag says so.
+# Post-1.0 the promise is ordinary semver: a breaking change needs a 2.0.
+version = "1.0.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]
