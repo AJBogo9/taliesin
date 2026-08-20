@@ -35,7 +35,7 @@ name: CI
 # manual `workflow_dispatch` of each workflow has completed and gone fully green on this
 # branch: CI run 32395506257 (six jobs: test, kernel, typecheck, editor-vscode, audit,
 # deny) and Release run 32395509519 (four jobs, including both macOS targets), both
-# SUCCESS against the same tree. The rehearsal was not a formality — it caught and fixed
+# SUCCESS against the same tree. The rehearsal was not a formality: it caught and fixed
 # two real defects the guard's absence had kept invisible: a job-wide cell timeout
 # shorter than one of the kernel job's own fixtures ever needed, and a `.gitignore` rule
 # that hid a hand-authored image from every fresh clone while a warm local build stayed

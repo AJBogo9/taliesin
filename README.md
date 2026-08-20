@@ -31,7 +31,7 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   Markdown in your repository, and built pages are static HTML that needs no runtime.
 - **Speed, in absolutes and with no multiplier** (build and preview figures measured
   2026-08-10, warm-edit figures re-measured 2026-08-18). A 6-page book (`docs/internals`)
-  builds in **0.13 s** (21.7 ms/page); `preview` is serving in **3–8 ms** for a single
+  builds in **0.13 s** (21.7 ms/page); `preview` is serving in **3 to 8 ms** for a single
   document and **≈130 ms** for a 16-page book; a warm keystroke-sized edit diffs in
   **0.35 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
   **53** of its 55 ops are metadata-only patches that never touch a DOM node — those 53

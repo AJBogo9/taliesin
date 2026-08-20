@@ -187,10 +187,10 @@ anything client-side, and **delete the item from this file when it lands.**
      rather than deleted again, so that content is back in the "kept" set, just under `notes/`
      now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
      history is what gets published.)
-     **Purged:** superseded by ruling D-8 and design sections 4.2/4.3 — no longer money and
+     **Purged:** superseded by ruling D-8 and design sections 4.2/4.3, no longer money and
      strategy documents only. The set is now **15 paths** for the public repo: the money and
-     strategy documents (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both
-     git-**tracked** while their own headers say they must not be — plus five dated audits and
+     strategy documents (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md`, both
+     git-**tracked** while their own headers say they must not be, plus five dated audits and
      `todo.md`), **and third-party-rights material**: `corpus/bayesian-website/` is a named
      co-author's joint academic work plus a university's own copyrighted assignment brief
      committed verbatim, so it comes off both repository copies entirely, not just the public
@@ -228,7 +228,7 @@ anything client-side, and **delete the item from this file when it lands.**
        (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
        `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
        next session follows it.
-     - **Phase 1 RAN 2026-08-03** — findings in the 2026-07-28 public-flip audit (purge-set
+     - **Phase 1 RAN 2026-08-03:** findings in the 2026-07-28 public-flip audit (purge-set
        per R-12, not linked here), 61 findings over the ten
        dimensions. **D2's verdict is `--replace-text` across all history, not a link-repair commit**:
        seven restatements of the purged docs' commercial conclusions exist ONLY in history, where a

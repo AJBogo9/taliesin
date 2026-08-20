@@ -25,8 +25,8 @@ by nothing at all.
 
 This is the single command that runs everything: fmt, clippy, the workspace suite, both
 `tsc` type-checks, the VS Code companion's grammar test, `cargo audit` / `cargo deny`,
-the two document gates — `build docs/guide --check-only` and
-`build docs/internals --check-only` — and the separate `tools/publish.sh --check` gate,
+the two document gates (`build docs/guide --check-only` and
+`build docs/internals --check-only`) and the separate `tools/publish.sh --check` gate,
 all of which the pre-push hook also runs. **A plain `cargo test`
 is not enough.** The live-kernel and Node cases *skip silently* when their interpreter is
 missing, so a green `cargo test` on a machine without Python or Node can be nearly empty
