@@ -115,10 +115,10 @@ fn headings(text: &str) -> Vec<Flat> {
 
 /// One heading with the inclusive line extent of its section, in reading order.
 ///
-/// The flat view of the same segmentation [`outline`] nests. `lsp_edits` moves and re-levels
-/// sections against this, which is the point of sharing it: a "move section down" that
-/// segmented the document even slightly differently from the outline the author is looking
-/// at would cut in a place the editor never showed them.
+/// The flat view of the same segmentation [`outline`] nests, and the input [`outline`]
+/// builds from. `lsp_edits` re-levelled sections against it too, so that a "move section
+/// down" could not segment the document differently from the outline the author was looking
+/// at; that provider was cut on 2026-08-08 and [`outline`] is the only reader left.
 pub(crate) struct Section {
     pub title: String,
     pub level: u8,

@@ -362,11 +362,9 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
 /// This lives here rather than in `diagnostics` on purpose: `diagnostics` is check-only
 /// (nothing under `serve/` calls it), and the author reads the preview. Sitting on the
 /// render path means preview and `check` say the same thing, like the `page-layout` lint
-/// right below. The message wording is load-bearing: `codes::classify` keys the
-/// `TAL-FM-UNSUPPORTED` code off "is recognized but not supported".
+/// right below.
 ///
-/// Carries no "did you mean" hint on purpose: there is no replacement, and
-/// `codes::extract_suggestion` would lift one into a structured fix an agent would apply.
+/// Carries no "did you mean" hint on purpose: there is no replacement to suggest.
 fn validate_unsupported_keys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     for key in UNSUPPORTED_KEYS {
         if map.get(key).is_none() {

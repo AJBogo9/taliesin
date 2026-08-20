@@ -229,8 +229,12 @@ edited `.rs` file, so the tree stays `cargo fmt`-clean.
 
 **Editing `assets/css/*` or `assets/js/*` needs a `cargo build` before the change shows
 up.** They are `include_str!`-compiled into the binary, so rebuilding only the site
-re-emits the *old* bundled CSS/JS and you will measure a stale page. (A live `preview`
-hot-swaps CSS, so this bites the build-and-inspect loop, not the dev loop.)
+re-emits the *old* bundled CSS/JS and you will measure a stale page. This bites BOTH
+loops: the `style` websocket message that used to hot-swap CSS went with `theme:` on
+2026-08-17, so nothing pushes a bundle to a live page any more. What a rebuild does give
+you is a new boot id, and `client.js` answers a boot mismatch with `location.reload()`
+rather than a re-mount (a re-mount would replace the body while the tab kept running the
+previous build's client), so the reload fetches the fresh bundle.
 
 ## Executing cells
 

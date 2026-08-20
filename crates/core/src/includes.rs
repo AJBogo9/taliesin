@@ -226,9 +226,14 @@ pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Every local file a document's **front matter** points at as a resource:
-/// `bibliography:`, `csl:`, `css:`, and the three `include-*-body`/`-in-header` keys.
-/// Absolute + normalized, resolved with the same containment rule as `{{< include >}}`.
+/// Every local file a document's **front matter** points at as a resource: `bibliography:`
+/// and `csl:`. Absolute + normalized, resolved with the same containment rule as
+/// `{{< include >}}`.
+///
+/// `css:` and the three `include-*-body`/`-in-header` keys were listed here until
+/// 2026-08-20, four days after the last of their page-injection reads was retired — so the
+/// dev server was watching files that nothing parses, and a save on one rebuilt a page that
+/// could not have changed.
 ///
 /// Read-only, and deliberately separate from [`dependencies`], which tracks only
 /// `{{< include >}}`. The site dev server watches both: it filtered its rebuild set by
@@ -243,14 +248,7 @@ pub fn resource_dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
         return Vec::new(); // malformed front matter is reported elsewhere
     };
     let mut out = Vec::new();
-    for key in [
-        "bibliography",
-        "csl",
-        "css",
-        "include-in-header",
-        "include-before-body",
-        "include-after-body",
-    ] {
+    for key in ["bibliography", "csl"] {
         collect_resource_paths(v.get(key), base_dir, &mut out);
     }
     out
@@ -672,14 +670,14 @@ mod tests {
     }
 
     #[test]
-    fn resource_dependencies_finds_bibliography_csl_and_css() {
+    fn resource_dependencies_finds_bibliography_and_csl() {
         let root = std::env::temp_dir().join(format!("tali-resdeps-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join(".git"), b"").unwrap(); // project-root marker for safe_join
 
         let src = "---\ntitle: T\nbibliography:\n  - refs.bib\n  - more.bib\ncsl: ieee.csl\n\
-                   css: custom.css\ninclude-in-header: head.html\n---\n\nBody.\n";
+                   ---\n\nBody.\n";
         let deps = resource_dependencies(src, &root);
         let names: Vec<String> = deps
             .iter()
@@ -687,24 +685,30 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            [
-                "refs.bib",
-                "more.bib",
-                "ieee.csl",
-                "custom.css",
-                "head.html"
-            ],
+            ["refs.bib", "more.bib", "ieee.csl"],
             "every front-matter resource, in key order"
         );
         assert!(deps.iter().all(|p| p.is_absolute()), "absolute: {deps:?}");
 
+        // A `css:` file was watched here until 2026-08-20; the key names no read now, so a
+        // watcher entry for it would rebuild pages that cannot have changed.
+        assert!(
+            resource_dependencies("---\ncss:\n  file: a.css\n---\n", &root).is_empty(),
+            "a retired key names no resource"
+        );
+
         // A scalar `bibliography:` and a `{ file: … }` map are the other accepted shapes.
+        // The collector is deliberately more permissive about shape than the reader: a
+        // watcher that missed a file because it could not parse the spelling would show a
+        // stale page, which is worse than watching one file too many.
         let one = resource_dependencies("---\nbibliography: refs.bib\n---\n", &root);
         assert_eq!(one.len(), 1);
-        let mapped = resource_dependencies("---\ncss:\n  file: a.css\n---\n", &root);
+        let mapped = resource_dependencies("---\nbibliography:\n  file: a.bib\n---\n", &root);
         assert_eq!(mapped.len(), 1);
         // An inline `{ text: … }` block names no file.
-        assert!(resource_dependencies("---\ncss:\n  text: 'p{}'\n---\n", &root).is_empty());
+        assert!(
+            resource_dependencies("---\nbibliography:\n  text: 'p{}'\n---\n", &root).is_empty()
+        );
 
         // No front matter, malformed front matter, and an escaping path yield nothing.
         assert!(resource_dependencies("# Just prose\n", &root).is_empty());

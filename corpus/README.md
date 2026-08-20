@@ -63,7 +63,7 @@ the regression net.
 | `posts/cite-coverage/` | machine | `.bib` edge cases: LaTeX accents → Unicode, a brace-protected corporate author, `@string` substitution, `@incollection` `booktitle`+`pages`, and a manual `# References` heading suppressing the generated one. |
 | `shared-bib/` | machine | A project-wide `bibliography:` in `_site.yml`, merged **under** a page's own `.bib` (same key → the page wins). |
 | `structured-authors/` | machine | Structured `author:` front matter with superscript numbers derived from first appearance, plus the generated Author Contributions appendix. |
-| `layout/` | machine | `structure.tmd` (every heading shape `data-section-end` must survive, including an empty section and a final one followed by generated furniture), `escapes.tmd` (the three width escapes), `dense-output.tmd` (the three overflow shapes, and the raw-HTML root that opens in one block and closes in a later one). |
+| `layout/` | machine | `structure.tmd` (every heading shape `data-section-end` must survive, including an empty section and a final one followed by generated furniture), `escapes.tmd` (both width escapes), `dense-output.tmd` (the three overflow shapes, and the raw-HTML root that opens in one block and closes in a later one). |
 | `media/` | machine | A `layout-ncol` figure grid, intrinsic `width`/`height` read from the file with the LCP exception, and a theme-adaptive figure. |
 | `callouts/kinds.tmd` | machine | All 3 callout kinds: the 2px left rule and the kind word, an authored `title=` staying in the author's voice, and a `collapse="true"` fold. |
 | `nested-cells.tmd` | machine | One executable cell per container kind (callout, grid column, width escape, two deep), pinning the output slots' order and depth. |

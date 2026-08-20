@@ -34,9 +34,10 @@ export const TALIESIN_SOURCE = "taliesin";
 /**
  * The running language server, or `undefined` before it starts (and after a failed start).
  *
- * Exported for the editor commands that are not language *intelligence* but still need the
- * server's answer: the structural transforms ask `taliesin/sectionEdit` for the edits rather
- * than deriving them from a heading scan in TypeScript.
+ * Exported for the companion features that are not language *intelligence* but still need
+ * the server's answer: `map.ts` asks `taliesin/siteMap` where a project's pages are served
+ * rather than walking the tree in TypeScript. (This used to name `taliesin/sectionEdit` and
+ * the structural transforms; both went with the nine providers cut on 2026-08-08.)
  */
 export function languageClient(): LanguageClient | undefined {
   return client;

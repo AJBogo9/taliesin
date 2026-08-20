@@ -240,7 +240,9 @@ struct PageDoc {
     /// built as Finnish, and the one place an author would notice the difference (a screen
     /// reader, a hyphenation dictionary) is not the preview.
     lang: String,
-    /// The page's own front-matter `include-*`/`css` (merged after the site's).
+    /// The chrome's own markup for this page (SEO meta, feed links, the draft banner).
+    /// No longer anything the AUTHOR wrote: the front-matter `include-*`/`css` family went
+    /// on 2026-08-02 and `_site.yml`'s `head:` on 2026-08-18, so nothing merges here.
     includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,

@@ -115,7 +115,6 @@ fn cell_option_descriptions() -> &'static [(&'static str, &'static str)] {
         ("tbl-cap", "Table caption."),
         ("code-fold", "Collapse the code block (`true` or `show`)."),
         ("code-summary", "Summary label for a folded code block."),
-        ("code-line-numbers", "Show or highlight code line numbers."),
         (
             "name",
             "Reactive `{js}` cell name that other cells can depend on.",

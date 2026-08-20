@@ -784,8 +784,8 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
 
 #[cfg(test)]
 mod protocol_contract {
-    //! The protocol messages this shared layer still produces (`style`, `diagnostics`),
-    //! plus the watch predicates. The op/full_render shape contract the preview client
+    //! The protocol messages this shared layer still produces (`diagnostics`), plus the
+    //! watch predicates. `style` rode here too until `theme:` was cut on 2026-08-17. The op/full_render shape contract the preview client
     //! consumes is pinned in `serve_site`, next to the producers that survived Wave 1.1.
     use super::*;
     use crate::protocol::{self, Diagnostic};

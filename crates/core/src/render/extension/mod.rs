@@ -107,7 +107,9 @@ fn expand_in_line(
             // preview diagnostics, not shipped as literal text into the page. `include` is
             // handled in an earlier pass (`includes::resolve`); a leftover one means that
             // pass already reported it, so don't double-warn. The `{{<` opener stays in the
-            // message: `codes::classify` keys `TAL-SHORTCODE` on it.
+            // message because it is what the author typed; it keyed a `TAL-SHORTCODE` code
+            // through `codes::classify` until wave 9 cut the code catalogue, and severity is
+            // a field on the warning now.
             let name = inner.split_whitespace().next().unwrap_or(inner);
             if name != "include" {
                 warnings.push(
