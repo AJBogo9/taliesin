@@ -81,7 +81,7 @@ replacements verify.
 5. VERIFY BOTH REMOTES BEFORE DELETING ANYTHING
    On both:   git log --all -- corpus/bayesian-website        -> nothing
    On public: the same for the money set and todo.md          -> nothing
-   On public: git log -S "<the third-party surname>"          -> nothing
+   On both:   git log -S "<given name>" and -S "<surname>"    -> nothing, BOTH forms
 
 6. ONLY NOW
    gh repo delete AJBogo9/taliesin-old
@@ -118,8 +118,10 @@ both rewrites.
    after pushing Rewrite B, run `git log -S` on the public repo for each sensitive key and
    confirm zero. If something survives, the repo is minutes old with no audience and can be
    deleted and re-pushed.
-3. **The bug-report template requires `taliesin doctor --format json`.** If doctor itself is
-   what crashes, a reporter cannot satisfy the form. Consider making that field optional.
+3. **Whether to re-sweep the public remote after pushing.** Recommended, and cheap. The
+   redaction list was wrong twice during this work and a sweep caught it both times, not the
+   list. Minutes after the push the repo has no audience, so a survivor is still recoverable
+   by deleting and re-pushing.
 
 ---
 
