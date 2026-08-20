@@ -85,7 +85,12 @@ for target in "${targets[@]}"; do
     # Lint before building for real: a broken link or a bad reference is cheaper to find
     # here than in a deployment that is already live.
     $TALIESIN build "$src" --check-only --no-exec
-    $TALIESIN build "$src" --out "$out"
+    # `--strict` on the executing build, because the lint above is `--no-exec` and so is
+    # structurally blind to a crashed cell: without it a traceback bakes into the page,
+    # the build prints "built with N problems", exits 0, and wrangler deploys it. This
+    # only widens the gate to exec-produced problems -- `lint::blocking` excludes advice,
+    # so `--check-only` already failed every non-advice static finding.
+    $TALIESIN build "$src" --out "$out" --strict
     $WRANGLER pages deploy "$out" --project-name="$project"
 done
 

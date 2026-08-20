@@ -203,6 +203,54 @@ fn every_pre_push_command_is_also_run_by_the_gate_script() {
     );
 }
 
+/// The build that actually gets deployed is `--strict`.
+///
+/// `tools/publish.sh` lints before it builds, but that lint is `--no-exec`, which makes it
+/// structurally blind to the one failure only the real build can see: a cell that crashes
+/// and bakes its traceback into the page. Without `--strict` the build counts that into
+/// `problems`, prints "built with N problems", exits 0, and the next line hands the output
+/// to wrangler. The cut `publish` verb was strict by default; the script that replaced it
+/// silently was not, for ten days.
+///
+/// Derived from the script rather than pinned as a substring, because a bare
+/// `contains("--strict")` would pass on the flag appearing anywhere at all — including on
+/// the `--no-exec` check build, where it would gate nothing. Find the deploy build by what
+/// makes it the deploy build (it writes to `$out` and it executes), then require the flag
+/// on that line.
+#[test]
+fn the_deploy_path_build_in_publish_sh_is_strict() {
+    let script = read("tools/publish.sh");
+
+    let deploy_builds: Vec<&str> = script
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .filter(|l| l.contains("build \"$src\"") && l.contains("--out"))
+        .filter(|l| !l.contains("--no-exec"))
+        .collect();
+
+    // Anti-vacuity: measured at 1 on 2026-08-20. A refactor that renames `$src`/`$out`, or
+    // moves the deploy build into a function, empties this filter — at which point the
+    // loop below asserts nothing and the gate reports green over an unchecked deploy.
+    assert_eq!(
+        deploy_builds.len(),
+        1,
+        "expected exactly one executing deploy build in tools/publish.sh, found {}: {:?} \
+         — the filter no longer identifies the deploy build, so this gate proves nothing",
+        deploy_builds.len(),
+        deploy_builds
+    );
+
+    for line in &deploy_builds {
+        assert!(
+            line.contains("--strict"),
+            "the deploy build in tools/publish.sh is `{line}`, with no `--strict`: the \
+             `--check-only` pass before it is `--no-exec`, so a crashed cell's traceback \
+             is written into the page, the build exits 0, and wrangler deploys it"
+        );
+    }
+}
+
 /// Every book under `docs/` is linted, by all three gate files.
 ///
 /// The substring cross-check above cannot do this job: `--check-only` is present whichever
