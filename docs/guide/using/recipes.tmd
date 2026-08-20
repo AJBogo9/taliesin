@@ -89,14 +89,12 @@ listing:
 [View all posts →](blog.tmd)
 ```
 
-The full index, `blog.tmd`, is a listing-only page, widened, with the visible `<h1>`
-suppressed:
+The full index, `blog.tmd`, is a listing-only page with the visible `<h1>` suppressed:
 
 ```yaml
 ---
 title: "Blog"
 title-block-style: none
-page-layout: full
 listing:
   contents: posts
   type: grid

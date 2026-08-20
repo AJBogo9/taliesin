@@ -77,8 +77,6 @@ pub struct SiteCtx {
     /// reading column instead of the website layout (navbar on top). (Field name kept for
     /// stability; it no longer holds a left sidebar.)
     pub book_sidebar: Option<String>,
-    /// `page-layout: full` — widen the content column (for listing indexes).
-    pub wide: bool,
     /// Site-level `format: html:` includes (header/body/css from `_site.yml`),
     /// merged ahead of each page's own front-matter includes.
     pub includes: PageIncludes,
@@ -136,9 +134,6 @@ impl SiteCtx {
                 let mut main_cls = String::from("tali-site-main");
                 if has_toc {
                     main_cls.push_str(" has-toc");
-                }
-                if self.wide {
-                    main_cls.push_str(" tali-wide");
                 }
                 (
                     " class=\"tali-site\"".to_string(),

@@ -52,7 +52,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("image", "Social-card and listing thumbnail image path."),
         ("image-alt", "Alt text for `image`."),
-        ("page-layout", "Page width and layout mode."),
         (
             "draft",
             "`true` excludes the page from a site build, nav, and listings.",

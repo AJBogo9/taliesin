@@ -121,11 +121,6 @@
   .tali-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
     max-width: none; margin: 0 auto; padding: 2rem 0; }
   .tali-site-main > main { min-width: 0; }
-  /* `page-layout: full` no longer widens the text track. Plan 2 left a local measure
-     override here (60rem) so the card GRID would keep its width; a ruled list has no grid
-     to widen and reads at the reading measure like everything else, so the override went
-     with the cards. `.tali-wide` still exists as a class the front matter sets; it simply
-     no longer changes the measure. */
   /* Same outer grid as base.css's single-document `body.has-toc`, and for the same reason:
      the rail is a SIBLING TRACK of the reading grid, not a competitor for its space, so the
      four rules that used to force escapes and margin notes back into the flow beside it are

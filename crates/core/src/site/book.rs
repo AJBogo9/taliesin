@@ -259,7 +259,6 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 categories: fm.categories,
                 listings: fm.listings,
                 hero: fm.hero,
-                page_layout: fm.page_layout,
                 draft: c.draft,
             }
         })

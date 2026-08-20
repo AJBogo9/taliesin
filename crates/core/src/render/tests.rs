@@ -6825,9 +6825,11 @@ fn the_tag_walker_terminates_on_unclosed_markup() {
 /// build and the preview call THIS function rather than two hand-aligned twins; by
 /// construction it cannot notice a change made inside the shell, because such a change
 /// moves both sides at once. So the shell's own answers are pinned here: which wrapper a
-/// book gets, which a website gets, and the two conditional classes on the website's
-/// content column, one of which (`tali-wide`, from `page-layout: full`) three shipped pages
-/// depend on and nothing else asserted.
+/// book gets, which a website gets, and the one conditional class left on the website's
+/// content column (`has-toc`). There were two until 2026-08-20: `tali-wide`, from
+/// `page-layout: full`, went with that key -- no CSS rule had targeted it since the card
+/// grid was removed on 2026-08-15, so the three pages that set it rendered identically
+/// without it.
 #[test]
 fn the_site_shell_wraps_a_book_and_a_website_differently() {
     let website = SiteCtx {
@@ -6847,21 +6849,17 @@ fn the_site_shell_wraps_a_book_and_a_website_differently() {
         "prev/next inside the column, footer outside it: {html}"
     );
 
-    // The TOC rail reserves its column through `has-toc`; `page-layout: full` widens.
+    // The TOC rail reserves its column through `has-toc`, the only conditional class left.
     let (_, plain) = website.layout("<main>C</main>\n", true);
     assert!(
         plain.contains("class=\"tali-site-main has-toc\""),
         "{plain}"
     );
-    let wide = SiteCtx {
-        wide: true,
-        ..website.clone()
-    };
+    // The parser-side half of the `page-layout: full` cut: the shell can no longer be asked
+    // for the class at all, so no front matter can put it back.
     assert!(
-        wide.layout("<main>C</main>\n", true)
-            .1
-            .contains("class=\"tali-site-main has-toc tali-wide\""),
-        "a `page-layout: full` page must widen its content column"
+        !plain.contains("tali-wide"),
+        "`tali-wide` was withdrawn with `page-layout:`: {plain}"
     );
 
     // A book: topbar + drawer chrome, a centred column, and NO navbar/rail wrapper at all.

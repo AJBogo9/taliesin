@@ -15,7 +15,6 @@ pub(crate) struct FrontInfo {
     pub(crate) categories: Vec<String>,
     pub(crate) listings: Vec<ListingSpec>,
     pub(crate) hero: Option<HeroSpec>,
-    pub(crate) page_layout: Option<String>,
     /// `draft: true`: held out of the published view (`DraftMode::Exclude` — build,
     /// publish, check, map): no output, nav, listing or book-chapter entry, and the build
     /// reports it as "not published". The live preview (`DraftMode::Include`) keeps it,
@@ -60,7 +59,6 @@ pub(crate) fn parse_front_matter(
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing"), label, warnings),
         hero: parse_hero(val.get("hero")),
-        page_layout: scalar(val.get("page-layout")),
         draft: bool_field(&val, "draft", false, label, warnings),
     }
 }

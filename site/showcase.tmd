@@ -1,7 +1,6 @@
 ---
 title: "See it live"
 description: "Interactive demos of Taliesin, every one a real capability running live in your browser."
-page-layout: full
 ---
 
 Everything below runs in your browser, on a page that is itself a Taliesin document.

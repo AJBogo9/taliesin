@@ -457,7 +457,6 @@ mod tests {
                 categories: Vec::new(),
                 listings: Vec::new(),
                 hero: None,
-                page_layout: None,
                 draft: false,
             }
         }

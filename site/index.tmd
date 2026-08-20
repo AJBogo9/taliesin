@@ -1,7 +1,6 @@
 ---
 title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
-page-layout: full
 hero:
   eyebrow: "A dev server for technical writing"
   headline: "Taliesin"

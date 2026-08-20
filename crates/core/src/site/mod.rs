@@ -57,8 +57,6 @@ pub struct Page {
     /// `hero:` landing block (headline + lead + CTAs), if declared. Replaces the
     /// title block.
     pub hero: Option<HeroSpec>,
-    /// `page-layout:` (`full` widens the content column; default reading width).
-    pub page_layout: Option<String>,
     /// `draft: true` in front matter. `false` for every published page; `true` only for a
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
@@ -552,7 +550,6 @@ impl Site {
                 self.listing_backlink_html(page, depth)
             },
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
-            wide: page.page_layout.as_deref() == Some("full"),
             includes,
             favicon,
             search_index,

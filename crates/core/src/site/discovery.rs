@@ -72,7 +72,6 @@ pub(super) fn website_pages(
                 categories: fm.categories,
                 listings: fm.listings,
                 hero: fm.hero,
-                page_layout: fm.page_layout,
                 draft: fm.draft,
             })
         })

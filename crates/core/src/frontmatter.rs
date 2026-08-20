@@ -29,7 +29,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Images / social
     "image",
     "image-alt",
-    "page-layout",
     // Drafts: `draft: true` holds a page (or book chapter) out of the published build
     // (output, nav, listings); the live preview still shows it, badged.
     "draft",
@@ -102,7 +101,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             ));
         }
     }
-    validate_page_layout_value(map, block, &mut out);
     validate_date_value(map, block, &mut out);
     validate_image_alt(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
@@ -327,27 +325,6 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
             }
         }
     }
-}
-
-/// `page-layout:` only honors `full` (widen the reading column); every other value —
-/// Quarto's `article` (its default), `custom`, … — is silently ignored. Warn on those so
-/// a migration leftover surfaces instead of the author wondering why the layout never
-/// changed. A hard gate, so the corpus carries only `full` (or omits the key).
-fn validate_page_layout_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    let Some(val) = map.get("page-layout").and_then(|v| v.as_str()) else {
-        return;
-    };
-    let val = val.trim().trim_matches(['"', '\'']);
-    if val.is_empty() || val == "full" {
-        return;
-    }
-    out.push(located(
-        format!(
-            "`page-layout: {val}` is ignored — Taliesin uses the reading-width column by \
-             default and only `full` widens it (a Quarto leftover?)"
-        ),
-        block_key_line(block, "page-layout"),
-    ));
 }
 
 /// The 1-based source line of the front matter's top-level `bibliography:` key, if
@@ -642,35 +619,42 @@ mod tests {
         );
     }
 
+    /// The parser-side pin for the 2026-08-20 `page-layout: full` cut.
+    ///
+    /// `full` was a rendered no-op long before it was cut: the width override went with the
+    /// card grid on 2026-08-15 (commit 6a30b565), after which `page.rs` appended a
+    /// `.tali-wide` class that no CSS rule anywhere targeted, while the docs went on
+    /// claiming it widened the column. So the value half is gone with the key: BOTH `full`
+    /// and a Quarto leftover like `article` are now the same ordinary unknown key, and
+    /// neither draws the old "is ignored" value warning.
     #[test]
-    fn quarto_page_layout_value_warns_but_full_does_not() {
-        // A recognized key carrying a Quarto-only value Taliesin silently ignores warns, so
-        // a migration leftover surfaces instead of mystifying the author when nothing changes.
-        let m = msgs("---\ntitle: X\npage-layout: article\n---\n");
-        assert!(
-            m.iter()
-                .any(|w| w.contains("`page-layout: article`") && w.contains("ignored")),
-            "page-layout: article must warn: {m:?}"
-        );
-        // The one honored value (and an absent key) stay silent.
-        assert!(
-            !msgs("---\ntitle: X\npage-layout: full\n---\n")
-                .iter()
-                .any(|w| w.contains("page-layout")),
-            "page-layout: full is honored"
-        );
+    fn page_layout_is_an_ordinary_unknown_key_whatever_its_value() {
+        for value in ["full", "article"] {
+            let m = msgs(&format!("---\ntitle: X\npage-layout: {value}\n---\n"));
+            assert!(
+                m.iter()
+                    .any(|w| w.starts_with("unknown front-matter key `page-layout`")),
+                "`page-layout: {value}` draws the generic unknown-key lint: {m:?}"
+            );
+            assert!(
+                !m.iter().any(|w| w.contains("is ignored")),
+                "the value validator went with the key: {m:?}"
+            );
+        }
         assert!(
             !msgs("---\ntitle: X\n---\n")
                 .iter()
-                .any(|w| w.contains("page-layout"))
+                .any(|w| w.contains("page-layout")),
+            "and a page that does not mention it says nothing"
         );
     }
 
     /// A `date:` we cannot parse is dropped from `<lastmod>`/`<updated>` rather than
     /// shipped invalid — but dropping it silently is the same "green check, wrong output"
-    /// failure one layer down, so the value lints like `page-layout` does. `date:` is the
-    /// one front-matter key whose value is read by *machines* (sitemap, Atom), which is
-    /// why it earns a value rule when other free-text keys don't.
+    /// failure one layer down, so the value lints. `date:` is the one front-matter key
+    /// whose value is read by *machines* (sitemap, Atom), which is why it earns a value
+    /// rule when other free-text keys don't — and since `page-layout:` was cut on
+    /// 2026-08-20 it is the only key with one.
     #[test]
     fn an_unparseable_date_warns_but_a_real_one_does_not() {
         for bad in ["May 15, 2026", "Spring 2026", "2026-99-99", "Thursday"] {
@@ -777,9 +761,7 @@ mod tests {
 
     #[test]
     fn honored_keys_do_not_warn() {
-        let w = validate_front_matter(
-            "---\ntitle: X\ntitle-block-style: none\npage-layout: full\n---\n",
-        );
+        let w = validate_front_matter("---\ntitle: X\ntitle-block-style: none\ntoc: true\n---\n");
         assert!(w.is_empty(), "honored keys must not warn, got: {w:?}");
     }
 
