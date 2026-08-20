@@ -193,7 +193,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build -- --minify",
     "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
-    "compile-tests": "tsc -p . --outDir out",
+    "compile-tests": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p . --outDir out",
     "test": "npm run compile-tests && node --test out/test/*.test.js"
   },
   "devDependencies": {
