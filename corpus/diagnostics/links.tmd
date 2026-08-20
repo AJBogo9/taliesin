@@ -1,9 +1,9 @@
 ---
-title: "Link, video & reactive-input diagnostics"
+title: "Link & reactive-input diagnostics"
 ---
 
 This document deliberately trips the static `taliesin check` rules for broken relative
-links, missing local video, and dangling/cyclic `{js}` reactive inputs. It lives in
+links and dangling/cyclic `{js}` reactive inputs. It lives in
 `corpus/diagnostics/`, which is exempt from the corpus clean-render guards. Each located
 finding jumps to its source line on click, like any other diagnostic.
 
@@ -14,12 +14,6 @@ both point at files that do not exist beside this document.
 
 An [external link](https://example.com/anything) is never fetched, so it is left alone,
 and an [in-page anchor](#broken-relative-links) to a real heading on this page is fine.
-
-## Missing local video
-
-A hand-written `<video>` whose clip file is absent:
-
-<video src="missing-clip.mp4" controls muted loop playsinline preload="metadata"></video>
 
 ## Dangling and cyclic reactive inputs
 

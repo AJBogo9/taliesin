@@ -3,7 +3,7 @@
 //!
 //! **What:** renders a file or a project in memory and returns every located diagnostic:
 //! the render warning channel plus the static validators (xrefs, duplicate ids, anchors,
-//! assets, media, links, reactive graph, a11y, citations, front-matter YAML). No code
+//! assets, links, reactive graph, a11y, citations, front-matter YAML). No code
 //! execution, no output written; the only IO is stat-ing referenced local files.
 //!
 //! **How to use:** it is a library with four consumers, not a verb. `build` calls
@@ -222,7 +222,7 @@ pub(crate) enum Scope {
 }
 
 /// Every **static** validator, over one already-rendered document: the "check-superset".
-/// No code execution, no filesystem writes; the local-asset/media/link rules do stat the
+/// No code execution, no filesystem writes; the local-asset/link rules do stat the
 /// filesystem.
 ///
 /// This is the single definition of the superset, so `build --check-only` and
@@ -250,7 +250,6 @@ pub(crate) fn page_static_diagnostics(
     out.extend(dx::validate_duplicate_heading_ids(blocks));
     out.extend(dx::validate_internal_anchors(blocks));
     out.extend(dx::validate_local_assets(blocks, base));
-    out.extend(dx::validate_local_media(blocks, base));
     if scope == Scope::Standalone {
         out.extend(dx::validate_local_links(blocks, base));
     }
@@ -1366,7 +1365,6 @@ mod tests {
             "not valid YAML",
             "broken link",
             "broken link anchor",
-            "local video not found",
             "unknown reactive input",
             "reactive dependency cycle",
             "heading level skips",
@@ -1421,10 +1419,11 @@ mod tests {
     }
 
     #[test]
-    fn collect_diagnostics_surfaces_links_video_and_reactive_rules() {
-        // One doc tripping each NEW static rule: broken relative link, missing local
-        // video, dangling `//| input`, and a reactive cycle. `check` must surface them all,
-        // located, while leaving an external link + an existing sibling alone.
+    fn collect_diagnostics_surfaces_links_and_reactive_rules() {
+        // One doc tripping each NEW static rule: broken relative link, dangling
+        // `//| input`, and a reactive cycle. `check` must surface them all, located, while
+        // leaving an external link + an existing sibling alone. (The missing-local-video
+        // rule was the fourth until it was cut on 2026-08-20.)
         let dir = tmp("check-links");
         fs::write(dir.join("real.tmd"), "x").unwrap();
         let f = dir.join("doc.tmd");
@@ -1432,7 +1431,6 @@ mod tests {
             &f,
             "---\ntitle: T\n---\n\n\
              A [gone](missing.tmd), an [ok](real.tmd), an [ext](https://example.com).\n\n\
-             <video src=\"clip.mp4\"></video>\n\n\
              ```{js}\n//| input: nope\nreturn nope;\n```\n\n\
              ```{js}\n//| name: a\n//| input: b\nreturn b;\n```\n\n\
              ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n",
@@ -1441,8 +1439,6 @@ mod tests {
         let diags = collect_diagnostics(&f, &mut 0).expect("ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("broken link: `missing.tmd`"), "broken link: {diags:?}");
-        assert!(has("local video not found"), "missing video: {diags:?}");
-        assert!(has("`clip.mp4`"), "video path: {diags:?}");
         assert!(
             has("unknown reactive input `nope`"),
             "dangling input: {diags:?}"

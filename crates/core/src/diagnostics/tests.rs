@@ -98,58 +98,6 @@ fn local_links_accept_html_link_with_tmd_source() {
 }
 
 #[test]
-fn local_media_flags_missing_video() {
-    let dir = Tmp::new("video");
-    std::fs::write(dir.0.join("there.mp4"), "x").unwrap();
-    let doc = render_document_with_includes(
-        "<video src=\"gone.mp4\"></video>\n\n<video src=\"there.mp4\"></video>\n\n\
-         <video src=\"https://cdn.example/clip.mp4\"></video>\n",
-        &dir.0,
-    );
-    let ws = validate_local_media(&doc.blocks, &dir.0);
-    let m = msgs(&ws);
-    assert_eq!(m.len(), 1, "only the missing local clip: {m:?}");
-    assert!(m[0].contains("local video not found"), "{m:?}");
-    assert!(m[0].contains("`gone.mp4`"), "{m:?}");
-    assert!(ws[0].line.is_some(), "located: {ws:?}");
-}
-
-#[test]
-fn media_poster_and_extra_sources_are_checked() {
-    let dir = Tmp::new("video-dark");
-    std::fs::write(dir.0.join("light.mp4"), "x").unwrap();
-    // A `<source>` inside the element and the `poster=` still are references: both are
-    // paths a build must be able to copy, and both used to ship broken in silence.
-    let doc = render_document_with_includes(
-        "<video poster=\"cover.png\"><source src=\"light.mp4\"><source src=\"dark.mp4\"></video>\n",
-        &dir.0,
-    );
-    let m = msgs(&validate_local_media(&doc.blocks, &dir.0));
-    assert!(m.iter().any(|s| s.contains("`dark.mp4`")), "{m:?}");
-    assert!(m.iter().any(|s| s.contains("`cover.png`")), "{m:?}");
-    assert!(!m.iter().any(|s| s.contains("light.mp4")), "{m:?}");
-}
-
-#[test]
-fn audio_source_is_not_a_video_false_positive() {
-    // An `<audio><source>` is NOT a video; its (often streamed/generated) source must
-    // not be flagged. A real `<video><source>` next to it IS checked.
-    let doc = render_document(
-        "<audio controls><source src=\"tone.wav\" type=\"audio/wav\"></audio>\n\n\
-         <video><source src=\"clip.mp4\" type=\"video/mp4\"></video>\n",
-    );
-    let m = msgs(&validate_local_media(&doc.blocks, Path::new(".")));
-    assert!(
-        !m.iter().any(|s| s.contains("tone.wav")),
-        "audio src skipped: {m:?}"
-    );
-    assert!(
-        m.iter().any(|s| s.contains("clip.mp4")),
-        "video <source> checked: {m:?}"
-    );
-}
-
-#[test]
 fn js_reactive_graph_flags_dangling_input() {
     let doc = render_document(
         "```{js}\n//| viewof: n\nreturn html`<input type=range>`;\n```\n\n\

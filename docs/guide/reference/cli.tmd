@@ -64,7 +64,6 @@ It also catches these **publish-blocking** mistakes:
 | Rule | Flags |
 |---|---|
 | Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: the lint stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
-| Missing local video | A `<video src>` / `<video><source></video>` / `poster=` whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
 | Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a `{python}` cell that calls `define(` (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). |
@@ -142,7 +141,7 @@ At a glance, here is everything the lint looks at, grouped by what it protects:
 | **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names, YAML parse errors |
 | **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:`, a bare `@key` that renders as literal text |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
-| **Local media** | Missing local images (`src`/`href`) and `<video>` files |
+| **Local media** | Missing local images (`src`/`href`) |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
 | **Bibliography** | A `.bib` entry declared but never cited (severity `suggestion`, so it never fails the run without `--strict`) |
