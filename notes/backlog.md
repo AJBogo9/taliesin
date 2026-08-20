@@ -170,8 +170,8 @@ anything client-side, and **delete the item from this file when it lands.**
 
 100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** The
      design spec was deleted with `docs/superpowers/` on 2026-08-09 (R6-1) and lives in git
-     history; the findings it produced are in
-     [2026-07-28-public-flip-audit.md](2026-07-28-public-flip-audit.md).
+     history; the findings it produced are in the 2026-07-28 public-flip audit (that document
+     is itself purge-set, per ruling R-12, so it is not linked here).
      The ruling threads the needle both earlier routes missed: **the history IS published** (the
      single-author commit record is the evidence a grant applicant wants), and `git rm` in a new
      commit leaves a file in every commit that ever held it. Mechanism: relocate the purged docs to
@@ -187,9 +187,17 @@ anything client-side, and **delete the item from this file when it lands.**
      rather than deleted again, so that content is back in the "kept" set, just under `notes/`
      now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
      history is what gets published.)
-     **Purged:** money and strategy
-     documents only (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both git-**tracked**
-     while their own headers say they must not be), plus ~11 commit subjects that name them.
+     **Purged:** superseded by ruling D-8 and design sections 4.2/4.3 — no longer money and
+     strategy documents only. The set is now **15 paths** for the public repo: the money and
+     strategy documents (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both
+     git-**tracked** while their own headers say they must not be — plus five dated audits and
+     `todo.md`), **and third-party-rights material**: `corpus/bayesian-website/` is a named
+     co-author's joint academic work plus a university's own copyrighted assignment brief
+     committed verbatim, so it comes off both repository copies entirely, not just the public
+     one (D-8). Plus the roughly 11 commit subjects and the in-tree restatements that name any
+     of them. The exact, ready-to-paste argument list lives in
+     `.superpowers/sdd/2026-08-20-publication-prep-plan/purge-enumeration.md` (gitignored, not
+     `notes/`, because it concentrates the same sensitive material it exists to remove).
      **Execution status: NOT STARTED, and not to be started without a separate instruction.** Phase 1
      is a read-only audit and is safe whenever wanted; **Phase 2 is irreversible** and is
      additionally gated on Phase 1's findings being signed off *and* on a green `./tools/gates.sh`.
@@ -220,8 +228,8 @@ anything client-side, and **delete the item from this file when it lands.**
        (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
        `oss-*` items to "whenever the repo actually flips public". Fix the losing document or the
        next session follows it.
-     - **Phase 1 RAN 2026-08-03** — findings in
-       [2026-07-28-public-flip-audit.md](2026-07-28-public-flip-audit.md), 61 findings over the ten
+     - **Phase 1 RAN 2026-08-03** — findings in the 2026-07-28 public-flip audit (purge-set
+       per R-12, not linked here), 61 findings over the ten
        dimensions. **D2's verdict is `--replace-text` across all history, not a link-repair commit**:
        seven restatements of the purged docs' commercial conclusions exist ONLY in history, where a
        commit on top cannot reach them. Two of the seven sit at paths already absent from `HEAD`
