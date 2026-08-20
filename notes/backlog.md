@@ -181,9 +181,12 @@ anything client-side, and **delete the item from this file when it lands.**
      op, and the private blobs never reach the public repo at all. Zero forks and never having been
      public is what makes it cheap.
      **Kept, not purged:** security audits, `.claude/`, `LESSONS.md` — for the stated goal those
-     are the exhibit. (`AGENTS.md` and `docs/superpowers/` were on this list and have since been
-     deleted from `HEAD` by the cut campaign — wave 2 and R6-1. That does not reopen the ruling:
-     "kept" meant *not rewritten out of history*, and the history is what gets published.)
+     are the exhibit. (`AGENTS.md` and `docs/superpowers/` were on this list. `AGENTS.md` stays
+     deleted from `HEAD` (wave 2); `docs/superpowers/` was deleted from `HEAD` by R6-1 on
+     2026-08-09 but regrew, and on 2026-08-20 its 6 files were relocated to `notes/superpowers/`
+     rather than deleted again — so that content is back in the "kept" set, just under `notes/`
+     now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
+     history is what gets published.)
      **Purged:** money and strategy
      documents only (`notes/STARTUP-PLAN.md`, `notes/FUNDING-RESEARCH.md` — both git-**tracked**
      while their own headers say they must not be), plus ~11 commit subjects that name them.
@@ -208,7 +211,10 @@ anything client-side, and **delete the item from this file when it lands.**
        (R6-1, 97 files / 35,585 lines / 2.8 MB), which took the worst of it — the 1,129,527-byte
        `2026-07-03-quarto-design-decisions-catalog.md`, adversarial self-critique sitting under
        `docs/`, where a visitor reads it as "the manual". `notes/` is not under `docs/` and has no
-       such misreading, so its 97 tracked files are a separate call. The remediation plan files it
+       such misreading, so its 97 tracked files are a separate call. (`docs/superpowers/` itself
+       regrew after R6-1 to 6 files / 336 KB and was relocated into `notes/superpowers/` on
+       2026-08-20 rather than deleted again, so it is now literally part of this same `notes/`
+       tally and this same prune question.) The remediation plan files it
        as tier 2, needing an explicit ruling.
      - **A procedure collision to fix in the same change:** `***REMOVED***
        (fresh repo), while this file and `2026-07-17-security-release-audit.md:217-218` sequence the
