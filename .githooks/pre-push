@@ -8,10 +8,14 @@
 # nothing and certifies nothing today, and the jobs it alone would run are manual.
 # Deliberately still NOT gated here, because each needs an environment this hook cannot
 # assume:
-#   - live-kernel tests   (need a clean python env; also timing-sensitive)
 #   - JS typecheck + VS Code grammar  (need node)
 #   - cargo audit / cargo deny advisory scan  (need the tools + network; run them on
 #                                              any dependency change)
+#
+# The live-kernel tests used to head that list. They no longer do: the preflight below
+# supplies exactly the environment the list said could not be assumed, and CHECKS it
+# rather than assuming it. Where it cannot (no `.venv`), they skip as before and the
+# preflight says so out loud.
 #
 # Only gates a push that includes main; WIP-branch pushes skip for speed (matching CI,
 # which reserves the heavy gate for main + PRs). Bypass once with:  git push --no-verify
@@ -67,6 +71,66 @@ fi
 
 if [ "$pushing_main" -eq 0 ]; then
     exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Environment preflight for the suite below.
+#
+# WHY. Every live-kernel test gates on `TALIESIN_PYTHON` and *skips* when it is unset
+# (`python_or_skip`, and the same shape in `kernel.rs`). So a bare push was always green
+# over a suite that ran less than it looked like it ran — the hollow-gate failure
+# `tools/gates.sh` exists to prevent, in the one gate here that runs automatically.
+# Measured 2026-08-20: with `TALIESIN_PYTHON` unset the whole workspace suite passes and
+# exits 0, having started no kernel at all.
+#
+# Script-side bash only. Nothing here touches exec or kernel recovery machinery
+# ("hanging-interpreter recovery" is a do-not-rebuild entry and needs its own ruling).
+#
+# There is deliberately NO cargo-lock warning. A second concurrent cargo is not silent:
+# cargo itself prints "Blocking waiting for file lock on package cache", repeatedly, for
+# as long as it waits. Verified 2026-08-20 by holding the lock and starting a second
+# suite. A hand-rolled warning would restate it less well.
+# ---------------------------------------------------------------------------
+
+# 1. Self-arm. Not a new policy: this is the interpreter resolution the tool already
+#    commits to (`field -> <dir>/.venv -> TALIESIN_PYTHON -> ancestor .venv -> python3`,
+#    crates/server/src/interpreter.rs), applied to the last consumer left guessing.
+if [ -z "${TALIESIN_PYTHON:-}" ] && [ -x "$PWD/.venv/bin/python" ]; then
+    export TALIESIN_PYTHON="$PWD/.venv/bin/python"
+    echo "pre-push: armed TALIESIN_PYTHON=$TALIESIN_PYTHON (the repo's own .venv)"
+fi
+
+# 2. Poisoned env: set, but pointing at nothing runnable — a venv that was deleted or
+#    moved. This does not skip and does not hang. Measured 2026-08-20: six kernel tests
+#    fail ~30s in, with interpreter-spawn errors that name the missing path only in
+#    passing, so the push looks like a code regression. One line beats thirty seconds.
+if [ -n "${TALIESIN_PYTHON:-}" ] && [ ! -x "$TALIESIN_PYTHON" ]; then
+    echo "pre-push: REFUSED. TALIESIN_PYTHON is set but not executable:" >&2
+    echo "    $TALIESIN_PYTHON" >&2
+    echo "Fix: unset TALIESIN_PYTHON, or point it at ./.venv/bin/python" >&2
+    exit 1
+fi
+
+# 3. Bounded probe, mirroring the gate script's own ipykernel preflight. An interpreter
+#    without ipykernel starts no kernel, so the live-kernel tests would fail on the
+#    missing module rather than on the code being pushed. Bounded because a probe is not
+#    worth a wedged push if the interpreter itself is on something that will not answer.
+if [ -n "${TALIESIN_PYTHON:-}" ] \
+    && ! timeout 20 "$TALIESIN_PYTHON" -c 'import ipykernel' >/dev/null 2>&1; then
+    echo "pre-push: REFUSED. TALIESIN_PYTHON cannot import ipykernel:" >&2
+    echo "    $TALIESIN_PYTHON" >&2
+    echo "The live-kernel tests would fail on the module, not on your change." >&2
+    echo "Fix: $TALIESIN_PYTHON -m pip install ipykernel" >&2
+    echo "  or: unset TALIESIN_PYTHON to run the suite with those tests skipped." >&2
+    exit 1
+fi
+
+# No interpreter at all: run anyway, but never silently. A fresh clone has no `.venv`,
+# and a hook that refuses to run there would be a worse gate than one that reports its
+# own reduced coverage.
+if [ -z "${TALIESIN_PYTHON:-}" ]; then
+    echo "pre-push: no TALIESIN_PYTHON and no ./.venv/bin/python — the live-kernel tests"
+    echo "          in the suite below will SKIP. This push is gated on less than usual."
 fi
 
 echo "pre-push: gating main (fmt, clippy, test, docs lint, site compose). Bypass with --no-verify."
