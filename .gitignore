@@ -43,7 +43,14 @@ crates/core/tests/fixtures/deck-ext/slides.html
 # repo-root dump from before cells ran in the document's directory.
 /*.wav
 corpus/posts/fourier-transform/*.wav
-**/figures/
+**/figures/*
+# loss.png is a hand-authored asset, not a cell output (docs/guide/using/writing.tmd
+# uses it to demonstrate a plain image reference), and the guide's own build fails
+# without it. The rule above is `**/figures/*` rather than `**/figures/` so this
+# negation can reach the file: a negation cannot re-include a path whose parent
+# directory is itself excluded, so excluding the directory's contents (not the
+# directory) is what lets a single file inside it be un-ignored.
+!docs/guide/using/figures/loss.png
 
 # Logs and env
 *.log
