@@ -26,6 +26,7 @@ All seven were taken by the author on 2026-08-20, in this session.
 | D-5 | **`notes/` is KEPT whole**, minus the purged seven, with its dead links repaired. Revised from an earlier answer in the same session; the earlier answer was "remove entirely" and is superseded. |
 | D-6 | **The four sites are built and browser-verified but NOT deployed.** taliesin.sh stays dark until after the flip. |
 | D-7 | **The workflow rehearsal runs on a guard-neutralised branch** against the private repo, accepting the Actions minutes. |
+| D-8 | **`corpus/bayesian-website/` comes off GitHub entirely**, not just out of the public repo. The archive is rewritten too, and an un-rewritten `git bundle` on local disk becomes the only complete backup. |
 
 ### Why D-5 was revised
 
@@ -240,14 +241,57 @@ purge set. Keep it and extend it to `corpus/bayesian-website`.
 
 ### 4.5 The dry run
 
-Run `git filter-repo` **on a clone**, never on the working repository. Then verify the
-clone:
+Run `git filter-repo` **on a clone**, never on the working repository. Do this for **both**
+rewrites named in 4.6. Then verify each clone:
 
 - it builds;
 - `./tools/gates.sh` is green, count taken from the script's own verdict line;
 - `git log -S` finds none of the purged strings anywhere in the rewritten history;
 - `git log --all -- <each purged path>` returns nothing;
 - the commit count and the authorship record are otherwise intact.
+
+### 4.6 The archive is rewritten too, and the mechanism changes with it
+
+Per D-8, `corpus/bayesian-website/` must not remain on GitHub at all, including in the
+private archive. That is a rights question, not a tidiness one: the directory holds a named
+co-author's joint work and a university's own assignment brief, and neither is the author's
+to keep on a third party's servers indefinitely.
+
+**Two rewrites, not one.** They differ only in the purge set:
+
+| | Purge set | Destination |
+|---|---|---|
+| **Rewrite A** (archive) | `corpus/bayesian-website/` only | new PRIVATE `taliesin-private-archive` |
+| **Rewrite B** (public) | everything in 4.2, plus the `--replace-text` pass | new PUBLIC `AJBogo9/taliesin` |
+
+The money and strategy documents stay in the archive: they are wholly the author's, so
+there is no rights reason to destroy the only remaining copy of them.
+
+**Create fresh repositories and delete the original. Do NOT force-push.** The original
+ruling's "no force-push, no destructive remote op" property is deliberately given up here,
+and this is the reasoning. Force-pushing a rewritten history to the existing repository
+leaves the old objects **retrievable on GitHub by direct SHA**, which for content the
+author does not own the rights to is the wrong mechanism. Deleting the repository removes
+them. Zero forks is what makes the deletion clean.
+
+**Revised Phase 2 ordering** (still behind a separate explicit instruction, still not
+executed by this design):
+
+1. Write `taliesin-full-2026-08-20.bundle` (un-rewritten, complete) to
+   `~/Documents/personal/taliesin-private/`. Verify it by cloning **from the bundle** and
+   diffing the tip tree against `main`. **This bundle becomes the only complete backup in
+   existence**, so it is verified before anything is destroyed, not after.
+2. Rename the original repository to `taliesin-old` to free the name.
+3. Create the new private `taliesin-private-archive`, push Rewrite A, verify.
+4. Create the new public `AJBogo9/taliesin`, push Rewrite B, verify.
+5. Only then delete `taliesin-old`.
+
+Deletion is last, after both replacements are verified, with the local bundle as the
+fallback throughout.
+
+**Verification before step 5**, on both new remotes:
+`git log --all -- corpus/bayesian-website` returns nothing, and `git log -S` finds none of
+the purged strings. On the public one, the same for the money set and `todo.md`.
 
 ## Stage 5: verify and hand over
 
