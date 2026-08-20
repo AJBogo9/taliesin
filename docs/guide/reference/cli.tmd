@@ -98,11 +98,11 @@ sentence reads must not have the same power over CI as a broken cross-reference.
 |---|---|---|
 | `error` | The document is wrong: a broken ref, a dead link, unparseable YAML | always |
 | `warning` | Something will silently not work: an unknown key, a missing `alt` | always |
-| `suggestion` | Advice you may decline: a `.bib` entry nothing cites | never, unless you pass `--strict` |
+| `suggestion` | Advice you may decline. **No check emits this today**: the last one that did (a `.bib` entry nothing cites) was cut on 2026-08-20 | never, unless you pass `--strict` |
 
 A suggestion is always **printed**; only the exit code changes. `build --strict` uses the
-same rule, so a style suggestion can never block a release, and the summary says so rather
-than reporting advice as a problem beside an exit `0`:
+same rule, so advice can never block a release, and the summary says so rather than
+reporting it as a problem beside an exit `0`.
 
 ::: {.callout-warning}
 ## One thing fails a plain `build`: unparseable YAML
@@ -116,13 +116,9 @@ you wrote (and a site without its nav and its `url:`) while printing `built` and
 `0`. The output is still written; only the exit code changes.
 :::
 
-```
-doc.tmd:3: suggestion: bibliography entry `@knuth1984` is declared but never cited
-1 suggestion (advice; nothing here fails the run)
-```
-
 Severity is carried by the validator that found the defect, not derived from the wording of
-its message.
+its message — so a reworded message cannot silently reclassify a family, and there is no
+`TAL-*` code catalogue to keep in step.
 
 `--format json` stays valid JSON even when the lint itself can't run: an unreadable or
 missing path (or an empty project) is reported as a single `{"error": "…"}` object on
@@ -144,7 +140,7 @@ At a glance, here is everything the lint looks at, grouped by what it protects:
 | **Local media** | Missing local images (`src`/`href`) |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
-| **Bibliography** | A `.bib` entry declared but never cited (severity `suggestion`, so it never fails the run without `--strict`) |
+| **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), and a `bibliography:` path that does not resolve |
 
 **Every one of those names a defect you cannot see in the rendered page.** That is the test
 this set is kept by.

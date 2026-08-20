@@ -1255,7 +1255,6 @@ fn render_internal_impl(
         &mut blocks,
         &bib,
         &xref_registry,
-        bib_line,
         unexpanded.then_some(src),
     ));
     // No gathered endnote section: each note renders beside its own reference (see the

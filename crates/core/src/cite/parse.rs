@@ -107,11 +107,7 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
             entries.insert(key, Entry { kind, fields });
         }
     }
-    // A freshly parsed database is a single layer, so every key is page-local. A
-    // project-wide layer loses that status when the page's own is laid over it
-    // (`Bibliography::overlay`).
-    let local = entries.keys().cloned().collect();
-    (Bibliography { entries, local }, warnings)
+    (Bibliography { entries }, warnings)
 }
 
 fn take_while(chars: &[char], i: &mut usize, pred: impl Fn(char) -> bool) -> String {

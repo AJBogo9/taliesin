@@ -14,7 +14,7 @@
 //! Neither touches the BibTeX parser or the CSL formatter.
 
 use super::Site;
-use crate::render::{Severity, Warning};
+use crate::render::Warning;
 use std::path::{Path, PathBuf};
 
 /// Resolve `_site.yml`'s `bibliography:` entries against the site root, dropping (with a
@@ -117,49 +117,25 @@ impl Site {
     }
 
     /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: duplicate
-    /// keys within it, and entries **no page** cites.
+    /// keys within it.
     ///
     /// Read-only — it never edits a `.bib` and never changes what renders. Empty for a
     /// project with no `_site.yml` `bibliography:`, so it costs nothing to call
     /// unconditionally.
     ///
-    /// The unused check is site-wide by necessity: scoping it per page would flag every
-    /// shared entry on every page that happens not to cite it, which is the normal case and
-    /// would make the lint useless. Citations are counted from each page's **source**
-    /// ([`crate::cite::cited_keys_in_source`]) rather than from a render, so this stays a
-    /// cheap read of files the caller has already discovered.
+    /// It also reported entries **no page** cites until 2026-08-20. That half read every
+    /// page's source and expanded its includes, on every call, to answer a question whose
+    /// answer never affected a rendered page — an uncited `.bib` entry produces no defect a
+    /// reader can see, because the References list holds only cited keys and the `.bib`
+    /// itself is unpublished source. The duplicate-key check stays: it names two entries
+    /// that disagree, and the build silently uses the last one.
     pub fn validate_shared_bibliography(&self) -> Vec<Warning> {
         if self.bibliography.is_empty() {
             return Vec::new();
         }
         let text = self.shared_bibliography_text();
-        let (bib, dup_warnings) = crate::cite::parse_bib_warned(&text);
-        let mut out: Vec<Warning> = dup_warnings.into_iter().map(Warning::new).collect();
-
-        let mut cited: Vec<String> = Vec::new();
-        for input in self.pages.iter().map(|p| &p.input) {
-            let Ok(src) = std::fs::read_to_string(input) else {
-                continue;
-            };
-            // Expand includes first, with the same base/root the page render uses: a shared
-            // derivation lives in an `_includes/` partial, and its `[@key]` citations are
-            // the page's. Scanning the unexpanded source would report every entry cited
-            // only from a partial as dead weight.
-            let base = input.parent().unwrap_or(&self.root);
-            let (expanded, _, _) = crate::includes::resolve_warned_in(&src, base, None);
-            for k in crate::cite::cited_keys_in_source(&expanded) {
-                if !cited.contains(&k) {
-                    cited.push(k);
-                }
-            }
-        }
-        let uncited = bib.uncited(&cited);
-        if !uncited.is_empty() {
-            out.push(
-                Warning::new(crate::cite::uncited_message(&uncited)).severity(Severity::Suggestion),
-            );
-        }
-        out
+        let (_bib, dup_warnings) = crate::cite::parse_bib_warned(&text);
+        dup_warnings.into_iter().map(Warning::new).collect()
     }
 }
 
@@ -168,88 +144,8 @@ mod tests {
     use super::*;
     use crate::site::tests::write_site;
 
-    const SHARED: &str = "@article{used,\n author = {A},\n title = {Used},\n year = {2020}\n}\n\
-                          @article{dead,\n author = {B},\n title = {Dead},\n year = {2021}\n}\n";
-
     fn messages(w: &[Warning]) -> Vec<String> {
         w.iter().map(|x| x.message.clone()).collect()
-    }
-
-    #[test]
-    fn an_entry_no_page_cites_is_reported_once_against_the_project() {
-        let root = write_site(
-            "shared-bib-dead",
-            &[
-                ("_site.yml", "title: T\nbibliography: refs.bib\n"),
-                ("refs.bib", SHARED),
-                ("index.tmd", "---\ntitle: A\n---\n\nSee [@used].\n"),
-                ("other.tmd", "---\ntitle: B\n---\n\nNo citations here.\n"),
-            ],
-        );
-        let w = messages(&Site::discover(&root).validate_shared_bibliography());
-        assert_eq!(
-            w.len(),
-            1,
-            "one diagnostic for the project, not one per page: {w:?}"
-        );
-        assert!(
-            w[0].contains("`@dead`") && w[0].contains("never cited"),
-            "the uncited entry is named: {w:?}"
-        );
-        assert!(
-            !w[0].contains("`@used`"),
-            "an entry cited by SOME page is in use: {w:?}"
-        );
-    }
-
-    #[test]
-    fn a_shared_entry_cited_by_only_one_page_is_not_reported() {
-        // The scoping rule the whole site-wide pass exists for: judged per page, `used`
-        // would be "unused" on `other.tmd` and the lint would fire on every real project.
-        let root = write_site(
-            "shared-bib-scope",
-            &[
-                ("_site.yml", "title: T\nbibliography: refs.bib\n"),
-                (
-                    "refs.bib",
-                    "@article{used,\n author = {A},\n title = {Used},\n year = {2020}\n}\n",
-                ),
-                ("index.tmd", "---\ntitle: A\n---\n\nSee [@used].\n"),
-                ("other.tmd", "---\ntitle: B\n---\n\nNothing cited.\n"),
-            ],
-        );
-        assert!(
-            Site::discover(&root)
-                .validate_shared_bibliography()
-                .is_empty(),
-            "one citation anywhere in the project keeps a shared entry alive"
-        );
-    }
-
-    #[test]
-    fn a_citation_that_only_an_include_makes_still_counts() {
-        // The false-positive this pass would otherwise manufacture: a shared derivation
-        // lives in a partial, and its citations belong to the page that includes it.
-        let root = write_site(
-            "shared-bib-include",
-            &[
-                ("_site.yml", "title: T\nbibliography: refs.bib\n"),
-                (
-                    "refs.bib",
-                    "@article{used,\n author = {A},\n title = {Used},\n year = {2020}\n}\n",
-                ),
-                (
-                    "index.tmd",
-                    "---\ntitle: A\n---\n\n{{< include _part.tmd >}}\n",
-                ),
-                ("_part.tmd", "Derivation, citing [@used].\n"),
-            ],
-        );
-        let w = messages(&Site::discover(&root).validate_shared_bibliography());
-        assert!(
-            w.is_empty(),
-            "an included citation is the page's own: {w:?}"
-        );
     }
 
     #[test]

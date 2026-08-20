@@ -46,16 +46,15 @@ pub use validate::{validate_xrefs, validate_xrefs_known_elsewhere};
 ///
 /// A page's bibliography can be **two layers**: a project-wide `bibliography:` from
 /// `_site.yml` with the page's own `bibliography:` laid over it ([`Bibliography::overlay`]).
-/// The layers matter to exactly one thing — the "declared but never cited" lint, which is
-/// scoped to what the *page* declared, since a shared entry cited by some other page is not
-/// an author mistake. Everything else (formatting, broken-citation checks) sees one merged
-/// database and cannot tell the layers apart.
+/// The layers exist so a page can override or extend a shared entry; they collapse into one
+/// merged database the moment `overlay` returns, and nothing downstream can tell them apart.
+///
+/// A `local` set tracked which keys the page itself contributed, for the "declared but never
+/// cited" lint. That lint was cut on 2026-08-20 and the set went with it — it was the one
+/// thing that needed to distinguish the layers after the merge.
 #[derive(Default)]
 pub struct Bibliography {
     entries: HashMap<String, Entry>,
-    /// Keys the page's own `bibliography:` contributed. Equal to `entries`' keys for a
-    /// single-layer bibliography, which is every case that predates `_site.yml`'s key.
-    local: std::collections::HashSet<String>,
 }
 
 /// One parsed BibTeX entry: its `@type` (lowercased, e.g. `article`/`book`/
@@ -87,66 +86,9 @@ impl Bibliography {
     ///
     /// A collision across the two layers is deliberately silent — it is the documented way
     /// to override — unlike a duplicate key *within* one file, which stays a warning
-    /// ([`parse_bib_warned`]). After this, only `page`'s keys count as page-local.
+    /// ([`parse_bib_warned`]).
     pub fn overlay(&mut self, page: Bibliography) {
-        self.local = page.entries.keys().cloned().collect();
         self.entries.extend(page.entries);
-    }
-
-    /// The page's own declared keys that `cited` does not contain, sorted. Empty for a
-    /// page whose `bibliography:` is fully cited, and — by construction — never naming an
-    /// entry that came from the project-wide layer.
-    pub(crate) fn uncited_local(&self, cited: &[String]) -> Vec<&str> {
-        let mut out: Vec<&str> = self
-            .local
-            .iter()
-            .map(String::as_str)
-            .filter(|k| !cited.iter().any(|c| c == k))
-            .collect();
-        out.sort_unstable();
-        out
-    }
-
-    /// Every key in the merged database that `cited` does not contain, sorted. The
-    /// project-wide counterpart of [`uncited_local`](Self::uncited_local): its caller
-    /// passes the keys cited by *every* page, so a shared entry is only unused when the
-    /// whole site leaves it unused.
-    pub fn uncited(&self, cited: &[String]) -> Vec<&str> {
-        let mut out: Vec<&str> = self
-            .entries
-            .keys()
-            .map(String::as_str)
-            .filter(|k| !cited.iter().any(|c| c == k))
-            .collect();
-        out.sort_unstable();
-        out
-    }
-}
-
-/// How many uncited keys a diagnostic names before it summarizes the rest. A shared
-/// `.bib` can leave dozens unused at once, and a diagnostic line that lists forty keys is
-/// unreadable in an editor gutter; naming the first few is enough to start deleting.
-const UNCITED_KEYS_SHOWN: usize = 5;
-
-/// The "declared but never cited" message for `keys` (assumed non-empty and sorted). One
-/// wording for both scopes — the page's own `bibliography:` and the project-wide one — so
-/// [`crate::diagnostics::codes`] classifies them as one family and they cannot drift apart.
-pub(crate) fn uncited_message(keys: &[&str]) -> String {
-    let shown = keys
-        .iter()
-        .take(UNCITED_KEYS_SHOWN)
-        .map(|k| format!("`@{k}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let rest = keys.len().saturating_sub(UNCITED_KEYS_SHOWN);
-    let tail = if rest > 0 {
-        format!(", and {rest} more")
-    } else {
-        String::new()
-    };
-    match keys.len() {
-        1 => format!("bibliography entry {shown} is declared but never cited"),
-        n => format!("{n} bibliography entries are declared but never cited: {shown}{tail}"),
     }
 }
 
@@ -157,10 +99,10 @@ pub(crate) fn uncited_message(keys: &[&str]) -> String {
 /// excluded too.
 ///
 /// A source scan, not a render, so a `[@key]` written inside a fenced code block counts as
-/// a citation. That direction is deliberate for the callers that lint on it: over-counting
-/// citations makes "never cited" quieter, never wrong-in-the-loud-direction. Callers that
-/// need the exact set (the reference list itself) get it from [`process`], which runs over
-/// rendered HTML.
+/// a citation. That direction was deliberate for the lint that read this: over-counting
+/// citations made "never cited" quieter rather than wrong-in-the-loud-direction. That lint
+/// was cut on 2026-08-20 and this now has no caller outside its own test. Callers that need
+/// the exact set (the reference list itself) get it from [`process`], over rendered HTML.
 pub fn cited_keys_in_source(src: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let bytes = src.as_bytes();

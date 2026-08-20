@@ -4,7 +4,7 @@
 //! sourcepos is untouched.
 
 use super::{Bibliography, sourcepos_start_line};
-use crate::render::{Block, Severity, Warning, escape_attr as esc};
+use crate::render::{Block, Warning, escape_attr as esc};
 use std::collections::HashMap;
 
 /// Cross-reference kind prefixes -> display label, in canonical order. The single source
@@ -59,15 +59,16 @@ pub fn is_xref_anchor(id: &str) -> bool {
 /// the dev server's diagnostics. Empty when every citation resolves (or there's no
 /// bibliography at all, in which case the missing-file case is reported elsewhere).
 ///
-/// Also reports the **mirror** of that check — an entry the page declared and never cited —
-/// which belongs here because this is the one place that holds both the cited set and the
-/// bibliography. `bib_line` locates both families on the front-matter `bibliography:` line
-/// (a `.bib` entry has no position in the `.tmd`), matching `render::load_bibliography`.
+/// It used to report the **mirror** of that check too — an entry the page declared and
+/// never cited — which is why it took a `bib_line` to locate a `.bib`-scoped finding that
+/// has no position in the `.tmd`. That lint was cut on 2026-08-20; every warning left here
+/// locates itself at the citation the author actually wrote, so the parameter went with it.
+/// (`render::load_bibliography` still takes one: a missing file or a duplicate key really
+/// does belong on the `bibliography:` line.)
 pub fn process(
     blocks: &mut Vec<Block>,
     bib: &Bibliography,
     xrefs: &HashMap<String, String>,
-    bib_line: Option<u32>,
     src: Option<&str>,
 ) -> Vec<Warning> {
     let mut order: Vec<String> = Vec::new();
@@ -103,20 +104,7 @@ pub fn process(
     }
     let key_loc = key_loc.into_inner();
 
-    // The dead-weight lint, reported whether or not the page cites anything: a page that
-    // declares a `bibliography:` and cites none of it is the loudest instance, not an
-    // exemption. One warning for the whole set rather than one per key — every one of them
-    // would point at the same `bibliography:` line, so N warnings would be N copies of one
-    // click-to-source target.
     let mut warnings: Vec<Warning> = Vec::new();
-    let uncited = bib.uncited_local(&order);
-    if !uncited.is_empty() {
-        let w = Warning::new(super::uncited_message(&uncited)).severity(Severity::Suggestion);
-        warnings.push(match bib_line {
-            Some(l) => w.at(None, l),
-            None => w,
-        });
-    }
 
     if order.is_empty() {
         return warnings;

@@ -3,9 +3,10 @@
 //! than a replacement. Pins `corpus/shared-bib/` (`index.tmd` cites a shared key with no
 //! `bibliography:` of its own; `notes.tmd` overrides one shared key and adds another).
 //!
-//! The read-only hygiene half — "declared but never cited" at both scopes — lives with the
-//! temp-site tests in `crates/core/src/site/bibliography.rs`, since it needs deliberately
-//! unused entries the corpus must not carry.
+//! The read-only hygiene half is the duplicate-key check, tested against temp sites in
+//! `crates/core/src/site/bibliography.rs` since it needs a deliberately broken `.bib` the
+//! corpus must not carry. It also reported "declared but never cited" at both scopes until
+//! that lint was cut on 2026-08-20.
 
 mod common;
 use common::corpus_dir;
@@ -96,35 +97,16 @@ fn a_page_opened_on_its_own_still_inherits_the_project_bibliography() {
 }
 
 #[test]
-fn the_corpus_site_is_clean_under_both_bibliography_lints() {
-    // The pin is only a pin if it is green: every shared entry is cited by some page, and
-    // every page-declared entry is cited by its page. A regression that made either lint
-    // fire on correct input would show up here rather than as noise in a real project.
+fn the_corpus_site_is_clean_under_the_shared_bibliography_lint() {
+    // The pin is only a pin if it is green: nothing in the shared `.bib` is duplicated, so
+    // a regression that made the lint fire on correct input shows up here rather than as
+    // noise in a real project. (It checked the "declared but never cited" half too until
+    // that lint was cut on 2026-08-20.)
     let site = site();
     let site_level = site.validate_shared_bibliography();
     assert!(
         site_level.is_empty(),
-        "corpus/shared-bib declares nothing unused or duplicated: {:?}",
+        "corpus/shared-bib declares nothing duplicated: {:?}",
         site_level.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
-    for rel in ["index.tmd", "notes.tmd"] {
-        let page = site.pages.iter().find(|p| p.rel == rel).expect("page");
-        let src = std::fs::read_to_string(&page.input).unwrap();
-        let doc = taliesin_core::render_document_scoped_with_site(
-            &src,
-            page.input.parent().unwrap(),
-            None,
-            Some(&site.render_defaults()),
-        );
-        let uncited: Vec<&String> = doc
-            .warnings
-            .iter()
-            .map(|w| &w.message)
-            .filter(|m| m.contains("never cited"))
-            .collect();
-        assert!(
-            uncited.is_empty(),
-            "{rel} cites what it declares: {uncited:?}"
-        );
-    }
 }

@@ -9,10 +9,10 @@ fn bib() -> Bibliography {
     )
 }
 
-/// The `broken citation` warnings out of `process`'s output. A document citing only a
-/// typo'd key legitimately draws TWO families at once — the broken reference AND the real
-/// entry left uncited — so a test about one family selects it rather than asserting it is
-/// the only warning.
+/// The `broken citation` warnings out of `process`'s output. Kept as a filter rather than
+/// asserting on the whole list: a document citing a typo'd key drew TWO families at once
+/// until the "declared but never cited" lint was cut on 2026-08-20, and selecting the
+/// family under test is still the honest shape for a test about one of them.
 fn broken(w: &[Warning]) -> Vec<&Warning> {
     w.iter()
         .filter(|x| x.message.contains("broken citation"))
@@ -125,7 +125,7 @@ fn citation_becomes_numbered_link_with_locator() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
         blocks[0]
             .html
@@ -151,7 +151,7 @@ fn broken_citation_warns_only_when_a_bib_exists() {
     };
     // A non-empty bib + an unknown key -> one "broken citation" warning.
     let mut blocks = mk();
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(w[0].message.contains("@nosuchkey"));
@@ -162,7 +162,6 @@ fn broken_citation_warns_only_when_a_bib_exists() {
             &mut blocks2,
             &Bibliography::default(),
             &HashMap::new(),
-            None,
             None
         )
         .is_empty()
@@ -275,7 +274,7 @@ fn block(html: &str) -> Block {
 fn broken_citation_suggests_the_nearest_bib_key() {
     // `bishop2006patern` is one deletion away from the bib's `bishop2006pattern`.
     let mut blocks = vec![block("<p>see [@bishop2006patern].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
@@ -289,7 +288,7 @@ fn broken_citation_suggests_the_nearest_bib_key() {
 #[test]
 fn a_citation_with_no_near_key_keeps_the_plain_message() {
     let mut blocks = vec![block("<p>see [@nosuchkey].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
+    let w = process(&mut blocks, &bib(), &HashMap::new(), None);
     let w = broken(&w);
     assert_eq!(w.len(), 1, "got: {w:?}");
     assert!(
@@ -382,7 +381,7 @@ fn crossref_becomes_labelled_link() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     // Unresolved here: linked label, marked for cross-page resolution by a site.
     assert!(
         blocks[0].html.contains(
@@ -407,7 +406,7 @@ fn crossref_resolves_number_from_registry() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &Bibliography::default(), &xrefs, None, None);
+    process(&mut blocks, &Bibliography::default(), &xrefs, None);
     assert!(
         blocks[0]
             .html
@@ -428,7 +427,7 @@ fn citations_inside_code_are_left_alone() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
         blocks[0].html.contains("[@bishop2006pattern]"),
         "code was rewritten"
@@ -553,7 +552,7 @@ fn manual_references_heading_suppresses_auto_heading() {
             nested: Vec::new(),
         },
     ];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     let refs = blocks.last().unwrap();
     // The list + anchors are still emitted...
     assert!(
@@ -595,7 +594,7 @@ fn no_manual_heading_keeps_auto_references_heading() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     assert!(blocks.last().unwrap().html.contains("<h2>References</h2>"));
 }
 
@@ -642,7 +641,7 @@ fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix(
             nested: Vec::new(),
         },
     ];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
 
     let idx = |id: &str| {
         blocks
@@ -725,7 +724,7 @@ fn cite_key_and_bib_key_charsets_agree() {
         cell: None,
         nested: Vec::new(),
     }];
-    process(&mut blocks, &b, &HashMap::new(), None, None);
+    process(&mut blocks, &b, &HashMap::new(), None);
     assert!(
         blocks[0]
             .html
@@ -793,94 +792,6 @@ fn parenthesis_delimited_entries_do_not_cascade_drop() {
     );
 }
 
-/// A `Block` carrying `html`, for the lint tests below (which never inspect position).
-fn para(html: &str) -> Block {
-    Block {
-        id: "b".into(),
-        sourcepos: "1:1-1:1".into(),
-        source_file: None,
-        html: html.to_string(),
-        cell: None,
-        nested: Vec::new(),
-    }
-}
-
-#[test]
-fn a_declared_entry_that_is_never_cited_is_reported() {
-    let mut blocks = vec![para("<p>Prose citing nothing.</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), Some(7), None);
-    assert_eq!(w.len(), 1, "one warning for the set: {w:?}");
-    assert!(
-        w[0].message.contains("`@bishop2006pattern`") && w[0].message.contains("never cited"),
-        "names the dead entry: {}",
-        w[0].message
-    );
-    // Located on the front-matter `bibliography:` line, like every other `.bib` diagnostic
-    // (a `.bib` entry has no position in the `.tmd`).
-    assert_eq!(w[0].line, Some(7), "click-to-source at bibliography:");
-}
-
-#[test]
-fn a_partly_cited_bibliography_reports_only_the_dead_entries() {
-    // The case every real document is in: some entries cited, some not. Kept distinct from
-    // the cites-nothing case on purpose — a shadowed `warnings` binding once discarded this
-    // lint for exactly the pages that cite something, and every test whose page cited
-    // nothing passed straight through it.
-    let b = parse_bib(
-        "@book{cited,\n  title = {Cited},\n  author = {A. One},\n  year = {2001}\n}\n\
-         @book{dead,\n  title = {Dead},\n  author = {B. Two},\n  year = {2002}\n}\n",
-    );
-    let mut blocks = vec![para("<p>See [@cited].</p>")];
-    let w = process(&mut blocks, &b, &HashMap::new(), Some(3), None);
-    let uncited: Vec<&String> = w
-        .iter()
-        .map(|x| &x.message)
-        .filter(|m| m.contains("never cited"))
-        .collect();
-    assert_eq!(uncited.len(), 1, "the dead entry is still reported: {w:?}");
-    assert!(
-        uncited[0].contains("`@dead`") && !uncited[0].contains("`@cited`"),
-        "only the uncited one: {}",
-        uncited[0]
-    );
-    // And the reference list still renders — the lint must not disturb the output.
-    assert!(
-        blocks.iter().any(|x| x.id == "tali-references"),
-        "the references section is still appended"
-    );
-}
-
-#[test]
-fn a_cited_entry_is_not_reported_as_uncited() {
-    let mut blocks = vec![para("<p>See [@bishop2006pattern].</p>")];
-    let w = process(&mut blocks, &bib(), &HashMap::new(), None, None);
-    assert!(
-        !w.iter().any(|x| x.message.contains("never cited")),
-        "a cited entry is in use: {w:?}"
-    );
-}
-
-#[test]
-fn the_uncited_lint_is_scoped_to_the_pages_own_layer() {
-    // The whole point of the two-layer model: a project-wide entry this page ignores is
-    // NOT this page's problem (some other page may cite it), so only the page's own
-    // declared keys can be reported here.
-    let mut shared = parse_bib(
-        "@book{shared_only,\n  title = {Shared},\n  author = {A. One},\n  year = {2001}\n}\n",
-    );
-    shared.overlay(parse_bib(
-        "@book{page_only,\n  title = {Local},\n  author = {B. Two},\n  year = {2002}\n}\n",
-    ));
-    let mut blocks = vec![para("<p>Prose citing nothing.</p>")];
-    let w = process(&mut blocks, &shared, &HashMap::new(), None, None);
-    assert_eq!(w.len(), 1, "{w:?}");
-    assert!(
-        w[0].message.contains("`@page_only`") && !w[0].message.contains("`@shared_only`"),
-        "only the page's own layer is judged here: {}",
-        w[0].message
-    );
-}
-
 #[test]
 fn a_page_entry_overrides_a_shared_entry_with_the_same_key() {
     let mut b = parse_bib(
@@ -893,31 +804,6 @@ fn a_page_entry_overrides_a_shared_entry_with_the_same_key() {
     assert!(
         f.contains("From the page") && !f.contains("From the project"),
         "the page's layer wins: {f}"
-    );
-}
-
-#[test]
-fn many_uncited_entries_collapse_into_one_capped_message() {
-    // Seven dead entries must not become seven diagnostics on one line, nor one
-    // unreadable line naming all seven.
-    let src: String = (0..7)
-        .map(|i| format!("@book{{k{i},\n  title = {{T{i}}},\n  year = {{2000}}\n}}\n"))
-        .collect();
-    let mut blocks = vec![para("<p>Nothing cited.</p>")];
-    let w = process(&mut blocks, &parse_bib(&src), &HashMap::new(), None, None);
-    assert_eq!(w.len(), 1, "{w:?}");
-    let m = &w[0].message;
-    assert!(
-        m.starts_with("7 bibliography entries"),
-        "counts them all: {m}"
-    );
-    assert!(
-        m.contains("`@k0`") && m.contains("`@k4`"),
-        "names the first five: {m}"
-    );
-    assert!(
-        !m.contains("`@k5`") && m.contains("and 2 more"),
-        "summarizes the rest instead of listing them: {m}"
     );
 }
 

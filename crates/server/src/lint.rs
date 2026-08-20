@@ -1838,11 +1838,12 @@ mod tests {
             "unknown front-matter key `x`",
         )
     }
+    /// NOTE: no validator emits `Suggestion` since the uncited-entry lint was cut on
+    /// 2026-08-20, so this is a hand-built value. The tier's PLUMBING is what these tests
+    /// pin — printed always, gates only under `--strict` — and it is kept dormant
+    /// deliberately; whether to delete the tier outright is a separate scope question.
     fn suggestion_diag() -> Diagnostic {
-        at(
-            taliesin_core::Severity::Suggestion,
-            "bibliography entry `@x` is declared but never cited",
-        )
+        at(taliesin_core::Severity::Suggestion, "advice, not a defect")
     }
 
     /// Advice is always printed and only gates when the run asks. That is the whole point of
@@ -1965,11 +1966,11 @@ mod tests {
         let ws = vec![
             Warning::new("broken cross-reference: @fig-x".to_string()).severity(Severity::Error),
             Warning::new("unknown front-matter key `x`".to_string()),
-            Warning::new("bibliography entry `@x` is declared but never cited".to_string())
-                .severity(Severity::Suggestion),
+            Warning::new("advice, not a defect".to_string()).severity(Severity::Suggestion),
         ];
-        // `--strict` fails on the broken ref and the unknown key, never on the advice: a
-        // shared `.bib` whose entries most pages leave alone would otherwise be unusable.
+        // `--strict` fails on the broken ref and the unknown key, never on the advice.
+        // Hand-built: nothing emits this severity since the uncited-entry lint was cut on
+        // 2026-08-20, and this pins the arithmetic that would gate the next one.
         assert_eq!(blocking(&ws), 2);
         assert!(is_advice(&ws[2]) && !is_advice(&ws[0]) && !is_advice(&ws[1]));
     }
