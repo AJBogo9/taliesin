@@ -184,7 +184,7 @@ anything client-side, and **delete the item from this file when it lands.**
      are the exhibit. (`AGENTS.md` and `docs/superpowers/` were on this list. `AGENTS.md` stays
      deleted from `HEAD` (wave 2); `docs/superpowers/` was deleted from `HEAD` by R6-1 on
      2026-08-09 but regrew, and on 2026-08-20 its 6 files were relocated to `notes/superpowers/`
-     rather than deleted again — so that content is back in the "kept" set, just under `notes/`
+     rather than deleted again, so that content is back in the "kept" set, just under `notes/`
      now. That does not reopen the ruling: "kept" meant *not rewritten out of history*, and the
      history is what gets published.)
      **Purged:** money and strategy
