@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature requests are closed by design
+    url: https://github.com/AJBogo9/taliesin/blob/main/CONTRIBUTING.md
+    about: >-
+      Taliesin 1.0 is feature-complete for its one use case and the scope is closed.
+      CONTRIBUTING.md explains what that rules out and why. Forking is always available
+      under the AGPL.
+  - name: Report a security vulnerability privately
+    url: https://github.com/AJBogo9/taliesin/security/advisories/new
+    about: Do not open a public issue for a suspected vulnerability. See SECURITY.md.

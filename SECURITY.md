@@ -7,13 +7,13 @@ from an actual vulnerability before reporting.
 
 ## Supported versions
 
-Taliesin is pre-1.0 and ships from a single line of development. Only the latest
-released version (currently the `0.2.x` series) receives security fixes. There is
-no back-porting to older tags.
+Taliesin follows semantic versioning from 1.0 and ships from a single line of
+development. Only the latest released version (currently the `1.x` series)
+receives security fixes. There is no back-porting to older tags.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| latest `0.2.x` | yes         |
+| latest `1.x` | yes          |
 | anything older | no          |
 
 ## Reporting a vulnerability

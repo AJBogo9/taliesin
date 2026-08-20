@@ -1,0 +1,43 @@
+name: Bug report
+description: Something renders wrongly, crashes, or reports a problem that is not one.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Taliesin is a single-maintainer project with a closed scope. Bug reports are
+        welcome; feature requests are not (see CONTRIBUTING.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: The smallest `.tmd` source that reproduces it
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: The exact command you ran
+      placeholder: taliesin build post.tmd
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `taliesin doctor --format json`
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version (`taliesin --version`) and platform
+      placeholder: 1.0.0, Linux x86-64
+    validations:
+      required: true
