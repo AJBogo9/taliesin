@@ -33,7 +33,7 @@ body:
       label: Output of `taliesin doctor --format json`
       render: json
     validations:
-      required: true
+      required: false
   - type: input
     id: version
     attributes:
