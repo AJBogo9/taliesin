@@ -40,8 +40,8 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 them cut or superseded). **`CLAUDE.md` remains the authority on any count**; take a gate count
 from `./tools/gates.sh`'s own verdict line and never from prose here.
 
-**The whole file is now one sequence: ship the thing.** The five items below are ordered, and the
-order is the plan, not a ranking. 103 → 100 → 148 → 149 → 170.
+**The whole file is now one sequence: ship the thing.** The four items below are ordered, and the
+order is the plan, not a ranking. 100 → 148 → 149 → 170. Item 103 closed 2026-08-20.
 
 **Pre-flight is DISCHARGED for the current tree, and it re-arms on every merge.**
 `./tools/gates.sh` ran green on 2026-08-07 (all 9 gates, twice: once at `87af6aa6` as a baseline and
@@ -82,7 +82,8 @@ a thing waiting its turn.
   answer "what does the tool support" from the **validator consts** directly, never from
   `vocab.rs` (which is the *offered-completions* subset and under-reports: it offers 5 of the 12
   `XREF_LABELS`).
-- **Nothing is owed by the author except item 103.**
+- **Nothing is owed by the author except the Phase 2 go-ahead.** Item 103 was ruled and closed
+  on 2026-08-20, and every other prerequisite is discharged and recorded in the go/no-go dossier.
 
 ## Standing constraints (read before working)
 
@@ -160,13 +161,26 @@ anything client-side, and **delete the item from this file when it lands.**
 
 ### The release — in sequence
 
-103. **Clear the name in software classes.** (Ruling, legal not code. Gates everything below it.)
-     Trademark search in the relevant classes. What is already known and is *not* a blocker on its
-     own: TALIESIN is a live registered mark of the Frank Lloyd Wright Foundation (Reg. 4150375),
-     software is outside the recited goods so legal risk is low, and the real cost is permanent SEO
-     invisibility (`github.com/taliesin` and `/taliesins` are both taken). **Renaming twice is worse
-     than a bad search name** — if the answer is keep, always publish as "Taliesin — the `.tmd` dev
-     server" so the disambiguator travels.
+> **⚠ START HERE. The prep is DONE; only the irreversible half remains.**
+> Read [2026-08-20-flip-go-no-go.md](2026-08-20-flip-go-no-go.md) first. It carries the
+> verdict, the exact Phase 2 command sequence, what was verified with its quoted output, and
+> what was deliberately NOT verified. Supporting records:
+> [design](2026-08-20-publication-prep-design.md) (the 8 decisions and the binding spec),
+> [plan](2026-08-20-publication-prep-plan.md),
+> [workflow rehearsal](2026-08-20-workflow-rehearsal-log.md),
+> [rewrite dry run](2026-08-20-rewrite-dry-run.md),
+> [final verification](2026-08-20-final-verification.md).
+>
+> **The `--path` and `--replace-text` arguments are NOT in this repository.** They are in
+> `~/Documents/personal/taliesin-private/`, deliberately: the enumeration concentrates a third
+> party's name, a university's copyrighted text and the author's commercial figures into one
+> file. That directory also holds the full ruling ledger. **Do not sort the replace-text
+> files**, `filter-repo` applies entries in order and the full-name forms must precede the
+> bare surname.
+>
+> **Item 103 is CLOSED**, ruled 2026-08-20: keep the name, accept the SEO cost, and always
+> publish as "Taliesin, the `.tmd` dev server" so the disambiguator travels.
+
 
 100. **The public flip: RULED 2026-07-28 — "archive plus fresh public", and it is specced.** The
      design spec was deleted with `docs/superpowers/` on 2026-08-09 (R6-1) and lives in git
