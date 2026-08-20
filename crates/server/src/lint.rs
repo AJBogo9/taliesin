@@ -1374,7 +1374,6 @@ mod tests {
             "image is missing alt text",
             "looks like a placeholder",
             "is not a citation",
-            "is recognized but not supported",
         ];
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {

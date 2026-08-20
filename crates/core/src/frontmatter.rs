@@ -38,32 +38,14 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "title-block-style",
     // Table of contents
     "toc",
-    // Citations. `csl` is recognized but NOT honored; see UNSUPPORTED_KEYS.
+    // Citations
     "bibliography",
-    "csl",
     // Execution
     "execute",
     // Listings / project pages
     "listing",
     "hero",
 ];
-
-/// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
-///
-/// They stay in [`KNOWN_KEYS`] on purpose, and the reason is not politeness. `csl` names a
-/// real thing an author brought from another tool, and the honest answer is "recognized,
-/// not honored" rather than either silence or a rename hint — so the key is recognized and
-/// a dedicated diagnostic says so (`diagnostics::csl_recognized_but_unsupported`).
-///
-/// This used to be argued from `css` being edit distance 1 away, which would have made a
-/// bare did-you-mean tell the author to rename their citation-style key to a stylesheet
-/// key. `css` was retired on 2026-08-02, so that specific collision is gone; the reason
-/// above is the one that survives it, and it was always the load-bearing half.
-///
-/// Also the exclusion list for the editor vocabulary (`vocab::vocab`): an unsupported key
-/// must never be OFFERED as a completion. Recognizing what an author already wrote and
-/// suggesting they write it are different acts.
-pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
@@ -120,7 +102,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             ));
         }
     }
-    validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
     validate_date_value(map, block, &mut out);
     validate_image_alt(map, block, &mut out);
@@ -352,34 +333,6 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
 /// Quarto's `article` (its default), `custom`, … — is silently ignored. Warn on those so
 /// a migration leftover surfaces instead of the author wondering why the layout never
 /// changed. A hard gate, so the corpus carries only `full` (or omits the key).
-/// Warn on a key taliesin RECOGNIZES but does not honor (see [`UNSUPPORTED_KEYS`]).
-///
-/// Nothing reads `csl:`. Reference formatting is hardcoded IEEE-numeric and the `.csl`
-/// file's content is never parsed, yet the key was advertised on five surfaces, so an
-/// author who wrote `csl: apa.csl` got a clean check, IEEE output, and no signal at all.
-///
-/// This lives here rather than in `diagnostics` on purpose: `diagnostics` is check-only
-/// (nothing under `serve/` calls it), and the author reads the preview. Sitting on the
-/// render path means preview and `check` say the same thing, like the `page-layout` lint
-/// right below.
-///
-/// Carries no "did you mean" hint on purpose: there is no replacement to suggest.
-fn validate_unsupported_keys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    for key in UNSUPPORTED_KEYS {
-        if map.get(key).is_none() {
-            continue;
-        }
-        out.push(located_span(
-            format!(
-                "`{key}:` is recognized but not supported, so it has no effect: references \
-                 always render in the built-in IEEE style (remove the key, or the citations \
-                 will not match the style you asked for)"
-            ),
-            block_key_span(block, key),
-        ));
-    }
-}
-
 fn validate_page_layout_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(val) = map.get("page-layout").and_then(|v| v.as_str()) else {
         return;
@@ -756,100 +709,48 @@ mod tests {
         assert_eq!(w.line, Some(4), "date: is on line 4: {w:?}");
     }
 
-    /// The point of warning on `csl:` is that a no-op key should not be silent, and the
-    /// author reads the *preview*, not a `check` run. So the rule has to live on the
-    /// render path (`validate_front_matter`) like the `page-layout` lint, not only in the
-    /// check-only `diagnostics` module, which nothing under `serve/` calls.
+    /// The parser-side pin for the 2026-08-20 `csl:` cut.
+    ///
+    /// `csl:` was a compatibility note wearing a key's clothes: recognized-but-inert, kept
+    /// on the argument that it "names a real thing you brought from another tool". The
+    /// 2026-08-17 ruling forecloses that argument -- taliesin answers for its own vocabulary
+    /// and nothing else -- and the key's other stated ground was already dead by its own
+    /// test's admission (`css` left KNOWN_KEYS on 2026-08-02, so dropping `csl` can no
+    /// longer mis-suggest it).
+    ///
+    /// So this asserts the READ is gone and the generic path took over with no code added:
+    /// the key draws the ordinary unknown-key diagnostic, the dedicated
+    /// "recognized but not supported" wording exists nowhere, and -- the half that makes
+    /// the cut safe -- there is no wrong rename hint, because `css` is not a candidate.
     #[test]
-    fn csl_warns_on_the_render_path_so_the_preview_is_not_silent() {
-        let src = "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n";
-        let ws = validate_front_matter(src);
+    fn csl_is_an_ordinary_unknown_key_with_no_phantom_suggestion() {
+        let ws = validate_front_matter(
+            "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n",
+        );
         let w = ws
             .iter()
-            .find(|w| w.message.contains("is recognized but not supported"))
-            .unwrap_or_else(|| panic!("the render path warns on `csl:`: {ws:?}"));
-        assert_eq!(
-            w.line,
-            Some(4),
-            "located at the `csl:` line, where the fix (deleting it) belongs: {w:?}"
+            .find(|w| w.message.contains("`csl`"))
+            .unwrap_or_else(|| panic!("`csl:` draws the generic unknown-key lint: {ws:?}"));
+        assert!(
+            w.message.starts_with("unknown front-matter key `csl`"),
+            "the generic message, not a dedicated one: {}",
+            w.message
         );
-    }
+        assert!(
+            !w.message.contains("did you mean"),
+            "no near neighbour, so no guess -- `css` was retired 2026-08-02 and is not a \
+             candidate, which is what made this cut safe: {}",
+            w.message
+        );
+        assert_eq!(w.line, Some(4), "located at the `csl:` line: {w:?}");
 
-    /// What the warning must actually say. It names the key, says what happens instead
-    /// (IEEE), and offers no "did you mean": there is no replacement, and
-    /// `codes::extract_suggestion` would lift one into a structured fix an agent applies.
-    #[test]
-    fn the_csl_warning_names_the_key_and_offers_no_phantom_fix() {
-        let src = "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n";
-        let ws: Vec<_> = validate_front_matter(src)
-            .into_iter()
-            .filter(|w| w.message.contains("is recognized but not supported"))
-            .collect();
-        assert_eq!(ws.len(), 1, "exactly one warning for the inert key: {ws:?}");
-        let m = &ws[0].message;
-        assert!(m.contains("csl"), "names the key: {m}");
-        assert!(m.contains("IEEE"), "says what happens instead: {m}");
-        assert!(!m.contains("did you mean"), "not a typo, so no fix: {m}");
-    }
-
-    #[test]
-    fn a_front_matter_without_csl_stays_clean() {
-        let unsupported = |src: &str| {
-            validate_front_matter(src)
-                .into_iter()
-                .any(|w| w.message.contains("is recognized but not supported"))
-        };
+        // The dedicated wording is gone from the tool entirely, not merely unreached.
         assert!(
-            !unsupported("---\ntitle: T\nbibliography: refs.bib\n---\n\nBody.\n"),
-            "no `csl:`, no warning"
+            !ws.iter()
+                .any(|w| w.message.contains("is recognized but not supported")),
+            "the recognized-but-unsupported family has no producer left: {ws:?}"
         );
-        // `css` is edit distance 1 from `csl` and is a real supported key: the lint keys
-        // off the parsed mapping, not a substring, so it must not be mistaken for it.
-        assert!(
-            !unsupported("---\ntitle: T\ncss: extra.css\n---\n\nBody.\n"),
-            "`css` is not `csl`"
-        );
-        assert!(
-            !unsupported("# No front matter\n"),
-            "no front matter, nothing to validate"
-        );
-    }
-
-    #[test]
-    fn csl_stays_recognized_because_dropping_it_would_mis_suggest_css() {
-        // `csl:` is inert (nothing reads the value; references always render in the
-        // built-in IEEE style), so the tempting cleanup is to drop it from KNOWN_KEYS and
-        // let the unknown-key lint speak. It stays recognized anyway: `csl` names a real
-        // thing an author brought from another tool, and "recognized, not honored" (via
-        // `diagnostics::csl_recognized_but_unsupported`) is the honest answer where a bare
-        // unknown-key warning is not.
-        //
-        // This was ALSO argued from `css` being edit distance 1 away, which would have made
-        // the did-you-mean tell the author to rename a citation-style key to a stylesheet
-        // key. `css` was retired on 2026-08-02, so that collision is gone — and this asserts
-        // it is gone, so nobody re-derives the old rationale from a stale comment.
-        assert!(
-            !KNOWN_KEYS.contains(&"css"),
-            "`css` was retired; the edit-distance-1 collision no longer exists"
-        );
-        let without_csl: Vec<&'static str> =
-            KNOWN_KEYS.iter().copied().filter(|k| *k != "csl").collect();
-        assert_ne!(
-            closest("csl", &without_csl),
-            Some("css"),
-            "`css` must not be a suggestion candidate any more"
-        );
-        // As shipped: recognized, so the unknown-key lint stays silent on it.
-        assert!(
-            KNOWN_KEYS.contains(&"csl"),
-            "`csl` must stay in the allowlist"
-        );
-        assert!(
-            !msgs("---\ntitle: X\ncsl: ieee.csl\n---\n")
-                .iter()
-                .any(|w| w.contains("unknown front-matter key")),
-            "`csl` must never be reported as an unknown key"
-        );
+        assert!(!KNOWN_KEYS.contains(&"csl"), "`csl` left the allowlist");
     }
 
     #[test]

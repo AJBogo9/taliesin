@@ -42,19 +42,6 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unexpected unknown-key warnings:\n{msgs:#?}"
     );
 
-    // `csl:` is RECOGNIZED but deliberately inert, which is a third category again: not a
-    // typo (nothing to rename) and not a removal (it was never honored). Its message does
-    // not start with "unknown", so it sits outside the count above on purpose.
-    let unsupported = doc
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("is recognized but not supported"))
-        .expect("`csl:` must draw the recognized-but-unsupported diagnostic");
-    assert!(
-        unsupported.message.contains("`csl:`") && unsupported.line.is_some(),
-        "the unsupported-key warning names the key and is located: {unsupported:?}"
-    );
-
     // The body validators are click-to-source (located at the offending line).
     let cell = doc
         .warnings

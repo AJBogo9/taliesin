@@ -30,9 +30,7 @@ or not something taliesin implements.
 | `listing:` | Turns the page into an index: a card per document | [Configuration reference](frontmatter.tmd#listing-an-index-page) |
 | `hero:` | A landing-page banner with a headline and call-to-action buttons | [Configuration reference](frontmatter.tmd#hero-a-landing-banner) |
 
-That is every top-level front-matter key taliesin recognizes except `csl`, which is
-left off on purpose: it is recognized but not honoured (the build warns and does
-nothing), so there is no behavior to document. See [Configuration
+That is every top-level front-matter key taliesin recognizes. See [Configuration
 reference](frontmatter.tmd#document-front-matter).
 
 ## Cells

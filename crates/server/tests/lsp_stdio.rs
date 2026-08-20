@@ -479,12 +479,13 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
     .expect("corpus fixture");
     let text = std::fs::read_to_string(&doc).expect("read fixture");
     let uri = format!("file://{}", doc.display());
-    // Line 4 (0-based) is `  cach: true`, an unknown `execute:` sub-key. (This was line 2's
-    // `langg: en` until the `lang:` key was cut on 2026-08-20 and the fixture lost its
-    // top-level typo; `cach` is the surviving one whose message carries an inline fix.)
+    // Line 3 (0-based) is `  cach: true`, an unknown `execute:` sub-key. (This was line 2's
+    // `langg: en` until the `lang:` and `csl:` cuts on 2026-08-20 shortened the fixture's
+    // front matter; `cach` is the surviving typo whose message carries an inline fix. The
+    // assert below is why a line shift fails here rather than hovering over blank YAML.)
     assert!(
         text.lines()
-            .nth(4)
+            .nth(3)
             .unwrap_or("")
             .trim_start()
             .starts_with("cach:"),
@@ -510,7 +511,7 @@ fn hover_on_a_squiggle_carries_the_diagnostic_message() {
             "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
             "params": {
                 "textDocument": { "uri": uri },
-                "position": { "line": 4, "character": 3 }
+                "position": { "line": 3, "character": 3 }
             }
         })),
         frame(serde_json::json!({

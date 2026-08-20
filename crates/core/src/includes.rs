@@ -226,14 +226,13 @@ pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Every local file a document's **front matter** points at as a resource: `bibliography:`
-/// and `csl:`. Absolute + normalized, resolved with the same containment rule as
+/// Every local file a document's **front matter** points at as a resource. `bibliography:`
+/// is the whole list. Absolute + normalized, resolved with the same containment rule as
 /// `{{< include >}}`.
 ///
-/// `css:` and the three `include-*-body`/`-in-header` keys were listed here until
-/// 2026-08-20, four days after the last of their page-injection reads was retired — so the
-/// dev server was watching files that nothing parses, and a save on one rebuilt a page that
-/// could not have changed.
+/// `css:`, the three `include-*-body`/`-in-header` keys and `csl:` were listed here until
+/// 2026-08-20, after the last of their reads was retired — so the dev server was watching
+/// files that nothing parses, and a save on one rebuilt a page that could not have changed.
 ///
 /// Read-only, and deliberately separate from [`dependencies`], which tracks only
 /// `{{< include >}}`. The site dev server watches both: it filtered its rebuild set by
@@ -248,9 +247,7 @@ pub fn resource_dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
         return Vec::new(); // malformed front matter is reported elsewhere
     };
     let mut out = Vec::new();
-    for key in ["bibliography", "csl"] {
-        collect_resource_paths(v.get(key), base_dir, &mut out);
-    }
+    collect_resource_paths(v.get("bibliography"), base_dir, &mut out);
     out
 }
 
@@ -670,14 +667,13 @@ mod tests {
     }
 
     #[test]
-    fn resource_dependencies_finds_bibliography_and_csl() {
+    fn resource_dependencies_finds_the_bibliography() {
         let root = std::env::temp_dir().join(format!("tali-resdeps-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join(".git"), b"").unwrap(); // project-root marker for safe_join
 
-        let src = "---\ntitle: T\nbibliography:\n  - refs.bib\n  - more.bib\ncsl: ieee.csl\n\
-                   ---\n\nBody.\n";
+        let src = "---\ntitle: T\nbibliography:\n  - refs.bib\n  - more.bib\n---\n\nBody.\n";
         let deps = resource_dependencies(src, &root);
         let names: Vec<String> = deps
             .iter()
@@ -685,17 +681,22 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["refs.bib", "more.bib", "ieee.csl"],
-            "every front-matter resource, in key order"
+            ["refs.bib", "more.bib"],
+            "every front-matter resource, in declaration order"
         );
         assert!(deps.iter().all(|p| p.is_absolute()), "absolute: {deps:?}");
 
-        // A `css:` file was watched here until 2026-08-20; the key names no read now, so a
-        // watcher entry for it would rebuild pages that cannot have changed.
-        assert!(
-            resource_dependencies("---\ncss:\n  file: a.css\n---\n", &root).is_empty(),
-            "a retired key names no resource"
-        );
+        // `css:` and `csl:` were watched here until 2026-08-20; neither names a read now,
+        // so a watcher entry would rebuild pages that cannot have changed.
+        for retired in [
+            "---\ncss:\n  file: a.css\n---\n",
+            "---\ncsl: ieee.csl\n---\n",
+        ] {
+            assert!(
+                resource_dependencies(retired, &root).is_empty(),
+                "a withdrawn key names no resource: {retired:?}"
+            );
+        }
 
         // A scalar `bibliography:` and a `{ file: … }` map are the other accepted shapes.
         // The collector is deliberately more permissive about shape than the reader: a

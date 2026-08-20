@@ -167,8 +167,9 @@ enum DivScope {
 /// **The per-class narrowing is the whole point.** `render/divs.rs` dispatches on class in an
 /// if-else chain, so an attribute is not a property of divs in general: `collapse=` is read
 /// only inside the callout arm, and offering it on a `.column-page` would have the editor
-/// recommend a no-op — the same failure `UNSUPPORTED_KEYS` exists to prevent for front
-/// matter.
+/// recommend a no-op. Front matter had its own version of that failure until 2026-08-20,
+/// when the one recognized-but-inert key (`csl:`) was withdrawn rather than kept
+/// offered-but-excluded, and `UNSUPPORTED_KEYS` went with it.
 ///
 /// `width` is deliberately ABSENT. `validate::validate_column_width` warns that the
 /// equal-width grid ignores it, so completing it would recommend the exact thing `check`
@@ -308,20 +309,14 @@ fn xref_prefixes() -> Value {
 
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
-    use crate::frontmatter::{
-        EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, UNSUPPORTED_KEYS,
-    };
+    use crate::frontmatter::{EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS};
     use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES};
 
-    // A key taliesin recognizes but ignores (`csl:`) must not be OFFERED: completing it
-    // is the tool recommending a no-op. It stays in KNOWN_KEYS so an author who writes it
-    // is told the honest thing (see `frontmatter::UNSUPPORTED_KEYS`), via
-    // `diagnostics::csl_recognized_but_unsupported`.
-    let offered: Vec<&str> = KNOWN_KEYS
-        .iter()
-        .copied()
-        .filter(|k| !UNSUPPORTED_KEYS.contains(k))
-        .collect();
+    // Every known key is offered. There was an exclusion here until 2026-08-20, for the one
+    // key taliesin recognized but ignored (`csl:`) -- completing it would have been the tool
+    // recommending a no-op. That key was withdrawn rather than kept inert, so the set and
+    // the offer are the same thing again.
+    let offered: Vec<&str> = KNOWN_KEYS.to_vec();
 
     let nested_desc = nested_key_descriptions();
     json!({
