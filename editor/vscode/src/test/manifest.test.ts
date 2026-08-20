@@ -113,6 +113,37 @@ test("vsce packaging rebuilds the bundle first", () => {
   );
 });
 
+// The README is the only install path this project offers, and NOTHING runs the command it
+// prints -- no gate packages the extension. It printed `npx vsce package` until 2026-08-20,
+// and `vsce` is the DEPRECATED name: the registry froze it at 2.15.0 in 2022, which predates
+// VS Code 1.74's implicit activation events, so it rejects this manifest outright with
+// "Manifest needs the 'activationEvents' property". The maintained package is `@vscode/vsce`,
+// which packages the same manifest cleanly. A reader following the README hit a hard error on
+// their first contact with the companion, and the fix that error suggests -- adding
+// `activationEvents` -- would have been a real change made to satisfy dead tooling.
+test("every documented package command names the maintained vsce, not the deprecated one", () => {
+  // BOTH places that teach it. The companion README is one; the other is the published User
+  // Guide, which is the copy an actual reader meets first, and it drifted independently.
+  const pages = [
+    path.join(EXT_ROOT, "README.md"),
+    path.join(REPO_ROOT, "docs/guide/using/preview.tmd"),
+  ];
+  let found = 0;
+  for (const page of pages) {
+    const text = fs.readFileSync(page, "utf8");
+    for (const m of text.matchAll(/npx\s+(\S+)\s+package\b/g)) {
+      found++;
+      assert.strictEqual(
+        m[1],
+        "@vscode/vsce",
+        `${path.basename(page)} tells a reader to run \`npx ${m[1]} package\`; the bare ` +
+          "`vsce` name is deprecated at 2.15.0 and rejects this manifest outright"
+      );
+    }
+  }
+  assert.ok(found >= 2, `expected both pages to document packaging, matched ${found}`);
+});
+
 test("no `qmd-fast` branding survives in the manifest or the extension source", () => {
   // `tali-goto` / `tali-cursor` are the wire names of the postMessage protocol the preview
   // client speaks; they are deliberately frozen and are not branding.

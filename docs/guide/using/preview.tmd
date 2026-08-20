@@ -42,7 +42,7 @@ live preview itself; it is the jump from the page back to the editor that has on
 from this repository and install it yourself:
 
 ```sh
-cd editor/vscode && npm install && npm run build && npx vsce package
+cd editor/vscode && npm install && npm run build && npx @vscode/vsce package
 code --install-extension taliesin-companion-<version>.vsix
 ```
 

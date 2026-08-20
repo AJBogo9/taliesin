@@ -101,7 +101,7 @@ published to. Build the `.vsix` and install it yourself:
 cd editor/vscode
 npm install
 npm run build
-npx vsce package                 # → taliesin-companion-<version>.vsix
+npx @vscode/vsce package         # → taliesin-companion-<version>.vsix
 code --install-extension taliesin-companion-<version>.vsix
 ```
 
