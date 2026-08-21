@@ -8,6 +8,28 @@ and minor versions carried breaking changes; the 0.x entries below were written 
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-08-21
+
+No code changed. This release exists because v1.0.0's Linux binary could not run on most
+Linux machines, and because nothing in the project pointed a reader at the binaries at all.
+
+### Fixed
+
+- **The Linux release binary is now statically linked against musl**
+  (`x86_64-unknown-linux-musl`, replacing `x86_64-unknown-linux-gnu`). A gnu build inherits
+  the runner image's glibc as a floor; `ubuntu-latest` had become 24.04, so the v1.0.0 asset
+  required `GLIBC_2.39` and failed to start on Ubuntu 22.04, Debian 12, RHEL 9 and Amazon
+  Linux 2023. It went unseen because the only machine that had ever run a released binary
+  was new enough to load it. A static binary has no floor left to drift.
+
+### Changed
+
+- **The install instructions lead with the download.** README, the User Guide's getting
+  started page and the marketing site all opened by telling a reader to clone the repository
+  and compile 229 crates, while three prebuilt tarballs with checksums sat on the releases
+  page unmentioned. `readme_install_command_names_the_current_version` now fails the suite if
+  the version in that command drifts from the workspace version.
+
 ## [1.0.0] - 2026-08-20
 
 The scope is closed. This is the first public release: 1.0 states that the feature set is

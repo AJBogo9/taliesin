@@ -6,7 +6,11 @@ members = ["crates/core", "crates/server", "tools/live-edit-bench"]
 # 1.0.0: the scope is closed. The 2026-08 reduction campaign finished at Phase 4, the
 # feature set is final for the tool's one use case, and the first public tag says so.
 # Post-1.0 the promise is ordinary semver: a breaking change needs a 2.0.
-version = "1.0.0"
+#
+# 1.0.1 changes no code: it re-cuts the Linux release asset against musl after v1.0.0's
+# glibc-linked one turned out to require GLIBC_2.39. README.md's install command names
+# this version, and `readme_install_command_names_the_current_version` binds the two.
+version = "1.0.1"
 edition = "2024"
 license = "AGPL-3.0-only"
 authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]

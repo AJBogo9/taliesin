@@ -798,3 +798,38 @@ fn reader_facing_docs_only_name_subcommands_the_binary_answers() {
         hits.join("\n")
     );
 }
+
+/// README.md's install command hands the reader a literal URL, and a URL with a version in
+/// it is a promise that a file exists at that name. `VERSION=v1.0.0` survived the tag that
+/// moved past it would 404 for every visitor, which is the same failure
+/// `workflows_do_not_name_a_path_that_does_not_exist` guards one level down: a download the
+/// project advertises and does not have. The difference is that a triple is checked against
+/// the build matrix, while a version can only be checked against the version.
+///
+/// This is deliberately NOT the "grep, do not trust" case. A stale path in prose costs a
+/// reader one confusing sentence; a stale version in a copy-pasteable `curl` costs them the
+/// install, silently, at the exact moment they are deciding whether the tool works at all.
+#[test]
+fn readme_install_command_names_the_current_version() {
+    let readme = read("README.md");
+    let want = format!("VERSION=v{}", env!("CARGO_PKG_VERSION"));
+    let found: Vec<&str> = readme
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("VERSION=v"))
+        .collect();
+    assert!(
+        !found.is_empty(),
+        "README.md's install command no longer sets `{want}`. If the download block moved \
+         or was reworded, move this gate with it rather than deleting it: the version in a \
+         copy-pasteable URL is the one number here that 404s instead of merely reading oddly."
+    );
+    for line in &found {
+        assert!(
+            line.starts_with(&want),
+            "README.md's install command says `{line}` but the workspace is at version {}. \
+             That URL resolves to nothing, so the first thing a new reader runs fails.",
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+}

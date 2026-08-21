@@ -91,3 +91,6 @@ Thumbs.db
 # generated pages). The directory carried its own .gitignore until that harness was
 # removed on 2026-08-13; deleting it un-ignored the tree.
 .work/
+
+# wrangler CLI local cache (account id, Pages project list); never committed
+.wrangler/

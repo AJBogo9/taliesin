@@ -75,24 +75,49 @@ web-client/     browser preview client (vanilla JS), the only client
 
 ## Install & prerequisites
 
-**Build from source**, which is always supported and is the whole of it: Taliesin is a Rust
-workspace (edition 2024), so a recent stable toolchain (via [rustup](https://rustup.rs)) is
-all you need:
+**Download a prebuilt binary.** Every `v*` tag attaches one `.tar.gz` per platform with a
+`.sha256` beside it, holding the binary plus `LICENSE`, `THIRD_PARTY.md` and the bundled
+dependencies' licence notices. There is nothing else to install and nothing is fetched at
+runtime: KaTeX with its fonts, the syntax definitions and every bundled stylesheet and
+script live inside the binary.
+
+| Platform | `TARGET` |
+| --- | --- |
+| Linux x86-64 (static, any distro) | `x86_64-unknown-linux-musl` |
+| macOS, Apple silicon | `aarch64-apple-darwin` |
+| macOS, Intel | `x86_64-apple-darwin` |
+
+```sh
+VERSION=v1.0.1
+TARGET=x86_64-unknown-linux-musl        # your row from the table above
+BASE=https://github.com/AJBogo9/taliesin/releases/download
+
+curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz"
+curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz.sha256"
+shasum -a 256 -c "taliesin-$VERSION-$TARGET.tar.gz.sha256"          # must print: OK
+tar xzf "taliesin-$VERSION-$TARGET.tar.gz"
+install -m755 "taliesin-$VERSION-$TARGET/taliesin" ~/.local/bin/    # or anywhere on PATH
+taliesin --help
+```
+
+The Linux build is statically linked against musl, so it has no glibc floor and runs on
+any distribution. The macOS builds are unsigned and unnotarized: fetched with `curl` as
+above they carry no quarantine attribute and run straight away, but downloaded through a
+browser they do, and the first launch is refused until you clear it with
+`xattr -d com.apple.quarantine ./taliesin`.
+
+**Windows is not supported**: never built, never tested, no gate covers it, and the
+process and kernel layer is Unix-only.
+
+**Or build from source**, which is always supported. Taliesin is a Rust workspace
+(edition 2024), so a recent stable toolchain (via [rustup](https://rustup.rs)) is all you
+need:
 
 ```sh
 git clone https://github.com/AJBogo9/taliesin && cd taliesin
 cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
-
-**Platforms.** Linux x86-64 (`x86_64-unknown-linux-gnu`) and macOS on both Apple silicon
-and Intel (`aarch64-apple-darwin`, `x86_64-apple-darwin`) are supported targets. Windows
-is **not supported**: never built, never tested, no gate covers it, and the process and
-kernel layer is Unix-only. **Prebuilt binaries come from tags:** each `v*` tag attaches a
-`.tar.gz` per target with a `.sha256` beside it, holding the binary plus `LICENSE`,
-`THIRD_PARTY.md` and the bundled dependencies' licence notices. If
-[the releases page](https://github.com/AJBogo9/taliesin/releases) is empty, no tag has been
-cut yet and building from source is the way in.
 
 **What that costs, measured 2026-08-20 on a genuine cold build, so it is not a surprise:**
 `cargo clean` followed by `cargo build --release -p taliesin-server` compiles **229 crates

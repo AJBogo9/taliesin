@@ -5,22 +5,25 @@ description: "The first hour with Taliesin, in steps that each end in something 
 
 ## Install
 
-Taliesin builds from source with a Rust toolchain. Windows is not supported. From the
-repo:
+Download the binary for your platform from
+[the releases page](https://github.com/AJBogo9/taliesin/releases), verify it against the
+`.sha256` published beside it, and put it on your `PATH`. Windows is not supported. That
+is the whole install: one self-contained binary with KaTeX, its fonts, the syntax
+definitions and every bundled script inside it, so nothing is fetched at runtime and
+there is nothing else to set up.
+
+Taliesin also builds from source with a Rust toolchain, which is always supported:
 
 ```sh
 cargo build --release
 ```
 
-A first build takes a few minutes and produces one self-contained binary with
-KaTeX, its fonts, the syntax definitions and every bundled script inside it, so
-nothing is fetched at runtime.
-
-The binary is `target/release/taliesin`. Put it on your `PATH` (a symlink, or a
-small wrapper script that rebuilds on source changes before running it) so you
-can just say `taliesin preview …` from any directory. Every command below works
-either way: substitute `cargo run -p taliesin-server --` for `taliesin` if you'd
-rather not install it on `PATH`.
+A first build takes a couple of minutes and produces the same binary at
+`target/release/taliesin`. Put it on your `PATH` (a symlink, or a small wrapper
+script that rebuilds on source changes before running it) so you can just say
+`taliesin preview …` from any directory. Every command below works either way:
+substitute `cargo run -p taliesin-server --` for `taliesin` if you'd rather not
+install it on `PATH`.
 
 ## Set up a kernel (for code execution)
 

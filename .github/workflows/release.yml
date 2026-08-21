@@ -45,8 +45,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `-musl`, not `-gnu`: a gnu build inherits the runner image's glibc as a FLOOR,
+          # and `ubuntu-latest` silently became 24.04, so the v1.0.0 Linux asset requires
+          # GLIBC_2.39 and dies with `version 'GLIBC_2.39' not found` on Ubuntu 22.04,
+          # Debian 12, RHEL 9 and Amazon Linux 2023 before printing anything. Nobody could
+          # see it: the only machine that has ever run a released binary is the author's,
+          # which is the one distro new enough to load it. musl links statically, so there
+          # is no floor left to drift. Same failure genus as the `macos-13` retirement
+          # below, and the same fix: name the thing, do not inherit it.
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
           - os: macos-latest
             target: aarch64-apple-darwin
           # `macos-15-intel`, not `macos-13`: GitHub retired the macos-13 image (it keeps
@@ -70,7 +78,19 @@ jobs:
       # release never builds. Turning it on here would cost 24% of every cross-build for a
       # dependency the binary cannot reach. Nowhere else passes it either: the feature
       # itself no longer exists in any `Cargo.toml`.
+      # musl needs a C toolchain, which the other two targets do not: `katex` pulls
+      # `quick-js` -> `libquickjs-sys`, which compiles the QuickJS engine with cc-rs, and
+      # it is the only C in the tree. cc-rs looks for `x86_64-linux-musl-gcc` first, a name
+      # `musl-tools` does not install, so `CC_…` below names the one it does. Verified by
+      # building this recipe in a `rust:latest` container: static-pie, no glibc references,
+      # and a math-heavy corpus page renders byte-identically to the gnu build, which is
+      # what proves QuickJS itself works under musl and not merely that it compiled.
+      - name: musl C toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --release --locked --target ${{ matrix.target }} -p taliesin-server
       # The tarball carries the licence and the third-party notices next to the binary:
       # Taliesin is AGPL-3.0 and vendors third-party assets, so a bare binary would be a

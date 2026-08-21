@@ -8,6 +8,7 @@ hero:
   actions:
     - { text: "Get started", href: "https://guide.taliesin.sh/using/getting-started.html", primary: true }
     - { text: "See it live", href: "showcase.tmd" }
+    - { text: "Download", href: "https://github.com/AJBogo9/taliesin/releases/latest" }
 ---
 
 Taliesin is built around one idea: writing technical content should feel as
