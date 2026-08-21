@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored; never commit it.
+#
+# Create a token at dash.cloudflare.com/profile/api-tokens, "Create Custom Token", with:
+#   Account > Cloudflare Pages > Edit     (create/read the four Pages projects and domains)
+#   Zone    > DNS  > Edit                 (the four CNAMEs)   scoped to taliesin.sh
+#   Zone    > Zone > Read                 (the cloudflare_zone lookup in main.tf)
+#
+# The tech-blog token will NOT work as-is: its zone permissions are scoped to
+# andreasbogossian.com. Either make a second token for taliesin.sh or widen that one to
+# include both zones.
+
+cloudflare_api_token  = "your-api-token-here"
+cloudflare_account_id = "your-account-id-here"

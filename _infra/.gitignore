@@ -1,0 +1,10 @@
+# Never commit: the token lives here.
+terraform.tfvars
+*.auto.tfvars
+
+# State can contain resource detail and is machine-local for this setup.
+terraform.tfstate
+terraform.tfstate.*
+.terraform/
+.terraform.tfstate.lock.info
+crash.log
