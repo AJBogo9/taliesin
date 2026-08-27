@@ -37,11 +37,28 @@ serde_json = "1"
 # the tree and, through Cargo feature unification, was the backend actually compiled
 # in — plus `clap`, `bon` and `emojis` for a CLI this crate never calls. Core uses
 # `comrak::nodes` and `parse_document` only, so `default-features = false` (see
-# `crates/core/Cargo.toml`) drops all four. A C build dependency is the same class this
-# manifest already refuses elsewhere for breaking `cargo install`; this one was kept by
-# accident rather than by decision. We emit scope *classes* and color them in CSS,
-# so the light/dark toggle restyles code without re-highlighting.
-syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+# `crates/core/Cargo.toml`) drops all four. Oniguruma is a C library built by a build
+# script, which is the class this manifest refuses for breaking `cargo install` on a
+# machine with no toolchain; it was in the tree by accident rather than by decision. (Two C
+# build dependencies remain and are unavoidable: `ring`, via the Jupyter ZMQ client's HMAC,
+# and QuickJS, via `katex`. The rule this manifest actually keeps is narrower than "no C" —
+# `cc` is fine, `nasm` is not; see the `image` note below.) We emit scope *classes* and
+# color them in CSS, so the light/dark toggle restyles code without re-highlighting.
+#
+# The features are named one by one rather than taken as `default-fancy`, which is that
+# list plus `default-themes`, `plist-load`, `yaml-load`, `dump-load` and `dump-create`.
+# Nothing here builds a `SyntaxSet` at runtime or resolves a `Theme`: the crate uses
+# `html::{ClassStyle, ClassedHTMLGenerator}`, `parsing::{SyntaxReference, SyntaxSet}` and
+# `util::LinesWithEndings`, and the syntaxes arrive pre-dumped from syntect's own bundle and
+# from `two-face`. Dropping them takes 9 crates out of the graph (plist, quick-xml,
+# yaml-rust, linked-hash-map, time, time-core, deranged, num-conv, powerfmt), 221 -> 212,
+# with byte-identical scope classes.
+syntect = { version = "5", default-features = false, features = [
+    "parsing",
+    "default-syntaxes",
+    "html",
+    "regex-fancy",
+] }
 
 # Syntax definitions syntect's bundled set is missing: notably TypeScript and
 # TOML, both of which the docs use. Curated by the `bat` project; `syntect-fancy`

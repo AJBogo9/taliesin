@@ -27,6 +27,3 @@ tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "sync", "
 uuid = { version = "1.23.3", features = ["v4"] }
 lsp-server = "0.7"
 lsp-types = "0.95"
-# `join_all` in the single-instance port probe (`serve/mod.rs`). It arrived with the
-# headless-Chrome driver, which was cut on 2026-08-08; this is the caller that outlived it.
-futures = "0.3"

@@ -229,7 +229,7 @@ pub(crate) async fn bind_with_fallback(
     // responder that simply names a pid must not have it signalled on its say-so.
     let root = canonical(root);
     let mine: Vec<Incumbent> =
-        futures::future::join_all((port..=port.saturating_add(9)).map(identify))
+        futures_util::future::join_all((port..=port.saturating_add(9)).map(identify))
             .await
             .into_iter()
             .flatten()
