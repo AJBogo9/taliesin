@@ -92,46 +92,6 @@ impl Bibliography {
     }
 }
 
-/// The citation keys `src` cites, scanned from **source** text: every `@key` inside a
-/// `[ … ]` span (the Pandoc bracketed-citation form), deduped in first-seen order.
-/// Bracketed only, so a narrative `@fig-x` cross-reference or a `@decorator` in a code cell
-/// is never mistaken for a citation; a key that is itself a cross-reference anchor is
-/// excluded too.
-///
-/// A source scan, not a render, so a `[@key]` written inside a fenced code block counts as
-/// a citation. That direction was deliberate for the lint that read this: over-counting
-/// citations made "never cited" quieter rather than wrong-in-the-loud-direction. That lint
-/// was cut on 2026-08-20 and this now has no caller outside its own test. Callers that need
-/// the exact set (the reference list itself) get it from [`process`], over rendered HTML.
-pub fn cited_keys_in_source(src: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let bytes = src.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'['
-            && let Some(rel_close) = src[i + 1..].find(']')
-        {
-            let span = &src[i + 1..i + 1 + rel_close];
-            let mut rest = span;
-            while let Some(at) = rest.find('@') {
-                let after = &rest[at + 1..];
-                let end = after
-                    .find(|c: char| !is_cite_key_char(c))
-                    .unwrap_or(after.len());
-                let key = after[..end].trim_end_matches(['.', ':', '-']);
-                if !key.is_empty() && !is_xref_anchor(key) && !out.iter().any(|k| k == key) {
-                    out.push(key.to_string());
-                }
-                rest = &after[end..];
-            }
-            i += 1 + rel_close + 1;
-            continue;
-        }
-        i += 1;
-    }
-    out
-}
-
 /// Largest edit distance at which a name is a plausible typo rather than a different
 /// name. Matches the front-matter did-you-mean ceiling (`frontmatter::closest`).
 const MAX_TYPO_DISTANCE: usize = 2;

@@ -70,20 +70,6 @@ fn alias(lang: &str) -> &str {
     }
 }
 
-/// Tokens that deliberately render unhighlighted: console transcripts, sample
-/// output, plain prose. They are not typos, so [`known_language`] accepts them
-/// even though most resolve to no syntax.
-const INTENTIONALLY_PLAIN: [&str; 6] = ["text", "txt", "plain", "console", "output", "none"];
-
-/// Whether a fenced block's language token resolves to a syntax, or is a token we
-/// render plainly on purpose. `false` means the fence silently degrades to escaped
-/// text, nearly always a typo (`pyton`) or a language we carry no syntax for.
-///
-/// A pure query: it cannot change what [`highlight`] emits.
-pub fn known_language(lang: &str) -> bool {
-    INTENTIONALLY_PLAIN.contains(&lang) || resolve(alias(lang)).is_some()
-}
-
 /// Highlight a fenced code block's `code` for `lang`, returning the inner HTML for
 /// a `<code>` element: text is HTML-escaped and wrapped in `<span class="tali-hl-…">`
 /// scope spans. An unknown/missing language (or any highlighter error) falls back
@@ -199,23 +185,14 @@ mod tests {
         }
     }
 
+    /// A token nothing carries a syntax for renders as plain escaped text rather than
+    /// failing: `text` is the deliberate spelling of that, and a typo lands in the same
+    /// place. There is no `known_language` query any more — the fence-language lint that
+    /// asked it was cut, and it had no caller but its own test.
     #[test]
-    fn known_language_accepts_real_and_intentionally_plain_tokens() {
-        for good in ["python", "py", "ts", "toml", "rust", "bibtex"] {
-            assert!(known_language(good), "`{good}` should be known");
+    fn a_language_with_no_syntax_renders_plain_and_escaped() {
+        for plain in ["text", "console", "output", "none", "pyton", "no-such-lang"] {
+            assert_eq!(highlight("a < b", Some(plain)), "a &lt; b", "{plain}");
         }
-        for plain in INTENTIONALLY_PLAIN {
-            assert!(known_language(plain), "`{plain}` should be accepted");
-        }
-        for bad in ["pyton", "rustlang", "no-such-lang"] {
-            assert!(!known_language(bad), "`{bad}` should be unknown");
-        }
-    }
-
-    /// `text` stays plain: `known_language` accepts it, but nothing highlights it.
-    #[test]
-    fn intentionally_plain_tokens_still_render_plain() {
-        assert_eq!(highlight("a < b", Some("text")), "a &lt; b");
-        assert!(known_language("text"));
     }
 }

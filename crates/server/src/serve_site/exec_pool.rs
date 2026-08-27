@@ -7,7 +7,7 @@
 use super::*;
 
 /// How many pages keep a warm kernel at once. Each page's executor holds its own
-/// Python/R kernel (~80-150 MB each), so an unbounded map would grow a kernel per
+/// Python kernel (~80-150 MB each), so an unbounded map would grow a kernel per
 /// page visited and never reclaim it. We keep the most-recently-built pages warm
 /// and drop the rest's kernels; an evicted page just pays a cold kernel start on
 /// its next edit.

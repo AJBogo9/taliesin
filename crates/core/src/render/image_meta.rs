@@ -46,48 +46,44 @@ impl ImageAnnotator {
     /// optimization.
     pub(super) fn annotate(&mut self, html: &str, base: &Path) -> String {
         let mut out = String::with_capacity(html.len());
-        let mut rest = html;
-        while let Some(pos) = find_img_tag(rest) {
-            let (before, from_tag) = rest.split_at(pos);
-            out.push_str(before);
-            // The tag runs to the first `>`; an unterminated tag is not ours to repair.
-            let Some(end) = from_tag.find('>') else {
-                out.push_str(from_tag);
-                return out;
-            };
-            let tag = &from_tag[..end];
-            match self.attrs_for(tag, base) {
-                Some(extra) => {
-                    // Split off any self-closing slash so `<img … />` stays `… />`. Both the
-                    // head and the slash are re-spaced from scratch rather than preserved:
-                    // the two emitters differ in their trailing whitespace (figure.rs leaves
-                    // one before `/>`, and an empty `{style}` leaves two), so splicing at the
-                    // raw offset produced `alt="x"  width="1"` and `"high"/>`.
-                    let (head, tail) = match tag.trim_end().strip_suffix('/') {
-                        Some(h) => (h.trim_end(), " /"),
-                        None => (tag.trim_end(), ""),
-                    };
-                    out.push_str(head);
-                    out.push_str(&extra);
-                    out.push_str(tail);
-                }
-                None => out.push_str(tag),
+        let mut cursor = 0;
+        for tag in super::tags(html) {
+            if !tag.name.eq_ignore_ascii_case("img") {
+                continue;
             }
+            let Some(extra) = self.attrs_for(&tag, base) else {
+                continue;
+            };
+            // `tag.text` is `<` through the `>` that closes it. Split off any self-closing
+            // slash so `<img … />` stays `… />`. Both the head and the slash are re-spaced
+            // from scratch rather than preserved: the two emitters differ in their trailing
+            // whitespace (figure.rs leaves one before `/>`, and an empty `{style}` leaves
+            // two), so splicing at the raw offset produced `alt="x"  width="1"` and
+            // `"high"/>`.
+            let inner = &tag.text[..tag.text.len() - 1];
+            let (head, tail) = match inner.trim_end().strip_suffix('/') {
+                Some(h) => (h.trim_end(), " /"),
+                None => (inner.trim_end(), ""),
+            };
+            out.push_str(&html[cursor..tag.at]);
+            out.push_str(head);
+            out.push_str(&extra);
+            out.push_str(tail);
             out.push('>');
-            rest = &from_tag[end + 1..];
+            cursor = tag.at + tag.text.len();
         }
-        out.push_str(rest);
+        out.push_str(&html[cursor..]);
         out
     }
 
     /// The attribute string to splice into `tag`, or `None` to leave it alone.
-    fn attrs_for(&mut self, tag: &str, base: &Path) -> Option<String> {
+    fn attrs_for(&mut self, tag: &super::Tag<'_>, base: &Path) -> Option<String> {
         // An author-set `width=` owns the box; a second one would be ambiguous.
-        if attr_value(tag, "width").is_some() {
+        if super::attr_value(tag, "width").is_some() {
             return None;
         }
-        let src = attr_value(tag, "src")?;
-        let (w, h) = intrinsic_size(&src, base)?;
+        let src = super::attr_value(tag, "src")?;
+        let (w, h) = intrinsic_size(src, base)?;
         let hints = if self.seen_first {
             " loading=\"lazy\" decoding=\"async\""
         } else {
@@ -97,43 +93,6 @@ impl ImageAnnotator {
         self.seen_first = true;
         Some(format!(" width=\"{w}\" height=\"{h}\"{hints}"))
     }
-}
-
-/// Byte offset of the next `<img` tag opener, requiring a delimiter after the name so the
-/// SVG element `<image>` is not mistaken for one.
-fn find_img_tag(hay: &str) -> Option<usize> {
-    let bytes = hay.as_bytes();
-    let mut i = 0;
-    while let Some(pos) = hay[i..].find("<img") {
-        let at = i + pos;
-        match bytes.get(at + 4) {
-            Some(c) if c.is_ascii_whitespace() || *c == b'>' || *c == b'/' => return Some(at),
-            _ => i = at + 4,
-        }
-    }
-    None
-}
-
-/// The double-quoted value of `name` in `tag`, matching whole attribute names only.
-///
-/// The whole-name test is the same one `build::local_refs` needs and for the same reason:
-/// `fetchpriority="high"` ends in `priority=`, and a naive `find("width=")` inside a tag
-/// carrying `data-width="…"` reads the wrong attribute.
-fn attr_value(tag: &str, name: &str) -> Option<String> {
-    let bytes = tag.as_bytes();
-    let needle = format!("{name}=\"");
-    let mut i = 0;
-    while let Some(pos) = tag[i..].find(&needle) {
-        let at = i + pos;
-        let lead_ok = at > 0 && bytes[at - 1].is_ascii_whitespace();
-        let start = at + needle.len();
-        let len = tag[start..].find('"')?;
-        if lead_ok {
-            return Some(tag[start..start + len].to_string());
-        }
-        i = start + len;
-    }
-    None
 }
 
 /// Intrinsic pixel size of a local relative raster `src`, or `None` if it is not one we

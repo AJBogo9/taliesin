@@ -10,21 +10,15 @@ pub(crate) fn start_line(sourcepos: &str) -> Option<u32> {
         .filter(|&l| l > 0)
 }
 
-/// Every value of attribute `attr` (e.g. `"id=\""`) found in `html`, appended to `out`.
+/// Every value of the attribute called `name` (e.g. `"id"`) found in `html`, appended to
+/// `out`. [`crate::render::attr_values`] is the one reader — see there for why a validator
+/// may not spell this as a `name="` needle of its own.
 pub(crate) fn collect_attr_values<'a>(
     html: &'a str,
-    attr: &str,
+    name: &'a str,
     out: &mut std::collections::HashSet<&'a str>,
 ) {
-    let mut i = 0;
-    while let Some(pos) = html[i..].find(attr) {
-        let start = i + pos + attr.len();
-        let Some(len) = html[start..].find('"') else {
-            break;
-        };
-        out.insert(&html[start..start + len]);
-        i = start + len;
-    }
+    out.extend(crate::render::attr_values(html, name));
 }
 
 /// Whether `v` is a local file reference, i.e. not external, an in-page anchor, a data
@@ -41,30 +35,12 @@ pub(crate) fn is_local_ref(v: &str) -> bool {
         && !v.starts_with("javascript:")
 }
 
-/// The heading level (1..=6) of a block whose HTML opens with `<h1>`..`<h6>`, else
-/// `None`. Reads only the second byte of the tag (`<hN`), the same shape the heading-id
-/// check keys off.
-pub(crate) fn heading_level(html: &str) -> Option<u8> {
-    if !html.starts_with("<h") {
-        return None;
-    }
-    let d = html.as_bytes().get(2)?;
-    if d.is_ascii_digit() && (b'1'..=b'6').contains(d) {
-        Some(d - b'0')
-    } else {
-        None
-    }
-}
-
-/// The value of attribute `attr` (e.g. `"src=\""`) on the tag opened at the start of
-/// `tag` (everything before the first `>`), if present. Used to read `src`/`poster` off
-/// a `<video>`/`<source>` tag.
-pub(crate) fn tag_attr<'a>(tag: &'a str, attr: &str) -> Option<&'a str> {
-    let pos = tag.find(attr)? + attr.len();
-    let rest = &tag[pos..];
-    let len = rest.find('"')?;
-    Some(&rest[..len])
-}
+/// The heading level (1..=6) of a block whose HTML opens with `<h1>`..`<h6>`, else `None`.
+///
+/// The renderer's own definition, re-exported rather than re-derived: this module carried a
+/// third copy that accepted `<h1abc` and `<h7`, and a heading test that disagrees with the
+/// renderer about what a heading is prices every outline diagnostic wrong.
+pub(crate) use crate::render::block_heading_level as heading_level;
 
 /// The replacement from an inline "did you mean `X`?" hint, e.g. `treme` -> `theme`,
 /// `@fig-reslts` -> `@fig-results`. `None` when the message carries no such hint.

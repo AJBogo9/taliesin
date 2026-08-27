@@ -121,6 +121,25 @@ struct Project {
     /// one-document preview into "every `.tmd` in the parent directory" — the scoping would
     /// hold until the first save and then evaporate.
     scope: Option<PathBuf>,
+    /// A digest of each page's front-matter block, as of the last discovery — the record
+    /// that says whether a `.tmd` save changed anything DISCOVERY reads.
+    ///
+    /// Front matter is discovery input, not render input. `title:`, `date:`,
+    /// `description:`, `image:`, `categories:`, `listing:`, `hero:` and `draft:` are parsed
+    /// once into [`Site::pages`], and every OTHER page renders its listing cards, nav
+    /// labels, prev/next and search entries out of that copy. A save that only re-renders
+    /// the edited page therefore leaves all of them stale — measured on a live preview:
+    /// editing a listed post's `title:` never reached the index, not on save and not on a
+    /// hard reload, and the preview kept contradicting what `build` produced until a file
+    /// was added or the server restarted. Five pages of the author's own sites carry a
+    /// `listing:`.
+    ///
+    /// Kept as a digest rather than fixed by re-discovering on every save: discovery is
+    /// ~2.2x `refresh_xrefs` (76ms vs 34ms on `docs/guide`, 119ms vs 55ms on
+    /// `corpus/tech-blog`, measured 2026-08-26), which is real money on a keystroke path
+    /// that exists to be fast. Hashing the block of each changed file is a read and a
+    /// hash, and body edits — the overwhelming majority — leave it untouched.
+    front_matter: Mutex<HashMap<PathBuf, u64>>,
 }
 
 impl Project {
@@ -131,6 +150,52 @@ impl Project {
             None => Site::discover_with(&self.dir, taliesin_core::DraftMode::Include),
         }
     }
+
+    /// Record the front-matter digest of every page in the current `Site`. Called wherever
+    /// a fresh `Site` is adopted, so the record always describes the discovery in force.
+    fn seed_front_matter(&self) {
+        let inputs: Vec<PathBuf> = self
+            .site
+            .lock()
+            .pages
+            .iter()
+            .map(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()))
+            .collect();
+        let mut record = self.front_matter.lock();
+        record.clear();
+        for input in inputs {
+            let digest = front_matter_digest(&input);
+            record.insert(input, digest);
+        }
+    }
+
+    /// Whether any of `changed` is a page of this project whose front-matter block moved,
+    /// updating the record as it goes. A path the record does not hold is not a page of
+    /// this project — an `{{< include >}}` partial, a `.bib`, an image — and a body-only
+    /// edit leaves the digest equal, so both answer `false` and cost one read.
+    fn front_matter_moved(&self, changed: &HashSet<PathBuf>) -> bool {
+        let mut moved = false;
+        let mut record = self.front_matter.lock();
+        for path in changed {
+            let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
+            let Some(previous) = record.get(&canon).copied() else {
+                continue;
+            };
+            let digest = front_matter_digest(&canon);
+            if digest != previous {
+                record.insert(canon, digest);
+                moved = true;
+            }
+        }
+        moved
+    }
+}
+
+/// A digest of one file's `---` front-matter block, or of the empty string when it has none
+/// (a page that gains or loses its whole block moves either way).
+fn front_matter_digest(path: &Path) -> u64 {
+    let src = std::fs::read_to_string(path).unwrap_or_default();
+    taliesin_core::hash::fnv1a(taliesin_core::frontmatter::front_matter_block(&src).unwrap_or(""))
 }
 
 /// The project source `rel` a client's `?page=` sub-key names, or `None` when it names no
@@ -253,7 +318,9 @@ struct PageDoc {
 
 impl PageDoc {
     fn body_html(&self) -> String {
-        let mut s = String::new();
+        // Sized up front: a page body is ~290 KB of small blocks, so growing from empty
+        // is ~19 reallocations and a copy of everything written so far each time.
+        let mut s = String::with_capacity(self.blocks.iter().map(|b| b.html.len() + 1).sum());
         for b in &self.blocks {
             s.push_str(&b.html);
             s.push('\n');
@@ -458,11 +525,15 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             pages: Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: scoped,
+            front_matter: Mutex::new(HashMap::new()),
         }),
         build_tx,
         fast_tx,
         interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
     });
+    // Before the watcher can fire: the record has to describe the discovery the server
+    // booted with, or the first front-matter edit of the session reads as "unchanged".
+    app.root.seed_front_matter();
 
     spawn_builder(app.clone(), build_rx);
     spawn_fast_builder(app.clone(), fast_rx);
@@ -1524,7 +1595,17 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                 structural |= c.structural && is_tmd(&c.path);
                 changed.insert(c.path);
             }
-            dispatch_changes(&app, &changed, structural);
+            // Guarded, like every other task that renders on the author's behalf. This one
+            // was not: `dispatch_changes` re-discovers the project, re-derives the
+            // cross-reference registry and rebuilds the search index, and a panic in any of
+            // them unwound the only task draining `sig_rx`. The server stayed up and the
+            // page stayed served, so the preview did not visibly die — it silently stopped
+            // reacting to saves, which reads as "the tool is broken" rather than "this
+            // document is broken". Reporting it keeps the failure attached to the edit.
+            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed, structural))
+            {
+                crate::log::error(&format!("rebuild failed: {msg}"));
+            }
         }
     });
 }
@@ -1588,6 +1669,7 @@ fn rebuild_project(
             return;
         }
         *project.site.lock() = new;
+        project.seed_front_matter();
         reload_open_tabs(project);
         return;
     }
@@ -1606,15 +1688,43 @@ fn rebuild_project(
         let new = project.rediscover();
         let set_changed = page_rels(&new) != page_rels(&project.site.lock());
         *project.site.lock() = new;
+        project.seed_front_matter();
         if set_changed {
             reload_open_tabs(project);
             return;
         }
     }
 
+    // A page's own front matter moved, so the project's view of that page did: its listing
+    // card, its nav label, the prev/next arrows either side of it and its search entry are
+    // all rendered by OTHER pages out of `Site::pages`, which only discovery writes. See
+    // [`Project::front_matter`] for the measurement and for why this is gated rather than
+    // run every save. Re-discovering here rebuilds the cross-reference registry and the
+    // search index as a side effect, exactly as the `structural` path above does, so the
+    // `refresh_xrefs` below is skipped for the same reason.
+    //
+    // Deliberately NOT `reload_open_tabs`: the page set is unchanged, so every open tab can
+    // take this as ops on its existing DOM. A hard reload would be correct too and is what
+    // a `_site.yml` edit does, but it would throw away the live state — an open
+    // `<details>`, a playing video, a `{js}` widget — on every `title:` an author types.
+    let front_matter_moved = !structural && project.front_matter_moved(changed);
+    if front_matter_moved {
+        // Discovery first, then the swap: the lock is not held across it (the same shape as
+        // the two adoptions above, and discovery is the ~76 ms half).
+        let new = project.rediscover();
+        *project.site.lock() = new;
+        project.seed_front_matter();
+    }
+
     // Rebuild only pages that are open (have live state) and depend on a change.
     let open: Vec<String> = project.pages.lock().keys().cloned().collect();
-    let mut to_rebuild: Vec<String> = {
+    let mut to_rebuild: Vec<String> = if front_matter_moved {
+        // Every open page renders some part of the moved page's metadata, or could: a
+        // listing card, a nav label, a prev/next arrow. The set is capped by
+        // `MAX_WARM_PAGES`, so this is a handful of renders on an edit that is rare next to
+        // body edits — and it is the same shape as the moved-anchor rebuild below.
+        project.pages.lock().keys().cloned().collect()
+    } else {
         let site = project.site.lock();
         open.iter()
             .filter(|rel| {
@@ -1677,7 +1787,7 @@ fn rebuild_project(
     let touches_source = changed
         .iter()
         .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
-    if touches_source && !structural {
+    if touches_source && !structural && !front_matter_moved {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             project.site.lock().refresh_xrefs();
         }));
@@ -2140,6 +2250,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
+            front_matter: Mutex::new(HashMap::new()),
         });
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2185,6 +2296,67 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The gate that decides whether a save touched what DISCOVERY reads.
+    ///
+    /// It has to answer both ways, and each answer costs something different. A missed
+    /// front-matter change is the defect this exists for: a listed post's `title:` never
+    /// reached the index listing, on save or on reload, so the preview contradicted `build`
+    /// until the server was restarted. A false positive is a re-discovery on a keystroke,
+    /// and discovery is ~2.2x `refresh_xrefs` (76ms vs 34ms on `docs/guide`, measured
+    /// 2026-08-26) — so a body edit, which is nearly every edit, must not trip it.
+    #[test]
+    fn a_front_matter_edit_moves_the_record_and_a_body_edit_does_not() {
+        let dir = std::env::temp_dir().join(format!("tali-fm-record-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nBody.\n").unwrap();
+        let post = dir.join("posts/first.tmd");
+        std::fs::write(&post, "---\ntitle: First\n---\n\nOriginal body.\n").unwrap();
+
+        let project = Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
+            pages: parking_lot::Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+            front_matter: Mutex::new(HashMap::new()),
+        };
+        project.seed_front_matter();
+        let changed: HashSet<PathBuf> = std::iter::once(post.clone()).collect();
+
+        // Nothing written yet: the record already describes what is on disk.
+        assert!(!project.front_matter_moved(&changed), "no edit, no move");
+
+        // A body edit leaves the block byte-identical.
+        std::fs::write(&post, "---\ntitle: First\n---\n\nRewritten body.\n").unwrap();
+        assert!(
+            !project.front_matter_moved(&changed),
+            "a body edit must not cost a re-discovery"
+        );
+
+        // The `title:` a listing card renders.
+        std::fs::write(&post, "---\ntitle: Renamed\n---\n\nRewritten body.\n").unwrap();
+        assert!(project.front_matter_moved(&changed), "title: moved");
+        // And the record is updated, so the same save is not reported twice.
+        assert!(!project.front_matter_moved(&changed), "record updated");
+
+        // Losing the block entirely is a move too — the page drops to its `# H1` title.
+        std::fs::write(&post, "Just a body.\n").unwrap();
+        assert!(project.front_matter_moved(&changed), "block removed");
+
+        // A file this project does not publish is not tracked, so it costs nothing.
+        let partial = dir.join("_includes/part.tmd");
+        std::fs::create_dir_all(partial.parent().unwrap()).unwrap();
+        std::fs::write(&partial, "---\ntitle: Not a page\n---\n\nx\n").unwrap();
+        assert!(
+            !project.front_matter_moved(&std::iter::once(partial).collect()),
+            "an include partial is not a page of the site"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // dos-pages: only a key the site actually resolves may reach the `PageState`
     // allocation. Everything else must come back `None`, which the ws handler refuses —
     // otherwise each bogus `?page=` permanently costs a 256-slot broadcast ring that only a
@@ -2201,6 +2373,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
+            front_matter: Mutex::new(HashMap::new()),
         };
 
         // A real page resolves, by source rel and by output url alike.
@@ -2317,6 +2490,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
+            front_matter: Mutex::new(HashMap::new()),
         });
         site_page_html(&project, &page)
     }
@@ -2460,6 +2634,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
+            front_matter: Mutex::new(HashMap::new()),
         });
         let preview = site_page_html(&project, &page);
         assert!(

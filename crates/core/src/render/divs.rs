@@ -519,7 +519,10 @@ fn build_container(
         let mut generated_kind_label = false;
         let title = match attrs.get("title") {
             Some(t) => html_escape(t),
-            None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
+            None if inner
+                .first()
+                .is_some_and(|b| block_heading_level(&b.html).is_some()) =>
+            {
                 let heading = inner.remove(0).html;
                 if let Some(hid) =
                     extract_attr(&heading, "id").filter(|id| crate::cite::is_xref_anchor(id))

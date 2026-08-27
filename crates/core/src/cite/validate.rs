@@ -81,20 +81,17 @@ pub fn validate_xrefs_known_elsewhere(
 /// HTML. The anchor registry lives in `render` and is gone by the time this runs, but
 /// each target still carries its `id="fig-x"`, so the vocabulary is recoverable.
 ///
-/// The leading space is load-bearing: `data-block-id="…"` ends in `id="`, and an
-/// unanchored search would harvest every block's content hash as an anchor.
+/// Read through [`crate::render::attr_values`], so `id` is matched as an attribute NAME
+/// (`data-block-id="…"` is a different one, which the leading-space needle here used to
+/// approximate) and an author's single-quoted `<div id='fig-x'>` counts as the anchor it is.
 fn local_anchors(blocks: &[Block]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for b in blocks {
-        let mut rest = b.html.as_str();
-        while let Some(i) = rest.find(" id=\"") {
-            rest = &rest[i + 5..];
-            let Some(end) = rest.find('"') else { break };
-            if super::is_xref_anchor(&rest[..end]) {
-                out.insert(rest[..end].to_string());
-            }
-            rest = &rest[end..];
-        }
+        out.extend(
+            crate::render::attr_values(&b.html, "id")
+                .filter(|v| super::is_xref_anchor(v))
+                .map(str::to_string),
+        );
     }
     out
 }

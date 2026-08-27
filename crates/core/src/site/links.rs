@@ -73,8 +73,14 @@ pub(super) fn href_matches_page(href: &str, page: &Page) -> bool {
 /// two things that kept it from being noticed were accidents of other passes (syntect
 /// escapes the quotes in a highlighted fence, smart punctuation curls them in prose), not
 /// a rule anyone had stated.
+///
+/// It still spelled the attribute as a `href="` needle until 2026-08-26, so a hand-written
+/// `<a href='other.tmd'>` or `<a href=other.tmd>` was left alone — and a surviving `.tmd`
+/// href is what drives the build's `deploy_referenced_sources` to copy that page's raw
+/// markdown into the deploy. Reproduced end to end: the link served the author's source,
+/// front matter and all, under a green `--check-only`.
 pub fn rewrite_tmd_links(html: &str) -> String {
-    crate::render::rewrite_attr_in_tags(html, "href=\"", rewrite_one_href)
+    crate::render::rewrite_attr_in_tags(html, "href", rewrite_one_href)
 }
 
 /// Whether a link value must be left untouched by the site rewriters: an in-page anchor
@@ -202,19 +208,13 @@ pub(super) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
         .filter(|&l| l > 0)
 }
 
-/// Every `id="…"` value in a block's HTML, added to `out` (the page's anchor set for the
-/// cross-page link check). Plain substring scan, matching how `search`/`diagnostics` read ids.
+/// Every `id` attribute value in a block's HTML, added to `out` (the page's anchor set for
+/// the cross-page link check). Read through the one walker, like every other consumer of
+/// finished HTML: the needle this used to scan for also matched `data-block-id="…"`, so
+/// every block's content hash was registered as a linkable anchor, and it matched inside
+/// prose and code samples that merely showed the attribute.
 pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<String>) {
-    let needle = "id=\"";
-    let mut i = 0;
-    while let Some(pos) = html[i..].find(needle) {
-        let start = i + pos + needle.len();
-        let Some(len) = html[start..].find('"') else {
-            break;
-        };
-        out.insert(html[start..start + len].to_string());
-        i = start + len;
-    }
+    out.extend(crate::render::attr_values(html, "id").map(str::to_string));
 }
 
 /// Manual relative `<a href>` links in a block's HTML, as `(path, Option<fragment>)`.
@@ -224,35 +224,15 @@ pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<S
 /// its authored form (`other.tmd`, `../sec/page.html`); the fragment is split off.
 pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
     let mut out = Vec::new();
-    let mut i = 0;
-    while let Some(pos) = html[i..].find("<a ") {
-        let tag_start = i + pos;
-        let Some(rel_end) = html[tag_start..].find('>') else {
-            break;
-        };
-        let tag = &html[tag_start..tag_start + rel_end];
-        i = tag_start + rel_end + 1;
-        if tag.contains("tali-xref") {
-            continue;
+    for tag in crate::render::tags(html) {
+        if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
+            continue; // not a link, or a cross-reference validated separately
         }
-        let Some(hpos) = tag.find("href=\"") else {
+        let Some(val) = crate::render::attr_value(&tag, "href") else {
             continue;
         };
-        let vstart = hpos + "href=\"".len();
-        let Some(vlen) = tag[vstart..].find('"') else {
-            continue;
-        };
-        let val = &tag[vstart..vstart + vlen];
         // Skip external / non-file / bare-anchor links.
-        if val.is_empty()
-            || val.starts_with('#')
-            || val.starts_with("//")
-            || val.contains("://")
-            || val.starts_with("data:")
-            || val.starts_with("mailto:")
-            || val.starts_with("tel:")
-            || val.starts_with("vscode:")
-        {
+        if val.is_empty() || is_external_or_special(val) {
             continue;
         }
         let (path, frag) = match val.split_once('#') {
@@ -330,6 +310,26 @@ mod tests {
             out.contains(r##"<a href="other.html">"##),
             "the real link must still rewrite: {out}"
         );
+    }
+
+    /// Nor must the author's choice of quotes.
+    ///
+    /// The rewrite spelled the attribute as a `href="` needle until 2026-08-26, so a
+    /// hand-written `<a href='other.tmd'>` or `<a href=other.tmd>` kept its `.tmd` href —
+    /// and a surviving `.tmd` href is exactly what drives `deploy_referenced_sources` to
+    /// copy that page's raw markdown into the deploy. Reproduced end to end against the
+    /// release binary: the built site served `other.tmd`, front matter and all, and the
+    /// link went to the source instead of the page, under a green `--check-only`.
+    #[test]
+    fn every_quoting_form_of_a_source_href_is_rewritten() {
+        let html = "<a href=\"a.tmd\">d</a> <a href='b.tmd'>s</a> <a href=c.tmd>u</a>";
+        let out = rewrite_tmd_links(html);
+        assert!(out.contains("href=\"a.html\""), "{out}");
+        assert!(out.contains("href='b.html'"), "single-quoted: {out}");
+        assert!(out.contains("href=c.html"), "unquoted: {out}");
+        assert!(!out.contains(".tmd"), "no source href may survive: {out}");
+        // The delimiters the author chose are preserved, not normalized.
+        assert!(!out.contains("href=\"b.html\""), "{out}");
     }
 
     /// A `?query` on a source href must not defeat the rewrite. It did until 2026-08-13

@@ -1,4 +1,4 @@
-//! Execution engine: runs a document's Python/R code cells against a warm kernel
+//! Execution engine: runs a document's Python code cells against a warm kernel
 //! and splices the outputs back into the block list as their own blocks.
 //!
 //! ## Granularity & the persistent cache

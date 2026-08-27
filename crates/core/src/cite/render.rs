@@ -266,15 +266,22 @@ fn transform_html(
     let mut rest = html;
     while !rest.is_empty() {
         if rest.starts_with('<') {
-            let end = rest.find('>').map(|e| e + 1).unwrap_or(rest.len());
+            // Quote-aware, because an attribute value may hold a `>` (`alt="a > b"`, a
+            // KaTeX `title`). A bare `find('>')` ended the tag there, so the rest of the
+            // real tag was handed to `rewrite_text` as prose — and a `[@key]` or `@fig-x`
+            // sitting in an attribute value was rewritten into markup inside markup.
+            let end = crate::render::tag_end(rest).map_or(rest.len(), |e| e + 1);
             let tag = &rest[..end];
-            let name: String = tag
-                .trim_start_matches(['<', '/'])
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .collect::<String>()
-                .to_ascii_lowercase();
-            if SKIP.contains(&name.as_str()) {
+            // Borrowed, not collected: this runs once per tag of every page, and the name
+            // is only ever compared against `SKIP`.
+            let after = tag.trim_start_matches(['<', '/']);
+            let name_len = after
+                .as_bytes()
+                .iter()
+                .position(|b| !b.is_ascii_alphanumeric())
+                .unwrap_or(after.len());
+            let name = &after[..name_len];
+            if SKIP.iter().any(|s| name.eq_ignore_ascii_case(s)) {
                 if tag.starts_with("</") {
                     skip_depth = skip_depth.saturating_sub(1);
                 } else if !tag.ends_with("/>") {
@@ -304,8 +311,13 @@ fn rewrite_text(
     xrefs: &HashMap<String, String>,
     cites: CiteMode,
 ) -> String {
+    // Neither marker present is the overwhelmingly common case for a text run, and the
+    // `Vec<char>` below is the only allocation in the pass. Checked before paying for it.
+    if !text.contains(['[', '@']) {
+        return text.to_string();
+    }
     let chars: Vec<char> = text.chars().collect();
-    let mut out = String::new();
+    let mut out = String::with_capacity(text.len());
     let mut i = 0;
     // Once a scan from some `[` finds no `]` to its right, no later `[` can either
     // (the remaining text only shrinks), so stop re-scanning to the end. Without

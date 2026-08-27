@@ -1,33 +1,7 @@
 //! Static accessibility checks (heading-level skips, alt-less and placeholder-alt images).
 
-use super::helpers::{heading_level, start_line, tag_attr};
-use crate::render::{Block, Warning};
-
-/// Whether the tag opened at the start of `tag` (everything before the first `>`)
-/// carries attribute `attr` (e.g. `"alt"`), matched as a whole word so `alt` does
-/// not false-match inside another attribute name/value. Accepts ` alt=`, ` alt>`,
-/// or a bare boolean ` alt` at the tag end.
-fn tag_has_attr(tag: &str, attr: &str) -> bool {
-    let mut i = 0;
-    while let Some(pos) = tag[i..].find(attr) {
-        let at = i + pos;
-        i = at + attr.len();
-        // Must be preceded by whitespace (an attribute boundary, not a substring).
-        let prev_ws = at == 0 || tag.as_bytes()[at - 1].is_ascii_whitespace();
-        if !prev_ws {
-            continue;
-        }
-        // Must be followed by `=`, whitespace, or the tag end (a real attribute, not a prefix).
-        match tag.as_bytes().get(i) {
-            None => return true,
-            Some(c) if *c == b'=' || c.is_ascii_whitespace() || *c == b'/' || *c == b'>' => {
-                return true;
-            }
-            _ => {}
-        }
-    }
-    false
-}
+use super::helpers::{heading_level, start_line};
+use crate::render::{Block, Tag, Warning, attr_value, tags};
 
 /// The page title block read as a heading: it is `blocks[0]` and its `<h1 class="title">`
 /// is the page's only `<h1>`, so an outline scan that skips it is not scanning the outline
@@ -90,30 +64,27 @@ pub fn validate_a11y(blocks: &[Block]) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
 
-        // (3) Raw `<img>` with no `alt` attribute.
-        let mut i = 0;
-        while let Some(pos) = b.html[i..].find("<img") {
-            let start = i + pos;
-            let Some(end) = b.html[start..].find('>') else {
-                break;
-            };
-            let tag = &b.html[start..start + end];
-            i = start + end + 1;
-            // `<img`-prefix guard: only a real tag (`<img ` / `<img>` / `<img/>`).
-            let after = tag.as_bytes().get(4).copied();
-            let is_img = matches!(after, None | Some(b' ') | Some(b'/') | Some(b'\t'));
-            if is_img && !tag_has_attr(tag, "alt") {
-                let w = Warning::new(
+        // (3) Raw `<img>` with no `alt` attribute. Walked, not scanned: the hand-rolled
+        // version ended each tag at the first `>`, so `<img alt="width > height" …>` was
+        // truncated before its `src` and the sibling asset check went silent on it; it also
+        // read the `<img src="${e}">` fragments inside the mermaid and Plot bundles every
+        // page inlines, which are script text and not images at all.
+        for tag in tags(&b.html) {
+            if !tag.name.eq_ignore_ascii_case("img") {
+                continue;
+            }
+            // A valueless `alt` reads as present-and-empty, i.e. decorative, exactly as the
+            // whole-word attribute test it replaces had it.
+            let w = match attr_value(&tag, "alt") {
+                None => Some(Warning::new(
                     "image is missing alt text (add alt text, or alt=\"\" if decorative)",
-                );
-                out.push(match line {
-                    Some(l) => w.at(b.source_file.clone(), l),
-                    None => w,
-                });
-            } else if is_img && let Some(msg) = placeholder_alt_message(tag) {
-                // A non-empty but useless alt (`alt="image"`, a filename echo): it passes the
-                // missing-alt check yet tells a screen-reader user nothing. A common LLM tell.
-                let w = Warning::new(msg);
+                )),
+                // A non-empty but useless alt (`alt="image"`, a filename echo): it passes
+                // the missing-alt check yet tells a screen-reader user nothing. A common
+                // LLM tell.
+                Some(_) => placeholder_alt_message(&tag).map(Warning::new),
+            };
+            if let Some(w) = w {
                 out.push(match line {
                     Some(l) => w.at(b.source_file.clone(), l),
                     None => w,
@@ -143,8 +114,8 @@ const PLACEHOLDER_ALT_WORDS: &[&str] = &[
 /// (`alt="image"`) or an echo of the image filename (`alt="scree.png"` for
 /// `src="scree.png"`) — else `None`. `alt=""` (decorative) is exempt. Kept deliberately
 /// narrow (exact word match + filename echo) so a descriptive alt is never accused.
-fn placeholder_alt_message(tag: &str) -> Option<String> {
-    let raw = tag_attr(tag, "alt=\"")?;
+fn placeholder_alt_message(tag: &Tag<'_>) -> Option<String> {
+    let raw = attr_value(tag, "alt")?;
     let alt = raw
         .trim()
         .trim_end_matches(['.', ':', ','])
@@ -153,7 +124,7 @@ fn placeholder_alt_message(tag: &str) -> Option<String> {
         return None; // alt="" is the sanctioned decorative marker.
     }
     let is_placeholder = PLACEHOLDER_ALT_WORDS.contains(&alt.as_str())
-        || tag_attr(tag, "src=\"").is_some_and(|src| {
+        || attr_value(tag, "src").is_some_and(|src| {
             let file = src
                 .rsplit(['/', '\\'])
                 .next()

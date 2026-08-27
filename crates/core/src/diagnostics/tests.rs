@@ -368,3 +368,92 @@ fn no_bibliography_declared_means_no_scan() {
 // `taliesin skim`; what survives is binary and threshold-free. The rules were calibrated
 // on the real 14-project corpus, and the cases below pin both what they catch and, just
 // as importantly, what they must not.
+
+// ---- the validators read finished HTML through the one walker -------------------------
+
+/// The check-superset must see the same references the build's asset copier does, and no
+/// others. Every clause here is a defect reproduced against the release binary at
+/// b69377fa, and the two directions cost different things: a MISSED reference is a broken
+/// image the gate promises does not exist, and an INVENTED one fails `build --check-only`
+/// on a page whose only sin is carrying a hand-written `<script>`.
+#[test]
+fn the_asset_check_reads_tags_not_a_substring_scan() {
+    let dir = Tmp::new("assets-walker");
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "![control](control-missing.png)\n\n",
+            // A `>` inside `alt` is not the end of the tag. Ending the tag there hid the
+            // `src` that follows it, so this image was never checked at all.
+            "<img alt=\"width > height\" src=\"case-a-missing.png\">\n\n",
+            // Raw HTML is in the trust model: the author's quoting is theirs to choose.
+            "<img src='case-b-missing.png'>\n\n",
+            // Script TEXT is not markup. The mermaid and Plot bundles every page inlines
+            // build `<img src="${e}">` out of string fragments exactly like this.
+            "<script>\nfunction card(e) { return '<img src=\"' + e + '\">'; }\n</script>\n",
+        ),
+        &dir.0,
+    );
+    let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 3, "exactly the three real broken images: {m:?}");
+    for missing in [
+        "control-missing.png",
+        "case-a-missing.png",
+        "case-b-missing.png",
+    ] {
+        assert!(
+            m.iter().any(|s| s.contains(missing)),
+            "{missing} missed: {m:?}"
+        );
+    }
+    assert!(
+        !m.iter().any(|s| s.contains("' + e + '")),
+        "a script's string fragment is not an asset reference: {m:?}"
+    );
+}
+
+/// The same rule on the link and alt-text checks, which shared the scan.
+#[test]
+fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {
+    let dir = Tmp::new("links-walker");
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "<script>\nvar h = '<a href=\"' + e + '.md\">x</a>';\n</script>\n\n",
+            "<a href='gone.tmd'>single-quoted</a>\n",
+        ),
+        &dir.0,
+    );
+    let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 1, "the real broken link only: {m:?}");
+    assert!(m[0].contains("gone.tmd"), "{m:?}");
+
+    let a11y = msgs(&validate_a11y(&doc.blocks));
+    assert!(
+        !a11y.iter().any(|s| s.contains("alt")),
+        "there is no image on this page — a script's text is not one: {a11y:?}"
+    );
+}
+
+/// The anchor set is every `id` ATTRIBUTE on the page, in any quoting form — and nothing
+/// that merely looks like one in the page's text.
+///
+/// Both directions were wrong, and both are visible to an author. A link to a real
+/// `<div id='target'>` was reported as broken, because the scan knew only double quotes;
+/// and a link to an id that exists only inside a code sample resolved, because the scan had
+/// no notion of tag-versus-text.
+#[test]
+fn the_anchor_set_is_id_attributes_and_not_text_that_resembles_one() {
+    let doc = render_document(
+        "<div id='target'>real, single-quoted</div>\n\n\
+         A sample: `<div id=\"in-text-only\">`\n\n\
+         [good](#target) [bad](#in-text-only)\n",
+    );
+    let m = msgs(&validate_internal_anchors(&doc.blocks));
+    assert_eq!(m.len(), 1, "exactly the one broken jump: {m:?}");
+    assert!(m[0].contains("#in-text-only"), "{m:?}");
+    assert!(
+        !m.iter().any(|s| s.contains("#target")),
+        "an author's single-quoted id is a real anchor: {m:?}"
+    );
+}

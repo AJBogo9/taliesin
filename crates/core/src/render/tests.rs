@@ -749,7 +749,7 @@ fn unlabelled_mermaid_stays_a_bare_diagram() {
 }
 
 /// A `{bash}`/`{sql}`/`{julia}`/… cell is neither render-emitted (mermaid/`{js}`) nor
-/// kernel-executed (python/r), so a `label: fig-*` on one can never materialize a
+/// kernel-executed, so a `label: fig-*` on one can never materialize a
 /// figure. It must NOT burn a figure number or register a phantom anchor that shifts
 /// every later figure down by one — the classic `@fig-x` resolving to a "Figure 1" no
 /// element carries. The cell's source still shows (the author wants to display it), but
@@ -791,7 +791,7 @@ fn a_labelled_non_executable_lang_never_phantoms_a_figure_number() {
 }
 
 /// The same phantom-anchor defect on the TABLE axis: a table only ever materializes
-/// from executed output (a python/r DataFrame), so a `label: tbl-*` on a `{bash}` cell
+/// from executed output (a Python DataFrame), so a `label: tbl-*` on a `{bash}` cell
 /// must not burn a table number or register a phantom `@tbl-` anchor. Here a real
 /// python table (`c.table` is set at render time, so it numbers even without a kernel)
 /// must stay Table 1, not be shifted to Table 2 by the bash cell.
@@ -6806,6 +6806,80 @@ fn the_attribute_reader_takes_every_value_form_and_whole_names() {
     }
 }
 
+/// Every attribute knows where its VALUE starts, not just where its name does — which is
+/// what lets the rewriter splice a replacement into any of the three quoting forms without
+/// re-finding a needle it can only spell one way.
+#[test]
+fn every_attribute_locates_its_own_value() {
+    let html = "<a href='single.tmd' title=\"double\" width=640 hidden>t</a>";
+    let tag = tags(html).next().unwrap();
+    for a in attrs(&tag) {
+        assert_eq!(
+            &html[a.value_at..a.value_at + a.value.len()],
+            a.value,
+            "{a:?} does not locate its own value"
+        );
+    }
+    // A valueless attribute has an empty value; it still reports a position inside the tag
+    // rather than a stale or out-of-range one.
+    let hidden = attrs(&tag).find(|a| a.name == "hidden").unwrap();
+    assert!(hidden.value.is_empty() && hidden.value_at <= html.len());
+}
+
+/// The rewriter takes an attribute NAME, so it rewrites whichever quoting form the author
+/// wrote — and leaves a differently-named attribute that merely *ends* in that name alone.
+///
+/// It spelled the attribute as a `name="` needle until 2026-08-26 and so rewrote the
+/// double-quoted form only. Two live consequences, both reproduced end to end: a
+/// hand-written `<a href='other.tmd'>` kept its `.tmd` href, which drove the build's
+/// walker-based scraper to publish that page's raw markdown into the deploy; and a
+/// `<div id='dup'>` colliding with a real element was neither renamed nor reported, so the
+/// page shipped two elements sharing an id — the outcome `dedup_element_ids` exists to
+/// prevent.
+#[test]
+fn the_attribute_rewriter_reaches_every_quoting_form_and_only_that_name() {
+    let html = "<a href=\"a.tmd\">d</a> <a href='b.tmd'>s</a> <a href=c.tmd>u</a> \
+                <p data-block-id=\"keep\" data-tali-src=\"src.tmd\">t</p> \
+                <code>&lt;a href=\"shown.tmd\"&gt;</code>";
+    let out = rewrite_attr_in_tags(html, "href", |v| v.replace(".tmd", ".html"));
+    assert!(out.contains("href=\"a.html\""), "double quoted: {out}");
+    assert!(out.contains("href='b.html'"), "single quoted: {out}");
+    assert!(out.contains("href=c.html"), "unquoted: {out}");
+    // `data-tali-src` is a different NAME; the old needle form matched its `src="` suffix.
+    assert!(out.contains("data-tali-src=\"src.tmd\""), "{out}");
+    assert!(out.contains("data-block-id=\"keep\""), "{out}");
+    // Visible text is never markup — the rule `tags` exists for.
+    assert!(out.contains("&lt;a href=\"shown.tmd\"&gt;"), "{out}");
+
+    // An `id` rewrite must not see `data-block-id`, which the leading-space needle it
+    // replaces only approximated.
+    let ids = rewrite_attr_in_tags(
+        "<div data-block-id=\"b-1\" id=\"real\">x</div>",
+        "id",
+        |v| format!("{v}-renamed"),
+    );
+    assert_eq!(
+        ids,
+        "<div data-block-id=\"b-1\" id=\"real-renamed\">x</div>"
+    );
+}
+
+/// The read half: values come back for every quoting form, matched as a whole NAME, from
+/// element tags only. This is what six validators and the block diff now share instead of
+/// each carrying a `find("id=\"")` of its own.
+#[test]
+fn the_attribute_value_reader_matches_names_and_skips_text() {
+    let html = "<h2 id=\"double\">h</h2><div id='single'>d</div><span id=bare>s</span>\
+                <p data-block-id=\"b-abc\">quoting <code>id=\"in-text\"</code></p>\
+                <script>var s = '<div id=\"in-script\">';</script>";
+    let got: Vec<&str> = attr_values(html, "id").collect();
+    assert_eq!(got, vec!["double", "single", "bare"]);
+    assert_eq!(
+        attr_values(html, "data-block-id").collect::<Vec<_>>(),
+        ["b-abc"]
+    );
+}
+
 /// A tag the author never closed, and a raw-text element the author never closed, each end
 /// the walk instead of wedging it or reading the rest of the document as attributes.
 #[test]
@@ -6928,5 +7002,51 @@ fn the_readme_does_not_advertise_withdrawn_constructs() {
         found.is_empty(),
         "README.md advertises constructs the tool no longer implements:\n  {}",
         found.join("\n  ")
+    );
+}
+
+/// A heading that links somewhere must not put the link TARGET in its own anchor id.
+///
+/// The slug is built from the heading's markdown line, and `slugify` keeps every
+/// alphanumeric run it finds — a URL is nothing but those. `## See [the guide](using/
+/// writing.html) for more` slugged as `see-the-guide-using-writing-html-for-more`, and that
+/// id is what the on-page TOC links to, what a `@sec-` reference resolves to, and what a
+/// reader copies out of the address bar. `strip_math_for_slug` is the same patch for the
+/// same leak one construct along.
+#[test]
+fn a_link_in_a_heading_does_not_leak_its_url_into_the_anchor() {
+    let doc = render_document("## See [the guide](using/writing.html) for more\n");
+    let id = doc.blocks.iter().find_map(|b| extract_attr(&b.html, "id"));
+    assert_eq!(id.as_deref(), Some("see-the-guide-for-more"), "{doc:?}");
+
+    // The reference spelling too, and an image's alt text is visible-ish text that stays.
+    let refs = render_document("## Read [the paper][p] now\n\n[p]: https://example.com/x.pdf\n");
+    assert_eq!(
+        refs.blocks
+            .iter()
+            .find_map(|b| extract_attr(&b.html, "id"))
+            .as_deref(),
+        Some("read-the-paper-now")
+    );
+
+    // An autolink IS its own visible text, so it still slugs — nothing was over-stripped.
+    let auto = render_document("## Mirror at <https://example.com>\n");
+    assert_eq!(
+        auto.blocks
+            .iter()
+            .find_map(|b| extract_attr(&b.html, "id"))
+            .as_deref(),
+        Some("mirror-at-https-example-com")
+    );
+
+    // And a heading with no link is untouched.
+    let plain = render_document("## Plain heading here\n");
+    assert_eq!(
+        plain
+            .blocks
+            .iter()
+            .find_map(|b| extract_attr(&b.html, "id"))
+            .as_deref(),
+        Some("plain-heading-here")
     );
 }

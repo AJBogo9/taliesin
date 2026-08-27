@@ -418,7 +418,11 @@ pub fn yaml_error(src: &str) -> Option<(String, u32)> {
 /// `None` if the source doesn't open with a front-matter fence. The one canonical
 /// front-matter splitter (BOM- and `...`-terminator-aware); the site parser and the
 /// shortcode/extension scanner reuse it so every path agrees on edge cases.
-pub(crate) fn front_matter_block(src: &str) -> Option<&str> {
+///
+/// `pub` because the dev server digests this block to tell a body edit from a change to
+/// what DISCOVERY reads, and a second hand-rolled `---` splitter is how the two would come
+/// to disagree about a BOM or a `...` terminator.
+pub fn front_matter_block(src: &str) -> Option<&str> {
     let src = src.strip_prefix('\u{feff}').unwrap_or(src);
     let first = src.split_inclusive('\n').next()?;
     if first.trim_end() != "---" {
@@ -447,12 +451,20 @@ pub fn closest(key: &str, candidates: &[&'static str]) -> Option<&'static str> {
 /// listing, say, where the names are owned `String`s read at runtime. Same distance rule,
 /// deliberately: a "did you mean" that is stricter in one place than another teaches the
 /// reader a threshold that is not real. `closest` is the `&'static` convenience over this.
+/// Ties break on the candidate's own spelling, not on iteration order. `min_by_key` keeps
+/// the FIRST minimum, so ordering the key by distance alone let whichever candidate the
+/// iterator happened to yield first win — and two of the three callers feed it a set: a
+/// `HashSet` of reactive define names (randomly seeded per process) and a `read_dir`
+/// listing (filesystem order). Measured across 20 identical runs of one document, the same
+/// typo suggested `ax` 13 times and `bx` 7, and `--format json`'s machine-readable
+/// `suggestion.replacement` flipped with it — so an editor's quick fix rewrote the author's
+/// buffer to a different name depending on the run.
 pub fn closest_of<'a>(key: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
     candidates
         .into_iter()
         .map(|k| (levenshtein(key, k), k))
         .filter(|&(d, _)| d > 0 && d <= 2)
-        .min_by_key(|&(d, _)| d)
+        .min_by_key(|&(d, k)| (d, k))
         .map(|(_, k)| k)
 }
 

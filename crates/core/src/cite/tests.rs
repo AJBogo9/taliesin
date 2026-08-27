@@ -807,24 +807,6 @@ fn a_page_entry_overrides_a_shared_entry_with_the_same_key() {
     );
 }
 
-#[test]
-fn cited_keys_in_source_reads_bracketed_citations_only() {
-    let keys = cited_keys_in_source(
-        "Prose @notcited and [@one; @two] and [@three, p. 4] plus a ref to [@fig-x] and @four.\n",
-    );
-    assert_eq!(
-        keys,
-        vec!["one", "two", "three"],
-        "bracketed citations only, cross-reference anchors excluded"
-    );
-    // The key-character set is shared with the BibTeX parser, so a key BibTeX accepts is a
-    // key this scanner reads whole rather than truncating.
-    assert_eq!(
-        cited_keys_in_source("[@doe+roe:2020a]"),
-        vec!["doe+roe:2020a"]
-    );
-}
-
 /// A broken `@ref` is squiggled under the token, not across the line, and the
 /// whole-line fallback survives for a token the scan cannot find.
 ///

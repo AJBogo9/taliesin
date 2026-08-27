@@ -106,34 +106,66 @@ fn anchor_op(old: &Block, new: &Block) -> BlockOp {
     }
 }
 
-/// How many `data-sourcepos="…"` attributes the html carries. A leaf block has one
-/// (on its outer element); a fenced `:::` div wraps inner blocks that each carry their
-/// own, so it has more.
+/// How many `data-sourcepos` ATTRIBUTES the html carries. A leaf block has one (on its
+/// outer element); a fenced `:::` div wraps inner blocks that each carry their own, so it
+/// has more.
+///
+/// Prose that merely *mentions* the attribute carries it in the page's visible TEXT: comrak
+/// does not escape `"` inside a `<code>` span, so a paragraph quoting
+/// `data-sourcepos="5:1-5:9"` counted two and lost `SetMeta`. It then took a destructive
+/// `Update` on every line-number shift above it — replacing the element, and with it any
+/// live DOM state (an open `<details>`, a playing video, a `{js}` widget) that `SetMeta`
+/// exists to preserve. `docs/internals/block-model.tmd`, the page that documents `SetMeta`,
+/// mentions the attribute ten times.
+///
+/// **Two tiers, because this is the keystroke path.** [`diff_blocks`] asks this of every
+/// matched block on every save, so answering it by walking each block's tags walks the whole
+/// page: measured on `corpus/tech-blog/posts/em-algorithm` (287 KB, 55 blocks), the diff went
+/// from 319 µs to 1704 µs and the warm edit from 11.9 ms to 13.4 ms. The walk therefore runs
+/// only where the ambiguity is real. [`sourcepos_mentions`] is an upper bound and cheap; at
+/// most one mention cannot be ambiguous, because the block model gives EVERY block its own
+/// `data-sourcepos` (`crates/core/tests/corpus.rs` enforces it), so a single mention is that
+/// attribute and never text.
 fn sourcepos_count(html: &str) -> usize {
-    html.matches("data-sourcepos=\"").count()
-}
-
-/// Two block htmls compared with every `data-sourcepos="…"` value blanked, so a
-/// pure line-number shift reads as equal (the rest of the markup — content,
-/// `data-block-id`, `data-source-file` — must still match exactly).
-fn eq_ignoring_sourcepos(a: &str, b: &str) -> bool {
-    mask_sourcepos(a) == mask_sourcepos(b)
-}
-
-fn mask_sourcepos(html: &str) -> String {
-    const KEY: &str = "data-sourcepos=\"";
-    let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-    while let Some(i) = rest.find(KEY) {
-        out.push_str(&rest[..i + KEY.len()]);
-        rest = &rest[i + KEY.len()..];
-        match rest.find('"') {
-            Some(q) => rest = &rest[q..], // drop the value; keep the closing quote on
-            None => break,                // malformed (no closing quote): stop masking
-        }
+    match sourcepos_mentions(html) {
+        n @ (0 | 1) => n,
+        _ => crate::render::attr_values(html, "data-sourcepos").count(),
     }
-    out.push_str(rest);
-    out
+}
+
+/// How many times the emitted spelling of the attribute appears anywhere in `html`, as
+/// markup or as text. An upper bound on the number of real attributes, since every one the
+/// renderer emits is written this way, and a substring scan rather than a parse.
+fn sourcepos_mentions(html: &str) -> usize {
+    html.matches(SOURCEPOS_KEY).count()
+}
+
+const SOURCEPOS_KEY: &str = "data-sourcepos=\"";
+
+/// Two block htmls compared with the OUTER `data-sourcepos` value blanked and everything
+/// else required to match byte for byte, so a pure line-number shift on the block itself
+/// reads as equal while any other difference does not.
+///
+/// The outer attribute is the first mention: a block's html opens with its own element tag.
+/// Blanking exactly that one is what `SetMeta` actually does — it patches the outer element
+/// and nothing else — so anything further along, an inner block's attribute or a `<code>`
+/// span quoting the name, has to survive the comparison verbatim. Blanking *every* value
+/// instead (which is what this did) could call two blocks equal because their inner
+/// sourcepos differences had been masked away, and only [`sourcepos_count`]'s separate
+/// nested-block guard stopped that becoming a `SetMeta` that left those inner values stale.
+///
+/// Allocation-free: two `memcmp`s on slices of the originals. Building the masked copies
+/// meant allocating and copying a whole block's html twice per compared pair, for every
+/// block on the page, on every save.
+fn eq_ignoring_sourcepos(a: &str, b: &str) -> bool {
+    let (Some(ia), Some(ib)) = (a.find(SOURCEPOS_KEY), b.find(SOURCEPOS_KEY)) else {
+        return a == b; // neither carries it, or only one does
+    };
+    let (from_a, from_b) = (ia + SOURCEPOS_KEY.len(), ib + SOURCEPOS_KEY.len());
+    let (Some(len_a), Some(len_b)) = (a[from_a..].find('"'), b[from_b..].find('"')) else {
+        return a == b; // malformed (no closing quote): nothing safe to blank
+    };
+    a[..from_a] == b[..from_b] && a[from_a + len_a..] == b[from_b + len_b..]
 }
 
 /// Turn one gap (a run of old + new blocks between anchors) into ops: pair them
@@ -488,6 +520,74 @@ mod tests {
                 target_id: "out".into(),
                 html: new.html,
             }]
+        );
+    }
+
+    /// A paragraph that *quotes* `data-sourcepos="…"` must still get `SetMeta` when only
+    /// its line numbers move.
+    ///
+    /// comrak does not escape `"` inside a `<code>` span, so the attribute name appears
+    /// verbatim in the page's visible TEXT. `sourcepos_count` matched the string, counted
+    /// two, and concluded the block wrapped inner blocks — so every line-number shift above
+    /// such a paragraph took a destructive `Update` that replaces the element and discards
+    /// whatever live DOM state it held. Reproduced in a browser against
+    /// `docs/internals/block-model.tmd`, the page that documents `SetMeta`: one inserted
+    /// line gave 34 `SetMeta` ops and one full replacement, and the replaced block was the
+    /// one quoting the attribute.
+    #[test]
+    fn a_block_quoting_the_sourcepos_attribute_still_gets_set_meta() {
+        let quoting = |pos: &str| {
+            let mut b = block_html(
+                "q",
+                &format!(
+                    "<p data-block-id=\"q\" data-sourcepos=\"{pos}\">every block carries \
+                     <code>data-sourcepos=\"5:1-5:9\"</code>.</p>"
+                ),
+            );
+            b.sourcepos = pos.to_string();
+            b
+        };
+        let ops = diff_blocks(&[quoting("5:1-5:44")], &[quoting("7:1-7:44")]);
+        assert!(
+            matches!(ops.as_slice(), [BlockOp::SetMeta { target_id, sourcepos, .. }]
+                     if target_id == "q" && sourcepos == "7:1-7:44"),
+            "a shifted paragraph that merely mentions the attribute must patch its \
+             metadata, not be replaced: {ops:?}"
+        );
+
+        // The narrowing must not go too far: a real `:::` div wrapping inner blocks that
+        // each carry their own sourcepos still has more than one, and still takes an
+        // `Update` — the whole reason the count exists.
+        let wrapper = |pos: &str| {
+            let mut b = block_html(
+                "w",
+                &format!(
+                    "<div data-block-id=\"w\" data-sourcepos=\"{pos}\">\
+                     <p data-sourcepos=\"{pos}\">inner</p></div>"
+                ),
+            );
+            b.sourcepos = pos.to_string();
+            b
+        };
+        assert!(
+            matches!(
+                diff_blocks(&[wrapper("1:1-2:9")], &[wrapper("3:1-4:9")]).as_slice(),
+                [BlockOp::Update { .. }]
+            ),
+            "a div wrapping its own sourcepos-bearing children must still take an Update"
+        );
+    }
+
+    /// The mask must blank attribute values only, never a value the prose quotes: two
+    /// paragraphs differing solely in the sourcepos they *print* are different content, and
+    /// patching one's metadata would leave the other's text on screen.
+    #[test]
+    fn masking_leaves_a_quoted_sourcepos_in_the_text_alone() {
+        let a = "<p data-sourcepos=\"1:1-1:9\">shows <code>data-sourcepos=\"4:1-4:2\"</code></p>";
+        let b = "<p data-sourcepos=\"9:1-9:9\">shows <code>data-sourcepos=\"8:1-8:2\"</code></p>";
+        assert!(
+            !eq_ignoring_sourcepos(a, b),
+            "the quoted values are content, not metadata"
         );
     }
 

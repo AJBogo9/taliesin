@@ -67,7 +67,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     }
     for b in blocks {
         let mut vals = std::collections::HashSet::new();
-        collect_attr_values(&b.html, "data-tali-input=\"", &mut vals);
+        collect_attr_values(&b.html, "data-tali-input", &mut vals);
         for v in vals {
             defined.insert(v.to_string());
         }
@@ -169,14 +169,11 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     out
 }
 
-/// `frontmatter::closest` over an owned candidate list (the reactive-graph define names
-/// are dynamic, so they can't be the `&'static` slice that helper wants). Same edit-
-/// distance-≤2 "did you mean" rule.
+/// `frontmatter::closest_of` over an owned candidate list (the reactive-graph define names
+/// are dynamic, so they can't be the `&'static` slice `closest` wants). Delegated rather
+/// than re-derived: this copy had drifted to a distance-only tie-break, and its candidates
+/// come out of a `HashSet` — randomly seeded per process — so two equally close names made
+/// the suggestion differ between runs of the same unchanged document.
 fn closest_owned(key: &str, candidates: &[String]) -> Option<String> {
-    candidates
-        .iter()
-        .map(|k| (crate::frontmatter::levenshtein(key, k), k))
-        .filter(|&(d, _)| d > 0 && d <= 2)
-        .min_by_key(|&(d, _)| d)
-        .map(|(_, k)| k.clone())
+    crate::closest_of(key, candidates.iter().map(String::as_str)).map(str::to_string)
 }

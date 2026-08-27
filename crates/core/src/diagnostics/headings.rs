@@ -3,20 +3,14 @@
 use super::helpers::start_line;
 use crate::render::{Block, Severity, Warning};
 
-/// The `id="..."` attribute of a heading block (`<h1>`..`<h6>`), or None for a
-/// non-heading block or a heading with no id. Reads only the opening tag and matches
-/// the ` id="` attribute specifically (so `data-block-id="..."` does not false-match).
+/// The `id` attribute of a heading block (`<h1>`..`<h6>`), or None for a non-heading block
+/// or a heading with no id. Reads the block's leading tag only, through the one walker, so
+/// `data-block-id="…"` is not an `id` (it is a different attribute NAME, which is what the
+/// leading-space needle here used to approximate) and a `>` inside an attribute value does
+/// not end the tag early.
 fn heading_id(html: &str) -> Option<&str> {
-    let level_ok = html.as_bytes().get(2).is_some_and(|c| c.is_ascii_digit());
-    if !(html.starts_with("<h") && level_ok) {
-        return None;
-    }
-    let tag_end = html.find('>')?;
-    let head = &html[..tag_end];
-    let i = head.find(" id=\"")? + 5;
-    let rest = &head[i..];
-    let end = rest.find('"')?;
-    Some(&rest[..end])
+    super::helpers::heading_level(html)?;
+    crate::render::attr_value(&crate::render::tags(html).next()?, "id")
 }
 
 /// Two headings that emit the same `id` (e.g. a repeated explicit `{#id}`) produce an

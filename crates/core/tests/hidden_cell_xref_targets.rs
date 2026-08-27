@@ -1,7 +1,7 @@
-//! A labelled python/R cell with `#| include: false` must not advertise a
+//! A labelled `{python}` cell with `#| include: false` must not advertise a
 //! cross-reference target that can never exist.
 //!
-//! A python/R figure or table IS the executor's output block, and `include: false`
+//! A `{python}` figure or table IS the executor's output block, and `include: false`
 //! drops that block outright (`exec.rs`: `!cell.include -> continue`). The render
 //! pass, though, registered the `#fig-`/`#tbl-` anchor and consumed a figure/table
 //! number from the cell's *declared* label, before knowing whether anything would

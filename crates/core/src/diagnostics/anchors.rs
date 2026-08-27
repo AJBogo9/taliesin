@@ -10,25 +10,12 @@ use crate::render::{Block, Severity, Warning};
 /// Cross-page `href="page.html#x"` and empty `href="#"` are also skipped.
 fn same_page_manual_fragments(html: &str) -> Vec<&str> {
     let mut out = Vec::new();
-    let mut i = 0;
-    while let Some(pos) = html[i..].find("<a ") {
-        let tag_start = i + pos;
-        let Some(rel_end) = html[tag_start..].find('>') else {
-            break;
-        };
-        let tag = &html[tag_start..tag_start + rel_end];
-        i = tag_start + rel_end + 1;
-        if tag.contains("tali-xref") {
-            continue; // a cross-reference, not a manual in-page link
+    for tag in crate::render::tags(html) {
+        if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
+            continue; // not a link, or a cross-reference validated separately
         }
-        let Some(hpos) = tag.find("href=\"") else {
-            continue;
-        };
-        let vstart = hpos + "href=\"".len();
-        let Some(vlen) = tag[vstart..].find('"') else {
-            continue;
-        };
-        if let Some(frag) = tag[vstart..vstart + vlen].strip_prefix('#')
+        if let Some(frag) =
+            crate::render::attr_value(&tag, "href").and_then(|v| v.strip_prefix('#'))
             && !frag.is_empty()
         {
             out.push(frag);
@@ -50,7 +37,7 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
     }
     let mut ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for b in blocks {
-        collect_attr_values(&b.html, "id=\"", &mut ids);
+        collect_attr_values(&b.html, "id", &mut ids);
     }
     let mut out = Vec::new();
     for b in blocks {

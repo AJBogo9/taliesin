@@ -872,10 +872,8 @@ fn render_internal_impl(
                         }
                         deduped
                     }
-                    Some((clean, None)) => {
-                        dedup_slug(&strip_math_for_slug(clean), &mut heading_slugs)
-                    }
-                    None => dedup_slug(&strip_math_for_slug(&block_src), &mut heading_slugs),
+                    Some((clean, None)) => dedup_slug(&slug_source(clean), &mut heading_slugs),
+                    None => dedup_slug(&slug_source(&block_src), &mut heading_slugs),
                 };
                 format!(" id=\"{}\"", escape_attr(&id))
             }
@@ -937,7 +935,7 @@ fn render_internal_impl(
                     // Register from what will EXIST, like the `Listing` arm below — not
                     // from what the label declares. A figure materializes only when it is
                     // emitted here at render time (mermaid/`{js}`) OR the cell executes
-                    // against a kernel (python/r) with its output kept (`include: true`);
+                    // against the kernel with its output kept (`include: true`);
                     // `include: false` drops that output block outright (`exec.rs`).
                     //
                     // Any OTHER lang — `{bash}`, `{sql}`, `{julia}`, … — is neither
@@ -1022,7 +1020,7 @@ fn render_internal_impl(
                                     num: &fig_num,
                                 },
                             )),
-                            // Python/R: the source renders now; tag the cell so the
+                            // Python: the source renders now; tag the cell so the
                             // executor wraps the (later) output in the numbered figure.
                             _ => {
                                 if let Some(c) = cell.as_mut() {
@@ -1087,7 +1085,7 @@ fn render_internal_impl(
                     //
                     // A table has no render-time emission path at all — unlike a figure,
                     // which mermaid/`{js}` can produce here — so it materializes ONLY when
-                    // the cell executes (python/r) with its output kept. `include: false`
+                    // the cell executes against the kernel with its output kept. `include: false`
                     // or a non-executable lang (`{bash}`, `{sql}`, …) means no `<table>`
                     // and no anchor; leaving `c.table` unset is what keeps
                     // `apply_table_captions` from numbering and registering a phantom.
@@ -2292,6 +2290,61 @@ fn math_close(chars: &[char], start: usize, display: bool) -> Option<usize> {
     None
 }
 
+/// Drop a markdown link's DESTINATION before slugging, keeping its text, so a heading that
+/// links somewhere does not put the target in its own anchor id.
+///
+/// `slugify` runs on the heading's markdown line and keeps every alphanumeric run it finds,
+/// which a URL is full of: `## See [the guide](using/writing.html) for more` slugged as
+/// `see-the-guide-using-writing-html-for-more`. That id is what the on-page TOC links, what
+/// `@sec-` resolves to and what a reader copies out of the address bar, and none of them
+/// should carry a path. Same shape as [`strip_math_for_slug`], and for the same reason:
+/// the slug is built from source, so anything that is markup rather than visible text has
+/// to come out first.
+///
+/// Both spellings of the destination — inline `](url)` and reference `][label]` — and
+/// nothing else: an autolink `<https://x>` really is its own visible text.
+fn strip_link_targets_for_slug(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < b.len() {
+        // A backslash escape is literal, exactly as in `strip_math_for_slug`.
+        if b[i] == b'\\' {
+            out.push('\\');
+            if let Some(&next) = b.get(i + 1) {
+                out.push(next as char);
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if b[i] == b']'
+            && let Some(&open) = b.get(i + 1)
+            && matches!(open, b'(' | b'[')
+        {
+            let close = if open == b'(' { b')' } else { b']' };
+            if let Some(end) = b[i + 2..].iter().position(|&c| c == close) {
+                out.push(']');
+                i += 2 + end + 1;
+                continue;
+            }
+        }
+        // Not a boundary: copy the character whole (multi-byte safe — a lead byte is
+        // never one of the ASCII delimiters tested above).
+        let ch = s[i..].chars().next().unwrap_or('\0');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// The heading text `slugify` should see: markdown source with the two things that are
+/// markup rather than visible text taken out first.
+fn slug_source(block_src: &str) -> String {
+    strip_link_targets_for_slug(&strip_math_for_slug(block_src))
+}
+
 /// A deduped heading anchor slug; a repeated slug gets a `-N` suffix.
 /// `block_src` is the heading's markdown line; `slugify` ignores the leading
 /// `#`s and markup, yielding the visible-text slug.
@@ -2616,19 +2669,18 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
     }
 }
 
-/// Rewrite each ` id="…"` in `html` whose value is already in `seen`, returning the new html
-/// and one `(original, renamed)` pair per rewrite. The attribute is matched WITH its leading
-/// space, which is what keeps `data-block-id="…"` from false-matching (the same
-/// discriminator `diagnostics::headings::heading_id` uses), and only ever inside an element
-/// tag ([`rewrite_attr_in_tags`]): a code sample *showing* `<div id="example">` twice used
-/// to have its visible text rewritten and drew two bogus error-severity diagnostics.
+/// Rewrite each `id` attribute in `html` whose value is already in `seen`, returning the new
+/// html and one `(original, renamed)` pair per rewrite. The attribute is matched as a NAME,
+/// which is what keeps `data-block-id="…"` from false-matching, and only ever inside an
+/// element tag ([`rewrite_attr_in_tags`]): a code sample *showing* `<div id="example">` twice
+/// used to have its visible text rewritten and drew two bogus error-severity diagnostics.
 fn rename_repeated_ids(
     html: &str,
     counts: &mut HashMap<String, u32>,
     seen: &mut std::collections::HashSet<String>,
 ) -> (String, Vec<(String, String)>) {
     let mut renamed: Vec<(String, String)> = Vec::new();
-    let out = rewrite_attr_in_tags(html, " id=\"", |id| {
+    let out = rewrite_attr_in_tags(html, "id", |id| {
         if seen.insert(id.to_string()) {
             // First sighting. Seed the counter as `dedup_with_suffix` would have, so the
             // next repeat comes out `id-1` and not `id` again.
@@ -2756,12 +2808,15 @@ fn toc_html(blocks: &[Block]) -> String {
     out
 }
 
-/// Read the value of an HTML attribute from a start tag (e.g. `id="..."`).
+/// Read the value of an HTML attribute off a block's LEADING start tag (e.g. `id="..."`).
+///
+/// Bounded to that one tag, and matched as a name, through [`tags`]/[`attrs`]: a bare
+/// `find(" id=\"")` over a whole block would answer with an id from an element nested
+/// inside it, or from a code sample merely showing one — and would miss an author's
+/// single-quoted spelling of the real thing.
 fn extract_attr(html: &str, name: &str) -> Option<String> {
-    let needle = format!(" {name}=\"");
-    let start = html.find(&needle)? + needle.len();
-    let end = html[start..].find('"')? + start;
-    Some(html[start..end].to_string())
+    let tag = tags(html).next()?;
+    attr_value(&tag, name).map(str::to_string)
 }
 
 // --- emitter -------------------------------------------------------------
@@ -2906,10 +2961,6 @@ impl DivAttrs {
     }
 }
 
-fn is_heading(html: &str) -> bool {
-    html.starts_with("<h") && html.as_bytes().get(2).is_some_and(u8::is_ascii_digit)
-}
-
 /// Index of the `>` that closes an element's opening tag, skipping any `>` inside
 /// a quoted attribute value (so `<a title="a>b">` returns the *final* `>`, not the
 /// one in the title). `None` if the tag is unterminated. Used by the string-surgery
@@ -2957,6 +3008,12 @@ pub struct Attr<'a> {
     /// Byte offset of the attribute NAME in the page, for a caller that has to locate the
     /// reference it just read.
     pub at: usize,
+    /// Byte offset of the VALUE in the page — past the opening quote, when there is one.
+    /// With [`Attr::value`]'s length this is the exact span to splice a replacement into,
+    /// which is what lets [`rewrite_attr_in_tags`] rewrite every quoting form in place
+    /// rather than re-find a `name="` needle it can only spell one way. Points just past
+    /// the name for a valueless attribute, where the empty value notionally sits.
+    pub value_at: usize,
 }
 
 /// The elements whose content is raw TEXT rather than markup, so [`tags`] steps over it
@@ -3134,18 +3191,19 @@ impl<'a> Iterator for Attrs<'a> {
                     name,
                     value: "",
                     at: self.base + name_at,
+                    value_at: self.base + self.i,
                 });
             }
             j += 1;
             while j < b.len() && b[j].is_ascii_whitespace() {
                 j += 1;
             }
-            let (value, next) = match b.get(j) {
+            let (value, value_at, next) = match b.get(j) {
                 Some(&q @ (b'"' | b'\'')) => {
                     let start = j + 1;
                     match self.body[start..].find(q as char) {
-                        Some(len) => (&self.body[start..start + len], start + len + 1),
-                        None => (&self.body[start..], b.len()), // unterminated
+                        Some(len) => (&self.body[start..start + len], start, start + len + 1),
+                        None => (&self.body[start..], start, b.len()), // unterminated
                     }
                 }
                 Some(_) => {
@@ -3153,62 +3211,73 @@ impl<'a> Iterator for Attrs<'a> {
                         .iter()
                         .position(u8::is_ascii_whitespace)
                         .map_or(b.len(), |n| j + n);
-                    (&self.body[j..end], end)
+                    (&self.body[j..end], j, end)
                 }
-                None => ("", b.len()),
+                None => ("", b.len(), b.len()),
             };
             self.i = next;
             return Some(Attr {
                 name,
                 value,
                 at: self.base + name_at,
+                value_at: self.base + value_at,
             });
         }
     }
 }
 
-/// Rewrite the value of every `attr` that sits inside a real element tag, leaving the
-/// document's visible TEXT untouched. `attr` carries its own opening delimiter, e.g.
-/// `" id=\""` or `"href=\""`; `rewrite` is handed each value and returns its replacement.
+/// The value of the attribute called `name` on `tag`, matched case-insensitively as HTML
+/// does. `None` when the tag does not carry it; `Some("")` for a valueless one.
+pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<&'a str> {
+    attrs(tag)
+        .find(|a| a.name.eq_ignore_ascii_case(name))
+        .map(|a| a.value)
+}
+
+/// Every value of the attribute called `name`, over every element tag in `html`, in
+/// document order — the read half of the one-walker rule, and the reason no validator needs
+/// its own `find("id=\"")`.
 ///
-/// Tag-versus-text is [`tags`]'s job — see there for the defects that made it one — so this
-/// is only the per-tag rewrite. It reads the double-quoted form alone, which is what the
-/// renderer emits and all it ever rewrites; [`attrs`] is the reader that has to take an
-/// author's hand-written spelling as it comes.
+/// Two things a needle scan cannot do, and both are defects this tree has had: the name is
+/// matched as a NAME, so `data-block-id="…"` is not an `id`, and the value is read in
+/// whichever of HTML's three quoting forms the author wrote it in.
+pub(crate) fn attr_values<'a>(html: &'a str, name: &'a str) -> impl Iterator<Item = &'a str> {
+    tags(html)
+        .flat_map(|t| attrs(&t))
+        .filter(move |a| a.name.eq_ignore_ascii_case(name))
+        .map(|a| a.value)
+}
+
+/// Rewrite the value of every attribute called `name` that sits inside a real element tag,
+/// leaving the document's visible TEXT untouched. `rewrite` is handed each value and
+/// returns its replacement, which is spliced in between the delimiters the author used.
+///
+/// Tag-versus-text is [`tags`]'s job — see there for the defects that made it one — and the
+/// three quoting forms are [`attrs`]'s, which is why this takes a NAME and not a `name="`
+/// needle. It spelled one until 2026-08-26, and so rewrote the double-quoted form alone:
+/// a hand-written `<a href='other.tmd'>` kept its `.tmd` href, which then drove the build's
+/// walker-based scraper to publish that page's raw source into the deploy, and a
+/// `<div id='dup'>` sharing an id with a real element was neither renamed nor reported.
+/// Raw HTML is in the trust model, so the author's spelling is not the renderer's to assume.
 pub(crate) fn rewrite_attr_in_tags(
     html: &str,
-    attr: &str,
+    name: &str,
     mut rewrite: impl FnMut(&str) -> String,
 ) -> String {
     let mut out = String::with_capacity(html.len());
     let mut cursor = 0;
     for tag in tags(html) {
-        out.push_str(&html[cursor..tag.at]);
-        out.push_str(&rewrite_attr_in_one_tag(tag.text, attr, &mut rewrite));
-        cursor = tag.at + tag.text.len();
+        for a in attrs(&tag) {
+            // A valueless attribute has nothing to rewrite and no span to rewrite it into.
+            if a.value.is_empty() || !a.name.eq_ignore_ascii_case(name) {
+                continue;
+            }
+            out.push_str(&html[cursor..a.value_at]);
+            out.push_str(&rewrite(a.value));
+            cursor = a.value_at + a.value.len();
+        }
     }
     out.push_str(&html[cursor..]);
-    out
-}
-
-/// [`rewrite_attr_in_tags`] for one already-isolated tag.
-fn rewrite_attr_in_one_tag(
-    tag: &str,
-    attr: &str,
-    rewrite: &mut impl FnMut(&str) -> String,
-) -> String {
-    let mut out = String::with_capacity(tag.len());
-    let mut rest = tag;
-    while let Some(pos) = rest.find(attr) {
-        let value_at = pos + attr.len();
-        let Some(len) = rest[value_at..].find('"') else {
-            break; // an unterminated attribute: leave the remainder untouched
-        };
-        out.push_str(&rest[..value_at]);
-        out.push_str(&rewrite(&rest[value_at..value_at + len]));
-        rest = &rest[value_at + len..];
-    }
-    out.push_str(rest);
     out
 }
 

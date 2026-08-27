@@ -3563,7 +3563,7 @@ mod build_diag_tests {
         }
     }
 
-    /// `render` must flag kernel-executed cells (python/r) — but not `{js}` cells,
+    /// `render` must flag kernel-executed cells — but not `{js}` cells,
     /// which run in the browser. This pins the cell-detection predicate `cmd_render`
     /// uses, without spawning a process.
     #[test]

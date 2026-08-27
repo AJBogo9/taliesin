@@ -466,7 +466,9 @@ impl PageIncludes {
 impl RenderedDoc {
     /// Concatenated block HTML, one block per line.
     pub fn body_html(&self) -> String {
-        let mut s = String::new();
+        // Sized up front: a page body is ~290 KB of small blocks, so growing from empty
+        // is ~19 reallocations and a copy of everything written so far each time.
+        let mut s = String::with_capacity(self.blocks.iter().map(|b| b.html.len() + 1).sum());
         for b in &self.blocks {
             s.push_str(&b.html);
             s.push('\n');

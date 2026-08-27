@@ -1,6 +1,6 @@
 //! Local relative cross-file link existence validation.
 
-use super::helpers::{is_local_ref, start_line, tag_attr};
+use super::helpers::{is_local_ref, start_line};
 use crate::render::{Block, Severity, Warning};
 use std::path::Path;
 
@@ -11,18 +11,11 @@ use std::path::Path;
 /// (path + optional `#frag`), so a caller can split the path from the fragment.
 fn local_link_refs(html: &str) -> Vec<&str> {
     let mut out = Vec::new();
-    let mut i = 0;
-    while let Some(pos) = html[i..].find("<a ") {
-        let tag_start = i + pos;
-        let Some(rel_end) = html[tag_start..].find('>') else {
-            break;
-        };
-        let tag = &html[tag_start..tag_start + rel_end];
-        i = tag_start + rel_end + 1;
-        if tag.contains("tali-xref") {
-            continue; // a cross-reference, validated separately
+    for tag in crate::render::tags(html) {
+        if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
+            continue; // not a link, or a cross-reference validated separately
         }
-        let Some(val) = tag_attr(tag, "href=\"") else {
+        let Some(val) = crate::render::attr_value(&tag, "href") else {
             continue;
         };
         // A bare in-page anchor (`#frag`) is `validate_internal_anchors`'s job.
