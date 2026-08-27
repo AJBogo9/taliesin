@@ -1,6 +1,6 @@
 # live-edit benchmark results (indicative)
 
-> Indicative numbers from the author's machine, re-measured **2026-08-18**; absolute times
+> Indicative numbers from the author's machine, re-measured **2026-08-26**; absolute times
 > vary by machine and build profile (release build). Regenerate with
 > `cargo run --release -p live-edit-bench`, which also rewrites the committed
 > `RESULTS.json`. The structural rows (op counts, payload bytes, payload ratio, DOM
@@ -12,7 +12,7 @@
 > best-of-one under a best-of-twelve label. `BEST_OF` is a constant in `main.rs` now. The
 > cold-render row is deliberately exempt: only the first render in a process is cold (the
 > syntax set and the other lazy statics are built on first use), so best-of-twelve there
-> would have published ~13 ms as a "cold render" against a true ~113 ms.
+> would have published ~13 ms as a "cold render" against a true ~105 ms.
 
 What this shows, for one keystroke-sized edit to a paragraph above the cells in a real
 post: the warm server re-renders and diffs in a fraction of the cold-start time (lazy
@@ -27,9 +27,9 @@ Quarto, MyST) can match.
 
 | metric | value |
 |---|---|
-| cold full render | 113223.3 us |
-| warm edit (render + diff) | 12137.6 us |
-| diff only | 354.5 us |
+| cold full render | 105133.4 us |
+| warm edit (render + diff) | 11896.8 us |
+| diff only | 267.2 us |
 | ops emitted | 55 (insert 1, set_meta 53, update 1, remove 0) |
 | full page HTML | 287286 bytes |
 | warm-edit payload | 31930 bytes |
@@ -46,11 +46,11 @@ full HTML to recover the cross-page float numbers. So a site save costs the warm
 
 | project | pages | refresh_xrefs | per page |
 |---|---|---|---|
-| `docs/guide` | 16 | 47.6 ms | 2.98 ms |
-| `docs/internals` | 6 | 12.5 ms | 2.08 ms |
-| `corpus/tech-blog` | 17 | 56.7 ms | 3.34 ms |
+| `docs/guide` | 16 | 40.4 ms | 2.53 ms |
+| `docs/internals` | 6 | 12.2 ms | 2.03 ms |
+| `corpus/tech-blog` | 17 | 53.6 ms | 3.16 ms |
 
-Measured 2026-08-18, best of three per project, release build. The rate is flat in page
+Measured 2026-08-26, best of three per project, release build. The rate is flat in page
 count — a synthetic project of copies of the em-algorithm post (a heavy ~20 KB page with
 math and cells) measured 12.5 ms/page at 20, 50, 100 and 200 pages, i.e. **2.5 s** for a
 200-page save. At the sizes any real project here reaches, ~50 ms, this is comfortably

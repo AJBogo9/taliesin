@@ -57,21 +57,21 @@ appears here.
 
 | Measurement | Value | What it covers |
 |---|---:|---|
-| Whole-project build, `docs/internals` (6 pages) | **0.13 s** | Parse, render, highlight, math, search index, assets |
-| Whole-project build, this guide (16 pages) | **0.25 s** | Including executed cells replayed from `_freeze/` |
-| Whole-project build, `corpus/tech-blog` (17 pages) | **0.58 s** | 34.1 ms/page, the heaviest project in the tree |
-| `preview` time-to-ready, single document | **3 to 8 ms** | Process start to a serving socket |
-| `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
-| Warm edit: diff only | **0.35 ms** | The block diff for one keystroke-sized edit |
-| Warm edit: re-render + diff | **12 ms** | One document, against a 113 ms cold render of it |
+| Whole-project build, `docs/internals` (6 pages) | **0.26 s** | Parse, render, highlight, math, search index, assets |
+| Whole-project build, this guide (16 pages) | **0.45 s** | Including executed cells replayed from `_freeze/` |
+| Whole-project build, `corpus/tech-blog` (17 pages) | **0.67 s** | 39.4 ms/page, the heaviest project in the tree |
+| `preview` time-to-ready, single document | **under 1 ms** | Process start to a serving socket |
+| `preview` time-to-ready, 16-page book | **≈320 ms** | Discovery, nav, cross-reference registry, first render |
+| Warm edit: diff only | **0.27 ms** | The block diff for one keystroke-sized edit |
+| Warm edit: re-render + diff | **12 ms** | One document, against a 105 ms cold render of it |
 | Warm-edit payload | **32 KB** | Versus a 287 KB full page a reload would refetch |
-| Cross-reference refresh, this guide (16 pages) | **48 ms** | Added to every save in a *site* preview |
+| Cross-reference refresh, this guide (16 pages) | **40 ms** | Added to every save in a *site* preview |
 
-*(Build and ready figures measured 2026-08-10, best of three, release build, warm
+*(Build and ready figures measured 2026-08-26, best of three, release build, warm
 `_freeze/` cache. Each build figure is the duration the build prints for itself, and each
 page count is the one it reports (`find … -name '*.html'` is not the page count, since a
 project may ship its own `404.html` and `_`-prefixed files are never pages). The warm-edit
-and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-18, release
+and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-26, release
 build; its committed `RESULTS.md` labels them indicative (the numbers vary by machine). The
 **structural** rows it also records, the op counts and payload bytes, are deterministic and
 gated by a regression test.)*
