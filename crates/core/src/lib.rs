@@ -73,6 +73,42 @@ pub use site::{DraftMode, Page, Site};
 /// Crate version, surfaced so the server/CLI can report a single source of truth.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Start building the process-wide lazy statics in the background, so the first render
+/// does not pay for them on the critical path.
+///
+/// Three costs, all measured 2026-08-27 on a release build, all paid exactly once per
+/// process and all of them pure setup no document's content can change:
+///
+/// | | |
+/// |---|---|
+/// | syntect's bundled `SyntaxSet` | 13.1 ms |
+/// | the `two-face` extras (`ts`, `toml`) | 138.0 ms |
+/// | KaTeX's QuickJS context on the [`math`] worker | 24.7 ms |
+///
+/// Together they are the larger half of a cold `Site::discover`, which every `preview` and
+/// every `build` runs before it can show or write anything. Two threads rather than one so
+/// the syntax sets and the JS engine boot side by side; each is independent of the other
+/// and of everything the caller is about to do (parse `_site.yml`, enumerate pages, read
+/// sources), so the whole of it overlaps startup I/O instead of following it.
+///
+/// Fire-and-forget by design: nothing joins these threads and nothing waits on them. A
+/// render that arrives before they finish simply blocks on the same `OnceLock` it always
+/// did, so this can only make a run faster or leave it unchanged, never wrong. Spawn
+/// failure is ignored for the same reason — the lazy path is still there.
+pub fn prewarm() {
+    let spawn = |name: &str, f: fn()| {
+        let _ = std::thread::Builder::new()
+            .name(format!("taliesin-prewarm-{name}"))
+            .spawn(f);
+    };
+    spawn("syntax", highlight::load_syntax_sets);
+    // Renders one trivial expression, which boots the KaTeX worker thread's JS context.
+    // The result is discarded; the cost it removes is the boot, not this expression.
+    spawn("katex", || {
+        let _ = math::render("x", false);
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

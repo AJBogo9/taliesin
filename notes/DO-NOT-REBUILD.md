@@ -38,10 +38,16 @@ session to rediscover.
   did-you-mean misfires too (`thm` is exactly edit distance 2 from `tbl`). This was the open
   question under FA31; the seven theorem prefixes that used to paper over it for seven names went
   with it. Do not re-file "an unknown `@ref` should be diagnosed".
-- **The site-preview save is O(pages) and that is accepted, with an instrument (FA23, 2026-08-18).**
-  `refresh_xrefs` re-renders every page on every non-structural save: measured 47.6 ms for
-  `docs/guide` (16 pages), ~3 ms per real page, ~12.5 ms per heavy one — so ~2.5 s at 200 heavy
-  pages. `tools/live-edit-bench` carries the per-project row so the number cannot rot in prose,
+- **The site-preview save is O(pages) and that is accepted, with an instrument (FA23, 2026-08-18;
+  re-measured 2026-08-27).** `refresh_xrefs` re-renders every page on every non-structural save:
+  3.2 ms for `docs/guide` (16 pages), ~0.2 ms per page wall-clock across cores — so ~0.2 s at 200
+  heavy pages, down from 47.6 ms / ~2.5 s before 1.1.0 memoized `highlight` and made the harvest
+  concurrent. The remaining O(pages) term was costed again on 2026-08-27 and **cut a second
+  time**: content-hashing each page's harvest would make it flat, and is worth ~3 ms on the
+  largest project here against a cache field on `Site` whose key must cover source, includes,
+  chapter number and site defaults or it silently serves stale float numbers. Do not re-file it
+  without a project big enough to feel it.
+  `tools/live-edit-bench` carries the per-project row so the number cannot rot in prose,
   and `docs/guide/using/choosing.tmd` states the scaling next to the one-document warm-edit
   figure. NOT gated: a wall clock measures the machine, so it carries a date. The proposed
   registry-diff gate was declined at current scale — the comment above `refresh_xrefs` records

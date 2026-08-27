@@ -8,9 +8,19 @@ members = ["crates/core", "crates/server", "tools/live-edit-bench"]
 # Post-1.0 the promise is ordinary semver: a breaking change needs a 2.0.
 #
 # 1.0.1 changes no code: it re-cuts the Linux release asset against musl after v1.0.0's
-# glibc-linked one turned out to require GLIBC_2.39. README.md's install command names
-# this version, and `readme_install_command_names_the_current_version` binds the two.
-version = "1.0.1"
+# glibc-linked one turned out to require GLIBC_2.39.
+#
+# 1.1.0 is a MINOR bump and not a patch, for one reason: `taliesin_core::prewarm` is new
+# PUBLIC API. Nothing about the release breaks, but this crate carries no `publish = false`
+# and the promise above is ordinary semver, so additive API is a minor. The rest of that
+# change set is pure performance behind unchanged behaviour — the render memos, the single
+# KaTeX worker thread and the concurrent whole-project passes — verified by building all
+# four projects with the 1.0.1 binary and this one and diffing: 131 files, 17.5 MB,
+# byte-identical.
+#
+# README.md's install command names the current version, and
+# `readme_install_command_names_the_current_version` binds the two.
+version = "1.1.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]

@@ -78,8 +78,18 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
-  src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
-  src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes)
+  src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline), memoized on
+                   `(latex, display)`. KaTeX runs on ONE long-lived worker thread and is
+                   reached by channel: the `katex` crate keeps its JS context in a
+                   THREAD-LOCAL and `render_internal` spawns a fresh big-stack thread per
+                   render, so the ~25 ms QuickJS boot used to be paid per page of a
+                   whole-project pass. Pinned by `katex_runs_on_exactly_one_thread_…`
+  src/highlight.rs server-side syntax highlighting (syntect → `tali-hl-` scope classes),
+                   memoized on `(code, alias-resolved lang)` under a BYTE budget (a code
+                   block's html is unbounded in a way a math expression's is not). The memo
+                   is consulted BEFORE `resolve`, which is load-bearing: resolving a token
+                   the bundled set lacks deserializes the `two-face` extras, a measured
+                   138 ms. Without the memo, re-highlighting was 85% of a warm edit
   src/diagnostics/ the static validators `lint::page_static_diagnostics` runs: headings,
                    anchors, assets, media, links, the `{js}` reactive graph, a11y (alt
                    text + heading skips) and bibliography. **The keep test is "a defect
@@ -91,7 +101,14 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    front-matter parse (frontmatter.rs), books (book.rs), Atom feeds per
                    dated listing (feed.rs, which also owns `nav_ordered`), sitemap.xml +
                    robots.txt (seo.rs), the five-tag OpenGraph head (meta.rs), Cmd-K
-                   search (search.rs), cross-refs (xref.rs). ONE project per build and
+                   search (search.rs), cross-refs (xref.rs). The two whole-project render
+                   passes — `harvest_xref_numbers` and `search::build_sections`, which
+                   `discover` runs back to back and `refresh_xrefs` re-runs on every save —
+                   fan out across cores via `fanout::map_ordered`, which returns results in
+                   PAGE order (the duplicate-label rule is "first definition wins", so
+                   completion order would make a build depend on scheduling) and lets a
+                   panic propagate (`refresh_xrefs`'s all-or-nothing `catch_unwind` needs
+                   it). ONE project per build and
                    ONE PROJECT PER DEPLOY: the four sites publish separately and link by
                    absolute URL (tools/publish.sh)
   assets/          bundled offline: css/ (base, dark, site), js/ (code-enhance/
@@ -219,6 +236,11 @@ cargo test -p taliesin-core                                    # corpus invarian
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search.js/toc-spy.js; // @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + tali-js.js + mermaid.js, strict; globals.d.ts + web-client's are merged)
 ```
+
+`main.rs` calls `taliesin_core::prewarm()` for every recognized verb before dispatch: the
+two syntax sets and the KaTeX JS context are ~176 ms of once-per-process setup that is
+otherwise paid on the first render's critical path. Fire-and-forget, so it can only make a
+run faster — nothing joins those threads and the lazy `OnceLock` path is untouched.
 
 The CLI is **six subcommands**: `preview`, `build`, `init`, `doctor`, `lsp`, `help`.
 A `taliesin` launcher on `PATH` (`~/.local/bin/taliesin`) rebuilds the release binary

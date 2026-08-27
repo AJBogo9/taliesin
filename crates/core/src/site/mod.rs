@@ -165,6 +165,7 @@ pub use book::{Book, BookEntry};
 use book::{book_pages, build_book, chapter_heading};
 mod bibliography;
 pub(crate) use bibliography::shared_for_single_doc;
+mod fanout;
 mod feed;
 mod meta;
 mod search;
@@ -1050,18 +1051,21 @@ impl Site {
     /// Whole-registry rather than per-page, which the numbers alone would allow (a float's
     /// number depends only on its own page + chapter). That is a cost decision and it is
     /// INSTRUMENTED, not asserted: `tools/live-edit-bench` measures this pass per project and
-    /// publishes the row (re-measured 2026-08-18 — `docs/guide` 16 pages / 47.6 ms,
-    /// `docs/internals` 6 pages / 12.5 ms, `corpus/tech-blog` 17 pages / 56.7 ms). Buying it
-    /// back with incremental invalidation would have to re-derive the scan's project-wide
-    /// "first definition wins" ordering to know whether a dropped anchor should fall through
-    /// to another page's definition, which is not worth it at these sizes. A page-SET change
-    /// re-runs `discover` anyway.
+    /// publishes the row (re-measured 2026-08-27 — `docs/guide` 16 pages / 3.2 ms,
+    /// `docs/internals` 6 pages / 1.6 ms, `corpus/tech-blog` 17 pages / 4.6 ms; ~12x faster
+    /// than the 2026-08-18 figures this line used to carry, from the render memos and the
+    /// concurrent harvest below). Buying it back with incremental invalidation would have to
+    /// re-derive the scan's project-wide "first definition wins" ordering to know whether a
+    /// dropped anchor should fall through to another page's definition, which is not worth it
+    /// at these sizes. A page-SET change re-runs `discover` anyway.
     ///
-    /// **The rate is flat per page (~3 ms for a real page, ~12.5 ms for a heavy one), so this
-    /// is O(pages) on EVERY save.** A 200-page project of heavy pages measured ~2.5 s. Nothing
-    /// here reaches that, and the gate is deliberately absent because a wall clock measures
-    /// the machine — but the extrapolation is the thing to check before assuming the
-    /// published one-document warm-edit figure describes a book-sized save.
+    /// **Still O(pages) on EVERY save**, at ~0.2 ms per page — but that is now wall clock
+    /// across `available_parallelism()` workers (`fanout::map_ordered`), not per-core cost,
+    /// so the same 200-page extrapolation is ~0.2 s here against the ~2.5 s it gave before.
+    /// A single-core machine gets the memos but not the fan-out. The gate is deliberately
+    /// absent because a wall clock measures the machine — but the extrapolation is the thing
+    /// to check before assuming the published one-document warm-edit figure describes a
+    /// book-sized save.
     ///
     /// Deliberately does NOT rebuild the hover index (its own second render pass over the
     /// targets): it is equally frozen today, so leaving it is no regression, and doubling
@@ -1107,11 +1111,13 @@ impl Site {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         // (anchor, number, defining page url) — the url is needed because an anchor the
         // source-scan cannot see is *inserted* here, not just enriched.
-        let mut updates: Vec<(String, String, String)> = Vec::new();
         let defaults = self.render_defaults();
-        for page in &self.pages {
+        // Concurrent across pages, but collected back in PAGE order: the duplicate-label
+        // rule below is "first definition wins", so completion order would let the winner
+        // depend on which page rendered fastest. See `fanout::map_ordered`.
+        let per_page = fanout::map_ordered(&self.pages, |page| {
             let Ok(src) = std::fs::read_to_string(&page.input) else {
-                continue;
+                return Vec::new();
             };
             let base = page.input.parent().unwrap_or(&self.root);
             let doc = render::render_document_scoped_with_site(
@@ -1120,6 +1126,7 @@ impl Site {
                 self.chapter_for(page),
                 Some(&defaults),
             );
+            let mut mine: Vec<(String, String, String)> = Vec::new();
             for (anchor, number) in doc.xref_numbers {
                 // These three conditions gate an INSERT, not just an enrich, so each has
                 // to hold on its own rather than lean on the entry already existing:
@@ -1140,10 +1147,12 @@ impl Site {
                 // enrich the target with and nothing worth inserting one for.
                 if !number.is_empty() && !anchor.starts_with("sec-") && xref::is_ref_anchor(&anchor)
                 {
-                    updates.push((anchor, number, page.url.clone()));
+                    mine.push((anchor, number, page.url.clone()));
                 }
             }
-        }
+            mine
+        });
+        let updates: Vec<(String, String, String)> = per_page.into_iter().flatten().collect();
         // Whether a label defined on two pages is already reported. The source-scan warns
         // for the anchors IT can see, so the check below covers only the ones it can't (a
         // cell label), and re-checking the list keeps a scan-warned duplicate from being

@@ -135,8 +135,10 @@ struct Project {
     /// `listing:`.
     ///
     /// Kept as a digest rather than fixed by re-discovering on every save: discovery is
-    /// ~2.2x `refresh_xrefs` (76ms vs 34ms on `docs/guide`, 119ms vs 55ms on
-    /// `corpus/tech-blog`, measured 2026-08-26), which is real money on a keystroke path
+    /// ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, 10.2ms vs 3.8ms on
+    /// `corpus/tech-blog`, warm process, re-measured 2026-08-27 — the absolutes fell ~10x
+    /// with 1.1.0's render memos and concurrent harvest, the RATIO did not move), which is
+    /// real money on a keystroke path
     /// that exists to be fast. Hashing the block of each changed file is a read and a
     /// hash, and body edits — the overwhelming majority — leave it untouched.
     front_matter: Mutex<HashMap<PathBuf, u64>>,
@@ -1774,10 +1776,12 @@ fn rebuild_project(
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
     // pages rebuilt after it MUST see the fresh registry. A re-scan plus one render per page,
-    // no code execution, so it is O(pages) on every save: 47.6ms on the largest real book
-    // (`docs/guide`, 16 pages) re-measured 2026-08-18, and ~12.5ms per page on heavy pages,
-    // which extrapolates to ~2.5s at 200 of them. `tools/live-edit-bench` carries the number
-    // per project so this comment cannot drift the way its "27ms / 20 pages" predecessor did.
+    // no code execution, so it is O(pages) on every save: 3.2ms on the largest real book
+    // (`docs/guide`, 16 pages) re-measured 2026-08-27, ~0.2ms per page wall-clock across
+    // cores, which extrapolates to ~0.2s at 200 heavy pages (it was 47.6ms / ~2.5s before
+    // 1.1.0's render memos and concurrent harvest). `tools/live-edit-bench` carries the
+    // number per project so this comment cannot drift the way its "27ms / 20 pages"
+    // predecessor did.
     // `refresh_xrefs` is all-or-nothing about a render panic, so a bad page cannot leave the
     // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
     // (unlike `build_page`) has none of its own.
@@ -2302,8 +2306,9 @@ mod project_tests {
     /// front-matter change is the defect this exists for: a listed post's `title:` never
     /// reached the index listing, on save or on reload, so the preview contradicted `build`
     /// until the server was restarted. A false positive is a re-discovery on a keystroke,
-    /// and discovery is ~2.2x `refresh_xrefs` (76ms vs 34ms on `docs/guide`, measured
-    /// 2026-08-26) — so a body edit, which is nearly every edit, must not trip it.
+    /// and discovery is ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, warm
+    /// process, re-measured 2026-08-27) — so a body edit, which is nearly every edit, must
+    /// not trip it.
     #[test]
     fn a_front_matter_edit_moves_the_record_and_a_body_edit_does_not() {
         let dir = std::env::temp_dir().join(format!("tali-fm-record-{}", std::process::id()));

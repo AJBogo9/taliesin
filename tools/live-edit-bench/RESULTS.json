@@ -1,7 +1,7 @@
 {
   "doc": {
-    "cold_render_ns": 105133371,
-    "diff_ns": 267230,
+    "cold_render_ns": 104112191,
+    "diff_ns": 211753,
     "doc": "corpus/tech-blog/posts/em-algorithm/index.tmd",
     "dom_preserved": true,
     "edit_payload_bytes": 31930,
@@ -11,26 +11,26 @@
     "remove_count": 0,
     "set_meta_count": 53,
     "update_count": 1,
-    "warm_edit_ns": 11896844
+    "warm_edit_ns": 2570809
   },
   "projects": [
     {
       "pages": 16,
       "project": "docs/guide",
-      "xref_refresh_ns": 40418260,
-      "xref_refresh_ns_per_page": 2526141
+      "xref_refresh_ns": 3189137,
+      "xref_refresh_ns_per_page": 199321
     },
     {
       "pages": 6,
       "project": "docs/internals",
-      "xref_refresh_ns": 12190432,
-      "xref_refresh_ns_per_page": 2031738
+      "xref_refresh_ns": 1567577,
+      "xref_refresh_ns_per_page": 261262
     },
     {
       "pages": 17,
       "project": "corpus/tech-blog",
-      "xref_refresh_ns": 53649065,
-      "xref_refresh_ns_per_page": 3155827
+      "xref_refresh_ns": 4619264,
+      "xref_refresh_ns_per_page": 271721
     }
   ]
 }

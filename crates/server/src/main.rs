@@ -65,6 +65,14 @@ fn main() -> ExitCode {
         }
         Some(name) => match command(name) {
             Some(c) => {
+                // Unconditionally, and before the command's own work: the syntax sets and
+                // the KaTeX JS context are ~176 ms of process-wide setup that every
+                // rendering verb pays on its critical path. Not gated on which verb this
+                // is, because a second list of verb names next to `COMMANDS` is exactly the
+                // drift the table exists to prevent — and the cost of being wrong is
+                // nothing. `prewarm` is fire-and-forget, so `init` and `help` return long
+                // before its threads matter and the process exit takes them with it.
+                taliesin_core::prewarm();
                 if c.sweeps_runtime_dirs {
                     runtime_dirs::sweep_stale_runtime_dirs();
                 }

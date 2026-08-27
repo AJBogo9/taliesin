@@ -19,13 +19,17 @@ pub(super) fn build_sections(
     targets: &HashMap<String, XrefTarget>,
     site_defaults: Option<&render::SiteDefaults>,
 ) -> Vec<(String, String)> {
-    pages
-        .iter()
-        .filter_map(|p| {
-            page_fragment(p, super::book::chapter_of(book, p), targets, site_defaults)
-                .map(|frag| (p.rel.clone(), frag))
-        })
-        .collect()
+    // Renders every page, so it fans out across cores the same way the xref harvest does.
+    // Order is kept because the index is served as one concatenated JSON array whose page
+    // order is otherwise scheduling-dependent — and a search index that reshuffles between
+    // identical builds makes every `_site/search-index.js` diff noise.
+    super::fanout::map_ordered(pages, |p| {
+        page_fragment(p, super::book::chapter_of(book, p), targets, site_defaults)
+            .map(|frag| (p.rel.clone(), frag))
+    })
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// Assemble the per-page fragments into the served `[…]` JSON array (dropping any

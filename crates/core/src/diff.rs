@@ -120,8 +120,11 @@ fn anchor_op(old: &Block, new: &Block) -> BlockOp {
 ///
 /// **Two tiers, because this is the keystroke path.** [`diff_blocks`] asks this of every
 /// matched block on every save, so answering it by walking each block's tags walks the whole
-/// page: measured on `corpus/tech-blog/posts/em-algorithm` (287 KB, 55 blocks), the diff went
-/// from 319 µs to 1704 µs and the warm edit from 11.9 ms to 13.4 ms. The walk therefore runs
+/// page: measured on `corpus/tech-blog/posts/em-algorithm` (287 KB, 55 blocks) **in 2026-08,
+/// against that day's 11.9 ms warm edit**, the diff went from 319 µs to 1704 µs and the warm
+/// edit from 11.9 ms to 13.4 ms. Those absolutes are historical — the warm edit is 2.6 ms
+/// since 1.1.0, so the rejected walk would cost proportionally far more of it now, which
+/// only strengthens the conclusion. The walk therefore runs
 /// only where the ambiguity is real. [`sourcepos_mentions`] is an upper bound and cheap; at
 /// most one mention cannot be ambiguous, because the block model gives EVERY block its own
 /// `data-sourcepos` (`crates/core/tests/corpus.rs` enforces it), so a single mention is that

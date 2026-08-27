@@ -29,11 +29,11 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is
   Markdown in your repository, and built pages are static HTML that needs no runtime.
-- **Speed, in absolutes and with no multiplier** (every figure re-measured 2026-08-26 on a
-  16-core machine). A 6-page book (`docs/internals`) builds in **0.26 s** (43 ms/page);
-  `preview` is serving in **under 1 ms** for a single document and **≈320 ms** for a
+- **Speed, in absolutes and with no multiplier** (every figure re-measured 2026-08-27 on a
+  16-core machine). A 6-page book (`docs/internals`) builds in **0.15 s** (25 ms/page);
+  `preview` is serving in **under 1 ms** for a single document and **≈90 ms** for a
   16-page book; a warm keystroke-sized edit diffs in
-  **0.27 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
+  **0.21 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
   **53** of its 55 ops are metadata-only patches that never touch a DOM node — those 53
   plus the one `insert` for the newly typed paragraph total ~3.2 KB — which is why live
   state survives the edit. These measure Taliesin's work only — a batch compiler doing a
@@ -88,7 +88,7 @@ script live inside the binary.
 | macOS, Intel | `x86_64-apple-darwin` |
 
 ```sh
-VERSION=v1.0.1
+VERSION=v1.1.0
 TARGET=x86_64-unknown-linux-musl        # your row from the table above
 BASE=https://github.com/AJBogo9/taliesin/releases/download
 
@@ -122,7 +122,7 @@ cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 **What that costs, measured 2026-08-26 on a genuine cold build, so it is not a surprise:**
 `cargo clean` followed by `cargo build --release -p taliesin-server` compiles **220 crates
 in about 48s** (16-core machine, cargo's default parallelism) and produces a single
-~30 MB self-contained binary (30,068,064 bytes; it embeds KaTeX with its fonts, the
+~30 MB self-contained binary (30,296,240 bytes, re-measured 2026-08-27; it embeds KaTeX with its fonts, the
 syntax-highlighting definitions, and every bundled stylesheet and script, which is why
 rendered pages need no network). `Cargo.lock` lists 289 packages across the whole
 workspace, higher than the 220 actually compiled because it also covers the separate

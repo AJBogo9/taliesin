@@ -14,6 +14,7 @@
 //! for the life of the process (and is shared across a site's pages).
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{LazyLock, Mutex};
 
 type Key = (String, bool);
@@ -74,7 +75,69 @@ pub fn render(latex: &str, display: bool) -> String {
     html
 }
 
+/// One KaTeX request: the expression, its mode, and where to send the HTML back.
+type Job = (String, bool, Sender<String>);
+
+/// The single thread KaTeX ever runs on.
+///
+/// The `katex` crate keeps its JS context in a **thread-local**, so the ~24.7 ms QuickJS
+/// boot is paid once per thread that renders math — and [`crate::render`] spawns a fresh
+/// big-stack thread for *every* render, so before this existed the boot was paid again on
+/// every page of a whole-project pass and on every cold document render. Measured
+/// 2026-08-27, release: a cold `Site::discover` of `corpus/tech-blog` was 497 ms for 17
+/// pages, dominated by exactly this.
+///
+/// Funnelling every miss through one long-lived worker makes it once per PROCESS instead.
+/// Serialising the calls costs nothing worth measuring — a warm KaTeX render is ~0.07 ms,
+/// and [`CACHE`] absorbs the repeats — and it holds one JS context rather than one per
+/// render thread, which is also what makes the concurrent page loops in `site` affordable.
+static KATEX: LazyLock<Option<Mutex<Sender<Job>>>> = LazyLock::new(|| {
+    let (tx, rx) = channel::<Job>();
+    std::thread::Builder::new()
+        .name("taliesin-katex".to_string())
+        .spawn(move || {
+            // Ends when the last `Sender` drops, i.e. at process exit.
+            for (latex, display, reply) in rx {
+                // The reply channel is gone when the requester was abandoned by the render
+                // watchdog; that is expected, so the send result is deliberately ignored.
+                let _ = reply.send(render_on_this_thread(&latex, display));
+            }
+        })
+        .ok()
+        .map(|_| Mutex::new(tx))
+});
+
+/// Render on the KaTeX worker, falling back to the calling thread if the worker could not
+/// be spawned or has died. The fallback is a correctness guarantee, not an optimization:
+/// math must still render (paying its own boot) on a machine that refuses a new thread.
 fn render_uncached(latex: &str, display: bool) -> String {
+    let Some(worker) = KATEX.as_ref() else {
+        return render_on_this_thread(latex, display);
+    };
+    let (reply_tx, reply_rx) = channel();
+    // The lock is held only for the send: the worker processes serially anyway, and
+    // holding it across the recv would stop callers from queueing behind each other.
+    let sent = worker
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .send((latex.to_string(), display, reply_tx))
+        .is_ok();
+    if !sent {
+        return render_on_this_thread(latex, display);
+    }
+    reply_rx
+        .recv()
+        .unwrap_or_else(|_| render_on_this_thread(latex, display))
+}
+
+fn render_on_this_thread(latex: &str, display: bool) -> String {
+    // Which thread actually booted a JS context, so `katex_runs_on_exactly_one_thread`
+    // can pin the invariant without a wall clock. Compiled out of release entirely.
+    #[cfg(test)]
+    RENDER_THREADS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(std::thread::current().id());
     let opts = katex::Opts::builder()
         .display_mode(display)
         .throw_on_error(false)
@@ -84,6 +147,10 @@ fn render_uncached(latex: &str, display: bool) -> String {
         Err(_) => fallback(latex),
     }
 }
+
+#[cfg(test)]
+static RENDER_THREADS: LazyLock<Mutex<std::collections::HashSet<std::thread::ThreadId>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
 
 fn fallback(latex: &str) -> String {
     let mut escaped = String::new();
@@ -121,6 +188,37 @@ mod tests {
     fn invalid_math_does_not_panic() {
         // throw_on_error=false: KaTeX renders the error inline rather than failing.
         let _ = render("\\frac{", false);
+    }
+
+    /// The invariant E exists for: however many threads render math, KaTeX itself runs on
+    /// exactly one, so the ~24.7 ms QuickJS boot is paid once per process rather than once
+    /// per render thread. Asserted through the recorded thread ids, not a wall clock, so it
+    /// cannot flake on a slow or a single-core machine.
+    #[test]
+    fn katex_runs_on_exactly_one_thread_however_many_threads_ask() {
+        // Distinct expressions, so every one of them MISSES the memo and reaches KaTeX.
+        std::thread::scope(|scope| {
+            for t in 0..4 {
+                scope.spawn(move || {
+                    for i in 0..3 {
+                        let html = render(&format!("z_{{{t}{i}}} + \\alpha"), false);
+                        assert!(html.contains("katex"), "expected katex markup: {html}");
+                    }
+                });
+            }
+        });
+        let threads = RENDER_THREADS.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(
+            threads.len(),
+            1,
+            "KaTeX booted a JS context on {} threads; the worker must be the only one",
+            threads.len()
+        );
+        assert_ne!(
+            threads.iter().next().copied(),
+            Some(std::thread::current().id()),
+            "the work must land on the worker, not inline on the caller"
+        );
     }
 
     #[test]

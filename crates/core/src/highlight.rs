@@ -13,7 +13,8 @@
 //! colors, and map them to a palette in CSS with a `[data-theme=dark]` override,
 //! so the light/dark toggle restyles code with no re-highlight.
 
-use std::sync::OnceLock;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
@@ -57,6 +58,17 @@ fn resolve(token: &str) -> Option<(&'static SyntaxReference, &'static SyntaxSet)
     extras().find_syntax_by_token(token).map(|s| (s, extras()))
 }
 
+/// Force both syntax sets to deserialize now, on whatever thread calls this.
+///
+/// Exists for [`crate::prewarm`]: the `two-face` extras cost a measured 138.0 ms to
+/// deserialize (2026-08-27, release) and [`resolve`] pulls them in the moment a document
+/// uses a token the bundled set lacks — `ts` and `toml`, both of which `docs/` uses on its
+/// first page. On the critical path that is a third of a whole `build docs/guide`.
+pub fn load_syntax_sets() {
+    bundled();
+    extras();
+}
+
 /// Map a markdown language token to a token the syntax sets know.
 fn alias(lang: &str) -> &str {
     match lang {
@@ -70,14 +82,107 @@ fn alias(lang: &str) -> &str {
     }
 }
 
+/// A `(code, language) -> highlighted HTML` memo, bounded by the BYTES it holds.
+///
+/// `math.rs` makes this exact argument for KaTeX and it applies here unchanged:
+/// highlighting is a pure function of its inputs, and the dev server re-renders the
+/// *whole* document on every save, so without a memo every keystroke re-runs syntect
+/// over every code block in the document. Measured on
+/// `corpus/tech-blog/posts/em-algorithm/index.tmd` (2026-08-27, release): 10.7 ms of a
+/// 12.6 ms warm render, i.e. 85% of the edit loop, spent re-deriving identical HTML.
+///
+/// Bounded by bytes rather than by `math.rs`'s entry count, because the two values have
+/// different shapes: a rendered math expression is small and bounded, a code block's HTML
+/// is whatever the author pasted. An 8192-entry cap would be a memory leak with a
+/// respectable name.
+#[derive(Default)]
+struct HighlightCache {
+    map: HashMap<Key, Arc<str>>,
+    order: VecDeque<Key>,
+    bytes: usize,
+}
+
+/// The memo key: the code, and the **alias-resolved** language token, so `js` and
+/// `javascript` share one entry instead of holding two copies of identical HTML.
+type Key = (String, String);
+
+fn key(code: &str, token: &str) -> Key {
+    (code.to_string(), token.to_string())
+}
+
+impl HighlightCache {
+    /// Insert `key -> html`, evicting oldest-first (FIFO) until `budget` bytes fit.
+    /// A no-op when the key is already present (so `order` never holds duplicates and a
+    /// re-render neither reorders the queue nor double-counts its bytes) and when one
+    /// entry alone exceeds the budget (which could otherwise evict the entire live set
+    /// to make room for something that still would not fit).
+    fn insert_bounded(&mut self, key: Key, html: Arc<str>, budget: usize) {
+        if self.map.contains_key(&key) || html.len() > budget {
+            return;
+        }
+        while self.bytes + html.len() > budget {
+            match self.order.pop_front() {
+                Some(old) => {
+                    if let Some(v) = self.map.remove(&old) {
+                        self.bytes -= v.len();
+                    }
+                }
+                None => break,
+            }
+        }
+        self.bytes += html.len();
+        self.order.push_back(key.clone());
+        self.map.insert(key, html);
+    }
+}
+
+static CACHE: LazyLock<Mutex<HighlightCache>> =
+    LazyLock::new(|| Mutex::new(HighlightCache::default()));
+
+/// 16 MiB of rendered HTML. The whole corpus plus both docs books is far under this;
+/// it exists so a pathological document cannot grow the cache without limit.
+const CACHE_BUDGET_BYTES: usize = 16 * 1024 * 1024;
+
 /// Highlight a fenced code block's `code` for `lang`, returning the inner HTML for
 /// a `<code>` element: text is HTML-escaped and wrapped in `<span class="tali-hl-…">`
 /// scope spans. An unknown/missing language (or any highlighter error) falls back
-/// to plain escaped text, so output is always valid and never panics.
+/// to plain escaped text, so output is always valid and never panics. Memoized: see
+/// [`HighlightCache`].
+///
+/// The cache is consulted BEFORE [`resolve`], which is load-bearing rather than merely
+/// tidy: resolving a token the bundled set lacks deserializes the `two-face` extras, a
+/// measured 138.6 ms. Looking up the memo first means a warm re-render of a page with a
+/// `ts` or `toml` block never touches that path at all.
 pub fn highlight(code: &str, lang: Option<&str>) -> String {
-    let Some((syntax, ss)) = lang.map(alias).and_then(resolve) else {
+    let Some(token) = lang.map(alias) else {
         return crate::render::html_escape(code);
     };
+    let k = key(code, token);
+    // The value is an `Arc<str>` so the clone taken under the lock is a refcount bump
+    // and the string copy happens outside it. That matters because the whole-project
+    // render loops (`Site::harvest_xref_numbers` and friends) run pages concurrently,
+    // so this mutex is on several threads' hot path at once.
+    let hit = CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map
+        .get(&k)
+        .cloned();
+    if let Some(html) = hit {
+        return html.to_string();
+    }
+    let Some((syntax, ss)) = resolve(token) else {
+        return crate::render::html_escape(code);
+    };
+    let html: Arc<str> = highlight_uncached(code, syntax, ss).into();
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_bounded(k, Arc::clone(&html), CACHE_BUDGET_BYTES);
+    html.to_string()
+}
+
+fn highlight_uncached(code: &str, syntax: &SyntaxReference, ss: &SyntaxSet) -> String {
     let mut hl = ClassedHTMLGenerator::new_with_class_style(syntax, ss, CLASS_STYLE);
     for line in LinesWithEndings::from(code) {
         if hl.parse_html_for_line_which_includes_newline(line).is_err() {
@@ -112,6 +217,88 @@ mod tests {
     #[test]
     fn no_language_is_plain_escaped() {
         assert_eq!(highlight("x < y", None), "x &lt; y");
+    }
+
+    /// FIFO eviction under a BYTE budget, not an entry count: a code block's rendered
+    /// HTML is unbounded in a way a math expression's is not (one pasted file is worth
+    /// thousands of `$x$`), so the cap that matters is bytes held, and `math.rs`'s
+    /// entry-count cap would let 8192 large blocks sit in memory.
+    #[test]
+    fn cache_evicts_oldest_first_and_stays_within_its_byte_budget() {
+        let mut c = HighlightCache::default();
+        for i in 0..3 {
+            c.insert_bounded(key(&i.to_string(), "rust"), "0123456789".into(), 30);
+        }
+        assert_eq!(c.map.len(), 3, "three 10-byte entries fit a 30-byte budget");
+        c.insert_bounded(key("3", "rust"), "0123456789".into(), 30);
+        assert_eq!(c.map.len(), 3, "stays bounded");
+        assert!(!c.map.contains_key(&key("0", "rust")), "oldest evicted");
+        assert!(c.map.contains_key(&key("3", "rust")), "newest kept");
+        assert!(c.map.contains_key(&key("2", "rust")), "recent kept");
+        // Re-inserting an existing key is a no-op: it must not reorder the queue or
+        // double-count its bytes (which would evict live entries on every re-render).
+        c.insert_bounded(key("2", "rust"), "different".into(), 30);
+        assert_eq!(&*c.map[&key("2", "rust")], "0123456789");
+        assert_eq!(c.order.len(), 3, "no duplicate in the eviction queue");
+        assert_eq!(c.bytes, 30, "bytes not double-counted");
+    }
+
+    /// One entry larger than the whole budget must not spin the eviction loop forever
+    /// nor evict everything to make room for something that can never fit.
+    #[test]
+    fn an_entry_larger_than_the_budget_is_not_cached_and_evicts_nothing() {
+        let mut c = HighlightCache::default();
+        c.insert_bounded(key("keep", "rust"), "0123456789".into(), 30);
+        c.insert_bounded(key("huge", "rust"), "x".repeat(31).into(), 30);
+        assert!(
+            c.map.contains_key(&key("keep", "rust")),
+            "live entry survives"
+        );
+        assert!(
+            !c.map.contains_key(&key("huge", "rust")),
+            "oversized not cached"
+        );
+        assert_eq!(c.bytes, 10);
+    }
+
+    /// The memo must be transparent (same input -> identical output) and keyed on the
+    /// RESOLVED token, so `js` and `javascript` share one entry rather than aliasing
+    /// to different ones — and so `python` never serves a `rust` block's HTML.
+    #[test]
+    fn memoized_highlight_is_stable_and_keyed_on_the_resolved_language() {
+        let code = "let x = 1;\n";
+        let first = highlight(code, Some("js"));
+        let second = highlight(code, Some("js"));
+        assert_eq!(first, second, "memoized highlight must be stable");
+        assert_eq!(
+            highlight(code, Some("javascript")),
+            first,
+            "`js` aliases to `javascript`: one cache entry, not two"
+        );
+        assert_ne!(
+            highlight(code, Some("rust")),
+            first,
+            "a different language must be a distinct cache entry"
+        );
+    }
+
+    /// The point of the memo: a repeat call does no syntect work. Asserted through the
+    /// cache's own state rather than a wall clock, so it cannot flake on a slow machine.
+    #[test]
+    fn a_repeated_highlight_is_served_from_the_cache() {
+        let code = "fn unique_to_this_test() -> u8 { 7 }\n";
+        let k = key(code, "rust");
+        let _ = highlight(code, Some("rust"));
+        let cached = {
+            let c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+            c.map.get(&k).cloned()
+        };
+        let cached = cached.expect("first highlight populates the cache");
+        assert_eq!(
+            highlight(code, Some("rust")),
+            *cached,
+            "second call is the cached html"
+        );
     }
 
     /// The docs use `ts` (22 blocks) and `toml` (8). syntect's bundled set carries
