@@ -94,3 +94,7 @@ Thumbs.db
 
 # wrangler CLI local cache (account id, Pages project list); never committed
 .wrangler/
+
+# Private local memory, never commit (this repo is public)
+CLAUDE.local.md
+**/CLAUDE.local.md
