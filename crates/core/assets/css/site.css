@@ -187,7 +187,46 @@
   .tali-listing > .tali-listing-item { display: flex; margin: 0; padding: 0;
     border-bottom: 1px solid var(--tali-border); }
   .tali-listing > .tali-listing-item > .tali-card { flex: 1 1 auto; min-width: 0; }
-  .tali-card { display: flex; flex-direction: column; text-decoration: none;
+  /* THE THUMBNAIL TRAILS THE TEXT; THE ROW WRAPS ITSELF. Stacked, the image was a
+     full-width block capped at 12rem, so it reserved the whole 640px measure and filled
+     192px of it — 448px of the row, 70%, was empty beside it, and the date/title/desc then
+     started a line below. Müller-Brockmann's actual formulation is the diagnosis: "The
+     pictures must dominate the unprinted white space in such a way as to activate it
+     optically." At 30% of its own band it dominated nothing. (The practitioner term
+     "trapped white space" is folklore — it is in none of Müller-Brockmann, Bringhurst,
+     Vignelli or Lupton — so the citation above is the one that carries the claim.)
+
+     RIGHT, not left, and the reason is structural rather than perceptual. Hughes et al.
+     (2003, CIVR) eye-tracked results lists of title + description + keyframe and found no
+     difference between image-left and image-right, so scan speed does not choose the side.
+     What chooses it is that a listing is MIXED: a post with an `image:` shows one and a post
+     without simply does not (the monogram placeholder went with spec §9's cut #12). Trailing
+     is the only side on which every row's text starts at the same x whether or not that row
+     has a thumbnail — measured, title x = 393 on both. Leading would move the title's left
+     edge from row to row, which is the one thing a ruled list cannot afford. (The F-pattern
+     is not an argument here in either direction: NN/g's own 2017 follow-up calls it a
+     symptom of bad formatting rather than a design target, and it was measured on prose,
+     not on list rows.)
+
+     IT WRAPS RATHER THAN QUERIES. `flex-direction: row` alone is not a legal option: at a
+     320px viewport a fixed 12rem image leaves ~72px for a title whose shortest single word
+     ("Kruskal-Wallis") sets ~150px, which is a reproducible failure of WCAG 2.2 SC 1.4.10
+     Reflow — two-dimensional scrolling. `flex-wrap` plus a basis on the body fixes it with
+     no at-rule at all, and the switch point is arithmetic: 12rem + 1.9375rem + 18rem =
+     31.9375rem. A viewport media query would also measure the wrong box — the row is 640px
+     inside a 1425px viewport, because it sits in a track sized `min(--tali-measure, …)`.
+     Below the wrap point the row folds back to exactly the old stack, image last.
+
+     An image-less row needs NO rule of its own: it has one flex child, `flex: 1 1 18rem`
+     grows it to the full measure, and the column-gap never materialises. Do not add a
+     `:has()` branch or reserve an empty rail — a reserved rail makes a text-only row TALLER
+     than a stacked one (measured 233px vs 164px), which is the defect, not the fix. */
+  .tali-card { display: flex; flex-direction: row; flex-wrap: wrap;
+    /* flex-start, never stretch/center: stretch would break the 16/9 box, and centring
+       would drop the image off the shared top datum the rows are read down. */
+    align-items: flex-start;
+    column-gap: var(--tali-u); row-gap: calc(.5 * var(--tali-u));
+    text-decoration: none;
     color: var(--tali-fg); padding: var(--tali-u) 0;
     transition: background var(--tali-dur) ease; }
   /* Hover changes a GROUND and nothing else — it may not move anything (spec §3), and the
@@ -196,9 +235,32 @@
      title inherits `--tali-fg` from the row and the two tokens hold the same value in both
      palettes. */
   .tali-card:hover, .tali-card:focus-visible { background: var(--tali-code-bg); }
-  .tali-card-img { width: 100%; max-width: 12rem; aspect-ratio: 16 / 9; object-fit: cover;
-    display: block; margin-bottom: calc(.5 * var(--tali-u)); background: var(--tali-code-bg); }
-  .tali-card-body { display: flex; flex-direction: column; gap: calc(.25 * var(--tali-u)); }
+  /* `order: 1` and not a DOM move, so this stays a stylesheet-only change: the emitter still
+     writes the `<img>` first. That leaves the thumbnail's alt text still announced ahead of
+     the title in the row's accessible name — a pre-existing defect, not one this rule adds.
+     The fix for it is `alt=""` on a thumbnail inside a link that already carries the title,
+     or emitting the image after `.tali-card-body`; both belong to the emitter, not here.
+     `flex: 0 1 12rem` keeps the 192px size but stays SHRINKABLE, and `min-width: 0` defeats
+     the automatic minimum size a replaced element otherwise imposes — without those two the
+     row overflows at 320px and at 200% text zoom (SC 1.4.4). `max-width` is the same 12rem
+     cap as before. `width: 100%` is gone: the flex basis sets the main size now, and
+     `margin-bottom` is gone because `row-gap` restores the identical 15.5px once wrapped.
+
+     12rem is not a magic number, it is 30% of the measure: `--tali-measure` is 32em of the
+     1.25rem body = 40rem, and 12rem / 40rem = 0.30. That is the share the reading research
+     puts an image at when the text is the load-bearing column — people fixate the text and
+     treat the picture as confirmatory — so the inherited cap turns out to be the right one
+     and is kept rather than retuned. */
+  .tali-card-img { order: 1; flex: 0 1 12rem; min-width: 0;
+    max-width: 12rem; aspect-ratio: 16 / 9; object-fit: cover;
+    display: block; background: var(--tali-code-bg); }
+  /* 18rem basis: the wrap point is this plus the image basis plus the column gap, and it is
+     the number to move if the fold should happen sooner or later. `min-width: 0` lets a long
+     title break rather than force the row wider than the measure. The row must stay
+     height-auto and the description unclamped (SC 1.4.12), so a long description simply
+     makes the row taller — ragged bottoms are correct here. */
+  .tali-card-body { flex: 1 1 18rem; min-width: 0;
+    display: flex; flex-direction: column; gap: calc(.25 * var(--tali-u)); }
   .tali-card-date { display: block; font: 400 .78rem/1.3 var(--tali-font-mono);
     color: var(--tali-muted); text-transform: uppercase; letter-spacing: .053em; }
   /* A listing title is the author's own headline, at the size the prose it lists is set in.
