@@ -125,12 +125,20 @@ pub(crate) enum PathKind {
     Link,
 }
 
+/// The image-file extensions this server knows, in one place: `image:` path completion
+/// offers them, and `lsp::register_file_watchers` watches them so that creating a missing
+/// asset clears its stale "local asset not found" squiggle. There is no core const to
+/// mirror: `diagnostics::validate_local_assets` checks whatever an `<img src>` names, so
+/// this list is the server's definition of "an image file". `client.ts`'s watcher glob
+/// mirrors it (pinned by `the_companions_watcher_glob_mirrors_the_servers` in `lsp.rs`).
+pub(crate) const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"];
+
 impl PathKind {
     /// The extensions offered, or `&[]` for "any file".
     pub(crate) fn extensions(self) -> &'static [&'static str] {
         match self {
             PathKind::Bibliography => &["bib"],
-            PathKind::Image => &["png", "jpg", "jpeg", "gif", "svg", "webp", "avif"],
+            PathKind::Image => IMAGE_EXTS,
             PathKind::Link => &[],
         }
     }
@@ -562,7 +570,7 @@ fn yaml_list_item(line_prefix: &str) -> Option<String> {
 /// The [`PathKind`] of the path-valued front-matter key a list item sits under, scanning
 /// back for the nearest less-indented `key:` line.
 fn enclosing_path_key(doc_prefix: &str) -> Option<PathKind> {
-    let lines: Vec<&str> = doc_prefix.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
     let current = lines.last()?;
     let indent = current.len() - current.trim_start().len();
     for line in lines.iter().rev().skip(1) {
@@ -730,7 +738,7 @@ fn is_cell_option_line(line_prefix: &str) -> bool {
 
 /// An odd number of ``` fences before the current line ⇒ the cursor is inside a code cell.
 fn in_code_cell(doc_prefix: &str) -> bool {
-    let lines: Vec<&str> = doc_prefix.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
     let mut fences = 0;
     // Exclude the current (last) line: a `#|` opener is inside the cell it began.
     for line in lines.iter().take(lines.len().saturating_sub(1)) {
@@ -744,7 +752,7 @@ fn in_code_cell(doc_prefix: &str) -> bool {
 /// The cursor is inside the leading `---` front-matter block (opener present, not yet closed
 /// before the current line).
 fn in_frontmatter(doc_prefix: &str) -> bool {
-    let lines: Vec<&str> = doc_prefix.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
     if lines.first().map(|l| l.trim()) != Some("---") {
         return false;
     }
@@ -759,7 +767,7 @@ fn in_frontmatter(doc_prefix: &str) -> bool {
 
 /// The nearest less-indented ancestor key (a recognized nested parent) above the current line.
 fn nested_parent(doc_prefix: &str) -> Option<String> {
-    let lines: Vec<&str> = doc_prefix.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
     let current = lines.last().copied().unwrap_or("");
     let indent = current.len() - current.trim_start().len();
     if indent == 0 {
@@ -1591,6 +1599,28 @@ mod tests {
         );
         // Outside the front-matter block, a bare word is nothing.
         assert_eq!(ctx("titl", "# Heading\n\ntitl"), CompletionContext::None);
+    }
+
+    /// CommonMark ends a line at a lone `\r` too (see `lsp_pos::lines`), and the four
+    /// document-prefix scanners must count lines the same way the rest of the server does:
+    /// a `split('\n')` read each buffer below as ONE line, so the front matter was prose,
+    /// the open fence was invisible, and both ancestor-key walks found nothing.
+    #[test]
+    fn a_lone_cr_buffer_is_read_as_its_commonmark_lines() {
+        // The `---` opener is its own line, so the cursor after it is in front matter.
+        assert!(in_frontmatter("---\rtitle: x\rauthor: "));
+        // The fence above the cursor's line opened a code cell.
+        assert!(in_code_cell("```{python}\rx = 1"));
+        // `execute:` is the less-indented ancestor key of the current line.
+        assert_eq!(
+            nested_parent("---\rexecute:\r  ec").as_deref(),
+            Some("execute")
+        );
+        // The YAML list item completes under `bibliography:`, a path-valued key.
+        assert_eq!(
+            enclosing_path_key("---\rbibliography:\r  - re"),
+            Some(PathKind::Bibliography)
+        );
     }
 
     #[test]

@@ -342,6 +342,37 @@ fn listing_frontmatter_emits_post_cards() {
     // and `max_items_caps_the_cards_a_listing_renders` in `site::mod`'s tests.
 }
 
+/// T12 (2026-09-01): listing card titles are `<h2>`. The blog index's only preceding
+/// heading is its sr-only page `<h1>` (`title-block-style: none`), so the old `<h3>`
+/// cards skipped a heading level on the real blog.html — a defect the heading-skip lint
+/// structurally cannot see, because the whole listing enters the block model as one
+/// `<ul>` block. Walk the finished page through `render::tags`: the inlined CSS also
+/// spells `.tali-card-title`, so a substring scan is not evidence about the markup.
+#[test]
+fn listing_card_titles_are_h2_on_the_real_blog_index() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let blog = site.render_page("blog.tmd").expect("blog renders");
+    let cards_at = |level: &str| {
+        taliesin_core::render::tags(&blog)
+            .filter(|t| t.name.eq_ignore_ascii_case(level))
+            .filter(|t| {
+                taliesin_core::render::attrs(t).any(|a| {
+                    a.name.eq_ignore_ascii_case("class")
+                        && a.value
+                            .split_ascii_whitespace()
+                            .any(|c| c == "tali-card-title")
+                })
+            })
+            .count()
+    };
+    assert!(
+        cards_at("h2") >= 5,
+        "blog: every card title must be an <h2>, got {}",
+        cards_at("h2")
+    );
+    assert_eq!(cards_at("h3"), 0, "blog: no card title may remain an <h3>");
+}
+
 // `wide_listing_page_intro_prose_selector_targets_a_class_that_really_ships` stood here until
 // 2026-08-15. It pinned `site.css`'s "clamp a wide listing page's intro prose to the reading
 // measure" rule against keying its `:has()` off a class nothing emits. That rule is gone: a

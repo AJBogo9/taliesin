@@ -41,7 +41,7 @@ struct Block {
 
 ## Math
 
-Math renders server-side with KaTeX and ships fully offline (the fonts are inlined
+Math renders server-side with KaTeX and ships fully offline (the fonts are bundled
 at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text; display
 math stands alone; and a labelled equation is **numbered and cross-referencable**.
 Multi-line `aligned` environments work too. The discrete Fourier transform

@@ -129,11 +129,17 @@ fn register_file_watchers(
     if !dynamic {
         return Ok(());
     }
-    // The three kinds of file that change what an open page's diagnostics should say without
+    // The kinds of file that change what an open page's diagnostics should say without
     // the page itself changing: a sibling page (its anchors and ids), the project config
-    // (every rule that reads it), and a bibliography (`[@key]` resolution).
+    // (every rule that reads it), a bibliography (`[@key]` resolution), and a referenced
+    // image, because creating the file is the only fix for `local asset not found` and
+    // without a watcher the stale squiggle sticks until the next unrelated edit. The
+    // image extensions are `lsp_complete::IMAGE_EXTS`, the server's one list of them.
+    let image_glob = format!("**/*.{{{}}}", crate::lsp_complete::IMAGE_EXTS.join(","));
     let watchers: Vec<serde_json::Value> = ["**/*.tmd", "**/_site.yml", "**/*.bib"]
         .iter()
+        .copied()
+        .chain(std::iter::once(image_glob.as_str()))
         .map(|glob| serde_json::json!({ "globPattern": glob }))
         .collect();
     connection
@@ -226,6 +232,11 @@ fn main_loop(
     // now. Read by hover, so a hover over a squiggle answers with the finding under it.
     let mut published: std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>> =
         std::collections::HashMap::new();
+    // Which FOREIGN URIs (include partials) each open buffer's last publish reached, so a
+    // re-publish can retract the ones that no longer carry diagnostics: nothing else ever
+    // publishes for a partial the editor has not opened. See `publish`.
+    let mut foreign: std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Url>> =
+        std::collections::HashMap::new();
     // Messages the client has sent that we have not dispatched yet, and the ids among them a
     // `$/cancelRequest` in the same batch superseded. See [`read_batch`].
     let mut inbox: std::collections::VecDeque<Message> = std::collections::VecDeque::new();
@@ -253,7 +264,15 @@ fn main_loop(
                     for uri in pending.take() {
                         if let Some(text) = docs.get(&uri) {
                             match crate::serve::guarded(|| {
-                                publish(connection, &mut sites, &mut published, &uri, text)
+                                publish(
+                                    connection,
+                                    &docs,
+                                    &mut sites,
+                                    &mut published,
+                                    &mut foreign,
+                                    &uri,
+                                    text,
+                                )
                             }) {
                                 Ok(Ok(())) => {}
                                 Ok(Err(e)) => crate::log::error(&format!(
@@ -381,6 +400,7 @@ fn main_loop(
                         &mut docs,
                         &mut sites,
                         &mut published,
+                        &mut foreign,
                         &mut pending,
                         debounce,
                         notif,
@@ -525,6 +545,7 @@ fn handle_notification(
     docs: &mut std::collections::HashMap<lsp_types::Url, String>,
     sites: &mut crate::lsp_project::SiteCache,
     published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
+    foreign: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Url>>,
     pending: &mut PendingPublishes,
     debounce: std::time::Duration,
     notif: lsp_server::Notification,
@@ -551,7 +572,15 @@ fn handle_notification(
         if p.text_document.language_id == "taliesin" || is_tmd_uri(&p.text_document.uri) {
             let uri = p.text_document.uri;
             docs.insert(uri.clone(), p.text_document.text);
-            publish(connection, sites, published, &uri, &docs[&uri])?;
+            publish(
+                connection,
+                docs,
+                sites,
+                published,
+                foreign,
+                &uri,
+                &docs[&uri],
+            )?;
         } else {
             crate::log::warn(&format!(
                 "lsp: ignoring {} (languageId {:?} is not `taliesin` and the path is not .tmd)",
@@ -601,6 +630,31 @@ fn handle_notification(
         // We own the collection the editor is showing, so closing the buffer has to empty
         // it: nothing else ever will.
         publish_diagnostics(connection, &p.text_document.uri, Vec::new())?;
+        // The foreign URIs this buffer's publishes reached are ours to retract too,
+        // except one the author has open in its own right: its own publishes govern it.
+        if let Some(targets) = foreign.remove(&p.text_document.uri) {
+            retract_foreign(connection, docs, published, targets)?;
+        }
+    }
+    Ok(())
+}
+
+/// Retract a parent's foreign publishes at `uris`: remove each from `published` AND send
+/// the empty publish, always together (splitting the pair desyncs hover from the
+/// squiggles), skipping any URI the author has open in its own right (its own publishes
+/// govern it, and `did_close` empties it when it goes).
+fn retract_foreign(
+    connection: &Connection,
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
+    published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
+    uris: impl IntoIterator<Item = lsp_types::Url>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    for t in uris {
+        if docs.contains_key(&t) {
+            continue;
+        }
+        published.remove(&t);
+        publish_diagnostics(connection, &t, Vec::new())?;
     }
     Ok(())
 }
@@ -1730,10 +1784,26 @@ fn is_tmd_uri(uri: &lsp_types::Url) -> bool {
 /// showing*, not a fresh lint of their own: hover, to put the `--explain` body under the
 /// squiggle the pointer is on, and the pull-diagnostic arms, which must not contradict the
 /// squiggles in the window above the Problems panel.
+///
+/// A diagnostic a validator located into an INCLUDE PARTIAL publishes under the partial's
+/// own URI (`publishDiagnostics` may target any URI), never on this buffer at the
+/// partial's line: `(source_file, line)` is one coordinate pair, and splitting it
+/// squiggled an unrelated (clamped) parent line while `build --check-only` named the
+/// partial's location. `foreign` remembers which URIs this buffer's last publish reached,
+/// so a re-publish retracts the ones that no longer carry diagnostics; nothing else ever
+/// publishes for an unopened partial. A partial that is ALSO open is SKIPPED here, the
+/// same guard the retraction below and `did_close` apply: its own publishes govern it,
+/// and this side lints the partial's on-DISK text, so publishing would overwrite a dirty
+/// buffer's fresher lint with stale-position squiggles. Two open parents including the
+/// same partial still race each other's foreign sets (last writer wins, and one parent
+/// dropping the include retracts the other's diagnostics until it republishes): accepted
+/// as transient, the next edit anywhere heals it.
 fn publish(
     connection: &Connection,
+    docs: &std::collections::HashMap<lsp_types::Url, String>,
     sites: &mut crate::lsp_project::SiteCache,
     published: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Diagnostic>>,
+    foreign: &mut std::collections::HashMap<lsp_types::Url, Vec<lsp_types::Url>>,
     uri: &lsp_types::Url,
     text: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -1746,9 +1816,31 @@ fn publish(
     // linted as a standalone document and the editor gets a strictly weaker answer than the
     // read-only preview: no broken cross-page anchors at all, and broken links described by
     // a rule that does not apply to a site page.
-    let diagnostics = crate::lsp_diag::diagnose_file(sites, &path, text);
-    published.insert(uri.clone(), diagnostics.clone());
-    publish_diagnostics(connection, uri, diagnostics)
+    let routed = crate::lsp_diag::diagnose_file(sites, &path, text);
+    published.insert(uri.clone(), routed.own.clone());
+    publish_diagnostics(connection, uri, routed.own)?;
+    let mut reached: Vec<lsp_types::Url> = Vec::new();
+    for (fpath, diags) in routed.foreign {
+        let Ok(furi) = lsp_types::Url::from_file_path(&fpath) else {
+            continue;
+        };
+        if docs.contains_key(&furi) {
+            continue;
+        }
+        published.insert(furi.clone(), diags.clone());
+        publish_diagnostics(connection, &furi, diags)?;
+        reached.push(furi);
+    }
+    // Retract the foreign URIs the previous publish reached and this one did not, except
+    // one the author has open in its own right: its own publishes govern it now.
+    if let Some(prev) = foreign.remove(uri) {
+        let stale = prev.into_iter().filter(|s| !reached.contains(s));
+        retract_foreign(connection, docs, published, stale)?;
+    }
+    if !reached.is_empty() {
+        foreign.insert(uri.clone(), reached);
+    }
+    Ok(())
 }
 
 /// Send a `textDocument/publishDiagnostics` notification (an empty vec clears squiggles).
@@ -3975,6 +4067,212 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The parent buffer includes a partial whose broken `@fig-` sits at the PARTIAL's
+    /// line 3. `(source_file, line)` is one coordinate pair: the publish used to attach
+    /// the diagnostic to the parent's URI at that line, squiggling an unrelated (clamped)
+    /// parent line while the partial's own URI got nothing, so the editor disagreed with
+    /// `build --check-only`, which names the partial's location. A foreign diagnostic
+    /// publishes under the partial's URI: `publishDiagnostics` may target any URI.
+    #[test]
+    fn an_included_partials_diagnostic_publishes_on_the_partials_own_uri_and_line() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-partial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("subsections")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: P\n").unwrap();
+        let parent_src =
+            "---\ntitle: R\n---\n\n# Intro\n\n{{< include subsections/_intro.tmd >}}\n";
+        std::fs::write(dir.join("index.tmd"), parent_src).unwrap();
+        std::fs::write(
+            dir.join("subsections/_intro.tmd"),
+            "Intro prose.\n\nSee @fig-nope for details.\n",
+        )
+        .unwrap();
+        let dir = std::fs::canonicalize(&dir).unwrap();
+        let parent_uri = Url::from_file_path(dir.join("index.tmd")).unwrap();
+        let partial_uri = Url::from_file_path(dir.join("subsections/_intro.tmd")).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        did_open(&client, &parent_uri, parent_src.to_owned());
+
+        // One publish for the buffer itself and one for the partial, in either order.
+        let mut by_uri = std::collections::HashMap::new();
+        for _ in 0..2 {
+            let p = recv_publish(&client);
+            by_uri.insert(p.uri.clone(), p.diagnostics);
+        }
+        let own = by_uri.get(&parent_uri).expect("a publish for the parent");
+        assert!(
+            own.iter()
+                .all(|d| !d.message.starts_with("broken cross-reference:")),
+            "the partial's defect must not squiggle the parent: {:?}",
+            own.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let foreign = by_uri
+            .get(&partial_uri)
+            .expect("a publish for the partial's URI");
+        let d = foreign
+            .iter()
+            .find(|d| d.message.starts_with("broken cross-reference:"))
+            .unwrap_or_else(|| panic!("no broken xref on the partial: {foreign:?}"));
+        assert_eq!(
+            d.range.start.line, 2,
+            "0-based line of `See @fig-nope` in the PARTIAL's own numbering"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A re-publish must retract a foreign URI that no longer carries diagnostics:
+    /// nothing else ever publishes for an unopened partial, so a stale squiggle
+    /// would stick there forever.
+    #[test]
+    fn a_republish_clears_the_partials_stale_foreign_diagnostics() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-partialfix-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("subsections")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: P\n").unwrap();
+        let parent_src =
+            "---\ntitle: R\n---\n\n# Intro\n\n{{< include subsections/_intro.tmd >}}\n";
+        std::fs::write(dir.join("index.tmd"), parent_src).unwrap();
+        std::fs::write(
+            dir.join("subsections/_intro.tmd"),
+            "Intro prose.\n\nSee @fig-nope for details.\n",
+        )
+        .unwrap();
+        let dir = std::fs::canonicalize(&dir).unwrap();
+        let parent_uri = Url::from_file_path(dir.join("index.tmd")).unwrap();
+        let partial_uri = Url::from_file_path(dir.join("subsections/_intro.tmd")).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        did_open(&client, &parent_uri, parent_src.to_owned());
+        for _ in 0..2 {
+            let _ = recv_publish(&client);
+        }
+
+        // The author deletes the include: the partial's diagnostics belong nowhere now.
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: DidChangeTextDocument::METHOD.to_owned(),
+                params: serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: parent_uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "---\ntitle: R\n---\n\n# Intro\n".to_owned(),
+                    }],
+                })
+                .unwrap(),
+            }))
+            .unwrap();
+
+        let mut by_uri = std::collections::HashMap::new();
+        for _ in 0..2 {
+            let p = recv_publish(&client);
+            by_uri.insert(p.uri.clone(), p.diagnostics);
+        }
+        let cleared = by_uri
+            .get(&partial_uri)
+            .expect("an empty publish retracting the partial's stale squiggles");
+        assert!(
+            cleared.is_empty(),
+            "stale foreign diagnostics must clear: {cleared:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The created-asset half of the freshness contract: a missing image draws the
+    /// "local asset not found" squiggle, the author creates the FILE (no buffer edit
+    /// anywhere), and the watched-files notification must clear it through the same
+    /// re-publish path a `.tmd` change takes. The registration test below is what
+    /// guarantees editors actually send the notification for image files at all.
+    #[test]
+    fn creating_a_missing_asset_clears_its_squiggle_via_watched_files() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-asset-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: P\n").unwrap();
+        let a_src = "---\ntitle: A\n---\n\n![system diagram](logo.png)\n";
+        std::fs::write(dir.join("a.tmd"), a_src).unwrap();
+        let dir = std::fs::canonicalize(&dir).unwrap();
+        let a_uri = Url::from_file_path(dir.join("a.tmd")).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        did_open(&client, &a_uri, a_src.to_owned());
+        let missing = |diags: &[lsp_types::Diagnostic]| {
+            diags
+                .iter()
+                .any(|d| d.message.starts_with("local asset not found"))
+        };
+        let opened = recv_publish(&client);
+        assert!(
+            missing(&opened.diagnostics),
+            "the absent image must squiggle first: {:?}",
+            opened.diagnostics
+        );
+
+        // The fix is a file APPEARING, not an edit.
+        std::fs::write(dir.join("logo.png"), b"\x89PNG\r\n").unwrap();
+        client
+            .sender
+            .send(Message::Notification(Notification {
+                method: lsp_types::notification::DidChangeWatchedFiles::METHOD.to_owned(),
+                params: serde_json::json!({
+                    "changes": [{
+                        "uri": Url::from_file_path(dir.join("logo.png")).unwrap(),
+                        "type": 1,
+                    }]
+                }),
+            }))
+            .unwrap();
+
+        let after = recv_publish(&client);
+        assert_eq!(after.uri, a_uri);
+        assert!(
+            !missing(&after.diagnostics),
+            "creating the asset must clear the squiggle: {:?}",
+            after.diagnostics
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The companion registers a watcher of its own (`client.ts`), which is why VS Code
+    /// sends `didChangeWatchedFiles` even without dynamic registration; the two glob
+    /// lists must watch the same files or the freshness fix silently diverges per editor.
+    #[test]
+    fn the_companions_watcher_glob_mirrors_the_servers() {
+        let ts = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../editor/vscode/src/client.ts"),
+        )
+        .expect("client.ts is in the tree");
+        for want in ["*.tmd", "_site.yml", "*.bib"] {
+            assert!(ts.contains(want), "client.ts watcher lost {want}");
+        }
+        for ext in crate::lsp_complete::IMAGE_EXTS {
+            assert!(
+                ts.contains(&format!("*.{ext}")),
+                "client.ts watcher misses image extension {ext}"
+            );
+        }
+    }
+
     /// Handling `didChangeWatchedFiles` only helps an editor that SENDS it, and the only
     /// reason VS Code does is that `client.ts` registers a watcher of its own. Every other
     /// editor the docs name — Neovim, Helix, Zed — sends nothing unless the server asks, so
@@ -4025,12 +4323,22 @@ mod tests {
             req.params["registrations"][0]["method"],
             "workspace/didChangeWatchedFiles"
         );
-        // The three file kinds that can invalidate an open buffer's diagnostics without the
+        // The file kinds that can invalidate an open buffer's diagnostics without the
         // buffer itself changing — the same set `client.ts` watches.
         for want in ["tmd", "_site.yml", "bib"] {
             assert!(
                 globs.iter().any(|g| g.contains(want)),
                 "no watcher covers {want}: {globs:?}"
+            );
+        }
+        // And the referenced assets: creating a missing image is the only fix for a
+        // "local asset not found" squiggle, and without a watcher for it the stale
+        // squiggle sticks until the author's next unrelated edit. One list defines
+        // which extensions count: `lsp_complete::IMAGE_EXTS`.
+        for want in crate::lsp_complete::IMAGE_EXTS {
+            assert!(
+                globs.iter().any(|g| g.contains(want)),
+                "no watcher covers image extension {want}: {globs:?}"
             );
         }
         // The client answers a registration request; the server must carry on regardless.

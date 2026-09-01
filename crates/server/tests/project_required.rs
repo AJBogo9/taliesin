@@ -152,6 +152,80 @@ fn build_and_preview_report_the_same_path_for_the_same_directory() {
     );
 }
 
+/// T11: `build note.md` used to succeed (the single-file verbs validated no input
+/// extension) while the site walker discovers only `.tmd`
+/// (`taliesin_core::ext::ACCEPTED_SOURCE_EXTS`), so the very page a single-file build
+/// rendered was silently absent from `build <dir>` output at exit 0. Both single-file
+/// verbs now refuse a non-source extension, identically, with a message derived from the
+/// walker's own constant.
+#[test]
+fn build_and_preview_refuse_a_non_source_file_identically() {
+    let dir = std::env::temp_dir().join(format!("tali-md-refusal-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("note.md"), "# A markdown note\n").unwrap();
+    let dir_s = dir.to_string_lossy().into_owned();
+    let expected_line = "note.md is not a Taliesin source document.";
+
+    let (build_ok, _o, build_err) = run_in(&dir_s, &["build", "note.md"]);
+    assert!(!build_ok, "a .md is not a source document: {build_err}");
+    assert!(
+        build_err.contains(expected_line),
+        "names the file, as typed: {build_err}"
+    );
+    assert!(
+        build_err.contains(".tmd"),
+        "names the accepted extension: {build_err}"
+    );
+    assert!(
+        !dir.join("note.html").exists(),
+        "a refused build must write nothing"
+    );
+    assert_continuations_hang_under_the_gutter(&build_err, "is not a Taliesin source document");
+
+    // Must fail before binding a port, so this returns rather than serving forever.
+    let (preview_ok, _o, preview_err) = run_in(&dir_s, &["preview", "note.md", "4399"]);
+    assert!(!preview_ok, "a .md is not a source document: {preview_err}");
+    assert!(
+        preview_err.contains(expected_line),
+        "preview must refuse with the SAME message as build: {preview_err}"
+    );
+    assert_continuations_hang_under_the_gutter(&preview_err, "is not a Taliesin source document");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_only_refuses_a_non_source_file_too() {
+    let dir = std::env::temp_dir().join(format!("tali-md-checkonly-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("note.md"), "# A markdown note\n").unwrap();
+    let dir_s = dir.to_string_lossy().into_owned();
+
+    // `--check-only` dispatches ahead of `build`'s own refusal, so it needs the same one:
+    // "no problems found" for a file the site walker cannot discover is the same silence.
+    let (ok, _o, err) = run_in(&dir_s, &["build", "note.md", "--check-only"]);
+    assert!(!ok, "check-only must refuse a .md: {err}");
+    assert!(
+        err.contains("note.md is not a Taliesin source document."),
+        "same message as build/preview: {err}"
+    );
+
+    // `--format json` keeps stdout machine-readable: the refusal is the {"error": ...} object.
+    let (ok, out, _e) = run_in(
+        &dir_s,
+        &["build", "note.md", "--check-only", "--format", "json"],
+    );
+    assert!(!ok, "the json spelling refuses too");
+    assert!(
+        out.contains("is not a Taliesin source document"),
+        "refusal reaches the json error object on stdout: {out}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The other half of Defect B: the subject path was already fixed to echo as typed, but
 /// the ANCESTOR named in the "did you mean" suggestion (`taliesin_core::site::
 /// enclosing_site_root`) canonicalizes internally, so it used to stay absolute even when

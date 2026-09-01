@@ -371,11 +371,25 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
     let (root, scope) = match target {
         Target::Project(dir) => (dir, None),
         Target::Document(file) => {
+            // Keep the as-typed spelling for the refusal below, before canonicalizing:
+            // `build` echoes the path exactly as the author typed it, and the two verbs
+            // must answer the same refusal with the same-looking path.
+            let typed = file.clone();
             let file = file.canonicalize().unwrap_or(file);
             if !file.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("no document at {}", file.display()),
+                ));
+            }
+            // A document is a source document iff its extension is accepted
+            // (`taliesin_core::ext::is_source_path`, the same vocabulary the site
+            // walker discovers by): previewing a `note.md` would show a page no
+            // `build <dir>` ever writes.
+            if !taliesin_core::ext::is_source_path(&typed) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    crate::serve::not_a_source_error(&typed, "preview"),
                 ));
             }
             match taliesin_core::site::enclosing_site_root(&file) {
@@ -1357,14 +1371,21 @@ async fn build_page(
         crate::lint::Scope::InSite,
     );
     let mut exec = exec;
+    // Exec-phase defects (an empty-output labelled figure/table cell) are only knowable
+    // after execution; carried out of the run so they merge into the same per-page
+    // `Warning -> Diagnostic` mapping the render and finish warnings take below, and the
+    // dev-menu panel shows them located instead of terminal-only.
+    let mut exec_warnings = Vec::new();
     if let Some(exec) = exec.as_mut() {
         publish_pre_exec_body(project, rel, &page, &doc.blocks);
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
+        exec_warnings = exec.take_warnings();
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
     // whole site, so it needs the site lock.
     let mut warnings = doc.warnings.clone();
+    warnings.append(&mut exec_warnings);
     let (toc, tab_title) = {
         let site = project.site.lock();
         let toc = site.finish_blocks(
@@ -2842,6 +2863,26 @@ mod session_key_tests {
         assert!(
             resolve_target(Target::at(doc)).is_ok(),
             "a lone document is not a project and needs none"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A document whose extension is not in `ACCEPTED_SOURCE_EXTS` is refused: the site
+    /// walker will never discover a `note.md`, so previewing it would show a page no
+    /// `build <dir>` ever writes.
+    #[test]
+    fn a_non_source_document_is_refused() {
+        let dir = tmp("md-doc");
+        let doc = dir.join("note.md");
+        std::fs::write(&doc, "# A markdown note\n").unwrap();
+        let err = resolve_target(Target::at(doc)).expect_err("a .md is not a source document");
+        assert!(
+            err.to_string().contains("not a Taliesin source document"),
+            "says why: {err}"
+        );
+        assert!(
+            err.to_string().contains(".tmd"),
+            "names the accepted extension: {err}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

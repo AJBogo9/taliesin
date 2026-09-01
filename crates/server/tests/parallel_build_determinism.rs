@@ -217,7 +217,8 @@ fn listing_index_reflects_all_siblings_jobs1_vs_jobs_n() {
     let index = String::from_utf8(par["index.html"].clone()).expect("index.html is utf-8");
     let mut last_pos = 0usize;
     for title in &titles_newest_first {
-        let needle = format!("class=\"tali-card-title\">{title}</h3>");
+        // Card titles emit as <h2> since 2026-09-01 (T12: heading order under the page h1).
+        let needle = format!("class=\"tali-card-title\">{title}</h2>");
         let pos = index.as_str()[last_pos..].find(&needle).unwrap_or_else(|| {
             panic!(
                 "listing index is missing sibling card `{title}` (or it is out of date-desc \

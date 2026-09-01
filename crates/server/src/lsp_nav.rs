@@ -483,7 +483,7 @@ fn strip_quotes(s: &str) -> String {
 
 /// The front-matter `bibliography:` paths (scalar or YAML list), raw as written.
 pub(crate) fn frontmatter_bib_paths(text: &str) -> Vec<String> {
-    let lines: Vec<&str> = text.split('\n').collect();
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     if lines.first().map(|l| l.trim()) != Some("---") {
         return vec![];
     }
@@ -1056,6 +1056,17 @@ mod tests {
         assert_eq!(
             frontmatter_bib_paths("bibliography: x.bib"),
             Vec::<String>::new()
+        );
+    }
+
+    /// A buffer whose lines end at a lone `\r` is four CommonMark lines (see
+    /// `lsp_pos::lines`); the `\n`-split read it as one line and found no front matter,
+    /// so every citation in the document lost hover and go-to-definition.
+    #[test]
+    fn frontmatter_bib_paths_reads_a_lone_cr_buffer() {
+        assert_eq!(
+            frontmatter_bib_paths("---\rbibliography: refs.bib\r---\r"),
+            vec!["refs.bib".to_string()]
         );
     }
 

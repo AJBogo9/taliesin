@@ -13,9 +13,9 @@
 # both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
 # and neither is silently optional — there is nothing left for them to gate.
 #
-# **TWELVE gates as of 2026-08-13** (`docs/internals --check-only` is the twelfth; it was
-# written here as eleven until 2026-08-17, which is this same paragraph's own failure mode
-# one more time). It ran eight while
+# **THIRTEEN gates as of 2026-09-01** (the README VERSION-pin check is the thirteenth;
+# the count was written here as eleven while twelve ran until 2026-08-17, which is this
+# same paragraph's own failure mode one more time). It ran eight while
 # claiming ten for two waves: the document gate (wave 9) and the composition gate (wave 11)
 # were wired into `.githooks/pre-push` and never added here, because neither can skip and so
 # neither looked like this script's problem. A gate that is simply ABSENT from the list
@@ -372,6 +372,25 @@ run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
 run_gate "portability census --verify" census.log python3 tools/portability-census.py --verify
 
 # ---------------------------------------------------------------------------
+# 12. The README's pinned install VERSION resolves to a git tag that exists.
+#
+# The install block constructs three release-asset URLs from its `VERSION=`
+# line; a pin with no tag 404s all three, and `shasum -c` then fails against a
+# "Not Found" body. v1.1.0 shipped exactly that way on 2026-09-01: the pin was
+# bumped alongside the crate version with no tag cut. `.githooks/pre-push`
+# runs the same check, so the hook stays a subset of this script.
+# ---------------------------------------------------------------------------
+readme_version_pin_has_a_tag() {
+    local v
+    v=$(sed -n 's/^VERSION=\(v[^ ]*\)$/\1/p' README.md | head -n1)
+    if [ -z "$v" ] || [ -z "$(git tag -l "$v")" ]; then
+        echo "README.md pins VERSION=${v:-<missing>} but no such git tag exists" >&2
+        return 1
+    fi
+}
+run_gate "README VERSION pin has a tag" readme-version.log readme_version_pin_has_a_tag
+
+# ---------------------------------------------------------------------------
 # Verdict
 # ---------------------------------------------------------------------------
 echo
@@ -393,6 +412,6 @@ if [ ${#SKIPPED[@]} -gt 0 ]; then
 fi
 # The count is part of the verdict, not decoration: this script ran 8 gates while
 # claiming 10 for two waves, and a bare "every gate passed" is exactly as reassuring at
-# either number. Read it against the eleven stanzas above.
+# either number. Read it against the twelve stanzas above.
 green "PASSED — every gate ran and passed (${#PASSED[@]} gates)."
 exit 0

@@ -347,7 +347,8 @@ fn ancestor_venv(dir: &Path) -> VenvSearch {
 /// and is its Jupyter kernel package importable. Never executes the user's document.
 #[derive(Debug, Clone)]
 pub struct Probe {
-    /// The interpreter binary spawned and returned a version (it exists + runs).
+    /// The interpreter spawned AND its `--version` line identified as Python. An exit
+    /// code alone is not evidence: `/bin/true` exits 0 for any argv.
     pub runs: bool,
     /// The `--version` string, trimmed, when `runs`.
     pub version: Option<String>,
@@ -359,14 +360,36 @@ pub struct Probe {
     pub error: Option<String>,
 }
 
+/// Does a `--version` line actually identify a Python? A prefix check is enough:
+/// every CPython prints `Python <digits...>`. `/bin/true --version` exits 0 with a GNU
+/// coreutils banner and a `#!/bin/sh` shim exits 0 printing nothing, so judging the
+/// call by its exit status let both probe as healthy interpreters.
+fn version_identifies_python(line: &str) -> bool {
+    line.strip_prefix("Python ")
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+}
+
+/// What the import check must print. Requiring this on stdout means the interpreter
+/// demonstrably *ran* the import — an argument-ignoring exit-0 binary satisfies the
+/// exit status without ever seeing the `-c` program.
+const IMPORT_PROBE_MARKER: &str = "taliesin-probe-ok";
+
+/// The import check passes only on exit 0 AND the marker on stdout (the pure predicate
+/// behind `probe`'s second call).
+fn import_probe_ok(exit_ok: bool, stdout: &str) -> bool {
+    exit_ok && stdout.contains(IMPORT_PROBE_MARKER)
+}
+
 /// Probe a resolved interpreter: `<bin> --version`, then an import of its Jupyter
 /// kernel package. Tolerates a missing binary / import error (never panics, never
-/// blocks `build --check-only`'s exit code).
+/// blocks `build --check-only`'s exit code). Both calls verify OUTPUT, not just exit
+/// status — see [`version_identifies_python`] and [`IMPORT_PROBE_MARKER`].
 pub fn probe(resolved: &Resolved) -> Probe {
     use std::process::Command;
     let bin = &resolved.path;
 
-    // 1. Version / runnability. A spawn failure (binary absent) is captured, not fatal.
+    // 1. Version / runnability. A spawn failure (binary absent) is captured, not fatal —
+    //    and an exit code alone proves nothing: the line itself must identify as Python.
     let (runs, version, mut error) = match Command::new(bin).arg("--version").output() {
         Ok(out) => {
             // Python prints its version on stdout (3.4+) or on stderr (older).
@@ -375,7 +398,23 @@ pub fn probe(resolved: &Resolved) -> Probe {
                 v = String::from_utf8_lossy(&out.stderr).trim().to_string();
             }
             let v = v.lines().next().unwrap_or("").trim().to_string();
-            (true, (!v.is_empty()).then_some(v), None)
+            if version_identifies_python(&v) {
+                (true, Some(v), None)
+            } else {
+                let said = if v.is_empty() {
+                    "printed no version".to_string()
+                } else {
+                    format!("said `{v}`")
+                };
+                (
+                    false,
+                    None,
+                    Some(format!(
+                        "{} did not identify as Python (`--version` {said})",
+                        bin.display()
+                    )),
+                )
+            }
         }
         Err(e) => (
             false,
@@ -385,11 +424,25 @@ pub fn probe(resolved: &Resolved) -> Probe {
     };
 
     // 2. Kernel-package import (only if the binary runs). Environment introspection
-    //    only: importing ipykernel does not run the document.
+    //    only: importing ipykernel does not run the document. Judged by the printed
+    //    marker, not by exit status, for the same reason as the version check.
     let mut kernel_pkg_ok = false;
     if runs {
-        match Command::new(bin).args(["-c", "import ipykernel"]).output() {
-            Ok(out) if out.status.success() => kernel_pkg_ok = true,
+        let check = format!("import ipykernel; print('{IMPORT_PROBE_MARKER}')");
+        match Command::new(bin).args(["-c", &check]).output() {
+            Ok(out)
+                if import_probe_ok(out.status.success(), &String::from_utf8_lossy(&out.stdout)) =>
+            {
+                kernel_pkg_ok = true
+            }
+            Ok(out) if out.status.success() => {
+                // Exit 0 without the marker: the "interpreter" swallowed `-c`.
+                error = Some(format!(
+                    "{} did not run the import check (exit 0, but no \
+                     `{IMPORT_PROBE_MARKER}` on stdout)",
+                    bin.display()
+                ));
+            }
             Ok(out) => {
                 let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 error = Some(if msg.is_empty() {
@@ -654,6 +707,105 @@ mod tests {
             p.error.is_some(),
             "a spawn failure is captured, not swallowed"
         );
+    }
+
+    #[test]
+    fn the_version_predicate_accepts_real_pythons_and_nothing_else() {
+        assert!(version_identifies_python("Python 3.12.3"));
+        assert!(version_identifies_python("Python 2.7.18"));
+        assert!(!version_identifies_python(""));
+        assert!(!version_identifies_python("true (GNU coreutils) 9.4"));
+        assert!(!version_identifies_python("Python"));
+        assert!(!version_identifies_python("Python x.y"));
+        assert!(!version_identifies_python("Pythonic 3.1"));
+    }
+
+    #[test]
+    fn the_import_predicate_needs_both_exit_zero_and_the_marker() {
+        assert!(import_probe_ok(true, "taliesin-probe-ok\n"));
+        assert!(
+            !import_probe_ok(true, ""),
+            "`/bin/true`'s shape: exit 0, nothing printed"
+        );
+        assert!(!import_probe_ok(false, "taliesin-probe-ok\n"));
+        assert!(!import_probe_ok(false, ""));
+    }
+
+    #[test]
+    fn probe_refuses_an_interpreter_that_does_not_identify_as_python() {
+        // `/bin/true` exits 0 for ANY argv: judged by exit status alone it "runs" and
+        // "has ipykernel", and doctor printed a full green bill for it while the build
+        // failed on every cell. Its `--version` output (a GNU coreutils banner) is the
+        // evidence an exit code cannot give.
+        let p = probe(&Resolved::fixed("/bin/true", Provenance::Env));
+        assert!(!p.runs, "an exit-0 non-Python must not report as runnable");
+        assert!(!p.kernel_pkg_ok);
+        assert!(p.version.is_none(), "a non-Python banner is not a version");
+        let err = p.error.expect("the mismatch is named, not swallowed");
+        assert!(
+            err.contains("did not identify as Python"),
+            "the error names the mismatch: {err}"
+        );
+    }
+
+    #[test]
+    fn probe_refuses_a_shim_that_exits_zero_printing_nothing() {
+        // The other shape of the same lie: a script that says nothing at all.
+        let dir = tree("silent-shim");
+        let shim = dir.join("python");
+        std::fs::write(&shim, b"#!/bin/sh\nexit 0\n").unwrap();
+        make_executable(&shim);
+        let p = probe_script(&shim);
+        assert!(!p.runs, "exit 0 with no version output is not a Python");
+        assert!(!p.kernel_pkg_ok);
+        let err = p.error.expect("the mismatch is named, not swallowed");
+        assert!(
+            err.contains("did not identify as Python"),
+            "the error names the mismatch: {err}"
+        );
+    }
+
+    #[test]
+    fn probe_requires_the_import_check_to_print_its_marker() {
+        // A shim that answers `--version` like a Python but swallows `-c` with exit 0:
+        // the import probe is judged by the marker it prints, never by the exit code.
+        let dir = tree("marker-shim");
+        let shim = dir.join("python");
+        std::fs::write(
+            &shim,
+            b"#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'Python 3.11.0'; fi\nexit 0\n",
+        )
+        .unwrap();
+        make_executable(&shim);
+        let p = probe_script(&shim);
+        assert!(p.runs, "it does identify as Python");
+        assert!(
+            !p.kernel_pkg_ok,
+            "exit 0 with no marker on stdout is not a successful import"
+        );
+        assert!(p.error.is_some(), "the missing marker is reported");
+    }
+
+    // Probe a just-written script, retrying ETXTBSY: on Linux a concurrently forked
+    // test child can inherit the write fd across its own exec, making the first spawn
+    // fail with "Text file busy" even though the writer already closed it.
+    fn probe_script(shim: &Path) -> Probe {
+        for _ in 0..50 {
+            let p = probe(&Resolved::fixed(shim, Provenance::Env));
+            if !p.error.as_deref().unwrap_or("").contains("Text file busy") {
+                return p;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        probe(&Resolved::fixed(shim, Provenance::Env))
+    }
+
+    // `chmod +x`, so a written shim can actually be spawned.
+    fn make_executable(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = std::fs::metadata(path).unwrap().permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(path, perm).unwrap();
     }
 
     #[test]

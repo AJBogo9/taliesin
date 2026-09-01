@@ -2032,6 +2032,14 @@ fn search_js_localizes_the_kbd_hint_off_mac() {
         super::SEARCH_JS.contains("tali-search-kbd"),
         "search.js must target the .tali-search-kbd badge to localize it"
     );
+    // WCAG 2.5.3 Label-in-Name: the rewrite changes the VISIBLE label, so it must re-sync
+    // the button's accessible name from the same string, or the two diverge on every
+    // non-Mac (visible "Ctrl K", name "Search: ⌘K").
+    assert!(
+        super::SEARCH_JS.contains("setAttribute(\"aria-label\", \"Search: \" + text)"),
+        "the localizer must update the button's aria-label from the same string it writes \
+         into the kbd"
+    );
 }
 
 #[test]
@@ -5226,6 +5234,68 @@ fn the_bundled_faces_are_literata_and_jetbrains_mono() {
     assert!(
         !FONTS_CSS_LINKED.to_ascii_lowercase().contains("newsreader"),
         "Newsreader is retired; it must not be referenced"
+    );
+}
+
+/// T6's core half, the KaTeX twin of the test above: [`KATEX_FONT_FILES`] must be exactly
+/// the woff2 set vendored on disk, the linked sheet must reference each entry in the
+/// exact `url(fonts/<name>)` form [`katex_css_linked_fonts`] rewrites (an unmatched name
+/// silently ships a sheet that fetches a face the build never wrote), and the rewrite
+/// must leave no woff2 ref behind. The inlined sheet keeps its base64: that is the
+/// single-file build's self-containment promise.
+#[test]
+fn katex_font_files_match_the_vendored_sheet_and_rewrite_cleanly() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/katex/fonts");
+    let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
+        .expect("assets/katex/fonts")
+        .filter_map(|e| {
+            let p = e.ok()?.path();
+            (p.extension()? == "woff2").then(|| p.file_name()?.to_str().map(String::from))?
+        })
+        .collect();
+    on_disk.sort();
+    let mut listed: Vec<String> = KATEX_FONT_FILES
+        .iter()
+        .map(|(n, _)| n.to_string())
+        .collect();
+    listed.sort();
+    assert_eq!(
+        listed, on_disk,
+        "KATEX_FONT_FILES drifted from assets/katex/fonts/"
+    );
+    for (name, _) in KATEX_FONT_FILES {
+        assert!(
+            KATEX_CSS_LINKED.contains(&format!("url(fonts/{name})")),
+            "katex.min.css does not reference {name} in the exact form the rewrite matches"
+        );
+    }
+    // Rewrite with the kind of hashed names a site build uses: every woff2 ref leaves,
+    // the sibling href arrives, and no base64 enters. The woff/ttf fallback refs may
+    // stay: the woff2 source is listed first in every `src:` list, so a browser never
+    // requests them (they dangle identically in the inlined sheet).
+    let hrefs: Vec<(&str, String)> = KATEX_FONT_FILES
+        .iter()
+        .map(|(n, _)| (*n, n.replace(".woff2", ".abcd.woff2")))
+        .collect();
+    let css = katex_css_linked_fonts(&hrefs);
+    assert!(
+        !css.contains("data:font"),
+        "no base64 face may remain in the linked sheet"
+    );
+    for (name, href) in &hrefs {
+        assert!(
+            !css.contains(&format!("url(fonts/{name})")),
+            "unrewritten woff2 ref: {name}"
+        );
+        assert!(
+            css.contains(&format!("url({href})")),
+            "missing rewritten ref: {href}"
+        );
+    }
+    // And the single-file sheet still carries the faces inline (mode 2 of T6).
+    assert!(
+        KATEX_CSS.contains("url(data:font/woff2;base64,"),
+        "the inlined KaTeX sheet must keep its base64 faces (single-file self-containment)"
     );
 }
 

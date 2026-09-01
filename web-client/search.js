@@ -1020,16 +1020,20 @@
   window.taliOpenSearch = open;
 
   // The `.tali-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same
-  // HTML ships to every OS. On non-Mac platforms, rewrite it to "Ctrl K". (The button's
-  // aria-keyshortcuts already lists both Control+K and Meta+K, so only the visible hint
-  // needs localizing.)
+  // HTML ships to every OS. On non-Mac platforms, rewrite it to "Ctrl K" — and re-sync the
+  // button's aria-label from the SAME string, because WCAG 2.5.3 (Label in Name) requires
+  // the accessible name to contain the visible text, so the two must never diverge. (The
+  // button's aria-keyshortcuts already lists both Control+K and Meta+K.)
   var IS_MAC = /Mac|iPhone|iPad|iPod/i.test(
     navigator.platform || navigator.userAgent || "",
   );
   function localizeSearchKbd() {
     if (IS_MAC) return;
+    var text = "Ctrl K";
     document.querySelectorAll(".tali-search-kbd").forEach(function (kbd) {
-      kbd.textContent = "Ctrl K";
+      kbd.textContent = text;
+      var btn = kbd.closest("button");
+      if (btn) btn.setAttribute("aria-label", "Search: " + text);
     });
   }
   function onReady() {

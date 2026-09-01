@@ -809,10 +809,21 @@ fn reader_facing_docs_only_name_subcommands_the_binary_answers() {
 /// This is deliberately NOT the "grep, do not trust" case. A stale path in prose costs a
 /// reader one confusing sentence; a stale version in a copy-pasteable `curl` costs them the
 /// install, silently, at the exact moment they are deciding whether the tool works at all.
+/// `v1.2.3` -> `[1, 2, 3]`; anything else (`v1.0.0-rc1`, foreign tags) is ignored rather
+/// than mis-ordered.
+fn parse_vtag(tag: &str) -> Option<Vec<u64>> {
+    let rest = tag.strip_prefix('v')?;
+    let parts: Vec<u64> = rest
+        .split('.')
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    (!parts.is_empty()).then_some(parts)
+}
+
 #[test]
-fn readme_install_command_names_the_current_version() {
+fn readme_install_command_names_the_newest_release_tag() {
     let readme = read("README.md");
-    let want = format!("VERSION=v{}", env!("CARGO_PKG_VERSION"));
     let found: Vec<&str> = readme
         .lines()
         .map(str::trim)
@@ -820,16 +831,46 @@ fn readme_install_command_names_the_current_version() {
         .collect();
     assert!(
         !found.is_empty(),
-        "README.md's install command no longer sets `{want}`. If the download block moved \
+        "README.md's install command no longer sets `VERSION=v…`. If the download block moved \
          or was reworded, move this gate with it rather than deleting it: the version in a \
          copy-pasteable URL is the one number here that 404s instead of merely reading oddly."
     );
-    for line in &found {
-        assert!(
-            line.starts_with(&want),
-            "README.md's install command says `{line}` but the workspace is at version {}. \
-             That URL resolves to nothing, so the first thing a new reader runs fails.",
-            env!("CARGO_PKG_VERSION")
+    // The pin is checked against the newest RELEASE TAG, not the workspace crate version:
+    // demanding crate-version parity is what drove the pin to v1.1.0 with no tag cut
+    // (012fd6f2), handing every reader a 404. A crate version becomes install-worthy only
+    // when its tag exists; until then the newest tag IS the version the README may promise.
+    // Tags can be absent in a shallow CI checkout, so this half runs only where they exist;
+    // `.githooks/pre-push` and `tools/gates.sh` run the same check on the author's machine.
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tags_out = std::process::Command::new("git")
+        .args(["tag", "-l", "v*"])
+        .current_dir(&repo_root)
+        .output();
+    let mut tags: Vec<Vec<u64>> = match &tags_out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter_map(|t| parse_vtag(t.trim()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    tags.sort();
+    if let Some(newest) = tags.last() {
+        let newest_s = format!(
+            "VERSION=v{}",
+            newest
+                .iter()
+                .map(u64::to_string)
+                .collect::<Vec<_>>()
+                .join(".")
         );
+        for line in &found {
+            assert!(
+                line.starts_with(&newest_s),
+                "README.md's install command says `{line}` but the newest release tag is \
+                 `{}`. A pin ahead of the tags 404s for every visitor; a pin behind them \
+                 hands out an outdated build. Cut the tag or move the pin.",
+                newest_s.trim_start_matches("VERSION=")
+            );
+        }
     }
 }

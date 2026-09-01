@@ -42,8 +42,13 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
         for val in local_img_refs(&b.html) {
-            let path = &val[..val.find(['?', '#']).unwrap_or(val.len())];
-            if path.is_empty() || path.starts_with('/') || base.join(path).is_file() {
+            // Resolved through the shared step (`render::asset_fs_path`): query/fragment
+            // stripped, `%XX` decoded — the same answer the dev server and the build's
+            // asset copier give, so `![x](my%20image.png)` beside a real `my image.png`
+            // (the spelling VS Code drag-inserts) is not reported missing while the
+            // preview serves it.
+            let path = crate::render::asset_fs_path(val);
+            if path.is_empty() || path.starts_with('/') || base.join(&path).is_file() {
                 continue;
             }
             let w = Warning::new(format!(

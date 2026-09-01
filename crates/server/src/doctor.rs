@@ -472,6 +472,36 @@ mod tests {
         assert!(c.fix.as_deref().unwrap().contains("TALIESIN_PYTHON"));
     }
 
+    /// The `/bin/true` lie, at this layer: the probe now reports an exit-0 non-Python as
+    /// not-running with the mismatch named (see `interpreter::tests`), and the existing
+    /// configured-but-broken path must turn that into a red ✗ whose detail says WHY —
+    /// never a green "ipykernel present" beside a summary promising execution.
+    #[test]
+    fn a_non_python_binary_draws_a_red_verdict_naming_the_mismatch() {
+        let p = Probe {
+            runs: false,
+            version: None,
+            kernel_pkg_ok: false,
+            error: Some(
+                "/bin/true did not identify as Python (`--version` said `true (GNU \
+                 coreutils) 9.4`)"
+                    .into(),
+            ),
+        };
+        let c = interpreter_check(&resolved("/bin/true", Provenance::Env), &p);
+        assert_eq!(c.status, Status::Error);
+        assert!(
+            c.detail.contains("did not identify as Python"),
+            "the detail names the mismatch: {}",
+            c.detail
+        );
+        assert_eq!(c.executes, Some(false));
+        assert!(
+            summary(std::slice::from_ref(&c)).contains("render as source"),
+            "the summary must not promise execution"
+        );
+    }
+
     #[test]
     fn absent_default_interpreter_only_warns() {
         // No interpreter configured (Default) and it does not run: you just don't have it.

@@ -206,3 +206,128 @@ fn single_doc_diagnostics_are_located_to_an_openable_path() {
         "the console prefixes the openable path too:\n{stderr}"
     );
 }
+
+/// The `--strict` carve-out for the offline-guarantee nudge, pinned in both directions:
+/// an external reference the author kept is deliberately NOT a `--strict` failure (it can
+/// be intentional, and the tool does not download URLs at build time), but the SAME run's
+/// `--format json` must carry the diagnostic. JSON is the machine surface, and a channel
+/// that hides a warning the console printed is the thing to fix, not the exit code.
+#[test]
+fn external_reference_warning_is_exempt_from_strict_but_present_in_json() {
+    let dir = tmp_dir("extref");
+    let doc = dir.join("doc.tmd");
+    fs::write(
+        &doc,
+        "---\ntitle: T\n---\n\nHello.\n\n<script src=\"https://cdn.test/x.js\"></script>\n",
+    )
+    .unwrap();
+
+    let out = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--strict")
+        .args(["--format", "json"])
+        .output()
+        .expect("run taliesin");
+    assert!(
+        out.status.success(),
+        "an external reference alone must not fail --strict:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json on stdout");
+    let diags = json["diagnostics"].as_array().expect("diagnostics array");
+    let ext: Vec<_> = diags
+        .iter()
+        .filter(|d| {
+            d["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("external reference not bundled")
+        })
+        .collect();
+    assert_eq!(ext.len(), 1, "the warning rides the json channel: {json}");
+    assert_eq!(ext[0]["severity"].as_str(), Some("warning"), "{json}");
+    assert!(
+        ext[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("https://cdn.test/x.js"),
+        "{json}"
+    );
+    assert!(
+        ext[0]["line"].as_u64().is_some(),
+        "located to the block that keeps the reference: {json}"
+    );
+}
+
+#[test]
+fn a_site_pages_external_reference_reaches_json_and_stays_exempt_under_strict() {
+    // T9's carve-out, on the arm tools/publish.sh actually ships: an external ref on a
+    // site page never fails --strict, and the same run's json still carries it.
+    let dir = tmp_dir("site-ext");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(
+        dir.join("index.tmd"),
+        "---\ntitle: Home\n---\n\n<script src=\"https://cdn.example.com/x.js\"></script>\n\nhello\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--no-exec")
+        .arg("--strict")
+        .args(["--format", "json"])
+        .output()
+        .expect("run taliesin");
+    assert!(
+        out.status.success(),
+        "external refs never fail --strict (the documented carve-out): {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json stdout");
+    assert!(
+        messages(&v)
+            .iter()
+            .any(|m| m.contains("external reference not bundled")),
+        "the site arm's json carries the carve-out diagnostic: {v}"
+    );
+}
+
+#[test]
+fn an_exec_only_defect_reaches_the_writing_builds_json() {
+    // Live-kernel: skipped without an interpreter; the gate script arms
+    // TALIESIN_REQUIRE_KERNEL so a silent skip cannot pass for coverage there. The tmp
+    // dir is wiped each run, so the freeze cache starts empty and the cell executes.
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    // A labelled figure cell that runs but emits nothing: the one execution-only
+    // diagnostic class. The warn line always reached the terminal; the machine surface
+    // must see what the console sees.
+    let dir = tmp_dir("exec-json");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\nSee @fig-empty.\n\n```{python}\n#| label: fig-empty\n#| fig-cap: \"empty\"\nx = 1\n```\n",
+    )
+    .unwrap();
+    let v = stdout_json(
+        taliesin()
+            .arg("build")
+            .arg(dir.join("doc.tmd"))
+            .args(["--format", "json"]),
+    );
+    assert!(
+        messages(&v)
+            .iter()
+            .any(|m| m.contains("produced no output")),
+        "the empty-labelled-float warning reaches --format json: {v}"
+    );
+}

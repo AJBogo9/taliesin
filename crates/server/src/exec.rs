@@ -361,6 +361,11 @@ pub struct Executor {
     /// in practice the dev server's websocket task, which is not blocked while this one
     /// is. See [`Executor::set_interrupt_handle`]. `None` (the default) publishes nothing.
     interrupt: Option<Arc<std::sync::atomic::AtomicU32>>,
+    /// Located warnings the LAST [`Executor::run`] discovered that only execution can
+    /// know (an empty-output labelled figure/table cell). Cleared at the start of every
+    /// run and drained by [`Executor::take_warnings`], so the caller can merge them into
+    /// the same per-page diagnostics channel the static validators feed.
+    warnings: Vec<render::Warning>,
 }
 
 impl Executor {
@@ -410,6 +415,7 @@ impl Executor {
             sink: None,
             page: None,
             interrupt: None,
+            warnings: Vec::new(),
         }
     }
 
@@ -483,6 +489,13 @@ impl Executor {
                 s.last_error.as_deref(),
             ))
         })
+    }
+
+    /// Drain the located warnings the last [`Executor::run`] produced (execution-only
+    /// defects like an empty-output labelled figure/table cell). Draining makes each
+    /// run's warnings the caller's to report exactly once.
+    pub fn take_warnings(&mut self) -> Vec<render::Warning> {
+        std::mem::take(&mut self.warnings)
     }
 
     /// The build-fatal report: this document had cells to execute, a kernel start was
@@ -578,6 +591,9 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
+        // Each run reports its own execution warnings: the last run's would otherwise
+        // outlive the edit that fixed them.
+        self.warnings.clear();
         // `--no-exec`: never touch a kernel. The cells are already rendered as source
         // in `blocks`; returning them unchanged is exactly "preview as source".
         if self.no_exec {
@@ -632,6 +648,19 @@ impl Executor {
                     // knowable now, so warn (it can't be un-burned post-execution).
                     if let Some(w) = empty_labelled_float_warning(cell, inner) {
                         crate::log::warn(&w);
+                        // Also a located per-page diagnostic (the same channel the
+                        // static validators feed), so the preview panel shows the
+                        // defect at the cell instead of it living only in the
+                        // terminal. The cell's sourcepos/source_file are the block
+                        // model's own author-file pair, so the location is already
+                        // mapped; a generated block's empty sourcepos (line 0) stays
+                        // unlocated.
+                        let warning = render::Warning::new(w);
+                        self.warnings
+                            .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                                0 => warning,
+                                line => warning.at(cell.source_file.clone(), line),
+                            });
                     }
                     continue;
                 }
@@ -689,6 +718,24 @@ impl Executor {
         };
         let code_refs: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
         let hashes = freeze::cumulative_hashes(&interp, &code_refs);
+
+        // A kernel that died while IDLE (an OOM kill, a crash between saves) is reaped
+        // BEFORE the warm-prefix record is captured for `plan()` below. `ensure_kernel`
+        // reaps too, but only when `to_run > 0` — after the capture — so a dead-idle
+        // kernel used to plan warm and then "restore" its prefix as empty strings read
+        // after the clear: upstream outputs vanished, downstream cells ran on a fresh
+        // kernel missing their state, and the record step wrote the empty prefix back
+        // as warm, replaying the damage on every unchanged rebuild. `state.ran` records
+        // state only a LIVE kernel holds (`plan()`'s "kernel variable state is never
+        // faked" property), so a dead-idle kernel plans exactly like the cold start it
+        // is.
+        if let Some(state) = self.langs.get_mut(lang)
+            && state.kernel.as_mut().is_some_and(|k| !k.is_alive())
+        {
+            crate::log::warn(&format!("{lang} kernel exited; discarding its warm state"));
+            state.kernel = None;
+            state.ran.clear();
+        }
 
         // A cell is "known" (restorable without running) when its output is on disk
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
@@ -2566,6 +2613,163 @@ mod tests {
         assert!(
             after.contains("HEALED-MARKER"),
             "post-crash cell did not re-run on the respawned kernel: {after}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_labelled_float_yields_a_located_diagnostic_not_just_a_log_line() {
+        // T5: the empty-labelled-float defect is only knowable post-execution, and it
+        // used to go to the terminal alone — the preview's diagnostics panel stayed
+        // clean while every static defect arrived located. `run` must also collect it
+        // as a located `render::Warning` (severity Warning, at the cell's own start
+        // line) that `take_warnings` hands the same per-page diagnostics channel the
+        // static validators feed.
+        //
+        // Kernel-free and deterministic, same shape as
+        // `boot_failure_restores_a_cached_run_range_cell_instead_of_clobbering_it`:
+        // the freeze is pre-seeded with an EMPTY output for the labelled cell (exactly
+        // what a real run persists for a silent cell), so the replay path hands the
+        // merge loop an empty inner without booting anything.
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test seeds.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-emptyfloat-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut ex = Executor::with_freeze(dir.join("page.json"));
+        let bogus = PathBuf::from("/nonexistent/tali-no-python-for-emptyfloat-test");
+        ex.python.path = bogus.clone();
+        let interp = interp_id("python", &bogus).await;
+        let hashes = freeze::cumulative_hashes(&interp, &["quiet()"]);
+        ex.freeze.put(hashes[0].clone(), String::new());
+
+        let mut b = python_cell_block_with("figcell", "quiet()");
+        b.sourcepos = "7:1-9:3".into();
+        if let Some(c) = b.cell.as_mut() {
+            c.figure = Some(CellFigure {
+                anchor: Some("fig-silent".into()),
+                caption: None,
+                number: "1".into(),
+            });
+        }
+        let _ = ex.run(vec![b]).await;
+
+        let warnings = ex.take_warnings();
+        let w = warnings
+            .iter()
+            .find(|w| w.message.contains("fig-silent"))
+            .expect("an empty labelled float must reach the diagnostics channel, not just the log");
+        assert_eq!(w.line, Some(7), "located at the cell's own start line");
+        assert_eq!(
+            w.file, None,
+            "a cell of the previewed doc itself carries no file"
+        );
+        assert_eq!(
+            w.severity,
+            taliesin_core::render::Severity::Warning,
+            "an empty labelled float is a warning, not an error"
+        );
+        // Drained: the caller owns each run's warnings, so they cannot double-report.
+        assert!(
+            ex.take_warnings().is_empty(),
+            "take_warnings must drain (per-run ownership)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_kernel_that_died_idle_plans_cold_instead_of_faking_the_warm_prefix() {
+        // A kernel that dies while IDLE (an OOM kill, a crash between saves) must make
+        // the next build plan COLD. `compute_outputs` captures the warm-prefix record
+        // for `plan()` before `ensure_kernel` (called only when `to_run > 0`) discovers
+        // the corpse and clears it — so without an up-front reap the dead kernel's
+        // prefix "restores" as empty strings read after the clear: upstream outputs
+        // vanish from the page, downstream cells NameError on a fresh kernel missing
+        // their state, and the record step writes the empty prefix back as warm, so
+        // the damage replays on every unchanged rebuild. That fakes exactly the kernel
+        // variable state `plan()`'s contract says is never faked.
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise dead-idle-kernel recovery; this run did not."
+            );
+            return;
+        }
+
+        let blocks = vec![
+            python_cell_block_with("b-1", "x = 40\nprint(x)"),
+            python_cell_block_with("b-2", "print(x + 1)"),
+        ];
+        let mut ex = Executor::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(blocks.clone()).await;
+        });
+        if ex.diagnostic().is_some() {
+            eprintln!("SKIPPED (kernel did not boot): cannot exercise an idle death.");
+            return;
+        }
+
+        // SIGKILL the warm kernel while it is idle (between two builds), the way an
+        // OOM kill would; then wait until the child is actually reaped, so the next
+        // run's liveness probe cannot race the kill.
+        let pid = ex
+            .langs
+            .get("python")
+            .and_then(|s| s.kernel.as_ref())
+            .and_then(Kernel::running_pid)
+            .expect("a warm executor owns a kernel with a pid");
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while ex
+            .langs
+            .get_mut("python")
+            .and_then(|s| s.kernel.as_mut())
+            .is_some_and(|k| k.is_alive())
+        {
+            assert!(Instant::now() < deadline, "SIGKILLed kernel never reaped");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        // The next save touches only the LAST cell, so the first cell sits in what the
+        // stale record claims is a restorable warm prefix.
+        let edited = vec![
+            python_cell_block_with("b-1", "x = 40\nprint(x)"),
+            python_cell_block_with("b-2", "print(x + 2)"),
+        ];
+        let out = rt.block_on(async { ex.run(edited).await });
+
+        // The upstream cell's output survives (re-run on the fresh kernel) instead of
+        // vanishing from the page.
+        let b1 = out
+            .iter()
+            .find(|b| b.id == "b-1-out")
+            .map(|b| b.html.as_str())
+            .expect("the upstream cell's output block must survive an idle kernel death");
+        assert!(b1.contains("40"), "upstream output lost: {b1}");
+        // The downstream cell ran with its upstream state re-established — no
+        // NameError that reads as an author bug.
+        let b2 = out
+            .iter()
+            .find(|b| b.id == "b-2-out")
+            .map(|b| b.html.as_str())
+            .expect("the edited cell must emit an output block");
+        assert!(
+            b2.contains("42") && !b2.contains("NameError"),
+            "the edited cell must run against re-established upstream state: {b2}"
+        );
+        // And nothing EMPTY was recorded as warm: replaying that record on the next
+        // unchanged rebuild is what made the loss stick.
+        let ran = &ex.langs.get("python").expect("python state").ran;
+        assert_eq!(
+            ran.len(),
+            2,
+            "both cells are the fresh kernel's warm record"
+        );
+        assert!(
+            ran.iter().all(|r| !r.output.trim().is_empty()),
+            "an empty output must never be recorded as warm after an idle kernel death"
         );
     }
 

@@ -33,6 +33,16 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 >
 > **This file stays the release critical path.** The two sequences are independent; the audit queue
 > is about correctness, this one is about shipping.
+>
+> **The 2026-09-01 defect queue landed the same day it was filed:
+> [2026-09-01-product-audit-backlog.md](2026-09-01-product-audit-backlog.md)**, the
+> whole-product audit's 13 confirmed critical/moderate items (3 critical), all
+> implemented, adversarially reviewed (14 review findings folded in, including a HIGH
+> sibling of the diff-ordering defect) and gate-verified on 2026-09-01. The file now
+> holds the landing record, the residuals, the two recorded author decisions (D1/D2) and
+> the refuted register. T1's fix reverted the README pin to v1.0.1; cutting a v1.1.0
+> release remains the author's call, and a new pre-push + gates check pins the README
+> VERSION to an existing tag either way.
 
 **Everything below this line predates the 2026-08-08 scope reduction and is stale in places** — its
 "Standing constraints" section was corrected on 2026-08-13 (it had named `taliesin features`,

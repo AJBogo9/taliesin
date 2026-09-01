@@ -51,8 +51,8 @@ description.
 | 2.1.1 Keyboard | **Partially supports** | The skip link and the Cmd-K palette are keyboard-first and pinned by tests, but a full keyboard walkthrough of every surface has not been run |
 | 2.4.2 Page Titled | Supports | Titles compose as `"{page} · {site}"`, page name first |
 | 2.4.4 Link Purpose | Supports | No violations. The static ambiguous-link-text lint was cut on 2026-08-08 (it named something an author reads back in the preview), so this rests on the audit rather than on a linter |
-| 2.4.6 Headings and Labels | Supports | Clean; heading-skip is linted on every page |
-| 2.5.3 Label in Name | Supports | The search control's visible `⌘K` hint is `aria-hidden`, so it is not part of the accessible name |
+| 2.4.6 Headings and Labels | Supports | Heading-skip is linted on every page. At the report date, listing pages paired the page `<h1>` with `<h3>` card titles, a skip inside the one listing block that the lint cannot see; card titles emit as `<h2>` since 2026-09-01 |
+| 2.5.3 Label in Name | Supports | The 2026-07-28 audit recorded this as failing (visible "Ctrl K", accessible name "Search"), and `aria-hidden` on the hint never satisfied 2.5.3, which is about visible text. Fixed 2026-09-01: the accessible name now contains the visible shortcut hint on every platform ("Search: ⌘K", resynced to "Search: Ctrl K" where the hint is rewritten) |
 | 3.1.1 Language of Page | Supports | Every page builder emits `<html lang="en">`, from one constant that no front matter can override |
 | 4.1.2 Name, Role, Value | **Supports** | Clean on every audited page |
 

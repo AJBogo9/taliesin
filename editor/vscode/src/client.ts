@@ -68,9 +68,15 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
     ],
     outputChannel: output,
     // A `.tmd` edit is the only thing that changes an answer, but `_site.yml` and the
-    // bibliography feed diagnostics too, so the server hears about those as well.
+    // bibliography feed diagnostics too, and a created image is what clears a stale
+    // "local asset not found" squiggle, so the server hears about all of them. The image
+    // extensions mirror `lsp_complete.rs`'s IMAGE_EXTS: the server registers the same
+    // globs itself where the editor allows dynamic registration, and the Rust test
+    // `the_companions_watcher_glob_mirrors_the_servers` pins this mirror.
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/{*.tmd,_site.yml,*.bib}"),
+      fileEvents: vscode.workspace.createFileSystemWatcher(
+        "**/{*.tmd,_site.yml,*.bib,*.png,*.jpg,*.jpeg,*.gif,*.svg,*.webp,*.avif}"
+      ),
     },
     // Completion inside a `{python}` / `{js}` cell is forwarded to whoever owns that
     // language and merged with ours. Ours still answers in a cell (that is where `#|` cell

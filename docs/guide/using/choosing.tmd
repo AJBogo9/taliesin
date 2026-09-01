@@ -35,7 +35,7 @@ the script that measured it was not, and by August its document and line counts 
 reproduced.)*
 
 **None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
-predates Taliesin, which means the 6.8% is not stranded either: it is the same syntax
+predates Taliesin, which means the 6.7% is not stranded either: it is the same syntax
 another Pandoc-family tool already parses. `.tmd` is a file extension, not a format, and
 the same argument runs backwards: a project arriving from Quarto brings its sentences,
 fenced cells, `#|` options, `:::` divs, math, citations and cross-references across
@@ -60,7 +60,7 @@ appears here.
 | Whole-project build, `docs/internals` (6 pages) | **0.15 s** | Parse, render, highlight, math, search index, assets |
 | Whole-project build, this guide (16 pages) | **0.18 s** | Including executed cells replayed from `_freeze/` |
 | Whole-project build, `corpus/tech-blog` (17 pages) | **0.33 s** | 19.1 ms/page, the heaviest project in the tree |
-| `preview` time-to-ready, single document | **under 1 ms** | Process start to a serving socket |
+| `preview` time-to-ready, single document | **≈50 ms** | Process spawn to the first HTTP 200; ≈0.5 s for a highlight-dense document |
 | `preview` time-to-ready, 16-page book | **≈90 ms** | Discovery, nav, cross-reference registry, first render |
 | Warm edit: diff only | **0.21 ms** | The block diff for one keystroke-sized edit |
 | Warm edit: re-render + diff | **2.6 ms** | One document, against a 104 ms cold render of it |
@@ -68,7 +68,12 @@ appears here.
 | Cross-reference refresh, this guide (16 pages) | **3.2 ms** | Added to every save in a *site* preview |
 
 *(Build and ready figures measured 2026-08-27, best of three, release build, warm
-`_freeze/` cache. Each build figure is the duration the build prints for itself, and each
+`_freeze/` cache. The single-document ready row was re-measured 2026-09-01, median of
+five runs, release build: wall time from spawning `taliesin preview <file> <port>` to
+the first HTTP 200 from its socket, polled every 2 ms, for a small document
+(`corpus/native-tmd.tmd`); the ≈0.5 s companion figure is `corpus/highlight.tmd`,
+highlight-dense on purpose. Each build figure is the duration the build prints for
+itself, and each
 page count is the one it reports (`find … -name '*.html'` is not the page count, since a
 project may ship its own `404.html` and `_`-prefixed files are never pages). The warm-edit
 and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-27, release

@@ -58,11 +58,11 @@ pub use render::Severity;
 /// `render::extension` itself stays crate-private.
 pub use render::extension::SHORTCODE_NAMES;
 pub use render::{
-    AssetMode, Block, ExternalAssets, FONT_FILES, FONT_PRELOAD_NAME, OutputMode,
+    AssetMode, Block, ExternalAssets, FONT_FILES, FONT_PRELOAD_NAME, KATEX_FONT_FILES, OutputMode,
     PREVIEW_MERMAID_PATH, PageParts, RenderedDoc, SEARCH_JS, TOC_SPY_JS, assemble_html_page,
     code_scripts, core_enhance_js, escape_attr, favicon_link, has_mermaid, html_escape,
-    html_page_from_doc_in_site_external, js_cell_libs_js, katex_css, mermaid_bundle_js,
-    mermaid_min_js, render_doc_to_page, render_doc_to_page_external,
+    html_page_from_doc_in_site_external, js_cell_libs_js, katex_css_linked_fonts,
+    mermaid_bundle_js, mermaid_min_js, render_doc_to_page, render_doc_to_page_external,
     render_doc_to_page_mermaid_file, render_document, render_document_scoped_with_site,
     render_document_with_includes, render_document_with_includes_scoped, render_html_page,
     render_html_page_with_includes, render_single_doc, shared_site_css,

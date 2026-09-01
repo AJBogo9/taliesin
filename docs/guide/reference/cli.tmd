@@ -104,6 +104,12 @@ A suggestion is always **printed**; only the exit code changes. `build --strict`
 same rule, so advice can never block a release, and the summary says so rather than
 reporting it as a problem beside an exit `0`.
 
+One warning is exempt from that table, deliberately: `external reference not bundled`, the
+offline-guarantee nudge a **writing** build prints when a page keeps a remote script,
+image, stylesheet or `{js}` import. Keeping one can be intentional, and the tool does not
+download URLs at build time, so the nudge is printed (and carried in `--format json`) but
+never fails the run, with or without `--strict`.
+
 ::: {.callout-warning}
 ## One thing fails a plain `build`: unparseable YAML
 
@@ -148,7 +154,8 @@ this set is kept by.
 `--strict` also exists on a **writing** build, where it means the same thing one step
 further along: it promotes a normally non-fatal build into a hard failure, so the page is
 still written but `build` exits non-zero if **any located warning** fired or **any code
-cell errored** at runtime. Advice is exempt there too. Because a writing build runs cells,
+cell errored** at runtime. Advice is exempt there too, and so is the
+`external reference not bundled` nudge above. Because a writing build runs cells,
 `--strict` adds the one thing a static lint structurally can't see (a cell that *throws*)
 on top of the located diagnostics, which makes
 `taliesin build . --check-only && taliesin build . --strict` a thorough two-stage CI gate:
@@ -207,7 +214,7 @@ and a container or a throwaway user is the right answer for *trusting* one.
 | Flag | Effect |
 |---|---|
 | `--out <dir>` | Write a portable `<dir>/index.html` + copied assets instead of a single file |
-| `--strict` | Exit non-zero if any cell errored or any located warning fired (a CI gate; the page is still written) |
+| `--strict` | Exit non-zero if any cell errored or any located warning fired, except the `external reference not bundled` nudge (a CI gate; the page is still written) |
 | `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
 | `--no-exec` | Render code cells as source instead of running them. Without it, a build whose document *has* executable cells and no usable kernel fails, so this is how to ask for source-only output on purpose |
 | `--format json` | Emit `{diagnostics: […]}` to stdout instead of only the log. It is not exclusive to `--check-only`: a writing build reports the same way |
@@ -260,7 +267,7 @@ A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**
 `index.html` straight from disk (`file://`), or zip the folder and send it. Everything
 the reader needs is copied in and works with no server and no network, **offline**:
 navigation and prev/next, the Cmd-K search across the whole book, all math (rendered to
-KaTeX at build time with the fonts inlined), the table of contents and its scrollspy,
+KaTeX at build time; the fonts ship inside the folder), the table of contents and its scrollspy,
 and any `{js}` cells (the
 `d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
 a build (it belongs to the live preview), so a reader never gets a dead outline.

@@ -1850,6 +1850,112 @@ pub const FONT_FILES: &[(&str, &[u8])] = &[
 /// iteration order, and a build could silently preload the wrong face.
 pub const FONT_PRELOAD_NAME: &str = "literata-latin-wght-normal.woff2";
 
+/// The KaTeX stylesheet with its faces left as `url(fonts/<name>.woff2)` refs instead of
+/// inlined base64: the pre-`build.rs` source, for a target that can ship the faces as
+/// their own files. See [`KATEX_FONT_FILES`] and [`katex_css_linked_fonts`].
+const KATEX_CSS_LINKED: &str = include_str!("../../assets/katex/katex.min.css");
+
+/// The 20 KaTeX math faces as `(source filename, bytes)`, so a multi-page build can
+/// content-hash and write them beside the rest of `_assets/` (T6, the math sibling of
+/// [`FONT_FILES`]'s item 150).
+///
+/// Why they leave the stylesheet at all: base64 inflates ~33% and gzips poorly, and the
+/// 20 faces were 369,346 B inside the render-blocking `katex.<hash>.css` that every math
+/// page of a site links (the source woff2 total 259,792 B, so gzip only cancels the
+/// base64 tax). As separate files the sheet drops to ~23 KB and a browser fetches only
+/// the faces a page's math actually uses.
+///
+/// This is a **per-target** choice, exactly like [`FONT_FILES`]: `build <file.tmd>`
+/// promises ONE self-contained file, so it keeps the inlined `KATEX_CSS`; only a target
+/// that already emits a sidecar `_assets/` directory uses these. Either way the faces
+/// are self-hosted and offline: no CDN, no network at render time.
+///
+/// All 20, so every `url(fonts/<name>.woff2)` in [`KATEX_CSS_LINKED`] has a matching
+/// entry: emitting a stylesheet that references a file the caller never writes is a
+/// defect (a 404 in production), the same rule [`FONT_FILES`] records for the body faces.
+pub const KATEX_FONT_FILES: &[(&str, &[u8])] = &[
+    (
+        "KaTeX_AMS-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_AMS-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Caligraphic-Bold.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Caligraphic-Bold.woff2"),
+    ),
+    (
+        "KaTeX_Caligraphic-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Caligraphic-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Fraktur-Bold.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Fraktur-Bold.woff2"),
+    ),
+    (
+        "KaTeX_Fraktur-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Fraktur-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Main-Bold.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Main-Bold.woff2"),
+    ),
+    (
+        "KaTeX_Main-BoldItalic.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Main-BoldItalic.woff2"),
+    ),
+    (
+        "KaTeX_Main-Italic.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Main-Italic.woff2"),
+    ),
+    (
+        "KaTeX_Main-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Main-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Math-BoldItalic.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Math-BoldItalic.woff2"),
+    ),
+    (
+        "KaTeX_Math-Italic.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Math-Italic.woff2"),
+    ),
+    (
+        "KaTeX_SansSerif-Bold.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_SansSerif-Bold.woff2"),
+    ),
+    (
+        "KaTeX_SansSerif-Italic.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_SansSerif-Italic.woff2"),
+    ),
+    (
+        "KaTeX_SansSerif-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_SansSerif-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Script-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Script-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Size1-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Size1-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Size2-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Size2-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Size3-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Size3-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Size4-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Size4-Regular.woff2"),
+    ),
+    (
+        "KaTeX_Typewriter-Regular.woff2",
+        include_bytes!("../../assets/katex/fonts/KaTeX_Typewriter-Regular.woff2"),
+    ),
+];
+
 /// [`FONTS_CSS_LINKED`] with each face's `url(fonts/<name>.woff2)` rewritten to the href
 /// the caller shipped it at.
 ///
@@ -2128,9 +2234,20 @@ pub fn shared_site_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
     )
 }
 
-/// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
-pub fn katex_css() -> &'static str {
-    KATEX_CSS
+/// [`KATEX_CSS_LINKED`] with each face's `url(fonts/<name>.woff2)` rewritten to the href
+/// the caller shipped it at, for the externalized `katex.<hash>.css` (T6).
+///
+/// Same contract as [`fonts_css_linked`]: an href must be relative to the STYLESHEET,
+/// not the page, so a bare hashed filename is correct at every page depth when the sheet
+/// and the faces all live in `_assets/`. The woff/ttf fallback refs are deliberately
+/// left alone: the woff2 source is listed first in every `src:` list, so a browser never
+/// requests them, exactly as in the inlined sheet where they dangle the same way.
+pub fn katex_css_linked_fonts(hrefs: &[(&str, String)]) -> String {
+    let mut css = KATEX_CSS_LINKED.to_string();
+    for (name, href) in hrefs {
+        css = css.replace(&format!("url(fonts/{name})"), &format!("url({href})"));
+    }
+    css
 }
 
 /// The base framework stylesheet (layout + reader chrome), for tests that need to
@@ -3246,6 +3363,54 @@ pub(crate) fn attr_values<'a>(html: &'a str, name: &'a str) -> impl Iterator<Ite
         .flat_map(|t| attrs(&t))
         .filter(move |a| a.name.eq_ignore_ascii_case(name))
         .map(|a| a.value)
+}
+
+/// Minimal percent-decoding for asset references and request paths (so `%20` etc. in
+/// filenames work).
+///
+/// Decodes on the byte level: slicing `s` by byte offsets (`&s[i+1..i+3]`) panics when a
+/// `%` is immediately followed by a raw multi-byte UTF-8 char (a crafted `GET /%€`), so the
+/// two hex digits are read straight from the byte buffer instead. An invalid sequence
+/// (`%zz`, a trailing `%`) stays literal.
+pub fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Some(hi) = hex_val(b[i + 1])
+            && let Some(lo) = hex_val(b[i + 2])
+        {
+            out.push(hi << 4 | lo);
+            i += 3;
+            continue;
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A single ASCII hex digit (`0-9`/`a-f`/`A-F`) as its 0-15 value, else `None`.
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// The on-disk path a local asset reference names: the ref without any `?query` /
+/// `#fragment` (a static host ignores those, so `img.png?v=2` is the file `img.png`),
+/// with `%XX` escapes decoded ([`percent_decode`]). THE shared resolution step: the
+/// local-asset validator and the build's asset copier both resolve candidates through it,
+/// so they agree with the dev server (which decodes every request path) and with any
+/// static host about which file a ref like `my%20image.png` names — the spelling VS Code
+/// inserts when a file whose name has spaces is dragged into the editor.
+pub fn asset_fs_path(r: &str) -> String {
+    percent_decode(&r[..r.find(['?', '#']).unwrap_or(r.len())])
 }
 
 /// Rewrite the value of every attribute called `name` that sits inside a real element tag,

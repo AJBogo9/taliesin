@@ -340,37 +340,13 @@ pub(crate) fn content_type(path: &Path) -> &'static str {
 
 /// Minimal percent-decoding for request paths (so `%20` etc. in filenames work).
 ///
-/// Decodes on the byte level: slicing `s` by byte offsets (`&s[i+1..i+3]`) panics when a
-/// `%` is immediately followed by a raw multi-byte UTF-8 char (a crafted `GET /%€`), so the
-/// two hex digits are read straight from the byte buffer instead.
+/// Delegates to [`taliesin_core::render::percent_decode`] — the ONE decode, also behind
+/// the local-asset validator's and the build copier's shared resolution step
+/// (`render::asset_fs_path`) — so what the preview serves and what a build ships can
+/// never disagree about which file `my%20image.png` names. See there for the byte-level
+/// details (an invalid or char-splitting escape stays literal).
 pub(crate) fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%'
-            && i + 2 < b.len()
-            && let Some(hi) = hex_val(b[i + 1])
-            && let Some(lo) = hex_val(b[i + 2])
-        {
-            out.push(hi << 4 | lo);
-            i += 3;
-            continue;
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// A single ASCII hex digit (`0-9`/`a-f`/`A-F`) as its 0-15 value, else `None`.
-fn hex_val(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
+    taliesin_core::render::percent_decode(s)
 }
 
 pub(crate) const STATUS_CSS: &str = "\
@@ -782,6 +758,29 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
     body.replace('\n', "\n          ")
 }
 
+/// The one message both `build` and `preview` print when handed a single file whose
+/// extension is not an accepted source extension. The site walker discovers `.tmd` only
+/// ([`taliesin_core::ext::ACCEPTED_SOURCE_EXTS`]), so a `note.md` the single-file verbs
+/// happily rendered was still invisible to `build <dir>` — absent from its output at
+/// exit 0. Derived from that same constant, so the two verbs and the walker can never
+/// disagree about what a source document is.
+///
+/// Two lines: name the file, name the accepted extension, suggest nothing else.
+pub(crate) fn not_a_source_error(path: &Path, verb: &str) -> String {
+    let accepted = taliesin_core::ext::ACCEPTED_SOURCE_EXTS
+        .iter()
+        .map(|e| format!(".{e}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{shown} is not a Taliesin source document.\n\
+         taliesin {verb} takes a {accepted} file.",
+        shown = path.display()
+    )
+    // Same gutter hang as `not_a_project_error`, for the same reason.
+    .replace('\n', "\n          ")
+}
+
 #[cfg(test)]
 mod protocol_contract {
     //! The protocol messages this shared layer still produces (`diagnostics`), plus the
@@ -1026,6 +1025,32 @@ mod protocol_contract {
         // ("  " + a 7-wide tag + " "), so a multi-line error reads as one block instead
         // of half a message sitting flush against the left margin (`log::error` prints
         // `"  {tag:<7} {msg}"`, and `msg.replace('\n', ...)` never runs on the first line).
+        for cont in msg.lines().skip(1) {
+            assert!(
+                cont.starts_with("          "),
+                "continuation line must hang under the 10-column gutter: {cont:?} in {msg:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn not_a_source_error_names_the_file_and_the_accepted_extension() {
+        let msg = not_a_source_error(std::path::Path::new("notes/note.md"), "build");
+        assert!(msg.contains("notes/note.md"), "names the file: {msg}");
+        // Derived from the walker's own vocabulary, so the single-file verbs and the
+        // site walker can never disagree about what a source document is.
+        for ext in taliesin_core::ext::ACCEPTED_SOURCE_EXTS {
+            assert!(
+                msg.contains(&format!(".{ext}")),
+                "names the accepted extension .{ext}: {msg}"
+            );
+        }
+        assert_eq!(
+            msg.lines().count(),
+            2,
+            "two lines, suggesting nothing else: {msg}"
+        );
+        // Same gutter-hang treatment as `not_a_project_error`, above.
         for cont in msg.lines().skip(1) {
             assert!(
                 cont.starts_with("          "),

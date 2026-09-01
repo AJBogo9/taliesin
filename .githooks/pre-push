@@ -75,6 +75,19 @@ if [ "$pushing_main" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# The README's install block pins VERSION=<tag> and constructs three
+# release-asset URLs from it. A pin with no tag 404s all three, and `shasum -c`
+# then fails against a "Not Found" body: v1.1.0 shipped exactly that way on
+# 2026-09-01, bumped alongside the crate version with no tag cut. Tiny on
+# purpose: grep the pin out of README.md, ask git whether the tag exists.
+# ---------------------------------------------------------------------------
+readme_version=$(sed -n 's/^VERSION=\(v[^ ]*\)$/\1/p' README.md | head -n1)
+if [ -z "$readme_version" ] || [ -z "$(git tag -l "$readme_version")" ]; then
+    echo "pre-push: REFUSED. README.md pins VERSION=${readme_version:-<missing>} but no such git tag exists." >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
 # Environment preflight for the suite below.
 #
 # WHY. Every live-kernel test gates on `TALIESIN_PYTHON` and *skips* when it is unset

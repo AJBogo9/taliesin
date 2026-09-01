@@ -130,6 +130,19 @@ def verify(docs: int, lines: int, beyond: int, counts: collections.Counter) -> i
     for tok in (str(docs), str(lines), f"{pct:.1f}%"):
         if tok not in rd:
             bad.append(f"{README} is missing {tok}")
+    # Absence as well as presence. A stale percentage BESIDE the current one is the rot
+    # the presence checks cannot see: the page then carries two figures and nothing tells
+    # the reader which one the instrument stands behind ("the 6.8%" sat twenty lines
+    # under the gated 6.7% exactly this way). So every percentage token in the page must
+    # be one the census computes NOW: the total, its complement, or a family share.
+    current = {f"{pct:.1f}%", f"{100 - pct:.1f}%"}
+    current.update(f"{counts[name] / lines * 100:.1f}%" for name in ORDER)
+    for tok in re.findall(r"\d+(?:\.\d+)?%", ch):
+        if tok not in current:
+            bad.append(
+                f"{CHOOSING} carries the percentage {tok}, which the census does not "
+                "compute today: a stale or foreign figure"
+            )
     for line in bad:
         print(line, file=sys.stderr)
     if bad:

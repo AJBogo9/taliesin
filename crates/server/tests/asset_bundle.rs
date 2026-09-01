@@ -534,6 +534,10 @@ fn the_conditional_bundles_are_written_only_when_a_page_links_them() {
             "no page links {stem}<hash>, so it must not be written: {prose:?}"
         );
     }
+    assert!(
+        !has(&prose, "KaTeX_"),
+        "nothing links katex.css, so its faces must not be written either: {prose:?}"
+    );
     // Control: the two unconditional files are still there, or "wrote nothing" would pass
     // this test just as well as "wrote only what is linked".
     assert!(
@@ -552,4 +556,132 @@ fn the_conditional_bundles_are_written_only_when_a_page_links_them() {
             "a page links {stem}<hash>, so it must be written: {feature:?}"
         );
     }
+    assert!(
+        has(&feature, "KaTeX_"),
+        "a page links katex.css, so its faces must be written beside it: {feature:?}"
+    );
+}
+
+/// T6, item 150's math sibling: the KaTeX sheet shipped its 20 faces as base64 inside the
+/// render-blocking `katex.<hash>.css` that every math page links: 369,346 B raw where the
+/// source woff2 total 259,792 B (base64 inflates ~33% and gzips poorly, so gzip roughly
+/// cancels the inflation and nothing more). A site build already ships the body faces as
+/// separate hashed files (item 150 above), so the math faces get the same treatment: the
+/// sheet drops to ~22 KB and a browser fetches only the faces a page's math actually uses.
+///
+/// **Per-target, not global.** `build <file.tmd>` promises ONE self-contained file, so it
+/// must keep the base64; the last assertions are what stop a future change from "fixing"
+/// this by breaking that promise.
+#[test]
+fn a_site_build_links_the_katex_faces_instead_of_inlining_260kb_of_base64() {
+    let root = std::env::temp_dir().join(format!("tali-ab-kfont-src-{}", std::process::id()));
+    let out = std::env::temp_dir().join(format!("tali-ab-kfont-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: KFonts\n").unwrap();
+    std::fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    std::fs::write(
+        root.join("sub/math.tmd"),
+        "---\ntitle: Math\n---\n\nMath $x^2 = 1$.\n",
+    )
+    .unwrap();
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    let assets = std::fs::read_dir(out.join("_assets"))
+        .expect("_assets dir")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+
+    // All 20 math faces ship as real files, content-hashed like every other shared asset.
+    let faces = assets
+        .iter()
+        .filter(|n| n.starts_with("KaTeX_") && n.ends_with(".woff2"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        faces.len(),
+        20,
+        "each KaTeX face must be its own hashed file: {assets:?}"
+    );
+
+    let katex_name = assets
+        .iter()
+        .find(|n| n.starts_with("katex.") && n.ends_with(".css"))
+        .unwrap_or_else(|| panic!("no katex.<hash>.css in {assets:?}"));
+    let katex_css = std::fs::read_to_string(out.join("_assets").join(katex_name)).unwrap();
+
+    // The point of the item: no base64 face inside the render-blocking sheet.
+    assert_eq!(
+        katex_css.matches("data:font").count(),
+        0,
+        "the math faces must not be base64 inside katex.css ({} bytes)",
+        katex_css.len()
+    );
+    // ...and every shipped face is referenced, as a SIBLING ref: a `url()` inside a
+    // stylesheet resolves against the STYLESHEET's url, not the page's, so a bare hashed
+    // filename is correct from `_assets/` at every page depth.
+    for face in &faces {
+        assert!(
+            katex_css.contains(&format!("url({face})")),
+            "katex.css must reference {face} as a sibling: no `_assets/` prefix, no `../`"
+        );
+    }
+    // Sanity floor on the saving: the sheet was 369,346 B with the faces inside it.
+    assert!(
+        katex_css.len() < 40_000,
+        "katex.css is still font-sized: {} bytes",
+        katex_css.len()
+    );
+
+    // The math page still links the sheet. Read through the tag walker, never a substring
+    // scan: a page's own prose or an inlined script can carry `href="..."` as TEXT.
+    let math_page = std::fs::read_to_string(out.join("sub/math.html")).unwrap();
+    let expected_href = format!("../_assets/{katex_name}");
+    let links_katex = taliesin_core::render::tags(&math_page).any(|t| {
+        t.name.eq_ignore_ascii_case("link")
+            && taliesin_core::render::attrs(&t)
+                .any(|a| a.name.eq_ignore_ascii_case("href") && a.value == expected_href)
+    });
+    assert!(
+        links_katex,
+        "the math page must link {expected_href} via a real <link> tag"
+    );
+
+    // The single-file promise is untouched: `build <file.tmd>` is ONE file, so the math
+    // faces stay base64 inside it.
+    let solo = std::env::temp_dir().join(format!("tali-ab-kfont-solo-{}.html", std::process::id()));
+    let _ = std::fs::remove_file(&solo);
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(root.join("sub/math.tmd"))
+        .arg(&solo)
+        .output()
+        .expect("standalone build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    let one = std::fs::read_to_string(&solo).unwrap();
+    assert!(
+        one.matches("url(data:font/woff2;base64,").count() >= 1,
+        "a single-file math build must still inline the KaTeX faces"
+    );
+
+    let _ = std::fs::remove_file(&solo);
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
 }

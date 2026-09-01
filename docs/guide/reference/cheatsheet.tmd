@@ -86,7 +86,7 @@ through to the `<div>` for your own CSS, and is not diagnosed.
 | `$$…$$` | Display math, standing on its own | [Rich writing](../using/writing.tmd#math) |
 | `$$…$$ {#eq-x}` | A **numbered** display equation, cross-referenceable as `@eq-x` | [Rich writing](../using/writing.tmd#math) |
 
-All three render server-side with KaTeX at build time, fonts inlined, so a built page
+All three render server-side with KaTeX at build time, fonts bundled offline, so a built page
 needs no network. The last row is the one worth seeing: @eq-cheat below is written that
 way, and this sentence references it.
 

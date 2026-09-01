@@ -412,6 +412,35 @@ fn the_asset_check_reads_tags_not_a_substring_scan() {
     );
 }
 
+/// A percent-encoded ref names the same file the dev server serves for it. The preview
+/// decodes `%XX` in a request path, so `![x](my%20image.png)` beside a real
+/// `my image.png` (the spelling VS Code inserts when a file whose name has spaces is
+/// dragged in) must not be flagged; the angle-bracket spelling `![y](<my image.png>)`
+/// stays the working control, an encoded ref whose decoded file is absent is still a
+/// defect, and an invalid escape stays literal.
+#[test]
+fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
+    let dir = Tmp::new("assets-pct");
+    std::fs::write(dir.0.join("my image.png"), "x").unwrap();
+    std::fs::write(dir.0.join("50%.png"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "![spaced](my%20image.png)\n\n",
+            "![control](<my image.png>)\n\n",
+            "![literal](50%.png)\n\n",
+            "![gone](still%20missing.png)\n",
+        ),
+        &dir.0,
+    );
+    let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 1, "only the truly missing file: {m:?}");
+    assert!(
+        m[0].contains("still missing.png"),
+        "flagged under its decoded, on-disk name: {m:?}"
+    );
+}
+
 /// The same rule on the link and alt-text checks, which shared the scan.
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {

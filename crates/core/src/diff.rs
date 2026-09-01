@@ -35,6 +35,9 @@ pub enum BlockOp {
 
 /// Produce the ops that transform the `old` block sequence into `new`.
 pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
+    // Every old id, so `emit_gap` can spot a gap pair whose NEW side is a MOVE of some
+    // other old block (see the demotion note in the ordering comment below).
+    let old_ids: std::collections::HashSet<&str> = old.iter().map(|b| b.id.as_str()).collect();
     let a: Vec<&str> = old.iter().map(|b| b.id.as_str()).collect();
     let b: Vec<&str> = new.iter().map(|b| b.id.as_str()).collect();
     let anchors = lcs_pairs(&a, &b);
@@ -44,7 +47,15 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     let mut nj = 0;
     let mut prev_new: Option<String> = None;
     for (ai, bj) in &anchors {
-        emit_gap(&mut ops, old, new, oi..*ai, nj..*bj, &mut prev_new);
+        emit_gap(
+            &mut ops,
+            old,
+            new,
+            oi..*ai,
+            nj..*bj,
+            &mut prev_new,
+            &old_ids,
+        );
         // Matched id, but the HTML can still differ: either only the block's
         // `data-sourcepos` moved (a structural edit elsewhere shifted its lines —
         // patch the attribute, keeping its live DOM state) or its content genuinely
@@ -64,14 +75,35 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
         oi..old.len(),
         nj..new.len(),
         &mut prev_new,
+        &old_ids,
     );
-    // Apply every Remove before any Insert. A reorder splits a moved block into a
-    // Remove (its old slot) + an Insert (its new slot) of the *same* id; if the
-    // Insert is emitted first (a move toward the front), the client's id-based
-    // lookup for the Remove matches the just-inserted element and deletes the wrong
-    // one. Removes are positionally independent, so hoisting them is safe; this
-    // stable sort keeps Inserts in document order (so after_id chains still hold).
-    ops.sort_by_key(|op| !matches!(op, BlockOp::Remove { .. }));
+    // Order the burst by class: Removes, then Updates/SetMetas, then Inserts. A move
+    // splits the moved block into two ops carrying the *same* id (a Remove, or a
+    // gap-paired Update, at its old slot, plus an Insert at its new slot), and the
+    // client resolves every op's target by id (first match), so each op that CONSUMES
+    // an old element must run before the Insert that re-creates its id:
+    //  - Insert before Remove (a move toward the front) made the Remove's lookup match
+    //    the just-inserted element and delete the wrong one.
+    //  - Insert before Update (a move to the front while a NEW block takes the old
+    //    slot: [a,b,x,c] -> [x,a,b,y,c] pairs Update{target: x, html: y}) made the
+    //    client's insert-time stale-duplicate defense remove the REAL x, then the
+    //    Update overwrote the freshly inserted copy, destroying x on an ordinary save.
+    //  - Update before Update could ALSO create-then-consume one id: the sort cannot
+    //    order within a class, so `emit_gap` refuses that pairing instead, demoting a
+    //    gap pair whose NEW side is a move of some other old block to Remove + Insert,
+    //    which this sort already orders safely.
+    // After the demotion no op but an Insert ever CREATES an id, every old occurrence
+    // of an Insert's id has been consumed by the time it runs, and an Insert's
+    // `after_id` names an anchor's id, a paired Update's NEW id, or an earlier Insert's
+    // id (all present once the Updates have run), so running every Insert last is safe
+    // for every edit shape — pinned by the full-replay sweep below, not by this
+    // argument alone. The sort is stable, keeping Inserts in document order (after_id
+    // chains still hold) and Updates in gap order.
+    ops.sort_by_key(|op| match op {
+        BlockOp::Remove { .. } => 0,
+        BlockOp::Update { .. } | BlockOp::SetMeta { .. } => 1,
+        BlockOp::Insert { .. } => 2,
+    });
     ops
 }
 
@@ -172,7 +204,9 @@ fn eq_ignoring_sourcepos(a: &str, b: &str) -> bool {
 }
 
 /// Turn one gap (a run of old + new blocks between anchors) into ops: pair them
-/// as in-place updates, then surplus old -> removes, surplus new -> inserts.
+/// as in-place updates, then surplus old -> removes, surplus new -> inserts. A pair
+/// whose NEW side is a block moved from elsewhere in the old list is demoted to
+/// Remove + Insert (see the ordering comment at the sort in [`diff_blocks`]).
 fn emit_gap(
     ops: &mut Vec<BlockOp>,
     old: &[Block],
@@ -180,16 +214,37 @@ fn emit_gap(
     o: std::ops::Range<usize>,
     n: std::ops::Range<usize>,
     prev_new: &mut Option<String>,
+    old_ids: &std::collections::HashSet<&str>,
 ) {
     let (o0, o1) = (o.start, o.end);
     let (n0, n1) = (n.start, n.end);
     let pairs = (o1 - o0).min(n1 - n0);
     for k in 0..pairs {
-        ops.push(BlockOp::Update {
-            target_id: old[o0 + k].id.clone(),
-            html: new[n0 + k].html.clone(),
-        });
-        *prev_new = Some(new[n0 + k].id.clone());
+        let (o_blk, n_blk) = (&old[o0 + k], &new[n0 + k]);
+        // A gap pair whose NEW side is a block MOVED from elsewhere in the old list
+        // would make this Update CREATE an id another op still has to consume — the
+        // duplicate-id hazard the class sort fixes for Inserts, but between two class-1
+        // Updates, where the sort cannot help ([a,b,c,d] -> [d,b,c,a] emitted
+        // Update{a->d} then Update{d->a}; the second's first-match lookup hit the
+        // freshly created d and the swap never rendered). Demote the pair to
+        // Remove + Insert: Removes run first and Inserts last, so every old occurrence
+        // is consumed before the id is re-created. Costs the moved block its live DOM
+        // state, which a block re-created at a new position loses anyway.
+        if n_blk.id != o_blk.id && old_ids.contains(n_blk.id.as_str()) {
+            ops.push(BlockOp::Remove {
+                target_id: o_blk.id.clone(),
+            });
+            ops.push(BlockOp::Insert {
+                after_id: prev_new.clone(),
+                html: n_blk.html.clone(),
+            });
+        } else {
+            ops.push(BlockOp::Update {
+                target_id: o_blk.id.clone(),
+                html: n_blk.html.clone(),
+            });
+        }
+        *prev_new = Some(n_blk.id.clone());
     }
     for k in pairs..(o1 - o0) {
         ops.push(BlockOp::Remove {
@@ -296,6 +351,56 @@ mod tests {
 
     fn ids(blocks: &[&str]) -> Vec<Block> {
         blocks.iter().map(|s| block(s)).collect()
+    }
+
+    /// The `data-block-id` an op's html carries, read through the walker
+    /// (`render::attr_values`), never a substring scan.
+    fn html_id(html: &str) -> String {
+        crate::render::attr_values(html, "data-block-id")
+            .next()
+            .expect("every test block's html carries data-block-id")
+            .to_string()
+    }
+
+    /// A model of the preview client's apply semantics (web-client/client.js), over a
+    /// list of block ids standing in for the DOM:
+    ///  - `update`: the FIRST element matching `target_id` (document order, as
+    ///    `elById`'s `querySelector` resolves it) is replaced by the html's own id; a
+    ///    missing target is a silent no-op.
+    ///  - `insert`: the stale-duplicate defense first removes the FIRST element already
+    ///    carrying the incoming id, then the node lands after `after_id` (first match),
+    ///    or is prepended when `after_id` is None or missing.
+    ///  - `remove`: the first match is removed.
+    ///  - `set_meta`: attribute-only, no structural change.
+    fn replay_client(old: &[Block], ops: &[BlockOp]) -> Vec<String> {
+        let mut dom: Vec<String> = old.iter().map(|b| b.id.clone()).collect();
+        for op in ops {
+            match op {
+                BlockOp::Update { target_id, html } => {
+                    if let Some(i) = dom.iter().position(|id| id == target_id) {
+                        dom[i] = html_id(html);
+                    }
+                }
+                BlockOp::Insert { after_id, html } => {
+                    let id = html_id(html);
+                    if let Some(stale) = dom.iter().position(|d| *d == id) {
+                        dom.remove(stale);
+                    }
+                    let at = after_id
+                        .as_ref()
+                        .and_then(|a| dom.iter().position(|d| d == a).map(|i| i + 1))
+                        .unwrap_or(0);
+                    dom.insert(at, id);
+                }
+                BlockOp::Remove { target_id } => {
+                    if let Some(i) = dom.iter().position(|id| id == target_id) {
+                        dom.remove(i);
+                    }
+                }
+                BlockOp::SetMeta { .. } => {}
+            }
+        }
+        dom
     }
 
     #[test]
@@ -436,6 +541,160 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn move_to_front_with_a_new_block_in_the_old_slot_keeps_the_moved_block() {
+        // One ordinary save: cut paragraph x, paste it at the top, type a new paragraph
+        // y in its old slot. The LIS anchors a,b,c and excludes x, so the gap pairing
+        // emits Insert(x) and Update{target: x, html: y}. With only Removes hoisted the
+        // Insert ran FIRST, and the client's insert-time stale-duplicate defense
+        // (first-match elById) removed the REAL x before the Update overwrote the
+        // freshly inserted copy: final DOM [y, a, b, c], block x destroyed (reproduced
+        // in Chrome on 1.1.0; a reload showed the correct order). The op that consumes
+        // old x must therefore run before the Insert that re-creates x.
+        let old = ids(&["a", "b", "x", "c"]);
+        let new = ids(&["x", "a", "b", "y", "c"]);
+        let ops = diff_blocks(&old, &new);
+        assert_eq!(
+            ops,
+            vec![
+                BlockOp::Update {
+                    target_id: "x".into(),
+                    html: block("y").html,
+                },
+                BlockOp::Insert {
+                    after_id: None,
+                    html: block("x").html,
+                },
+            ],
+            "the Update consuming old x must precede the Insert re-creating x"
+        );
+        assert_eq!(
+            replay_client(&old, &ops),
+            ["x", "a", "b", "y", "c"],
+            "the client replay must land exactly the new list"
+        );
+    }
+
+    #[test]
+    fn a_first_and_last_swap_replays_to_exactly_the_new_list() {
+        // [a,b,c,d] -> [d,b,c,a]: both moved blocks pair into gap Updates that CREATE
+        // an id the other Update still has to consume (Update{a->d}, Update{d->a}); the
+        // class sort cannot order within class 1, so the second Update's first-match
+        // lookup hit the freshly created d and the swap never rendered (the 2026-09-01
+        // review's Update/Update sibling of the move-to-front defect). `emit_gap` now
+        // demotes a moved-block pairing to Remove + Insert.
+        let old = ids(&["a", "b", "c", "d"]);
+        let new = ids(&["d", "b", "c", "a"]);
+        let ops = diff_blocks(&old, &new);
+        for op in &ops {
+            if let BlockOp::Update { html, .. } = op {
+                assert!(
+                    !old.iter().any(|b| b.id == html_id(html)),
+                    "no Update may CREATE an id that exists in the old list: {ops:?}"
+                );
+            }
+        }
+        assert_eq!(
+            replay_client(&old, &ops),
+            ["d", "b", "c", "a"],
+            "the client replay must land exactly the swapped list: {ops:?}"
+        );
+    }
+
+    /// `replay_client` above is only as good as its fidelity to web-client/client.js.
+    /// Pin the behaviors the model encodes, so a change to the client's apply loop
+    /// fails HERE and forces the model (and diff_blocks' ordering contract) to be
+    /// re-derived: first-match id lookup, the insert-time stale-duplicate defense,
+    /// update-in-place by target id, and prepend as the missing-anchor fallback.
+    #[test]
+    fn replay_client_matches_the_real_clients_apply_semantics() {
+        let client_js = include_str!("../../../web-client/client.js");
+        for needle in [
+            "const elById",
+            "root.querySelector(`[data-block-id=",
+            "const stale = newId && elById(newId);",
+            "if (stale) stale.remove();",
+            "const el = elById(msg.target_id);",
+            "else root.prepend(node);",
+        ] {
+            assert!(
+                client_js.contains(needle),
+                "client.js no longer contains `{needle}`: its apply semantics moved, so \
+                 re-derive replay_client (and diff_blocks' ordering contract) against \
+                 the new code before trusting this suite"
+            );
+        }
+    }
+
+    /// Every op burst must consume an old element before an Insert re-creates its id:
+    /// `Insert(html id X)` followed by `Update{target_id: X}` is the exact sequence
+    /// that kills the client (its insert-time stale-duplicate defense removes the REAL
+    /// X, then the Update overwrites the fresh copy). Sweep all orderings of all
+    /// subsets of a four-block document, each also with a fresh block spliced at every
+    /// position, so every small move/insert/delete/replace shape is covered. Every
+    /// burst must ALSO replay to exactly the new list through the client model: the
+    /// Update/Update sibling of the Insert hazard hid behind the property-only check.
+    #[test]
+    fn no_burst_emits_an_insert_before_an_update_of_the_same_id() {
+        let old = ids(&["a", "b", "c", "d"]);
+        for shape in new_shapes(&["a", "b", "c", "d"], "y") {
+            let new = ids(&shape);
+            let ops = diff_blocks(&old, &new);
+            for (i, op) in ops.iter().enumerate() {
+                let BlockOp::Insert { html, .. } = op else {
+                    continue;
+                };
+                let id = html_id(html);
+                assert!(
+                    !ops[i + 1..].iter().any(|later| matches!(
+                        later,
+                        BlockOp::Update { target_id, .. } if *target_id == id
+                    )),
+                    "Insert({id}) precedes Update{{target_id: {id}}} for new shape \
+                     {shape:?}: {ops:?}"
+                );
+            }
+            let shape_s: Vec<String> = shape.iter().map(|s| s.to_string()).collect();
+            assert_eq!(
+                replay_client(&old, &ops),
+                shape_s,
+                "replaying the burst through the client model must land exactly the \
+                 new list for shape {shape:?}: {ops:?}"
+            );
+        }
+    }
+
+    /// All orderings of all subsets of `items`, each once unspliced and once with
+    /// `fresh` spliced at every position.
+    fn new_shapes(items: &[&'static str], fresh: &'static str) -> Vec<Vec<&'static str>> {
+        fn orderings(
+            prefix: Vec<&'static str>,
+            remaining: &[&'static str],
+            out: &mut Vec<Vec<&'static str>>,
+        ) {
+            out.push(prefix.clone());
+            for (i, &next) in remaining.iter().enumerate() {
+                let mut rest = remaining.to_vec();
+                rest.remove(i);
+                let mut p = prefix.clone();
+                p.push(next);
+                orderings(p, &rest, out);
+            }
+        }
+        let mut bases = Vec::new();
+        orderings(Vec::new(), items, &mut bases);
+        let mut shapes = Vec::new();
+        for base in bases {
+            for at in 0..=base.len() {
+                let mut with_fresh = base.clone();
+                with_fresh.insert(at, fresh);
+                shapes.push(with_fresh);
+            }
+            shapes.push(base);
+        }
+        shapes
     }
 
     #[test]

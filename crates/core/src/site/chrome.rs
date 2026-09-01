@@ -43,11 +43,15 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
 /// book topbar.
 fn search_button() -> String {
-    // The kbd is a shortcut hint, not part of the label: aria-hidden keeps it out of the
-    // accessible name (WCAG 2.5.3 Label-in-Name). The icon-only button names itself with
-    // aria-label.
+    // WCAG 2.5.3 Label-in-Name is about VISIBLE text: a voice-control user says what they
+    // see, so the accessible name must CONTAIN the kbd hint. `aria-hidden` on the kbd never
+    // satisfied that (it hides the hint from a screen reader, not from sight — the
+    // 2026-07-28 audit's item 124 measured the failure); it stays only so the name is
+    // announced once. `search.js` rewrites the visible hint to "Ctrl K" off Mac and
+    // re-syncs this label from the same string, so the two cannot diverge.
     format!(
-        "<button class='tali-search-btn' type='button' data-tali-search aria-label='Search' \
+        "<button class='tali-search-btn' type='button' data-tali-search \
+         aria-label='Search: \u{2318}K' \
          aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}\
          <kbd class='tali-search-kbd' aria-hidden='true'>\u{2318}K</kbd></button>"
     )
@@ -990,17 +994,42 @@ mod tests {
     }
 
     #[test]
-    fn search_button_hides_the_shortcut_hint_from_its_name() {
-        // WCAG 2.5.3: the visible ⌘K kbd must not pollute the button's accessible name.
+    fn search_buttons_accessible_name_contains_its_visible_shortcut_hint() {
+        // WCAG 2.5.3 Label-in-Name is about VISIBLE text: `aria-hidden` on the kbd keeps
+        // a screen reader from hearing the hint twice, but a sighted voice-control user
+        // still SEES "⌘K" / "Ctrl K", and speaking what they see must reach the button —
+        // so the accessible name must CONTAIN the visible hint. The 2026-07-28 audit
+        // (item 124) measured exactly this mismatch. Read the fragment through the tag
+        // walker, never a substring scan.
         let b = search_button();
+        let kbd = crate::render::tags(&b)
+            .find(|t| t.name.eq_ignore_ascii_case("kbd"))
+            .expect("the button renders a kbd hint");
+        let content_start = kbd.at + kbd.text.len();
+        let content_end = content_start
+            + b[content_start..]
+                .find("</kbd>")
+                .expect("the kbd hint is closed");
+        let visible = &b[content_start..content_end];
+        assert!(
+            !visible.is_empty(),
+            "the kbd hint carries visible text: {b}"
+        );
+        let button = crate::render::tags(&b)
+            .find(|t| t.name.eq_ignore_ascii_case("button"))
+            .expect("search_button emits a button");
+        let label = crate::render::attrs(&button)
+            .find(|a| a.name.eq_ignore_ascii_case("aria-label"))
+            .expect("the icon button names itself")
+            .value;
+        assert!(
+            label.contains(visible),
+            "the accessible name `{label}` must contain the visible hint `{visible}`: {b}"
+        );
+        // The kbd stays aria-hidden so a screen reader hears the name once, not twice.
         assert!(
             b.contains("<kbd class='tali-search-kbd' aria-hidden='true'>"),
-            "the shortcut hint kbd must be aria-hidden: {b}"
-        );
-        // The icon-only button still names itself.
-        assert!(
-            b.contains("aria-label='Search'"),
-            "icon-only button keeps its label: {b}"
+            "the shortcut hint kbd must stay aria-hidden: {b}"
         );
     }
 

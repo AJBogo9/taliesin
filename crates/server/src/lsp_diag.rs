@@ -36,22 +36,71 @@ pub(crate) fn narrowest_range_at(
         .map(|d| d.range)
 }
 
+/// One buffer's diagnostics, routed by the file each one locates into.
+pub(crate) struct RoutedDiagnostics {
+    /// Diagnostics located in the buffer itself: what attaches to the open URI.
+    pub(crate) own: Vec<lsp_types::Diagnostic>,
+    /// Diagnostics located in another file (an include partial), grouped by that file's
+    /// canonical path, every range computed against THAT file's text on disk.
+    pub(crate) foreign: Vec<(std::path::PathBuf, Vec<lsp_types::Diagnostic>)>,
+}
+
 /// Lint one file — an open buffer if the server holds one, otherwise the file on disk — as the
 /// site page it actually is.
 ///
 /// The one place a buffer becomes diagnostics, so what the editor squiggles and what
-/// `--check-only` reports cannot drift apart.
+/// `--check-only` reports cannot drift apart. Routed by `Diagnostic::file` because
+/// `(source_file, line)` is ONE coordinate pair: a diagnostic located into an include
+/// partial carries the PARTIAL's line, and projecting that line onto the parent buffer
+/// squiggled an unrelated (clamped) parent line while the partial's URI got nothing.
+/// `Warning::file` is doc-base-relative (matching `Block::source_file`), so a foreign
+/// file resolves against the buffer's own directory; one that resolves to nothing on
+/// disk stays on the buffer, visible, rather than being dropped.
 pub(crate) fn diagnose_file(
     sites: &mut crate::lsp_project::SiteCache,
     path: &Path,
     text: &str,
-) -> Vec<lsp_types::Diagnostic> {
+) -> RoutedDiagnostics {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let site = sites.get(path);
-    crate::lint::buffer_diagnostics_in_site(path, text, site)
-        .iter()
-        .map(|d| d.to_lsp(&lines))
-        .collect()
+    let own_name = path.display().to_string();
+    let own_canon = std::fs::canonicalize(path).ok();
+    let base = path.parent();
+    let mut own = Vec::new();
+    let mut groups: Vec<(std::path::PathBuf, Vec<crate::lint::Diagnostic>)> = Vec::new();
+    for d in crate::lint::buffer_diagnostics_in_site(path, text, site) {
+        let foreign_path = (d.file() != own_name)
+            .then(|| {
+                let p = Path::new(d.file());
+                let joined = if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    base?.join(p)
+                };
+                std::fs::canonicalize(&joined).ok()
+            })
+            .flatten()
+            .filter(|c| c.is_file() && Some(c) != own_canon.as_ref());
+        match foreign_path {
+            Some(fp) => match groups.iter().position(|(g, _)| *g == fp) {
+                Some(i) => groups[i].1.push(d),
+                None => groups.push((fp, vec![d])),
+            },
+            None => own.push(d.to_lsp(&lines)),
+        }
+    }
+    let foreign = groups
+        .into_iter()
+        .map(|(fp, diags)| {
+            // Clamp ranges against the PARTIAL's own text: clamping the partial's line
+            // into the parent buffer was the defect this routing exists to fix.
+            let ftext = std::fs::read_to_string(&fp).unwrap_or_default();
+            let flines: Vec<&str> = crate::lsp_pos::lines(&ftext).collect();
+            let lsp = diags.iter().map(|d| d.to_lsp(&flines)).collect();
+            (fp, lsp)
+        })
+        .collect();
+    RoutedDiagnostics { own, foreign }
 }
 
 #[cfg(test)]
@@ -102,7 +151,7 @@ mod tests {
         // from disk; the path only has to be a `.tmd` somewhere.
         let path = std::env::temp_dir().join(format!("tali-lspcr-{}.tmd", std::process::id()));
         let text = "para one\r\rSee @fig-nope for details.\n";
-        let diags = diagnose_file(&mut sites, &path, text);
+        let diags = diagnose_file(&mut sites, &path, text).own;
         let d = diags
             .first()
             .expect("the broken cross-reference is the diagnostic under test");
@@ -118,5 +167,49 @@ mod tests {
             "a squiggle the author can see, got {:?}",
             d.range
         );
+    }
+
+    /// A diagnostic located into an include partial (`Warning::file` is doc-base-relative)
+    /// routes to the partial's canonical path with a range computed against the PARTIAL's
+    /// own text, never onto the parent buffer at the partial's line: `(source_file, line)`
+    /// is one coordinate pair, and clamping the partial's line into the parent squiggled
+    /// an unrelated line.
+    #[test]
+    fn an_include_partials_diagnostic_routes_to_the_partial_at_its_own_line() {
+        let dir = std::env::temp_dir().join(format!("tali-lspdiag-inc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("subsections")).unwrap();
+        let text = "---\ntitle: R\n---\n\n{{< include subsections/_intro.tmd >}}\n";
+        std::fs::write(dir.join("index.tmd"), text).unwrap();
+        std::fs::write(
+            dir.join("subsections/_intro.tmd"),
+            "Intro prose.\n\nSee @fig-nope for details.\n",
+        )
+        .unwrap();
+        let parent = std::fs::canonicalize(dir.join("index.tmd")).unwrap();
+        let mut sites = crate::lsp_project::SiteCache::new();
+        let routed = diagnose_file(&mut sites, &parent, text);
+        assert!(
+            routed
+                .own
+                .iter()
+                .all(|d| !d.message.starts_with("broken cross-reference:")),
+            "the partial's defect must not attach to the parent buffer: {:?}",
+            routed.own.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let (fpath, diags) = routed
+            .foreign
+            .iter()
+            .find(|(p, _)| p.ends_with("subsections/_intro.tmd"))
+            .expect("a foreign group for the partial");
+        let d = diags
+            .iter()
+            .find(|d| d.message.starts_with("broken cross-reference:"))
+            .unwrap_or_else(|| panic!("no broken xref on {fpath:?}: {diags:?}"));
+        assert_eq!(
+            d.range.start.line, 2,
+            "0-based line of `See @fig-nope` in the partial's own numbering"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

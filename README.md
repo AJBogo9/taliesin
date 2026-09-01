@@ -29,10 +29,11 @@ with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosin
   those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
   yourself with `python3 tools/portability-census.py`. Your writing is
   Markdown in your repository, and built pages are static HTML that needs no runtime.
-- **Speed, in absolutes and with no multiplier** (every figure re-measured 2026-08-27 on a
-  16-core machine). A 6-page book (`docs/internals`) builds in **0.15 s** (25 ms/page);
-  `preview` is serving in **under 1 ms** for a single document and **≈90 ms** for a
-  16-page book; a warm keystroke-sized edit diffs in
+- **Speed, in absolutes and with no multiplier** (figures re-measured 2026-08-27, the
+  single-document ready time 2026-09-01, on a 16-core machine). A 6-page book
+  (`docs/internals`) builds in **0.15 s** (25 ms/page);
+  `preview` is serving in **≈50 ms** for a single document (spawn to first HTTP 200)
+  and **≈90 ms** for a 16-page book; a warm keystroke-sized edit diffs in
   **0.21 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
   **53** of its 55 ops are metadata-only patches that never touch a DOM node — those 53
   plus the one `insert` for the newly typed paragraph total ~3.2 KB — which is why live
@@ -88,7 +89,7 @@ script live inside the binary.
 | macOS, Intel | `x86_64-apple-darwin` |
 
 ```sh
-VERSION=v1.1.0
+VERSION=v1.0.1
 TARGET=x86_64-unknown-linux-musl        # your row from the table above
 BASE=https://github.com/AJBogo9/taliesin/releases/download
 

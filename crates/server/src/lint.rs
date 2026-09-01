@@ -132,6 +132,15 @@ impl Diagnostic {
             ..Default::default()
         }
     }
+
+    /// The file this diagnostic locates into, exactly as [`diag_from`] recorded it: the
+    /// warning's own `file` (doc-base-relative, matching `Block::source_file`) or the
+    /// fallback path the caller passed. The LSP routes publishes by it: a diagnostic
+    /// located into an include partial belongs on the PARTIAL's URI, because
+    /// `(source_file, line)` is one coordinate pair and the line is the partial's own.
+    pub(crate) fn file(&self) -> &str {
+        &self.file
+    }
 }
 
 pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
@@ -348,7 +357,38 @@ fn collect_file_diagnostics_in_site(
     } else {
         Scope::Standalone
     };
-    let statics = page_static_diagnostics(src, &doc.blocks, base, scope_kind);
+    let mut statics = page_static_diagnostics(src, &doc.blocks, base, scope_kind);
+    // An underscore-prefixed path COMPONENT marks an include partial (`Site::discover`
+    // skips underscore files and directories alike, so `_includes/refs.tmd` is as much a
+    // partial as `_refs.tmd`), so opened standalone its citations resolve against the INCLUDING
+    // page's front matter: the standalone "no `bibliography:`" advice would be a permanent
+    // line-1 false alarm the project gate never reports. Only that one rule is scoped out,
+    // and only for partials. A `draft: true` chapter is different on purpose: it is a real
+    // page deliberately linted standalone (see [`enclosing_site_of`]), and its own front
+    // matter is where its bibliography belongs, so it keeps the advice. The prefix matched
+    // here is `diagnostics::citations_without_bibliography`'s one message;
+    // `a_citation_bearing_partial_lints_clean_without_its_parents_bibliography` fails if
+    // either side is reworded alone.
+    // Judged BELOW the site root when one is known (a project living under `~/_work/`
+    // must not suppress for every page); standalone, the file name is the one component
+    // that marks a partial without a root to measure from.
+    let is_partial = site
+        .and_then(|s| path.strip_prefix(&s.root).ok())
+        .map(|rel| {
+            rel.components()
+                .any(|c| c.as_os_str().to_string_lossy().starts_with('_'))
+        })
+        .unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with('_'))
+        });
+    if is_partial {
+        statics.retain(|w| {
+            !w.message
+                .starts_with("citations are present but no `bibliography:`")
+        });
+    }
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
@@ -653,6 +693,18 @@ fn gating(diags: &[Diagnostic], strict: bool) -> usize {
 /// its own flag set, interpreter probe and code catalogue. `--format json` is the tool's one
 /// machine-readable surface; `--strict` widens the gate to include advice.
 pub(crate) fn cmd_check_only(target: &Path, format: &str, strict: bool) -> ExitCode {
+    // `--check-only` dispatches ahead of `build`'s own single-file refusal, so a
+    // non-source file needs the same answer here: reporting "no problems found" for a
+    // `note.md` the site walker can never discover is the T11 silence in another spelling.
+    if target.is_file() && !taliesin_core::ext::is_source_path(target) {
+        let msg = crate::serve::not_a_source_error(target, "build");
+        if format == "json" {
+            println!("{}", json_error(&msg));
+        } else {
+            log::error(&msg);
+        }
+        return ExitCode::FAILURE;
+    }
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
@@ -764,7 +816,11 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         for (name, body) in files {
-            fs::write(dir.join(name), body).unwrap();
+            let p = dir.join(name);
+            if let Some(parent) = p.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            fs::write(p, body).unwrap();
         }
         dir
     }
@@ -776,6 +832,80 @@ mod tests {
         let mut sites = crate::lsp_project::SiteCache::new();
         let site = sites.get(path);
         super::buffer_diagnostics_in_site(path, src, site)
+    }
+
+    /// An underscore-prefixed include partial opened standalone (the LSP's everyday case)
+    /// cites against the INCLUDING page's front matter, so the standalone "no
+    /// `bibliography:`" advice is a permanent false alarm there: the project gate lints the
+    /// assembled parent and never reports it. Only that one rule is scoped out, and only for
+    /// partials. A `draft: true` chapter keeps the advice: it is a real page deliberately
+    /// linted standalone (see `enclosing_site_of`), and its own front matter is where its
+    /// bibliography belongs; `collect_diagnostics_surfaces_check_superset_validators` pins
+    /// the advice for ordinary files.
+    #[test]
+    fn a_citation_bearing_partial_lints_clean_without_its_parents_bibliography() {
+        let dir = tmp_project(
+            "bib-partial",
+            &[
+                ("_site.yml", "title: S\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: R\nbibliography: refs.bib\n---\n\n{{< include _cited.tmd >}}\n",
+                ),
+                (
+                    "refs.bib",
+                    "@article{smith2020, title={T}, author={S}, year={2020}}\n",
+                ),
+                ("_cited.tmd", "As shown in [@smith2020], it holds.\n"),
+            ],
+        );
+        let src = fs::read_to_string(dir.join("_cited.tmd")).unwrap();
+        let diags = buffer_diagnostics(&dir.join("_cited.tmd"), &src);
+        assert!(
+            !diags.iter().any(|d| d
+                .message
+                .starts_with("citations are present but no `bibliography:`")),
+            "a partial must not carry the standalone bibliography advice: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The walker skips underscore DIRECTORIES as well as files, so `_includes/part.tmd`
+    /// is as much a partial as `_part.tmd` — the suppression must judge path components
+    /// below the site root, not just the file name (2026-09-01 review, C6).
+    #[test]
+    fn a_partial_inside_an_underscore_directory_lints_clean_standalone_too() {
+        let dir = tmp_project(
+            "bib-partial-dir",
+            &[
+                ("_site.yml", "title: S\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: R\nbibliography: refs.bib\n---\n\n{{< include _includes/cited.tmd >}}\n",
+                ),
+                (
+                    "refs.bib",
+                    "@article{smith2020, title={T}, author={S}, year={2020}}\n",
+                ),
+                (
+                    "_includes/cited.tmd",
+                    "As shown in [@smith2020], it holds.\n",
+                ),
+            ],
+        );
+        let path = dir.join("_includes").join("cited.tmd");
+        let src = fs::read_to_string(&path).unwrap();
+        let diags = buffer_diagnostics(&path, &src);
+        assert!(
+            !diags.iter().any(|d| d
+                .message
+                .starts_with("citations are present but no `bibliography:`")),
+            "an underscore-DIRECTORY partial must not carry the standalone bibliography \
+             advice: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// The broken-cross-reference findings, matched on the message rather than on a code:

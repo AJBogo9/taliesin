@@ -326,6 +326,15 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         }
     };
     let p = Path::new(path);
+    // A single file is a source document iff its extension is accepted
+    // (`taliesin_core::ext::is_source_path`, the same vocabulary the site walker
+    // discovers by): a `note.md` built here would still be invisible to `build <dir>`,
+    // silently, at exit 0. Checked after the read so a missing file keeps its
+    // `cannot_read` did-you-mean.
+    if !taliesin_core::ext::is_source_path(p) {
+        log::error(&crate::serve::not_a_source_error(p, "build"));
+        return ExitCode::FAILURE;
+    }
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
     // Guard the render/execute path: a panic in core rendering (a malformed doc that trips
@@ -342,7 +351,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
     let executed =
         crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
-    let (html, problems, unparseable, diagnostics, kernel_failure) = match executed {
+    let (html, problems, unparseable, mut diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
             problems,
@@ -362,9 +371,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // Offline-guarantee nudge: a built page keeps any external reference the author wrote
     // (a remote image, an external stylesheet, a remote/bare `{js}` import) verbatim, so a
     // "portable" output can silently need the network at view time. Warn (located, never fail)
-    // rather than download — the tool does not fetch arbitrary URLs at build time.
-    for w in offline_ref_warnings(&html, path) {
-        log::warn(&w);
+    // rather than download — the tool does not fetch arbitrary URLs at build time. Carried
+    // into `--format json` below (the machine surface must see what the console sees) but
+    // never counted into `problems`: the `--strict` exemption is deliberate, and the CLI
+    // reference documents the carve-out.
+    for w in &offline_ref_warnings(&html) {
+        log::warn(&locate(w, path));
+        diagnostics.push(crate::lint::diag_from(w, path));
     }
 
     // In `--strict` mode, a cell that crashed (its traceback is baked into the HTML)
@@ -844,6 +857,13 @@ fn build_page_executing(
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, label);
         diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
+        // Exec-phase defects (an empty-output labelled float): into the structured
+        // channel, so `--format json` sees what the console sees — the executor already
+        // printed the terminal warn line at the cell, so no re-log here. Never counted
+        // into `problems`, exactly like the offline carve-out.
+        for w in &ex.take_warnings() {
+            diagnostics.push(crate::lint::diag_from(w, label));
+        }
         // The AUTO table-of-contents gate. It lives on `Site` (`Site::page_toc`), and the
         // single-file build is the one page path that never constructs a `Site`, so it kept
         // `render`'s standalone default — `toc: toc_explicit.unwrap_or(false)`, a TOC only
@@ -1012,14 +1032,19 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
     let boundary = taliesin_core::includes::repo_boundary(base);
     for r in local_refs(html) {
-        // The filesystem path is the ref without any ?query / #fragment (a static
-        // host ignores those, so `img.png?v=2` is the file `img.png`).
-        let path = &r[..r.find(['?', '#']).unwrap_or(r.len())];
+        // The filesystem path comes from the shared resolution step (`asset_fs_path`,
+        // also behind the local-asset validator and the dev server's request decode):
+        // no ?query / #fragment (a static host ignores those, so `img.png?v=2` is the
+        // file `img.png`) and `%XX` decoded, so `my%20image.png` is the file
+        // `my image.png` — copied under its DECODED name, the one a static host
+        // resolves the emitted src to. Decoded BEFORE the escape checks below, so an
+        // encoded `..` cannot slip past them.
+        let path = taliesin_core::render::asset_fs_path(&r);
         if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
             log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
             continue;
         }
-        let from = base.join(path);
+        let from = base.join(&path);
         if !from.is_file() {
             continue; // e.g. an href to something that isn't a local file
         }
@@ -1029,7 +1054,7 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
             ));
             continue;
         }
-        let to = dest.join(path);
+        let to = dest.join(&path);
         // In-place build: the asset is already where the page points, and copying a
         // file onto itself would truncate it.
         if same_file(&from, &to) {
@@ -1056,7 +1081,12 @@ fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
     let boundary = taliesin_core::includes::repo_boundary(base);
     for r in local_refs(html) {
-        let path = &r[..r.find(['?', '#']).unwrap_or(r.len())];
+        // Decode through the shared resolution step (T3): a `%20`-spelled link must
+        // find the on-disk file with the space, and the DECODED name is what a static
+        // host resolves the emitted href to. Decoding before the escape checks keeps an
+        // encoded `..` from slipping past them.
+        let path = taliesin_core::render::asset_fs_path(&r);
+        let path = path.as_str();
         // Cross-page / out-of-tree refs aren't ours to ship; mirror_assets already
         // handled every non-source asset, so only the SKIP_EXT files can be missing.
         if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
@@ -1415,6 +1445,15 @@ async fn build_one_page(
     ));
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     let kernel_failure = exec.kernel_failure_report();
+    // Exec-phase defects (an empty-output labelled float) are only knowable after
+    // execution: merge them into the same located channel the render warnings take
+    // below, so the deploy console and `--format json` see what the terminal warn line
+    // printed. Advice-shaped, never counted into `problems`, exactly like the offline
+    // carve-out. The preview drains the same source in `serve_site::build_page`.
+    for w in &exec.take_warnings() {
+        warnings.push((w.severity, locate(w, &page.rel)));
+        diagnostics.push(crate::lint::diag_from(w, &page.rel));
+    }
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for b in &doc.blocks {
@@ -1457,9 +1496,11 @@ async fn build_one_page(
     problems += crate::lint::blocking(&render_warnings);
     // Offline-guarantee, per page: flag any external reference this page keeps, exactly like the
     // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
-    // Informational — deferred into the page's warnings, never counted in `problems`/`--strict`.
-    for w in offline_ref_warnings(&html, &page.rel) {
-        warnings.push((taliesin_core::Severity::Warning, w));
+    // Informational — deferred into the page's warnings and carried into the structured
+    // channel (`--format json`), never counted in `problems`/`--strict`.
+    for w in &offline_ref_warnings(&html) {
+        warnings.push((w.severity, locate(w, &page.rel)));
+        diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
     // Which conditional blobs this page linked, read off the finished HTML (item 137). Taken
     // BEFORE the write, which moves `html`.
@@ -1505,6 +1546,12 @@ pub(crate) struct SiteBuildOutcome {
 struct AssetBundle {
     app_css: String,
     katex_css: String,
+    /// The rewritten math sheet `write_conditional` writes when something links it (T6),
+    /// computed once beside its hash so the bytes and the name can never disagree.
+    katex_css_text: String,
+    /// The KaTeX faces as `(hashed filename, bytes)`: named up front (the sheet above
+    /// references them as siblings), written only with the sheet (item 137).
+    katex_fonts: Vec<(String, &'static [u8])>,
     app_js: String,
     mermaid_js: String,
     jslibs_js: String,
@@ -1572,10 +1619,12 @@ impl AssetBundle {
             std::fs::write(dir.join(file_of(rel)), bytes)
         };
         if used.katex {
-            put(
-                &self.katex_css,
-                &taliesin_core::minify_css(taliesin_core::katex_css()),
-            )?;
+            put(&self.katex_css, &self.katex_css_text)?;
+            // The faces the sheet references as siblings (T6). Skipping one the sheet
+            // names would be the same live 404 as skipping the sheet itself.
+            for (name, bytes) in &self.katex_fonts {
+                std::fs::write(dir.join(name), bytes)?;
+            }
         }
         // Vendored libs are already minified: write as-is (do not re-minify).
         if used.mermaid {
@@ -1641,17 +1690,32 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
         &taliesin_core::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
     )?;
     let app_js = named("app", "js", &taliesin_core::core_enhance_js())?;
+    // The KaTeX faces (T6, the math sibling of item 150): NAMED here because the math
+    // sheet references them by hashed sibling name, but not written; they land beside
+    // katex.css in `write_conditional`, so a prose-only project still ships no math
+    // bytes at all (item 137).
+    let mut katex_font_hrefs: Vec<(&str, String)> = Vec::new();
+    let mut katex_fonts: Vec<(String, &'static [u8])> = Vec::new();
+    for (src_name, bytes) in taliesin_core::KATEX_FONT_FILES {
+        let name = format!(
+            "{}.{:x}.woff2",
+            src_name.strip_suffix(".woff2").unwrap_or(src_name),
+            fnv1a_bytes(bytes)
+        );
+        katex_font_hrefs.push((src_name, name.clone()));
+        katex_fonts.push((name, *bytes));
+    }
     // Named, not written: see `write_conditional`.
-    let katex_css = hashed(
-        "katex",
-        "css",
-        &taliesin_core::minify_css(taliesin_core::katex_css()),
-    );
+    let katex_css_text =
+        taliesin_core::minify_css(&taliesin_core::katex_css_linked_fonts(&katex_font_hrefs));
+    let katex_css = hashed("katex", "css", &katex_css_text);
     let mermaid_js = hashed("mermaid", "js", &taliesin_core::mermaid_bundle_js());
     let jslibs_js = hashed("jslibs", "js", &taliesin_core::js_cell_libs_js());
     Ok(AssetBundle {
         app_css,
         katex_css,
+        katex_css_text,
+        katex_fonts,
         app_js,
         mermaid_js,
         jslibs_js,
@@ -2745,26 +2809,27 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
 /// One located, informational warning per external reference the build left in `html`, so the
 /// author learns a "portable" output is not self-contained at the one moment they can act.
 /// Never fails the build (even under `--strict`): an external ref may be intentional, and the
-/// tool deliberately does not download arbitrary URLs at build time. `label` names the document
-/// for the located `path:line:` prefix (mirrors the other build warnings). Empty for an
-/// all-local page. Shared by the single-doc build (logged immediately) and the site build
-/// (collected into the page's deferred warning list), so both deploy shapes are covered.
-fn offline_ref_warnings(html: &str, label: &str) -> Vec<String> {
+/// tool deliberately does not download arbitrary URLs at build time — both call sites keep
+/// these out of their `problems` count, and `docs/guide/reference/cli.tmd` documents the
+/// carve-out. They DO ride the structured channel (`diag_from` → `--format json`), so a
+/// machine consumer sees what the console prints. Empty for an all-local page. Shared by the
+/// single-doc build (logged immediately) and the site build (collected into the page's
+/// deferred warning list), so both deploy shapes are covered.
+fn offline_ref_warnings(html: &str) -> Vec<taliesin_core::render::Warning> {
     external_refs(html)
         .into_iter()
         .map(|r| {
-            // The file and the line must come from the same block, or the warning names a
-            // real file at a line that belongs to another one (FA14).
-            let file = r.file.as_deref().unwrap_or(label);
-            let loc = match r.line {
-                Some(l) => format!("{file}:{l}"),
-                None => file.to_string(),
-            };
-            format!(
-                "{loc}: external reference not bundled: {} — the build will fetch it at view time, \
+            let mut w = taliesin_core::render::Warning::new(format!(
+                "external reference not bundled: {} — the build will fetch it at view time, \
                  so the output is not self-contained (offline viewing fails)",
                 r.url
-            )
+            ));
+            // The file and the line must come from the same block, or the warning names a
+            // real file at a line that belongs to another one (FA14). `file: None` means
+            // the document being built, whose name the caller supplies at print time.
+            w.file = r.file;
+            w.line = r.line;
+            w
         })
         .collect()
 }
@@ -2884,7 +2949,10 @@ mod mirror_tests {
             "<p data-block-id=\"b-2\" data-sourcepos=\"7:1-7:40\" data-source-file=\"_includes/part.tmd\">",
             "<img src=\"https://example.com/partial.png\"></p>",
         );
-        let warnings = offline_ref_warnings(html, "index.tmd");
+        let warnings: Vec<String> = offline_ref_warnings(html)
+            .iter()
+            .map(|w| locate(w, "index.tmd"))
+            .collect();
         assert!(
             warnings.iter().any(|w| w.starts_with("index.tmd:3:")),
             "the page's own block keeps the page's name: {warnings:?}"
@@ -2952,7 +3020,10 @@ mod mirror_tests {
         let html = "<p data-sourcepos=\"6:1-6:40\"><img src='https://cdn.test/pic.png'></p>";
         let urls: Vec<String> = external_refs(html).into_iter().map(|r| r.url).collect();
         assert_eq!(urls, vec!["https://cdn.test/pic.png".to_string()]);
-        let w = offline_ref_warnings(html, "posts/p.tmd");
+        let w: Vec<String> = offline_ref_warnings(html)
+            .iter()
+            .map(|w| locate(w, "posts/p.tmd"))
+            .collect();
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(w[0].starts_with("posts/p.tmd:6:"), "located: {}", w[0]);
     }
@@ -2962,7 +3033,13 @@ mod mirror_tests {
         // The shared helper the single-doc AND site-build paths both emit through: located
         // `label:line:` prefix + the url, and silent for an all-local page.
         let html = "<p data-sourcepos=\"4:1-4:9\"><img src=\"https://x.test/y.png\"></p>";
-        let w = offline_ref_warnings(html, "posts/p.tmd");
+        let refs = offline_ref_warnings(html);
+        assert!(
+            refs.iter()
+                .all(|w| w.severity == taliesin_core::Severity::Warning),
+            "informational severity — the --strict carve-out: {refs:?}"
+        );
+        let w: Vec<String> = refs.iter().map(|w| locate(w, "posts/p.tmd")).collect();
         assert_eq!(w.len(), 1);
         assert!(w[0].starts_with("posts/p.tmd:4:"), "located: {}", w[0]);
         assert!(
@@ -2971,8 +3048,7 @@ mod mirror_tests {
             w[0]
         );
         assert!(
-            offline_ref_warnings("<p data-sourcepos=\"1:1\"><img src=\"a.png\"></p>", "p.tmd")
-                .is_empty()
+            offline_ref_warnings("<p data-sourcepos=\"1:1\"><img src=\"a.png\"></p>").is_empty()
         );
     }
 
@@ -3074,6 +3150,27 @@ mod mirror_tests {
 
         assert!(out.join("pic.png").is_file(), "a single-quoted src bundles");
         assert_eq!(copied, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `%20` in a ref is how VS Code spells a dragged-in file whose name has spaces; the
+    /// dev server decodes it when serving and a static host decodes the URL the same way,
+    /// so the copier must bundle the DECODED file under its decoded name or the portable
+    /// folder 404s the image the preview showed.
+    #[test]
+    fn copy_local_assets_bundles_a_percent_encoded_src_under_its_decoded_name() {
+        let dir = tmp_dir("pct-copy");
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(dir.join("my image.png"), "x").unwrap();
+
+        let copied = copy_local_assets("<img src=\"my%20image.png\" alt=\"a\">", &dir, &out);
+
+        assert_eq!(copied, 1);
+        assert!(
+            out.join("my image.png").is_file(),
+            "the decoded file is what a static host resolves the emitted src to"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

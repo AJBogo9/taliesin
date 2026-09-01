@@ -1415,9 +1415,14 @@ impl Site {
         };
         // `data-tali-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
+        // The title is an <h2>: the only heading before the cards is the page's (often
+        // sr-only) <h1>, so an <h3> here skipped a level on every listing page — and the
+        // heading-skip lint cannot see it, because the whole listing is ONE <ul> block
+        // (T12, 2026-09-01). The stylesheet keys off `.tali-card-title`, never the tag,
+        // so the rendering is unchanged.
         format!(
             "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}</div></a></li>",
+             <div class=\"tali-card-body\">{draft_badge}{date}<h2 class=\"tali-card-title\">{title}</h2>{desc}</div></a></li>",
             src = esc(&p.rel)
         )
     }
@@ -2868,6 +2873,56 @@ pub(crate) mod tests {
         assert!(
             !blog.contains("role=\"listitem\""),
             "cards must not take a listitem role, which would replace their link role: {blog}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_card_titles_are_h2_so_the_outline_never_skips_a_level() {
+        // A listing page's only preceding heading is its (often sr-only) page <h1>, so an
+        // <h3> card title skipped a level on every listing page — and the heading-skip
+        // lint structurally cannot see it: the whole listing is ONE <ul> block, and the
+        // lint only reads a block that *starts* with a heading. Cards emit <h2>. Assert
+        // through the tag walker: the inlined stylesheet also spells `.tali-card-title`,
+        // so a substring scan is not evidence about the markup.
+        let root = write_site(
+            "cardheading",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\ntitle-block-style: none\nlisting:\n  contents: posts\n---\n\nIntro.\n",
+                ),
+                (
+                    "posts/a.tmd",
+                    "---\ntitle: A\ndate: 2026-01-01\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (blog, _) = render_page(&site, "blog.tmd");
+        let card_titles_at = |level: &str| {
+            crate::render::tags(&blog)
+                .filter(|t| t.name.eq_ignore_ascii_case(level))
+                .filter(|t| {
+                    crate::render::attrs(t).any(|a| {
+                        a.name.eq_ignore_ascii_case("class")
+                            && a.value
+                                .split_ascii_whitespace()
+                                .any(|c| c == "tali-card-title")
+                    })
+                })
+                .count()
+        };
+        assert_eq!(
+            card_titles_at("h2"),
+            1,
+            "the card title must be an <h2>: {blog}"
+        );
+        assert_eq!(
+            card_titles_at("h3"),
+            0,
+            "no card title may remain an <h3>: {blog}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
