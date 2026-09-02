@@ -229,6 +229,15 @@ const CHAPTER_ITEM_KEYS: &[&str] = &["file", "text", "part", "chapters"];
 ///
 /// Recurses into `{ part:, chapters: }` groups because `push_group` does, and a typo nested
 /// one level down fails exactly the same way.
+///
+/// Two further shapes lose a chapter with every key spelled correctly, so neither the
+/// unknown-key pass nor the no-`file:`-no-`part:` pass sees them:
+/// - a `chapters:` value that is not a sequence. Both readers of a chapter list
+///   (`parse_native` at the top level, `push_group` for a part's inner list) go through
+///   `as_sequence()`, so a scalar there is not a one-item list, it is *no list*.
+/// - one mapping carrying `file:` **and** `part:`/`chapters:`. `push_chapter_entry` matches
+///   the `file:` first and returns `true`, so `push_group` never reads the rest of that
+///   mapping. A forgotten `- ` before `part:` writes exactly this.
 fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     fn walk(list: &[serde_yaml::Value], warnings: &mut Vec<String>, src: ConfigSource<'_>) {
         for item in list {
@@ -257,13 +266,70 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
                     src.at(first)
                 ));
             }
-            if let Some(inner) = map.get("chapters").and_then(|v| v.as_sequence()) {
-                walk(inner, warnings, src);
+            // A chapter and a part in ONE mapping: `push_chapter_entry` consumes it on the
+            // `file:` and `push_group` `continue`s, so the part keys beside it are never
+            // read. Written by hand it is a missing `- ` before `part:`, which merges two
+            // list entries into one mapping that every check above passes: all its keys
+            // are legal and it does name a `file:`.
+            if map.contains_key("file")
+                && (map.contains_key("part") || map.contains_key("chapters"))
+            {
+                // Anchor on the key that vanished, not the `file:` that survived: that is
+                // the line the missing `- ` belongs in front of.
+                let dropped = if map.contains_key("part") {
+                    "part"
+                } else {
+                    "chapters"
+                };
+                warnings.push(format!(
+                    "{} a `chapters:` entry carries both `file:` and `{dropped}:`, and the \
+                     `file:` wins: the `{dropped}:` and every chapter under it is DROPPED \
+                     from the book silently, so split them into two list entries (a \
+                     missing `- ` before `part:` merges them into this one)",
+                    src.at(dropped)
+                ));
+                // The whole subtree is already reported gone; walking it would only add
+                // diagnostics about chapters that are not built either way.
+                continue;
+            }
+            if let Some(inner) = map.get("chapters") {
+                match inner.as_sequence() {
+                    Some(seq) => walk(seq, warnings, src),
+                    // A part whose `chapters:` is empty loses nothing (and `push_group`
+                    // pops the now-empty header), so only a *value* that is not a list
+                    // reports: that one is a chapter the author wrote and will not get.
+                    None if inner.is_null() => {}
+                    None => warnings.push(format!(
+                        "{} a part's `chapters:` is not a list, so the part reads as empty: \
+                         every chapter under it is DROPPED from the book, and the emptied \
+                         part header goes with it (write the entries as a list, \
+                         `- intro.tmd`)",
+                        // The entry's own `part:` if it has one: the message is about a
+                        // part, so a line showing one reads better than the enclosing
+                        // `chapters:` key.
+                        src.at(if map.contains_key("part") {
+                            "part"
+                        } else {
+                            "chapters"
+                        })
+                    )),
+                }
             }
         }
     }
-    if let Some(list) = value.get("chapters").and_then(|v| v.as_sequence()) {
-        walk(list, warnings, src);
+    if let Some(chapters) = value.get("chapters") {
+        match chapters.as_sequence() {
+            Some(list) => walk(list, warnings, src),
+            // `chapters: []` / a bare `chapters:` is a book with no chapters yet, which is
+            // what an author writing one starts from. Nothing is lost, so nothing reports.
+            None if chapters.is_null() => {}
+            None => warnings.push(format!(
+                "{} `chapters:` is not a list, so it names no chapters at all: every \
+                 chapter under it is DROPPED and the project builds as a plain website, \
+                 not a book (write the entries as a list, `- intro.tmd`)",
+                src.at("chapters")
+            )),
+        }
     }
 }
 
@@ -583,6 +649,73 @@ mod config_tests {
                 w.iter()
                     .any(|m| m.contains("DROPPED") || m.contains("dropped")),
                 "the diagnostic must say the chapter is lost, not just that a key is odd: {w:?}"
+            );
+        }
+    }
+
+    /// A `chapters:` value that is not a list reads as NO chapters, at either depth, and
+    /// both depths reach it through the same `as_sequence()`. Top level: `parse_native`
+    /// gets `None`, so `is_book` is false and the project builds as a plain website.
+    /// Inside a part: `book::push_group` gets `None`, so it never recurses, and the
+    /// empty-part-header pop then deletes the part header too. Both shapes produced ZERO
+    /// diagnostics, with `check` exiting 0 over a book missing a chapter.
+    #[test]
+    fn a_chapters_value_that_is_not_a_list_is_diagnosed() {
+        for yaml in [
+            // Top level: the project silently stops being a book.
+            "title: X\nchapters: deep.tmd\n",
+            // Inside a part group: the part and the chapter under it both vanish.
+            "title: X\nchapters:\n  - index.tmd\n  - part: Basics\n    chapters: deep.tmd\n",
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(None));
+            assert!(
+                w.iter().any(|m| m.contains("`chapters:` is not a list")),
+                "expected a not-a-list diagnostic for:\n{yaml}\ngot: {w:?}"
+            );
+            assert!(
+                w.iter().any(|m| m.contains("DROPPED")),
+                "the diagnostic must say the chapter is lost, not just that a shape is odd: {w:?}"
+            );
+        }
+        // An empty list and a bare `chapters:` name no chapters at all, so nothing is lost:
+        // the diagnostic is for chapters that VANISH, not for a book with none yet.
+        for yaml in ["title: X\nchapters: []\n", "title: X\nchapters:\n"] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(None));
+            assert!(
+                !w.iter().any(|m| m.contains("not a list")),
+                "an empty chapter list loses nothing and must stay silent ({yaml:?}): {w:?}"
+            );
+        }
+    }
+
+    /// One entry carrying `file:` alongside a part's keys. A missing `- ` before `part:`
+    /// merges two list entries into a single mapping whose keys are all spelled correctly,
+    /// so every other check passes it: `push_chapter_entry` finds the `file:`, consumes the
+    /// entry and returns `true`, and `push_group` therefore never looks at the `part:` or
+    /// the `chapters:` sitting in the same mapping. The part and every chapter under it are
+    /// gone, with `check` exiting 0.
+    #[test]
+    fn an_entry_mixing_file_with_part_or_chapters_is_diagnosed() {
+        for yaml in [
+            // The missing `- ` before `part:`.
+            "title: X\nchapters:\n  - file: index.tmd\n    part: Basics\n    chapters:\n      - a.tmd\n",
+            // The same collision without a `part:`: `file:` still wins and the nested list goes.
+            "title: X\nchapters:\n  - file: index.tmd\n    chapters:\n      - a.tmd\n",
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(None));
+            assert!(
+                w.iter().any(|m| m.contains("both `file:`")),
+                "expected a file/part collision diagnostic for:\n{yaml}\ngot: {w:?}"
+            );
+            assert!(
+                w.iter().any(|m| m.contains("DROPPED")),
+                "the diagnostic must say the part is lost, not just that the entry is odd: {w:?}"
             );
         }
     }
