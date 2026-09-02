@@ -940,8 +940,25 @@ impl Kernel {
         code: &str,
         mut on_output: impl FnMut(&Output),
     ) -> io::Result<Vec<Output>> {
+        // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`. What
+        // happens after a cell fails is the EXECUTOR's decision — `exec.rs` keeps running the
+        // document and refuses to persist anything downstream (`failed_at`) — and a kernel
+        // holding a second opinion can only contradict it. `true` tells ipykernel to abort
+        // every execute_request already queued behind the failure: it answers with
+        // `_send_abort_reply` and a bare `busy`/`idle` pair, so the loop below breaks on that
+        // Idle with ZERO outputs and the cell reaches the page as a *successful empty* one.
+        //
+        // Taliesin normally queues nothing (it waits for Idle before sending the next cell),
+        // but the abandoned-cell path ends without one: a cell that swallows its interrupt
+        // outlives the cap, `INTERRUPT_GRACE` and the shell drain, and the next cell is sent
+        // into a kernel still running it. Reading the reply's `status` instead would only let
+        // us *report* the swallowed cell — and not reliably, since the drain below gives up
+        // after 5s — where this stops the kernel from swallowing it at all.
         let request = JupyterMessage::new(
-            JupyterMessageContent::ExecuteRequest(ExecuteRequest::new(code.to_string())),
+            JupyterMessageContent::ExecuteRequest(ExecuteRequest {
+                stop_on_error: false,
+                ..ExecuteRequest::new(code.to_string())
+            }),
             None,
         );
         let msg_id = request.header.msg_id.clone();
@@ -2070,6 +2087,81 @@ mod tests {
             assert!(
                 t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(15),
                 "the loop waited {:?} on a cell that ignored its interrupt",
+                t.elapsed()
+            );
+        });
+    }
+
+    // The continuation policy after a failed cell is the EXECUTOR's (`exec.rs` keeps running
+    // and blocks the persist instead), so the kernel must not hold a second opinion. It did:
+    // `ExecuteRequest::new` defaults `stop_on_error` to `true`, which tells ipykernel to
+    // abort every execute_request already queued behind one that errors.
+    //
+    // Taliesin normally has nothing queued — it waits for Idle before sending the next cell —
+    // but the one path that ends without an Idle is exactly the one that reaches this bug: a
+    // cell that swallows its interrupt outlives the cap, the grace window AND the 5s shell
+    // drain, so the loop gives up while the kernel is still running it. The next cell is then
+    // sent into a busy kernel, and when the abandoned cell finally raises, ipykernel aborts
+    // it: `_send_abort_reply` plus a `busy`/`idle` pair, and NO outputs. This loop breaks on
+    // that Idle, returns an empty vector, and the page renders a cell that never ran as a
+    // successful cell with no output.
+    #[test]
+    fn a_cell_queued_behind_a_failing_one_runs_instead_of_being_silently_aborted() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the abort policy."
+            );
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(1));
+
+            // Cell A swallows SIGINT and then fails on its own schedule. The sleep is sized
+            // past the 1s cap + INTERRUPT_GRACE + the 5s shell drain (~11s), so the loop has
+            // provably given up and sent cell B before A raises — which is what puts B in the
+            // kernel's queue at the moment the abort fires. A plain `raise` is used rather
+            // than the deferred `KeyboardInterrupt` this was found as: both reach ipykernel
+            // as one event (`reply.status == "error"`), and this one does not depend on which
+            // thread the OS picks to deliver a signal to.
+            let first = render_outputs(
+                &k.execute(
+                    "import signal, time\n\
+                     signal.signal(signal.SIGINT, lambda *a: None)\n\
+                     time.sleep(13)\n\
+                     raise ValueError('deferred failure')",
+                )
+                .await
+                .unwrap(),
+            );
+            // The desync this test needs really happened: the loop abandoned a cell that is
+            // still running. Without this, a green run could just mean A finished normally.
+            assert!(
+                first.contains("still running"),
+                "cell A was not abandoned mid-flight, so cell B was never queued behind it \
+                 and this test proves nothing: {first}"
+            );
+
+            // B is sent into a kernel that is still chewing on A, and must wait for it: the
+            // 1s silence cap would interrupt B before A ever reached it.
+            k.silence_cap = Some(Duration::from_secs(30));
+            let t = std::time::Instant::now();
+            let second = render_outputs(&k.execute("print('B RAN')").await.unwrap());
+            assert!(
+                second.contains("B RAN"),
+                "cell B produced nothing: ipykernel aborted it when the cell above it failed, \
+                 and an aborted cell reaches the page as a successful empty one ({:?} elapsed): \
+                 {second}",
                 t.elapsed()
             );
         });

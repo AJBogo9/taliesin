@@ -874,7 +874,27 @@ fn build_page_executing(
             None => (freeze::page_path(&base.join("_freeze"), stem), base),
         };
         let mut ex = exec::Executor::with_freeze(freeze_file).in_dir(base);
-        ex.set_interpreters(crate::interpreter::resolve_python(None, interp_dir));
+        // The project's `python:` moves with the root, for the same reason the root itself
+        // does. Passing `None` here read the pin as "not set" and fell through to
+        // `<root>/.venv` / `TALIESIN_PYTHON` / `python3` — so the author got an interpreter
+        // they had explicitly overruled (and `doctor`'s fix line recommends setting exactly
+        // this key), and the freeze file the two verbs deliberately SHARE was written under
+        // two different interpreter ids, which is a guaranteed miss on both sides.
+        //
+        // Only when there is a project: a lone file has no config to read and must keep the
+        // old resolution exactly. `Site::discover` is the only public way to reach a parsed
+        // `_site.yml`, and it pays the project's two whole-project render passes to get there
+        // — measured at +80 ms on `docs/guide` (16 pages, release, 2026-09-02), against a
+        // kernel boot this path already waits ~1 s for. Re-reading the key here with a second
+        // YAML parse would be the "two copies of one policy" that put this bug here in the
+        // first place, so it buys the config from the one owner and pays the freight.
+        let pinned = project_root
+            .as_deref()
+            .and_then(|root| taliesin_core::Site::discover(root).config.python);
+        ex.set_interpreters(crate::interpreter::resolve_python(
+            pinned.as_deref(),
+            interp_dir,
+        ));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         // Executable cells that could not execute: fatal, not a warning (see
         // `kernel_failure_report`). Carried out rather than reported here so the page is
