@@ -489,6 +489,39 @@ fn corporate_brace_author_stays_whole() {
     assert!(!f.contains("W. H. Organization"), "got: {f}");
 }
 
+/// A corporate author whose own name contains " and " was split by the author-list
+/// separator and each half then formatted as a person: `{{Food and Drug Administration}}`
+/// published as "Food and D. Administration". Silent — the key resolves, no validator reads
+/// a formatted name — and it hits any agency spelled this way (FDA, NIST's parent, "Centers
+/// for Disease Control and Prevention"). The separator only separates at brace depth 0.
+#[test]
+fn a_corporate_author_containing_and_is_one_author() {
+    for (key, name) in [
+        ("fda", "Food and Drug Administration"),
+        ("cdc", "Centers for Disease Control and Prevention"),
+    ] {
+        let b = parse_bib(&format!(
+            "@misc{{{key},\n author = {{{{{name}}}}},\n title = {{T}},\n year = {{2020}}\n}}\n"
+        ));
+        let f = b.format(key).unwrap();
+        assert!(
+            f.starts_with(&format!("{name}, ")),
+            "corporate author was split on its own conjunction: {f}"
+        );
+        assert!(!f.contains("D. Administration"), "got: {f}");
+        assert!(!f.contains("P. Prevention"), "got: {f}");
+    }
+    // The separator still separates real co-authors, including beside a corporate one.
+    let b = parse_bib(
+        "@misc{mix,\n author = {{{Food and Drug Administration}} and Doe, Jane},\n title = {T},\n year = {2020}\n}\n",
+    );
+    let f = b.format("mix").unwrap();
+    assert!(
+        f.starts_with("Food and Drug Administration and J. Doe, "),
+        "got: {f}"
+    );
+}
+
 #[test]
 fn single_brace_first_last_author_is_still_initialized() {
     // Regression guard: a single-brace `{First Last}` is an ordinary author and

@@ -3533,6 +3533,39 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
                 } else if !tag.trim_end().ends_with('/') {
                     skip_math += 1;
                 }
+            } else if !is_close
+                && RAW_TEXT_ELEMENTS.contains(&name.as_str())
+                && !tag.trim_end().ends_with('/')
+            {
+                // A `<script>`/`<style>` body is not visible text — same reason `<math>`
+                // is dropped above. A `{js}`/`{glsl}` cell ships its author source in a
+                // `<script type="…">` in the page BODY, and that source was reaching the
+                // Cmd-K index, so a query for a variable name returned a snippet appearing
+                // nowhere on the page (measured live on gallery.taliesin.sh).
+                //
+                // Consumed to the matching close by NAME rather than by the depth counter
+                // math uses: a raw-text body is CDATA, so a `"<style>"` inside a JS string
+                // is text, and a counter would take it for an open tag and silently drop
+                // the whole rest of the page from the index. This is the HTML raw-text
+                // rule, which is also why `emit_client_cell` escapes `</script` in the
+                // source it ships — the close below is unambiguous.
+                let close = format!("</{name}");
+                let mut window = String::new();
+                while let Some(c) = chars.next() {
+                    window.push(c.to_ascii_lowercase());
+                    while window.len() > close.len() {
+                        window.remove(0);
+                    }
+                    if window == close {
+                        // Swallow the rest of the close tag (`>` or ` foo>`).
+                        for c in chars.by_ref() {
+                            if c == '>' {
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
             }
         } else if skip_math == 0 {
             out.push(ch);

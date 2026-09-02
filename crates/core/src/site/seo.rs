@@ -182,6 +182,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// `abs_page_url` strips `index.html` to get the clean directory URL, and it used to
+    /// strip it as a bare SUFFIX: any page whose stem merely *ends* in "index" lost its own
+    /// name. `search-index.tmd` builds to `search-index.html` and published
+    /// `https://ex.com/search-` into `<loc>`, into `og:url`, and into the Atom entry `<id>`
+    /// and `<link>` — every machine consumer following a 404 while `--check-only` stayed
+    /// green. Only the whole file name is an index page.
+    #[test]
+    fn a_page_whose_stem_merely_ends_in_index_keeps_its_name() {
+        let root = write_site(
+            "seoindexsuffix",
+            &[
+                ("_site.yml", "title: S\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("search-index.tmd", "---\ntitle: Search\n---\n\nx\n"),
+                ("docs/index.tmd", "---\ntitle: Docs\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let sm = site.sitemap().expect("sitemap emitted with url:");
+        assert!(
+            sm.contains("<loc>https://ex.com/search-index.html</loc>"),
+            "a `-index.html` page keeps its whole name: {sm}"
+        );
+        assert!(
+            !sm.contains("<loc>https://ex.com/search-</loc>"),
+            "the truncated URL is a 404: {sm}"
+        );
+        // The two real index pages still clean up, at the root and in a subdirectory.
+        assert!(sm.contains("<loc>https://ex.com/</loc>"), "root: {sm}");
+        assert!(sm.contains("<loc>https://ex.com/docs/</loc>"), "sub: {sm}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn robots_allows_all_and_points_at_the_sitemap() {
         let root = write_site(

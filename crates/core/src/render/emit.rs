@@ -56,8 +56,14 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 escape_html(&literal, out);
                 out.push_str("</pre>");
             } else {
+                // Escaped, like every other author-controlled attribute value here.
+                // `code_lang` applies no character filter — it splits the info string on
+                // comma/space/tab and hands back the raw token — so a fence opening
+                // ```` ```x"onclick=… ```` used to close this attribute and have the rest
+                // parsed as markup. Same trust boundary `safe_url` guards one attribute over,
+                // and reached the same way: an included third-party markdown file.
                 let class = match &lang {
-                    Some(l) => format!(" class=\"language-{l}\""),
+                    Some(l) => format!(" class=\"language-{}\"", escape_attr(l)),
                     None => String::new(),
                 };
                 // Mark a CELL's source listing, so the reader's "show/hide code" control

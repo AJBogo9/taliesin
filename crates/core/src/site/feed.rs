@@ -71,7 +71,15 @@ impl Site {
     /// `base` origin is left as the author wrote it.
     pub(crate) fn abs_page_url(&self, page: &Page) -> Option<String> {
         let base = self.canonical_base()?;
-        let clean = page.url.strip_suffix("index.html").unwrap_or(&page.url);
+        // Only the whole FILE NAME is an index page. As a bare suffix strip this ate the
+        // name of any page whose stem merely ends in "index": `search-index.html` published
+        // `https://site/search-` into `<loc>`, `og:url` and the Atom `<id>`/`<link>` alike,
+        // so every machine consumer followed a 404 while `--check-only` stayed green.
+        let clean = page
+            .url
+            .strip_suffix("index.html")
+            .filter(|p| p.is_empty() || p.ends_with('/'))
+            .unwrap_or(&page.url);
         Some(format!("{base}/{}", percent_encode_path(clean)))
     }
 

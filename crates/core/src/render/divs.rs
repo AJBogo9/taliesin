@@ -369,26 +369,33 @@ pub(crate) fn group_divs(
     }
 
     for (i, fb) in flat.iter().enumerate() {
-        // Skip any spans that already closed before this block (degenerate/empty divs, spans
-        // whose blocks are all consumed) BEFORE opening containing spans. Skipping first is
-        // load-bearing: an empty div at `span_idx` has `close < buf_start` but is not a
-        // containing span, so the open loop would stop on it and never reach the block's own
-        // container — which silently drops the block out of its div (a `.column` after an empty
-        // `.input`, say). Spans are open-sorted, so a still-open ancestor already sits below
-        // `span_idx` on the stack and is never skipped here.
-        while span_idx < spans.len() && spans[span_idx].close < fb.buf_start {
+        // Walk every span that starts before this block, opening the ones that contain it and
+        // stepping over the ones that already closed (degenerate/empty divs, spans whose
+        // blocks are all consumed). Skipping a stale span must not HALT the walk: an empty
+        // div is not a containing span, and stopping on it silently drops the block out of
+        // its own div (a `.column` after an empty `.input`, say).
+        //
+        // This is one pass rather than a skip pass followed by an open pass, because a stale
+        // span can sit anywhere in the order, not only at the front. Spans are sorted by
+        // OPEN, so `::: {.outer}` wrapping an empty `::: {.foo}` and then a `.callout-note`
+        // gives [outer, foo, callout]: a leading skip pass stops at `outer` (still open), and
+        // the open pass then halts on `foo` and never reaches `callout`. The callout's
+        // wrapper, title bar and class vanished from the published page with no diagnostic —
+        // it has content, so the empty-div check above skips it, and `.foo` is a custom class,
+        // so its own check is silent.
+        //
+        // A still-open ancestor already sits below `span_idx` on the stack, so it is never
+        // revisited here, and open-sorted order means an ancestor is always pushed before its
+        // descendant.
+        while span_idx < spans.len() && spans[span_idx].open < fb.buf_start {
+            let span = &spans[span_idx];
             span_idx += 1;
-        }
-        // Open every span that starts before this block and contains it.
-        while span_idx < spans.len()
-            && spans[span_idx].open < fb.buf_start
-            && spans[span_idx].close > fb.buf_start
-        {
-            stack.push(Open {
-                span: &spans[span_idx],
-                inner: Vec::new(),
-            });
-            span_idx += 1;
+            if span.close > fb.buf_start {
+                stack.push(Open {
+                    span,
+                    inner: Vec::new(),
+                });
+            }
         }
 
         push_block(&mut stack, &mut result, fb.block.clone());

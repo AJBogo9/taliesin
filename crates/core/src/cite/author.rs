@@ -9,8 +9,8 @@ use crate::render::escape_attr as esc;
 /// (or a trailing BibTeX `and others`) collapse to the first author + italic
 /// "et al.". Otherwise: "A and B" for two, "A, B, and C" (Oxford comma) for more.
 pub(crate) fn format_authors(raw: &str) -> String {
-    let mut names: Vec<&str> = raw
-        .split(" and ")
+    let mut names: Vec<&str> = split_on_and(raw)
+        .into_iter()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .collect();
@@ -40,6 +40,37 @@ pub(crate) fn format_authors(raw: &str) -> String {
         }
         out.push_str("<em>et al.</em>");
     }
+    out
+}
+
+/// Split a BibTeX author list on its ` and ` separator at **brace depth 0**, the same
+/// depth-counting idiom `parse.rs` reads field values with.
+///
+/// A brace-protected corporate name may contain the conjunction itself, and a plain
+/// `split(" and ")` tore it in half and then formatted each half as a person:
+/// `{{Food and Drug Administration}}` published as "Food and D. Administration". Silent —
+/// the key resolves and nothing validates a formatted name — and it hits every agency
+/// spelled this way (the FDA, "Centers for Disease Control and Prevention", …).
+fn split_on_and(raw: &str) -> Vec<&str> {
+    const SEP: &str = " and ";
+    let mut out = Vec::new();
+    let (mut depth, mut start, mut skip_to) = (0usize, 0usize, 0usize);
+    for (i, c) in raw.char_indices() {
+        if i < skip_to {
+            continue;
+        }
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            ' ' if depth == 0 && raw[i..].starts_with(SEP) => {
+                out.push(&raw[start..i]);
+                skip_to = i + SEP.len();
+                start = skip_to;
+            }
+            _ => {}
+        }
+    }
+    out.push(&raw[start..]);
     out
 }
 

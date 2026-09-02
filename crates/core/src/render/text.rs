@@ -106,4 +106,38 @@ mod tests {
         );
         assert_eq!(indexable_text("<p>a   b\n\nc</p>"), "a b c");
     }
+
+    /// A `{js}`/`{glsl}` cell ships its author source inside a `<script type="…">` in the
+    /// page body, and a `<script>` body is CDATA, not text: nothing there is on the page. It
+    /// was reaching the index anyway (measured live on gallery.taliesin.sh, where
+    /// `descent.html`'s section text was dominated by its gradient-descent cell's source, so
+    /// a query for `const` returned a snippet appearing nowhere on the page). `<math>` was
+    /// already skipped for the same reason; this is the same rule applied to the other
+    /// element class whose body is not visible text.
+    #[test]
+    fn indexable_text_skips_raw_text_element_bodies() {
+        assert_eq!(
+            indexable_text(
+                "<div class=\"cell tali-js\"><div class=\"tali-js-out\"></div>\
+                 <script type=\"text/javascript\" data-name=\"n\">const width = 640;\
+                 </script></div><p>Visible.</p>"
+            ),
+            "Visible."
+        );
+        // `<style>` likewise: a scoped rule block is not prose.
+        assert_eq!(
+            indexable_text("<style>.a{color:red}</style><p>Text.</p>"),
+            "Text."
+        );
+        // The tag boundary still separates, so the skip cannot weld neighbours together.
+        assert_eq!(
+            indexable_text("<p>One.</p><script>x</script><p>Two.</p>"),
+            "One. Two."
+        );
+        // A `<script>` shown as a code SAMPLE is escaped text, not an element, and stays.
+        assert_eq!(
+            indexable_text("<pre><code>&lt;script&gt;kept&lt;/script&gt;</code></pre>"),
+            "<script>kept</script>"
+        );
+    }
 }

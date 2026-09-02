@@ -306,6 +306,39 @@ fn tmd_code_cell_language_detected() {
     assert!(doc.blocks[0].html.contains("class=\"language-python\""));
 }
 
+/// The fence info string is author-controlled text that lands inside a double-quoted
+/// attribute, and `code_lang` applies no character filter (it splits on comma/space/tab and
+/// returns the raw token), so an unescaped `"` closes the class and everything after it
+/// parses as further attributes. The realistic carrier is an included third-party markdown
+/// file rather than the author's own typing, which is exactly the trust boundary
+/// `safe_url` guards one attribute over on this same emit path.
+#[test]
+fn a_quote_in_the_fence_language_cannot_open_a_new_attribute() {
+    // The three spellings reach two different emitters: a plain fence and a `{lang}` cell
+    // both land in `emit.rs`, while a `lst-` label routes to `cell_numbered`'s listing.
+    for src in [
+        "```x\"onclick=alert(1)//\ncode\n```\n",
+        "```{x\"onclick=alert(1)//}\ncode\n```\n",
+        "```{x\"onclick=alert(1)//}\n#| label: lst-x\n#| lst-cap: Cap\nprint(1)\n```\n",
+    ] {
+        let doc = render_document(src);
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        // Pin the escaped bytes rather than asking `tags`/`attrs` whether an `onclick`
+        // attribute exists: the walker tracks quote state, so the very markup at issue
+        // (`class="language-x"onclick=…"`) puts it *inside* a quoted value and it never
+        // reports the attribute the browser would parse. On the unescaped emission this
+        // assertion fails; the walker's did not.
+        assert!(
+            html.contains("class=\"language-x&quot;onclick=alert(1)//\""),
+            "fence language must reach the class attribute escaped: {html}"
+        );
+        assert!(
+            !html.contains("class=\"language-x\""),
+            "an unescaped `\"` closed the class attribute early: {html}"
+        );
+    }
+}
+
 #[test]
 fn table_uses_thead_th_and_tbody_td() {
     let doc = render_document("| A | B |\n|---|--:|\n| 1 | 2 |\n");
@@ -420,6 +453,32 @@ fn a_block_after_an_empty_div_stays_inside_its_own_container() {
         callout_at < body_at,
         "the body stays inside the callout container: {h}"
     );
+}
+
+#[test]
+fn a_block_after_an_empty_div_nested_in_a_container_keeps_its_own_wrapper() {
+    // The same defect as the test above, one level deeper, and the reason the earlier fix
+    // (skip degenerate spans, THEN open containers) was not enough. Spans are sorted by
+    // OPEN, so with `.outer` wrapping both, the order is [outer, foo, callout]: the skip
+    // pass stops at `outer` (still open), then the open pass opens `outer`, reaches the
+    // stale empty `foo` — whose close is already behind the block — and HALTS. `callout`
+    // is never opened.
+    //
+    // Nothing reports it: the callout has content, so the empty-div check skips it, and
+    // `.foo` is a custom class, so its own check is silent. The published page loses the
+    // callout's wrapper, its title bar and its class. The same shape breaks a `layout-ncol`
+    // grid whose first column is an empty placeholder.
+    let doc =
+        render_document("::: {.outer}\n::: {.foo}\n:::\n::: {.callout-note}\nInside.\n:::\n:::\n");
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(h.contains("class=\"outer\""), "outer still wraps: {h}");
+    assert!(
+        h.contains("callout callout-note"),
+        "the callout after a nested empty div keeps its wrapper: {h}"
+    );
+    let body_at = h.find("Inside.").expect("body present");
+    let callout_at = h.find("callout-body").expect("callout body wrapper");
+    assert!(callout_at < body_at, "body stays inside the callout: {h}");
 }
 
 #[test]

@@ -142,10 +142,13 @@ pub(super) fn emit_code_listing(
     num: &str,
 ) -> String {
     let id_attr = id_attr(anchor);
+    // Escaped for the same reason as `emit.rs`'s copy: the fence info string is
+    // author-controlled and `code_lang` filters no characters, so an unescaped `"` closes
+    // the attribute and the rest of the token parses as markup.
     let class = if lang.is_empty() {
         String::new()
     } else {
-        format!(" class=\"language-{lang}\"")
+        format!(" class=\"language-{}\"", escape_attr(lang))
     };
     let code_html = crate::highlight::highlight(code, (!lang.is_empty()).then_some(lang));
     let figcap = numbered_caption("Listing", num, caption);

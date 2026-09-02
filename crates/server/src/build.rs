@@ -119,6 +119,30 @@ fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
     ))
 }
 
+/// The refusal for a `build <src> <out>` whose output path is itself a Taliesin **source**
+/// document. `taliesin build *.tmd` in a directory of pages expands to `build a.tmd b.tmd`,
+/// and the second positional is where `build` *writes*: without this, `b.tmd`'s source is
+/// replaced by rendered HTML, exit 0, log line `built b.tmd`, and the only way back is git.
+///
+/// Deliberately its own guard rather than a row in [`NON_HTML_OUTPUT_EXTS`]: that list's
+/// message ("write `b.html` instead") answers a *format-conversion* expectation, and the
+/// mistake here is a glob that handed `build` two sources, so it needs its own fix line.
+/// Case-insensitive because on a case-insensitive filesystem `B.TMD` **is** `b.tmd`, even
+/// though `ext::is_source_path` (which answers "is this a page to build?") is not.
+fn source_output_error(out_html: Option<&str>) -> Option<String> {
+    let out = out_html?;
+    let ext = Path::new(out).extension()?.to_str()?.to_ascii_lowercase();
+    if !taliesin_core::ext::is_source_ext(&ext) {
+        return None;
+    }
+    Some(format!(
+        "error: `{out}` is a Taliesin source file, and the second positional is the path \
+         `build` WRITES to. Refusing to overwrite your source. `build` takes one page at a \
+         time, so a shell glob (`build *.tmd`) hands it the next page as the output path — \
+         build the whole project instead (`build <dir>`), or name an `.html` output."
+    ))
+}
+
 /// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
 /// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
 /// Returns `Err(usage/error message)` for a bad `--jobs` value, a value-less `--out`/`--dir`,
@@ -204,6 +228,13 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     // that second positional (even a contradictory `--out dist doc.pdf`, where it is otherwise
     // ignored), and stays unit-testable as pure arg parsing.
     if let Some(msg) = non_html_output_error(positionals.get(1).copied()) {
+        return Err(msg);
+    }
+    // The data-loss sibling of DX11, and checked in the same place for the same reason: a
+    // second positional that is itself a `.tmd` is a source file about to be overwritten with
+    // rendered HTML. Disjoint from the denylist above (`tmd` is not in it), so the order of
+    // the two is free.
+    if let Some(msg) = source_output_error(positionals.get(1).copied()) {
         return Err(msg);
     }
     // `--stdout` says "the page goes to stdout"; each of these says "the page goes
@@ -3816,6 +3847,39 @@ mod dx11_tests {
         let none = argv("doc.tmd");
         let bare = parse_build_args(&none).expect("no out path parses");
         assert_eq!(bare.out_html, None);
+    }
+
+    /// `build *.tmd` expands to `build a.tmd b.tmd`, and the second positional is the path
+    /// `build` WRITES: without this guard `b.tmd`'s source is replaced by rendered HTML with
+    /// exit 0 and a `built b.tmd` log line. The message must name the file and the glob, not
+    /// DX11's "write `b.html` instead" (the mistake is two sources, not a format expectation).
+    #[test]
+    fn parse_build_args_refuses_to_overwrite_a_source_file() {
+        let two = argv("about.tmd index.tmd");
+        let err = parse_build_args(&two).expect_err("a .tmd output must Err");
+        assert!(err.contains("index.tmd"), "names the target: {err}");
+        assert!(err.contains("source file"), "says why: {err}");
+        assert!(
+            err.contains("*.tmd"),
+            "names the glob that causes it: {err}"
+        );
+
+        // Case-insensitive: on a case-insensitive filesystem `A.TMD` IS the source file.
+        assert!(
+            parse_build_args(&argv("a.tmd B.TMD")).is_err(),
+            "uppercase .TMD is the same file on macOS"
+        );
+        // Building a page onto itself is the same refusal.
+        assert!(
+            parse_build_args(&argv("a.tmd a.tmd")).is_err(),
+            "self-write"
+        );
+
+        // Legitimate targets are untouched.
+        for ok in ["out.html", "out.htm", "draft", "notes.txt"] {
+            let a = argv(&format!("doc.tmd {ok}"));
+            assert!(parse_build_args(&a).is_ok(), "allow {ok}");
+        }
     }
 }
 
