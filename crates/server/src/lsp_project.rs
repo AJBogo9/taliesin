@@ -22,8 +22,10 @@ use std::path::{Path, PathBuf};
 /// A cross-reference target defined somewhere in the project.
 pub(crate) struct ProjectAnchor {
     pub id: String,
+    /// The file the author wrote the anchor in — the page, or the `{{< include >}}` partial
+    /// when the anchor lives there. Always paired with a line in THAT file's numbering.
     pub path: PathBuf,
-    /// 0-based line of the defining site.
+    /// 0-based line of the defining site, in `path`'s own numbering (see [`origin_of`]).
     pub line: u32,
     /// The rendered section number for a numbered chapter heading; empty otherwise.
     pub number: String,
@@ -195,8 +197,10 @@ fn stamps_for(root: &Path) -> Vec<Stamp> {
 }
 
 /// Read every page once and collect the project's cross-reference anchors. Includes are
-/// resolved first, so an anchor authored in an `_includes/` partial belongs to whichever page
-/// includes it, exactly as the render pipeline and `anchors_defined_elsewhere_in_project` do.
+/// resolved first, so an anchor authored in an `_includes/` partial is found through whichever
+/// page includes it, exactly as the render pipeline and `anchors_defined_elsewhere_in_project`
+/// do — and is then located back to the partial itself by [`origin_of`], because that is where
+/// the author has to go to change it.
 fn walk(root: &Path) -> ProjectScan {
     let mut inputs = Vec::new();
     taliesin_core::site::collect_pages(root, &mut inputs);
@@ -208,25 +212,61 @@ fn walk(root: &Path) -> ProjectScan {
             continue;
         };
         let base = input.parent().unwrap_or_else(|| Path::new("."));
-        let (src, _) = taliesin_core::includes::resolve(&raw, base);
+        // The source map is kept, not discarded: `scan_page_anchors` counts lines in the
+        // EXPANDED buffer, which is the page's own numbering only until the first
+        // `{{< include >}}` shifts everything below it.
+        let (src, origins) = taliesin_core::includes::resolve(&raw, base);
 
         for a in taliesin_core::site::scan_page_anchors(&src, None) {
             // First definition wins project-wide, matching `scan_xref_targets`. Two owners of
             // "which page defines `fig-x`" that disagreed would send F12 somewhere the built
             // page does not link to.
             if seen.insert(a.id.clone(), ()).is_none() {
+                let (path, line) = origin_of(&input, base, &origins, a.line);
                 anchors.push(ProjectAnchor {
                     id: a.id,
-                    path: input.clone(),
-                    // `scan_page_anchors` reports a 1-based line; everything on the LSP wire
+                    path,
+                    // The source map reports a 1-based line; everything on the LSP wire
                     // is 0-based.
-                    line: a.line.saturating_sub(1) as u32,
+                    line: line.saturating_sub(1) as u32,
                     number: a.number,
                 });
             }
         }
     }
     ProjectScan { anchors }
+}
+
+/// Map a 1-based **buffer** line of `page`'s expanded source back to the file and 1-based
+/// line the author actually wrote it on.
+///
+/// This is the LSP-side half of the render pipeline's `map_origin`: a location handed to an
+/// editor may only ever pair a file with a line in THAT file's numbering. A buffer line put
+/// against the page's own path is not a near miss — any include shifts every line below it,
+/// so F12 opened a real file at a line the anchor is not on (`corpus/single-page-report`
+/// records `fig-model-hierarchical` at buffer line 131 of a 45-line `index.tmd`, which the
+/// editor silently clamps to the end).
+///
+/// An anchor authored inside a partial belongs to that partial: the source map's label is
+/// relative to the page's own directory (`data-source-file`'s contract), so it is joined back
+/// onto `base` and normalized. With no map entry — an empty document, or a line past its end —
+/// the buffer line IS the page's line, because there was nothing to expand.
+fn origin_of(
+    page: &Path,
+    base: &Path,
+    origins: &[taliesin_core::includes::LineOrigin],
+    buffer_line: usize,
+) -> (PathBuf, usize) {
+    match origins.get(buffer_line.saturating_sub(1)) {
+        Some(o) => (
+            o.file.as_ref().map_or_else(
+                || page.to_path_buf(),
+                |f| taliesin_core::includes::absolutize(&base.join(f)),
+            ),
+            o.line,
+        ),
+        None => (page.to_path_buf(), buffer_line),
+    }
 }
 
 #[cfg(test)]
@@ -330,6 +370,99 @@ mod tests {
             "`{{#fig-one}}` sits on the third line of index.tmd"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An anchor's recorded location must be in the AUTHOR's coordinate system, not the
+    /// post-include buffer's.
+    ///
+    /// `scan_page_anchors` counts lines in the expanded buffer, so the first
+    /// `{{< include >}}` on a page shifts every anchor below it by the whole partial's
+    /// length. Pairing that number with the page's own path — the mismatch the
+    /// `source_file`/mapped-line rule forbids — sent F12 N lines past the heading, or to
+    /// the clamped end of a file with nothing to signal it.
+    #[test]
+    fn an_anchor_below_an_include_reports_the_authors_own_file_and_line() {
+        let root = scratch("include-lines");
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::create_dir_all(root.join("_includes")).unwrap();
+        // Five lines, so the shift is unmistakable and no off-by-one can pass by luck.
+        std::fs::write(
+            root.join("_includes/intro.tmd"),
+            "Some intro prose.\n\n## Included {#sec-included}\n\nMore prose.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("chapter.tmd"),
+            "# Chapter {#sec-chapter}\n\n{{< include _includes/intro.tmd >}}\n\n\
+             ## After {#sec-after}\n",
+        )
+        .unwrap();
+
+        let mut cache = ProjectCache::new();
+        let scan = cache.get(&root.join("chapter.tmd")).unwrap();
+        let at = |id: &str| scan.anchors.iter().find(|a| a.id == id).unwrap();
+
+        // Above the include: unchanged, and the control that proves the fixture is walked.
+        let before = at("sec-chapter");
+        assert!(before.path.ends_with("chapter.tmd"));
+        assert_eq!(before.line, 0, "an anchor above the include is untouched");
+
+        // Below it: the partial is five lines where the directive was one, so the buffer
+        // line is 9 while the author's is 5.
+        let after = at("sec-after");
+        assert!(
+            after.path.ends_with("chapter.tmd"),
+            "an anchor written in the page belongs to the page: {}",
+            after.path.display()
+        );
+        assert_eq!(
+            after.line, 4,
+            "`## After` is the 5th line of chapter.tmd (0-based 4); a buffer line would be 8"
+        );
+
+        // Inside it: the anchor belongs to the partial that defines it, at the partial's
+        // own line. Naming the page here would be a real, openable file at a wrong line.
+        let inside = at("sec-included");
+        assert!(
+            inside.path.ends_with("_includes/intro.tmd"),
+            "an anchor authored in a partial must resolve to the partial: {}",
+            inside.path.display()
+        );
+        assert_eq!(
+            inside.line, 2,
+            "`## Included` is the 3rd line of the partial (0-based 2)"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same property over a real project instead of a fixture: every anchor the walk
+    /// records must actually be written at the file and line it names.
+    ///
+    /// `corpus/single-page-report` is the shape that motivated this — seven
+    /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial — so a
+    /// regression through any other route than the one above still fails here.
+    #[test]
+    fn every_recorded_anchor_is_written_where_the_walk_says_it_is() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../corpus/single-page-report");
+        let mut cache = ProjectCache::new();
+        let scan = cache
+            .get(&root.join("index.tmd"))
+            .expect("the corpus report is a project");
+        let mut checked = 0;
+        for a in &scan.anchors {
+            let body = std::fs::read_to_string(&a.path).unwrap_or_default();
+            let line = body.lines().nth(a.line as usize).unwrap_or("");
+            assert!(
+                line.contains(&format!("{{#{}", a.id)),
+                "`{}` is recorded at {}:{} , which reads {line:?}",
+                a.id,
+                a.path.display(),
+                a.line + 1
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "no anchor in the report to check");
     }
 
     #[test]

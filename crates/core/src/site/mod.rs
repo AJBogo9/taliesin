@@ -1243,23 +1243,28 @@ impl Site {
             set_title_block(blocks, self.hero_html(page, hero));
         }
         for (li, spec) in page.listings.iter().enumerate() {
-            let cards = self.listing_html(page, spec, warnings);
-            match &spec.id {
-                Some(id) => {
-                    match blocks.iter().position(|b| block_tag_has_id(&b.html, id)) {
-                        // A `::: {#id}` container → inject the cards inside it.
-                        Some(i) if blocks[i].html.contains("</div>") => {
-                            let pos = blocks[i].html.rfind("</div>").unwrap();
-                            blocks[i].html.insert_str(pos, &cards);
-                        }
-                        // An anchor (e.g. an auto-slugged heading sharing the id, since
-                        // an empty fenced div emits no block) → cards go right after it.
-                        Some(i) => blocks.insert(i + 1, listing_block(li, &spec.contents, &cards)),
-                        // No target at all → append so the listing still renders.
-                        None => blocks.push(listing_block(li, &spec.contents, &cards)),
-                    }
+            let at = spec
+                .id
+                .as_ref()
+                .and_then(|id| blocks.iter().position(|b| block_tag_has_id(&b.html, id)));
+            // Where the cards land decides whether they are a block at all. Injected into an
+            // author's `::: {#id}` container they belong to THAT block, which already carries
+            // its own `data-block-id`; every other placement makes them a block of their own,
+            // which needs one or the diff's `Update` reaches nothing (see `listing_block`).
+            let adopted = at.is_some_and(|i| blocks[i].html.contains("</div>"));
+            let id = listing_block_id(li, &spec.contents);
+            let cards = self.listing_html(page, spec, (!adopted).then_some(id.as_str()), warnings);
+            match at {
+                // A `::: {#id}` container → inject the cards inside it.
+                Some(i) if adopted => {
+                    let pos = blocks[i].html.rfind("</div>").unwrap();
+                    blocks[i].html.insert_str(pos, &cards);
                 }
-                None => blocks.push(listing_block(li, &spec.contents, &cards)),
+                // An anchor (e.g. an auto-slugged heading sharing the id, since
+                // an empty fenced div emits no block) → cards go right after it.
+                Some(i) => blocks.insert(i + 1, listing_block(id, cards)),
+                // No target at all → append so the listing still renders.
+                None => blocks.push(listing_block(id, cards)),
             }
         }
     }
@@ -1354,8 +1359,17 @@ impl Site {
     }
 
     /// Render a listing's cards. `host` fixes the link/image depth so cards on a
-    /// nested page still resolve.
-    fn listing_html(&self, host: &Page, spec: &ListingSpec, warnings: &mut Vec<Warning>) -> String {
+    /// nested page still resolve. `block_id` is `Some` exactly when the `<ul>` is going to
+    /// BE a block (see `expand_page`), and `None` when it is adopted into one that already
+    /// carries an id — two `data-block-id`s in one block would give the client a second
+    /// element to resolve an op against.
+    fn listing_html(
+        &self,
+        host: &Page,
+        spec: &ListingSpec,
+        block_id: Option<&str>,
+        warnings: &mut Vec<Warning>,
+    ) -> String {
         let up = "../".repeat(host.url.matches('/').count());
         let layout = if spec.grid { "grid" } else { "default" };
         let items = self.collection(host, spec, warnings);
@@ -1371,7 +1385,13 @@ impl Site {
         // `<ul>` whose `list-style` is `none`, which is exactly what the card layout sets,
         // so without it VoiceOver announces nothing even though Chrome's tree is correct.
         // (AP6 compared Firefox and Chromium only, so this browser was never measured.)
-        format!("<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\">{cards}</ul>")
+        // The id goes LAST so the tag still opens with the semantics the a11y pin needles.
+        let id_attr = block_id
+            .map(|id| format!(" data-block-id=\"{}\"", esc(id)))
+            .unwrap_or_default();
+        format!(
+            "<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\"{id_attr}>{cards}</ul>"
+        )
     }
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
@@ -1483,15 +1503,28 @@ impl Site {
     // --- chrome -----------------------------------------------------------
 }
 
+/// The block id a standalone listing takes. `index` is the listing's position on the page,
+/// so two listings of the same `contents:` don't collide (which would break the diff).
+///
+/// Deliberately NOT a hash of the cards: a listed post's front-matter edit has to leave the
+/// id alone so the diff can pair the two renders and emit one `Update` instead of a
+/// remove-plus-insert that discards the element. That stability is exactly why the id must
+/// also reach the emitted `<ul>` — `listing_html` interpolates this same string.
+fn listing_block_id(index: usize, contents: &str) -> String {
+    format!("listing-{index}-{}", contents.replace('/', "-"))
+}
+
 /// A synthetic block wrapping a listing card set (id-less listing, or no placeholder).
-/// `index` is the listing's position on the page, so two listings of the same
-/// `contents:` don't collide on `data-block-id` (which would break the diff).
-fn listing_block(index: usize, contents: &str, cards_html: &str) -> Block {
+/// `cards_html` comes from `listing_html` carrying this same `id` as its `data-block-id`:
+/// the block model's id and the element's must be one string, or `diff_blocks` aims an
+/// `Update` at an element the client's `querySelector('[data-block-id=…]')` cannot find and
+/// the op is dropped in silence.
+fn listing_block(id: String, cards_html: String) -> Block {
     Block {
-        id: format!("listing-{index}-{}", contents.replace('/', "-")),
+        id,
         sourcepos: String::new(),
         source_file: None,
-        html: cards_html.to_string(),
+        html: cards_html,
         cell: None,
         nested: Vec::new(),
     }
@@ -2465,6 +2498,13 @@ pub(crate) mod tests {
                 && at(&filled, "class=\"tali-card\"") < at(&filled, "Trailing paragraph."),
             "cards must render at the #picks target, not appended past the page: {filled}"
         );
+        // Adopted into the author's block, the cards are NOT a block of their own, so the
+        // `<ul>` must carry no `data-block-id`: a second one inside the container's block
+        // gives the client another element to resolve an op's target against.
+        assert!(
+            filled.contains("<ul role=\"list\" class=\"tali-listing tali-listing-default\">"),
+            "an adopted listing must not carry its own block id: {filled}"
+        );
 
         // Placeholder shape: an empty fenced div emits no block, so the id is the heading's
         // and the cards follow it, still ahead of the trailing prose.
@@ -2473,6 +2513,93 @@ pub(crate) mod tests {
             at(&anchored, "id=\"recent-posts\"") < at(&anchored, "class=\"tali-card\"")
                 && at(&anchored, "class=\"tali-card\"") < at(&anchored, "Trailing paragraph."),
             "cards must render at the #recent-posts anchor: {anchored}"
+        );
+        // The other arm: an anchor is not a container, so these cards ARE their own block and
+        // must carry the id `diff_blocks` will aim an `Update` at.
+        assert!(
+            anchored.contains(
+                "<ul role=\"list\" class=\"tali-listing tali-listing-default\" \
+                 data-block-id=\"listing-0-posts\">"
+            ),
+            "a listing placed after an anchor is its own block and needs its id: {anchored}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A standalone listing is a block of its own, so its element must carry the
+    /// `data-block-id` the incremental update aims at it.
+    ///
+    /// `listing_block`'s id is deliberately stable across a content change — it is the
+    /// listing's position plus its `contents:`, not a hash of the cards — so editing a listed
+    /// post's front matter leaves the id alone and `diff_blocks` emits
+    /// `Update { target_id: "listing-0-posts" }`. The client resolves every op through
+    /// `querySelector('[data-block-id=…]')`, and the `<ul>` carried none: the op matched
+    /// nothing, was dropped without a word, and the open index page went on showing the old
+    /// card until the reader reloaded.
+    ///
+    /// Both halves read the id back through the tag walker and compare it to the block
+    /// model's own, so the two can never drift into agreeing only by spelling.
+    #[test]
+    fn a_standalone_listing_block_is_targetable_by_the_op_that_updates_it() {
+        let root = write_site(
+            "listingblockid",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\n# Home\n",
+                ),
+                (
+                    "posts/a.tmd",
+                    "---\ntitle: First\ndate: 2026-01-01\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        // The page's finished blocks, as the preview and the build both see them.
+        let blocks_of = |root: &Path| -> Vec<Block> {
+            let site = Site::discover(root);
+            let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
+            let src = std::fs::read_to_string(&page.input).unwrap();
+            let mut doc = crate::render::render_document_with_includes(&src, &site.root);
+            let mut warnings = Vec::new();
+            site.finish_blocks(page, &mut doc.blocks, &mut warnings, Some(&src), None);
+            doc.blocks
+        };
+
+        let old = blocks_of(&root);
+        let listing = old
+            .iter()
+            .find(|b| b.id.starts_with("listing-"))
+            .expect("the page has a listing block");
+        assert_eq!(
+            crate::render::attr_values(&listing.html, "data-block-id").collect::<Vec<_>>(),
+            vec![listing.id.as_str()],
+            "the listing's own element must carry its block id, once: {}",
+            listing.html
+        );
+
+        // End to end: a listed post is renamed, so the cards change while the listing block's
+        // id does not — exactly the Update the client has to be able to find.
+        std::fs::write(
+            root.join("posts/a.tmd"),
+            "---\ntitle: Renamed\ndate: 2026-01-01\n---\n\nBody.\n",
+        )
+        .unwrap();
+        let new = blocks_of(&root);
+        let ops = crate::diff::diff_blocks(&old, &new);
+        let html = ops
+            .iter()
+            .find_map(|op| match op {
+                crate::diff::BlockOp::Update { target_id, html } if *target_id == listing.id => {
+                    Some(html)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no Update aimed at the listing block: {ops:?}"));
+        assert!(
+            crate::render::attr_values(html, "data-block-id").any(|v| v == listing.id),
+            "the op's html must carry the id the op targets, or `elById` resolves nothing \
+             and the stale cards stay on screen: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -2847,10 +2974,12 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (blog, _) = render_page(&site, "blog.tmd");
 
-        // Needle the full opening tag: every page inlines the whole stylesheet, which
-        // names `.tali-listing`, so a bare class-name `contains` passes on any page.
+        // Needle the opening tag up to the class, not a bare class name: every page inlines
+        // the whole stylesheet, which names `.tali-listing`, so a bare `contains` passes on
+        // any page. The tag is left open here because a standalone listing also carries its
+        // `data-block-id` (see `a_standalone_listing_block_is_targetable_by_the_op_that_…`).
         assert!(
-            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-grid\">"),
+            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-grid\""),
             "the listing container must be a <ul>: {blog}"
         );
         assert!(
