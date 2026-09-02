@@ -239,6 +239,25 @@ fn render_doc_with_includes_impl(
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
+    // …and its warnings are mapped back through `origins` HERE, before `origins` is handed
+    // to the render. The shortcode pass counts lines in the post-include BUFFER, so what it
+    // reports is a `BufLine` in all but the type: it is the one seam the newtype cannot
+    // guard, because the pass hands back plain `Warning`s rather than formatting a line
+    // itself. Unmapped, a typo below a 40-line partial reported line 89 for source line 50 —
+    // in the LSP squiggle, the preview panel and `--check-only` alike, possibly past EOF —
+    // and one written INSIDE the partial was attributed to the parent page at a buffer
+    // offset, so wrong file and wrong line at once. Covers the `{{< input >}}` validations
+    // too: they ride the same vec.
+    let shortcode_warnings: Vec<Warning> = shortcode_warnings
+        .into_iter()
+        .map(|w| match w.line {
+            Some(l) => {
+                let (file, line) = map_origin(Some(&origins), BufLine::new(l as usize));
+                w.at(file, line as u32)
+            }
+            None => w,
+        })
+        .collect();
     // Hands `expanded`/`origins` over rather than copying them: the watchdog needs owned
     // inputs, and this path already owns both.
     let mut doc = render_internal(
@@ -2689,13 +2708,44 @@ fn apply_table_captions(
         // assign its number in document order (so it interleaves correctly with
         // Markdown tables) and register the xref. The executor injects the matching
         // caption/id into the output using `cell.table.number`.
-        if let Some(t) = blocks[i].cell.as_mut().and_then(|c| c.table.as_mut()) {
+        //
+        // **The folded cells count too**, and they come FIRST — this pass runs after
+        // `group_divs`, and a container's children are inside it, which is the order
+        // `Block::cell_blocks` defines. Asked as `blocks[i].cell` alone, a `tbl-` cell inside
+        // a `.callout-note` or a `layout-ncol` grid kept `number: ""`: the executor reads the
+        // NESTED copy, so it injected a caption reading "Table&nbsp;: Latencies", `@tbl-x`
+        // never resolved, and the broken cross-reference that followed is error severity —
+        // `build --strict` failing on a valid document. `cell_blocks` itself cannot serve
+        // here because the number is written back, and it hands out `&Block`.
+        let nested_len = blocks[i].nested.len();
+        let mut numbered_here = false;
+        for j in 0..=nested_len {
+            let is_nested = j < nested_len;
+            // The location belongs to whichever block actually carries the cell, so a
+            // duplicate-label warning on a folded cell points at the cell, not its container.
+            let (file, line) = if is_nested {
+                let nb = &blocks[i].nested[j];
+                (nb.source_file.clone(), sourcepos_start_line(&nb.sourcepos))
+            } else {
+                (bfile.clone(), bline)
+            };
+            let slot = if is_nested {
+                blocks[i].nested[j].cell.as_mut()
+            } else {
+                blocks[i].cell.as_mut()
+            };
+            let Some(t) = slot.and_then(|c| c.table.as_mut()) else {
+                continue;
+            };
             tbl_count += 1;
             let num = float_number(chapter, tbl_count);
             t.number = num.clone();
             if let Some(a) = &t.anchor {
-                register_xref(xrefs, warnings, a, num, bfile.as_deref(), bline);
+                register_xref(xrefs, warnings, a, num, file.as_deref(), line);
             }
+            numbered_here = true;
+        }
+        if numbered_here {
             i += 1;
             continue;
         }

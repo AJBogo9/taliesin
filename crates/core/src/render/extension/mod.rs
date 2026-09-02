@@ -112,10 +112,15 @@ fn expand_in_line(
             // a field on the warning now.
             let name = inner.split_whitespace().next().unwrap_or(inner);
             if name != "include" {
+                // The line is carried by the warning's LOCATION, not repeated in its prose.
+                // It used to be both, and the copy in the message could not be corrected: the
+                // caller maps `.line` back through the include source map (`origins`), so a
+                // shortcode below an included partial got a message naming the raw buffer
+                // line beside a location naming the author's own — one diagnostic asserting
+                // two different lines, the wrong one in the half a reader actually reads.
                 warnings.push(
                     Warning::new(format!(
-                        "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
-                         (left as literal text)"
+                        "unknown shortcode `{{{{< {name} >}}}}` (left as literal text)"
                     ))
                     .at(None, line_no as u32),
                 );
@@ -303,7 +308,7 @@ mod unknown_shortcode_tests {
         assert_eq!(warnings.len(), 1);
         assert_eq!(
             warnings[0].message,
-            "unknown shortcode `{{< sidebar >}}` at line 3 (left as literal text)"
+            "unknown shortcode `{{< sidebar >}}` (left as literal text)"
         );
         assert_eq!(warnings[0].line, Some(3), "warning: {:?}", warnings[0]);
     }

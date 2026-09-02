@@ -24,7 +24,85 @@ struct JsNode {
 /// names at *runtime* via a blob a static pass can't enumerate, so a cell that calls it
 /// suppresses the *dangling-input* half. The *cycle* half is a structural fact among
 /// `{js}` cells, so it always runs.
+/// The reactive wiring of the client cells a `:::` container folded away, read back off the
+/// container's emitted HTML.
+///
+/// **The block model cannot answer this.** `Block::nested` records only the cells the KERNEL
+/// runs, because those are the ones that need an output slot spliced back inside the
+/// container (`divs.rs`); a `{js}` cell mounts its own target client-side, so it earns no
+/// slot and is not recorded. Its `Block` — and with it its `Cell` — stops existing when the
+/// container folds it, so `b.cell` and `Block::cells()` alike are blind to it. What survives
+/// is the `<script data-name=… data-viewof=… data-inputs=…>` the cell emitted, which is the
+/// very wiring the browser's own `buildGraph` reads, so reading it here is what makes the
+/// static check agree with the runtime instead of contradicting it.
+///
+/// One node per SCRIPT tag, not one per container: the cycle half of this check is about
+/// per-cell edges, and pooling two folded cells' names into one node would invent cycles
+/// that are not there.
+///
+/// Attribute values arrive still entity-escaped, and are compared against raw `//| name:`
+/// values without decoding. That is sound rather than lucky: `&`, `<`, `>` and `"` are the
+/// only characters `escape_attr` touches and none of them can appear in a name
+/// `tali-js.js` is able to bind, so the escape is a provable no-op for every name that
+/// could work at runtime.
+fn folded_client_nodes(container: &Block) -> Vec<JsNode> {
+    let mut out = Vec::new();
+    // The cell's own block attrs ride on the wrapper element the script sits inside, so the
+    // most recent tag carrying a `data-sourcepos` is that cell's. Both halves are read off
+    // ONE tag, which is what keeps the file and the line a matched pair (`render/CLAUDE.md`:
+    // a `source_file` may only ever be paired with a mapped line).
+    let mut here: (Option<String>, Option<u32>) = (None, None);
+    for tag in crate::render::tags(&container.html) {
+        if let Some(pos) = crate::render::attr_value(&tag, "data-sourcepos") {
+            here = (
+                crate::render::attr_value(&tag, "data-source-file").map(str::to_string),
+                start_line(pos),
+            );
+        }
+        if !tag.name.eq_ignore_ascii_case("script") {
+            continue;
+        }
+        let (mut defines, mut inputs) = (Vec::new(), Vec::new());
+        for a in crate::render::attrs(&tag) {
+            match a.name {
+                "data-name" | "data-viewof" => defines.push(a.value.to_string()),
+                "data-inputs" => inputs.extend(
+                    a.value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string),
+                ),
+                _ => {}
+            }
+        }
+        if defines.is_empty() && inputs.is_empty() {
+            continue; // not a client cell: a bundled library, the search index, …
+        }
+        let label = defines
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "(unnamed cell)".to_string());
+        out.push(JsNode {
+            defines,
+            inputs,
+            file: here.0.clone().or_else(|| container.source_file.clone()),
+            line: here.1.or_else(|| start_line(&container.sourcepos)),
+            label,
+        });
+    }
+    out
+}
+
 pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
+    // A block that IS a cell contributes itself, with its own file and line. A block that is
+    // not may be a container that folded client cells away, and those are recoverable only
+    // from its HTML — so the two sources are disjoint and cannot double-count a cell.
+    let folded: Vec<JsNode> = blocks
+        .iter()
+        .filter(|b| b.cell.is_none())
+        .flat_map(folded_client_nodes)
+        .collect();
     let nodes: Vec<JsNode> = blocks
         .iter()
         .filter_map(|b| {
@@ -52,6 +130,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
                 label,
             })
         })
+        .chain(folded)
         .collect();
     if nodes.is_empty() {
         return Vec::new();
@@ -85,10 +164,16 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     // check was off exactly where documents are longest and a typo'd input most likely.
     // Reading the cell's own literal is what distinguishes "this document uses the bridge"
     // from "this document runs Python", and only the first can define a name invisibly.
+    //
+    // Asked through `Block::cells()`, not `b.cell`: a bridge cell inside a `.callout-note`
+    // or a `layout-ncol` grid executes and publishes its name at runtime exactly like a
+    // top-level one, but reading `cell` alone forgets every cell a container folded away
+    // (`Block::cells`: "reading `self.cell` directly instead is the bug"), leaving the
+    // dangling-input check armed and the page drawing a false error. A KERNEL cell is
+    // always recorded in `nested`, since it is the class of cell that earns an output slot.
     let runtime_defines = blocks.iter().any(|b| {
-        b.cell.as_ref().is_some_and(|c| {
-            crate::render::client_lang(&c.lang).is_none() && c.code.contains("define(")
-        })
+        b.cells()
+            .any(|c| crate::render::client_lang(&c.lang).is_none() && c.code.contains("define("))
     });
     if !runtime_defines {
         let candidates: Vec<String> = defined.iter().cloned().collect();

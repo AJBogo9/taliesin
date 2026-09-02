@@ -112,6 +112,71 @@ fn js_reactive_graph_flags_dangling_input() {
     assert!(m[0].contains("unknown reactive input `missing`"), "{m:?}");
 }
 
+/// A `{js}` cell inside a `:::` container is invisible to the block model: `Block::nested`
+/// records only the cells the KERNEL runs (they are the ones needing an output slot), so a
+/// folded client cell has no `Block` and no `Cell` left anywhere. The validator read `b.cell`
+/// and therefore reported error-severity "unknown reactive input `n`" for a page that runs
+/// perfectly in both the preview and the build, which made `build --check-only` exit 1 on a
+/// WORKING document. The inverse held too: a genuinely dangling input among folded cells was
+/// never reported.
+#[test]
+fn js_reactive_graph_sees_cells_folded_into_a_container() {
+    // The producer is folded into a grid, the consumer is top level. Nothing is wrong here.
+    let doc = render_document(
+        "::: {layout-ncol=2}\n```{js}\n//| viewof: n\nreturn html`<input type=range>`;\n```\n\n\
+         Side.\n:::\n\n```{js}\n//| input: n\nreturn n * 2;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(
+        m.is_empty(),
+        "a working page must draw no diagnostic: {m:?}"
+    );
+
+    // And the other direction: a dangling input INSIDE a container is still reported, at the
+    // folded cell's own line rather than the container's.
+    let bad =
+        render_document("::: {.callout-note}\n```{js}\n//| input: nope\nreturn nope;\n```\n:::\n");
+    let w = validate_js_reactive_graph(&bad.blocks);
+    let m = msgs(&w);
+    assert_eq!(m.len(), 1, "the folded dangling input is reported: {m:?}");
+    assert!(m[0].contains("unknown reactive input `nope`"), "{m:?}");
+    assert_eq!(w[0].line, Some(2), "located at the cell, not the container");
+
+    // A cycle between two folded cells is a cycle, and pooling a container's cells into one
+    // node would also invent one where the two are merely neighbours — so assert both.
+    let cyc = render_document(
+        "::: {.callout-note}\n```{js}\n//| name: a\n//| input: b\nreturn b;\n```\n\n\
+         ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n:::\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&cyc.blocks));
+    assert_eq!(m.len(), 2, "both folded cells are in the cycle: {m:?}");
+    assert!(m.iter().all(|x| x.contains("dependency cycle")), "{m:?}");
+
+    let pair = render_document(
+        "::: {.callout-note}\n```{js}\n//| name: a\nreturn 1;\n```\n\n\
+         ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n:::\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&pair.blocks));
+    assert!(m.is_empty(), "two folded cells are not a cycle: {m:?}");
+}
+
+/// The `runtime_defines` escape hatch has the same blind spot. A `{python}` bridge cell that
+/// calls `define(` publishes names the static pass cannot enumerate, so it suppresses the
+/// dangling-input half — but asked as `b.cell` it missed a bridge cell inside a container,
+/// leaving the check armed and the page drawing a false error.
+#[test]
+fn a_kernel_define_bridge_inside_a_container_still_suppresses_dangling_inputs() {
+    let doc = render_document(
+        "::: {.callout-note}\n```{python}\ndefine(\"n\", 3)\n```\n:::\n\n\
+         ```{js}\n//| input: n\nreturn n;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(
+        m.is_empty(),
+        "a folded bridge cell suppresses the check exactly like a top-level one: {m:?}"
+    );
+}
+
 #[test]
 fn js_reactive_graph_did_you_mean_over_defines() {
     let doc = render_document(

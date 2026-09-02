@@ -14,7 +14,8 @@ pub(super) fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
     let levels: Vec<usize> = blocks
         .iter()
         .filter(|b| !is_title_block(&b.html))
-        .filter_map(|b| heading_level(&b.html))
+        .flat_map(|b| heading_sites(&b.html))
+        .map(|(_, level)| level)
         .collect();
     let mut numbering = ChapterNumbering::new(chapter, &levels, has_title_block);
     for b in blocks.iter_mut() {
@@ -22,11 +23,45 @@ pub(super) fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
             // The chapter's title-block header is the visible chapter heading; give it the
             // bare chapter number ("N") for continuity, without advancing the h2+ counters.
             b.html = prefix_title_number(&b.html, &chapter.to_string());
-        } else if let Some(level) = heading_level(&b.html) {
-            let number = numbering.next(level);
-            b.html = prefix_heading_number(&b.html, &number);
+            continue;
+        }
+        let sites = heading_sites(&b.html);
+        if sites.is_empty() {
+            continue;
+        }
+        // Numbers are taken in document order and spliced back to front, so an earlier
+        // insertion cannot shift a later offset.
+        let numbers: Vec<String> = sites.iter().map(|&(_, l)| numbering.next(l)).collect();
+        for (&(at, _), number) in sites.iter().zip(&numbers).rev() {
+            b.html.insert_str(at, &section_number_span(number));
         }
     }
+}
+
+/// Every heading inside one block's emitted HTML: the byte offset just past its opening
+/// tag's `>` (where the number span goes) and its level, in document order.
+///
+/// **Not `block_heading_level(&b.html)`, which only asks about a block's ROOT element.** A
+/// `:::` container concatenates its children into one `html`, so a `## Beta {#sec-beta}`
+/// inside a `.column-page` or a `layout-ncol` grid is a heading in the middle of a `<div>`
+/// block and answered `None` — it drew no number and advanced no counter, while the
+/// render-time `@sec-` registry (which walks the AST, before any folding) went on counting
+/// it. The two sites then disagreed by one for the rest of the chapter: `@sec-beta` read
+/// "Section 1.2" and landed on an unnumbered heading, while the NEXT heading visibly
+/// displayed "1.2". Those two sites must agree — a link reading "6.1.1" has to land on a
+/// heading reading "6.1.1" — which is the whole reason they share [`ChapterNumbering`].
+///
+/// Read through `render::tags`, so a heading spelled inside a `<script>` body or shown as
+/// escaped text in a code sample is not mistaken for one (the walker knows tag from text and
+/// skips raw-text element bodies); and each tag's level comes from `block_heading_level`, so
+/// what counts as a heading still has exactly one definition.
+fn heading_sites(html: &str) -> Vec<(usize, usize)> {
+    crate::render::tags(html)
+        .filter_map(|t| {
+            let level = block_heading_level(t.text)?;
+            Some((t.at + t.text.len(), usize::from(level)))
+        })
+        .collect()
 }
 
 /// Assigns section numbers to one chapter's headings, in document order.
@@ -101,22 +136,10 @@ impl ChapterNumbering {
     }
 }
 
-/// The heading level (1–6) of a block whose root element is `<hN …>`, else `None`.
-/// Delegates to the render crate's parser so the two never diverge.
-fn heading_level(html: &str) -> Option<usize> {
-    block_heading_level(html).map(usize::from)
-}
-
-/// Insert a `tali-section-number` span just after a heading's opening tag.
-fn prefix_heading_number(html: &str, number: &str) -> String {
-    match html.find('>') {
-        Some(i) => format!(
-            "{}<span class=\"tali-section-number\">{number}</span> {}",
-            &html[..=i],
-            &html[i + 1..]
-        ),
-        None => html.to_string(),
-    }
+/// The `tali-section-number` span, trailing space included, as it is spliced in just after a
+/// heading's opening tag. One spelling, shared with [`prefix_title_number`].
+fn section_number_span(number: &str) -> String {
+    format!("<span class=\"tali-section-number\">{number}</span> ")
 }
 
 /// Whether a block is the front-matter `title:` block (a `<header class="tali-title-block">`,
@@ -134,8 +157,9 @@ fn prefix_title_number(html: &str, number: &str) -> String {
         Some(i) => {
             let at = i + marker.len();
             format!(
-                "{}<span class=\"tali-section-number\">{number}</span> {}",
+                "{}{}{}",
                 &html[..at],
+                section_number_span(number),
                 &html[at..]
             )
         }
@@ -156,6 +180,75 @@ mod tests {
             "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\">\
              <h1 class=\"title\"><span class=\"tali-section-number\">3</span> Executable content</h1></header>"
         );
+    }
+
+    /// A heading inside a `:::` container is a heading in the MIDDLE of a container block's
+    /// html, so the root-element test could not see it: it drew no number and advanced no
+    /// counter, while the render-time `@sec-` registry (which walks the AST, before folding)
+    /// went on counting it. The two then disagreed by one for the rest of the chapter.
+    ///
+    /// Measured before the fix, on exactly this book: Beta rendered with no number at all
+    /// while `@sec-beta` read "Section 1.2", and Gamma visibly displayed "1.2" while
+    /// `@sec-gamma` read "Section 1.3". A reader following the link for Beta landed on an
+    /// unnumbered heading, with a different heading on the page showing the number they
+    /// clicked. This asserts the lockstep in both directions, per heading.
+    #[test]
+    fn a_heading_inside_a_container_is_numbered_in_document_order() {
+        let root = crate::site::tests::write_site(
+            "chapterfolded",
+            &[
+                (
+                    "_site.yml",
+                    "title: BK\nchapters:\n  - index.tmd\n  - two.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: Intro\n---\n\nHi.\n"),
+                (
+                    "two.tmd",
+                    "---\ntitle: Two\n---\n\nSee @sec-beta and @sec-gamma.\n\n\
+                     ## Alpha {#sec-alpha}\n\nA.\n\n\
+                     ::: {.column-page}\n## Beta {#sec-beta}\n\nB.\n:::\n\n\
+                     ## Gamma {#sec-gamma}\n\nG.\n",
+                ),
+            ],
+        );
+        let html = Site::discover(&root)
+            .render_page("two.tmd")
+            .expect("renders");
+        // The number a heading VISIBLY shows, by its anchor.
+        let shown = |id: &str| -> String {
+            let at = html
+                .find(&format!("id=\"{id}\""))
+                .unwrap_or_else(|| panic!("heading {id} exists: {html}"));
+            let after = &html[at..];
+            let body = &after[after.find('>').expect("the tag closes") + 1..];
+            body.strip_prefix("<span class=\"tali-section-number\">")
+                .unwrap_or_else(|| panic!("{id} is unnumbered: {body:.120}"))
+                .split('<')
+                .next()
+                .unwrap()
+                .to_string()
+        };
+        // The number an `@sec-` link RESOLVES to, by its href.
+        let resolved = |id: &str| -> String {
+            let at = html
+                .find(&format!("href=\"#{id}\" class=\"tali-xref\""))
+                .unwrap_or_else(|| panic!("xref to {id} resolved: {html}"));
+            html[at..]
+                .split_once('>')
+                .and_then(|(_, r)| r.split('<').next())
+                .expect("link text")
+                .replace("&nbsp;", " ")
+        };
+        assert_eq!(shown("sec-alpha"), "1.1");
+        assert_eq!(shown("sec-beta"), "1.2", "the folded heading is numbered");
+        assert_eq!(
+            shown("sec-gamma"),
+            "1.3",
+            "and the folded heading advanced the counter, so Gamma is not also 1.2"
+        );
+        assert_eq!(resolved("sec-beta"), "Section 1.2");
+        assert_eq!(resolved("sec-gamma"), "Section 1.3");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

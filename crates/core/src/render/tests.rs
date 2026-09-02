@@ -849,6 +849,49 @@ fn a_labelled_non_executable_lang_never_phantoms_a_figure_number() {
     );
 }
 
+/// A `tbl-` cell's number is assigned by `apply_table_captions`, which runs AFTER
+/// `group_divs` has folded containers — and it read `blocks[i].cell`, which a folded cell no
+/// longer has. So a `#| label: tbl-x` cell inside a `.callout-note` or a `layout-ncol` grid
+/// kept `number: ""`: the executor (which reads the NESTED copy) injected a caption reading
+/// "Table&nbsp;: Latencies", `@tbl-x` never resolved, and the resulting error-severity broken
+/// cross-reference failed `build --strict` on a document that is perfectly valid.
+///
+/// Numbering must also stay in DOCUMENT order across the fold, since a container's children
+/// are inside it: a folded table before a top-level one is Table 1, not Table 2.
+#[test]
+fn a_table_cell_folded_into_a_container_still_gets_its_number() {
+    let doc = render_document(
+        "See @tbl-in and @tbl-after.\n\n\
+         ::: {.callout-note}\n```{python}\n#| label: tbl-in\n#| tbl-cap: Latencies\ndf\n```\n:::\n\n\
+         ```{python}\n#| label: tbl-after\n#| tbl-cap: Sizes\ndf2\n```\n",
+    );
+    let folded = doc.blocks[1].nested[0]
+        .cell
+        .as_ref()
+        .and_then(|c| c.table.as_ref())
+        .expect("the folded cell is recorded on Block::nested with its table role");
+    assert_eq!(folded.number, "1", "the folded table numbers first");
+    let after = doc.blocks[2]
+        .cell
+        .as_ref()
+        .and_then(|c| c.table.as_ref())
+        .expect("the top-level table cell");
+    assert_eq!(
+        after.number, "2",
+        "document order is preserved across the fold"
+    );
+    // Both anchors resolved, so neither `@tbl-` is left as a marker for `validate_xrefs`.
+    let body = doc.body_html();
+    assert!(
+        body.contains("<a href=\"#tbl-in\" class=\"tali-xref\">Table&nbsp;1</a>"),
+        "the folded table's xref resolves: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#tbl-after\" class=\"tali-xref\">Table&nbsp;2</a>"),
+        "got: {body}"
+    );
+}
+
 /// The same phantom-anchor defect on the TABLE axis: a table only ever materializes
 /// from executed output (a Python DataFrame), so a `label: tbl-*` on a `{bash}` cell
 /// must not burn a table number or register a phantom `@tbl-` anchor. Here a real
@@ -5843,6 +5886,74 @@ fn a_warning_after_an_include_carries_the_authors_own_line_not_the_buffer_line()
         dup2.line.unwrap() as usize <= part.lines().count(),
         "a diagnostic may never point past the end of the file it names"
     );
+}
+
+/// The SHORTCODE pass is the seam A8 missed. It runs after include expansion and counts
+/// lines in the post-include buffer, and its warnings went into `doc.warnings` raw: the
+/// unknown-shortcode diagnostic and every `{{< input >}}` validation alike, each carrying a
+/// buffer line and a `None` file. That is exactly the hazard `BufLine` was introduced to
+/// make impossible, arriving through the one door the newtype does not guard, and it lands
+/// in the LSP squiggle, the preview panel and `--check-only` at once.
+#[test]
+fn a_shortcode_warning_after_an_include_carries_the_authors_own_line() {
+    // Half one: the parent's own shortcode typo, below an include that expands 5 lines in
+    // place of 1, so the buffer line runs 4 ahead of the line the author is looking at.
+    let d = source_map_tmpdir("shortcode-parent");
+    std::fs::write(
+        d.join("part.tmd"),
+        "Partial one.\n\nPartial two.\n\nPartial three.\n",
+    )
+    .unwrap();
+    //                 1   2         3    4  5                          6   7
+    let src = "---\ntitle: X\n---\n\n{{< include part.tmd >}}\n\n{{< sidebar x >}}\n";
+    assert_eq!(
+        src.lines().nth(6),
+        Some("{{< sidebar x >}}"),
+        "line 7 is the typo'd shortcode"
+    );
+    let doc = render_document_with_includes(src, &d);
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("unknown shortcode"))
+        .unwrap_or_else(|| panic!("no shortcode warning: {:?}", doc.warnings));
+    assert_eq!(w.file, None, "the typo is in the parent document");
+    assert_eq!(
+        w.line,
+        Some(7),
+        "must be the parent's own line 7, not the buffer's 11: {w:?}"
+    );
+
+    // Half two: a shortcode typo INSIDE the partial. The buffer line (13) does not exist in
+    // the file at all, and the parent is the wrong file to name.
+    let d2 = source_map_tmpdir("shortcode-partial");
+    let part = "Partial one.\n\n{{< sidebar x >}}\n";
+    std::fs::write(d2.join("part.tmd"), part).unwrap();
+    let src2 = "---\ntitle: X\n---\n\nlead\n\nmore\n\nmore\n\nmore\n\n{{< include part.tmd >}}\n";
+    let doc2 = render_document_with_includes(src2, &d2);
+    let w2 = doc2
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("unknown shortcode"))
+        .unwrap_or_else(|| panic!("no shortcode warning: {:?}", doc2.warnings));
+    assert_eq!(w2.file.as_deref(), Some("part.tmd"), "the file it lives in");
+    assert_eq!(w2.line, Some(3), "part.tmd's own line 3: {w2:?}");
+    assert!(
+        w2.line.unwrap() as usize <= part.lines().count(),
+        "a diagnostic may never point past the end of the file it names"
+    );
+
+    // The `{{< input >}}` validations ride the same channel, so they map too.
+    let d3 = source_map_tmpdir("shortcode-input");
+    std::fs::write(d3.join("part.tmd"), "one\n\ntwo\n\nthree\n").unwrap();
+    let src3 = "---\ntitle: X\n---\n\n{{< include part.tmd >}}\n\n{{< input type=\"nope\" name=\"k\" >}}\n";
+    let doc3 = render_document_with_includes(src3, &d3);
+    for w in doc3.warnings.iter().filter(|w| w.file.is_none()) {
+        assert!(
+            w.line.is_none_or(|l| l <= src3.lines().count() as u32),
+            "a parent-file diagnostic may not point past the parent's own end: {w:?}"
+        );
+    }
 }
 
 #[test]
