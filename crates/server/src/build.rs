@@ -882,15 +882,21 @@ fn build_page_executing(
         // two different interpreter ids, which is a guaranteed miss on both sides.
         //
         // Only when there is a project: a lone file has no config to read and must keep the
-        // old resolution exactly. `Site::discover` is the only public way to reach a parsed
-        // `_site.yml`, and it pays the project's two whole-project render passes to get there
-        // — measured at +80 ms on `docs/guide` (16 pages, release, 2026-09-02), against a
-        // kernel boot this path already waits ~1 s for. Re-reading the key here with a second
-        // YAML parse would be the "two copies of one policy" that put this bug here in the
-        // first place, so it buys the config from the one owner and pays the freight.
-        let pinned = project_root
-            .as_deref()
-            .and_then(|root| taliesin_core::Site::discover(root).config.python);
+        // old resolution exactly. The config comes from its one owner rather than a second
+        // YAML parse here, because one policy with two readers is what put this bug here in
+        // the first place — and it is asked SCOPED TO THIS PAGE, which is the page set this
+        // command is building anyway. Plain `discover` gives the same answer but pays the
+        // whole project's two render passes for a page set it then throws away (+80 ms on
+        // `docs/guide`, 16 pages, release, 2026-09-02).
+        let pinned = project_root.as_deref().and_then(|root| {
+            taliesin_core::Site::discover_scoped(
+                root,
+                taliesin_core::DraftMode::Include,
+                Some(Path::new(label)),
+            )
+            .config
+            .python
+        });
         ex.set_interpreters(crate::interpreter::resolve_python(
             pinned.as_deref(),
             interp_dir,

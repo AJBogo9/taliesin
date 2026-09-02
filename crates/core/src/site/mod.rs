@@ -309,7 +309,14 @@ impl Site {
     /// (see [`discover_single`](Self::discover_single)). The narrowing happens before
     /// cross-references and the search index are computed, so every downstream artifact is
     /// built from the scoped page set rather than filtered afterwards.
-    fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
+    ///
+    /// Public because a single-page `build` inside a project needs that project's *config*
+    /// (its `python:` pin) while building exactly one page. Reaching it through
+    /// [`discover`](Self::discover) works but pays the whole project's two render passes —
+    /// measured at +80 ms on `docs/guide`, 16 pages, release, 2026-09-02 — for a page set it
+    /// then throws away. The alternative is a second reader of `_site.yml` in the server
+    /// crate, and one policy with two readers is what put that bug there to begin with.
+    pub fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
         let mut warnings = Vec::new();
         let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
