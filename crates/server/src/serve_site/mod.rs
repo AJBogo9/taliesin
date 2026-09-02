@@ -1523,6 +1523,35 @@ fn is_tmd(p: &Path) -> bool {
     )
 }
 
+/// Whether a watch event may have moved the project's PAGE SET, as opposed to editing a
+/// file in place. This is the whole of what [`Change::structural`] means, extracted out of
+/// [`spawn_watcher`]'s event loop so the classification is unit-testable without a live
+/// watcher, a debounce window or a running server.
+///
+/// A **rename** is the third member of this class and was missing until 2026-09-02. It
+/// reads as an in-place `Modify`, so `mv a.tmd b.tmd` left `structural` false and no
+/// branch of [`rebuild_project`] answered for it: the site went on listing `a.tmd`, the tab
+/// open on it was never told to reload, and `/b.html` 404ed until the server was
+/// restarted. A same-filesystem rename never creates and never removes — verified against
+/// a live `notify` 8.2 watcher, which emits `Modify(Name(From))` on the old path,
+/// `Modify(Name(To))` on the new, then a cookie-paired `Modify(Name(Both))` carrying both.
+/// The class to match is `Name(_)` rather than any particular `RenameMode`: FSEvents
+/// reports `Name(Any)` and Windows reports only the `From`/`To` pair.
+///
+/// The cost of admitting it is a `rediscover()` on an editor that saves atomically (write a
+/// temp file, rename it over the original). That is absorbed one level up by
+/// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an editor's
+/// save-via-rename of an existing one" case that guard was already written for: the page
+/// set is unchanged, so the save falls through to the ordinary per-page rebuild.
+fn may_change_page_set(kind: &notify::EventKind) -> bool {
+    matches!(
+        kind,
+        notify::EventKind::Create(_)
+            | notify::EventKind::Remove(_)
+            | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
+    )
+}
+
 fn spawn_watcher(app: Arc<SiteApp>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
     let roots: Vec<PathBuf> = vec![app.root.dir.clone()];
@@ -1562,12 +1591,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
             ) {
                 continue;
             }
-            // A created/removed file may change the page set (vs. an in-place edit, which
-            // only rebuilds the page).
-            let structural = matches!(
-                ev.kind,
-                notify::EventKind::Create(_) | notify::EventKind::Remove(_)
-            );
+            let structural = may_change_page_set(&ev.kind);
             for p in &ev.paths {
                 // A newly-created in-tree subdirectory needs its own non-recursive watch.
                 if matches!(ev.kind, notify::EventKind::Create(_)) {
@@ -1749,12 +1773,30 @@ fn rebuild_project(
         project.pages.lock().keys().cloned().collect()
     } else {
         let site = project.site.lock();
+        // The project-wide `bibliography:` from `_site.yml` is a render input of EVERY page
+        // (`Site::render_defaults` lays it under each page's own) and is named in no page's
+        // own source, so neither walk below — both of which read the PAGE — can ever see it.
+        // That left a shared `.bib` save with no way in at all: it is not `_site.yml` by
+        // name, a write is not structural, it moves no front matter, it is not a `.tmd` so
+        // it skips `refresh_xrefs`, and it moves no anchor. Every branch declined it, the
+        // open tab kept serving the citation it had, and a browser reload served the same
+        // one — `ensure_and_render_page` only re-renders a page with no live state.
+        //
+        // Canonicalized once here rather than per page: `Site::bibliography` is the same set
+        // for all of them, already resolved to absolute readable paths at discovery, but
+        // *lexically* (`includes::try_join_in` returns the un-canonicalized join), so it
+        // still needs the same treatment `changed_canon` gave the event paths.
+        let shared: Vec<PathBuf> = site
+            .bibliography
+            .iter()
+            .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
+            .collect();
         open.iter()
             .filter(|rel| {
                 let Some(page) = site.page(rel) else {
                     return false;
                 };
-                let mut deps: HashSet<PathBuf> = HashSet::new();
+                let mut deps: HashSet<PathBuf> = shared.iter().cloned().collect();
                 deps.insert(
                     page.input
                         .canonicalize()
@@ -2791,6 +2833,257 @@ mod project_tests {
         let moved_anchors = HashSet::from(["thm-kl".to_string()]);
 
         assert!(pages_citing_a_moved_anchor(&pages, &open, &moved_anchors).is_empty());
+    }
+
+    /// A scratch project directory, canonicalized so the paths a test hands
+    /// [`rebuild_project`] are in the same coordinate system as the ones discovery resolved
+    /// (`changed_canon` and the dependency walk both canonicalize; on a platform where the
+    /// temp dir is itself a symlink, an uncanonicalized root would never intersect).
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tali-rebuild-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::canonicalize(&d).unwrap()
+    }
+
+    /// A `Project` over `dir` as the live server builds one, plus the [`SiteApp`] around it
+    /// with both build lanes' receivers handed back. No worker task is spawned: what a test
+    /// of [`rebuild_project`] observes is which pages it QUEUED, not what a render produced.
+    fn project_and_app(
+        dir: &Path,
+    ) -> (
+        Arc<Project>,
+        SiteApp,
+        mpsc::UnboundedReceiver<BuildMsg>,
+        mpsc::UnboundedReceiver<BuildMsg>,
+    ) {
+        let project = Arc::new(Project {
+            dir: dir.to_path_buf(),
+            site: Mutex::new(taliesin_core::site::Site::discover(dir)),
+            pages: Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+            front_matter: Mutex::new(HashMap::new()),
+        });
+        project.seed_front_matter();
+        let (build_tx, build_rx) = mpsc::unbounded_channel();
+        let (fast_tx, fast_rx) = mpsc::unbounded_channel();
+        let app = SiteApp {
+            root: project.clone(),
+            build_tx,
+            fast_tx,
+            interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        (project, app, build_rx, fast_rx)
+    }
+
+    /// Every page `rebuild_project` queued, on either lane, sorted. `queue_build` routes on
+    /// the page's last-known `cell_free` flag, so a test must drain both or it reads a
+    /// rebuild that did happen as one that did not.
+    fn queued(
+        build_rx: &mut mpsc::UnboundedReceiver<BuildMsg>,
+        fast_rx: &mut mpsc::UnboundedReceiver<BuildMsg>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        for rx in [build_rx, fast_rx] {
+            while let Ok(BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = rx.try_recv() {
+                out.push(rel);
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// Finding 16. `_site.yml`'s project-wide `bibliography:` is a render input of every
+    /// page (`Site::render_defaults` lays it under each page's own), and it is named in no
+    /// page's own source — so neither `includes::dependencies` nor
+    /// `includes::resource_dependencies`, which both read the PAGE, can see it.
+    ///
+    /// That left the save with no way in at all: `refs.bib` is not `_site.yml` by name, a
+    /// write is not structural, it moves no front matter, it is not a `.tmd` so it skips
+    /// `refresh_xrefs`, and it moves no cross-reference anchor. Every branch of
+    /// `rebuild_project` declined it and the open tab kept serving the citation it had —
+    /// and a browser reload served the same one, because `ensure_and_render_page` only
+    /// re-renders a page that has no live state.
+    #[test]
+    fn a_shared_bibliography_save_rebuilds_the_pages_that_inherit_it() {
+        let dir = scratch("shared-bib");
+        std::fs::write(dir.join("_site.yml"), "title: T\nbibliography: refs.bib\n").unwrap();
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{k,\n title = {One},\n year = {2020}\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nAs shown in [@k].\n",
+        )
+        .unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        assert_eq!(
+            project.site.lock().bibliography.len(),
+            1,
+            "the project must actually resolve its shared `.bib`, or this proves nothing"
+        );
+        project
+            .pages
+            .lock()
+            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+
+        // The author fixes a wrong year and saves. Nothing else on disk moves.
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{k,\n title = {One},\n year = {2021}\n}\n",
+        )
+        .unwrap();
+        let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
+        rebuild_project(&app, &project, &changed, false);
+
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the open page inherits the shared bibliography, so its save must rebuild it"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A page that does NOT resolve any shared `.bib` must stay off the rebuild list: the
+    /// seed is a dependency, not a licence to rebuild every open tab on any save. Without
+    /// this, the fix above would read as correct while quietly rebuilding the whole warm
+    /// set on every image or stylesheet write.
+    #[test]
+    fn a_project_with_no_shared_bibliography_still_rebuilds_nothing_on_an_unrelated_save() {
+        let dir = scratch("no-shared-bib");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("refs.bib"), "@article{k,\n year = {2020}\n}\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        assert!(project.site.lock().bibliography.is_empty());
+        project
+            .pages
+            .lock()
+            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+
+        let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
+        rebuild_project(&app, &project, &changed, false);
+
+        assert!(
+            queued(&mut build_rx, &mut fast_rx).is_empty(),
+            "a `.bib` this project declares nowhere is not a dependency of any page"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Finding 17, the classification half. A same-filesystem rename never creates and
+    /// never removes: on Linux/inotify `mv a.tmd b.tmd` emits exactly
+    /// `Modify(Name(From))` on the old path, `Modify(Name(To))` on the new, and then a
+    /// cookie-paired `Modify(Name(Both))` carrying both — verified against a live
+    /// `notify` 8.2 watcher while writing this. macOS (FSEvents) reports `Name(Any)` and
+    /// Windows reports the `From`/`To` pair, so the class to match is `Name(_)`, never a
+    /// particular `RenameMode`.
+    ///
+    /// A rename IS a create plus a remove as far as the page set is concerned, so it
+    /// belongs in the same class. The cost of admitting it is a `rediscover()` on an
+    /// editor that saves atomically (write temp, rename over) — absorbed one level up by
+    /// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an
+    /// editor's save-via-rename of an existing one" case that guard was already written
+    /// for.
+    #[test]
+    fn a_rename_is_classified_as_moving_the_page_set() {
+        use notify::EventKind::{Access, Create, Modify, Remove};
+        use notify::event::{
+            AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode,
+        };
+
+        for mode in [
+            RenameMode::From,
+            RenameMode::To,
+            RenameMode::Both,
+            RenameMode::Any,
+            RenameMode::Other,
+        ] {
+            assert!(
+                may_change_page_set(&Modify(ModifyKind::Name(mode))),
+                "a rename ({mode:?}) moves the page set on every platform's backend"
+            );
+        }
+        // The two that always were structural stay so.
+        assert!(may_change_page_set(&Create(CreateKind::File)));
+        assert!(may_change_page_set(&Remove(RemoveKind::File)));
+        // …and an in-place edit is still just a page rebuild. Widening `Modify(_)` whole
+        // would make every keystroke re-discover the project, at the cost `Project::
+        // front_matter` measures, which is the whole reason this classification exists.
+        assert!(!may_change_page_set(&Modify(ModifyKind::Data(
+            DataChange::Content
+        ))));
+        assert!(!may_change_page_set(&Modify(ModifyKind::Metadata(
+            MetadataKind::WriteTime
+        ))));
+        assert!(!may_change_page_set(&Access(AccessKind::Any)));
+    }
+
+    /// Finding 17, the reader-visible half. With the rename classified structural,
+    /// `rebuild_project` re-discovers, sees the page set actually move, and reloads the
+    /// open tabs — which is the only thing that repaints a navbar, a listing and a
+    /// breadcrumb, and the only thing that gets the tab sitting on the vanished page off it.
+    ///
+    /// Before the fix this ran with `structural == false` and stopped at
+    /// `front_matter_moved`, which fires here only by accident (the old path's front-matter
+    /// digest goes to that of the empty string once the file is gone) and covers just the
+    /// `Site` swap. It never reloads, so the tab keeps its stale chrome, and for a page with
+    /// no front-matter block at all it does not even fire: nothing runs, the site goes on
+    /// listing the old page and the new URL 404s.
+    #[test]
+    fn renaming_a_page_reloads_the_open_tabs_onto_the_new_page_set() {
+        let dir = scratch("rename");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+        std::fs::write(dir.join("notes.tmd"), "---\ntitle: Notes\n---\n\nProse.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        project
+            .pages
+            .lock()
+            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+        let mut tab = project.pages.lock()["index.tmd"].tx.subscribe();
+
+        std::fs::rename(dir.join("notes.tmd"), dir.join("journal.tmd")).unwrap();
+        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths,
+        // both `.tmd`, classified by the same predicate the event loop uses.
+        let structural = may_change_page_set(&notify::EventKind::Modify(
+            notify::event::ModifyKind::Name(notify::event::RenameMode::Both),
+        ));
+        let changed: HashSet<PathBuf> = [dir.join("notes.tmd"), dir.join("journal.tmd")]
+            .into_iter()
+            .collect();
+        rebuild_project(
+            &app,
+            &project,
+            &changed,
+            structural && is_tmd(Path::new("notes.tmd")),
+        );
+
+        assert_eq!(
+            tab.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "the open tab must be told to reload: its navbar still links to the old page"
+        );
+        assert!(
+            project.pages.lock().is_empty(),
+            "the live block state is dropped so the reload re-renders against the new site"
+        );
+        let site = project.site.lock();
+        assert!(site.page("journal.tmd").is_some(), "the new page is served");
+        assert!(site.page("notes.tmd").is_none(), "the old page is not");
+        drop(site);
+        assert!(
+            queued(&mut build_rx, &mut fast_rx).is_empty(),
+            "a reload re-renders on the request; queueing a build for a dropped page too \
+             would be a second render of the same paint"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
