@@ -521,15 +521,17 @@
     return r.graph;
   }
 
-  // The cells transitively downstream of a changed name, in topological order. BFS over
-  // the consumers map, following each hit cell's own `defines` (so n -> squared -> ...
-  // chains are followed). Cyclic cells are excluded (they show their diagnostic instead).
-  /** @param {TaliJsRuntime} r @param {string} seed @returns {TaliJsCell[]} */
-  function downstreamInOrder(r, seed) {
+  // The cells transitively downstream of one or more changed names, in topological order.
+  // BFS over the consumers map, following each hit cell's own `defines` (so n -> squared ->
+  // ... chains are followed). Cyclic cells are excluded (they never enter `order`, and show
+  // their diagnostic instead). Takes a LIST of seeds so a mount that republishes several
+  // names is one merged pass: a consumer fed by two of them must still run exactly once.
+  /** @param {TaliJsRuntime} r @param {string[]} seeds @returns {TaliJsCell[]} */
+  function downstreamInOrder(r, seeds) {
     var g = r.graph || buildGraph(r);
     /** @type {Set<TaliJsCell>} */
     var hit = new Set();
-    var q = [seed];
+    var q = seeds.slice();
     while (q.length) {
       var n = /** @type {string} */ (q.shift());
       (g.consumers[n] || []).forEach(function (c) {
@@ -537,6 +539,32 @@
       });
     }
     return g.order.filter(function (c) { return hit.has(c); });
+  }
+
+  // The cells a mount leaves STALE: everything downstream of a name the freshly-mounted
+  // cells publish, minus those cells themselves.
+  //
+  // A re-mount makes only the EDITED block fresh. So changing a `//| name:` producer's body
+  // (`** 2` -> `** 3`) re-ran that one cell and nothing else: it republished `squared` into
+  // the shared scope and its consumers went on painting the value the OLD code produced,
+  // until the reader happened to move a slider and `scheduleFrom` swept them up. A preview
+  // displaying a page that contradicts its own source.
+  //
+  // Excluding `mounted` is what keeps this from being a re-run of the whole graph on every
+  // mount: on a COLD load every cell is fresh, so the seeds' entire closure is the fresh set
+  // itself and this correctly returns nothing. (For the same reason it is one merged pass
+  // rather than a `scheduleFrom` per seed, which would re-run a shared consumer once per
+  // producer feeding it, repainting charts and rebuilding `import()`ed renderers for no
+  // change in what they display.)
+  /** @param {TaliJsRuntime} r @param {TaliJsCell[]} mounted @returns {TaliJsCell[]} */
+  function staleAfterMount(r, mounted) {
+    /** @type {string[]} */
+    var seeds = [];
+    mounted.forEach(function (c) { if (c.defines) seeds.push(c.defines); });
+    if (!seeds.length) return [];
+    /** @type {Set<TaliJsCell>} */
+    var already = new Set(mounted);
+    return downstreamInOrder(r, seeds).filter(function (c) { return !already.has(c); });
   }
 
   // Re-run exactly the closure downstream of `name`, once each, in dependency order — a
@@ -547,7 +575,7 @@
   // on 2026-08-03 along with the `pending` map that parked it.
   /** @param {TaliJsRuntime} r @param {string} name @returns {Promise<void>} */
   function scheduleFrom(r, name) {
-    var cells = downstreamInOrder(r, name);
+    var cells = downstreamInOrder(r, [name]);
     return cells.length ? runSequentially(cells) : Promise.resolve();
   }
 
@@ -601,9 +629,16 @@
     if (fresh.length) buildGraph(r); // (re)derive the graph + diagnose cycles
     // Initial run in document order (the authoring convention is producer-before-
     // consumer); cyclic cells are left showing their diagnostic rather than run.
-    runSequentially(fresh.filter(function (c) {
+    /** @type {TaliJsCell[]} */
+    var runnable = fresh.filter(function (c) {
       return !r.graph || r.graph.cyclic.indexOf(c) < 0;
-    }));
+    });
+    // Read off the graph we just built, BEFORE anything runs, so the closure is decided
+    // against one consistent snapshot rather than against whatever a mid-pass teardown
+    // leaves behind. Then the two passes are chained: a stale consumer reads its producer's
+    // value out of the shared scope, so it must not start until that producer has resolved.
+    var stale = staleAfterMount(r, runnable);
+    runSequentially(runnable).then(function () { return runSequentially(stale); });
   }
 
   if (window.taliEnhancers && window.taliEnhancers.register) {
