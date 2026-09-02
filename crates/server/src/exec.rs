@@ -994,7 +994,15 @@ impl Executor {
         // failure is transient (a file that appears, a flaky fetch, an interrupt the author
         // does not repeat) the success case then restores the output computed while it was
         // still failing. Same shape as `first_uncacheable`, one range instead of two rules.
-        let failed_at = (shared..run_end)
+        //
+        // Scanned from cell 0, not from `shared`: WHERE the failure is has nothing to do with
+        // whether it poisons what follows. A cell that errored on one pass is recorded in the
+        // kernel's `ran` list with its error output, so editing a cell below it slides the
+        // failure into the WARM PREFIX — out of the executed range the scan used to cover,
+        // and the very next cell was then written to disk as if its upstream had succeeded.
+        // `run_end` still bounds the scan because the disk-restored tail past it was never
+        // produced by this run and is never re-persisted.
+        let failed_at = (0..run_end)
             .find(|&i| is_uncacheable(&outputs[i]))
             .unwrap_or(run_end);
         // The digest on record BEFORE this run stamps its own. Read here, not at the
@@ -2545,6 +2553,88 @@ mod tests {
             vec!["queued", "running", "done"],
             "the edited last cell must re-run queued→running→done",
         );
+    }
+
+    #[test]
+    fn an_error_in_the_warm_prefix_still_blocks_persisting_what_follows_it() {
+        // The downstream-of-a-failure rule has to hold wherever the failure IS, not only
+        // where it was re-executed this pass. `failed_at` scanned `shared..run_end` — the
+        // executed range — so an errored cell that had since slid into the WARM PREFIX was
+        // invisible to it, and the cell after it was written to `_freeze` as if it followed
+        // a clean upstream. That is the one entry this cache is designed never to hold:
+        // B is never persisted (`is_uncacheable`), so a later cold start re-runs it, and
+        // if the failure was transient (the flaky fetch succeeds) C restores an output
+        // computed while B was still raising — permanently, since a re-run reaching the
+        // same code hits the same key.
+        //
+        // Two runs are the whole point: run 1 puts B's error in the kernel's `ran` record,
+        // run 2 edits only C, which is exactly what moves B out of the executed range and
+        // into the warm prefix.
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise warm-prefix persistence; this run did not."
+            );
+            return;
+        }
+        // Precondition: the freeze cache must be live (the assertion is about what it
+        // holds). Under `TALIESIN_NO_CACHE` nothing is ever stored, so the test would
+        // pass without exercising anything.
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+
+        let dir = std::env::temp_dir().join(format!("tali-warmfail-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut ex = Executor::with_freeze(dir.join("page.json"));
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        let a = "wp_a = 1";
+        let b = "raise ValueError('flaky upstream')";
+        let c1 = "print('C', wp_a)";
+        let c2 = "print('C edited', wp_a)";
+
+        rt.block_on(async {
+            let _ = ex
+                .run(vec![
+                    python_cell_block_with("w-1", a),
+                    python_cell_block_with("w-2", b),
+                    python_cell_block_with("w-3", c1),
+                ])
+                .await;
+        });
+        if ex.diagnostic().is_some() {
+            return; // no working python kernel here
+        }
+
+        // Edit ONLY the last cell: A and B now restore from the warm prefix, C re-runs.
+        rt.block_on(async {
+            let _ = ex
+                .run(vec![
+                    python_cell_block_with("w-1", a),
+                    python_cell_block_with("w-2", b),
+                    python_cell_block_with("w-3", c2),
+                ])
+                .await;
+        });
+
+        let py = ex.python.path.clone();
+        let interp = rt.block_on(interp_id("python", &py));
+        let hashes = freeze::cumulative_hashes(&interp, &[a, b, c2]);
+        // Control row: A is upstream of the failure and IS persisted, so a green run
+        // cannot mean "the cache was simply off" or "the hashes do not line up".
+        assert!(
+            ex.freeze.get(&hashes[0]).is_some(),
+            "cell A (clean, upstream of the failure) should be cached: the freeze is not \
+             live or the key does not match what the executor computed"
+        );
+        assert!(
+            ex.freeze.get(&hashes[2]).is_none(),
+            "cell C was persisted even though the cell above it errored: the error is in \
+             the warm prefix, so the downstream-persist guard never saw it"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
