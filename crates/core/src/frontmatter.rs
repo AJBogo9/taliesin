@@ -106,7 +106,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
     validate_hero_actions(map, block, &mut out);
-    // `listing:` is one mapping or a sequence of mappings (cv.tmd).
+    // `listing:` is one mapping or a sequence of mappings (a page carrying two lists).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
             validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out)
@@ -542,7 +542,9 @@ mod tests {
             m,
             vec!["unknown listing key `max-itemz` (did you mean `max-items`?)"]
         );
-        // A sequence of listings (cv.tmd shape) validates each item.
+        // A sequence of listings validates each item. No corpus document carries this
+        // shape today (the last one, the tech-blog CV, went 2026-09-11), so this inline
+        // case IS the witness — do not delete it as redundant.
         let m2 = msgs("---\ntitle: X\nlisting:\n  - contents: a\n    sort-uii: false\n---\n");
         assert_eq!(m2, vec!["unknown listing key `sort-uii`"]);
     }

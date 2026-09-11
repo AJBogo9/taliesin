@@ -1,0 +1,15 @@
+---
+title: "Knowledge Graph Enhanced Recommender Systems"
+date: "2025-09-01"
+description: "B.Sc. thesis (Aalto University, graded 5/5): a literature review of knowledge graph-enhanced recommender systems against collaborative, content-based and hybrid filtering."
+categories:
+  - Thesis
+  - Recommender Systems
+  - Knowledge Graphs
+---
+
+**B.Sc. Thesis** · Aalto University, School of Science · September 2025 · *Graded 5/5 (Excellent)*
+
+<a href="https://aaltodoc.aalto.fi/server/api/core/bitstreams/d141fd14-5b38-475d-a149-429aa3f8812b/content" class="btn btn-outline-secondary btn-sm">Read thesis (PDF)</a>
+
+A literature review comparing traditional recommender systems (collaborative filtering, content-based filtering, hybrid methods) against knowledge graph-enhanced approaches (graph neural networks and knowledge graph embeddings). KG-based systems address the cold-start problem and improve explainability through path-based reasoning, at the cost of higher computational overhead and construction complexity.

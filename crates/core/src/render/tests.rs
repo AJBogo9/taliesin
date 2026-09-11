@@ -5808,6 +5808,47 @@ fn the_relocated_search_control_is_a_full_size_tap_target() {
     }
 }
 
+/// `title_with_site_suffix` goes bare on FOUR independent conditions, and two of them are
+/// easy to confuse: `is_home`, and "this page is already titled exactly the site name".
+/// A home page satisfies both at once, so it can only ever witness the first: `is_home`
+/// short-circuits before `title == name` is ever evaluated.
+///
+/// The second branch was pinned by exactly one thing, `corpus/tech-blog/cv.tmd`, whose
+/// title was the author's own name and therefore the site's. That document was deleted on
+/// 2026-09-11 to follow the live blog, and CLAUDE.md's ordering rule says the witness moves
+/// in the SAME commit rather than after it. This is that move: the branch now has a test
+/// that cannot be deleted by editing a corpus document. Verified load-bearing by mutation
+/// (dropping `|| title == name` from the guard fails the second case and nothing else).
+#[test]
+fn a_page_titled_exactly_the_site_name_stays_bare_even_when_it_is_not_the_home_page() {
+    let site = "Andreas Bogossian";
+    // The branch a home page can never reach: NOT home, but identically titled.
+    assert_eq!(
+        title_with_site_suffix(site, site, false),
+        site,
+        "an inner page titled exactly the site name must not render `Name · Name`"
+    );
+    // Home is bare for its own reason, and would pass with the branch above deleted.
+    assert_eq!(
+        title_with_site_suffix(site, site, true),
+        site,
+        "home is bare"
+    );
+    assert_eq!(
+        title_with_site_suffix("Blog", site, false),
+        format!("Blog · {site}"),
+        "a distinct inner page names page + site"
+    );
+    // The two degenerate inputs, so a missing `title:` or an unnamed site cannot emit a
+    // dangling separator.
+    assert_eq!(title_with_site_suffix("", site, false), "", "empty title");
+    assert_eq!(
+        title_with_site_suffix("Blog", "", false),
+        "Blog",
+        "unnamed site adds nothing"
+    );
+}
+
 #[test]
 fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
     // MOB-4: the control sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`, with

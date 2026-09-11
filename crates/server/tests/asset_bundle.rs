@@ -204,15 +204,24 @@ fn tech_blog_shares_one_hashed_css_across_pages() {
 
     // Conditional katex: `em-algorithm` is math-dense (see
     // crates/core/tests/tech_blog.rs's `math_renders_inline_display_and_align`, which
-    // counts >20 KaTeX spans), so it links katex.<hash>.css. The CV is prose-only (no
-    // `$...$` anywhere), so it links nothing.
+    // counts >20 KaTeX spans), so it links katex.<hash>.css. The negative half needs a real
+    // content page with no `$...$` anywhere, so it links nothing.
+    //
+    // That half was `cv.html` until 2026-09-11, when the CV page was deleted to follow the
+    // live blog. The SuperCollider write-up replaces it: a long prose project page, and the
+    // project least likely to ever acquire equations — its two neighbours
+    // (`bayesian-aviation-safety`, `iphone-premium-analysis`) are explicitly statistical, so
+    // either would be a witness waiting to invalidate itself. If this page ever does gain
+    // math, MOVE the witness to another math-free page rather than deleting the assertion:
+    // what it guards is that katex is linked CONDITIONALLY, not on every page.
     assert!(
         post.contains("_assets/katex."),
         "a math-heavy post must link katex.<hash>.css"
     );
-    let cv = std::fs::read_to_string(out.join("cv.html")).unwrap();
+    let prose = std::fs::read_to_string(out.join("projects/supercollider-mcp/index.html"))
+        .expect("the prose-only witness page must exist");
     assert!(
-        !cv.contains("_assets/katex."),
+        !prose.contains("_assets/katex."),
         "a prose-only page must not link katex"
     );
 

@@ -579,8 +579,21 @@ fn every_corpus_doc_resolves_its_includes_when_built_alone() {
     }
     // Guard against the sweep silently matching nothing (a renamed shortcode, a moved
     // corpus): this assertion is only worth anything if it actually rendered documents.
+    //
+    // The floor was 3 until 2026-09-11, when the tech-blog lost BOTH of its include users
+    // in one sync with the live blog: `publications.tmd` became a listing over
+    // `publications/`, and `cv.tmd` was deleted outright. What is left is
+    // `single-page-report/index.tmd` and `tech-blog/posts/pca-geometry/index.tmd`.
+    //
+    // Lowering a floor to accommodate a deletion is the move this file's own history warns
+    // about, so: the number is 2 because 2 is what the corpus HAS, not to make a red test
+    // green, and the guard still does its one job. It exists to catch the sweep matching
+    // NOTHING — a renamed shortcode drops this to 0 and still fails loudly — and the two
+    // survivors sit in different projects, so it takes two unrelated edits to hollow out.
+    // If it ever reaches 1, do not lower it again: that is the signal to ask whether the
+    // product path `render_single_doc` still has a witness at all.
     assert!(
-        checked >= 3,
+        checked >= 2,
         "expected several corpus docs to use `{{{{< include >}}}}`, walked {checked}"
     );
     assert!(

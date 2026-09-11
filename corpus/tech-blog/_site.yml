@@ -13,8 +13,6 @@ nav:
     href: publications.tmd
   - text: Projects
     href: projects.tmd
-  - text: CV
-    href: cv.tmd
 footer:
   left:
   - text: © 2026 Andreas Bogossian

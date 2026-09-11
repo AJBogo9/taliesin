@@ -1,9 +1,9 @@
 ---
 title: "Publications"
 title-block-style: none
-toc: false
+listing:
+  contents: publications
+  type: list
 ---
 
-## Theses
-
-{{< include _includes/publications.md >}}
+Theses and papers I have written. Each entry has a short summary and a link to the full text.

@@ -86,9 +86,9 @@ impl Site {
     /// The feed-bearing listings in nav order — each `(host page, relative feed path,
     /// dated items newest-first)`. A listing earns a feed only if it is **uncapped** and
     /// has at least one **dated** item; a collection re-listed elsewhere is deduped by
-    /// its RESOLVED prefix (not the raw `contents:` string), so the CV's re-listed
-    /// projects tail does not spawn a second feed while two same-`contents:` listings in
-    /// different directories each still get one. Shared by `atom_feeds` (builds XML) and
+    /// its RESOLVED prefix (not the raw `contents:` string), so a page re-listing another
+    /// page's collection does not spawn a second feed for it, while two same-`contents:`
+    /// listings in different directories each still get one. Shared by `atom_feeds` (builds XML) and
     /// `feed_index` (head autodiscovery) so a page never advertises a feed the build
     /// won't write. Empty without `url:`.
     pub(super) fn feed_hosts(&self) -> Vec<(&Page, String, Vec<&Page>)> {

@@ -689,11 +689,12 @@ fn post_pages_link_back_to_their_listing() {
         "post: backlink label is not the owning listing page's title"
     );
 
-    // A project is owned by projects.tmd alone (cv.tmd carried a second un-capped
-    // `contents: projects` listing until 2026-08-14, which made the owner ambiguous and
-    // correctly suppressed this backlink; the CV dropped its project list, so the page
-    // resolves to a single owner now). The ambiguous-owner guard itself is pinned
-    // synthetically by `no_backlink_when_two_uncapped_listings_cover_the_post`.
+    // A project is owned by projects.tmd alone, so it resolves to a single owner and gets
+    // a backlink. The ambiguous-owner case (two uncapped listings covering one post, which
+    // correctly suppresses the backlink) is pinned synthetically by
+    // `no_backlink_when_two_uncapped_listings_cover_the_post` — it used to ALSO occur
+    // naturally here, via a second `contents: projects` listing on the tech-blog CV, but
+    // that listing went 2026-08-14 and the page itself 2026-09-11.
     let project = site
         .render_page("projects/iphone-premium-analysis/index.tmd")
         .expect("project renders");
@@ -711,13 +712,7 @@ fn post_pages_link_back_to_their_listing() {
     );
 
     // Pages that belong to no listing show no backlink.
-    for page in [
-        "index.tmd",
-        "blog.tmd",
-        "projects.tmd",
-        "cv.tmd",
-        "publications.tmd",
-    ] {
+    for page in ["index.tmd", "blog.tmd", "projects.tmd", "publications.tmd"] {
         let html = site
             .render_page(page)
             .unwrap_or_else(|| panic!("{page} renders"));
@@ -746,15 +741,19 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
     let base = "https://andreasbogossian.com";
 
-    // Atom feeds: one per distinct uncapped dated listing (blog + projects); the CV's
-    // re-listed projects tail is deduped, and the homepage teaser is capped → no feed.
+    // Atom feeds: one per distinct uncapped dated listing (blog + projects + publications);
+    // the homepage teaser is capped → no feed.
     let feeds = site.atom_feeds();
     let paths: Vec<&str> = feeds.iter().map(|(p, _)| p.as_str()).collect();
     assert!(paths.contains(&"blog.xml"), "blog feed: {paths:?}");
     assert!(paths.contains(&"projects.xml"), "projects feed: {paths:?}");
+    // Publications became a listing over `publications/` on 2026-09-11, catching the corpus
+    // up to the live blog, which had already made the move. A dated listing earns a feed,
+    // and that feed is most of what the conversion buys over the hand-written page it
+    // replaced: a reader can subscribe to new publications the way they can to new posts.
     assert!(
-        !paths.contains(&"cv.xml"),
-        "no duplicate CV feed: {paths:?}"
+        paths.contains(&"publications.xml"),
+        "publications feed: {paths:?}"
     );
     assert!(
         !paths.iter().any(|p| p.starts_with("index")),
@@ -836,8 +835,9 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
 }
 
 /// Every inner page's `<title>` names both the page and the site (" · <site>") so a
-/// browser tab / search result is unambiguous; the home (root index) and any page whose
-/// own title is already exactly the site name (the CV) stay bare — the collapse rule.
+/// browser tab / search result is unambiguous; the home (root index) stays bare. The other
+/// half of the collapse rule — an inner page already titled exactly the site name — lost
+/// its corpus witness with the CV on 2026-09-11 and is held as a unit test instead.
 #[test]
 fn page_titles_carry_the_site_name_suffix() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
@@ -848,13 +848,15 @@ fn page_titles_carry_the_site_name_suffix() {
         let end = start + html[start..].find("</title>").expect("has </title>");
         html[start..end].to_string()
     };
-    // Home + CV (titled exactly the site name) stay bare — no suffix, no "Name · Name".
+    // The home page stays bare — no suffix, no "Name · Name".
+    //
+    // Its twin ("an inner page titled exactly the site name is also bare") was pinned here
+    // by `cv.tmd`, which was deleted on 2026-09-11 to follow the live blog. That branch is
+    // unreachable from a home page, because `is_home` short-circuits before `title == name`
+    // is evaluated, so it did NOT survive in the line below. It moved, in the same commit,
+    // to `render::tests::a_page_titled_exactly_the_site_name_stays_bare_even_when_it_is_not_the_home_page`,
+    // which holds it against a unit call instead of a corpus document.
     assert_eq!(title_of("index.tmd"), site_name, "home bare");
-    assert_eq!(
-        title_of("cv.tmd"),
-        site_name,
-        "CV title == site name collapses to bare"
-    );
     // Distinct inner pages name page + site.
     assert_eq!(title_of("blog.tmd"), format!("Blog · {site_name}"));
     let post = title_of("posts/em-algorithm/index.tmd");

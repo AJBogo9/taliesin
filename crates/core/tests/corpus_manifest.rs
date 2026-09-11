@@ -2,7 +2,7 @@
 //! believe it swept.
 //!
 //! **Why a hand-maintained list.** Every corpus sweep in this crate iterates whatever is on
-//! disk and floors the count at a handful (`files.len() >= 5` against 82 documents), so a
+//! disk and floors the count at a handful (`files.len() >= 5` against 81 documents), so a
 //! deleted document removes coverage without removing a test and every gate stays green.
 //! CLAUDE.md's ordering rule ("a pin and its docs page are deleted in the SAME commit as
 //! their feature, never before") is precisely the discipline nothing was enforcing, and the
@@ -83,7 +83,6 @@ const CORPUS_DOCS: &[&str] = &[
     "tech-blog/404.tmd",
     "tech-blog/_includes/three-scene.tmd",
     "tech-blog/blog.tmd",
-    "tech-blog/cv.tmd",
     "tech-blog/index.tmd",
     "tech-blog/posts/KL-divergence/index.tmd",
     "tech-blog/posts/Kruskal-Wallis-test/index.tmd",
@@ -99,6 +98,7 @@ const CORPUS_DOCS: &[&str] = &[
     "tech-blog/projects/iphone-premium-analysis/index.tmd",
     "tech-blog/projects/supercollider-mcp/index.tmd",
     "tech-blog/publications.tmd",
+    "tech-blog/publications/knowledge-graph-recommender-systems/index.tmd",
 ];
 
 fn corpus_dir() -> PathBuf {
