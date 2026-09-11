@@ -108,7 +108,17 @@
   .tali-search-kbd { font-family: var(--tali-font-mono); font-size: .72rem;
     border: 1px solid var(--tali-border); border-radius: var(--tali-radius);
     padding: 0 .3rem; color: var(--tali-muted); }
-  /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
+  /* `page.rs` emits a second skip link, "Skip to table of contents", because the TOC is
+     rendered after the reading column and lands ~56 tab stops in. Once the nav script has
+     carried the TOC into the burger panel that link points at a `display: none` target and
+     focuses nothing, so it goes — but ONLY then. The gate is the class the script sets, not
+     a width: with JS off the TOC never moves, is still stranded after the article, and that
+     reader is precisely the one the link was added for. */
+  html.tali-toc-in-nav .tali-skip-toc { display: none; }
+
+  /* burger menu button: hidden at desktop widths, revealed in the ≤60rem block (it was
+     ≤40rem until 2026-09-11, when it took over the on-page TOC and had to start existing
+     at every width the TOC rail has given up).
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
 
@@ -147,6 +157,82 @@
        are tracks of the reading grid inside <main>, which neither knows nor cares what the
        outer grid did — and for the same reason the container needs no narrowing back to
        the measure, since the measure is a track rather than a container width. */
+
+    /* --- the burger, and the page TOC it carries here (2026-09-11) ------------------
+       These rules were gated at `40rem` until 2026-09-11, which left 640-960px with no
+       burger AND a collapsed rail: the stacked block above was the only contents a reader
+       got, and it spent up to 45vh of the first screen. The nav script moves `#TOC` into
+       the panel below, so the gate has to be the SAME width the rail gives up at — at any
+       narrower one there would be a band where the TOC has nowhere to go.
+
+       The stacked-block rule above is NOT dead: it is the no-JS fallback, and it needs no
+       guard to be one. It is scoped `.tali-site-main.has-toc > #TOC`, so it stops matching
+       by itself the moment the script re-parents the node into the panel, and keeps
+       applying when the script has not run. */
+    /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
+       brand + spacer already push it right) so it can't bleed past the edge. */
+    .tali-nav-burger { display: flex; flex-direction: column; justify-content: center;
+      align-items: center; gap: 4px; cursor: pointer; margin-left: auto;
+      width: 44px; height: 44px; padding: 0; }
+    .tali-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
+      background: var(--tali-fg); transition: transform var(--tali-dur) ease, opacity var(--tali-dur) ease; }
+    /* `.tali-nav-burger`'s `margin-left: auto` above is what pins the right-hand cluster to
+       the end of the bar, and it only works on the item that comes FIRST in that cluster.
+       Once the nav script has lifted the search control in beside the burger, that item is
+       search: leave the margin where it is and the free space opens between the wordmark
+       and search instead, stranding the two controls apart. Gated on the script's mark, not
+       a width, because with JS off search never leaves the panel and the burger is still
+       the only thing out here. */
+    html.tali-search-in-bar .tali-nav-burger { margin-left: 0; }
+    /* ≥44px square, to match the burger it now sits beside (WCAG 2.5.5). In the panel this
+       control was a full-width stretched row; out here it measured 35x27. Plain
+       `min-width`/`min-height` are safe in this one spot, where MOB-7 had to reach for a
+       centred `::before` overlay instead: that trick exists to avoid GROWING the bar, and
+       the burger already holds this row open to 44px, so matching it costs no height. */
+    html.tali-search-in-bar .tali-nav-inner > .tali-search-btn { margin-left: auto;
+      min-width: 44px; min-height: 44px; justify-content: center; }
+
+    /* The panel can now hold a whole table of contents, so it gets its own scroll: it is
+       `position: absolute`, so anything past the viewport is simply unreachable without
+       one. `overscroll-behavior: contain` is the same fix the book drawer's panel carries
+       — without it, scrolling to the end of the TOC chains out and moves the article
+       behind the open menu. (`vh`, not `dvh`: this sheet has one viewport unit and a
+       phone's collapsing URL bar makes the cap slightly generous, which the scroll
+       absorbs; a short cap would clip.) */
+    .tali-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
+      flex-direction: column; align-items: stretch; gap: 0; flex: none;
+      background: var(--tali-bg); border-bottom: 1px solid var(--tali-border);
+      padding: .35rem 0;
+      max-height: calc(100vh - var(--tali-nav-h)); overflow-y: auto;
+      overscroll-behavior: contain; }
+    /* The button toggles this class (see the inline nav script); replaces the old
+       `.tali-nav-toggle:checked ~ .tali-nav-links` checkbox-hack selector. */
+    .tali-nav-links.tali-nav-open { display: flex; }
+    /* Website navbar only — see the 40rem block for the book topbar's own copy. */
+    .tali-site-nav .tali-nav-spacer { display: none; }
+    .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+
+    /* The panel holds two kinds of navigation now: links that LEAVE the page and a TOC
+       that jumps within it. The label is the visible seam between them. It is a `<p>`, not
+       a heading — the group is already named for assistive tech by `#TOC`'s own
+       `aria-label="Table of contents"`, and a real heading here would put a navbar element
+       into the page's heading outline. */
+    .tali-nav-toc-label { margin: .35rem 0 0; padding: .7rem 1.15rem .15rem;
+      border-top: 1px solid var(--tali-border); color: var(--tali-muted);
+      font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; }
+    /* `#TOC` arrives wearing the sticky rail's geometry from base.css (`position: sticky`,
+       `max-height: 92vh`, `overflow: auto`), all of it at id specificity — so the panel
+       has to OUT-SPECIFY it, not merely declare later. A nested scroller inside the
+       panel's own scroller is the failure this prevents. */
+    .tali-nav-links #TOC { position: static; max-height: none; overflow: visible;
+      padding: 0 1.15rem .6rem; }
+    /* base.css collapses `#TOC ul ul` to `display: none` and lets the scrollspy reveal
+       only the branch being READ. That is right for a rail beside the text and wrong for a
+       menu: a reader opens this to pick a destination, and every subsection outside the
+       current branch would be missing from the list. */
+    .tali-nav-links #TOC ul ul { display: block; }
+    /* Touch rows, not rail rows — the rail's .12rem padding is a 4px tap target. */
+    .tali-nav-links #TOC a { padding: .5rem 0 .5rem .7rem; }
   }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
@@ -273,22 +359,13 @@
     /* Narrow desktop windows: the hint is real (there IS a ⌘/Ctrl key) but the row is
        cramped, so it still goes. The capability half of this lives below — see MOB-3. */
     .tali-search-kbd { display: none; }
-    /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
-       brand + spacer already push it right) so it can't bleed past the edge. */
-    .tali-nav-burger { display: flex; flex-direction: column; justify-content: center;
-      align-items: center; gap: 4px; cursor: pointer; margin-left: auto;
-      width: 44px; height: 44px; padding: 0; }
-    .tali-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
-      background: var(--tali-fg); transition: transform var(--tali-dur) ease, opacity var(--tali-dur) ease; }
-    .tali-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
-      flex-direction: column; align-items: stretch; gap: 0; flex: none;
-      background: var(--tali-bg); border-bottom: 1px solid var(--tali-border);
-      padding: .35rem 0; }
-    /* The button toggles this class (see the inline nav script); replaces the old
-       `.tali-nav-toggle:checked ~ .tali-nav-links` checkbox-hack selector. */
-    .tali-nav-links.tali-nav-open { display: flex; }
-    .tali-nav-spacer { display: none; }
-    .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+    /* The BOOK topbar's spacer, and only it. The website navbar's moved up to the 60rem
+       block on 2026-09-11 with the rest of the burger; a book has neither a burger nor a
+       `#TOC`, so there is nothing for its bar to collapse EARLIER for and its behaviour is
+       deliberately unchanged. A bare `.tali-nav-spacer` is what these two bars shared, and
+       widening that one declaration would have bunched a book's search control against its
+       brand on every tablet — a book regression bought by a website fix. */
+    .tali-book-topbar .tali-nav-spacer { display: none; }
   }
 
   /* --- input capability, not viewport width (the 2026-07-26 mobile audit's root cause) ---

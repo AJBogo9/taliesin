@@ -5659,6 +5659,155 @@ fn site_toc_gets_the_same_narrow_width_order_lift_as_the_single_document_layout(
     );
 }
 
+/// The burger and the on-page TOC used to collapse at two DIFFERENT widths: the TOC rail
+/// gave up at 60rem, the burger only appeared at 40rem. Between the two, a reader got the
+/// worst of both — no burger, and a 45vh block of contents wedged between the navbar and
+/// the first sentence. One breakpoint now governs both, which is what lets the TOC move
+/// into the panel rather than stack: there is no width where the rail is gone and the
+/// panel is not there to receive it.
+#[test]
+fn the_burger_and_the_on_page_toc_collapse_at_one_breakpoint() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)")
+        .expect("site.css has no narrow-width query at the rail's breakpoint");
+    for needle in [
+        ".tali-nav-burger",
+        ".tali-nav-links",
+        ".tali-nav-links.tali-nav-open",
+        ".tali-nav-spacer",
+    ] {
+        assert!(
+            wide.contains(needle),
+            "`{needle}` is not in the 60rem block, so the burger does not exist at every \
+             width where the TOC rail has collapsed:\n{wide}"
+        );
+    }
+    // The other half, and the half a regression would actually hit: the burger rules must
+    // not ALSO remain at 40rem. Two copies would both match on a phone, and the narrower
+    // one wins on source order — so a later edit to the 60rem copy would silently do
+    // nothing below 640px, which is the only width anyone tests by hand.
+    if let Some(narrow) = media_block(SITE_CSS, "(max-width: 40rem)") {
+        assert!(
+            !narrow.contains(".tali-nav-burger"),
+            "the burger rules are declared at BOTH breakpoints; the 40rem copy shadows the \
+             60rem one on every phone:\n{narrow}"
+        );
+    }
+}
+
+/// The `.tali-search-kbd` rule shares the block the burger rules used to live in, and it is
+/// there for an unrelated reason (MOB-3: a cramped row, whose capability twin is the
+/// `hover: none` query). Widening the burger's gate must not drag it along — at 60rem the
+/// badge would vanish from narrow *desktop* windows that do have a Cmd key.
+#[test]
+fn widening_the_burger_gate_leaves_the_cmd_k_badge_on_its_own_width() {
+    let narrow = media_block(SITE_CSS, "(max-width: 40rem)")
+        .expect("site.css lost its 40rem block entirely, taking the Cmd-K width gate");
+    assert!(
+        narrow.contains(".tali-search-kbd"),
+        "the badge's own width gate moved with the burger rules:\n{narrow}"
+    );
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        !wide.contains(".tali-search-kbd"),
+        "the badge is now hidden on every narrow desktop window too, which is a different \
+         claim than the one MOB-3 made:\n{wide}"
+    );
+}
+
+/// `#TOC` carries rail styling from base.css — `position: sticky`, `max-height: 92vh`, a
+/// collapse that hides every nested `ul` but the active branch's. All three are wrong in a
+/// dropped-down panel, and all three are id-specificity, so the panel has to out-specify
+/// them rather than merely declare after them.
+#[test]
+fn the_toc_sheds_its_rail_styling_once_it_is_inside_the_panel() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        wide.contains(".tali-nav-links #TOC"),
+        "nothing restyles the TOC for its life inside the panel, so it keeps a 92vh \
+         sticky rail's geometry inside a dropdown:\n{wide}"
+    );
+    // The collapse is the one that reads as a bug rather than a blemish: `#TOC ul ul` is
+    // `display: none` in base.css, so a reader opening the menu to jump to a subsection
+    // would find only top-level headings unless the branch happened to be the active one.
+    assert!(
+        wide.contains(".tali-nav-links #TOC ul ul"),
+        "the scrollspy's collapse still applies in the panel, hiding every subsection that \
+         is not in the currently-read branch:\n{wide}"
+    );
+    // A long TOC plus the site links can exceed the viewport, and the panel is
+    // `position: absolute` — without its own scroll the overflow is simply unreachable.
+    assert!(
+        wide.contains("overscroll-behavior"),
+        "the panel can overflow the viewport with no way to reach the end, and a scroll \
+         inside it chains out to the article behind:\n{wide}"
+    );
+}
+
+/// The "Skip to table of contents" link must disappear exactly when the TOC is inside the
+/// burger panel — where its target is `display: none` and unfocusable — and must SURVIVE
+/// the no-JS narrow case, where the TOC never moved and is still stacked late in the tab
+/// order. A media query cannot tell those two apart; the class the nav script sets can.
+#[test]
+fn the_skip_to_toc_link_is_withdrawn_only_when_the_toc_actually_moved() {
+    assert!(
+        SITE_CSS.contains(".tali-toc-in-nav .tali-skip-toc"),
+        "nothing withdraws the skip link, so on a phone it points into a closed menu and \
+         focuses nothing"
+    );
+    // The load-bearing half: gating this on width instead would take the link away from a
+    // no-JS reader whose TOC is still sitting at the bottom of the DOM, which is the exact
+    // reader it was added for.
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        !wide.contains(".tali-skip-toc"),
+        "the skip link is hidden by WIDTH, so a narrow reader with JS off loses it while \
+         the TOC is still stranded after the article:\n{wide}"
+    );
+}
+
+/// The burger owns `margin-left: auto`, which is what pins it to the right end of the bar.
+/// Drop the search control in beside it and that single auto margin now sits on the WRONG
+/// item: the free space lands between brand and search, stranding search next to the
+/// wordmark while the burger floats off to the right. The margin has to move with the
+/// control, and only while the control is actually there.
+#[test]
+fn the_bar_hands_its_auto_margin_to_search_once_search_is_in_it() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        wide.contains("html.tali-search-in-bar .tali-nav-burger { margin-left: 0"),
+        "the burger keeps the auto margin, so search is stranded beside the wordmark while \
+         the burger sits alone at the right edge:\n{wide}"
+    );
+    assert!(
+        wide.contains("html.tali-search-in-bar .tali-nav-inner > .tali-search-btn"),
+        "nothing gives the relocated search control the auto margin the burger gave up, so \
+         the whole cluster collapses to the left:\n{wide}"
+    );
+}
+
+/// In the panel the search control was a full-width stretched row; lifted into the bar it
+/// measured 35x27 px, under the 44 px target the burger beside it is built to (WCAG 2.5.5,
+/// the same floor `.tali-nav-icon` and `.tali-nav-link::before` are there to reach). It can
+/// take the plain `min-width`/`min-height` those two had to avoid, because the burger is
+/// ALREADY 44 px tall in this bar: matching it cannot grow a row the burger's own height
+/// sets, which is the exact cost MOB-7 rejected the property for.
+#[test]
+fn the_relocated_search_control_is_a_full_size_tap_target() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    let rule = wide
+        .split("html.tali-search-in-bar .tali-nav-inner > .tali-search-btn")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("no relocated-search rule");
+    for prop in ["min-width: 44px", "min-height: 44px"] {
+        assert!(
+            rule.contains(prop),
+            "the search control keeps a sub-44px `{prop}` target in the bar, beside a \
+             burger built to exactly that floor:\n{rule}"
+        );
+    }
+}
+
 #[test]
 fn hover_revealed_copy_controls_stay_reachable_without_a_hover() {
     // MOB-4: the control sat at `opacity: 0`, revealed only by `:hover`/`:focus-visible`, with

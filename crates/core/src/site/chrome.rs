@@ -15,7 +15,51 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 /// that class instead of the old `:checked` selector), and closes the menu on
 /// Escape or when a nav link is followed. The `data-nav-wired` guard makes it safe
 /// to re-run when the live preview re-injects the navbar on hot reload.
-const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
+///
+/// It **also carries the page TOC into the panel below 60rem** (2026-09-11). Under that
+/// width `#TOC` drops out of its sticky rail, and it used to stack above the article as a
+/// 45vh internal scroller — a screenful of navigation between the navbar and the first
+/// sentence of every page long enough to earn a TOC. The burger is the control a reader
+/// already opens to navigate, so the contents go in there and the article starts at the
+/// top of the viewport.
+///
+/// Three things this deliberately is not:
+///
+/// - **Not a copy.** The node is MOVED. A second copy would put two `id="TOC"` elements in
+///   one document and hand `toc-spy.js` — which collects `#TOC a[href^='#']` — two entries
+///   per heading, so a highlight would land on whichever copy it reached first.
+/// - **Not one-way.** `matchMedia` is re-consulted on `change`, and the original parent and
+///   next sibling are captured up front, so widening the window puts `#TOC` back in its
+///   grid track *ahead of the post-nav* rather than appending it after. Restoring by
+///   `appendChild` would swap those two on every resize across the breakpoint.
+/// - **Not the 2026-08-04 Contents pill.** That was a floating launcher, a pull-up sheet
+///   and a drag grip: three new affordances. This adds none — and the standing "do not
+///   re-add" from that cut is specifically the bare 42x5 px grip, which has nothing to
+///   attach to here.
+///
+/// It **also lifts the search control out of the panel and into the bar** below the same
+/// width (2026-09-11). On desktop that button already sits in the navbar, so mobile was the
+/// only place it hid behind a tap — and the only place with no Cmd-K, which makes it the
+/// sole way into search there. It is a DOM move for the same reason the TOC is: the panel
+/// is `display: none` while closed, so a child cannot escape it. The move is placed BEFORE
+/// `toc()`'s early return on purpose, because search exists on the many pages that have no
+/// `#TOC` at all. `.tali-nav-burger` owns `margin-left: auto` — the thing that pins the
+/// cluster right — so the `tali-search-in-bar` mark hands that margin to whichever control
+/// now comes first; without it the free space lands between the wordmark and search.
+///
+/// Two ordering constraints, both load-bearing. The TOC lookup sits AFTER all three
+/// handlers are attached, because most pages (every listing, every hero page, every short
+/// one) have no `#TOC` and a `return` above the wiring would leave all of them with a dead
+/// burger button. And it is **deferred to `DOMContentLoaded`**: this script is emitted
+/// inside `<header>`, so it runs when the parser reaches it — before `<main>` and the
+/// `#TOC` after it exist. Without the wait the lookup found null on every page and the
+/// whole relocation was dead code in the build while its string assertions passed. The
+/// `else` branch runs it immediately when the document is already parsed, which is the
+/// case a chrome re-inject after load would hit.
+///
+/// The no-JS path needs no branch here — site.css's stacked-block rule is scoped
+/// `.tali-site-main.has-toc > #TOC`, so it stops matching on its own once the node moves.
+const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});var q=window.matchMedia('(max-width: 60rem)');var inner=b.parentNode,sb=m.querySelector('[data-tali-search]'),sHome=sb&&sb.parentNode,sAfter=sb&&sb.nextSibling;if(sb)sb.addEventListener('click',function(){set(false);});function sPlace(){if(!sb)return;if(q.matches!==(sb.parentNode===inner)){if(q.matches){inner.insertBefore(sb,b);}else{sHome.insertBefore(sb,sAfter);}}document.documentElement.classList.toggle('tali-search-in-bar',q.matches);}sPlace();q.addEventListener('change',sPlace);function toc(){var t=document.getElementById('TOC');if(!t)return;var home=t.parentNode,after=t.nextSibling,lab=document.createElement('p');lab.className='tali-nav-toc-label';lab.textContent='On this page';function place(){if(q.matches===(t.parentNode===m))return;if(q.matches){m.appendChild(lab);m.appendChild(t);}else{if(lab.parentNode)lab.parentNode.removeChild(lab);home.insertBefore(t,after);}document.documentElement.classList.toggle('tali-toc-in-nav',q.matches);}place();q.addEventListener('change',place);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',toc);}else{toc();}})();</script>";
 
 /// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter drawer. A book is laid out
 /// as one centred reading column (the same measure as a blog post); the chapter list is
@@ -134,7 +178,7 @@ impl Site {
         // unfocusable, role-less label was a WCAG 2.1.1 failure). `aria-expanded`
         // reflects open/closed; `aria-controls` points at the menu it reveals. The
         // tiny inline script below wires the click + Escape-to-close; CSS hides the
-        // button above 640px so the desktop bar is unchanged.
+        // button above 60rem so the desktop bar is unchanged.
         s.push_str(
             "<button type=\"button\" class=\"tali-nav-burger\" id=\"tali-nav-toggle\" \
              aria-label=\"Menu\" aria-expanded=\"false\" aria-controls=\"tali-nav-links\">\
@@ -1097,6 +1141,243 @@ mod tests {
             js.contains("documentElement.style.overflow=o?'hidden':''"),
             "the drawer sets no scroll lock, so the page scrolls behind it:\n{js}"
         );
+    }
+
+    // --- the page TOC rides in the burger panel at narrow widths (2026-09-11) ----------
+    //
+    // Below 60rem the on-page TOC used to drop out of the sticky rail and stack ABOVE the
+    // article as a 45vh internal scroller, which put a screenful of navigation between the
+    // navbar and the first sentence of every page that has one. It now moves INTO the
+    // burger panel — the control a reader already opens to navigate — so the article starts
+    // at the top of the viewport and the contents are one tap away.
+    //
+    // This is NOT a rebuild of the mobile Contents pill cut on 2026-08-04: that was a
+    // floating launcher plus a pull-up sheet plus a drag grip, all new chrome. This adds no
+    // affordance at all, and the one standing "do not re-add" (the bare 42x5 px grip) has
+    // nothing to attach to here.
+
+    #[test]
+    fn the_page_toc_moves_into_the_burger_panel_where_the_rail_cannot_fit() {
+        let js = NAV_TOGGLE_SCRIPT;
+        // Gated on the SAME width at which the rail collapses (site.css's `has-toc` block).
+        // A narrower gate would strand the stacked block in the gap between the two; a wider
+        // one would steal the TOC off the desktop rail.
+        assert!(
+            js.contains("matchMedia('(max-width: 60rem)')"),
+            "the relocation is not gated on the width where the rail collapses:\n{js}"
+        );
+        assert!(
+            js.contains("getElementById('TOC')"),
+            "the script never reaches for the page TOC:\n{js}"
+        );
+        // MOVED, never copied. A second copy would put two `id=\"TOC\"` nodes in one document
+        // and hand `toc-spy.js` (which collects `#TOC a[href^='#']`) two entries per heading,
+        // so every scrollspy highlight would land on whichever copy it happened to reach.
+        assert!(
+            !js.contains("cloneNode"),
+            "the TOC is being copied, which duplicates id=\"TOC\" and doubles every \
+             scrollspy entry:\n{js}"
+        );
+        // The desktop rail must come back on the way up. `#TOC` is a grid TRACK CHILD of
+        // `.tali-site-main` with a following sibling (the back-to-listing nav), so restoring
+        // it by appending would re-order those two; the original next sibling is captured up
+        // front and the node goes back in front of it.
+        assert!(
+            js.contains("nextSibling"),
+            "nothing records where the TOC came from, so widening the window cannot put it \
+             back in its grid track ahead of the post-nav:\n{js}"
+        );
+        assert!(
+            js.contains("addEventListener('change'"),
+            "the placement is decided once at load, so a rotate or a window resize across \
+             60rem leaves the TOC on the wrong side:\n{js}"
+        );
+    }
+
+    #[test]
+    fn the_relocated_toc_is_labelled_as_a_different_kind_of_navigation() {
+        // The panel now holds two things a reader navigates with, and they are not the same
+        // kind: the site links leave the page, the TOC jumps within it. Unlabelled, the
+        // headings read as a second helping of site links. The label is a VISIBLE seam
+        // only — assistive tech already hears the group as "Table of contents" from
+        // `#TOC`'s own `aria-label`, which is why this is a `<p>` and not a heading (a
+        // heading would drop a navbar element into the page's heading outline).
+        //
+        // It is created here rather than server-rendered because it must not exist at
+        // desktop widths, where the TOC goes back to its rail and a stray "On this page"
+        // would be left sitting in the navbar.
+        let js = NAV_TOGGLE_SCRIPT;
+        assert!(
+            js.contains("On this page"),
+            "the TOC joins the site links with nothing separating the two kinds of \
+             navigation:\n{js}"
+        );
+        assert!(
+            js.contains("tali-nav-toc-label"),
+            "the label carries no class, so site.css cannot draw the seam between the site \
+             links and the contents:\n{js}"
+        );
+        // The label is the panel's own furniture, so it leaves when the TOC does. Without
+        // this, widening the window strands it in the navbar above a TOC that has gone back
+        // to the rail.
+        assert!(
+            js.contains("removeChild(lab)"),
+            "the label is never taken back out, so it survives in the panel after the TOC \
+             returns to its desktop rail:\n{js}"
+        );
+    }
+
+    #[test]
+    fn moving_the_toc_withdraws_the_skip_link_that_pointed_at_it() {
+        // `page.rs` emits a second skip link, "Skip to table of contents", because the TOC
+        // is rendered AFTER the reading column and so lands around tab stop 56 of 62 — a
+        // keyboard user would have to traverse the whole article to reach a list of links
+        // that never left the screen.
+        //
+        // Both halves of that reasoning die when the TOC moves into the panel, and one of
+        // them dies dangerously: the link now points INTO A CLOSED `display: none` menu, so
+        // activating it focuses nothing. (The other half is merely obsolete — in the panel
+        // the TOC sits a couple of stops after the burger, which is what the link existed to
+        // shortcut.)
+        //
+        // The gate is the CLASS, not a media query, and that distinction is the test: with
+        // JS off the TOC never moves, stays stacked above the article, and is still late in
+        // the tab order — so the link must survive exactly there.
+        let js = NAV_TOGGLE_SCRIPT;
+        assert!(
+            js.contains("documentElement.classList.toggle('tali-toc-in-nav'"),
+            "nothing marks the document while the TOC is in the panel, so the skip link \
+             cannot be withdrawn only in the case where its target is hidden:\n{js}"
+        );
+        // Toggled with the SAME predicate that decides the move, so the mark can never
+        // disagree with where the node actually is.
+        assert!(
+            js.contains("toggle('tali-toc-in-nav',q.matches)"),
+            "the mark is set independently of the move, so the two can drift out of \
+             agreement:\n{js}"
+        );
+    }
+
+    #[test]
+    fn the_search_control_leaves_the_panel_for_the_bar_at_narrow_widths() {
+        // On DESKTOP the search button is already sitting in the navbar (`.tali-nav-links`
+        // is a flex row up there), so mobile was the only place it hid behind a tap. Mobile
+        // is also the only place with no Cmd-K, which makes that button the sole entry point
+        // to search there — the weakest possible thing to bury.
+        //
+        // It has to be a DOM move for the same reason the TOC did: the panel is
+        // `display: none` while closed, and a child cannot escape that.
+        let js = NAV_TOGGLE_SCRIPT;
+        assert!(
+            js.contains("[data-tali-search]"),
+            "the script never finds the search control:\n{js}"
+        );
+        // Placed BEFORE the burger, so the reader's thumb finds the same order the desktop
+        // bar reads in (content, then search, then menu).
+        assert!(
+            js.contains("inner.insertBefore(sb,b)"),
+            "the search control is not inserted ahead of the burger, so the bar reads \
+             menu-then-search:\n{js}"
+        );
+        // Desktop must be byte-identical to before, which means an actual restore rather
+        // than leaving it in the bar once narrowed.
+        assert!(
+            js.contains("sHome.insertBefore(sb,sAfter)"),
+            "nothing puts the search control back inside the panel when the window widens, \
+             so the desktop bar keeps a second, differently-spaced copy of it:\n{js}"
+        );
+        assert!(
+            js.contains("classList.toggle('tali-search-in-bar'"),
+            "nothing marks the document while search is in the bar, so the CSS cannot hand \
+             it the auto margin that keeps it beside the burger:\n{js}"
+        );
+    }
+
+    #[test]
+    fn the_search_move_does_not_sit_behind_the_toc_early_return() {
+        // `toc()` returns early on the many pages that have no `#TOC` (every listing, every
+        // hero page, every short one). Search exists on ALL of them, so its placement must
+        // be reached before that return — otherwise the control simply vanishes on a phone
+        // for exactly the pages a reader is most likely to be searching FROM.
+        let js = NAV_TOGGLE_SCRIPT;
+        let search_at = js.find("[data-tali-search]").expect("no search lookup");
+        let toc_at = js.find("getElementById('TOC')").expect("no TOC lookup");
+        assert!(
+            search_at < toc_at,
+            "the search relocation is downstream of the TOC lookup, so a page without a \
+             TOC loses its search button on mobile:\n{js}"
+        );
+    }
+
+    #[test]
+    fn tapping_search_closes_an_open_menu() {
+        // Once search is in the BAR, it is reachable while the panel is open — the bar stays
+        // visible above it. Without this the Cmd-K palette opens on top of an open menu and
+        // dismissing the palette returns the reader to it.
+        //
+        // The panel's own close-on-click handler cannot cover this: it is bound to `m` and
+        // matches `closest('a')`, and the search control is a `<button>` that no longer
+        // lives inside `m` at all.
+        let js = NAV_TOGGLE_SCRIPT;
+        assert!(
+            js.contains("sb.addEventListener('click'"),
+            "tapping search leaves the burger menu open underneath the palette:\n{js}"
+        );
+    }
+
+    #[test]
+    fn the_toc_lookup_waits_for_a_parsed_document() {
+        // Caught in a browser, not by a unit test: the burger was appearing at the new
+        // width but the TOC never moved. This script is emitted INSIDE `<header>`, by
+        // `navbar_html`, and runs the moment the parser reaches it — at which point `<main>`
+        // and the `#TOC` that follows it do not exist yet. `getElementById('TOC')` returned
+        // null on every page, so the relocation was dead code in the shipped build while
+        // every string assertion about it passed.
+        //
+        // The button and the menu are exempt because they PRECEDE the script in the same
+        // header; only the TOC lives further down the document.
+        let js = NAV_TOGGLE_SCRIPT;
+        assert!(
+            js.contains("readyState"),
+            "the TOC lookup runs at parse time, before `#TOC` exists further down the \
+             document, so it always finds null:\n{js}"
+        );
+        assert!(
+            js.contains("DOMContentLoaded"),
+            "nothing re-runs the lookup once the document is parsed:\n{js}"
+        );
+        // `readyState` alone is not the fix: the script must still run immediately when the
+        // document is ALREADY parsed, which is the case the live preview hits when it
+        // re-injects chrome after load.
+        assert!(
+            js.contains("else{toc();}"),
+            "the lookup only ever runs from the DOMContentLoaded branch, so a script \
+             evaluated after parsing (a hot-reload re-inject) never places the TOC:\n{js}"
+        );
+    }
+
+    #[test]
+    fn a_page_without_a_toc_still_wires_the_burger() {
+        // The TOC block must not be reachable before the burger's own handlers are attached:
+        // most pages (every listing, every hero page, every short one) have no `#TOC` at all,
+        // and an early return placed above the wiring would leave those pages with a burger
+        // button that does nothing.
+        let js = NAV_TOGGLE_SCRIPT;
+        let toc_at = js.find("getElementById('TOC')").expect("no TOC lookup");
+        for handler in [
+            "b.addEventListener('click'",
+            "m.addEventListener('click'",
+            "document.addEventListener('keydown'",
+        ] {
+            let at = js
+                .find(handler)
+                .unwrap_or_else(|| panic!("nav script lost its {handler} handler:\n{js}"));
+            assert!(
+                at < toc_at,
+                "`{handler}` is wired AFTER the TOC lookup, so a page with no TOC can lose \
+                 its burger to an early return:\n{js}"
+            );
+        }
     }
 
     /// A `_site.yml` href is emitted on EVERY page, so a broken one is the highest-leverage

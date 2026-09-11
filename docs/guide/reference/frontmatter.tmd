@@ -425,8 +425,9 @@ question per page, and answered it worse. Writing `toc:` in a `_site.yml` is an
 Left out of a page's front matter, the rail is **automatic**: an article page earns one
 by carrying at least **three** headings and being neither a listing nor a hero page, so a
 short page never gets a near-empty rail. An explicit `toc: true` / `toc: false` in the
-page's own front matter always wins over that gate. On narrow screens the list appears
-inline after the article instead of floating as a sidebar.
+page's own front matter always wins over that gate. Below 960px the rail has no room, so
+the list moves into the navbar's menu button under **On this page**: the article keeps the
+top of the screen, and the contents stay one tap away.
 
 **A book never shows one**, whatever any page says: the Chapters drawer is its
 navigation, and it is strictly more detailed than the rail was. That gate sits ahead of
