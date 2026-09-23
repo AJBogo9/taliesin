@@ -16,8 +16,8 @@ A study of fatality-rate patterns across aircraft manufacturers, fitting hierarc
 
 ## The question
 
-Are some manufacturers genuinely safer than others, or do apparent differences vanish once you account for how few crashes each manufacturer contributes? A naive per-manufacturer rate is noisy; complete pooling hides real variation. Hierarchical partial pooling sits between the two.
+Are some manufacturers safer than others, or do apparent differences vanish once you account for how few crashes each manufacturer contributes? A naive per-manufacturer rate is noisy; complete pooling hides real variation. Hierarchical partial pooling sits between the two.
 
 ## What the models showed
 
-The hierarchical partial-pooling model outperformed complete pooling by **1,944 ELPD points**, confirming significant manufacturer-level variation in fatality rates that persists despite industry standardisation. The temporal trend, by contrast, was minimal.
+The hierarchical partial-pooling model outperformed complete pooling by 1,944 ELPD points, confirming significant manufacturer-level variation in fatality rates that persists despite industry standardisation. The temporal trend, by contrast, was minimal.

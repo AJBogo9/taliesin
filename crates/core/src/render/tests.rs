@@ -737,7 +737,9 @@ fn spaced_option_directives_are_recognized() {
     // The parser tolerates whitespace between the comment marker and the pipe (`# |`,
     // `// |`, `%% |`); taliesin must too, or the spaced lines leak into the displayed
     // source AND their options (echo/label/...) are silently ignored.
-    // Regression: corpus/tech-blog/posts/pca-geometry writes `# | label:` / `# | echo: false`.
+    // Regression: the tech blog's pca-geometry post once wrote `# | label:` / `# | echo: false`.
+    // No corpus document uses the spaced form since the 2026-09-23 sync, so this test is its
+    // only witness.
 
     // 1. A spaced option is stripped from echoed source (not left as a comment).
     //    Check the stripped text, since highlighting splits the literal `# |`.

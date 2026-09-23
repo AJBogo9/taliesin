@@ -1,6 +1,6 @@
 ---
 title: "The Fourier Transform"
-description: "How mathematics hears which notes are hidden in a chord."
+description: "How a machine finds which notes are hidden in a chord."
 date: 2026-05-15
 image: "thumbnail.webp"
 image-alt: "Circular Fourier series visualisation showing harmonic frequency components traced as an orbital path"
@@ -9,7 +9,7 @@ categories:
 bibliography: references.bib
 ---
 
-An instrument plays three notes at once, but you hear a single chord. Physically, all three notes create pressure waves that sum together and hit your eardrum as one. Your brain is somehow able to recognize the three distinct frequencies hidden in that single wave. The mechanism behind how the brain does this is an extremely complicated topic, but getting machines to decompose the signal is quite straightforward, and this post explains how it is done. The core mathematical operation doing signal decomposition is called the **Fourier Transform**.
+An instrument plays three notes at once, but you hear a single chord. Physically, all three notes create pressure waves that sum together and hit your eardrum as one. Your brain is somehow able to recognize the three distinct frequencies hidden in that single wave. The mechanism behind how the brain does this is an extremely complicated topic, but getting machines to decompose the signal is quite straightforward. The mathematical operation that does this decomposition is called the **Fourier Transform**.
 
 # Sound is a sum of sinusoids
 
@@ -128,9 +128,9 @@ plt.show()
 
 # How to detect a hidden frequency
 
-The core intuition behind finding the frequencies in a chord is that if the frequency $f$ is present in the signal, then the signal and a pure tone at $f$ should "agree" on average. "Agreeing" in this context means that when the test pure tone is positive, the signal tends to be positive, and when the test tone is negative, the signal also tends to be negative.
+The intuition behind finding the frequencies in a chord is that if the frequency $f$ is present in the signal, then the signal and a pure tone at $f$ should "agree" on average. "Agreeing" in this context means that when the test pure tone is positive, the signal tends to be positive, and when the test tone is negative, the signal also tends to be negative.
 
-The mathematical way to measure this agreement is the **dot product**. In practice, you multiply the signal and the test sinusoid at each discrete time point and then sum all the multiplications together (aka you take the dot product). If the products are consistently positive (or consistently negative) the sum is large and this means that the test frequency can be found from the original signal. If the test frequency doesn't match with the original signal, the products alternate in sign and cancel out and the sum collapses to zero. This is the entire intuition of the fourier transform. The fourier transform just tests every single frequency and then returns a list of frequencies present.
+The mathematical way to measure this agreement is the **dot product**. In practice, you multiply the signal and the test sinusoid at each discrete time point and then sum all the multiplications together (aka you take the dot product). If the products are consistently positive (or consistently negative) the sum is large and this means that the test frequency can be found from the original signal. If the test frequency doesn't match with the original signal, the products alternate in sign and cancel out and the sum collapses to zero. This is the entire intuition of the Fourier transform. The Fourier transform just tests every frequency and then returns a list of frequencies present.
 
 # The formula
 
@@ -140,13 +140,13 @@ $$
 X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-2\pi \mathrm{i} k n / N}
 $$ {#eq-dft}
 
-where $e^{-2\pi \mathrm{i} k n / N}$ is a complex sinusoid at frequency $k$. This comes from Euler's formula: $e^{\mathrm{i}\theta} = \cos \theta + \mathrm{i}\sin \theta$. Multiplying $x[n]$ by $e^{-2\pi \mathrm{i} k n / N}$ and summing is the exact definition of computing the dot product of the signal and the test sinusoid at frequency $k$.
+where $e^{-2\pi \mathrm{i} k n / N}$ is a complex sinusoid at frequency $k$. This comes from Euler's formula: $e^{\mathrm{i}\theta} = \cos \theta + \mathrm{i}\sin \theta$. Multiplying $x[n]$ by $e^{-2\pi \mathrm{i} k n / N}$ and summing is, by definition, the dot product of the signal and the test sinusoid at frequency $k$.
 
-The result $X[k]$ is a complex number. Its magnitude $|X[k]|$ tells you how much of frequency $k$ is present. But why is the result a complex number? The reason for this is that with $e^{-2\pi \mathrm{i} kn/N} = \cos(2\pi kn/N) - \mathrm{i}\sin(2\pi kn/N)$, the real part measures correlation with the cosine and the imaginary part with the sine. Together they capture both the **amplitude** and **phase** of each frequency in a single number. Repeating for all $k = 0, 1, \ldots, N-1$ gives the full spectrum of which frequencies are in the signal and how strong each one is.
+The result $X[k]$ is a complex number. Its magnitude $|X[k]|$ tells you how much of frequency $k$ is present. It is complex because $e^{-2\pi \mathrm{i} kn/N} = \cos(2\pi kn/N) - \mathrm{i}\sin(2\pi kn/N)$, so the real part measures correlation with the cosine and the imaginary part with the sine. Together they capture both the **amplitude** and **phase** of each frequency in a single number. Repeating for all $k = 0, 1, \ldots, N-1$ gives the full spectrum of which frequencies are in the signal and how strong each one is.
 
 # Geometric intuition: winding a signal around a circle
 
-There is a nice geometric way to understand what @eq-dft is doing. The idea is that you take the signal and wind it around a circle. At sample $n$, place the value $x[n]$ on the complex plane, rotated by $k$ full turns spread over $N$ samples. Then each point becomes a point in 2D space. The sum $X[k]$ is the **centre of mass** of all these points. 
+There is a nice geometric way to understand what @eq-dft is doing. The idea is that you take the signal and wind it around a circle. At sample $n$, place the value $x[n]$ on the complex plane, rotated by $k$ full turns spread over $N$ samples. Then each point becomes a point in 2D space. The sum $X[k]$, divided by $N$, is the **centre of mass** of all these points. 
 
 When $k$ matches a hidden frequency, the wound samples bunch up on one side of the origin (large $|X[k]|$). When $k$ does not match a hidden frequency, the samples scatter evenly around the circle (small $|X[k]|$). From the figure below, you can see the chord signal that is wound around a circle. Changing the frequency $k$ shows on which frequencies $|X[k]|$ becomes non-zero. The figure below uses a synthetic 256-sample signal with notes at bin indices $k = 3, 7, 12$ which is the same ratio as the chord, but scaled to a different absolute pitch to simplify the visual.
 
@@ -426,5 +426,3 @@ drawSpectrumPanel(svg, { specK, wind_f, mag: mag_display, comp_freqs, compColors
 
 return svg.node();
 ```
-
-An instrument plays three notes at once, but you hear a single chord. Your brain solves that problem instantly, without effort. Now you know how a computer does it too.

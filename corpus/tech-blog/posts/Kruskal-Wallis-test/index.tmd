@@ -9,7 +9,7 @@ categories:
 bibliography: references.bib
 ---
 
-Let's say that we want to test the effects of pain management protocols. We have 45 post-surgical patients randomized to three groups: opioid-only, NSAID + nerve block and multimodal. 48 hours after their operations, each patient marks their pain on a 0–10 visual analog scale (VAS). The question that the clinic is interested in is whether the three different protocols produce different pain levels or not.
+Let's say that we want to test the effects of pain management protocols. We have 45 post-surgical patients randomized to three groups: opioid-only, NSAID + nerve block and multimodal. 48 hours after their operations, each patient marks their pain on a 0-10 visual analog scale (VAS). The question that the clinic is interested in is whether the three different protocols produce different pain levels or not.
 
 ANOVA [@wiki_anova] is a popular test for testing whether group means are equal. The problem with ANOVA in the pain scale example is that the pain scores are typically right-skewed (clustering around 2-4) and with small sample sizes, the within-group variance can be inflated by some observations being at the right tail (8-10). ANOVA computes an F-statistic as a ratio of between-group variance to within-group variance. If the within group variance is inflated, ANOVA needs a larger between-group variance to detect a difference.
 
@@ -36,7 +36,7 @@ The Kruskal-Wallis test solves this problem. The KW test replaces raw scores wit
 
 # The pain trial
 
-This post will use a made up example: the data will have three groups of 15 patients with NRS scores at 48 hours post surgery. The @fig-pain-data shows both the theoretical (Gamma) distributions where the samples are drawn from and the actual samples. Then @tbl-pain-summary summarizes the data.
+This post will use a made up example: the data will have three groups of 15 patients with VAS scores at 48 hours post surgery. The @fig-pain-data shows both the theoretical (Gamma) distributions where the samples are drawn from and the actual samples. Then @tbl-pain-summary summarizes the data.
 
 ```{python}
 #| label: fig-pain-data
@@ -133,7 +133,7 @@ display(HTML(f"""
 
 
 
-# The key insight: order is enough
+# The rank transformation {#the-key-insight-order-is-enough}
 
 For deducing whether one protocol produces less pain than another, we don't need to know how much less. We only need to know who ranks lower. Thus we use a ranking transformation. The animation in @fig-rank-transform shows how the data points are transformed into ranks.
 
@@ -263,7 +263,7 @@ A natural way to measure deviation from the null is the squared distance of each
 
 $$T = \sum_{j=1}^{K} n_j \left(\bar{R}_j - \frac{N+1}{2}\right)^2$$ {#eq-rank-ss}
 
-Here $n_j$ is the size of group $j$ to weight the penalty of bigger groups more because we have more information of them. This structure is extremely similar to ANOVA that is defined as the between group sum of squared deviations from each group mean from the global mean:
+Here $n_j$ is the size of group $j$ to weight the penalty of bigger groups more because we have more information of them. This structure is similar to ANOVA's between-group sum of squares, the sum of squared deviations of each group mean from the global mean:
 
 $$SS_{\text{between}} = \sum_{j=1}^{K} n_j \left(\bar{x}_j - \bar{x}\right)^2$$
 
@@ -368,7 +368,7 @@ display(HTML(f"""
 """))
 ```
 
-The multimodal group's mean rank is well below 23.0 (the grand mean rank), the opioid-only group's mean rank is well above it. The NSAID + nerve block is quite close to the mean rank. The $H$-statistic is able to quantify the spread. The chi-square p-value tells us whether a deviation this large would occur by chance under the null. With $p < 0.05$, we reject. The KW-test rejects the null, ANOVA doesn't. This shows that the KW-test is able to quantify the differences between distributions when they are heavily skewed better than ANOVA. 
+The multimodal group's mean rank is well below 23.0 (the grand mean rank), the opioid-only group's mean rank is well above it. The NSAID + nerve block is quite close to the mean rank. The $H$-statistic is able to quantify the spread. The chi-square p-value tells us whether a deviation this large would occur by chance under the null. With $p < 0.05$, we reject. The KW-test rejects the null, ANOVA doesn't. In this sample, with heavily skewed distributions, the KW-test detects a difference that ANOVA misses. 
 
 ::: {.callout-note}
 ## What KW doesn't tell

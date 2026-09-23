@@ -18,7 +18,7 @@ A Telegram bot that runs guild-based fitness competitions across Aalto Universit
 
 - **Multi-step conversation flows** for logging an activity, so users are walked through type, duration, and intensity rather than memorising a command syntax.
 - **Guild-based scoring**: points roll up per society, turning the competition into a team event.
-- **A React/Vite analytics dashboard** surfacing per-user and per-guild trends.
+- **A React/Vite analytics dashboard** showing per-user and per-guild trends.
 
 ## How it runs
 

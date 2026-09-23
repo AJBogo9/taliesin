@@ -4,7 +4,7 @@ date: "2026-03-17"
 image: "thumbnail.webp"
 image-alt: "Two overlapping probability distributions P and Q on a dark background, illustrating KL divergence"
 bibliography: references.bib
-description: "How to measure the difference between two probability distributions, and why it sits at the heart of modern LLM alignment."
+description: "How to measure the difference between two probability distributions, and why it is central to modern LLM alignment."
 categories:
   - Statistics
   - Mathematics
@@ -12,14 +12,14 @@ categories:
 
 When you fine-tune a large language model, how do you measure whether its output distribution is actually moving closer to the desired distribution? This question is a central to modern alignment techniques like RLHF [@ziegler2019; @ouyang2022].
 
-Large language models like GPTs output a probability distribution over tokens at each step. They assign a likelihood for each possible next word and then append the most likely next word to the output. During training the model outputs a predicted distribution $Q$ of the most likely next words. For ensuring correct output, the distribution $Q$ needs to be compared to the true distribution $P$. This is exactly what KL-divergence does. KL-divergence takes the original distribution and compares it to a new generated distribution and outputs a value that tells how much the two distributions differ. The closer the value is to zero, the more similar the distributions are.
+Large language models like GPTs output a probability distribution over tokens at each step. They assign a likelihood for each possible next word and then append the most likely next word to the output. During training the model outputs a predicted distribution $Q$ of the most likely next words. For ensuring correct output, the distribution $Q$ needs to be compared to the true distribution $P$. This is what KL-divergence does. KL-divergence takes the original distribution and compares it to a new generated distribution and outputs a value that tells how much the two distributions differ. The closer the value is to zero, the more similar the distributions are.
 
 ## Theory
 
 The **Kullback-Leibler divergence** from Q to P is defined as:
 
 $$
-D_{KL}(P||Q) = \sum_k \operatorname{log}p_k\frac{p_k}{q_k}
+D_{KL}(P||Q) = \sum_k p_k \operatorname{log}\frac{p_k}{q_k}
 $$
 
 where $p_k = P(X = k)$ and $q_k = Q(X = k)$ are the probabilities assigned by
@@ -34,7 +34,7 @@ $$
 H(P) = - \sum_k p_k \operatorname{log}p_k
 $$
 
-This is the average number of bits needed to encode samples from P using an optimal code for $P$ [@goodfellow2016]. 
+This is the average number of nats (bits, if the log is base 2) needed to encode samples from P using an optimal code for $P$ [@goodfellow2016]. 
 
 If instead if a code optimized for $Q$ was used to encode samples that came form $P$, the average code length is the **cross-entropy**:
 

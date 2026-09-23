@@ -8,8 +8,8 @@ use super::{BufLine, CodeFold, JsOpts};
 
 /// If `line` is a leading cell-option directive, return the content after the pipe.
 /// Recognizes `#|` (most langs), `//|` (JS), `%%|` (mermaid), each tolerating optional
-/// whitespace between the comment marker and the pipe (`# |`, `// |`, `%% |`); the
-/// spaced form is accepted, so the corpus may use it (e.g. `posts/pca-geometry`).
+/// whitespace between the comment marker and the pipe (`# |`, `// |`, `%% |`). No corpus
+/// document uses the spaced form any more; `spaced_option_directives_are_recognized` pins it.
 /// Returns `None` for a plain comment or code line. This is the single primitive every
 /// option parser keys off (`cell_option`, `strip_cell_options`, `validate`).
 pub fn option_directive(line: &str) -> Option<&str> {

@@ -24,8 +24,8 @@ and block model).
 [Choosing Taliesin](docs/guide/using/choosing.tmd) covers each point below at length, with
 its sources and method.
 
-- **Portability.** Across the 81 documents / 7,039 lines of the project's own corpus,
-  6.7% of lines carry any construct beyond plain CommonMark, and all six construct
+- **Portability.** Across the 81 documents / 7,202 lines of the project's own corpus,
+  6.6% of lines carry any construct beyond plain CommonMark, and all six construct
   families involved are existing Pandoc/Quarto vocabulary. Check it yourself with
   `python3 tools/portability-census.py`. Your writing is Markdown in your repository, and
   built pages are static HTML that needs no runtime.

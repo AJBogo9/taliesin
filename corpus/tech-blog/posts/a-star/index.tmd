@@ -10,9 +10,9 @@ categories:
   - Mathematics
 ---
 
-How does Google Maps find the *best* route in under a second, across millions of roads? Stripping this question into its basic elements, the question becomes, how to find the shortest path in a graph from the start position to the end position. If one was to approach this problem by trying every single path, the number of paths grow as $\mathcal{O}(b^d)$, where $b$ is the branching factor (average number of branches from each node) and $d$ is the depth. The brute force method scales extremely poorly so another solution must be used.
+How does Google Maps find the best route in under a second, across millions of roads? Stripping this question into its basic elements, the question becomes, how to find the shortest path in a graph from the start position to the end position. If one was to approach this problem by trying every path, the number of paths grow as $\mathcal{O}(b^d)$, where $b$ is the branching factor (average number of branches from each node) and $d$ is the depth. The brute force method scales extremely poorly so another solution must be used.
 
-Dijkstra's algorithm improves on the brute force method slightly. Dijkstra always expands the cheapest node so far. The problem with Dijkstra is that it expands the search in every direction including roads that lead away from the destination. Dijkstra can be beaten with algorithms with sense of direction.
+Dijkstra's algorithm improves on the brute force method enormously: its running time grows polynomially with the size of the graph instead of exponentially. Dijkstra always expands the cheapest node so far. The problem with Dijkstra is that it expands the search in every direction including roads that lead away from the destination. Dijkstra can be beaten with algorithms with sense of direction.
 
 ## The idea behind the A\* algorithm
 
@@ -139,7 +139,7 @@ $$
 f(n) = g(n) + w \cdot h(n)
 $$
 
-The benefit of using the weight is that fewer nodes are expanded because the search prioritizes nodes that are close to the end. The trade-off is that the path found is at most $w$ times longer than optimal.
+The benefit of using the weight is that fewer nodes are expanded because the search prioritizes nodes that are close to the end. The trade-off is that the path found can cost up to $w$ times the optimal cost (when $h$ is admissible).
 
 ## Demo
 
@@ -672,8 +672,8 @@ if (!s.animating) {
 
 ## Discussion
 
-A\* shines in applications where a cost function and an admissible heuristic (a heuristic that never overestimates the distance to the end) can be defined. Examples of these types of application are GPS routing, NPC path finding in games and network routing.
+A\* works well in applications where a cost function and an admissible heuristic (a heuristic that never overestimates the distance to the end) can be defined. Examples of these types of application are GPS routing, NPC path finding in games and network routing.
 
-There is one problem with A\*: it doesn't factor walls into the heuristic when using Manhattan distance. For solving this problem, algorithms like [Jump Point Search](https://en.wikipedia.org/wiki/Jump_point_search) (JPS) are used.
+One problem with A\* is that it doesn't factor walls into the heuristic when using Manhattan distance, so it can expand many nodes that lead into dead ends. A heuristic built from precomputed distances accounts for obstacles, at the cost of preprocessing. [Jump Point Search](https://en.wikipedia.org/wiki/Jump_point_search) (JPS) speeds up search differently: on uniform-cost grids it skips over symmetric paths, so far fewer nodes are expanded.
 
 ## References

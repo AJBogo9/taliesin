@@ -25,7 +25,7 @@ categories:
 | $\theta$ | Generative model parameters |
 | $\varphi$ | Variational parameters |
 | $\mathcal{L}(\theta, \varphi)$ | Evidence Lower Bound (ELBO) |
-| $D_{\mathrm{KL}}(q \| p)$ | KL divergence from $q$ to $p$ |
+| $D_{\mathrm{KL}}(q \| p)$ | KL divergence from $p$ to $q$ |
 | $\mathbb{E}_{q}[\cdot]$ | Expectation under distribution $q$ |
 | $\mu_q,\ \sigma_q$ | Mean and std. dev. of the variational distribution |
 | $\mu_*,\ \sigma_*$ | Mean and std. dev. of the true posterior |
@@ -46,7 +46,7 @@ $$
 p(\mathbf{z} \mid \mathbf{x}) = \frac{p(\mathbf{x} \mid \mathbf{z})p(\mathbf{z})}{p(\mathbf{x})}
 $$
 
-Now the problem is that the denominator that acts as a regularizer
+Now the problem is that the denominator, the normalising constant
 
 $$
 p(\mathbf{x}) = \int p(\mathbf{x} \mid \mathbf{z}) p(\mathbf{z}) d \mathbf{z}
@@ -60,7 +60,7 @@ With variational inference, we introduce a *tractable* approximation $q_\varphi(
 
 ## Derivation of the ELBO [@jamil2023vae]
 
-Now our goal is to transform the intractable integral $p_\theta(\mathbf{x})$ into a tractable approximation $q_\varphi(\mathbf{x})$. Instead of approximating $p_\theta(\mathbf{x})$ we approximate $\log p_\theta(\mathbf{x})$. So we start from
+Now our goal is to handle the intractable integral $p_\theta(\mathbf{x})$ using the tractable approximation $q_\varphi(\mathbf{z} \mid \mathbf{x})$. Instead of approximating $p_\theta(\mathbf{x})$ we approximate $\log p_\theta(\mathbf{x})$. So we start from
 
 $$
 \log p_\theta(\mathbf{x}) = \log p_\theta(\mathbf{x})
@@ -107,7 +107,7 @@ The notation $\mathcal{L}(\theta, \varphi)$ is used for the ELBO, so I'll be als
 
 ## What is the ELBO Optimising?
 
-Our original goal was to find a tractable distribution $q_\varphi (\mathbf{x})$ that approximates $p_\theta (\mathbf{x})$. A novel solution to this is to maximize the ELBO. With $\log p_\theta (\mathbf{x})$ being fixed, maximizing the ELBO minimizes the KL-divergence.
+Our original goal was to find a tractable distribution $q_\varphi(\mathbf{z} \mid \mathbf{x})$ that approximates the posterior $p_\theta(\mathbf{z} \mid \mathbf{x})$. The standard solution is to maximize the ELBO. With $\log p_\theta (\mathbf{x})$ being fixed, maximizing the ELBO minimizes the KL-divergence.
 
 $$
 \underbrace{\log p_\theta(\mathbf{x})}_{\text{fixed}} = \underbrace{\mathcal{L}(\theta, \varphi)}_{\uparrow \text{ maximise}} + \underbrace{D_{\mathrm{KL}}(q_\varphi \| p_\theta)}_{\downarrow \text{ minimise}}
