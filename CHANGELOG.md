@@ -8,6 +8,18 @@ and minor versions carried breaking changes; the 0.x entries below were written 
 
 ## [Unreleased]
 
+### Changed
+
+- **A multi-page site build prefetches the page a reader is about to open.** Every page of a
+  `build <dir>` carries a speculation-rules `prefetch` for same-origin `.html` links, so
+  hovering a link (or starting a tap) fetches that page and the click finds it already
+  downloaded. Measured on the tech blog on 2026-09-23, a click spent 340 to 400 ms waiting on
+  the document and 83 to 150 ms rendering it; behind a local server that copies Cloudflare
+  Pages' `.html` redirects, a hovered link then painted 60 to 100 ms after the click instead
+  of 270 to 320 ms. Prefetch only, never prerender, so no page's `{js}` cells
+  run for a hover. The live preview and single-file builds do not carry it, and browsers
+  without speculation rules ignore it.
+
 ## [1.0.1] - 2026-08-21
 
 No code changed. This release exists because v1.0.0's Linux binary could not run on most

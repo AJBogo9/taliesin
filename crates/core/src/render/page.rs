@@ -414,7 +414,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // tali-js + any extension); the deferred jslibs (d3/Plot) have executed by then, so
             // `{js}` cells still run correctly.
             let framework_scripts = format!(
-                "<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}",
+                "<script src=\"{}\" defer></script>{tali_js_inline}{mermaid}\n{SPECULATION_RULES}",
                 a.app_js
             );
             (style_block, katex_block, js_head_html, framework_scripts)
@@ -464,6 +464,19 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         include_after_body = p.include_after_body,
     )
 }
+
+/// Prefetch a sibling page once the reader hovers its link (or starts a tap), so the click
+/// finds the HTML already fetched. Measured on the tech blog 2026-09-23: a click spent
+/// 340 to 400 ms waiting on the document and its Cloudflare `.html` redirect, against 83 to
+/// 150 ms of rendering.
+///
+/// Only [`AssetMode::External`] ships it, which is the multi-page site build and nothing
+/// else. A single-file page has no sibling pages, and the live preview must never carry it:
+/// there every prefetch would make the dev server render the hovered page. Prefetch, not
+/// prerender, because prerendering runs a page's `{js}` cells for a hover that may never
+/// become a click. `/*.html` keeps it to same-origin pages, so feeds, assets and external
+/// links are never fetched. Browsers without speculation rules ignore the tag.
+const SPECULATION_RULES: &str = r#"<script type="speculationrules">{"prefetch":[{"where":{"href_matches":"/*.html"},"eagerness":"moderate"}]}</script>"#;
 
 /// Run the client enhancers once on load (the static page has no websocket client
 /// to call them after a mount).
@@ -939,5 +952,74 @@ mod tests {
             !html.contains("j.js"),
             "no jslibs link on a {{js}}-free page"
         );
+    }
+
+    /// The bodies of every `<script type="speculationrules">` in a page, parsed. Found with
+    /// the tag walker, not a substring: the inlined bundles are shipped text too.
+    fn speculation_rules(html: &str) -> Vec<serde_json::Value> {
+        tags(html)
+            .filter(|t| t.name.eq_ignore_ascii_case("script"))
+            .filter(|t| {
+                attrs(t)
+                    .any(|a| a.name.eq_ignore_ascii_case("type") && a.value == "speculationrules")
+            })
+            .map(|t| {
+                let body = &html[t.at + t.text.len()..];
+                let body = &body[..body.find("</script>").expect("closed script")];
+                serde_json::from_str(body).expect("speculation rules are JSON")
+            })
+            .collect()
+    }
+
+    /// A multi-page site build asks the browser to PREFETCH a sibling page once the reader
+    /// hovers its link, so the click finds the HTML already there. Prefetch and not
+    /// prerender: prerendering would run a page's `{js}` cells for a hover that may never
+    /// become a click. Same-origin `.html` only, so no feed, asset or external link is
+    /// fetched.
+    ///
+    /// Nothing else ships it. A single-file page has no sibling pages to fetch, and a live
+    /// preview must never: there a prefetch would make the dev server render every page the
+    /// author hovers.
+    #[test]
+    fn only_a_site_build_prefetches_sibling_pages_on_hover() {
+        let ext = ExternalAssets {
+            app_css: "a.css",
+            katex_css: "k.css",
+            app_js: "a.js",
+            mermaid_js: "m.js",
+            jslibs_js: "j.js",
+            font_preload: "",
+        };
+        let body = "<main id=\"tali-main\"><p><a href=\"other.html\">x</a></p></main>";
+        let site = assemble_html_page(&PageParts {
+            body,
+            with_site_css: true,
+            assets: AssetMode::External(ext),
+            ..PageParts::defaults()
+        });
+        let rules = speculation_rules(&site);
+        assert_eq!(rules.len(), 1, "exactly one rule set on a site page");
+        assert_eq!(
+            rules[0],
+            serde_json::json!({
+                "prefetch": [{ "where": { "href_matches": "/*.html" }, "eagerness": "moderate" }]
+            })
+        );
+
+        let single_file = assemble_html_page(&PageParts {
+            body,
+            ..PageParts::defaults()
+        });
+        assert!(
+            speculation_rules(&single_file).is_empty(),
+            "single-file build"
+        );
+        let preview = assemble_html_page(&PageParts {
+            mode: OutputMode::Preview,
+            body,
+            with_site_css: true,
+            ..PageParts::defaults()
+        });
+        assert!(speculation_rules(&preview).is_empty(), "live preview");
     }
 }

@@ -392,7 +392,10 @@ branch are enough to find its commits.
   dogfooded book has carried. **Do not re-file C-READ-2's data half** (it is `{{< dataset >}}`, item
   176) and **do not re-file 173**. `@view-transition` moved into `base.css` and
   `corpus/tech-blog/custom.css` was deleted (finishing the 2026-07-11 audit's `#custom-css-mostly-dead`
-  prescription); **do not re-add the two dropped prefetch mechanisms.**
+  prescription); **do not re-add the two dropped prefetch mechanisms.** *Reopened in part 2026-09-23:* the
+  drop's reason (redundant with hover previews) died with 762a75f8, so a site build ships its own
+  same-origin `prefetch` rule (`render/page.rs` `SPECULATION_RULES`); instant.page and a `prerender`
+  rule stay out.
 - **2026-07-30 long-running cells** (175a + 175b): a cell is capped on **silence**
   (`TALIESIN_CELL_SILENCE`, default 600 s) instead of wall-clock, and a running cell **streams its
   output**. **Do not re-add a wall-clock default** on the theory that runaways are unguarded — a

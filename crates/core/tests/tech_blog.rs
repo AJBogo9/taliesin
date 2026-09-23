@@ -425,10 +425,14 @@ fn home_page_renders_marginalia_hero() {
 }
 
 /// The de-Quarto sweep stays swept. The blog dropped its Quarto nav-prefetch stack (CDN
-/// preconnects, a speculationrules prerender hint, the third-party instant.page module),
-/// all redundant with Taliesin's native hover-preview, so none may reappear; offline-first
-/// means zero external connections. The site `description:` is the single source of truth
-/// (exactly one `<meta description>`).
+/// preconnects, a speculation-rules PRERENDER hint, the third-party instant.page module), so
+/// none may reappear; offline-first means zero external connections. The site
+/// `description:` is the single source of truth (exactly one `<meta description>`).
+///
+/// The stack was dropped on 2026-07-11 as redundant with Taliesin's hover previews, which
+/// were themselves deleted later (762a75f8). Since 2026-09-23 a site build ships its own
+/// same-origin PREFETCH rule (`render/page.rs`, `SPECULATION_RULES`), so what stays
+/// forbidden is the prerender: it runs a page's `{js}` cells on a hover.
 ///
 /// **This test used to end by asserting the page contains `@view-transition`, as proof
 /// that the site-level `css:` was still inlined.** That needle stopped proving anything
@@ -456,8 +460,8 @@ fn blog_nav_prefetch_stack_stays_dropped() {
         "no CDN preconnect may survive (offline-first)"
     );
     assert!(
-        !post.contains("speculationrules"),
-        "the speculationrules prerender hint was dropped"
+        !post.contains("prerender"),
+        "the speculation-rules prerender hint was dropped"
     );
     assert!(
         !post.contains("instantpage"),
