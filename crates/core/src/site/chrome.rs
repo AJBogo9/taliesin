@@ -1,4 +1,4 @@
-//! Site chrome: the navbar, footer, bottom-of-post nav, and book sidebar +
+//! Site chrome: the navbar, footer, back-to-listing link, and book sidebar +
 //! within-chapter nav HTML, plus the bundled social-icon glyphs. Split out of
 //! mod.rs; `page_chrome()` there calls these per page (`use super::*` reaches
 //! Page/NavItem + the link helpers).
@@ -606,30 +606,43 @@ impl Site {
                 )
             })
             .unwrap_or_default();
+        // The inner row is what sits in the reading grid's text track (site.css), so the
+        // two links line up with the text's edges rather than the window's.
         format!(
-            "<nav class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\">{left}\
-             <span class=\"tali-nav-spacer\"></span>{right}</nav>"
+            "<nav class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\">\
+             <div class=\"tali-book-pager\">{left}\
+             <span class=\"tali-nav-spacer\"></span>{right}</div></nav>"
         )
     }
 
-    /// Bottom-of-post "back to listing" link on a website page: returns to the single
-    /// listing page this page belongs to (e.g. "← Blog"), or empty when it belongs to
-    /// none or is ambiguously covered by several. Non-book pages only — books fill the
-    /// same slot with [`book_nav_html`](Self::book_nav_html).
-    pub(super) fn listing_backlink_html(&self, page: &Page, depth: usize) -> String {
-        let Some(owner) = self.listing_owner(page) else {
-            return String::new();
-        };
-        let up = "../".repeat(depth);
+    /// The "back to listing" link a website page opens with: returns to the single
+    /// listing page this page belongs to (e.g. "← Blog"), or `None` when it belongs to
+    /// none or is ambiguously covered by several. It is a BLOCK, the page's first (see
+    /// `expand_page`), so it sits in the reading grid's text track above the title and
+    /// the preview mounts it like any other block. It used to close the page from the
+    /// chrome's post-nav slot, a sibling of the reading grid rather than an item of it,
+    /// which left it at the window's edge once the measure moved into that grid.
+    pub(super) fn listing_backnav_block(&self, page: &Page) -> Option<Block> {
+        let owner = self.listing_owner(page)?;
+        let up = "../".repeat(page.url.matches('/').count());
+        let id = "tali-backnav";
         // The arrow is decorative (the `<nav>` label carries the direction), so it is
         // hidden from the accessibility tree; a screen reader reads just the title.
-        format!(
-            "<nav class=\"tali-postnav tali-listing-backnav\" aria-label=\"Back to listing\">\
-             <a class=\"tali-back-link\" href=\"{up}{}\">\
+        let html = format!(
+            "<nav class=\"tali-listing-backnav\" data-block-id=\"{id}\" \
+             aria-label=\"Back to listing\"><a class=\"tali-back-link\" href=\"{up}{}\">\
              <span class=\"tali-back-glyph\" aria-hidden=\"true\">\u{2190}</span> {}</a></nav>",
             owner.url,
             esc(owner.title.as_deref().unwrap_or_default())
-        )
+        );
+        Some(Block {
+            id: id.to_string(),
+            sourcepos: String::new(),
+            source_file: None,
+            html,
+            cell: None,
+            nested: Vec::new(),
+        })
     }
 }
 

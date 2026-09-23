@@ -552,7 +552,7 @@
        collapses every escape and the margin column with it, in one declaration, instead of
        resetting each track — and it is what makes the in-flow note rule below reachable at
        all, since a note that stayed a grid item could not be un-floated back into the text. */
-    #tali-main, #tali-root, #tali-main > article { display: block !important; }
+    #tali-main, #tali-root, #tali-main > article, .tali-book-postnav { display: block !important; }
     .tali-sidenote, .tali-sidenote:target, .column-margin {
       display: block; float: none; width: auto; margin: .6rem 0;
       padding-left: .9rem; border-left: 2px solid var(--tali-border); background: none; }
@@ -695,7 +695,9 @@
      then never engages while the float that fills it does — measured, on a page that grew
      328px of horizontal overflow with the note track still reporting 0px. Declared here,
      the substitution happens on an element that has already inherited the engaged values. */
-  #tali-main, #tali-root, #tali-main > article {
+  /* A book's chapter pager joins the grid too: it follows <main> as a sibling, so without
+     the track list it spans the whole window and its links land at the window's edges. */
+  #tali-main, #tali-root, #tali-main > article, .tali-book-postnav {
     --tali-prose-cols:
       minmax(1rem, 1fr)
       [bleed-start] minmax(0, var(--tali-side-l))
@@ -705,7 +707,7 @@
       minmax(0, var(--tali-side-r)) [bleed-end]
       minmax(1rem, 1fr);
     display: grid; grid-template-columns: var(--tali-prose-cols); }
-  :is(#tali-main, #tali-root, #tali-main > article) > * { grid-column: text; }
+  :is(#tali-main, #tali-root, #tali-main > article, .tali-book-postnav) > * { grid-column: text; }
   /* A dated post wraps its blocks in an `<article>` landmark, so the grid must reach one
      level deeper. It spans the whole track set and REPEATS the track list rather than using
      `subgrid`: its width equals the parent's content box, so identical tracks compute

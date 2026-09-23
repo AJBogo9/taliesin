@@ -16,8 +16,19 @@ and minor versions carried breaking changes; the 0.x entries below were written 
   favicon, logo, navbar, footer and search against `/a/b/` and got a 404 for each. The
   built page's URLs are now root-absolute, as the generated 404's already were. Every
   other page keeps relative URLs, so a build still opens from disk.
+- **A book chapter's prev/next pager lines up with the text again.** It sat outside the
+  reading grid, so on a wide screen the previous-chapter link was at the window's left edge
+  and the next-chapter link at its right edge. Both links and the rule above them now span
+  exactly the text column, including on chapters with margin notes.
 
 ### Changed
+
+- **A website post's link back to its listing ("← Blog") now sits above the title**, in
+  the size and colour of the date line, instead of closing the page. At the bottom it had
+  come loose from the text column: on a wide screen it sat at the window's left edge under
+  a rule of its own, just above the footer's rule. At the top it lines up with the title,
+  shows which listing a post belongs to as soon as the page opens, and the page ends with
+  the text. Books keep their prev/next pager at the end of each chapter.
 
 - **A multi-page site build prefetches the page a reader is about to open.** Every page of a
   `build <dir>` carries a speculation-rules `prefetch` for same-origin `.html` links, so

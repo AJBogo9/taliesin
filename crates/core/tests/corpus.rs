@@ -986,7 +986,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         .render_page("posts/evidence-lower-bound/index.tmd")
         .expect("post renders");
     assert!(
-        post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
+        post.contains("<nav class=\"tali-listing-backnav\"")
             && post.contains("href=\"../../blog.html\"")
             && post.contains("</span> Blog</a>"),
         "post should link back to the Blog listing"

@@ -434,20 +434,24 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
   max-width: none; margin: 0 auto; padding: 2rem 0; }
 .tali-book-inner > main { min-width: 0; }
-/* The post-nav is a sibling after the reading column, inside the same padded box, so it
-   lines up flush with the text on both edges. */
-.tali-book-postnav { display: flex; align-items: center; gap: 1rem;
-  margin-top: calc(2 * var(--tali-u)); padding-top: calc(.5 * var(--tali-u));
-  border-top: 1px solid var(--tali-border); }
+/* The pager follows the reading column as a sibling of <main>, so the <nav> is a reading
+   grid of its own (base.css) and this inner row takes its `text` track: the rule and both
+   links line up with the text's edges, margin column or not. */
+.tali-book-postnav { margin-top: calc(2 * var(--tali-u)); }
+.tali-book-pager { display: flex; align-items: center; gap: 1rem;
+  padding-top: calc(.5 * var(--tali-u)); border-top: 1px solid var(--tali-border); }
 .tali-book-prev, .tali-book-next { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
 .tali-book-prev:hover, .tali-book-next:hover { color: var(--tali-link); }
-.tali-book-postnav .tali-nav-spacer { flex: 1 1 auto; }
-/* The website "back to listing" link fills the same bottom-of-article slot as the book
-   pager, in the muted post-nav voice: a hairline rule, then a quiet link that lifts to
-   the link colour on hover. */
-.tali-listing-backnav { margin-top: calc(2 * var(--tali-u));
-  padding-top: calc(.5 * var(--tali-u)); border-top: 1px solid var(--tali-border); }
-.tali-back-link { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
+.tali-book-pager .tali-nav-spacer { flex: 1 1 auto; }
+/* The website "back to listing" link is the page's first block, so it sits in the text
+   track right above the title, set in the title block's meta-line voice (the date's size
+   and colour) and lifting to the link colour on hover. `min-height: 24px` is the WCAG
+   2.5.8 target floor, which the small text's own line box does not reach. The space after
+   the arrow is in the markup for copy and screen readers, but a flex container drops it,
+   so `gap` sets the spacing. */
+.tali-listing-backnav { margin: 0 0 .75rem; font-size: .85rem; line-height: 1.2; }
+.tali-back-link { display: inline-flex; align-items: center; gap: .35em; min-height: 24px;
+  color: var(--tali-muted); text-decoration: none; }
 .tali-back-link:hover { color: var(--tali-link); }
 .tali-section-number { color: var(--tali-muted); font-weight: inherit; margin-right: .15em; }
 

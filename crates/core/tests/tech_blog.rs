@@ -677,7 +677,7 @@ fn post_pages_link_back_to_their_listing() {
         .render_page("posts/em-algorithm/index.tmd")
         .expect("post renders");
     assert!(
-        post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+        post.contains("<nav class=\"tali-listing-backnav\""),
         "post: no back-to-listing link rendered"
     );
     assert!(
@@ -699,7 +699,7 @@ fn post_pages_link_back_to_their_listing() {
         .render_page("projects/iphone-premium-analysis/index.tmd")
         .expect("project renders");
     assert!(
-        project.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+        project.contains("<nav class=\"tali-listing-backnav\""),
         "project: sole owner (the Projects page) should render a backlink"
     );
     assert!(
@@ -717,7 +717,7 @@ fn post_pages_link_back_to_their_listing() {
             .render_page(page)
             .unwrap_or_else(|| panic!("{page} renders"));
         assert!(
-            !html.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            !html.contains("<nav class=\"tali-listing-backnav\""),
             "{page}: should have no back-to-listing link"
         );
     }

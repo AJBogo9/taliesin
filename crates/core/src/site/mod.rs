@@ -553,7 +553,7 @@ impl Site {
         };
         SiteCtx {
             // A book replaces the top navbar with a slim topbar + off-canvas chapter
-            // drawer and uses chapter prev/next instead of the post "back to listing" link.
+            // drawer, and closes each chapter with a prev/next pager.
             navbar_html: if book || self.standalone {
                 String::new()
             } else {
@@ -564,11 +564,9 @@ impl Site {
             } else {
                 self.footer_html(depth)
             },
-            post_nav_html: if book {
-                self.book_nav_html(page, depth)
-            } else {
-                self.listing_backlink_html(page, depth)
-            },
+            // Empty outside a book: a website page's back-to-listing link is a block at the
+            // top of the page (`expand_page`), not chrome under it.
+            post_nav_html: self.book_nav_html(page, depth),
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             includes,
             favicon,
@@ -921,8 +919,8 @@ impl Site {
     /// is computed** (Fable audit FA17). `page_toc` reads the block list, and three callers
     /// asked it before this ran while `serve_site::build_page` asked it after. That was
     /// benign only by accident of the gate's own short-circuit (`page_toc` consults the
-    /// blocks only for a page with no `listing:` and no `hero:`, which is exactly the page
-    /// `expand_page` leaves alone), i.e. by a coincidence between two functions that do not
+    /// blocks only for a page with no `listing:` and no `hero:`, which was then exactly the
+    /// page `expand_page` left alone), i.e. by a coincidence between two functions that do not
     /// know about each other. Returning it here retires the question instead of restating
     /// the convention in four comments.
     pub fn finish_blocks(
@@ -1255,10 +1253,10 @@ impl Site {
 
     // --- listings ---------------------------------------------------------
 
-    /// Apply this page's site-level front-matter blocks to its rendered `blocks`,
-    /// mutating in place: a `hero:` block replaces the title block, and each
-    /// `listing:` expands into post cards. Both the static build and the live
-    /// preview call this, so the results stay in the block model (mounted + diffed
+    /// Apply this page's site-level blocks to its rendered `blocks`, mutating in place: a
+    /// `hero:` block replaces the title block, each `listing:` expands into post cards, and
+    /// a page that one listing owns opens with a link back to it. Both the static build and
+    /// the live preview call this, so the results stay in the block model (mounted + diffed
     /// like any other block).
     pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
         // A `hero:` block replaces the title block (a landing-page header treatment).
@@ -1290,6 +1288,13 @@ impl Site {
                 None => blocks.push(listing_block(id, cards)),
             }
         }
+        // The back-to-listing link opens the page, above the title. A book has none: each
+        // chapter closes with the prev/next pager instead (`book_nav_html`).
+        if !self.is_book()
+            && let Some(backnav) = self.listing_backnav_block(page)
+        {
+            blocks.insert(0, backnav);
+        }
     }
 
     /// The rel-path prefix a listing covers: `contents:` joined onto the hosting
@@ -1313,7 +1318,7 @@ impl Site {
     /// `max-items`-capped listing is a *preview*, not the post's home, so it does not
     /// confer ownership: otherwise a "recent posts" preview on the home page would
     /// make every post read as ambiguous against its full listing page. Drives the
-    /// bottom-of-post "back to listing" link.
+    /// "back to listing" link a post opens with.
     fn listing_owner(&self, page: &Page) -> Option<&Page> {
         // A titleless page never renders as a card, so it belongs to no listing
         // (mirrors `collection()` dropping it).
@@ -2783,6 +2788,57 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The back-to-listing link's opening tag, shared by every assertion below so a negative
+    /// one ("no backlink here") cannot pass vacuously after the markup changes.
+    const BACKNAV: &str = "<nav class=\"tali-listing-backnav\"";
+
+    #[test]
+    fn the_backlink_leads_the_page_above_its_title() {
+        // The link is the page's first block, so it sits in the reading column's text track
+        // above the title. It used to trail `<main>` in the chrome's post-nav slot, a sibling
+        // of the reading grid rather than a child of it, which put it at the window's edge.
+        let root = write_site(
+            "backlink-top",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\n# Blog\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let page = site
+            .pages
+            .iter()
+            .find(|p| p.rel == "posts/one.tmd")
+            .unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let mut doc = crate::render::render_document_with_includes(&src, &site.root);
+        site.finish_blocks(page, &mut doc.blocks, &mut Vec::new(), None, None);
+        assert_eq!(
+            doc.blocks.first().map(|b| b.id.as_str()),
+            Some("tali-backnav"),
+            "the backlink is a block, first in the page, so the preview mounts it too"
+        );
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        let main = post.find("<main id=\"tali-main\"").expect("a <main>");
+        let nav = post.find(BACKNAV).expect("a backlink");
+        let title = post
+            .find("<header class=\"tali-title-block\"")
+            .expect("a title block");
+        assert!(
+            main < nav && nav < title,
+            "the backlink must open <main>, above the title: {post}"
+        );
+        assert!(
+            !post.contains("tali-postnav"),
+            "a website post leaves the bottom post-nav slot empty: {post}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn backlink_points_to_sole_uncapped_listing() {
         let root = write_site(
@@ -2800,7 +2856,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (post, _) = render_page(&site, "posts/one.tmd");
         assert!(
-            post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
+            post.contains(BACKNAV)
                 && post.contains("href=\"../blog.html\"")
                 && post.contains("</span> Blog</a>"),
             "sole un-capped listing should own the post: {post}"
@@ -2808,7 +2864,7 @@ pub(crate) mod tests {
         // The listing page itself belongs to no listing → no backlink.
         let (blog, _) = render_page(&site, "blog.tmd");
         assert!(
-            !blog.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            !blog.contains(BACKNAV),
             "the listing page should have no backlink"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -2834,7 +2890,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (post, _) = render_page(&site, "posts/one.tmd");
         assert!(
-            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            !post.contains(BACKNAV),
             "two un-capped owners are ambiguous → no backlink: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -2864,8 +2920,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (post, _) = render_page(&site, "posts/one.tmd");
         assert!(
-            post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
-                && post.contains("</span> Blog</a>"),
+            post.contains(BACKNAV) && post.contains("</span> Blog</a>"),
             "capped preview should be excluded, leaving Blog as the sole owner: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -2888,7 +2943,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (post, _) = render_page(&site, "posts/one.tmd");
         assert!(
-            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            !post.contains(BACKNAV),
             "a capped-only listing owns nothing → no backlink: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -2913,7 +2968,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let (post, _) = render_page(&site, "posts/one.tmd");
         assert!(
-            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            !post.contains(BACKNAV),
             "a titleless listing host must not own the post: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
