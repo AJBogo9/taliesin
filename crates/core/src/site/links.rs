@@ -117,11 +117,25 @@ pub(super) fn root_absolute_urls(html: &str) -> String {
 }
 
 fn root_absolute(v: &str) -> String {
-    if v.starts_with('/') || v.starts_with('?') || is_external_or_special(v) {
+    if v.starts_with('/') || v.starts_with('?') || is_external_or_special(v) || has_scheme(v) {
         v.to_string()
     } else {
         format!("/{}", v.trim_start_matches("./"))
     }
+}
+
+/// Whether `v` opens with a URL scheme (`javascript:`, `sms:`, `about:`), read the way a
+/// browser reads one: letters, digits, `+`, `.` or `-` up to a `:` that comes before any
+/// `/`, `?` or `#`. [`is_external_or_special`] lists only the schemes the other rewriters
+/// meet; prefixing an unlisted one with `/` would turn it into a path.
+fn has_scheme(v: &str) -> bool {
+    let end = v.find(['/', '?', '#']).unwrap_or(v.len());
+    v[..end].split_once(':').is_some_and(|(scheme, _)| {
+        scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+    })
 }
 
 /// Whether a link value must be left untouched by the site rewriters: an in-page anchor
@@ -395,6 +409,7 @@ mod tests {
         let html = r##"<link href="_assets/a.css"><a href="./x.html">x</a><a href='b.html'>b</a>
             <a href="/c.html">c</a><a href="#top">t</a><a href="?q=1">q</a>
             <a href="https://e.com/d">d</a><a href="mailto:a@b.c">m</a>
+            <a href="javascript:void(0)">j</a><a href="sms:+358">s</a><a href="a/b:c.html">p</a>
             <img src="data:image/png;base64,AAAA" srcset="data:image/png;base64,A,B 2x">
             <source srcset="img/a.avif 1x, img/b.avif 2x"><video poster="p.png"></video>
             <pre><code>&lt;a href="shown.html"&gt;</code></pre>"##;
@@ -408,6 +423,10 @@ mod tests {
             r#"href="?q=1""#,
             r#"href="https://e.com/d""#,
             r#"href="mailto:a@b.c""#,
+            r#"href="javascript:void(0)""#,
+            r#"href="sms:+358""#,
+            // A colon after the first slash is part of the path, not a scheme.
+            r#"href="/a/b:c.html""#,
             r#"src="data:image/png;base64,AAAA""#,
             r#"srcset="data:image/png;base64,A,B 2x""#,
             r#"srcset="/img/a.avif 1x, /img/b.avif 2x""#,
