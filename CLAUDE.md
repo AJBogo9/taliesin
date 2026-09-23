@@ -71,8 +71,10 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      custom theme's `:root` was outranked by the dark palette's
                      `html[data-theme="dark"]`, so it applied in light only for the 17
                      tokens dark re-declares and in both modes for the other 28, silently
-                     either way). `tali-theme`/`tali:themechange` survive only for the
-                     preview dev menu's READER-side toggle, never in a build
+                     either way). The `tali-theme` storage key survives only for the
+                     preview dev menu's READER-side toggle, never in a build;
+                     `tali:themechange` fires on every page when the OS scheme flips
+                     (mermaid.js re-renders on it)
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
                      favicon): RenderedDoc → standalone page for build + in-process render
   src/diff.rs      block-level diff (BlockOp) for incremental updates
@@ -402,3 +404,9 @@ verified; an automatic trigger still will not fire until the repo is public.
   asking them again per site — which is why the theme picker, the text-size control and the
   spacing control are all gone (the browser's own zoom outranks a comfort panel). Ship no
   reader-facing control without new evidence that the device answer is wrong for someone.
+- **Copy states facts; it does not perform.** On the four sites and in scaffolded text: no
+  "No X, no Y, no Z" closers, no "one idea" thesis reveals, no count announced for its own
+  sake in a heading ("Three things it gets right"; "Two line coordinate systems" names a
+  fact and is fine), no "→" appended to link text. A heading or a link names its subject or
+  its destination. Deliberately ungated: prose linting was ruled out on 2026-09-23, so this
+  holds by review.

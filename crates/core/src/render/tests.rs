@@ -3399,7 +3399,7 @@ fn every_text_colour_is_scored_in_both_palettes() {
 
 /// The dark palette is DESIGNED, not inverted. The tell of an inversion is a muted tier that
 /// mirrors the light one's lightness; here muted stays bright on purpose, because in this
-/// theme the secondary register is carried by face, size and tracking rather than by
+/// theme the secondary register is carried by size, position or italic rather than by
 /// lightness. Assert it did not drift dark.
 #[test]
 fn the_dark_muted_tier_is_not_a_lightness_mirror() {
@@ -3554,16 +3554,63 @@ fn xref_links_carry_a_non_colour_affordance() {
     );
 }
 
-/// The search-hit `<mark>` shipped one 50%-alpha yellow for every theme; on the dark page it
-/// composited to #887219, leaving body text at 3.77:1 on top of the highlight.
+/// The search hit is the page's own ink at a low alpha, spelled twice per palette: the
+/// `::highlight` flash every Custom-Highlight engine paints, and the `<mark>` fallback.
+/// Composite each over its palette's ground and score the body text on the result: the
+/// yellow it replaced once composited to #887219 on the dark page, leaving body text at 3.77:1.
 #[test]
-fn dark_search_mark_keeps_body_text_readable() {
-    let c = color_after(
-        BASE_CSS,
-        "html[data-theme=\"dark\"] mark.tali-search-mark { background-color: ",
-    );
-    let r = wcag_contrast("#eae7e0", c);
-    assert!(r >= 4.5, "dark search mark {c}: body text at {r:.2}");
+fn the_search_mark_keeps_body_text_readable_in_both_palettes() {
+    let rgba_after = |needle: &str| -> [f64; 4] {
+        let i = BASE_CSS
+            .find(needle)
+            .unwrap_or_else(|| panic!("no `{needle}` in base.css"));
+        let inner = BASE_CSS[i + needle.len()..]
+            .strip_prefix("rgba(")
+            .expect("the search mark's surface is an rgba()");
+        let inner = &inner[..inner.find(')').expect("a closed rgba()")];
+        let v: Vec<f64> = inner
+            .split(',')
+            .map(|x| x.trim().parse().expect("a number"))
+            .collect();
+        [v[0], v[1], v[2], v[3]]
+    };
+    let rgb = |hex: &str| -> [f64; 3] {
+        let h = hex.trim_start_matches('#');
+        [0, 2, 4].map(|i| u8::from_str_radix(&h[i..i + 2], 16).expect("hex") as f64)
+    };
+    for (theme, tokens, needle) in [
+        (
+            "light",
+            TOKENS_CSS,
+            "mark.tali-search-mark { color: inherit; border-radius: var(--tali-radius); \
+             background-color: ",
+        ),
+        (
+            "dark",
+            TOKENS_DARK_CSS,
+            "html[data-theme=\"dark\"] mark.tali-search-mark { background-color: ",
+        ),
+        (
+            "light ::highlight",
+            TOKENS_CSS,
+            "@keyframes tali-search-flash {\n    0%, 45% { --tali-search-flash: ",
+        ),
+        (
+            "dark ::highlight",
+            TOKENS_DARK_CSS,
+            "@keyframes tali-search-flash-dark {\n    0%, 45% { --tali-search-flash: ",
+        ),
+    ] {
+        let [r, g, b, a] = rgba_after(needle);
+        let ground = rgb(color_after(tokens, "--tali-bg:"));
+        let mix = |c: f64, k: usize| (a * c + (1.0 - a) * ground[k]).round() as u8;
+        let over = format!("#{:02x}{:02x}{:02x}", mix(r, 0), mix(g, 1), mix(b, 2));
+        let c = wcag_contrast(color_after(tokens, "--tali-fg:"), &over);
+        assert!(
+            c >= 4.5,
+            "{theme}: the search mark composites to {over}, body text at {c:.2}:1"
+        );
+    }
 }
 
 /// A theme that does not override `--tali-flash` inherits the `:root` value, which is how the
@@ -3619,6 +3666,20 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
         ("#2bb673", "the dev UI's old `done` cell-state green"),
         ("#cc3333", "the dev UI's old `error` cell-state red"),
         ("#d9a23a", "the dev UI's old `warming`/`warn` amber"),
+        (
+            "#f4f1eb",
+            "the generated cream the white ground left behind in the code ground",
+        ),
+        ("#fbf9f5", "the retired paper ground"),
+        (
+            "250, 204, 21",
+            "Tailwind yellow-400, the search hit's old colour",
+        ),
+        ("#6e5414", "the search hit's old hand-picked dark amber"),
+        (
+            "#c0392b",
+            "Flat UI's pomegranate red, the old diagram error banner",
+        ),
     ];
 
     // The dev UI's four status literals had a bounded exemption here until 2026-08-15, when
@@ -3646,9 +3707,9 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
         "crates/server/src/serve/mod.rs",
         "web-client/client.js",
         "web-client/search.js",
-        "site/favicon.svg",
         "web-client/favicon.svg",
         "editor/vscode/icons/tmd.svg",
+        "crates/core/assets/js/mermaid.js",
     ] {
         let p = root.join(rel);
         let text = std::fs::read_to_string(&p)
@@ -3706,6 +3767,29 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     // own gate below.
 }
 
+/// Diagrams draw in Mermaid's own `neutral`/`dark` themes, grey for the common kinds. They drew
+/// Mermaid's stock lavender (`#ECECFF` nodes, `#9370DB` borders) because the CSS-variable
+/// bridge they read had no definitions anywhere, left over from the cut `theme:` key.
+#[test]
+fn diagrams_use_mermaids_neutral_theme_with_no_dead_token_bridge() {
+    let js = std::fs::read_to_string(repo_root().join("crates/core/assets/js/mermaid.js"))
+        .expect("mermaid.js");
+    assert!(
+        js.contains("theme: dark ? 'dark' : 'neutral',"),
+        "diagrams use Mermaid's neutral and dark themes"
+    );
+    assert!(
+        !js.contains("--tali-mermaid"),
+        "the unread --tali-mermaid-* bridge is gone"
+    );
+    let doc = std::fs::read_to_string(repo_root().join("docs/guide/using/theming.tmd"))
+        .expect("theming.tmd");
+    assert!(
+        !doc.contains("--tali-mermaid"),
+        "the guide no longer documents the dead knob"
+    );
+}
+
 /// The mark's fourth instance, and the one a text sweep structurally cannot see.
 ///
 /// Everything above reads files as UTF-8 and looks for hex strings, which covers both favicons
@@ -3723,8 +3807,13 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
 /// assertion vacuous, which is the raster form of the same hole this test was written to fix.
 #[test]
 fn the_marketplace_icon_is_the_mark_in_two_owned_colours() {
-    const PAPER: &[u8] = &[0xFB, 0xF9, 0xF5];
-    const INK: &[u8] = &[0x22, 0x20, 0x1A];
+    let bytes = |hex: &str| -> [u8; 3] {
+        let h = hex.trim_start_matches('#');
+        [0, 2, 4].map(|i| u8::from_str_radix(&h[i..i + 2], 16).expect("hex"))
+    };
+    // READ, never spelled: a literal here is how #FBF9F5 outlived the ground it named.
+    let paper = bytes(color_after(TOKENS_CSS, "--tali-bg:"));
+    let ink = bytes(color_after(TOKENS_CSS, "--tali-fg:"));
 
     let rel = "editor/vscode/icons/icon.png";
     let png = std::fs::read(repo_root().join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"));
@@ -3777,13 +3866,45 @@ fn the_marketplace_icon_is_the_mark_in_two_owned_colours() {
     // Stable since 1.88, so it also builds on the older toolchain this machine runs.
     for rgb in palette.as_chunks::<3>().0 {
         assert!(
-            rgb.as_slice() == PAPER || rgb.as_slice() == INK,
+            *rgb == paper || *rgb == ink,
             "{rel} paints #{:02X}{:02X}{:02X}, which is neither the mark's paper nor its ink. \
              Spec §7: one letterform, two colours, no third colour and no gradient",
             rgb[0],
             rgb[1],
             rgb[2]
         );
+    }
+}
+
+/// Every copy of the mark paints only a palette's ground and ink, read from the token files.
+/// A deny list cannot catch a colour that was once valid and then retired.
+#[test]
+fn every_copy_of_the_mark_paints_only_a_palettes_ground_and_ink() {
+    let allowed: Vec<String> = [
+        (TOKENS_CSS, "--tali-bg:"),
+        (TOKENS_CSS, "--tali-fg:"),
+        (TOKENS_DARK_CSS, "--tali-bg:"),
+        (TOKENS_DARK_CSS, "--tali-fg:"),
+    ]
+    .iter()
+    .map(|(css, tok)| color_after(css, tok).to_ascii_lowercase())
+    .collect();
+    for rel in ["web-client/favicon.svg", "editor/vscode/icons/tmd.svg"] {
+        let text = std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("{rel}: {e}"))
+            .to_ascii_lowercase();
+        let mut seen = 0;
+        for (i, _) in text.match_indices('#') {
+            let h = text.get(i..i + 7).unwrap_or("");
+            if h.len() == 7 && h[1..].chars().all(|c| c.is_ascii_hexdigit()) {
+                seen += 1;
+                assert!(
+                    allowed.iter().any(|a| a == h),
+                    "{rel} paints {h}, not a palette's ground or ink"
+                );
+            }
+        }
+        assert!(seen >= 2, "{rel}: found {seen} colours, the scan broke");
     }
 }
 
@@ -3869,9 +3990,8 @@ fn the_landing_page_is_a_masthead_and_prose() {
             "base.css still has `{needle}`: {why}"
         );
     }
-    // The eyebrow is the AUTHOR's word (`hero.eyebrow:` in front matter), so it may not wear
-    // the machine voice — spec §4's rule, which this shipped against in a FOURTH voice: 600
-    // weight, .8rem, .12em tracking, uppercase.
+    // The eyebrow is the AUTHOR's word (`hero.eyebrow:` in front matter). It shipped as 600
+    // weight, .8rem, .12em tracking, uppercase: the letterspaced all-caps eyebrow.
     let eyebrow = BASE_CSS
         .split_once(".hero-eyebrow {")
         .expect(".hero-eyebrow exists")
@@ -3919,10 +4039,8 @@ fn the_landing_page_is_a_masthead_and_prose() {
 /// The book drawer stops carrying its own type scale and its own clock.
 ///
 /// `.tali-book-part` was `.76rem/700/.04em/uppercase` and `.tali-book-part-nested` a variation
-/// on it — a fifth and sixth voice in a theme that owns two. And they hold `parts:` names,
-/// which the author wrote: under spec §4's rule the machine voice attaches to a label the TOOL
-/// generates and never to a container that may hold the AUTHOR's text, so the answer is not
-/// "make it the machine voice" but "make it the serif".
+/// on it, tracked caps in a theme that tracks nothing. And they hold `parts:` names, which the
+/// author wrote, so the answer is the serif.
 #[test]
 fn the_drawer_speaks_in_the_themes_two_voices_and_one_clock() {
     // One duration. `.16s` was a second clock on the one surface that animates.
@@ -3942,8 +4060,7 @@ fn the_drawer_speaks_in_the_themes_two_voices_and_one_clock() {
         durations.is_empty(),
         "site.css animates for {durations:?}; the one duration is var(--tali-dur)"
     );
-    // A `parts:` name is the author's word, so it is the serif — not a sixth voice, and not
-    // the machine voice either (spec §4's rule).
+    // A `parts:` name is the author's word, so it is the serif.
     let rule_of = |sel: &str| -> String {
         SITE_CSS
             .split_once(sel)
@@ -4034,8 +4151,8 @@ fn a_listing_is_a_ruled_list_and_cut_12_landed() {
         .expect(".tali-card-title sets a font-size");
     assert!(
         rem_px(title) >= 20.0,
-        "a listing title is {}px against a 20px body; the small register in this theme is \
-         the MONO voice, not a shrunken serif",
+        "a listing title is {}px against a 20px body; a title is never smaller than the \
+         prose it lists",
         rem_px(title)
     );
     // The measure override Plan 2 left for these pages is gone with the grid that needed it.
@@ -6423,84 +6540,102 @@ fn the_derived_mono_size_is_applied_once_not_compounded() {
     );
 }
 
-/// Spec §4 enumerates the machine voice's scope: "`h4`, callout kind labels, **table
-/// headers**, figure/table/equation numbers, the TOC, nav, footer, the title-block meta
-/// line, cell timings, and the dev menu." `thead th` carried no font declaration at all, so a
-/// table header rendered as bold serif body text — 20px Literata, `text-transform: none`,
-/// measured on the built guide.
+/// Labels are set in the case they should read. A label the tool generates (a nav link, a
+/// date, a column head, `Figure 1`, the callout kind) is the reading face, set small and
+/// muted; it was tracked uppercase mono, which the 2026-09-23 audit confirmed as the
+/// generated "technical minimal" label. Negative tracking on display sizes stays legal.
 #[test]
-fn a_table_header_speaks_in_the_machine_voice() {
-    let b = rule_block(BASE_CSS, "thead th {");
+fn no_reader_facing_sheet_uppercases_or_tracks_a_label() {
+    for (name, css) in [
+        ("tokens.css", TOKENS_CSS),
+        ("base.css", BASE_CSS),
+        ("site.css", SITE_CSS),
+    ] {
+        let l = css.to_ascii_lowercase();
+        assert!(
+            !l.contains("text-transform: uppercase"),
+            "{name}: text-transform: uppercase. Set the string in the case it should read"
+        );
+        for seg in l.split("letter-spacing:").skip(1) {
+            let v = seg.split(&[';', '}'][..]).next().unwrap_or("").trim();
+            assert!(
+                v == "normal" || v == "0" || v.starts_with('-'),
+                "{name}: letter-spacing: {v}. Positive tracking only exists to open up caps"
+            );
+        }
+    }
+    let search = std::fs::read_to_string(repo_root().join("web-client/search.js"))
+        .expect("search.js")
+        .to_ascii_lowercase();
     assert!(
-        b.contains("var(--tali-font-mono)")
-            && b.contains("text-transform: uppercase")
-            && b.contains("letter-spacing:"),
-        "a table header is the TOOL speaking, not the author: it takes the mono voice. Got: \
-         `{b}`"
+        !search.contains("text-transform:uppercase"),
+        "search.js is reader-facing chrome on every site; its labels are not uppercased"
     );
 }
 
-/// The machine voice belongs to text the TOOL wrote. A callout title is only that in the
-/// third of three branches (`divs.rs`: `title=` attribute, then a leading heading, then the
-/// capitalized kind word), and 34 of 55 callouts in this repo carry an authored title — so
-/// the uppercase mono was mangling the author's own words, "Why two accent variables"
-/// rendering as WHY TWO ACCENT VARIABLES in this project's own guide.
-///
-/// The distinction is structural, not cosmetic: `.callout-kind` marks the generated branch,
-/// and the machine voice hangs off that class rather than off `.callout-title`. Same for the
-/// code-fold summary, where `#| code-summary:` is authored and the "Code" fallback is not.
+/// Every chrome label on a built page is ONE small size of the reading face. `.85rem` matches the
+/// retired mono label's x-height (.78rem x 0.5625 / 0.5156), so bars keep their height.
 #[test]
-fn the_machine_voice_is_only_on_generated_labels_never_on_authored_text() {
+fn the_tools_labels_are_the_reading_face_set_small() {
+    const LABEL: &str = "font: var(--tali-font-body); font-size: .85rem; line-height: 1.2;";
+    for (name, css, sel) in [
+        ("base.css", BASE_CSS, ".tali-skip {"),
+        ("base.css", BASE_CSS, "a.btn {"),
+        ("base.css", BASE_CSS, ".tali-title-block .tali-title-meta {"),
+        ("base.css", BASE_CSS, "thead th {"),
+        ("base.css", BASE_CSS, ".callout-title.callout-kind {"),
+        ("base.css", BASE_CSS, "details.tali-code-fold > summary {"),
+        ("base.css", BASE_CSS, ".tali-affiliations {"),
+        ("base.css", BASE_CSS, "#TOC {"),
+        (
+            "site.css",
+            SITE_CSS,
+            ":is(.tali-nav-inner, .tali-book-topbar-inner) {",
+        ),
+        ("site.css", SITE_CSS, ".tali-foot-inner {"),
+        ("site.css", SITE_CSS, ".tali-card-date {"),
+    ] {
+        let b = rule_block(css, sel);
+        assert!(
+            b.contains(LABEL),
+            "{name} `{sel}` is not the label size of the reading face: `{b}`"
+        );
+        assert!(
+            !b.contains("--tali-font-mono"),
+            "{name} `{sel}` still sets a label in the mono"
+        );
+    }
+    // Anchored on the line start: `h4, h5, h6 {` also ends `h1, h2, h3, h4, h5, h6 {`.
+    let h4 = rule_block(BASE_CSS, "\n  h4, h5, h6 {");
+    assert!(
+        !h4.contains("--tali-font-mono") && h4.contains("font-size: 1em;"),
+        "h4-h6 are authored headings: the serif at body size, bold from the shared rule. \
+         Got `{h4}`"
+    );
+}
+
+/// A callout title is the author's in two of its three branches (`divs.rs`: `title=`, then a
+/// leading heading, then the capitalized kind word), so only the generated branch,
+/// `.callout-kind`, is set as a label. An authored title is the body size.
+#[test]
+fn only_a_generated_callout_kind_is_set_as_a_label() {
     // Anchored on the line start: `.callout-title {` also ends the shared `text-wrap: balance`
     // selector list near the top of the sheet.
     let base = rule_block(BASE_CSS, "\n  .callout-title {");
     assert!(
-        !base.contains("var(--tali-font-mono)") && !base.contains("text-transform: uppercase"),
-        "`.callout-title` matches an AUTHORED title too; the mono voice cannot live here. \
-         Got: `{base}`"
-    );
-    assert!(
-        base.contains("var(--tali-font-body)"),
-        "an authored title is the author's voice: the serif, reached through the `font` \
-         shorthand. Got: `{base}`"
-    );
-    // `text-transform`/`letter-spacing` are INHERITED, so leaving them unset here would let a
-    // `.callout-title` nested under something tracked-uppercase (or a future ancestor rule)
-    // compute the machine voice rather than "none" — the comment above `.callout-title` in
-    // base.css calls this load-bearing for exactly that reason.
-    assert!(
-        base.contains("text-transform: none") && base.contains("letter-spacing: normal"),
-        "`.callout-title` must reset both inherited properties explicitly, not rely on no \
-         ancestor setting them. Got: `{base}`"
+        base.contains("var(--tali-font-body)") && !base.contains(".85rem"),
+        "an authored callout title is the serif at the body size. Got: `{base}`"
     );
     let kind = rule_block(BASE_CSS, ".callout-title.callout-kind {");
     assert!(
-        kind.contains("var(--tali-font-mono)") && kind.contains("text-transform: uppercase"),
-        "the generated kind label IS the machine speaking. Got: `{kind}`"
+        kind.contains("font-size: .85rem;") && kind.contains("font-weight: 600;"),
+        "the generated kind word is the label size, bold. Got: `{kind}`"
     );
-    let summary = rule_block(BASE_CSS, "details.tali-code-fold > summary {");
+    // The code-fold summary is one style now: `#| code-summary:` and the "Code" fallback read
+    // the same, so the fallback has no rule of its own to drift.
     assert!(
-        !summary.contains("var(--tali-font-mono)")
-            && !summary.contains("text-transform: uppercase"),
-        "`#| code-summary:` is authored text; the mono voice cannot live on the bare \
-         summary. Got: `{summary}`"
-    );
-    let label = rule_block(
-        BASE_CSS,
-        "details.tali-code-fold > summary.tali-code-label {",
-    );
-    assert!(
-        label.contains("var(--tali-font-mono)") && label.contains("text-transform: uppercase"),
-        "the \"Code\" fallback is generated, so it keeps the machine voice. Got: `{label}`"
-    );
-    // The same inheritance trap, one selector over: `thead th` (below, in the same file) IS the
-    // machine voice, and both properties are inherited straight through an inline `<code>` in a
-    // header cell — uppercasing the author's literal source characters, e.g. `` `_freeze/` ``
-    // rendering as `_FREEZE/`.
-    let th_code = rule_block(BASE_CSS, "th code {");
-    assert!(
-        th_code.contains("text-transform: none") && th_code.contains("letter-spacing: normal"),
-        "`th code` must opt back out of the inherited machine voice. Got: `{th_code}`"
+        !BASE_CSS.contains("tali-code-label"),
+        "the \"Code\" fallback needs no rule of its own"
     );
 }
 
@@ -6536,20 +6671,20 @@ fn only_a_generated_callout_kind_label_is_marked_as_the_machine_speaking() {
         );
         assert!(
             !h.contains("callout-kind"),
-            "{what}: an authored title is not the machine speaking: {h}"
+            "{what}: an authored title is not the generated kind label: {h}"
         );
     }
 }
 
-/// The same distinction for a folded cell's disclosure label.
+/// A folded cell's disclosure label is one plain `<summary>`, whether the author wrote
+/// `#| code-summary:` or the tool fell back to "Code": both are set as the same label, so
+/// the fallback carries no marker class for a rule to hang on.
 #[test]
-fn only_the_generated_code_fold_label_is_marked_as_the_machine_speaking() {
+fn a_code_fold_summary_is_one_plain_element() {
     let generated = render_document("```{python}\n#| code-fold: true\nx = 1\n```\n");
     assert!(
-        generated.blocks[0]
-            .html
-            .contains("<summary class=\"tali-code-label\">Code</summary>"),
-        "the \"Code\" fallback is the tool's word: {}",
+        generated.blocks[0].html.contains("<summary>Code</summary>"),
+        "the \"Code\" fallback is a plain summary: {}",
         generated.blocks[0].html
     );
     let authored = render_document(
@@ -6607,8 +6742,8 @@ fn the_serif_reading_scale_never_drops_below_the_body() {
         assert!(
             px >= body_px,
             "`{}` is {px}px against a {body_px}px body. Serif text the reader reads as a \
-             heading may not be smaller than the prose it introduces — the small register in \
-             this theme is the MONO voice, not a shrunken serif",
+             heading may not be smaller than the prose it introduces; the small register in \
+             this theme is the .85rem label, never a serif heading",
             sel.trim()
         );
     }
@@ -6742,8 +6877,8 @@ fn the_reading_surface_margins_are_on_the_spacing_scale() {
 /// Under 480px the body steps 20px -> 16px and every serif size steps with it, by the same
 /// factor. It did not: `h1` had no override at all, so a document `.title` (1.7rem = 27.2px)
 /// rendered SMALLER than a body `#` (2.25rem = 36px). Author decision, 2026-08-15: the mobile
-/// scale is the desktop scale x 0.8, the factor the body already takes. The mono voice does
-/// NOT move — it is a fixed .78rem on every surface and at every width.
+/// scale is the desktop scale x 0.8, the factor the body already takes. The label size does
+/// NOT move: it is a fixed .85rem on every surface and at every width.
 #[test]
 fn the_mobile_scale_keeps_the_title_above_the_headings() {
     let mobile = BASE_CSS
@@ -6784,9 +6919,9 @@ fn the_mobile_scale_keeps_the_title_above_the_headings() {
 /// The generated part of a caption is the tool's label; the rest is the author's sentence.
 /// They must be separately addressable, or the choice is between a whole caption in mono
 /// (which reads as terminal output — the correction spec §4 records from a render) and a
-/// whole caption in serif, which loses the machine voice on the one word that is the tool's.
+/// whole caption in serif; the number stays upright so it reads as the tool's, not emphasis.
 #[test]
-fn a_caption_number_is_the_machine_voice_and_the_caption_is_not() {
+fn a_caption_number_is_upright_inside_an_italic_caption() {
     let page = render_html_page(
         "---\ntitle: T\n---\n\n![A river at dusk](img.png){#fig-r}\n",
         "fg",
@@ -6794,10 +6929,6 @@ fn a_caption_number_is_the_machine_voice_and_the_caption_is_not() {
     assert!(
         page.contains("<span class=\"tali-caption-label\">Figure&nbsp;1</span>: A river at dusk"),
         "the label is a span and the author's sentence is not inside it: {page}"
-    );
-    assert!(
-        BASE_CSS.contains(".tali-caption-label { font: 400 .78rem/1.3 var(--tali-font-mono);"),
-        "the label takes the machine voice"
     );
     // The caption is prose: serif, italic, and NOT uppercased by the label beside it.
     assert!(
@@ -6810,12 +6941,10 @@ fn a_caption_number_is_the_machine_voice_and_the_caption_is_not() {
         BASE_CSS.contains("font-style: italic; font-weight: 400; color: var(--tali-muted);"),
         "spec §4: captions are italic"
     );
-    // The label must be upright against that italic, or the machine voice reads as emphasis.
+    // The label must be upright against that italic, or the number reads as emphasis.
     assert!(
-        BASE_CSS.contains(
-            ".tali-caption-label { font: 400 .78rem/1.3 var(--tali-font-mono); font-style: normal;"
-        ),
-        "the label resets font-style: the caption around it is italic"
+        BASE_CSS.contains(".tali-caption-label { font-style: normal; }"),
+        "the generated number is the caption's own face, upright against the italic"
     );
 }
 

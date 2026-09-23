@@ -57,8 +57,7 @@
     // meant to contextualise (the title is what the reader is scanning for).
     "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted);white-space:nowrap;margin-left:auto;" +
     "overflow:hidden;text-overflow:ellipsis;max-width:40%}" +
-    "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link);text-transform:uppercase;" +
-    "font-size:.66rem;letter-spacing:.05em;font-weight:700}" +
+    "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link);font-size:.66rem;font-weight:700}" +
     // Outline rows: a chapter leads with its number, its sections are indented one step per
     // level of nesting WITHIN that chapter, and a chapter that only labels a group of
     // results is not interactive.
@@ -67,8 +66,7 @@
     "#tali-search .tali-s-chapter{margin-top:.35rem}" +
     "#tali-search .tali-s-chapter:first-child{margin-top:0}" +
     "#tali-search .tali-s-chapter .tali-s-title{font-weight:700}" +
-    "#tali-search .tali-s-label .tali-s-title{color:var(--tali-muted);font-size:.78rem;" +
-    "text-transform:uppercase;letter-spacing:.05em}" +
+    "#tali-search .tali-s-label .tali-s-title{color:var(--tali-muted);font-size:.78rem}" +
     "#tali-search .tali-s-num{font-variant-numeric:tabular-nums;font-weight:700;font-size:.8rem;" +
     "color:var(--tali-muted);min-width:1.4em}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-num{color:inherit}" +
@@ -629,10 +627,10 @@
     highlight(title, item.title, terms);
     var sec = document.createElement("span");
     sec.className = "tali-s-sec";
-    // Label an action "action" so it reads as a command, not a destination; a grouped result
+    // Label an action "Action" so it reads as a command, not a destination; a grouped result
     // gets its ancestor heading path (the chapter is already the row above it); an ungrouped
     // single-doc result keeps its heading level.
-    if (item.action) sec.textContent = "action";
+    if (item.action) sec.textContent = "Action";
     else if (!grouped) sec.textContent = item.page || "H" + item.level;
     else if (terms.length && item.path) sec.textContent = item.path;
     else sec.textContent = "";

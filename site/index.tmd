@@ -11,10 +11,8 @@ hero:
     - { text: "Download", href: "https://github.com/AJBogo9/taliesin/releases/latest" }
 ---
 
-Taliesin is built around one idea: writing technical content should feel as
-immediate as editing code. You save the file, and only the block you changed
-re-renders. Your scroll position, your live canvas, and your warm kernel all stay
-exactly as they were. No cold start, no full-page flash, no waiting.
+When you save, the page does not reload. The scene below keeps turning where you
+left it, and the Python kernel keeps the variables it has already computed.
 
 {{< include _includes/three-scene.tmd >}}
 
@@ -75,12 +73,11 @@ the source, on [the showcase](showcase.tmd).
 taliesin preview post.tmd   # http://127.0.0.1:4321, updating as you save
 ```
 
-## One source, three shapes
+## What it builds
 
-Write once in plain text, and the shape follows the structure: one file is a post, a
-directory with a `_site.yml` is a website, and a `chapters:` list makes it a book. All
-three render to HTML and share the same block model, the offline math and highlighting,
-and the live edit loop, so anything you learn for one carries to the rest.
+One `.tmd` file is a post. A directory with a `_site.yml` is a website, and a
+`chapters:` list in it makes a book. They share one renderer, so what you learn for one
+applies to the others.
 
 ::: {.feature-list}
 ::: {.feature}
@@ -88,7 +85,7 @@ and the live edit loop, so anything you learn for one carries to the rest.
 Prose, math, figures, citations, and cross-references, with executable Python
 cells and live interactive graphics.
 
-[See the gallery →](https://gallery.taliesin.sh/)
+[See the gallery](https://gallery.taliesin.sh/)
 :::
 
 ::: {.feature}
@@ -96,7 +93,7 @@ cells and live interactive graphics.
 A sidebar, numbered chapters, cross-chapter references, and full-text search. These
 very docs are a Taliesin book.
 
-[Read the docs book →](https://guide.taliesin.sh/)
+[Read the docs book](https://guide.taliesin.sh/)
 :::
 
 ::: {.feature}
@@ -104,11 +101,11 @@ very docs are a Taliesin book.
 Navbar, footer, OpenGraph, Cmd-K search, and opt-in post listings with an Atom feed per
 dated listing. This whole site is a Taliesin website, built by the same `build` you run.
 
-[Recipes for books and sites →](https://guide.taliesin.sh/using/recipes.html)
+[Recipes for books and sites](https://guide.taliesin.sh/using/recipes.html)
 :::
 :::
 
-## Edit the code. The output re-runs in place.
+## Executed code
 
 A `{python}` cell runs against a warm kernel. Change a parameter and only
 that cell (and the figure it produced) re-renders. The rest of the page never
@@ -132,18 +129,18 @@ ax.set_ylabel("amplitude")
 plt.show()
 ```
 
-## Three more things worth knowing
+## Editing and publishing
 
 ::: {.feature-list}
 ::: {.feature}
 ### Click to source
 Ctrl-click (Cmd-click on Mac) anything in the preview and your editor jumps to the line
-it came from, even across files pulled in with `{{< include >}}`. It is the one bridge
-back: the `.tmd` stays the only place you edit.
+it came from, even across files pulled in with `{{< include >}}`. The `.tmd` stays the
+only place you edit.
 :::
 
 ::: {.feature}
-### Bundled, not fetched
+### Works offline
 Fonts, KaTeX and its font files, syntax highlighting and the vendored plotting libraries
 are all compiled into the binary and written into the page. Taliesin itself never fetches
 anything at runtime, so a built page renders the same offline. Anything *you* `import()`
@@ -152,13 +149,12 @@ cannot reach esm.sh.
 :::
 
 ::: {.feature}
-### Output you can host anywhere
+### Static output
 One command turns a document into a single self-contained HTML file, or a portable folder
 with its local assets copied alongside. Point it at a directory instead and you get a
 whole site or book as static files, with no server runtime and nothing to reproduce.
 :::
 :::
 
-This page, the surface you spun at the top of it, and the
-[documentation book](https://guide.taliesin.sh/) it links to are all built and served by
-Taliesin, from plain `.tmd` files in one repository.
+This page and the [documentation book](https://guide.taliesin.sh/) are built by Taliesin
+from plain `.tmd` files in one repository.

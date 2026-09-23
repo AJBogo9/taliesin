@@ -3,9 +3,10 @@
 
      Its muted tier is nearly as bright as the body, and that is correct here: a muted grey
      dark enough to LOOK secondary fails perceptual contrast, and in this theme the secondary
-     register is carried by face, size and tracking (it is the mono voice) rather than by
-     lightness. So muted stays bright and still reads as secondary. That is a dividend of the
-     theme's one rule, and it is why the usual dark-mode muted-grey trap does not apply.
+     register is carried by SIZE, position or italic rather than by lightness: the chrome
+     labels, captions and affiliations are smaller than the body, and the larger muted text
+     (a subtitle, a hero lead) sits in its own slot under a heading. So muted stays bright
+     and still reads as secondary, and the usual dark-mode muted-grey trap does not apply.
 
      The ground is #14130F rather than #000000: pure black buys almost nothing and adds
      halation. */

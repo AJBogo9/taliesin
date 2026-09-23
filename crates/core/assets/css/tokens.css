@@ -4,6 +4,9 @@
      `include_str!`'d ahead of the page bundle (base.css), so the light/dark palette
      is typed exactly once instead of re-declared per surface.
      Keep in sync: nothing else should declare these tokens.
+     Comments that cite "spec §N" point at
+     notes/superpowers/specs/2026-08-14-instrument-theme-design.md, which is superseded:
+     this file and the gates in render/tests.rs are the design.
      =========================================================================== */
   :root {
     /* The ground is pure white and the ink a warm near-black. Stated honestly: this is a
@@ -17,9 +20,9 @@
        token, an error. Links are the ink with a hairline underline. */
     --tali-bg: #FFFFFF;                 /* white */
     --tali-fg: #22201A;                 /* 16.28:1 */
-    --tali-muted: #5F5C54;              /* 6.68:1  — the machine voice */
-    --tali-inline-code: #3A362E;        /* 10.66:1 on the code ground */
-    --tali-code-bg: #F4F1EB;            /* ink 4% over paper */
+    --tali-muted: #5F5C54;              /* 6.68:1, secondary text */
+    --tali-inline-code: #3A362E;        /* 10.93:1 on the code ground */
+    --tali-code-bg: #F4F4F4;            /* ink 5% over the white ground */
     --tali-border: #D9D7D2;             /* a decorative separator, not a control */
     --tali-border-strong: #8B887F;      /* 3.54:1 — clears the 3:1 non-text floor */
     --tali-link: #22201A;
@@ -65,14 +68,17 @@
     --tali-status-live: var(--tali-callout-tip);
     --tali-status-warn: var(--tali-callout-warning);
     --tali-status-error: var(--tali-callout-important);
-    /* TWO owned faces, and the rule that generates the whole system: the mono is the
-       MACHINE's voice, the serif is the AUTHOR's. Everything the tool says — labels,
-       figure and table numbers, table headers, callout kinds, nav, TOC, cell timings —
-       is the mono at .78rem uppercase, tracked. Everything the author wrote is Literata.
-       There is no third family and no separate heading face: headings take the body serif.
-       Consequence worth stating, because it is load-bearing in dark mode: the secondary
-       register is carried by FACE, SIZE and TRACKING, not by lightness, which is why the
-       dark muted tier can stay bright without collapsing into the body. */
+    /* TWO owned faces with separate jobs. Literata sets every WORD on the page, whoever
+       wrote it: prose, headings, and the tool's own labels (nav, TOC, footer, dates, table
+       heads, callout kinds), which are the same face at .85rem, in the case the
+       string already has; figure numbers take their caption's face, upright. JetBrains
+       Mono sets CODE (and the search hint's key name) and nothing else. There is no third family and no separate heading
+       face. Nothing on a built page is uppercased or tracked: the secondary register of the chrome labels
+       is carried by SIZE, not by lightness, which is why the dark muted tier can stay
+       bright without collapsing into the body. (Until 2026-09-23 labels were
+       the mono at .78rem, uppercase and tracked; the branding audit confirmed that as the
+       generated "technical minimal" label, and it also put the author's own words, button
+       text and h4-h6, in the tool's voice.) */
     --tali-font-body: 1.25rem/1.55 "Literata", Georgia, serif;
     --tali-font-mono: "JetBrains Mono", ui-monospace, monospace;
     /* The mono sits at .92em so its x-height MATCHES Literata's. Derived, not chosen:

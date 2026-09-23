@@ -1,6 +1,6 @@
 ---
 title: "Theming"
-description: "Two built-in palettes picked by the reader's device, the variables a diagram or a hand-written widget can read, and how to keep an SVG out of the wrong palette."
+description: "Two built-in palettes picked by the reader's device, the variables a hand-written widget can read, and how to keep an SVG out of the wrong palette."
 ---
 
 A Taliesin page is painted from a small set of CSS custom properties. The ones a
@@ -25,11 +25,8 @@ takes effect in light only for any token the dark palette re-declares.
 ## Diagram colours (Mermaid)
 
 Mermaid bakes its colours into the SVG as it renders, so CSS cannot restyle a finished
-diagram. Taliesin reads the diagram's config from CSS variables instead and re-renders on
-a light/dark switch, so diagrams follow the built-in palettes with nothing to set. For
-full colour control, set `--tali-mermaid-theme: base` (Mermaid's `base` theme is the one
-built to be customised) and any of `--tali-mermaid-bg`, `--tali-mermaid-node`,
-`--tali-mermaid-node-border`, `--tali-mermaid-text` and `--tali-mermaid-line`.
+diagram. Taliesin draws diagrams in Mermaid's `neutral` theme in light and its `dark` theme
+in dark, and re-renders them on a light/dark switch, with nothing to set.
 
 ## An `.svg` file you wrote yourself
 

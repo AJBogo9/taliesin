@@ -1,7 +1,7 @@
 # The Instrument theme: Taliesin's default visual system
 
 **Date:** 2026-08-14
-**Status:** design, awaiting review
+**Status:** superseded. The live design is tokens.css, tokens-dark.css and the gates in crates/core/src/render/tests.rs; where this file disagrees with them, they win.
 **Author decisions taken before this was written:** scope is *everything a person sees*
 (reading theme, marketing site, gallery, brand mark, preview dev UI); *anatomy is fair game*
 (components may be restructured or deleted, not merely restyled); the tool owns *two* faces

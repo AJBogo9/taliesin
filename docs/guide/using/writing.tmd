@@ -53,8 +53,8 @@ $$ {#eq-dft}
 
 ## Diagrams
 
-A `{mermaid}` code block renders client-side with mermaid.js; the colours are
-CSS-driven, so they follow the theme. Adding `%%| label: fig-…` and `%%| fig-cap:`
+A `{mermaid}` code block renders client-side with mermaid.js, in Mermaid's `neutral` theme
+(`dark` in dark mode), and re-renders when the reader's device switches between light and dark. Adding `%%| label: fig-…` and `%%| fig-cap:`
 turns a diagram into a numbered, captioned figure you can cross-reference, just
 like an image. As @fig-render shows, one block model feeds three render targets:
 

@@ -35,11 +35,10 @@ fn caption_inline_html(caption: &str) -> String {
 /// address it separately from the sentence beside it.
 ///
 /// This is the ONE part of a caption the tool wrote; everything after the colon is the
-/// author's own sentence and stays in the serif. Without the wrapper the two are one flat
-/// string and the choice is between a whole caption in mono — which reads as terminal output,
-/// the correction spec §4 records from a render — and no machine voice at all on the one word
-/// that is the tool's. Shared by the figure, listing, mermaid and `{js}`-figure emitters here
-/// and by the executed-table captions in `crates/server`.
+/// author's own sentence. Without the wrapper the two are one flat string and CSS cannot
+/// set the number upright against the italic sentence beside it. Shared by the figure,
+/// listing, mermaid and `{js}`-figure emitters here and by the executed-table captions in
+/// `crates/server`.
 pub fn caption_label(label: &str, num: &str) -> String {
     format!("<span class=\"tali-caption-label\">{label}&nbsp;{num}</span>")
 }

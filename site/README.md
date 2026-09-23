@@ -35,9 +35,9 @@ Anything enumerative belongs one click away on guide.taliesin.sh, not on the lan
 - **Buttons** — the `hero:` front matter's `actions:`, which emit `a.btn` directly.
   Elsewhere, a raw `<a href="…" class="btn btn-primary btn-lg">`: the link attribute
   block (`[Text](href){.btn}`) was cut on 2026-08-20.
-- **Closing CTA** — a `::: {.hero}` fenced div.
 
-The theme (serif body, sans headings, light/dark toggle) is the Taliesin default.
+The theme is the Taliesin default: Literata for every word, JetBrains Mono for code, and
+the reader's OS picks light or dark.
 
 ## Preview
 

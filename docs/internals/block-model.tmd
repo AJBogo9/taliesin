@@ -3,7 +3,7 @@ title: "The block model & protocol"
 description: "The document as a list of identified blocks: the content-hash contract, the diff that deliberately has no Move, and click-to-source."
 ---
 
-Everything in Taliesin keys off one idea: the document is a list of **blocks**,
+In Taliesin the document is a list of **blocks**,
 each of which knows its identity and its origin. Our `post.tmd` is three of them,
 the `# Cooling coffee` heading, the paragraph, and the Python cell, plus a fourth
 the cell *produces*: the plot, a derived block keyed to the cell.

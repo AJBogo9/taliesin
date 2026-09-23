@@ -7,6 +7,5 @@ listing:
   type: grid
 ---
 
-Every page here is one `.tmd` file, rendered by Taliesin. No screenshots, no mockups:
-open a demo and poke at the real thing. Even this index is dogfood: the cards below are
-a `listing:` block, built from each page's own front matter.
+Every page here is one `.tmd` file, rendered by Taliesin. The cards below are a
+`listing:` block, built from each page's own front matter.

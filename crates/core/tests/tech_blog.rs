@@ -177,9 +177,8 @@ fn code_fold_defaults_to_code_label() {
         "code-fold did not produce a <details>"
     );
     assert!(
-        // The fallback label is the TOOL's word, not the author's, so it is marked as such
-        // and keeps the uppercase mono; an authored `code-summary:` is a bare <summary>.
-        html.contains("<summary class=\"tali-code-label\">Code</summary>"),
+        // The fallback label is a plain <summary>, exactly like an authored `code-summary:`.
+        html.contains("<summary>Code</summary>"),
         "default code-fold label missing"
     );
 }
@@ -532,8 +531,8 @@ fn site_404_page_is_self_contained_with_absolute_links() {
         "not a full page"
     );
     assert!(
-        page.contains("404") && page.contains("Page not found"),
-        "missing 404 body"
+        page.contains("Page not found") && !page.contains(">404<"),
+        "a plain 404 body: the heading, no decorative numeral"
     );
     // The one home link is root-absolute, not depth-relative.
     assert!(page.contains(r#"href="/""#), "home link not root-absolute");
@@ -580,10 +579,7 @@ fn site_404_page_links_the_shared_bundle_in_a_build() {
     // The page's own scoped style stays inline, so the layout survives even where the
     // stylesheet does not resolve (a project-subpath deploy, which the root-absolute hrefs
     // do not support any more than the `/` home link does).
-    assert!(
-        page.contains(".tali-404-code{"),
-        "scoped style still inline"
-    );
+    assert!(page.contains(".tali-404{"), "scoped style still inline");
     // Still a 404 page, still absolutely linked.
     assert!(
         page.contains(r#"href="/""#),

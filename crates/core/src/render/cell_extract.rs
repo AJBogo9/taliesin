@@ -128,11 +128,11 @@ pub(super) fn code_fold(literal: &str) -> Option<CodeFold> {
     if v != "true" && v != "show" {
         return None;
     }
-    let authored = cell_option(literal, "code-summary");
     Some(CodeFold {
         open: v == "show",
-        summary: authored.unwrap_or("Code").to_string(),
-        authored: authored.is_some(),
+        summary: cell_option(literal, "code-summary")
+            .unwrap_or("Code")
+            .to_string(),
     })
 }
 

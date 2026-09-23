@@ -754,7 +754,7 @@ pub fn favicon_link(href: &str) -> String {
     format!("<link rel=\"icon\"{ty} href=\"{h}\" />")
 }
 
-/// The bundled taliesin mark (the block-model glyph), inlined as a base64 SVG data
+/// The bundled taliesin mark (the T mark), inlined as a base64 SVG data
 /// URI — the default favicon when a project configures none.
 const FAVICON_SVG: &str = include_str!("../../../../web-client/favicon.svg");
 

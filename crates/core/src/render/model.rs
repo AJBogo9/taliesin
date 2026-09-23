@@ -100,31 +100,19 @@ pub struct CellTable {
 }
 
 /// A folded code listing's disclosure state (`#| code-fold:`).
-///
-/// `authored` is what makes the machine-voice rule structural rather than cosmetic: the
-/// `<summary>` is the AUTHOR's `#| code-summary:` sentence or the tool's own "Code"
-/// fallback, and only the fallback may be set in the uppercase mono. Deriving that from the
-/// label text instead would misread an author who wrote `code-summary: Code`.
 pub(crate) struct CodeFold {
     /// `code-fold: show` starts the `<details>` open; `true` starts it closed.
     pub(crate) open: bool,
-    /// The disclosure label, already unescaped (the emitters escape it).
+    /// The disclosure label: the author's `#| code-summary:`, else "Code". Already
+    /// unescaped (the emitters escape it).
     pub(crate) summary: String,
-    /// The author supplied `code-summary:`, rather than this being the "Code" fallback.
-    pub(crate) authored: bool,
 }
 
 impl CodeFold {
-    /// The `<summary>` element. The generated label carries `.tali-code-label`, which is
-    /// where base.css hangs the machine voice; an authored one stays unmarked and serif.
+    /// The `<summary>` element. An authored label and the "Code" fallback are set alike.
     pub(crate) fn summary_html(&self) -> String {
-        let class = if self.authored {
-            ""
-        } else {
-            " class=\"tali-code-label\""
-        };
         format!(
-            "<summary{class}>{}</summary>",
+            "<summary>{}</summary>",
             crate::render::html_escape(&self.summary)
         )
     }

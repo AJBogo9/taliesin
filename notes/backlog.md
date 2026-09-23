@@ -104,9 +104,9 @@ a thing waiting its turn.
   invariant (the preview is read-only; it must never write back to source). The rest of the
   exec/kernel zone is not frozen.
 - **Website / brand** (2026-07-11 audit, detail:
-  [2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md)): the personal blog
-  (`corpus/tech-blog/`) is the forward-facing brand, direction **"Marginalia"**; its 14 explicit KEEPs
-  live in that file. Every change stays invariant-safe: no CDN, no preview write-back, no new output
+  [2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md)): that audit's
+  "Marginalia" direction is superseded; the live design is `tokens.css` plus its gates in
+  `render/tests.rs`. Every change stays invariant-safe: no CDN, no preview write-back, no new output
   format, offline bundling, `--tali-*` tokens only.
 - **Working method:** branch per item; brainstorm if there's a fork; a design note under
   `notes/` if one is worth keeping; implement TDD; verify (cargo + browser via chrome-devtools, or the

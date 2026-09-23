@@ -8,10 +8,9 @@ description: "The user guide: how to write, preview, execute and publish a .tmd 
 **A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
 posts, papers, books, and whole websites) with executable code blocks and an
 editing loop that updates the instant you save.** It reads the Markdown/Pandoc
-syntax you already know, and makes one trade: do one thing, author HTML, and make
-the edit loop instant.
+syntax you already know and outputs HTML only.
 
-## Three things it gets right
+## The edit loop
 
 - **Click-to-source.** Every rendered block remembers the line it came from.
   Ctrl-click (Cmd-click on Mac) anything in the preview to jump straight to its
@@ -22,8 +21,6 @@ the edit loop instant.
 - **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean
   edits show up immediately, and only the cells whose code actually changed
   re-run.
-
-That loop is the whole product; everything below is what you can put inside it.
 
 This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A

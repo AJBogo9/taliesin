@@ -8,23 +8,18 @@
   if (!window.taliEnhancers) return; // registry (code-enhance.js) must load first
 
 // mermaid bakes colours into the SVG at run() time, so a diagram can't be
-// recoloured by CSS when the theme flips — it has to be re-rendered. The config is
-// CSS-driven so a theme extension can style diagrams with no JS: set
-// `--tali-mermaid-theme` (a mermaid theme name; defaults to dark/default by mode),
-// and optionally `--tali-mermaid-{bg,node,node-border,text,line}` to tune colours
-// (most effective with `--tali-mermaid-theme: base`). Each diagram's source is
-// stashed (dataset.src) so a later `tali:themechange` can restore and re-run it.
+// recoloured by CSS when the theme flips — it has to be re-rendered. Diagrams use
+// Mermaid's own `neutral` and `dark` themes: grey for flowcharts, sequence, class and
+// state diagrams (Gantt `crit`/`active` tasks keep Mermaid's red and blue). Each diagram's source is stashed (dataset.src) so a later
+// `tali:themechange` can restore and re-run it.
 function taliMermaidConfig() {
-  var cs = getComputedStyle(document.documentElement);
-  /** @param {string} n */
-  var get = function (n) { return cs.getPropertyValue(n).trim(); };
   // Dark is a page's `data-theme="dark"`
   var el = document.documentElement;
   var dark = el.getAttribute('data-theme') === 'dark';
   /** @type {Record<string, any>} */
   var cfg = {
     startOnLoad: false,
-    theme: get('--tali-mermaid-theme') || (dark ? 'dark' : 'default'),
+    theme: dark ? 'dark' : 'neutral',
     // Set EXPLICITLY, not left to the library's default. Diagram source is author text
     // that reaches mermaid's parser and comes back as SVG injected into the page, so the
     // sanitiser setting is ours to own: inheriting it means a mermaid upgrade could
@@ -32,18 +27,6 @@ function taliMermaidConfig() {
     // which no Taliesin diagram uses.
     securityLevel: 'strict',
   };
-  /** @type {Record<string, string>} */
-  var map = {
-    background: '--tali-mermaid-bg',
-    primaryColor: '--tali-mermaid-node',
-    primaryBorderColor: '--tali-mermaid-node-border',
-    primaryTextColor: '--tali-mermaid-text',
-    lineColor: '--tali-mermaid-line',
-  };
-  /** @type {Record<string, string>} */
-  var vars = {};
-  for (var key in map) { var v = get(map[key]); if (v) vars[key] = v; }
-  if (Object.keys(vars).length) cfg.themeVariables = vars;
   // Render at natural width, not shrunk to the reading column: mermaid's `useMaxWidth`
   // default emits `width="100%"` (an inline attribute a stylesheet can't beat), so a wide
   // diagram scales its labels down to a few px on a narrow screen. Turning it off per
@@ -86,8 +69,9 @@ function taliMermaidShowError(p) {
   banner.setAttribute('role', 'alert');
   banner.setAttribute('data-mermaid-error', '1');
   banner.style.cssText =
-    'border:1px solid #c0392b;border-radius:4px;padding:.5em .75em;margin:.5em 0;' +
-    'color:#c0392b;background:rgba(192,57,43,.08);font-size:.9em';
+    'border:1px solid var(--tali-callout-important,#8B3A2E);border-radius:var(--tali-radius,2px);' +
+    'padding:.5em .75em;margin:.5em 0;color:var(--tali-callout-important,#8B3A2E);' +
+    'background:color-mix(in srgb,var(--tali-callout-important,#8B3A2E) 8%,transparent);font-size:.9em';
   banner.textContent =
     'Diagram could not be loaded (offline or blocked). Showing the source below.';
   /** @type {Node} */ (p.parentNode).insertBefore(banner, p);

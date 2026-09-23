@@ -18,11 +18,11 @@ A tip worth surfacing.
 A warning the reader should not miss.
 :::
 
-The kind word is the tool speaking, so it takes the machine voice. A title is not.
+The kind word is the tool speaking, so it is set small, as a label. A title is not.
 
 ::: {.callout-note title="An authored title"}
-A `title=` makes the callout's own heading, and it stays in the author's voice — upright
-serif, not tracked uppercase — because those are the author's own words.
+A `title=` makes the callout's own heading, and it stays in the author's voice, the serif
+at the body size, because those are the author's own words.
 :::
 
 A callout can fold, and the summary is the same split: the author's title if they wrote

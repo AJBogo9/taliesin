@@ -94,12 +94,11 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   // instead of being a fixed dark chip sitting on a white page.
   const btnStyle = [
     "padding:4px 10px", "cursor:pointer",
-    // Opaque, in the theme's own mono: a <button> inherits no font, so without this
-    // the label rendered in the UA's default face.
+    // Opaque, in the theme's own label face: a <button> inherits no font, so without
+    // this the label rendered in the UA's default face.
     "background:var(--tali-bg)",
     "color:var(--tali-fg)",
-    "font:400 .78rem/1.3 var(--tali-font-mono)",
-    "text-transform:uppercase", "letter-spacing:.053em",
+    "font:var(--tali-font-body)", "font-size:.85rem", "line-height:1.2",
     "border:1px solid var(--tali-border-strong)",
     "border-radius:var(--tali-radius)",
     "z-index:10",

@@ -519,10 +519,10 @@ fn build_container(
         // xref-prefixed ids are hoisted (a plain autoslug title stays id-less, as before).
         let mut title_id_attr = String::new();
         // Branches (1) and (2) are the AUTHOR's own words; only (3) is the tool speaking.
-        // The machine voice (uppercase tracked mono) belongs to (3) alone — uppercasing an
-        // authored title mangles a choice the author made, the same finding the wordmark and
-        // author-name rulings reached. Marked with a class rather than left to a selector, so
-        // the distinction is structural and a stylesheet edit cannot lose it.
+        // Only (3) is set at the label size; an authored title is the body size, because it
+        // stands in for the heading the author often literally wrote. Marked with a class
+        // rather than left to a selector, so the distinction is structural and a stylesheet
+        // edit cannot lose it.
         let mut generated_kind_label = false;
         let title = match attrs.get("title") {
             Some(t) => html_escape(t),

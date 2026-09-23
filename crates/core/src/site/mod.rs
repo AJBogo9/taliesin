@@ -69,7 +69,7 @@ pub struct Page {
 /// for a product page, a researcher's homepage, or a lab/group site.
 #[derive(Debug, Clone)]
 pub struct HeroSpec {
-    /// Small uppercase kicker above the headline (`eyebrow:`); optional.
+    /// Short italic line above the headline (`eyebrow:`); optional.
     pub eyebrow: Option<String>,
     /// The big headline; falls back to the page `title:` when omitted.
     pub headline: Option<String>,
@@ -940,25 +940,22 @@ impl Site {
     /// The document itself; the two renderers below differ only in how the framework
     /// CSS/JS is delivered.
     fn not_found_doc(&self) -> render::RenderedDoc {
-        // Scoped styling for the centred 404 body, injected into the head. Uses the
-        // theme `--tali-*` vars so it tracks light/dark like the rest of the site.
+        // A special page is a short document, set by the reading surface's own elements and
+        // nothing else: no type scale of its own. The centred box is its only layout, injected
+        // into the head and reading the theme `--tali-*` vars like the rest of the site.
         const NOT_FOUND_STYLE: &str = "\n<style>\n\
             .tali-404{min-height:60vh;display:flex;flex-direction:column;\
             align-items:center;justify-content:center;text-align:center;gap:.3rem}\n\
-            .tali-404-code{\
-            font-size:clamp(4.5rem,20vw,9rem);font-weight:800;line-height:.9;\
-            letter-spacing:-.04em;color:var(--tali-accent)}\n\
-            .tali-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\
+            .tali-404 h1{margin:.4rem 0 0}\n\
             .tali-404 p{margin:.2rem 0;color:var(--tali-muted)}\n\
-            .tali-404-home{display:inline-block;margin-top:1.4rem;font-weight:600}\n\
+            .tali-404-home{display:inline-block;margin-top:1.4rem}\n\
             </style>";
 
         let site_title = self.config.title.as_deref().unwrap_or("the site");
         let body = format!(
             "<div class=\"tali-404\">\n\
-             <div class=\"tali-404-code\">404</div>\n\
              <h1>Page not found</h1>\n\
-             <p>The page you’re looking for doesn’t exist or may have moved.</p>\n\
+             <p>Nothing is published at this address.</p>\n\
              <p><a class=\"tali-404-home\" href=\"/\">Back to {}</a></p>\n\
              </div>",
             crate::html_escape(site_title),

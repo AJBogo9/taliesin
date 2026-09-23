@@ -106,14 +106,13 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   // instead of being a fixed dark chip sitting on a white page.
   const btnStyle = [
     "padding:4px 10px", "cursor:pointer",
-    // OPAQUE, and in the theme's own mono. This was a translucent ground with a
+    // OPAQUE, and in the theme's own label face. This was a translucent ground with a
     // a blur behind it — the last one in the tree after spec §3 banned them,
     // surviving here because the tell probe scans stylesheets and this is an authored `.tmd`.
     // A <button> also inherits no font, so "Fullscreen" rendered in the UA's Arial.
     "background:var(--tali-bg)",
     "color:var(--tali-fg)",
-    "font:400 .78rem/1.3 var(--tali-font-mono)",
-    "text-transform:uppercase", "letter-spacing:.053em",
+    "font:var(--tali-font-body)", "font-size:.85rem", "line-height:1.2",
     "border:1px solid var(--tali-border-strong)",
     "border-radius:var(--tali-radius)",
     "z-index:10",

@@ -17,26 +17,24 @@
   ::highlight(tali-search-flash) { background-color: var(--tali-search-flash); color: inherit; }
   /* Fallback for engines without the Custom Highlight API: a transient <mark> that
      fades itself out (a mark CAN be CSS-animated, unlike ::highlight). */
-  mark.tali-search-mark { color: inherit; border-radius: var(--tali-radius); background-color: rgba(250, 204, 21, .5);
+  mark.tali-search-mark { color: inherit; border-radius: var(--tali-radius); background-color: rgba(34, 32, 26, .16);
     animation: tali-search-mark-fade 1.5s ease-out forwards; }
-  @keyframes tali-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
-  /* The same 50%-alpha yellow composites to #887219 on the dark page, leaving body text at
-     3.77:1 ON the highlight. Opaque, darker amber restores 5.72:1. (`color: inherit`, so only
-     the surface moves.) */
-  html[data-theme="dark"] mark.tali-search-mark { background-color: #6e5414; }
-  @keyframes tali-search-mark-fade-dark { 0%, 45% { background-color: #6e5414; } 100% { background-color: transparent; } }
+  @keyframes tali-search-mark-fade { 0%, 45% { background-color: rgba(34, 32, 26, .16); } 100% { background-color: transparent; } }
+  /* The dark page's ink at the same 16% (composites to #363530, body 9.9:1 on it).
+     (`color: inherit`, so only the surface moves.) */
+  html[data-theme="dark"] mark.tali-search-mark { background-color: rgba(234, 231, 224, .16); }
+  @keyframes tali-search-mark-fade-dark { 0%, 45% { background-color: rgba(234, 231, 224, .16); } 100% { background-color: transparent; } }
   html[data-theme="dark"] mark.tali-search-mark { animation-name: tali-search-mark-fade-dark; }
   html.tali-search-flashing { animation: tali-search-flash 1.5s ease-out forwards; }
   @keyframes tali-search-flash {
-    0%, 45% { --tali-search-flash: rgba(250, 204, 21, .55); }
+    0%, 45% { --tali-search-flash: rgba(34, 32, 26, .16); }
     100% { --tali-search-flash: transparent; }
   }
-  /* A search hit is amber in every theme (the one universal "found it" colour, and not a brand
-     surface). Alphas are capped so body text stays >= 4.5:1 ON the highlight (dark was a
-     vendor blue). */
+  /* A search hit is the ink at 16%: it is page state, not data, so it takes no hue. Body
+     text stays 11.8:1 on it in light (#DCDBDA) and 9.9:1 in dark (#363530). */
   html[data-theme="dark"].tali-search-flashing { animation-name: tali-search-flash-dark; }
   @keyframes tali-search-flash-dark {
-    0%, 45% { --tali-search-flash: rgba(250, 204, 21, .36); } /* body 5.55:1 */
+    0%, 45% { --tali-search-flash: rgba(234, 231, 224, .16); } /* body 9.9:1 */
     100% { --tali-search-flash: transparent; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -87,8 +85,8 @@
   /* Skip-to-content link (taliInitSkipLink): hidden until focused, then pinned top-left. */
   .tali-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
     background: var(--tali-fg); color: var(--tali-bg); padding: .5rem .8rem;
-    border-radius: var(--tali-radius); font: 400 .78rem/1.3 var(--tali-font-mono);
-    text-transform: uppercase; letter-spacing: .053em; text-decoration: none; }
+    border-radius: var(--tali-radius); font: var(--tali-font-body); font-size: .85rem; line-height: 1.2;
+    text-decoration: none; }
   .tali-skip:focus { top: .5rem; }
   /* The second skip link (to the in-page TOC) sits beside the first, not on top of it:
      both are pinned, and only one is focused at a time, but tabbing between them should
@@ -117,8 +115,8 @@
      Chrome links (nav, cards, footer, `a.btn`) set `text-decoration: none` and are untouched. */
   a { color: var(--tali-link); text-decoration-color: var(--tali-underline); }
   /* button-style links: `hero:`'s `actions:`, or a raw `<a class="btn btn-outline-* btn-sm">` */
-  a.btn { display: inline-block; font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-    letter-spacing: .053em; text-decoration: none;
+  a.btn { display: inline-block; font: var(--tali-font-body); font-size: .85rem; line-height: 1.2;
+    text-decoration: none;
     padding: .4rem .95rem; border-radius: var(--tali-radius); border: 1px solid var(--tali-accent);
     color: var(--tali-link); transition: background var(--tali-dur) ease, color var(--tali-dur) ease; }
   a.btn:hover { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
@@ -142,19 +140,16 @@
      branch, its viewport-scaled headline (the last `vw` type size on the site) and the
      centred actions row.
 
-     The eyebrow is the AUTHOR's word — `hero.eyebrow:` in front matter — so it takes the
-     serif, not the machine voice: spec §4's rule attaches the voice to labels the TOOL
-     generates and never to a container that may hold author text. It shipped in a FOURTH
-     voice (600 weight, .8rem, .12em tracking, uppercase), which is neither of the two this
-     theme owns. */
+     The eyebrow is the AUTHOR's word (`hero.eyebrow:` in front matter), set in the serif,
+     italic and muted. It shipped as 600 weight, .8rem, .12em tracking, uppercase: the
+     letterspaced all-caps eyebrow this masthead exists to avoid. */
   .hero { padding: calc(2 * var(--tali-u)) 0 var(--tali-u); }
   .hero h1, .hero h2 { font-size: 2.25rem; line-height: 1.1; letter-spacing: -.008em;
     margin: 0 0 calc(.5 * var(--tali-u)); }
   .hero p, .hero .hero-lead { font-size: 1.25rem; color: var(--tali-muted);
     max-width: none; margin: 0 0 var(--tali-u); line-height: 1.5; }
   .hero-eyebrow { font: var(--tali-font-body); font-size: .92rem; font-style: italic;
-    color: var(--tali-muted); text-transform: none; letter-spacing: normal;
-    margin: 0 0 calc(.5 * var(--tali-u)); }
+    color: var(--tali-muted); margin: 0 0 calc(.5 * var(--tali-u)); }
   /* The hairline under the eyebrow is the masthead's one mark, and it is the ink: a rule
      the width of a word, not a coloured band. */
   .hero-eyebrow::after { content: ""; display: block; width: 2.5rem; height: 2px;
@@ -174,21 +169,20 @@
      size and inherit Literata (no font-family override, no third face). Sizes are re-derived
      against the 1.25rem (20px) body: the first cut of this scale (2/1.35/1.12rem) was carried
      over unchanged from the OLD 1.0625rem body, so against the new, larger body h3 came out
-     SMALLER than the prose it introduces. Four visual levels, then stop: h4 is where the type
-     system runs out of serif sizes and switches to its other voice, the mono label — and h5/h6
+     SMALLER than the prose it introduces. Four visual levels, then stop: h4 is where the scale
+     runs out of serif sizes, so it is the body size in bold, and h5/h6
      FOLLOW h4 rather than keeping the browser's shrinking defaults (a fifth or sixth size would
      invent a level the spec doesn't have; nesting still carries the DOM hierarchy beyond h4, the
      type does not need to). h4-h6 keep full body contrast, no `--tali-muted`: a past version
      muted h5/h6, which made the deepest headings on the page read LOWER contrast than the body
-     prose they introduce. Weight (600, below) + the mono's own tracking carry the distinction
-     from body text instead.
+     prose they introduce. Weight (600, below) carries the distinction from body text instead.
 
      VERTICAL RHYTHM: the ladder is `{0.5U, U, 1.5U, 2U, 3U}`. `1.5U` is not an ad-hoc value —
      from the four-member scale the spec first carried, the only pairs satisfying its own
      3:1-or-4:1 heading ratio are (2U, 0.5U) and (3U, U), and the second is LARGER than the
      first, so at most one heading level could be spaced legally. h2 takes 4:1 and h3 takes
      3:1 against a single 0.5U bottom. h4-h6 are a stated exception at 2:1 (U : 0.5U): they
-     are the mono LABEL rather than a serif section heading, and no five-member scale can give
+     are a body-size heading rather than a larger section heading, and no five-member scale can give
      them a legal ratio that is also smaller than h3's — the alternatives were a sixth and
      seventh member (0.75U/0.25U) or spacing h4 identically to h3. */
   h1, h2, h3, h4, h5, h6 { font-family: inherit; font-weight: 600; }
@@ -203,38 +197,28 @@
   h3 { font-size: 1.3rem; line-height: 1.3; margin: calc(1.5 * var(--tali-u)) 0 calc(.5 * var(--tali-u)); }
   /* h4-h6 were three byte-identical rules; they are one selector list because they are one
      level. Their 2:1 is the scale's ONE stated exception (see the comment above). */
-  h4, h5, h6 { font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-       letter-spacing: .053em; margin: var(--tali-u) 0 calc(.5 * var(--tali-u)); }
+  h4, h5, h6 { font-size: 1em; line-height: 1.3; margin: var(--tali-u) 0 calc(.5 * var(--tali-u)); }
   .tali-title-block { margin: 0 0 calc(2 * var(--tali-u)); padding-bottom: var(--tali-u);
     border-bottom: 1px solid var(--tali-border); }
   /* The title block sits on the same re-derived scale as h1-h6, and the re-derivation stopped
      one selector short of it. The document's own title is the ONE element allowed above the
      heading scale: `.title` is an `<h1>`, so a class-specificity `2.1rem` here made it render
      SMALLER (33.6px) than any body `#` heading (36px). The subtitle was 1.15rem — 18.4px,
-     under the 20px body — which is the defect the h3 fix names: in this theme the small
-     register is the mono voice, never a shrunken serif. It now sits between `h3` and `h2`.
+     under the 20px body — which is the defect the h3 fix names: a subtitle is never
+     set smaller than the body it heads. It now sits between `h3` and `h2`.
      (The `max-width: 30rem` block below steps both down again, against that breakpoint's own
      16px body.) */
   .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.5rem; line-height: 1.15; }
   .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.4rem; color: var(--tali-muted); font-weight: 400; }
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
-    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em;
+    font: var(--tali-font-body); font-size: .85rem; line-height: 1.2;
     color: var(--tali-muted); }
   /* Structured byline (item 184). The byline is ONE flex item on the meta line, so a
      multi-author list wraps as a unit and never interleaves with the date — the names
-     stay together and the separators stay with them. An author's name is authored text,
-     not the machine speaking, so it overrides the meta line's machine voice back to the
-     serif, upright and untracked; the date beside it stays on the mono. Reads the family
-     through the `font` shorthand (`--tali-font-body`), not a family-only token: a second
-     token holding the same family list is a second source of truth nothing keeps in sync,
-     so a theme overriding only `--tali-font-body` would silently miss the byline. The
-     shorthand resets size/weight/leading too, so this stays small (the secondary register
-     carried by size) by re-declaring them AFTER it, at the values the meta line otherwise
-     inherits from `.tali-title-meta`. */
-  .tali-title-block .tali-byline { display: inline;
-    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3;
-    text-transform: none; letter-spacing: normal; }
+     stay together and the separators stay with them. It inherits the meta line's face and
+     size. */
+  .tali-title-block .tali-byline { display: inline; }
   .tali-title-block .tali-author { white-space: nowrap; }
   /* A name that carries a `url:` reads as a name, not as a link in a sentence: the
      underline arrives on hover/focus rather than sitting under every byline. */
@@ -249,11 +233,10 @@
   /* The numbered list under the byline. `list-style-position: inside` + inline `<li>`s
      keeps two or three institutions on one quiet line instead of a stacked block that
      would out-weigh the title it sits under. An institution's name is authored text too,
-     so it is the serif, upright and untracked, kept small and muted (the secondary
-     register carried by size, not by the machine voice) — via the `font` shorthand, same
-     reasoning as `.tali-byline` above. */
+     so it is the serif at the label size, muted (the secondary register carried by
+     size). */
   .tali-affiliations { margin: .35rem 0 0; color: var(--tali-muted);
-    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3; }
+    font: var(--tali-font-body); font-size: .85rem; line-height: 1.2; }
   /* `list-style: none` because the number is emitted as CONTENT, not drawn by the
      marker: an inline `<li>` has no marker at all, so relying on it silently dropped
      every number while the superscripts beside the names kept referring to them. */
@@ -313,14 +296,14 @@
                font-size: inherit; }
   /* Owned syntax palette: four hues sharing one warm-anchored chroma envelope, replacing
      twelve borrowed GitHub Primer hexes. Every value scored on the code ground it sits on
-     (ratios in the comment are WCAG 2.x, computed 2026-08-14). Comments are italic as well
+     (ratios in the comment are WCAG 2.x on #F4F4F4, recomputed 2026-09-23). Comments are italic as well
      as coloured, so hue is never the only cue. Unmapped scopes inherit the code colour. */
-  .tali-hl-comment { color: #6E6A60; font-style: italic; }   /* 4.78:1 */
-  .tali-hl-string { color: #3F6152; }                        /* 6.12:1 */
-  .tali-hl-keyword, .tali-hl-storage { color: #7A3B52; }     /* 7.23:1 */
-  .tali-hl-constant, .tali-hl-support { color: #3A5578; }    /* 6.77:1 */
-  .tali-hl-entity { color: #6B4A2F; }                        /* 7.04:1 */
-  .tali-hl-variable { color: #22201A; }                      /* 14.45:1 */
+  .tali-hl-comment { color: #6E6A60; font-style: italic; }   /* 4.90:1 */
+  .tali-hl-string { color: #3F6152; }                        /* 6.27:1 */
+  .tali-hl-keyword, .tali-hl-storage { color: #7A3B52; }     /* 7.42:1 */
+  .tali-hl-constant, .tali-hl-support { color: #3A5578; }    /* 6.94:1 */
+  .tali-hl-entity { color: #6B4A2F; }                        /* 7.22:1 */
+  .tali-hl-variable { color: #22201A; }                      /* 14.81:1 */
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads as code
      in prose instead of blending in as same-colour monospace. This is the one place the two
      owned faces actually sit side by side in running text, so it is the place the x-height
@@ -420,36 +403,23 @@
      its own scroll box, so let it scroll rather than shred the token. (A `<pre>` in a cell
      already sets `white-space: pre`, so this is a no-op for code blocks.) */
   th code, td code { overflow-wrap: normal; }
-  /* `text-transform`/`letter-spacing` are INHERITED, so `thead th` below (the machine voice)
-     reaches straight through an inline `<code>` and uppercases the author's literal source
-     characters — `` `_freeze/` `` rendering as `_FREEZE/`. That misrepresents what the author
-     typed, the same defect class the code-ligature ban exists to prevent, so reset both back
-     to normal for code specifically. */
-  th code { text-transform: none; letter-spacing: normal; }
   /* A caption is PROSE: the author's own sentence about their own figure or table, so it is
      the serif, italic, one step under the body. Only the generated `Figure 3` inside it is
      the tool speaking — see `.tali-caption-label` below. The first render of this theme set
      whole captions in mono and they read as terminal output; that correction is spec §4's. */
   figcaption, table caption { font: var(--tali-font-body); font-size: .92rem;
-    font-style: italic; font-weight: 400; color: var(--tali-muted);
-    text-transform: none; letter-spacing: normal; }
+    font-style: italic; font-weight: 400; color: var(--tali-muted); }
   table caption { caption-side: top; padding-bottom: calc(.25 * var(--tali-u)); text-align: left; }
-  /* The generated half. Upright against the italic caption around it, and it re-declares
-     `text-transform`/`letter-spacing` because both are inherited: a label inside a caption
-     inside a machine-voice ancestor would otherwise compute the ancestor's tracking. */
-  .tali-caption-label { font: 400 .78rem/1.3 var(--tali-font-mono); font-style: normal;
-    text-transform: uppercase; letter-spacing: .053em; }
-  /* A column head names what the column holds — the TOOL's register, not the author's
-     sentence — so it takes the machine voice, like `h4`, the TOC, the nav and the meta line.
-     The `font` shorthand comes FIRST and the longhands after it: the shorthand resets
-     `font-weight`/`font-size`/`line-height`, so a declaration written above it is discarded.
-     `font-weight: 400` is deliberate against the UA's bold `th`: the mono's tracking and
-     casing already carry the distinction, and bolding a tracked uppercase line thickens it
-     into a banner. */
+  /* The generated half: the caption's own face and size, upright against the italic
+     around it. */
+  .tali-caption-label { font-style: normal; }
+  /* A column head names what the column holds, so it is a label: the serif at the label
+     size, bold, like the TOC, the nav and the meta line are the serif at that size. The
+     `font` shorthand comes FIRST and the longhands after it: the shorthand resets
+     `font-weight`/`font-size`/`line-height`, so a declaration written above it is discarded. */
   thead th { border-bottom: 2px solid var(--tali-border);
-    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-    letter-spacing: .053em; }
-  /* Three kinds, and the kind is carried by a 2px left rule plus the mono kind-word — not by
+    font: var(--tali-font-body); font-size: .85rem; line-height: 1.2; font-weight: 600; }
+  /* Three kinds, and the kind is carried by a 2px left rule plus the kind word — not by
      a box, a tint or an icon (spec §5). What goes with that: the 1px box (structure here is
      square and unboxed; the rule and the indent are the whole affordance), the radius (spec
      §3 puts 0 on a callout), the three `color-mix` title tints (chrome carries no colour),
@@ -466,40 +436,32 @@
      author-name rulings found: "Why two accent variables" is not WHY TWO ACCENT VARIABLES.
      So the default here is the serif at the body size with heading weight (it stands in for
      the `## heading` the author often literally wrote), reached through the `font` SHORTHAND
-     rather than a family-only token, for the same reason as `.tali-nav-brand` and
-     `.tali-byline`: one source of truth for the family. Longhands come AFTER the shorthand —
-     it resets weight and leading — and `text-transform`/`letter-spacing` are re-declared
-     because both are inherited properties, so leaving them unset would compute an ancestor's
-     tracked uppercase rather than "none". */
+     rather than a family-only token, for the same reason as `.tali-nav-brand`: one
+     source of truth for the family. Longhands come AFTER the shorthand,
+     which resets weight and leading. */
   .callout-title { font: var(--tali-font-body); font-weight: 600; line-height: 1.3;
-                   text-transform: none; letter-spacing: normal;
                    margin: 0 0 calc(.5 * var(--tali-u)); display: flex; align-items: center; }
-  /* Branch (3): the kind word, which the TOOL supplied. That is the machine voice, and spec
-     §4's scope line says "callout kind LABELS" — the label, not the element. Marked
-     structurally in `divs.rs` so the distinction cannot be lost to a cosmetic edit. */
-  .callout-title.callout-kind { font: 400 .78rem/1.3 var(--tali-font-mono);
-                   text-transform: uppercase; letter-spacing: .053em; }
+  /* Branch (3): the kind word, which the TOOL supplied, so it is a label: the label size,
+     bold. Marked structurally in `divs.rs` so the distinction cannot be lost to a cosmetic
+     edit. */
+  .callout-title.callout-kind { font: var(--tali-font-body); font-size: .85rem; line-height: 1.2; font-weight: 600; }
   .callout-body { padding: 0; }
   .callout-body > :first-child { margin-top: 0; }
   .callout-body > :last-child { margin-bottom: 0; }
   /* The kind, and the only thing that carries it: the left rule takes the kind's own colour.
      This is the one place in the furniture with a hue, and spec §5 keeps it deliberately —
-     the rule plus the mono kind-word are what distinguish three kinds from each other. */
+     the rule plus the kind word are what distinguish three kinds from each other. */
   .callout-note { border-left-color: var(--tali-callout-note); }
   .callout-tip { border-left-color: var(--tali-callout-tip); }
   .callout-warning { border-left-color: var(--tali-callout-warning); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
-  /* Same split as `.callout-title`, one scale smaller: `#| code-summary:` is the author's
-     sentence, the "Code" fallback is the tool's word. The authored form keeps this control's
-     own small size (the `.tali-byline` precedent: restore the face and the casing, not the
-     size — a disclosure label is chrome either way) and only stops being uppercased mono. */
+  /* A folded cell's disclosure label, `#| code-summary:` or the "Code" fallback, set as a
+     label: the serif at the label size, muted. Both read the same, so the markup does not
+     tell them apart. */
   details.tali-code-fold > summary { cursor: pointer; color: var(--tali-muted);
-    font: var(--tali-font-body); font-size: .78rem; font-weight: 400; line-height: 1.3;
-    text-transform: none; letter-spacing: normal;
+    font: var(--tali-font-body); font-size: .85rem; line-height: 1.2;
     padding: .15rem 0; margin-bottom: .35rem; }
-  details.tali-code-fold > summary.tali-code-label {
-    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
   details.tali-code-fold > summary:hover { color: var(--tali-fg); }
   /* Themed disclosure chevron for folded code (`tali-code-fold`) and collapsible
      callouts: the browser-default triangle is small, inconsistent, and easy to
@@ -570,11 +532,9 @@
      read. In the margin form the note is already beside its reference, but the browser still
      scrolled to get there, so the link is offered rather than suppressed; keying it on the
      form instead would mean restating the engagement selector inverted, for a link that costs
-     one word. It is the tool's own label, so it takes the machine voice. */
+     one word. It inherits the note's own face and size. */
   .tali-sidenote-back { display: none; }
-  .tali-sidenote:target .tali-sidenote-back { display: inline; margin-left: .5em;
-    font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase;
-    letter-spacing: .053em; }
+  .tali-sidenote:target .tali-sidenote-back { display: inline; margin-left: .5em; }
   /* Paper has no viewport and `taliesin pdf` lays out to a fixed page box whose side
      margins (~90pt, measured on A4) are narrower than the note column, so the `-13.5rem`
      pull would carry the note off the page. Print every note in the flow instead: a
@@ -609,7 +569,6 @@
   .column-margin > :last-child { margin-bottom: 0; }
   .tali-sidenote, .column-margin {
     font: var(--tali-font-body); font-size: .82rem; font-weight: 400; line-height: 1.5;
-    text-transform: none; letter-spacing: normal;
     color: var(--tali-muted); text-align: left; }
   /* ENGAGED */
   /* The margin column engages when the page can afford it, and the number is DERIVED:
@@ -1002,7 +961,7 @@
                  grid-template-columns: minmax(0, 1fr) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
   #TOC { position: sticky; top: calc(.5 * var(--tali-u)); max-height: 92vh; overflow: auto;
-         font: 400 .78rem/1.3 var(--tali-font-mono); text-transform: uppercase; letter-spacing: .053em; }
+         font: var(--tali-font-body); font-size: .85rem; line-height: 1.2; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
   /* Collapse subsection lists; the scrollspy expands only the active section's
@@ -1038,8 +997,8 @@
      it so the ladder keeps its desktop proportions. It did not before: `h1` had no override at
      all, so a document title (1.7rem = 27.2px) rendered SMALLER than a body `#` (2.25rem =
      36px). Author decision, 2026-08-15 — the factor is derived from the body's own step, not
-     chosen. The mono voice does NOT move: .78rem is the machine voice at every width and on
-     every surface, and 0.8 of it would be 10px.
+     chosen. The label size does NOT move: .85rem is the chrome label size at every width,
+     and 0.8 of it would be under 11px.
      No side padding here any more: the reading grid's `minmax(1rem, 1fr)` gutters already
      reserve it, and a second gutter on `body` would indent the page twice. */
   @media (max-width: 30rem) {

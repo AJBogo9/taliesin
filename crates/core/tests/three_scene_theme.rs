@@ -146,8 +146,8 @@ fn no_document_asks_a_three_scene_for_a_background_colour() {
 /// The helper's own DOM chrome (the Fullscreen button) was a hard-coded
 /// `rgba(30,30,30,.75)` / `#ddd` / `#555` chip: unreadable-by-design on a light page and
 /// unable to follow a theme toggle. It must be built from `--tali-*` tokens instead — and
-/// since 2026-08-15 from an OPAQUE one in the theme's own mono, because it is chrome and
-/// spec §3 allows it neither a blur nor a face of its own.
+/// since 2026-08-15 from an OPAQUE one, in the theme's own label face since 2026-09-23,
+/// because it is chrome and spec §3 allows it neither a blur nor a face of its own.
 #[test]
 fn the_three_scene_fullscreen_button_is_token_driven() {
     for (rel, src) in helper_copies() {
@@ -168,8 +168,10 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
             "background:var(--tali-bg)",
             "color:var(--tali-fg)",
             // The button inherits no font (it is a `<button>`), so without this its label
-            // rendered in the UA's Arial on a page that owns two faces.
-            "font:400 .78rem/1.3 var(--tali-font-mono)",
+            // rendered in the UA's Arial on a page that owns two faces. It is a label, so it
+            // is the reading face at the label size.
+            "font:var(--tali-font-body)",
+            "font-size:.85rem",
             "border:1px solid var(--tali-border-strong)",
             "border-radius:var(--tali-radius)",
         ] {
@@ -178,6 +180,10 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
                 "{rel}: the Fullscreen button must carry `{needle}`, so it flips with the theme"
             );
         }
+        assert!(
+            !style.contains("uppercase") && !style.contains("letter-spacing"),
+            "{rel}: the Fullscreen button label is set in the case it reads, untracked:\n{style}"
+        );
         assert!(
             !style.contains('#') && !style.contains("rgba(") && !style.contains("rgb("),
             "{rel}: the Fullscreen button still carries a raw colour literal:\n{style}"

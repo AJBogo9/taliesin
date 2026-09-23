@@ -547,7 +547,7 @@ impl Site {
             // A draft chapter (preview only — a built book never contains one) is marked
             // in the drawer so it reads as unpublished.
             let draft_tag = if e.draft {
-                " <span class=\"tali-draft-badge\">draft</span>"
+                " <span class=\"tali-draft-badge\">Draft</span>"
             } else {
                 ""
             };
