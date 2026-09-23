@@ -192,12 +192,18 @@ use discovery::website_pages;
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
+/// The author's own not-found page: `404.tmd` at the project root, built to `404.html`,
+/// which a static host serves for every unknown path.
+fn is_not_found_page(page: &Page) -> bool {
+    page.url == "404.html"
+}
+
 mod links;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
-    join_rel, join_rel_in_root, manual_local_links, resolve_href, sourcepos_start_line,
-    tmd_to_html,
+    join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls,
+    sourcepos_start_line, tmd_to_html,
 };
 
 /// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
@@ -438,7 +444,7 @@ impl Site {
     /// the page is kept out of the Cmd-K search index (a 404 is navigation chrome, not
     /// content). When false the build emits [`render_404_page`](Self::render_404_page).
     pub fn has_author_404(&self) -> bool {
-        self.pages.iter().any(|p| p.url == "404.html")
+        self.pages.iter().any(is_not_found_page)
     }
 
     /// Look up a page by its source rel-path or its output URL (`serve` accepts
@@ -532,7 +538,13 @@ impl Site {
         } else {
             // A script subresource (search-index.js) loads under file:// too, so Cmd-K
             // works from disk with no dev server.
-            let up = "../".repeat(depth);
+            // The author's 404 is served at any depth, so it names the root absolutely
+            // (see `root_absolute_urls`, which does the same for its attributes).
+            let up = if is_not_found_page(page) {
+                "/".to_string()
+            } else {
+                "../".repeat(depth)
+            };
             format!(
                 "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\";\
                  window.TALIESIN_SEARCH_URL=\"{up}search-index.js\"",
@@ -625,7 +637,14 @@ impl Site {
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
-        (rewrite_tmd_links(&html), warnings)
+        let html = rewrite_tmd_links(&html);
+        // The host serves the author's 404 for any unknown path, at any depth, so its
+        // depth-relative URLs (assets, navbar, favicon, the author's own links) would
+        // resolve against the directory the reader mistyped.
+        if is_not_found_page(page) {
+            return (root_absolute_urls(&html), warnings);
+        }
+        (html, warnings)
     }
 
     /// Static `check` cross-page link validation: for every page, resolve each manual
@@ -2133,6 +2152,111 @@ pub(crate) mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&bare);
+    }
+
+    /// The host serves an author's `404.html` for ANY unknown path, at any depth, so every
+    /// URL in it must be root-absolute, as the generated 404's already are. Relative ones
+    /// resolve against the directory the reader mistyped: on the live blog on 2026-09-23,
+    /// `/a/b/zz` rendered without its stylesheet, with a navbar of dead links. Every other
+    /// page keeps its relative URLs, which the portable `file://` build depends on.
+    #[test]
+    fn author_404_links_everything_from_the_site_root() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-404-abs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("_site.yml"),
+            "title: Demo\nurl: https://example.com\nfavicon: icon.svg\nlogo: logo.svg\n\
+             nav:\n  left:\n  - text: Blog\n    href: blog.tmd\n\
+             footer:\n  right:\n  - { icon: rss, href: blog.xml }\n",
+        )
+        .unwrap();
+        fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(root.join("blog.tmd"), "---\ntitle: Blog\n---\n\nPosts.\n").unwrap();
+        fs::write(
+            root.join("404.tmd"),
+            "---\ntitle: Lost\n---\n\nTry the [blog](blog.tmd), [home](/), [top](#top) \
+             or [elsewhere](https://example.com/x).\n\n<img src=\"./lost.png\" alt=\"\">\n",
+        )
+        .unwrap();
+        let site = Site::discover(&root);
+        let ext = || render::ExternalAssets {
+            app_css: "_assets/app.1.css",
+            katex_css: "_assets/katex.2.css",
+            app_js: "_assets/app.3.js",
+            mermaid_js: "_assets/mermaid.4.js",
+            jslibs_js: "_assets/jslibs.5.js",
+            font_preload: "_assets/font.6.woff2",
+        };
+        // Rendered the way `build <dir>` renders each page.
+        let built = |rel: &str| {
+            let page = site.page(rel).expect("page");
+            let src = fs::read_to_string(&page.input).unwrap();
+            let doc = render::render_document_scoped_with_site(
+                &src,
+                &root,
+                site.chapter_for(page),
+                Some(&site.render_defaults()),
+            );
+            site.render_page_doc_external(page, doc, ext()).0
+        };
+        let urls = |html: &str| {
+            let mut out = Vec::new();
+            for t in render::tags(html) {
+                for a in render::attrs(&t) {
+                    if ["href", "src", "poster", "srcset"]
+                        .iter()
+                        .any(|n| a.name.eq_ignore_ascii_case(n))
+                    {
+                        out.push(a.value.to_string());
+                    }
+                }
+            }
+            out
+        };
+
+        let not_found = built("404.tmd");
+        let relative: Vec<String> = urls(&not_found)
+            .into_iter()
+            .filter(|v| !v.starts_with('/') && !links::is_external_or_special(v))
+            .collect();
+        assert!(
+            relative.is_empty(),
+            "relative URLs in 404.html: {relative:?}"
+        );
+        for expected in [
+            "/_assets/app.1.css",
+            "/_assets/app.3.js",
+            "/_assets/font.6.woff2",
+            "/icon.svg",
+            "/logo.svg",
+            "/blog.html",
+            "/blog.xml",
+            "/lost.png",
+            "#top",
+            "https://example.com/x",
+        ] {
+            assert!(
+                urls(&not_found).iter().any(|v| v == expected),
+                "404.html should carry {expected}: {:?}",
+                urls(&not_found)
+            );
+        }
+        // Cmd-K resolves a result against the site root it is handed, not an attribute.
+        assert!(
+            not_found.contains("window.TALIESIN_SITE_ROOT=\"/\"")
+                && not_found.contains("window.TALIESIN_SEARCH_URL=\"/search-index.js\""),
+            "the 404's search globals must be root-absolute"
+        );
+
+        // Any other page is untouched: still relative, so the build opens from disk.
+        let home = built("index.tmd");
+        assert!(urls(&home).iter().any(|v| v == "_assets/app.1.css"));
+        assert!(urls(&home).iter().any(|v| v == "blog.html"));
+        assert!(home.contains("window.TALIESIN_SITE_ROOT=\"\""));
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// A two-chapter book whose `methods` chapter cross-references a figure defined in

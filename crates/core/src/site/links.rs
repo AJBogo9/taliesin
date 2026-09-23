@@ -83,6 +83,47 @@ pub fn rewrite_tmd_links(html: &str) -> String {
     crate::render::rewrite_attr_in_tags(html, "href", rewrite_one_href)
 }
 
+/// Rewrite every relative URL in a finished page that lives at the SITE ROOT to its
+/// root-absolute form (`blog.html` → `/blog.html`). At the root the two name the same
+/// file; the difference is the page a host serves for an unknown nested path, where the
+/// browser resolves a relative URL against the directory the reader mistyped.
+///
+/// For the author's own `404.html` only ([`Site::render_page_doc_external`]): every other
+/// page keeps relative URLs, which the portable `file://` build depends on. It makes the
+/// same root-deploy assumption as the generated 404 ([`Site::not_found_doc`]).
+pub(super) fn root_absolute_urls(html: &str) -> String {
+    let mut html = html.to_string();
+    for name in ["href", "src", "poster"] {
+        html = crate::render::rewrite_attr_in_tags(&html, name, root_absolute);
+    }
+    // A candidate list (`a.avif 1x, b.avif 2x`). A data URI carries its own commas, so a
+    // srcset holding one is left as written rather than split through the middle of it.
+    crate::render::rewrite_attr_in_tags(&html, "srcset", |v| {
+        if v.contains("data:") {
+            return v.to_string();
+        }
+        v.split(',')
+            .map(
+                |candidate| match candidate.trim().split_once(char::is_whitespace) {
+                    Some((url, descriptor)) => {
+                        format!("{} {}", root_absolute(url), descriptor.trim())
+                    }
+                    None => root_absolute(candidate.trim()),
+                },
+            )
+            .collect::<Vec<_>>()
+            .join(", ")
+    })
+}
+
+fn root_absolute(v: &str) -> String {
+    if v.starts_with('/') || v.starts_with('?') || is_external_or_special(v) {
+        v.to_string()
+    } else {
+        format!("/{}", v.trim_start_matches("./"))
+    }
+}
+
 /// Whether a link value must be left untouched by the site rewriters: an in-page anchor
 /// (`#`), protocol-relative (`//`), absolute-scheme (`://`), or a non-http special scheme
 /// (`data:`/`mailto:`/`tel:`/`vscode:`). Shared by every URL rewriter in the site pipeline
@@ -347,6 +388,35 @@ mod tests {
         let out = rewrite_tmd_links(r##"<a href="secret.tmd?v=2">s</a>"##);
         assert!(out.contains("href=\"secret.html?v=2\""), "{out}");
         assert_eq!(resolve_href("blog.tmd?v=2", "../"), "../blog.html?v=2");
+    }
+
+    #[test]
+    fn root_absolute_urls_rewrites_relative_urls_and_nothing_else() {
+        let html = r##"<link href="_assets/a.css"><a href="./x.html">x</a><a href='b.html'>b</a>
+            <a href="/c.html">c</a><a href="#top">t</a><a href="?q=1">q</a>
+            <a href="https://e.com/d">d</a><a href="mailto:a@b.c">m</a>
+            <img src="data:image/png;base64,AAAA" srcset="data:image/png;base64,A,B 2x">
+            <source srcset="img/a.avif 1x, img/b.avif 2x"><video poster="p.png"></video>
+            <pre><code>&lt;a href="shown.html"&gt;</code></pre>"##;
+        let out = root_absolute_urls(html);
+        for want in [
+            r#"href="/_assets/a.css""#,
+            r#"href="/x.html""#,
+            "href='/b.html'",
+            r#"href="/c.html""#,
+            r##"href="#top""##,
+            r#"href="?q=1""#,
+            r#"href="https://e.com/d""#,
+            r#"href="mailto:a@b.c""#,
+            r#"src="data:image/png;base64,AAAA""#,
+            r#"srcset="data:image/png;base64,A,B 2x""#,
+            r#"srcset="/img/a.avif 1x, /img/b.avif 2x""#,
+            r#"poster="/p.png""#,
+            // A code sample that shows an href is text, not a link.
+            r#"&lt;a href="shown.html"&gt;"#,
+        ] {
+            assert!(out.contains(want), "missing {want} in {out}");
+        }
     }
 
     #[test]

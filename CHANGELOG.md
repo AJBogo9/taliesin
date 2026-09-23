@@ -8,6 +8,15 @@ and minor versions carried breaking changes; the 0.x entries below were written 
 
 ## [Unreleased]
 
+### Fixed
+
+- **An author's `404.tmd` now works at any depth.** A host serves `404.html` for every
+  unknown path, but the page was built with depth-relative URLs like any root page, so a
+  mistyped nested URL (`/a/b/zz` on the tech blog) resolved the stylesheet, script, font,
+  favicon, logo, navbar, footer and search against `/a/b/` and got a 404 for each. The
+  built page's URLs are now root-absolute, as the generated 404's already were. Every
+  other page keeps relative URLs, so a build still opens from disk.
+
 ### Changed
 
 - **A multi-page site build prefetches the page a reader is about to open.** Every page of a

@@ -484,4 +484,6 @@ Reserved names, all skipped by page discovery:
 | anything `.`-prefixed | hidden files/dirs (`.git`, …) are skipped too |
 
 A `404.tmd` is special-cased the other way: it builds to `404.html` at the site root
-(most static hosts serve it for unknown URLs) but stays out of the nav.
+(most static hosts serve it for unknown URLs) but stays out of the nav. Because a host
+serves that one file at any depth, every link, image and stylesheet in it is written from
+the site root (`/blog.html`), which assumes the site is deployed at the root of its domain.
