@@ -7,10 +7,10 @@ description: "The first hour with Taliesin, in steps that each end in something 
 
 Download the binary for your platform from
 [the releases page](https://github.com/AJBogo9/taliesin/releases), verify it against the
-`.sha256` published beside it, and put it on your `PATH`. Windows is not supported. That
-is the whole install: one self-contained binary with KaTeX, its fonts, the syntax
-definitions and every bundled script inside it, so nothing is fetched at runtime and
-there is nothing else to set up.
+`.sha256` published beside it, and put it on your `PATH`. Windows is not supported. The
+binary is self-contained, with KaTeX, its fonts, the syntax definitions and every
+bundled script inside it, so nothing is fetched at runtime and there is nothing else to
+set up.
 
 Taliesin also builds from source with a Rust toolchain, which is always supported:
 
@@ -20,7 +20,7 @@ cargo build --release
 
 A first build takes a couple of minutes and produces the same binary at
 `target/release/taliesin`. Put it on your `PATH` (a symlink, or a small wrapper
-script that rebuilds on source changes before running it) so you can just say
+script that rebuilds on source changes before running it) so you can run
 `taliesin preview …` from any directory. Every command below works either way:
 substitute `cargo run -p taliesin-server --` for `taliesin` if you'd rather not
 install it on `PATH`.
@@ -37,16 +37,16 @@ export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
 A document's `{python}` cells run against one warm kernel, reused across edits.
-Without a kernel, cells render as highlighted source and the preview shows a quiet
+Without a kernel, cells render as highlighted source and the preview shows a
 "kernel unavailable" note instead of failing, so you can start writing now and add
 a kernel later. Streaming output, caching and the silence cap are in
 [Executable content](code.tmd).
 
-`TALIESIN_PYTHON` is the only environment variable most projects ever set. Every
+`TALIESIN_PYTHON` is the only environment variable most projects set. Every
 other one the server reads is tabled in the [CLI reference](../reference/cli.tmd),
 and none is required to start; `taliesin help` prints the same list.
 
-## Scaffold a project (the fast path)
+## Scaffold a project
 
 The quickest way to a previewable project is `init`, which scaffolds one into a
 directory (the current one by default):
@@ -58,9 +58,9 @@ taliesin preview my-site     # live, immediately
 
 You get three files and nothing else: a minimal `_site.yml`, a hello-world `index.tmd`
 whose `listing:` collects `posts/`, and one dated post under `posts/my-first-post/`.
-Every larger shape is an edit to those, which the
-[CLI reference](../reference/cli.tmd) spells out. `init` refuses to overwrite: if any
-of them already exists it stops without touching anything.
+A larger project is an edit to those files, which the
+[CLI reference](../reference/cli.tmd) spells out. `init` never overwrites: if any of
+them already exists it stops without touching anything.
 
 ## Your first document
 
@@ -109,8 +109,8 @@ taliesin build hello.tmd                 # -> hello.html (one self-contained fil
 taliesin build hello.tmd --out dist      # -> dist/index.html + copied local assets
 ```
 
-Point `build`/`preview` at a **directory** instead and you get a whole
-multi-page site or book (see [Recipes](recipes.tmd)):
+Point `build`/`preview` at a directory instead and you get a multi-page site
+or book (see [Recipes](recipes.tmd)):
 
 ```sh
 taliesin build blog/         # -> blog/_site/  (one .html per page)
@@ -138,13 +138,13 @@ emitted unless you supply your own `404.tmd`. The full set of flags is in the
 
 ## Publish it
 
-Run `taliesin build <dir> --check-only` first, wherever you deploy from. A plain
-`build` writes the page and exits 0 even when a cross-reference resolves to nothing or
-an image is missing, by design; `--check-only` is the verb that turns those into a
-non-zero exit, and it writes nothing. The two-stage form is in the
+Run `taliesin build <dir> --check-only` first, wherever you deploy from. By design, a
+plain `build` writes the page and exits 0 even when a cross-reference resolves to
+nothing or an image is missing. `--check-only` turns those into a non-zero exit, and it
+writes nothing. The two-stage form is in the
 [CLI reference](../reference/cli.tmd).
 
-The output is **plain static HTML + assets** with no server runtime, so on any host
+The output is plain static HTML + assets with no server runtime, so on any host
 you control you upload the folder as-is. On **GitHub Pages**, build into `docs/` on
 your default branch or publish `_site/` as the Pages artifact. On a host that builds
 for you (**Netlify**, **Vercel**, **Cloudflare Pages**), install the binary in the

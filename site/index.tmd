@@ -1,10 +1,10 @@
 ---
 title: "Taliesin"
-description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns .tmd files into a live blog post, book, or website, with executable code and a preview that updates as you save."
 hero:
   eyebrow: "A dev server for technical writing"
   headline: "Taliesin"
-  lead: "One .tmd file becomes a live post, a book, or a website, and only the block you changed re-renders."
+  lead: "Your .tmd files become a live post, a book, or a website, and only the block you changed re-renders."
   actions:
     - { text: "Get started", href: "https://guide.taliesin.sh/using/getting-started.html", primary: true }
     - { text: "See it live", href: "showcase.tmd" }
@@ -90,8 +90,8 @@ cells and live interactive graphics.
 
 ::: {.feature}
 ### Multi-chapter books
-A sidebar, numbered chapters, cross-chapter references, and full-text search. These
-very docs are a Taliesin book.
+A sidebar, numbered chapters, cross-chapter references, and full-text search. The User
+Guide is a Taliesin book.
 
 [Read the docs book](https://guide.taliesin.sh/)
 :::
@@ -99,7 +99,7 @@ very docs are a Taliesin book.
 ::: {.feature}
 ### Multi-page websites
 Navbar, footer, OpenGraph, Cmd-K search, and opt-in post listings with an Atom feed per
-dated listing. This whole site is a Taliesin website, built by the same `build` you run.
+dated listing. This site is a Taliesin website, built by the same `build` you run.
 
 [Recipes for books and sites](https://guide.taliesin.sh/using/recipes.html)
 :::
@@ -108,11 +108,11 @@ dated listing. This whole site is a Taliesin website, built by the same `build` 
 ## Executed code
 
 A `{python}` cell runs against a warm kernel. Change a parameter and only
-that cell (and the figure it produced) re-renders. The rest of the page never
-moves, and the kernel never cold-starts.
+that cell (and the figure it produced) re-renders. The rest of the page does
+not move, and the kernel stays warm between saves.
 
-@fig-live is not a screenshot of that: it is the output of a cell in this page's own
-source, executed by the same `build` that wrote the HTML you are reading.
+@fig-live is the output of a cell in this page's source, executed by the same `build`
+that wrote the HTML you are reading.
 
 ```{python}
 #| label: fig-live
@@ -143,7 +143,7 @@ only place you edit.
 ### Works offline
 Fonts, KaTeX and its font files, syntax highlighting and the vendored plotting libraries
 are all compiled into the binary and written into the page. Taliesin itself never fetches
-anything at runtime, so a built page renders the same offline. Anything *you* `import()`
+anything at runtime, so a built page renders the same offline. Anything you `import()`
 from a `{js}` cell is your own network call, which is why the scene above says so when it
 cannot reach esm.sh.
 :::

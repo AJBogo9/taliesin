@@ -349,8 +349,8 @@ run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
 # ---------------------------------------------------------------------------
 # 11. The published census still reproduces.
 #
-# `README.md` and `docs/guide/using/choosing.tmd` open with "measured rather than asserted"
-# and then hand the reader the command: `python3 tools/portability-census.py`. That makes a
+# `README.md` ("Before you adopt it") and `docs/guide/using/choosing.tmd` publish the
+# figures and hand the reader the command: `python3 tools/portability-census.py`. That makes a
 # mismatch self-refuting rather than merely stale — the one claim in the read set where the
 # instrument is in the reader's hands.
 #

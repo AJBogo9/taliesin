@@ -1,32 +1,32 @@
 ---
-title: "Licensing: what you build is yours"
+title: "Licensing"
 description: "Taliesin is AGPL-3.0. The documents you build with it are not: the Output Exception grants you unrestricted rights over your own pages, with nothing to attribute."
 ---
 
 *Reference: [Cheat sheet](cheatsheet.tmd) · [CLI](cli.tmd) · [Configuration](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Troubleshooting](troubleshooting.tmd) · [Accessibility](accessibility.tmd) · Licensing*
 
 Taliesin is licensed under the **GNU Affero General Public License v3.0**. That governs
-*the program*, not the blog posts, lecture notes, papers and books you write with it.
-(What happens to your documents if the *program* stops being maintained is a different
+the program, not the blog posts, lecture notes, papers and books you write with it.
+(What happens to your documents if the program stops being maintained is a different
 question, answered with numbers in @sec-continuity.)
 
-## The question
+## AGPL source in built pages
 
-A built page is self-contained on purpose: no CDN, no build step for the reader, no
-network fetch at view time. Taliesin gets there by copying its own stylesheets and
-scripts **into the page it produces** (`base.css`, `tali-js.js`, the `code-enhance/`
-fragments, `mermaid.js` for a page with diagrams). So a page you build genuinely
-contains a copy of some of Taliesin's own AGPL-licensed source, which raises the
-question this page answers: does that make the page itself an AGPL work, obliging you
-to offer its source to your readers?
+A built page is self-contained: it needs no CDN or other network fetch at view time, and
+no build step for the reader. Taliesin does this by copying its own stylesheets and
+scripts into the page it produces (`base.css`, `tali-js.js`, the `code-enhance/`
+fragments, `mermaid.js` for a page with diagrams). A page you build therefore contains a
+copy of some of Taliesin's own AGPL-licensed source. That raises the question of whether
+the page itself is an AGPL work, obliging you to offer its source to your readers.
 
-## The answer
+## The Output Exception
 
-It is answered, in [`LICENSE-OUTPUT-EXCEPTION.md`](https://github.com/AJBogo9/taliesin/blob/main/LICENSE-OUTPUT-EXCEPTION.md)
-at the repository root: an **additional permission under AGPL section 7**, the same
-instrument GCC uses so that compiling a program with GCC does not make the program GPL.
+The Output Exception, [`LICENSE-OUTPUT-EXCEPTION.md`](https://github.com/AJBogo9/taliesin/blob/main/LICENSE-OUTPUT-EXCEPTION.md)
+at the repository root, answers that question. It is an **additional permission under
+AGPL section 7**, the same instrument GCC uses so that compiling a program with GCC does
+not make the program GPL.
 
-In short:
+Under the exception:
 
 - **Your document is yours.** Building or serving it with Taliesin does not make it, its
   source, or its contents an AGPL work.
@@ -40,18 +40,18 @@ You may publish, sell, host or relicense what you build, under any terms you cho
 
 ## What the AGPL still covers
 
-Taliesin itself. If you modify Taliesin and run *that* as a network service, you owe its
-users the corresponding source, which is the whole point of choosing the AGPL and the
-part the exception deliberately leaves intact. The runtime assets are AGPL **as source in
-the repository**; the exception speaks only to the copies that land in a built document.
+The AGPL covers Taliesin itself. If you modify Taliesin and run the modified version
+as a network service, you owe its users the corresponding source. That obligation is why
+Taliesin uses the AGPL, and the exception leaves it intact. The runtime assets are AGPL as
+source in the repository; the exception applies only to the copies that land in a built
+document.
 
-Vendored third-party assets (KaTeX, D3, Observable Plot, Mermaid) keep their own licences,
-all permissive, all imposing no copyleft obligation on your document. They are listed in
-`THIRD_PARTY.md` and `crates/core/assets/js/LICENSES.md`.
+Vendored third-party assets (KaTeX, D3, Observable Plot, Mermaid) keep their own licences.
+Those licences are permissive and impose no copyleft obligation on your document. They are
+listed in `THIRD_PARTY.md` and `crates/core/assets/js/LICENSES.md`.
 
 ::: {.callout-note}
-## The one-sentence version
+## Summary
 
-If you only wanted to know whether you can publish what you wrote: **yes**, under any terms
-you like, with nothing to attribute.
+You can publish what you wrote under any terms you like, with nothing to attribute.
 :::

@@ -1,19 +1,19 @@
 ---
 title: "Recipes"
-description: "Whole working projects to copy rather than fragments to assemble: front matter, config and layout for two kinds of document."
+description: "Complete working projects to copy: front matter, config and layout for two kinds of document."
 ---
 
 Two complete, copyable setups: a personal blog and a documentation book. Each one shows
-the directory layout, the config, and the key front matter, with notes on the parts
-that bite. Copy the closest one and edit it down; the
+the directory layout, the config, and the main front matter, with notes on the parts
+that are easy to get wrong. Copy the closest one and edit it down; the
 [configuration](../reference/frontmatter.tmd) and
 [cell options](../reference/cell-options.tmd) references have the full list of keys.
 
 ## Books, sites, and the difference
 
 Point either command at a directory and Taliesin builds a project instead of a single
-page. Which kind of project depends on one thing: whether that directory's `_site.yml`
-lists `chapters:`. If it does, the directory is a **book**, no `type:` key needed; if it
+page. The kind of project depends only on whether that directory's `_site.yml` lists
+`chapters:`. If it does, the directory is a **book**, no `type:` key needed; if it
 doesn't, it's a website whose pages you compose from front matter, the shape recipe 1
 below shows.
 
@@ -116,15 +116,15 @@ categories: [machine learning, statistics]
 ```
 
 ::: {.callout-note}
-Newest first is the only order, and there is nothing to configure. A post with no `date:`
-still appears, but undated posts cluster at the end and ties break on file path, so date
-every post whose order matters.
+Listings always sort newest first, and no setting changes the order. A post with no
+`date:` still appears, but undated posts cluster at the end and ties break on file path,
+so date every post whose order matters.
 :::
 
 ## 2. A documentation book
 
 > Numbered chapters grouped into a part, a Chapters drawer, and Cmd-K search, all
-> from one `chapters:` list.
+> generated from the `chapters:` list.
 
 ```text
 handbook/
@@ -155,8 +155,8 @@ chapters:
   - reference.tmd
 ```
 
-The Chapters drawer is a book's whole navigation, so a chapter's own `toc:` is simply
-ignored: it is a page key, and it is not a `_site.yml` key at all. The Cmd-K (Ctrl-K)
+The Chapters drawer is a book's whole navigation, so a chapter's own `toc:` is
+ignored: it is a page key, and it is not a `_site.yml` key. The Cmd-K (Ctrl-K)
 search palette indexes every chapter, and the book output directory defaults to
 `_book/` instead of `_site/`. The chapter pages themselves need no special front
 matter; a plain `title:` is enough:

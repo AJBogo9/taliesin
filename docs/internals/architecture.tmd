@@ -1,12 +1,12 @@
 ---
 title: "Architecture"
-description: "The logical map: how a save flows from the file watcher to a repainted block in a few milliseconds, and where each crate sits."
+description: "How a save flows from the file watcher to a repainted block in a few milliseconds, and where each crate sits."
 ---
 
-Saving `post.tmd` updates the browser in a few milliseconds: no reload, no lost
-scroll, no cold start. That is possible because of one decision, drawn in
-@fig-architecture: **all of the intelligence lives in the Rust core behind a stable
-websocket protocol, and the browser preview is a thin client.**
+Saving `post.tmd` updates the browser in a few milliseconds, with no page reload and
+no cold start, and the scroll position holds. That works because all of the
+intelligence lives in the Rust core behind a stable websocket protocol, and the
+browser preview is a thin client (@fig-architecture).
 
 ```{mermaid}
 %%| label: fig-architecture
@@ -36,27 +36,24 @@ flowchart LR
 | Server | `crates/server` | Websocket dev server, file watcher, Jupyter kernel pool |
 | Web client | `web-client/` | Browser preview client (vanilla JS) |
 
-The protocol is open, so an embedded editor client is a new thin client, not a rewrite:
-the in-repo VS Code companion (covered in [extending Taliesin](extending.tmd)) is exactly
-that.
+The protocol is open, so an embedded editor client is one more thin client and needs no
+rewrite. The in-repo VS Code companion (covered in [extending Taliesin](extending.tmd))
+is such a client.
 
 ## How a save flows
 
-Change `tau` from 10 to 12 in `post.tmd` and save. Only the **changed** blocks reach
+Change `tau` from 10 to 12 in `post.tmd` and save. Only the changed blocks reach
 the preview: the heading and the paragraph stay put, and only the plot the cell
 redraws crosses the wire.
 
-The order matters, and it is easy to get wrong: a save is **re-render, then
-execute, then diff**, not re-render then diff. The server re-runs the render
-pipeline (`render/`) to get a fresh block list, then hands that list to the
-executor (`exec.rs`), which runs the changed code cells (plus everything
-downstream) and **splices each cell's output back into the list as a derived
-output block**. Only then does `diff.rs` compare the resulting list against the
-live one. Execution sits squarely *between* render and diff: the diff never sees
-the bare render output, it sees the render output *after* outputs have been
-spliced in. (`{js}` cells are the exception: they run in the browser, never
-through `exec.rs`, so a `{js}` block crosses the wire as-is. See
-[Interactive cells](rendering.tmd).)
+The order is easy to get wrong: a save is re-render, then execute, then diff, not
+re-render then diff. The server re-runs the render pipeline (`render/`) to get a
+fresh block list, then hands that list to the executor (`exec.rs`), which runs the
+changed code cells (plus everything downstream) and splices each cell's output back
+into the list as a derived output block. Only then does `diff.rs` compare the
+resulting list against the live one, so the diff never sees the bare render output.
+(`{js}` cells are the exception: they run in the browser, never through `exec.rs`, so
+a `{js}` block crosses the wire as-is. See [Interactive cells](rendering.tmd).)
 
 The same save as an interaction over time, module by module, is @fig-save-seq:
 
@@ -87,7 +84,7 @@ step, not a render loop: the block list `diff.rs` finally sees is the post-execu
 
 One server handles a project and a single document alike (a document resolves to
 the project it belongs to, or becomes a project of itself): navigation between
-pages is an ordinary full page load (no SPA), and warm kernels are **pooled**.
+pages is an ordinary full page load (no SPA), and warm kernels are pooled.
 `serve_site/exec_pool.rs` keeps the six most-recently-built pages' executors alive
 (`MAX_WARM_PAGES`) in a deterministic LRU and drops the rest, so revisiting a recent
 chapter reuses its kernel while an unbounded map cannot grow one 80 to 150 MB kernel
@@ -96,10 +93,6 @@ else. The multi-page subsystem (page discovery, chrome, cross-page references) l
 a layer up, in `crates/core/src/site/`, whose `mod.rs` header is the entry point to
 read.
 
-Three parts of that pipeline are worth a closer look: the watcher that starts it,
-the isolation that keeps one bad build from taking down the session, and the guards
-that keep the whole thing reachable only from this machine.
-
 ### The watcher
 
 `spawn_watcher` runs `notify` on its own thread (notify is synchronous) and watches the
@@ -107,16 +100,16 @@ project's directory. Events are pumped through a channel so that thread
 owns the watcher and can register watches for directories created after startup: the
 recursive-watch model added an inotify descriptor per directory, including
 `node_modules` and `.git`, which a large project uses to exhaust `max_user_watches` and
-kill hot reload outright.
+kill hot reload.
 
-Skipping `_freeze` matters: the executor writes its own cache there on every run, and
+The watcher skips `_freeze`: the executor writes its own cache there on every run, and
 without the skip each write would kick a redundant rebuild. The skip list is matched
-against the path *relative to the project root*, never the whole path: the watcher deals
-in absolute event paths, and a project can perfectly well live under a directory someone
-else called `_site` or `.git`. Scanning the whole path vetoed every event in such a
-project, which is hot reload dead, silently, with each page still serving 200. Unrelated
-saves (an editor swap file, a build-output write) are filtered out, and a burst of
-saves is debounced.
+against the path relative to the project root, never the whole path: the watcher deals
+in absolute event paths, and a project can live under a directory someone else called
+`_site` or `.git`. Scanning the whole path vetoed every event in such a project, which
+stopped hot reload silently while each page still served 200. Unrelated saves (an
+editor swap file, a build-output write) are filtered out, and a burst of saves is
+debounced.
 
 ### Panic isolation
 
@@ -135,14 +128,13 @@ held releases it cleanly rather than poisoning it.
 ## Binding, and the two guards
 
 The server binds `127.0.0.1` and nothing else: there is no flag that puts it on a
-network. That is the whole exposure story, and it is why the two guards in
-`serve/security.rs` are both about a *local* peer rather than a remote one.
+network. That is why the two guards in `serve/security.rs` are both about a local
+peer rather than a remote one.
 
 `ws_origin_ok` gates the websocket upgrade on `Origin` against `Host`. A page on
 another site must not be able to open the control channel and send `restart_kernel`,
-which would destroy the warm kernel this whole design exists to keep. A loopback
-`Origin` is trusted (a second dev server, the editor companion); anything else that is
-not same-origin gets a `403`.
+which would destroy the warm kernel. A loopback `Origin` is trusted (a second dev
+server, the editor companion); anything else that is not same-origin gets a `403`.
 
 `with_host_guard` applies `host_allowed` to every HTTP response: the `Host` header
 must name a loopback address. This is the DNS-rebinding defence, and it cannot be
@@ -155,8 +147,8 @@ the preview.
 
 ## The codebase map
 
-The dependency shape first, who leans on whom (@fig-modules): the server orchestrates
-and owns the runtime, the core does all the rendering and never touches the network, and
+@fig-modules shows the dependencies between modules: the server orchestrates and owns
+the runtime, the core does all the rendering and never touches the network, and
 the browser client only mounts blocks and applies ops.
 
 ```{mermaid}
@@ -251,9 +243,8 @@ classDiagram
   Block ..> BlockOp : diff emits
 ```
 
-The file-by-file detail is not restated here, because a table of module
-responsibilities is a second copy of something each file's own header already says,
-and a second copy is what goes stale. Start at `crates/core/src/render/mod.rs` for
-the pipeline, `crates/core/src/site/mod.rs` for multi-page projects, and
-`crates/server/src/serve_site/mod.rs` for the dev server. Each opens with a header
-describing what it owns.
+The file-by-file detail is not restated here: each file's own header already states
+it, and a table of module responsibilities would be a second copy that goes stale.
+Start at `crates/core/src/render/mod.rs` for the pipeline, `crates/core/src/site/mod.rs`
+for multi-page projects, and `crates/server/src/serve_site/mod.rs` for the dev server.
+Each opens with a header describing what it owns.

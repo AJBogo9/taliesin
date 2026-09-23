@@ -1,19 +1,18 @@
 ---
 title: "Extending Taliesin"
-description: "Where a new feature belongs, which two seams are meant to be extended, and what a lean core deliberately rules out."
+description: "Where a new feature belongs, the one seam meant to be extended, what an editor gets from the language server, and how a refactor is checked."
 ---
 
-This chapter is for a reader checking whether the design holds together: the
-conventions the code follows, the two seams meant to be extended without touching
-the core, how an editor gets its intelligence, and how a refactor is checked for
-byte-identical output.
+This chapter covers the conventions the code follows, the one seam meant to be
+extended without touching the core, how an editor gets its intelligence, and how a
+refactor is checked for byte-identical output.
 
 ## The guiding principle: a lean core
 
-The core stays small and predictable; power lives at the edges. Before adding to
-the core, ask whether it can be a **client enhancer** instead. Server-side transforms
-(parsing, the block model, the diff) belong in the core; presentation and optional
-behaviour should ride the extension point below.
+The core stays small and predictable. Before adding to the core, ask whether it can
+be a **client enhancer** instead. Server-side transforms (parsing, the block model,
+the diff) belong in the core; presentation and optional behaviour should use the
+extension point below.
 
 ## Conventions
 
@@ -23,9 +22,9 @@ behaviour should ride the extension point below.
   directory module: a `mod.rs` plus focused submodules that reach shared items via
   `use super::*` and expose what the parent needs as `pub(super)`. `render/` and
   `site/` are split this way.
-- **The block contract is load-bearing.** Anything you emit must keep
-  `data-block-id` (content hash) + `data-sourcepos` (and `data-source-file` for
-  includes). Source mapping, the diff, and live-state preservation all key off it.
+- **The block contract.** Anything you emit must keep `data-block-id` (content
+  hash) + `data-sourcepos` (and `data-source-file` for includes). Source mapping, the
+  diff, and live-state preservation all key off it.
 - **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
   `.rs`, and `.githooks/pre-push` gates any push that includes `main` on
   `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
@@ -33,50 +32,48 @@ behaviour should ride the extension point below.
   `tools/publish.sh --check`. That hook is the only gate that runs
   automatically today, and it does not exist in a fresh clone. Run
   `./tools/gates.sh` for the rest: `cargo audit`, `cargo deny check`, the `tsc`
-  type-checks and the live-kernel suite, because those *skip silently* without
-  their interpreter and the script refuses to report success unless each one really
-  ran.
+  type-checks and the live-kernel suite, because those skip silently without their
+  interpreter and the script reports success only if each one ran.
 
 ## The one extension point
 
-There is exactly one seam that lets you add behaviour without editing the core, and being
-honest about that is the point of this section.
+Only one seam lets you add behaviour without editing the core.
 
-**Shortcodes are not it.** `{{< name args >}}` invocations expand to inline HTML at
-pipeline stage 2 (`render/extension/`), but `SHORTCODE_NAMES` is a closed vocabulary of
-two: `{{< input … >}}`, the reactive control that feeds the `{js}` graph, and
-`{{< include >}}`, which an earlier pass resolves. Any other name is left verbatim with a
-warning, so a typo is visible rather than shipped as literal text. Adding a third means
-editing the core, which is the opposite of an extension point.
+**Shortcodes are not an extension point.** `{{< name args >}}` invocations expand to
+inline HTML at pipeline stage 2 (`render/extension/`), but `SHORTCODE_NAMES` is a closed
+vocabulary of two: `{{< input … >}}`, the reactive control that feeds the `{js}` graph,
+and `{{< include >}}`, which an earlier pass resolves. Any other name is left verbatim
+with a warning, so a typo draws a warning instead of shipping unnoticed. Adding a third
+means editing the core.
 
-**Client enhancers are** (`window.taliEnhancers`, in `code-enhance/`). Your JS registers
-`fn(root)` that runs after every (re)mount; load it with a `<script defer src>` written
-as raw HTML in the page. The built-in copy buttons and `mermaid.js` use this same public
-API, so a third-party enhancer is indistinguishable from core's.
+**Client enhancers are the extension point** (`window.taliEnhancers`, in
+`code-enhance/`). Your JS registers `fn(root)` that runs after every (re)mount; load it
+with a `<script defer src>` written as raw HTML in the page. The built-in copy buttons
+and `mermaid.js` use this same public API, so a third-party enhancer is
+indistinguishable from core's.
 
 ### The client enhancer contract
 
 An **enhancer** is a `function(root)` that decorates freshly-mounted DOM. It is the only
-sanctioned way to add client-side behaviour, and the contract is small enough to state in
-full:
+sanctioned way to add client-side behaviour. Its full contract:
 
 - **Register** with `window.taliEnhancers.register(fn)`. `fn` receives a `root` element
   (the just-mounted subtree, or `document` for a whole-page run); scope your queries to
   it (`root.querySelectorAll(...)`), not to `document`, so an incremental update only
   re-decorates the block that changed.
-- **When it runs.** The same `fn` fires on three occasions: once on the **initial full
-  render** (`DOMContentLoaded` in a static build, the `full_render` snapshot in the live
-  preview), again **after every incremental block op** (the client calls
+- **When it runs.** The same `fn` fires on three occasions: once on the initial full
+  render (`DOMContentLoaded` in a static build, the `full_render` snapshot in the live
+  preview), again after every incremental block op (the client calls
   `taliEnhancers.run(root)` on the swapped-in DOM, so a re-rendered block is enhanced just
-  like a fresh one), and **immediately on registration** if the page is already mounted
-  (the case when a deferred script loads after the first mount).
+  like a fresh one), and immediately on registration if the page is already mounted (the
+  case when a deferred script loads after the first mount).
 - **Idempotency is mandatory.** Because the same `fn` re-runs on every change, it must do
   nothing the second time it sees a node. The convention is a marker `data-` attribute:
   check for it, bail if present, set it once you've decorated. An enhancer that appends a
   button without this guard will stack a new button on every keystroke.
 - **Failures are contained.** Each enhancer runs inside a `try/catch`; a throw is logged
   to the console (`[taliesin] enhancer failed`) and the other enhancers still run. An enhancer
-  bug degrades one decoration, it does not blank the page.
+  bug degrades one decoration and leaves the page rendered.
 
 A minimal, idempotent enhancer that adds a "Run" affordance to every `pre.shell` block:
 
@@ -141,4 +138,4 @@ taliesin build corpus/tech-blog --out /tmp/after/site    # on the new tree
 diff -rq /tmp/before /tmp/after                          # must be empty
 ```
 
-That, plus the test suite, is what makes the larger module splits safe.
+This diff and the test suite are what make the larger module splits safe.

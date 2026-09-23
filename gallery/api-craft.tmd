@@ -12,10 +12,9 @@ definitions where the reader meets them, and cross-references the build checks.
 
 ## Reading a query line by line {#sec-craft-reading}
 
-The best thing a page can do early is walk one real example slowly. Here is a whole
-query: load a CSV of sales rows, keep the recent ones, total revenue by region. It is
-four lines, and every line is lazy until the last. Install Tarn first if you have not
-(@sec-craft-install).
+Early on, a page should walk one real example slowly. Here is a whole query: load a CSV
+of sales rows, keep the recent ones, total revenue by region. It is four lines, and every
+line is lazy until the last. Install Tarn first if you have not (@sec-craft-install).
 
 ```python
 frame  = tarn.read_csv("sales.csv")                # a lazy Frame, nothing read yet
@@ -38,9 +37,8 @@ plan.
 Tarn reads only the `year`, `region`, and `revenue` columns and applies the filter as it
 scans, which is why laziness pays off.
 
-You do not need Python for a one-off, and the page says so where the question comes up
-rather than three pages later. The CLI reads the same query language and prints the same
-table:
+You do not need Python for a one-off, and the page says so here, where the question comes
+up. The CLI reads the same query language and prints the same table:
 
 ```bash
 tarn query sales.csv \
@@ -90,7 +88,7 @@ scoop install tarn                             # Windows
 
 A reference entry is a different genre from a walkthrough: a signature, one paragraph,
 the parameters, the return value, and the version history in the same place, where a
-reader still on an older release will actually see it.
+reader still on an older release will see it.
 
 ### `Frame.filter` {#fn-craft-filter}
 
@@ -116,8 +114,8 @@ takes the same predicate and reads the same way.
 
 ## Glossary {#sec-craft-glossary}
 
-Six words the rest of the documentation leans on, defined where a reader meets them
-instead of in a separate document they would have to go and find.
+The rest of the documentation relies on these six terms. They are defined where a reader
+meets them instead of in a separate document they would have to go and find.
 
 **Collect**: run a plan and materialise its result. The only operation that reads data;
 everything else builds a plan.
@@ -140,7 +138,7 @@ that less data is read.
 Everything above is plain `.tmd` source. The walkthrough in @sec-craft-reading is one
 fenced code block, highlighted while the page was built, followed by ordinary paragraphs;
 the callouts are fenced divs that name their kind, so a version note and a deprecation
-warning do not read alike; the definitions in @sec-craft-glossary sit in the prose. And
-the two references in this sentence are checked: each resolves to the section it names,
-and renaming either heading fails the pre-publish check instead of shipping a link that
-goes nowhere.
+warning do not read alike; the definitions in @sec-craft-glossary sit in the prose. The
+two references in this paragraph are checked: each resolves to the section it names by
+its id, and changing or removing either id fails the pre-publish check instead of
+shipping a link that goes nowhere.

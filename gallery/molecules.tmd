@@ -6,9 +6,10 @@ image-alt: "A ball-and-stick buckyball molecule rendered in 3D."
 toc: false
 ---
 
-Ball-and-stick, CPK-colored, real 3D coordinates. Pick a molecule, drag to spin,
-scroll to zoom, ⛶ for fullscreen. Every atom and bond is a three.js mesh built by
-the `{js}` cell below.
+The molecules are CPK-colored ball-and-stick models. Caffeine uses PubChem's 3D
+conformer; water, benzene and the buckyball are built from their ideal geometry, and
+the DNA helix is a schematic. Pick a molecule, drag to spin, scroll to zoom, ⛶ for
+fullscreen. Every atom and bond is a three.js mesh built by the `{js}` cell below.
 
 {{< include _includes/three-scene.tmd >}}
 

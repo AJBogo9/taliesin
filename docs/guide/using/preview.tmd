@@ -3,42 +3,42 @@ title: "The live preview loop"
 description: "What survives a save (scroll position, kernel state, a running canvas) and how Ctrl-click jumps from the page back to the line that made it."
 ---
 
-The reason Taliesin exists is the edit loop: change the source, and the preview
-reflects it *immediately*, without reloading the page, losing your scroll, or
+Taliesin is built around the edit loop: change the source, and the preview
+reflects it immediately, without reloading the page, losing your scroll, or
 resetting any live content already on screen. See @sec-speed for what
 "immediately" is in milliseconds.
 
 ## Incremental updates
 
 On every save the server re-parses the document, diffs the new block list against
-the old one by content-hash id, and pushes **only the blocks that changed** over a
+the old one by content-hash id, and pushes only the blocks that changed over a
 websocket. An unchanged block is never touched, so:
 
 - your scroll position is preserved,
 - a running `{js}` cell or Three.js canvas keeps its state,
 - the page never flashes white.
 
-The block you just edited **pulses** briefly when it re-renders, so your eye (or
-your phone) lands on the change.
+The block you just edited pulses briefly when it re-renders, so you can find the
+change at a glance.
 
 ## Click-to-source and editor sync
 
-In the browser preview, a plain click browses normally; **Ctrl-click (Cmd-click
-on Mac) any block to open its exact source line in your editor** (including across
+In the browser preview, a plain click browses normally; Ctrl-click (Cmd-click
+on Mac) any block to open its exact source line in your editor (including across
 `{{< include >}}`d files) via a `vscode://` deep link. The client also speaks a
 `tali-goto` / `tali-cursor` `postMessage` protocol, so an editor can host the preview and
 add cursor sync without forking anything. The in-repo **VS Code companion**
-(`editor/vscode/`) is exactly that host.
+(`editor/vscode/`) is that host.
 
 ::: {.callout-note}
 ## Click-to-source is VS Code only
 
 The deep link is `vscode://` and there is no configuration key for it, so Ctrl-click does
 nothing in Neovim, Helix or Zed. Those editors get everything `taliesin lsp` serves and the
-live preview itself; it is the jump from the page back to the editor that has one target.
+live preview itself. Only the jump from the page back to the editor is limited to VS Code.
 :::
 
-**Getting the companion.** It is **not on the VS Code Marketplace**; you build the `.vsix`
+**Getting the companion.** It is not on the VS Code Marketplace; you build the `.vsix`
 from this repository and install it yourself:
 
 ```sh
@@ -57,11 +57,11 @@ already have, moved to that chapter. Moving your cursor into another chapter's f
 the preview to it too, and Ctrl-clicking a block resolves against the page you are looking
 at, not the one you opened.
 
-The other direction, editor to preview, is split. Moving your cursor *marks* the matching
-block in the preview and deliberately does **not** move the page, so scrolling somewhere to
-compare two figures survives your next keystroke. When you do want the preview to come to
-you, press **`Ctrl+Alt+J`** (**Taliesin: Reveal Cursor in Preview**), which scrolls it
-there and leaves the keyboard focus in your editor.
+The other direction, editor to preview, is split. Moving your cursor marks the matching
+block in the preview but does not move the page, so scrolling somewhere to compare two
+figures survives your next keystroke. When you do want the preview to come to you, press
+**`Ctrl+Alt+J`** (**Taliesin: Reveal Cursor in Preview**), which scrolls it there and
+leaves the keyboard focus in your editor.
 
 ::: {.callout-tip}
 ## Reuse the editor tab instead of opening a new one
@@ -88,28 +88,27 @@ in the tab you already have, add `"workbench.editor.revealIfOpen": true` to your
 ### What the document's structure gets you
 
 Neither of these needs a preview window open, and neither is specific to VS Code: they
-are the protocol, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or Zed too.
+are LSP features, so `cmd = { "taliesin", "lsp" }` gets them in Neovim, Helix or Zed too.
 
 - **Folding** follows the document's own structure instead of indentation. Front matter,
   each heading down to the next of equal or shallower level, `:::` divs and code fences
   each fold as a unit, so you can collapse a chapter to its headings.
 - **Go to definition crosses files.** `F12` on `@sec-priors` jumps to the chapter that
-  defines it, not just to a definition in the file you are in. Your **open buffer still
-  wins**: an anchor you just typed and have not saved resolves to where you typed it, never
-  to the older copy on disk. Hovering a cross-chapter reference names the page that defines
-  it, since the *number* belongs to that page and is not known here.
+  defines it, whichever file that is. Your open buffer takes precedence: an anchor you
+  just typed and have not saved resolves to where you typed it, never to the older copy
+  on disk. Hovering a cross-chapter reference names the page that defines it, since the
+  *number* belongs to that page and is not known here.
 
 ### Checking the pages you have not opened
 
-The squiggles cannot do this one for you: the language server only sees files you have
-opened, so a chapter you have not touched all week is invisible to it. Run the project
-lint in the terminal instead:
+The language server only sees files you have opened, so the squiggles miss every other
+page. Run the project lint in the terminal instead:
 
 ```sh
 taliesin build . --check-only
 ```
 
-Every located line it prints is **clickable** in VS Code's integrated terminal, straight to
+Every located line it prints is clickable in VS Code's integrated terminal, straight to
 the file and line, whether or not that page has ever been open.
 
 ## The dev menu
@@ -137,14 +136,14 @@ Click it to expand a panel with the preview-only tools:
 
 ## Live-edit feedback
 
-The loop surfaces what is happening without you watching the terminal:
+The preview reports what is happening, so you do not have to watch the terminal:
 
 - A non-fatal problem (a broken `{{< include >}}`, a missing kernel, a typo'd
-  extension, a **broken `[@citation]` or `@cross-reference`**) appears in the dev
+  extension, a broken `[@citation]` or `@cross-reference`) appears in the dev
   menu's **diagnostics** list.
-- A **broken front matter** points right at the bad line: the diagnostic shows a
-  small code frame and is clickable to open that line in your editor.
-- A *failed* render throws a prominent, dismissible **error overlay** over the
+- A broken front matter points at the bad line: the diagnostic shows a small
+  code frame and is clickable to open that line in your editor.
+- A failed render throws a prominent, dismissible **error overlay** over the
   last good content, so a broken save is impossible to miss. It clears on the
   next successful render.
 - The watcher follows the whole document, not just the served file: editing an
@@ -157,7 +156,7 @@ canvases scroll within their own box instead of stretching the page, motion hono
 `prefers-reduced-motion`, and on a phone the table of contents leaves the sticky
 sidebar and appears inline after the article.
 
-The preview binds to **loopback only**, so it is reachable from the machine running
+The preview binds to loopback only, so it is reachable from the machine running
 it and nowhere else. To read a draft on a phone, `build` it and serve the folder from
 somewhere both devices can see.
 

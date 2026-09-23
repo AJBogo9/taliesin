@@ -4,10 +4,10 @@ description: "Documents a reader can operate: reactive js cells, inputs without 
 ---
 
 Taliesin runs `{js}` cells in the browser and wires them into a small reactive
-graph. On top of that graph sits one declarative convenience, inputs. Everything
-here is client-side and offline, built from the same block model as the rest of
-the page, and the preview stays read-only: a reader interacts with the output,
-never the source.
+graph. Inputs are the only declarative convenience on top of that graph.
+Everything here is client-side and offline, built from the same block model as
+the rest of the page. The preview stays read-only: a reader interacts with the
+output, never the source.
 
 The fenced examples below are source listings; the `{{< input >}}` section runs live
 on this page.
@@ -54,13 +54,13 @@ returns a DOM node (mounted for you) or builds into `tali.container`.
 ::: {.callout-warning}
 ## Gate teardown on `invalidation`, never on DOM attachment
 
-The node a cell returns is mounted **after** the cell body finishes, so a guard like
+The node a cell returns is mounted after the cell body finishes, so a guard like
 `if (!node.isConnected) return;` inside the body always fires and the cell never paints.
 An init gated on `offsetWidth` or `getBoundingClientRect()` is the same mistake.
-`invalidation` is the signal that works: it is a promise resolving when the cell is
-about to re-run or leave the page, whether or not the node ever reached the DOM, so it
-is where you cancel animation frames and dispose GPU resources. If you genuinely need
-post-mount measurements, take them inside a `requestAnimationFrame` callback.
+Use `invalidation` instead: it is a promise resolving when the cell is about to
+re-run or leave the page, whether or not the node ever reached the DOM, so it is where
+you cancel animation frames and dispose GPU resources. If you need post-mount
+measurements, take them inside a `requestAnimationFrame` callback.
 :::
 
 A `viewof` input doesn't need to flow through a `//| name` cell first: a consumer can
@@ -92,14 +92,14 @@ control-building code. Five of them are ordinary form fields:
 | `label=` | no | the `name` | The visible label text. |
 | `value=` | no | (none) | The initial value. A `checkbox` is pre-checked only when `value` is the literal `true`; a `select`'s value must exactly string-match one of the `options` to pre-select it. |
 | `min=` `max=` `step=` | no | (none) | Numeric bounds for `slider` and `number`. |
-| `options=` | for `select` | (none) | A comma-separated option list. **Required** for `type="select"`; omitting it warns. |
+| `options=` | for `select` | (none) | A comma-separated option list. Required for `type="select"`; omitting it warns. |
 
 `tali.value()` returns a number for `slider` and `number`, a boolean for
-`checkbox`, and a string for `text` and `select`. A consuming cell is then just a
+`checkbox`, and a string for `text` and `select`. A consuming cell is then a
 `{js}` cell with `//| input: k` that reads `tali.value("k")`.
 
-A **`slider`** renders as HTML's `<input type="range">` with a live `<output>` readout
-that updates as you drag, so the reader always sees the current value beside the track.
+A `slider` renders as HTML's `<input type="range">` with a live `<output>` readout
+that updates as you drag and sits beside the track.
 `number` shares its numeric `min`/`max`/`step`/`value` attributes but renders as a spinner
 with no readout.
 
@@ -118,23 +118,23 @@ return Plot.lineY(ys, {curve: "basis"})
 
 ## Interactive 3-D with a `{js}` cell
 
-Any node a cell returns is mounted, and that node can be a WebGL canvas, so a full
-interactive 3-D scene is just a cell that imports a 3-D library and returns its
-renderer's canvas. Three things to get right: construct the renderer with
-`alpha: true`, or its clear colour paints an opaque slab over the page in one theme or
-the other; cancel animation frames and dispose GPU resources on `invalidation`; and
-note that a library fetched over the network (three.js from a CDN, say) is your own
-trade against the offline default, so such a page needs `http(s)`, not `file://`.
+Any node a cell returns is mounted, and that node can be a WebGL canvas, so an
+interactive 3-D scene is a cell that imports a 3-D library and returns its renderer's
+canvas. Construct the renderer with `alpha: true`, or its clear colour paints an
+opaque slab over the page in one theme or the other. Cancel animation frames and
+dispose GPU resources on `invalidation`. If you fetch the library over the network
+(three.js from a CDN, say), you give up the offline default, so the page needs
+`http(s)`, not `file://`.
 
 ## The Python → JS bridge
 
-`define()` in a Python cell hands values to `{js}` cells, so you can **compute
-in Python and render reactively in the browser**. Its signature is keyword-only,
+`define()` in a Python cell hands values to `{js}` cells, so you can compute
+in Python and render reactively in the browser. Its signature is keyword-only,
 `define(name=value, ...)`: each keyword becomes a published name, and each
 value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
 cell then reads the value as `tali.defines.NAME` (or `tali.value("NAME")`, which
 falls back to defines when no live input owns that name). In live preview the
-Python cell executes *after* the page loads, so its values arrive a moment after
+Python cell executes after the page loads, so its values arrive a moment after
 the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
 (and rebinds when a Python input changes), so the cell recomputes in place without
 a reload. Guard against the value not having arrived yet with an early `return`.

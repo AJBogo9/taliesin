@@ -11,16 +11,16 @@ canvas two sections down keeps spinning, the Jupyter kernel stays warm. This boo
 explains how.
 
 The companion [User Guide](https://guide.taliesin.sh/) is about *using* Taliesin; this one is about
-*how it is built*, for contributors, for anyone extending it, and for the curious
-reader who would rather see the design decisions than take them on faith.
+*how it is built*, for contributors, for anyone extending it, and for readers who
+want the reasoning behind its design decisions.
 
 ## A Rust core with thin clients
 
-**All of the intelligence lives in a Rust core, and every client is thin.** The core parses a
+All of the intelligence lives in a Rust core, and every client is thin. The core parses a
 `.tmd` into a block model, renders each block to HTML, and speaks a small, stable
 websocket protocol. The browser preview, the `build` command, and the VS Code companion
-extension are all just consumers of that protocol; the next client is a new consumer, not
-a rewrite.
+extension are all consumers of that protocol, so a new client can be added without a
+rewrite.
 
 The rest of this book explains what follows from that design:
 
@@ -50,16 +50,15 @@ plt.show()
 ```
 ````
 
-Three blocks: a heading, a paragraph with a line of math, and a Python cell that
-draws a cooling curve. It is barely a document, yet it touches every part of the
-system, prose and a heading to render, math to typeset, code to highlight and to
-*run*, and an output to splice back in. Across the book we watch it become blocks,
-get diffed, cached, and pushed to the browser. When a chapter needs a concrete
-edit, we turn one knob: the cooling constant `tau`, from 10 to 12.
+`post.tmd` has three blocks: a heading, a paragraph with a line of math, and a Python
+cell that draws a cooling curve. It touches every part of the system: prose and a
+heading to render, math to typeset, code to highlight and to run, and an output to
+splice back in. Across the book we watch it become blocks, get diffed, cached, and
+pushed to the browser. When a chapter needs a concrete edit, we change the cooling
+constant `tau` from 10 to 12.
 
-And because this book is itself built with Taliesin, that cell is not a screenshot:
-@fig-cooling is drawn by running `post.tmd`'s own code as this page renders, through
-the very pipeline the rest of the book describes.
+This book is built with Taliesin, so @fig-cooling is drawn by running `post.tmd`'s
+own code as this page renders, through the pipeline the rest of the book describes.
 
 ```{python}
 #| echo: false
@@ -82,8 +81,8 @@ The chapters build on each other, roughly from the outside in:
 - **[Architecture](architecture.tmd)**: the crates, the data flow, a save end to end.
 - **[The rendering pipeline](rendering.tmd)**: raw text to a block model to HTML, with
   math and highlighting resolved offline.
-- **[The block model](block-model.tmd)**: the load-bearing structure and the websocket
-  contract that rides on it.
+- **[The block model](block-model.tmd)**: the structure the rest of the system depends
+  on, and the websocket contract built on it.
 - **[Code execution & the kernel](execution.tmd)**: the warm kernel, the execution plan,
   the persistent output cache.
 - **[Extending Taliesin](extending.tmd)**: the conventions, and the one seam meant to be

@@ -5,24 +5,24 @@ description: "The user guide: how to write, preview, execute and publish a .tmd 
 
 # Why Taliesin {.unnumbered}
 
-**A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
-posts, papers, books, and whole websites) with executable code blocks and an
-editing loop that updates the instant you save.** It reads the Markdown/Pandoc
-syntax you already know and outputs HTML only.
+Taliesin is a fast, single-purpose dev server that turns `.tmd` files into live HTML
+(blog posts, papers, books, and whole websites) with executable code blocks and an
+editing loop that updates as soon as you save. It reads the Markdown/Pandoc syntax
+you already know and outputs HTML only.
 
 ## The edit loop
 
-- **Click-to-source.** Every rendered block remembers the line it came from.
-  Ctrl-click (Cmd-click on Mac) anything in the preview to jump straight to its
-  source, even across `{{< include >}}`d files.
+- **Click-to-source.** Every rendered block records the line it came from.
+  Ctrl-click (Cmd-click on Mac) anything in the preview to jump to its source,
+  even across `{{< include >}}`d files.
 - **Block-level incremental updates.** A save re-renders only the blocks that
   changed. Live canvases (Three.js, `{js}` cells) keep their state; the
   page never reloads.
-- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean
-  edits show up immediately, and only the cells whose code actually changed
-  re-run.
+- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean an
+  edit shows up without waiting for either to start, and only the cells whose
+  code changed re-run.
 
-This guide is itself a multi-page **book** built with Taliesin: the Chapters drawer, search
+This guide is itself a multi-page book built with Taliesin: the Chapters drawer, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](https://internals.taliesin.sh/), covers how it works inside,
 and the [Gallery](https://gallery.taliesin.sh/) shows one-page demos you can open and poke at.
@@ -35,22 +35,22 @@ taliesin build post.tmd          # one self-contained HTML file, code cells exec
 taliesin preview blog/           # a directory instead: a whole multi-page site
 ```
 
-Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with your
-scroll preserved. The server binds to loopback only. [Getting
-started](using/getting-started.tmd) installs the binary and sets up a kernel.
+Open `http://127.0.0.1:4321` and edit the source. The block you changed updates in
+place and your scroll position is preserved. The server binds to loopback only. [Getting
+started](using/getting-started.tmd) explains how to install the binary and set up a kernel.
 
 ## What it is (and isn't)
 
 ::: {.callout-note}
 ## Scope
 
-Taliesin renders to **HTML only**: there is no PDF path and no format matrix. It
-is one author's writing workflow, kept small and fast on purpose. [Choosing
-Taliesin](using/choosing.tmd) is the chapter on what that buys and what it costs.
+Taliesin renders to HTML only and has no PDF output. It is one author's writing
+workflow, kept small and fast. [Choosing Taliesin](using/choosing.tmd) is the chapter
+on what that buys and what it costs.
 :::
 
 Start with [Getting started](using/getting-started.tmd). The rest of this guide
-tours what you can put on a page: [the live preview loop](using/preview.tmd), [executable
+covers what you can put on a page: [the live preview loop](using/preview.tmd), [executable
 content](using/code.tmd) (Python cells), [interactive
 content](using/interactive.tmd) (`{js}` cells, 3D graphics), [rich
 writing](using/writing.tmd) (math, diagrams, figures, citations), and [recipes for

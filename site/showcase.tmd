@@ -1,6 +1,6 @@
 ---
 title: "See it live"
-description: "Interactive demos of Taliesin, every one a real capability running live in your browser."
+description: "Interactive demos of Taliesin features, running in your browser."
 ---
 
 Everything below runs in your browser, on a page that is itself a Taliesin document.
@@ -8,7 +8,7 @@ Its full source is [on GitHub](https://github.com/AJBogo9/taliesin/blob/main/sit
 
 {{< include _includes/three-scene.tmd >}}
 
-## A surface you can shape and spin
+## A parametric 3D surface
 
 A parametric wave-interference mesh, rendered with WebGL. Drag to orbit, scroll to
 zoom, and move the sliders to reshape it in real time. The renderer is transparent,
@@ -126,9 +126,9 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#3A5578" })
           x: { label: "t" }, y: { label: "amplitude" } });
 ```
 
-## Chaos you can hold in your hand
+## The Lorenz attractor
 
-The Lorenz attractor, integrated live in the browser and drawn as it grows. Drag to
+The attractor is integrated live in the browser and drawn as it grows. Drag to
 orbit, and move the σ / ρ / β sliders to watch a deterministic system fold into a
 two-winged strange attractor, and then collapse.
 

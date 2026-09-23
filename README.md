@@ -5,61 +5,60 @@
 > The native (and only) source extension is `.tmd`; the CLI is `taliesin`.
 
 A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
-files: blog posts, papers, books, and **multi-page websites**. Built for
+files: blog posts, papers, books, and multi-page websites. Built for
 one author's workflow around three goals:
 
-1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element, jump to its `.tmd` source.
+1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element to jump to its `.tmd` source.
 2. **Block-level incremental updates.** Saving a change swaps only the affected
    block(s) in place, preserving scroll position and the runtime state of live
    components (Three.js, `{js}` cells).
 3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
 
-Output is **HTML only**. The project's own manual is two sibling books authored in
+Output is HTML only. The project's own manual is two sibling books authored in
 `.tmd`: the [User Guide](docs/guide/index.tmd) (how to use it) and the
 [Internals](docs/internals/index.tmd) book (the architecture, websocket protocol,
 and block model).
 
 ## Before you adopt it
 
-Three things a stranger should know, each measured rather than asserted. The long version,
-with the sources and the method, is [Choosing Taliesin](docs/guide/using/choosing.tmd).
+[Choosing Taliesin](docs/guide/using/choosing.tmd) covers each point below at length, with
+its sources and method.
 
-- **Your source stays yours.** Across the 81 documents / 7,039 lines of the project's own
-  corpus, **6.7% of lines carry any construct beyond plain CommonMark** — and all six of
-  those families are existing Pandoc/Quarto vocabulary, not invented here. Check it
-  yourself with `python3 tools/portability-census.py`. Your writing is
-  Markdown in your repository, and built pages are static HTML that needs no runtime.
-- **Speed, in absolutes and with no multiplier** (figures re-measured 2026-08-27, the
-  single-document ready time 2026-09-01, on a 16-core machine). A 6-page book
-  (`docs/internals`) builds in **0.15 s** (25 ms/page);
-  `preview` is serving in **≈50 ms** for a single document (spawn to first HTTP 200)
-  and **≈90 ms** for a 16-page book; a warm keystroke-sized edit diffs in
-  **0.21 ms** and ships a **32 KB** patch instead of a 287 KB page reload, and
-  **53** of its 55 ops are metadata-only patches that never touch a DOM node — those 53
-  plus the one `insert` for the newly typed paragraph total ~3.2 KB — which is why live
-  state survives the edit. These measure Taliesin's work only — a batch compiler doing a
-  cold Pandoc pass is doing different work, so no ratio is quoted.
-- **One maintainer, and the scope is closed.** No support contract, no release cadence, no
-  bus factor above one. 1.0 means the feature set is final for this tool's one use case,
-  not that a team stands behind it. What that risk is bounded by: Markdown source you
-  already hold, built HTML with no dependency on this tool, and an AGPL-3.0 licence that
-  makes a fork always available.
+- **Portability.** Across the 81 documents / 7,039 lines of the project's own corpus,
+  6.7% of lines carry any construct beyond plain CommonMark, and all six construct
+  families involved are existing Pandoc/Quarto vocabulary. Check it yourself with
+  `python3 tools/portability-census.py`. Your writing is Markdown in your repository, and
+  built pages are static HTML that needs no runtime.
+- **Speed** (figures re-measured 2026-08-27, the single-document ready time 2026-09-01,
+  on a 16-core machine). A 6-page book (`docs/internals`) builds in 0.15 s (25 ms/page);
+  `preview` is serving in ≈50 ms for a single document (spawn to first HTTP 200) and
+  ≈90 ms for a 16-page book; a warm keystroke-sized edit diffs in 0.21 ms and ships a
+  32 KB patch instead of a 287 KB page reload, and 53 of its 55 ops are metadata-only
+  patches that never touch a DOM node (those 53 plus the one `insert` for the newly typed
+  paragraph total ~3.2 KB), which is why live state survives the edit. These figures
+  measure Taliesin's work only and are not comparable with a cold Pandoc pass by a batch
+  compiler, which does different work.
+- **One maintainer, and the scope is closed.** There is no support contract or release
+  cadence, and the bus factor is one. 1.0 means the feature set is final for this tool's
+  one use case, not that a team stands behind it. The risk is limited because the source
+  is Markdown you already hold, built HTML has no dependency on this tool, and the
+  AGPL-3.0 licence makes a fork always available.
 
 ## Project status
 
-**Taliesin 1.0 is feature-complete for its one use case:** rendering `.tmd` to HTML for one
-author's writing workflow. The scope is deliberately closed.
+Taliesin 1.0 is feature-complete for its one use case: rendering `.tmd` to HTML for one
+author's writing workflow. The scope is closed.
 
 - **Bug reports are welcome.** Something rendering wrongly, a crash, a diagnostic that
   fires on valid source: please open an issue.
-- **Feature requests are closed by design**, not by backlog order. The tool is built around
-  subtraction, and a 2026-08 campaign cut roughly 40% of the tree to get here. Adding an
-  output format (PDF, LaTeX, Word, ePub) is out of scope permanently; HTML is the only
-  target.
+- **Feature requests are closed by design**, not deferred. The tool is designed by
+  subtraction, and a 2026-08 campaign cut roughly 40% of the tree to reach this scope.
+  Adding an output format (PDF, LaTeX, Word, ePub) is out of scope permanently; HTML is
+  the only target.
 - **Security reports go through `SECURITY.md`**, privately, not as a public issue.
 
 `CONTRIBUTING.md` has the scope rules in full. If you want something the tool will not do,
-the AGPL licence means forking is always available and is often the honest answer.
+the AGPL licence means forking is always available and is often the right choice.
 
 ## Architecture (at a glance)
 
@@ -107,8 +106,8 @@ above they carry no quarantine attribute and run straight away, but downloaded t
 browser they do, and the first launch is refused until you clear it with
 `xattr -d com.apple.quarantine ./taliesin`.
 
-**Windows is not supported**: never built, never tested, no gate covers it, and the
-process and kernel layer is Unix-only.
+**Windows is not supported.** It has never been built or tested, no gate covers it, and
+the process and kernel layer is Unix-only.
 
 **Or build from source**, which is always supported. Taliesin is a Rust workspace
 (edition 2024), so a recent stable toolchain (via [rustup](https://rustup.rs)) is all you
@@ -120,10 +119,10 @@ cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
-**What that costs, measured 2026-08-26 on a genuine cold build, so it is not a surprise:**
-`cargo clean` followed by `cargo build --release -p taliesin-server` compiles **220 crates
-in about 48s** (16-core machine, cargo's default parallelism) and produces a single
-~30 MB self-contained binary (30,296,240 bytes, re-measured 2026-08-27; it embeds KaTeX with its fonts, the
+**Build cost** (measured 2026-08-26 on a cold build). `cargo clean` followed by
+`cargo build --release -p taliesin-server` compiles 220 crates in about 48s (16-core
+machine, cargo's default parallelism) and produces a single ~30 MB self-contained binary
+(30,296,240 bytes, re-measured 2026-08-27; it embeds KaTeX with its fonts, the
 syntax-highlighting definitions, and every bundled stylesheet and script, which is why
 rendered pages need no network). `Cargo.lock` lists 289 packages across the whole
 workspace, higher than the 220 actually compiled because it also covers the separate
@@ -132,7 +131,7 @@ fetched at runtime and there is no `node_modules`. Put `target/release/taliesin`
 `PATH` to call `taliesin` from anywhere.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
-highlighting, and sites render with no kernel at all; a kernel is needed only
+highlighting, and sites render with no kernel; a kernel is needed only
 to *run* `{python}` code cells (without one they render as source), which use one
 warm kernel reused across edits:
 
@@ -164,14 +163,14 @@ taliesin preview my-site     # live preview at http://localhost:4321
 ## Usage
 
 `taliesin preview` runs a long-lived dev server: it watches the `.tmd` (and its
-includes/bibliography), and on each save re-renders, **executes changed code cells
-against a warm Jupyter kernel** (re-running only the earliest changed cell and
+includes/bibliography), and on each save re-renders, executes changed code cells
+against a warm Jupyter kernel (re-running only the earliest changed cell and
 everything downstream), diffs against the previous block list, and pushes only the
 changed blocks over a websocket. Unchanged blocks are never touched, so scroll
 position and the runtime state of live blocks (Three.js, `{js}` cells) survive edits. Open
 the preview in a browser; Ctrl-clicking a block jumps to its `.tmd` source.
 
-Point it at a **single file** or a **directory** (a multi-page site project):
+Point it at a single file or a directory (a multi-page site project):
 
 ```sh
 cargo run -p taliesin-server -- preview corpus/posts/born-machines.tmd  # one doc
@@ -187,9 +186,9 @@ Code execution needs a Python with `ipykernel`; point the server at it with the
 kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
 become their own blocks keyed to the cell, so they swap in place.
 
-The render pipeline underneath: the core parses `.tmd` with comrak (sourcepos),
-splits the document into top-level blocks with content-hash ids, and emits HTML
-with `data-block-id` + `data-sourcepos` on every block.
+The core parses `.tmd` with comrak (sourcepos), splits the document into top-level
+blocks with content-hash ids, and emits HTML with `data-block-id` + `data-sourcepos` on
+every block.
 
 ## What it renders
 
@@ -228,26 +227,25 @@ books, authored in `.tmd` and built with Taliesin itself.
 **Previewing a `.tmd` runs it.** `{python}` cells execute against a Jupyter
 kernel with your permissions, a `{js}` cell runs in your browser, and raw HTML (plus
 anything the project injects through `_site.yml`'s `head:`) passes through
-verbatim — so opening a document someone sent you is the same kind of decision as
-running a script they sent you. `--no-exec` stops the code cells, both kinds, but it is
-**not** a sanitizer. Taliesin says this plainly rather than implying a sandbox it does
-not have: the full account is in
+verbatim. Opening a document someone sent you is the same kind of decision as running a
+script they sent you. `--no-exec` stops the code cells, both kinds, but it is not a
+sanitizer, and Taliesin has no sandbox. The full account is in
 [the CLI reference](docs/guide/reference/cli.tmd) and the trust model is in
 [`SECURITY.md`](SECURITY.md).
 
 ## Accessibility
 
-The HTML Taliesin generates has a published **WCAG 2.1 AA conformance report**
-([docs/guide/reference/accessibility.tmd](docs/guide/reference/accessibility.tmd)) — the
+The HTML Taliesin generates has a published WCAG 2.1 AA conformance report
+([docs/guide/reference/accessibility.tmd](docs/guide/reference/accessibility.tmd)), the
 ACR half of a VPAT, in the form an institutional evaluator expects. It states what
-conforms, what only partially conforms, and (at equal length) what has **not** been
+conforms, what only partially conforms, and (at equal length) what has not been
 evaluated: there has been no screen-reader pass and no full keyboard walkthrough, and the
-report says so rather than claiming the automated results cover them.
+report says the automated results do not cover them.
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers the one setup step git will not do
-for you (`git config core.hooksPath .githooks`), the single command that runs every gate
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers the setup step git will not do for you
+(`git config core.hooksPath .githooks`), the command that runs every gate
 (`./tools/gates.sh`), and the licence terms a contribution is submitted under.
 
 ## License
@@ -258,10 +256,10 @@ loophole": anyone who runs a modified version as a network service must offer
 their complete corresponding source to that service's users.
 
 **What you build with it is yours.** A built page contains copies of Taliesin's own
-CSS and JavaScript — that is what makes it work offline with no CDN — so the
+CSS and JavaScript (which is what makes it work offline with no CDN), so the
 [**Taliesin Output Exception**](LICENSE-OUTPUT-EXCEPTION.md) grants you the right to
 publish that output under any terms you like, with nothing to attribute and no offer
-of source. The AGPL governs *Taliesin*; it makes no claim on the documents you write
+of source. The AGPL governs Taliesin; it makes no claim on the documents you write
 with it. Serving a page you built does not engage section 13.
 
 As the sole copyright holder, the author is not bound by the AGPL grant and

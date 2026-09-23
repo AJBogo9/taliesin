@@ -3,7 +3,7 @@
 # (tools/publish.sh). Self-contained: every page this site publishes lives in this
 # directory, and nothing is composed into its output.
 title: "Taliesin Gallery"
-description: "Short one-page demos of what Taliesin can do: reactive graphics, executed reports, 3D scenes, and the craft of a good page."
+description: "Short one-page demos of what Taliesin can do: reactive graphics, executed reports, 3D scenes, and an API documentation page."
 url: "https://gallery.taliesin.sh"
 
 nav:

@@ -1,11 +1,10 @@
 ---
 title: "Code execution & the kernel"
-description: "Why an edit re-runs one cell and not the whole notebook: cumulative hashing, the freeze cache on disk, and kernels forked before you need them."
+description: "Why an edit re-runs one cell and not the whole notebook: cumulative hashing, the freeze cache on disk, and the warm kernel."
 ---
 
-Our `post.tmd` has a single `{python}` cell. This chapter is what happens when it
-runs, and, more to the point, the lengths Taliesin goes to so that it usually
-*doesn't have to*.
+Our `post.tmd` has a single `{python}` cell. Taliesin usually avoids running it by
+reusing an earlier run's output, held in memory or on disk.
 
 Executing `{python}` cells is the most involved subsystem and lives
 entirely in the **server** (`crates/server`), in two layers: the **executor**
@@ -16,7 +15,7 @@ server fills in their outputs.
 
 ## The executor (`exec.rs`)
 
-`Executor` holds **one warm kernel per language**, created lazily, plus the two
+`Executor` holds one warm kernel per language, created lazily, plus the two
 output caches that let it skip work, one in memory and one on disk:
 
 ```rust
@@ -36,16 +35,16 @@ found by walking up to the nearest `.git` or `pyproject.toml`, then bare `python
 the kernel-start log line and `doctor`'s Environment section print when the venv you
 expected was not the one picked.
 
-`run(blocks)` is the entry point each rebuild calls. Its very first check is the
+`run(blocks)` is the entry point each rebuild calls. Its first check is the
 `no_exec` flag: with `TALIESIN_NO_EXEC` (or `--no-exec`) set, it returns the blocks
 untouched, so every code cell previews as highlighted source with no kernel started and
 no "kernel unavailable" notice. The render pass reads the same flag for `{js}` cells
 (`taliesin_core::render::no_exec_in_force`), so a browser-side cell is left as source too.
-It is a *code-cell* switch, not a sandbox: raw `<script>` in the document body still
-reaches the page; what to do about a document you did not write is the [CLI
-reference](https://guide.taliesin.sh/reference/cli.html)'s subject, not this chapter's.
-Otherwise it groups the cells by language, preserving document order, runs each
-language's cells, and splices an **output block after each cell**.
+It is a code-cell switch, not a sandbox: raw `<script>` in the document body still
+reaches the page. The [CLI reference](https://guide.taliesin.sh/reference/cli.html)
+covers what to do about a document you did not write. When the flag is not set, `run`
+groups the cells by language, preserving document order, runs each language's cells,
+and splices an **output block** after each cell.
 
 An output block's id is derived from its cell's id, so when a cell re-runs only
 *its* output block changes: the diff swaps it in place (see
@@ -54,9 +53,8 @@ An output block's id is derived from its cell's id, so when a cell re-runs only
 ## What runs on a rebuild
 
 `compute_outputs` gives the document notebook semantics without re-running
-everything. Per language, it answers one question, which **contiguous range** of
-cells must actually execute, by sorting the cells into three zones
-(@fig-exec-zones):
+everything. Per language, it decides which **contiguous range** of cells must
+execute, by sorting the cells into three zones (@fig-exec-zones):
 
 ```{mermaid}
 %%| label: fig-exec-zones
@@ -66,34 +64,32 @@ flowchart LR
 ```
 
 The boundaries come from one key per cell: a **cumulative content hash**
-(`freeze::cumulative_hashes`) that folds in the interpreter identity plus *every
-same-language cell's code up to and including this one*. Because it is cumulative,
-editing a cell moves its key **and every downstream key**, so an upstream edit
-invalidates everything after it automatically, exactly the dependency a notebook
-needs. `plan` then finds the warm prefix the live kernel already holds and the run
+(`freeze::cumulative_hashes`) that folds in the interpreter identity plus every
+same-language cell's code up to and including this one. Because it is cumulative,
+editing a cell moves its key and every downstream key, so an upstream edit
+invalidates everything after it automatically, as notebook semantics require.
+`plan` then finds the warm prefix the live kernel already holds and the run
 range; any suffix whose keys are already on disk is restored without running.
 
 So editing the last cell re-runs one cell; editing the first re-runs all. The
 kernel stays warm across all of it: no per-edit cold start (goal #3). A
 `#| include: false` cell still runs (for its kernel-state side effects) but emits
-no output block. A `#| cache: false` cell always re-runs, is never cached, **and forces
-every cell after it to re-run and stay uncached too**: the cumulative key folds in that
+no output block. A `#| cache: false` cell always re-runs, is never cached, and forces
+every cell after it to re-run and stay uncached too: the cumulative key folds in that
 cell's *code* but never its *value*, so an entry written below it would assert an upstream
 that does not hold.
 
 ### The cumulative-hash chain in detail
 
-The whole scheme rests on one tiny function. For a language's cells in document
-order, `cumulative_hashes(interp, codes)` folds each cell's code into the running
-digest of everything before it:
+For a language's cells in document order, `cumulative_hashes(interp, codes)` folds
+each cell's code into the running digest of everything before it:
 
 ```text
 acc₀ = FNV1a( seed )                             (the seed digest, not a cell key)
 accᵢ = keyᵢ = FNV1a( accᵢ₋₁ + "\n" + codeᵢ )     (one key per cell, document order)
 ```
 
-The chain is seeded not by an empty string but by the **interpreter identity**, a
-stable id of the form
+The chain is seeded by the **interpreter identity**, a stable id of the form
 
 ```text
 python::/path/to/python3::Python 3.11.9
@@ -101,7 +97,7 @@ python::/path/to/python3::Python 3.11.9
 
 built by `interp_id`: the language, the resolved interpreter path, and the first
 line of `<program> --version`, run once and memoised. Because the seed flows into
-*every* key, swapping the interpreter (a Python upgrade, a different venv) shifts the
+every key, swapping the interpreter (a Python upgrade, a different venv) shifts the
 whole chain at once, so the old interpreter's cached outputs are never served by a new
 one. Edit an upstream cell and every downstream key moves with it, even where the
 downstream code is byte-for-byte unchanged, so the planner gets its upstream
@@ -114,30 +110,30 @@ still hits tomorrow.)
 
 The warm prefix only exists while a kernel is alive. To skip work *across* `build`
 runs and preview restarts (when the kernel holds nothing), outputs are also
-written to `_freeze/<page>.json`, keyed by the **same** cumulative hash
+written to `_freeze/<page>.json`, keyed by the same cumulative hash
 (`crates/server/src/freeze.rs`). On a **cold start** the in-memory prefix is empty,
-so if every cell's key hits the disk cache the whole document **replays from disk
-and never boots the kernel**: an unchanged doc builds instantly. The kernel starts
-only when a key is missing (a real edit), and only for the changed range.
+so if every cell's key hits the disk cache the whole document replays from disk
+and never boots the kernel. The kernel starts only when a key is missing (a real
+edit), and only for the changed range.
 
-`post.tmd` makes this vivid. Build it twice without touching it and the second
-build replays the plot from `_freeze/` without ever starting Python. Bump `tau` to
-12 and only that one cell's key misses, so only it re-runs; had there been cells
-*after* it, their keys would have moved too, and they would re-run as well.
+Build `post.tmd` twice without touching it and the second build replays the plot
+from `_freeze/` without starting Python. Bump `tau` to 12 and only that one cell's
+key misses, so only it re-runs; had there been cells after it, their keys would
+have moved too, and they would re-run as well.
 
-That cumulative key is what makes this safe where a naive per-cell `cache` would be
-fragile. It encodes *every byte of code the kernel ran to reach this output*, so:
+The cumulative key makes this safe where a naive per-cell `cache` would be
+fragile. It encodes every byte of code the kernel ran to reach this output, so:
 
 - **a stale hit is impossible for the axes the key can see** (cell code, its
-  upstream, interpreter identity): no mtime heuristics, nothing to clear by hand; the
-  content *is* the key. What it cannot see is what a cell *reads* (a data file, an
-  environment variable, a fetched URL, the clock, a library upgraded in place), which
-  is what `#| cache: false` is for;
+  upstream, interpreter identity): the key is computed from content, so there are no
+  mtime heuristics and nothing to clear by hand. What it cannot see is what a cell
+  *reads* (a data file, an environment variable, a fetched URL, the clock, a library
+  upgraded in place), which is what `#| cache: false` is for;
 - a different interpreter (say a Python upgrade) busts every key, since it can't
   serve outputs the old one computed;
-- kernel **variable state is deliberately never cached** (that is the fragile part
-  of per-cell caching), which is why a cold start can only skip a cell when its
-  *whole upstream* is unchanged, never an arbitrary one in the middle.
+- kernel variable state is never cached (that is the fragile part of per-cell
+  caching), which is why a cold start can only skip a cell when its whole upstream
+  is unchanged, never an arbitrary one in the middle.
 
 What's stored is just the cell's output HTML (kernel images are already inline data
 URIs, so there are no sidecar files).
@@ -159,41 +155,41 @@ key/output pairs:
 }
 ```
 
-A few properties earn their place:
+The format has these properties:
 
 - **`version` gating.** The loader compares `version` against the binary's
-  `FORMAT_VERSION` and, on a mismatch, treats the file as **empty** rather than
+  `FORMAT_VERSION` and, on a mismatch, treats the file as empty rather than
   replaying entries it might no longer be able to interpret. The version is bumped
   not only when the file shape changes but when the *bundled output format* of a
   cached cell changes (the cell code is identical, so the cumulative key wouldn't
   move on its own); the next save rewrites the file fresh. A missing or corrupt file
   is tolerated the same way: start empty, rewrite on the next save.
 - **Oldest-first order.** `entries` is written oldest-first so eviction can drop from
-  the front. The cache keeps up to `MAX_ENTRIES` (1024) entries **or** `MAX_BYTES`
+  the front. The cache keeps up to `MAX_ENTRIES` (1024) entries or `MAX_BYTES`
   (16 MB) per page, whichever binds first, evicting the least-recently-touched. The byte
   budget is the bound the entry cap cannot provide: a page whose outputs are inline
   data-URI figures would otherwise dwarf the 80 to 150 MB kernels the warm-page pool
   already keeps resident, while for text output the entry cap still binds first. Either
-  way it is deep enough that toggling an edit back and forth keeps restoring instantly.
+  way it is deep enough that toggling an edit back and forth keeps hitting the cache.
 - **Atomic write.** A save serialises to a sibling `*.json.tmp` and renames it into
   place, so a crash mid-write can't corrupt an existing cache; `_freeze/` (and any
   sub-dirs) are created on demand, and a write failure is logged but non-fatal (the
   build still works, just uncached).
 - **`packages`: what these outputs were produced under.** One digest per language over
   the interpreter's installed `name==version` set (`packages.rs`). This is the axis the
-  cumulative key structurally *cannot* see: an in-place `pip install --upgrade pandas` is
+  cumulative key structurally cannot see: an in-place `pip install --upgrade pandas` is
   the same interpreter reporting the same `--version`, so every key is unchanged and the
-  old numbers restore. It is recorded only by a run that actually **executed** something
-  (stamping a pure replay would relabel yesterday's outputs as today's) and compared when
-  a restore comes off disk, so a replay that crossed a package change **says so** on
-  stderr, once per language. It deliberately does not change what *hits*.
+  old numbers restore. It is recorded only by a run that executed something (stamping a
+  pure replay would relabel yesterday's outputs as today's) and compared when a restore
+  comes off disk, so a replay that crossed a package change reports it on stderr, once
+  per language. It deliberately does not change what hits.
   `taliesin doctor --format json` prints the same manifest in full, every package and
-  version plus the digest, which is what turns "the digest moved" into "*which* pandas".
+  version plus the digest, so you can find which package changed when the digest moves.
 
 ### What is never persisted
 
-The planner is deliberately stingy about what it hands the cache, so a bad result
-can never bake in:
+The planner keeps the following out of the cache, so a bad result is never restored
+on a later run:
 
 - **Error outputs** (anything carrying `class="tali-error"`: an exception, a timeout,
   or the mid-run "kernel died" marker), so a transient failure re-runs next time. The
@@ -207,8 +203,8 @@ can never bake in:
   the value that cell just produced afresh.
 - **Everything downstream of a cell that errored or was interrupted.** It left the kernel
   half-mutated, so every cell after it ran against state its key does not describe.
-- **The cached tail the kernel didn't actually run.** Only cells `[shared, run_end)`,
-  the cells that genuinely executed this rebuild, are recorded as the kernel's "ran"
+- **The cached tail the kernel didn't run.** Only cells `[shared, run_end)`,
+  the cells that executed this rebuild, are recorded as the kernel's "ran"
   state; the disk-restored tail is left out, because the live kernel never produced
   it and recording it would falsely claim warm state the kernel doesn't hold.
 
@@ -221,14 +217,13 @@ written), and "Restart kernel" forces a fresh run rather than a replay.
 client connections. `start()`:
 
 1. picks free ports and writes a Jupyter `connection.json`,
-2. spawns the interpreter (`python -m ipykernel`) with
-   **stderr piped**, and with its **working directory set to the document's own
-   directory** (each `Executor` is created `.in_dir(...)` of its page) so a cell's
-   relative file writes, audio from `scipy.io.wavfile`, a `savefig`
-   figure, land beside the source rather than in whatever directory the
-   server was launched from,
-3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
-   the process exiting**, so a missing `ipykernel` fails in ~1s with its real
+2. spawns the interpreter (`python -m ipykernel`) with stderr piped, and with its
+   working directory set to the document's own directory (each `Executor` is created
+   `.in_dir(...)` of its page) so a cell's relative file writes (audio from
+   `scipy.io.wavfile`, a `savefig` figure) land beside the source rather than in
+   whatever directory the server was launched from,
+3. connects the `shell` + `iopub` ZMQ channels, and races the connect against
+   the process exiting, so a missing `ipykernel` fails in ~1s with its real
    stderr ("No module named ipykernel") instead of hanging the 30s connect
    timeout and reporting something opaque,
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
@@ -238,42 +233,43 @@ client connections. `start()`:
    restyles inline figures to follow the page (lazily, the first time a cell uses
    matplotlib).
 
-A preamble that fails is **not** fatal (the kernel runs cells perfectly well without the
-bridge) but it is not silent either, because its failure would otherwise surface cells
-later wearing a disguise: a `NameError` on `define`, or figures that quietly stop
-matching the page. So each preamble declares **what is lost if it does not run**, and one
-that raises (or reports on stderr, which is how the matplotlib hook flags a failure it
-has to catch itself) prints one console line naming the interpreter, the error and the
-casualty.
+A preamble that fails is not fatal (the kernel runs cells without the bridge) but it is
+not silent either, because otherwise its failure would show up later in another cell as
+a different symptom: a `NameError` on `define`, or figures that stop matching the page
+with no error. So each preamble declares what is lost if it does not run, and one that
+raises (or reports on stderr, which is how the matplotlib hook flags a failure it has to
+catch itself) prints one console line naming the interpreter, the error and what was
+lost.
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
 `display_data`, and `error`, until the kernel returns to `idle`.
 
 A **silence cap** (`TALIESIN_CELL_SILENCE`, default 600s) guards a wedged cell. It
-measures the gap since the last iopub message **this cell's request is the parent
-of**, not total runtime, so the budget resets on every line the cell prints: a
+measures the gap since the last iopub message this cell's request is the parent
+of, not total runtime, so the budget resets on every line the cell prints: a
 forty-minute training run that logs an epoch line is alive, while a cell that has
-said nothing for ten minutes is the real runaway. The parent header is load-bearing,
-not a detail: iopub is a broadcast channel, so a background thread an earlier cell
-left running keeps publishing under *its* parent header, and counting that as this
-cell's output would disarm the cap for the one cell it exists to govern. An optional **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available
-but **off by default**, since bounding total runtime is a cost decision, not a safety
-one.
+said nothing for ten minutes is treated as a runaway. The parent-header check matters
+because iopub is a broadcast channel: a background thread an earlier cell left
+running keeps publishing under its own parent header, and counting that as this
+cell's output would disarm the cap for the cell it exists to govern. An optional
+**total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available but off by default,
+since bounding total runtime is a cost decision, not a safety one.
 
 A *streaming* runaway (a `while True: print(...)` that keeps the channel busy, and so
 never trips the silence cap) is caught instead by the **output caps**: once
 `MAX_STREAM_BYTES` (512 KB of stream text) or `MAX_OUTPUTS` (4096 items) trips, `execute`
-interrupts immediately, so a megabyte-spewing cell stops flooding the reader rather than
-being read and discarded. That is why removing the wall-clock default costs no protection.
+interrupts immediately, so a cell printing megabytes of output is stopped instead of
+having all of it read and discarded. That is why removing the wall-clock default costs
+no protection.
 
 On any such hit `execute` SIGINTs the kernel (the `interrupt_mode: signal` path, which
-surfaces as a `KeyboardInterrupt` inside the cell) and drains a short **grace window**
+raises a `KeyboardInterrupt` inside the cell) and drains a short **grace window**
 (5s) so the interrupt error and the trailing `idle` arrive and the channels resync,
-leaving the warm kernel usable for the *next* cell. SIGINT is only a request: a cell that
+leaving the warm kernel usable for the next cell. SIGINT is only a request: a cell that
 installs its own handler, or sits in a C extension that never checks signals, outlives
 it. When the window runs out with the cell still not idle, `execute` stops waiting and
-**says so**: the page gets an `InterruptIgnored` output (the cell is still running inside
+reports it: the page gets an `InterruptIgnored` output (the cell is still running inside
 the warm kernel, and nothing short of a restart reclaims it) and the console gets that
 kernel's pid, kept out of the page so two builds of one document cannot differ by a pid.
 Setting either cap to `0` disables it, and with both off a silent cell is bounded by
@@ -288,20 +284,20 @@ mapping is small and explicit:
 - **`stream`** becomes a `<pre class="tali-stream">` (with `tali-stderr` added for the
   stderr channel), HTML-escaped.
 - **`execute_result`** and **`display_data`** are both "rich" outputs; rendering picks
-  the **richest representation the kernel offered**, preferring `text/html`, then
+  the richest representation the kernel offered, preferring `text/html`, then
   `image/png` (wrapped as an inline `data:` `<img>`), then SVG, then JPEG, then
   `text/plain` (as a `<pre>`). The cell's `text/plain` fallback is only used when
   nothing richer exists.
 - **`error`** becomes a `<pre class="tali-error">` holding the traceback with its ANSI
-  colour codes stripped (IPython colourises tracebacks for a terminal). This is the
-  one class the freeze cache refuses to store, so an error never sticks.
+  colour codes stripped (IPython colourises tracebacks for a terminal). It is the only
+  class the freeze cache does not store, so an error is never restored from disk.
 
 ### Why matplotlib figures render twice
 
 A plain inline matplotlib PNG would bake one foreground colour into the image, so it
 would look wrong against the other theme. The Python startup preamble installs (lazily,
 the first time a cell touches matplotlib) a `text/html` figure formatter that renders
-each figure **twice**, once recoloured for the light theme and once for the dark, and
+each figure twice, once recoloured for the light theme and once for the dark, and
 emits them together as `<img class="tali-fig tali-fig-light">` + `<img class="tali-fig
 tali-fig-dark">`. The standalone `image/png` representation is suppressed so only the
 dual-theme HTML survives. The page then swaps which image shows on a `data-theme`
@@ -312,19 +308,19 @@ writes a clean print-ready figure (black on white).
 
 ## How generated outputs reach the build
 
-Inline kernel images, a matplotlib figure, an `image/png`, an SVG, are emitted as `data:`
-URIs baked straight into the cell's output HTML, so they ship inside the page and need no
-sidecar copy at all. A file a cell **writes to disk** (a `savefig` PNG, audio from
-`scipy.io.wavfile`) is different: it lands in the document's own directory,
-because each `Executor` runs `.in_dir(<doc dir>)` and the kernel inherits that working
-directory (see [the warm kernel](#the-warm-kernel-kernel-rs)). The cell then references it
-with a relative `src=`, e.g. `<img src="figures/plot.png">`.
+Inline kernel images (a matplotlib figure, an `image/png`, an SVG) are emitted as `data:`
+URIs in the cell's output HTML, so they ship inside the page and need no sidecar copy.
+A file a cell writes to disk (a `savefig` PNG, audio from `scipy.io.wavfile`) is
+different: it lands in the document's own directory, because each `Executor` runs
+`.in_dir(<doc dir>)` and the kernel inherits that working directory (see
+[the warm kernel](#the-warm-kernel-kernel-rs)). The cell then references it with a
+relative `src=`, e.g. `<img src="figures/plot.png">`.
 
 The `build` subcommand collects those references so the output is portable, but the two
 build shapes do it differently:
 
 - **A single-document `build`** (`build doc.tmd --out <dir>`, or `build doc.tmd out.html`
-  into another directory) runs `copy_local_assets` over the rendered HTML **after**
+  into another directory) runs `copy_local_assets` over the rendered HTML after
   execution. `local_refs` reads every element's `src`/`href`/`poster` over the shared
   `render::tags` walker, never a substring scan, so a code sample that merely *shows* an
   attribute stays text; `is_local_ref` then drops external URLs, `data:` URIs and in-page
@@ -334,28 +330,27 @@ build shapes do it differently:
   (`copy_js_imports`) follows a `{js}` cell's relative `import()`/`fetch()` specifiers,
   which the attribute scan cannot see. An **in-place** build (output beside the source)
   skips every self-copy.
-- **A site `build`** does not scan HTML at all. `mirror_assets` walks the whole source
+- **A site `build`** does not scan HTML. `mirror_assets` walks the whole source
   tree once and mirrors every non-source file into `_site/` at the same relative path,
   skipping `.tmd`/`.bib`/`.Rproj` sources, `_`-prefixed and dot entries, and build-cache
-  residue (`*_cache`/`*_files`). Since this mirror runs **before** the pages render, a
-  figure a cell generates *this* build is not in the mirror unless it was already on disk
-  (for instance restored from `_freeze/` on a prior run); a clean rebuild of a doc that
-  writes a new sidecar file is the one case to keep in mind.
+  residue (`*_cache`/`*_files`). Since this mirror runs before the pages render, a
+  figure a cell generates in the current build is not in the mirror unless it was already
+  on disk (for instance restored from `_freeze/` on a prior run), so a clean rebuild of a
+  doc that writes a new sidecar file is the case to keep in mind.
 
 ## Resilience
 
-`ensure_kernel` makes a missing or crashed kernel a recoverable, visible
-condition rather than a latch:
+`ensure_kernel` makes a missing or crashed kernel a recoverable, visible condition:
 
-- **Crashes mid-run** → the cells *after* the crash **fail fast** with a "kernel
+- **Crashes mid-run**: the cells after the crash fail fast with a "kernel
   died" notice instead of each waiting out the full cell timeout on a kernel that
   will never reply; the next rebuild detects the dead kernel, respawns it, and
   re-runs from the top.
-- **Failed to start** → back off for `KERNEL_RETRY_AFTER` (20s) before retrying,
-  so a bad `TALIESIN_PYTHON` doesn't re-hang every save, but *fixing* it
-  self-heals within a few saves.
-- The interpreter's own start error (`last_error`) is surfaced as a diagnostic, so
-  "kernel unavailable" tells you *why*.
+- **Failed to start**: back off for `KERNEL_RETRY_AFTER` (20s) before retrying,
+  so a bad `TALIESIN_PYTHON` doesn't re-hang every save, but once it is fixed the
+  kernel recovers on its own within a few saves.
+- The interpreter's own start error (`last_error`) is reported as a diagnostic, so
+  "kernel unavailable" tells you why.
 
-With no kernel at all, cells render as highlighted source and the preview shows a
+With no kernel, cells render as highlighted source and the preview shows a
 quiet "kernel unavailable" note: the document still builds.

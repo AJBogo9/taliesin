@@ -8,7 +8,7 @@ description: "Every front-matter key and every _site.yml key, in one place: the 
 Taliesin reads configuration from two places: a document's own **front matter** (the
 `---` block at the top of a `.tmd` file), and, for a site or book, the project's
 **`_site.yml`**. Both are closed vocabularies, validated with the same "did you
-mean" machinery, so this page covers both, in two parts: [document front
+mean" check, so this page covers both: [document front
 matter](#document-front-matter) first, [project `_site.yml`](#project-site-yml)
 second. For per-cell `#|` options, see the
 [Cell-options reference](cell-options.tmd).
@@ -16,7 +16,7 @@ second. For per-cell `#|` options, see the
 # Document front matter {#document-front-matter}
 
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`
-fenced header that sets the document's metadata, output, and behaviour. This
+fenced header that sets the document's metadata and behaviour. This
 section is the full vocabulary, every top-level key Taliesin reads, plus the
 nested blocks (`execute:`, `listing:`, `hero:`) and their children.
 
@@ -28,16 +28,16 @@ title: "My post"
 ---
 ```
 
-Taliesin validates this block against its **own** key set. Any key it
+Taliesin validates this block against its own key set. Any key it
 does not implement, whether a typo (`treme:`) or a term it never honored
 (`title-block-banner:`), is reported with a "did you mean …" hint (see
-[Closed vocabulary](#closed-vocabulary) below). Validation only **warns**: the
+[Closed vocabulary](#closed-vocabulary) below). Validation only warns: the
 document still renders, and each warning is located so you can click it straight to
 the offending line in the live preview.
 
 ## Every top-level key
 
-The keys group into eight concerns. Types: a *string* is plain text; a *bool* is
+The keys group by concern. Types: a *string* is plain text; a *bool* is
 `true`/`false`; a *list* is a YAML sequence; an *include* is a path, a `{ text: … }`
 or `{ file: … }` map, or a list of those.
 
@@ -57,28 +57,28 @@ or `{ file: … }` map, or a list of those.
 | Key | Type | Meaning |
 |---|---|---|
 | `image` | string | The image on a `listing:` card, and the `og:image` a shared link unfurls with (absolutized against `_site.yml`'s `url:`; an absolute URL is used as written) |
-| `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. **Set it whenever you set `image:`**: an `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
-| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `build --check-only`, since a page that does not ship should not fail a pre-flight, and the lint names the drafts it held back so the verdict is not read as wider than it is. `preview` still shows it, badged, and **does** lint it, so you see its diagnostics where you are writing |
+| `image-alt` | string | The `alt` text on this page's `listing:` card image. Not rendered on the page itself. Set it whenever you set `image:`. An `image:` with no `image-alt:` warns, since only you know whether the picture carries meaning. If it is purely decorative say so explicitly with `image-alt: ""`, which silences the warning and emits an empty `alt` |
+| `draft` | bool | `true` keeps the page (or book chapter) out of a `build` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". It is also out of scope for `build --check-only`, since a page that does not ship should not fail a pre-flight, and the lint names the drafts it held back, so you know the verdict does not cover them. `preview` still shows it, badged, and lints it, so you see its diagnostics where you are writing |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
 ### Raw-HTML includes
 
-**There is no raw-injection key, per document or project-wide.** `css:`,
+There is no raw-injection key, per document or project-wide. `css:`,
 `include-in-header:`, `include-before-body:` and `include-after-body:` were removed on
 2026-08-02, along with the `_site.yml` `css:`, `body-start:` and `body-end:` beside them;
-`_site.yml`'s `head:`, kept back then as the one surviving hatch, went on 2026-08-18 when
-it was still reaching zero documents. A leftover `head:` is reported as an unknown config
+`_site.yml`'s `head:`, the only injection key kept at that point, was removed on
+2026-08-18, when no document used it. A leftover `head:` is reported as an unknown config
 key and injects nothing.
 
-Raw HTML written **in the document body** still passes through, because Markdown says it
-does. That is the remaining way to put markup on a page, and it is per page rather than
-project-wide by design.
+Raw HTML written in the document body still passes through, as Markdown specifies. That
+is the remaining way to put markup on a page, and it is per page, not project-wide, by
+design.
 
 ### Contents, bibliography, and citations
 
 | Key | Type | Meaning |
 |---|---|---|
-| `toc` | bool | Forces the table of contents on or off for this page. Leave it out and it is **automatic**: an article page with enough headings gets one. No effect in a book chapter: a book navigates by its Chapters drawer |
+| `toc` | bool | Forces the table of contents on or off for this page. Leave it out and it is automatic: an article page with enough headings gets one. No effect in a book chapter: a book navigates by its Chapters drawer |
 | `bibliography` | string \| list | A `.bib` file (or list of them) enabling `[@key]` citations and an auto-generated References section |
 
 ### Code execution
@@ -89,8 +89,8 @@ project-wide by design.
 
 ### Site page blocks
 
-These two turn a page in a site or book into something special. They are detailed
-in their own sections below.
+These two keys apply to a page in a site or book. Each is detailed in its own
+section below.
 
 | Key | Type | Meaning |
 |---|---|---|
@@ -99,14 +99,14 @@ in their own sections below.
 
 ## `author:` (who wrote it) {#sec-authors}
 
-The short spellings are what most pages want, and neither is going anywhere:
+Most pages use one of the two short spellings, and both remain supported:
 
 ```yaml
 author: "Ada Lovelace"                      # one author
 author: ["Ada Lovelace", "Grace Hopper"]    # several
 ```
 
-For a paper or project page, an author is more than a name. The **structured** form
+For a paper or project page that needs more than a name, the **structured** form
 takes a list of maps:
 
 ```yaml
@@ -123,26 +123,25 @@ author:
 | Sub-key | Type | Meaning |
 |---|---|---|
 | `name` | string | The name, as it should read in the byline. The only required part |
-| `affiliation` | string or list | Institution(s). Written as **names**, not as index numbers |
+| `affiliation` | string or list | Institution(s). Written as names, not as index numbers |
 | `url` | string | A personal page; makes the name a link in the byline |
 | `equal` | boolean | Marks an equal-contribution author (`*` in the byline, with a note under it) |
 | `contribution` | string | What this person did. Collected into the [appendix](#the-appendix)'s Author Contributions section |
 
-**You never write an affiliation number.** Every other tool in this space asks you to
+You never write an affiliation number. Every other tool in this space asks you to
 keep a list of institutions and put `affiliation: 1` against each author. Taliesin reads
-the institution's *name* and derives the superscripts from the order they first appear,
+the institution's name and derives the superscripts from the order they first appear,
 so two authors who name the same institution share a number automatically, there is no
 second list to keep in sync, and reordering authors cannot silently re-attribute anyone.
 In the example above both authors show `1`, and Babbage adds `2`.
 
-One declaration feeds everything downstream that has to name a person: the byline, the
+Everything that names a person reads the same `author:` declaration: the byline, the
 appendix below, and the Atom feed. A typo in a sub-key is a warning, not a silent drop.
 
 ## The appendix {#the-appendix}
 
-Who did what, in a section of its own rather than a sentence prose tends to forget.
-Declare a `contribution:` on any author and Taliesin appends an appendix after the
-references.
+The appendix lists who did what, in an Author Contributions section of its own. Declare
+a `contribution:` on any author and that section appears after the references.
 
 ```yaml
 ---
@@ -155,11 +154,12 @@ author:
 ---
 ```
 
-**A contribution is declared beside the name, not in a list of its own.** Every other
+A contribution is declared beside the name, not in a list of its own. Every other
 tool makes you write a separate block keyed by author name, which then has to match a
 name you typed somewhere else, and silently drops the statement when the two
-spellings drift apart. As an `author:` sub-key it cannot miss, and an author who
-declares none simply contributes no row. Declare none at all and there is no appendix.
+spellings drift apart. As an `author:` sub-key it always matches its author, and an
+author who declares none contributes no row. Declare none at all and there is no
+appendix.
 
 Nothing in the appendix reads a clock: there is no "accessed" date and no build
 timestamp, so a rebuild of an unchanged page is byte-identical and the `_freeze/`
@@ -167,7 +167,7 @@ execution cache is never invalidated by it.
 
 ## `execute:` (document-wide cell defaults) {#execute-document-wide-cell-defaults}
 
-A nested `execute:` block sets defaults for **every** code cell in the document. A
+A nested `execute:` block sets defaults for every code cell in the document. A
 cell's own `#|` option always overrides the document default.
 
 | Sub-key | Type | Default | Meaning |
@@ -182,7 +182,7 @@ execute:
 ---
 ```
 
-`cache:` is the whole block on purpose. `echo:` and `include:` were retired on
+`cache:` is the only sub-key. `echo:` and `include:` were retired on
 2026-08-02: they were document-wide defaults for something every real document says per
 cell, and a default that silently changes every cell reads worse than saying it on the
 cells you mean. Write `#| echo: false` in each cell instead.
@@ -274,11 +274,9 @@ unknown key is within edit distance 2 of a known one, so `titel:` is caught and
 nudged toward `title:`. The same closed-vocabulary check covers the immediate
 children of `execute:`, `listing:` and `hero:` (including each `actions:` entry).
 
-One thing to know about references:
-
-- **There is no CSL engine, and no key that asks for one.** References always render in
-  the single built-in IEEE style. A `csl:` line is an ordinary unknown key: the build says
-  so and moves on.
+There is no CSL engine, and no key that selects one. References always render in the
+single built-in IEEE style. A `csl:` line is an ordinary unknown key: the build warns
+and continues.
 
 ## Editor autocomplete
 
@@ -289,8 +287,7 @@ companion starts the server for you. See [Preview](../using/preview.tmd).
 
 ## A fully annotated example
 
-Putting it together, here is a front-matter block exercising many of the keys at
-once, with a comment on each:
+This front-matter block uses many of the keys at once, with a comment on each:
 
 ```yaml
 ---
@@ -301,8 +298,6 @@ author: "Andreas Bogossian"
 date: "2026-06-27"
 description: "A close read of a training run."   # og:description + meta desc
 categories: [machine-learning, training]  # tags -> Atom feed <category>
-
-# --- Output / format ---
 
 # --- Social / images ---
 image: cover.png                          # listing card + og:image (needs url:)
@@ -323,11 +318,11 @@ draft: false                              # true: preview shows it, build skips
 
 # Project `_site.yml` {#project-site-yml}
 
-A **directory** with a `_site.yml` is a site or book project. The schema is
+A directory with a `_site.yml` is a site or book project. The schema is
 flat: Taliesin is HTML-only, so there's no `format: html:` nesting, and the
-project type is inferred (presence of `chapters:` ⇒ a book). A nested config (a
-`project:` / `website:` / `book:` / `format:` block) is no longer parsed: its
-unknown top-level keys warn, and its nested values are ignored. Flatten it (see
+project type is inferred (the presence of `chapters:` makes it a book). A nested
+config (a `project:` / `website:` / `book:` / `format:` block) is no longer parsed:
+its unknown top-level keys warn, and its nested values are ignored. Flatten it (see
 the key table below). There is no `_metadata.yml` cascade: the root config sets
 defaults, a page's own front matter overrides them.
 
@@ -351,7 +346,7 @@ footer:                  # a string is left text; or { left, center, right }
     - { icon: github, href: "https://github.com/me" }
 ```
 
-A **book**: just add `chapters:` (its presence makes it a book; no `type:`):
+A **book**: add `chapters:` (its presence makes it a book; no `type:`):
 
 ```yaml
 title: "My Book"
@@ -373,11 +368,11 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
-| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar **and** the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
+| `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar and the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
-| `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged **under** each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
+| `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged under each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |
 | `python` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
 
 **A shared bibliography.** `bibliography:` in `_site.yml` is read by every page, so a
@@ -387,17 +382,15 @@ its own `bibliography:` gets both, with the page's entry winning on a shared key
 way to correct one reference for one post without editing the file every other page
 reads.
 
-Two read-only checks come with it, reported against `_site.yml` by the lint
-and `build`. A **duplicate key** inside the shared file would otherwise silently
-last-write-win. An entry **no page cites** is dead weight; that one is site-wide by
-necessity, since a shared entry one page cites is in use however many pages leave it
-alone. It is advice rather than an error, so it never fails a build unless you ask
-with `--strict`. A page's *own* `bibliography:` gets the same never-cited check scoped
-to that page. Neither check ever edits a `.bib`.
+One read-only check comes with it, reported against `_site.yml` by `build` and
+`build --check-only`. A **duplicate key** inside the shared file would otherwise
+silently last-write-win. It is a warning, so it fails `build --check-only` with or
+without `--strict`. A page's *own* `bibliography:` gets the same duplicate-key check,
+reported on its `bibliography:` line. The check never edits a `.bib`.
 
 **Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`.
 Taliesin picks the interpreter by the first source that exists, so a project can pin
-its own without fighting your global shell:
+its own ahead of your global shell setting:
 
 1. the `_site.yml` `python:` field;
 2. a project-local `.venv` (`<project>/.venv/bin/python`, then `.venv/bin/python3`);
@@ -417,21 +410,21 @@ importable. A single `.tmd` with no `_site.yml` uses the same order minus the fi
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 `email`.
 
-**Table of contents.** `toc:` is a **page** key, not a `_site.yml` key. The site-wide
-form was retired on 2026-08-02: it sat in front of a gate that already answers the same
-question per page, and answered it worse. Writing `toc:` in a `_site.yml` is an
-**unknown config key error**, in a website and a book alike; delete it.
+**Table of contents.** `toc:` is a page key, not a `_site.yml` key. The site-wide
+form was retired on 2026-08-02: it overrode the per-page gate, which answers the same
+question better. Writing `toc:` in a `_site.yml` is an unknown config key error, in a
+website and a book alike; delete it.
 
-Left out of a page's front matter, the rail is **automatic**: an article page earns one
-by carrying at least **three** headings and being neither a listing nor a hero page, so a
-short page never gets a near-empty rail. An explicit `toc: true` / `toc: false` in the
-page's own front matter always wins over that gate. Below 960px the rail has no room, so
-the list moves into the navbar's menu button under **On this page**: the article keeps the
-top of the screen, and the contents stay one tap away.
+Left out of a page's front matter, the rail is automatic: an article page gets one when
+it has at least three headings and is neither a listing nor a hero page, so a short page
+never gets a near-empty rail. An explicit `toc: true` / `toc: false` in the page's own
+front matter always wins over that gate. Below 960px the rail has no room, so the list
+moves into the navbar's menu button under **On this page**, which leaves the top of the
+screen to the article and keeps the contents one tap away.
 
-**A book never shows one**, whatever any page says: the Chapters drawer is its
-navigation, and it is strictly more detailed than the rail was. That gate sits ahead of
-the page key on purpose, so a chapter's `toc: true` cannot reinstate a removed surface.
+A book never shows one, whatever any page says: the Chapters drawer is its navigation,
+and it is strictly more detailed than the rail was. That rule takes precedence over the
+page key, so a chapter's `toc: true` cannot bring the rail back.
 
 **Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
 mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). That check is
@@ -440,13 +433,13 @@ for your editor, and is optional.
 
 ## Editor autocomplete (config schema)
 
-`_site.yml` is the one config surface no language server covers, so Taliesin ships a
-JSON Schema for it: your editor's YAML language server can then autocomplete keys, show
-hovers, and flag unknown keys as you type, before you render. The schema describes the
-same key set Taliesin validates against at render time, so the editor and the renderer
-always agree.
+`_site.yml` is the only part of the configuration no language server covers, so
+Taliesin ships a JSON Schema for it: your editor's YAML language server can then
+autocomplete keys, show hovers, and flag unknown keys as you type, before you render.
+The schema describes the same key set Taliesin validates against at render time, so the
+editor and the renderer always agree.
 
-Wiring it up is the same one step in every editor, VS Code included: copy
+Setup is the same in every editor, VS Code included: copy
 `crates/core/assets/schema/tali-site.schema.json` out of the repository to somewhere your
 YAML language server can reach, then add the modeline at the very top:
 
@@ -455,16 +448,16 @@ YAML language server can reach, then add the modeline at the very top:
 title: My site
 ```
 
-**Front matter needs no schema here.** It lives inside a `.tmd` file, where no YAML
-language server looks; `taliesin lsp` is what completes and validates it, the same key
-set, from the same validator, in any LSP editor. See [Preview](../using/preview.tmd).
+Front matter needs no schema here. It lives inside a `.tmd` file, where no YAML
+language server looks; `taliesin lsp` completes and validates it in any LSP editor,
+using the same validator and key set. See [Preview](../using/preview.tmd).
 
 ## Project structure & reserved names
 
-A multi-page project is just a directory with a `_site.yml`. Taliesin discovers the
-pages by walking that directory, with one rule: **anything whose name starts with
-`_` or `.` is not a page.** That single convention is what keeps config, partials,
-caches, and build output from turning into navigable pages.
+A multi-page project is a directory with a `_site.yml`. Taliesin discovers the
+pages by walking that directory, with one rule: anything whose name starts with
+`_` or `.` is not a page. That rule keeps config, partials, caches, and build output
+from becoming navigable pages.
 
 ```text
 my-site/

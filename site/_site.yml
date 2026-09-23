@@ -8,7 +8,7 @@
 # output, and every link on every page of this site resolves in `preview site` exactly as
 # it does in the deploy.
 title: "Taliesin"
-description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns .tmd files into a live blog post, book, or website, with executable code and a preview that updates as you save."
 url: "https://taliesin.sh"
 
 nav:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Census the corpus for constructs beyond plain CommonMark.
 
-This produces the "your source stays yours" number in README.md and
+This produces the portability figures in README.md ("Before you adopt it") and
 docs/guide/using/choosing.tmd. It exists because that claim was published as
 "measured rather than asserted" while the script that measured it was never
 committed — so by 2026-08-03 the documents/lines figures no longer reproduced and

@@ -9,14 +9,14 @@ text), `--tali-muted` (secondary text), `--tali-border` (hairlines), `--tali-cod
 code ground) and `--tali-accent`, the emphasis colour, which resolves to the ink rather
 than to a hue: colour on a Taliesin page means data, so there is no chrome accent.
 
-Two palettes ship inside every page, light and dark, and **the reader's device decides
-which one paints**: the page follows the OS `prefers-color-scheme` and falls back to light
+Two palettes ship inside every page, light and dark, and the reader's device decides
+which one paints: the page follows the OS `prefers-color-scheme` and falls back to light
 when the OS expresses no preference. There is no `theme:` key and no way for a page to pin
 itself to one palette, because the choice belongs to whoever is reading. See
 [Reader controls](../reference/accessibility.tmd#reader-controls) for why the per-page
 picker went away.
 
-There is no theme file either. The one way a page ships CSS of its own is a `<style>`
+There is no theme file either. The only way a page ships CSS of its own is a `<style>`
 element inside a [raw `{=html}` block](writing.tmd#raw-html-passthrough) in the body, and
 an override written for both palettes has to say so: the dark values are keyed on
 `html[data-theme="dark"]`, which outranks a plain `:root` rule, so a `:root` override
@@ -34,14 +34,14 @@ A figure written as `![Caption](diagram.svg)` is embedded as `<img src="diagram.
 and an `<img>` is **style-isolated**: the SVG is a separate document, so nothing inside it
 can see the page's `--tali-*` variables or its `data-theme` attribute. This is a browser
 rule, not a Taliesin one. Inline `{js}` graphics and Mermaid diagrams are part of the page
-and follow the palette normally; an `<img>`-embedded SVG cannot.
+and follow the palette normally.
 
 So an SVG that themes itself with `@media (prefers-color-scheme: dark)` follows the
 reader's operating system, which is the same signal the page follows: on screen the two
 agree. They come apart in print, where the stylesheet forces the light palette while an
 OS-dark reader's SVG stays dark.
 
-Two ways to write a figure that is right in both palettes:
+To write a figure that is right in both palettes, either:
 
 - **Use a palette that works on both.** Mid-tone strokes and fills that hold contrast
   against a light and a dark background alike, and no `prefers-color-scheme` block. This
@@ -49,10 +49,10 @@ Two ways to write a figure that is right in both palettes:
   `corpus/demo-book/structure.svg` is written this way, with `#888` strokes and no
   `prefers-color-scheme` block anywhere in it.
 - **Draw it in the page instead.** A `{js}` cell or a Mermaid diagram renders into the
-  document, so a `var(--tali-*)` in the markup it emits follows the palette live. Right
-  for a figure whose colours genuinely have to match the page.
+  document, so a `var(--tali-*)` in the markup it emits follows the palette live. Use it
+  for a figure whose colours have to match the page.
 
-One more trap: a `<style>` block inside an `.svg` file is parsed as **XML**, not as CDATA.
+A `<style>` block inside an `.svg` file is parsed as XML, not as CDATA.
 A bare `<`, `>` or `&` anywhere in it, including inside a CSS comment, makes the file
 malformed, and a malformed SVG still serves with a `200` and still copies into the build
 while rendering as nothing.

@@ -9,22 +9,20 @@ image-alt: "A contour plot of a loss surface with a descent path stepping into t
 
 Almost every model you have ever trained was fit the same way: start somewhere,
 look at which way is downhill, take a step, repeat. That is **gradient descent**,
-and for all its fame it is small enough to watch happen. This page lets you do
-exactly that. Change the step size, add some momentum, drag the starting point
-around the slope, and see where the little ball rolls.
+and it is small enough to watch happen. On this page you can change the step size,
+add some momentum, drag the starting point around the slope, and see where the
+little ball rolls.
 
-We will descend a single, deliberately awkward surface throughout: a long, narrow
-valley. It is the example that shows why the step size is a knife-edge and why
-momentum was invented, and it is simple enough that we can write its slope down by
-hand in a moment.
+We will descend one awkward surface throughout: a long, narrow valley. It shows why
+the step size is hard to get right and why momentum was invented, and it is simple
+enough that we can write its slope down by hand in a moment.
 
 ## Play with it first {#sec-playground}
 
-Here is the whole story in one picture. The rings are contours of the loss, low in
-the middle and high at the edges. The dot is where descent **starts**, and the line
-is the path it takes. Drag the dot anywhere on the slope; nudge the three sliders.
-Push the step size high enough and watch the path stop converging and start
-ricocheting across the valley.
+In the picture below, the rings are contours of the loss, low in the middle and high
+at the edges. The dot is where descent starts, and the line is the path it takes.
+Drag the dot anywhere on the slope; nudge the three sliders. Push the step size high
+enough and watch the path stop converging and start ricocheting across the valley.
 
 {{< input name="lr" type="slider" min="0.01" max="0.35" step="0.01" value="0.12" label="step size (η)" >}}
 {{< input name="beta" type="slider" min="0" max="0.9" step="0.05" value="0" label="momentum (β)" >}}
@@ -191,22 +189,22 @@ return wrap;
 
 ## The slope, written down {#sec-math}
 
-The surface you were just playing on is one tidy formula. Writing $\theta = (x, y)$
+The surface you were just playing on has a simple formula. Writing $\theta = (x, y)$
 for a point on it, the loss is
 
 $$ L(\theta) = \tfrac{1}{2}\!\left(x^2 + 6\,y^2\right). $$
 
-That factor of six is the whole personality of the problem. Move the same small
-distance away from the floor along $x$ or along $y$, and the $y$ direction costs six
-times as much loss. The result is the long, narrow trough you can see in the rings:
-gentle end to end, steep wall to wall.
+The factor of six sets the shape of the problem. Move the same small distance away
+from the floor along $x$ or along $y$, and the $y$ direction costs six times as much
+loss. The rings show the resulting long, narrow trough, gentle along its length and
+steep across it.
 
-The direction of steepest **ascent** is the gradient, the vector of partial
+The direction of steepest *ascent* is the gradient, the vector of partial
 derivatives, which for this loss is short enough to read off by hand:
 
 $$ \nabla L(\theta) = \left(\frac{\partial L}{\partial x},\ \frac{\partial L}{\partial y}\right) = (x,\ 6y). $$
 
-Gradient descent simply walks the other way. It takes a fixed fraction $\eta$ of the
+Gradient descent walks the other way. It takes a fixed fraction $\eta$ of the
 gradient, the **step size** (or *learning rate*), and subtracts it:
 
 $$ \theta \;\leftarrow\; \theta - \eta\,\nabla L(\theta). $$
@@ -217,16 +215,15 @@ carries you part of the way there.
 
 ![The loss surface as contour rings: shallow along the valley floor (the $x$ axis), steep across it (the $y$ axis). At a point on the slope, the descent step $-\nabla L$ points inward toward the minimum.](landscape.svg){#fig-landscape}
 
-Here is the catch that the rest of the page is about. The same $\eta$ multiplies both
-components of the gradient, but the two components live on very different scales: the
-$y$ component is $6y$, the $x$ component only $x$. A step size gentle enough to crawl
-along the shallow $x$ direction barely moves; make it big enough to move usefully and
-it can overshoot the steep $y$ walls entirely. That tension is exactly what the step
-size slider lets you feel.
+The same $\eta$ multiplies both components of the gradient, but the two components
+live on different scales: the $y$ component is $6y$, the $x$ component only $x$. A
+step size gentle enough to crawl along the shallow $x$ direction barely moves; make it
+big enough to move usefully and it can overshoot the steep $y$ walls entirely. The
+step size slider lets you feel that tension.
 
 ## One step at a time {#sec-walk}
 
-The playground shows the whole path at once. To see *why* it bends the way it does,
+The playground shows the whole path at once. To see why it bends the way it does,
 step through the five scenes below: the picture redraws for each one, from the bare
 landscape to a full run and, finally, to a run that falls apart.
 
@@ -319,12 +316,12 @@ if (scene === "landscape") {
   arrow(START, [START[0] - 0.9 * gx / n, START[1] - 0.9 * gy / n], "var(--tali-accent)"); // -grad, downhill
   dot(START);
 } else if (scene === "step") {
-  const eta = 0.12; const [gx, gy] = grad(START[0], START[1]);
+  const eta = 0.2; const [gx, gy] = grad(START[0], START[1]);
   const next = [START[0] - eta * gx, START[1] - eta * gy];
   polyline([START, next], "var(--tali-accent)");
   dot(START); dot(next, "var(--tali-fg)");
 } else if (scene === "iterate") {
-  polyline(run(0.12, 30, 0), "var(--tali-accent)");
+  polyline(run(0.2, 30, 0), "var(--tali-accent)");
   dot(START);
 } else if (scene === "diverge") {
   polyline(run(0.34, 22, 0), "var(--tali-accent)");
@@ -338,8 +335,8 @@ the steep left wall of the valley. Everything that follows is a rule for getting
 there to the dark point in the middle.
 
 **Which way is downhill.** At the start point, the negative gradient $-\nabla L$ points
-almost straight *across* the valley, not along it. That is the trap: the steepest
-direction is rarely the direction of the minimum.
+almost straight *across* the valley, not along it. The steepest direction is rarely
+the direction of the minimum.
 
 **One step.** Multiply that direction by the step size and move. With a modest $\eta$
 the first step lands well down the wall but overshoots the floor slightly, ending up on
@@ -351,11 +348,12 @@ works, but notice how much of the effort went sideways.
 
 **Too far.** Now push the step size past the edge. Each step across the valley is longer
 than the last; instead of settling, the path climbs the opposite wall higher every time
-and ricochets out of the frame. Same rule, same surface, one number too large.
+and ricochets out of the frame. The rule and the surface are the same as before; only
+the step size is too large.
 
 ## Choosing the step size {#sec-rate}
 
-Watching the path is one way to judge a step size; watching the **loss fall** is
+Watching the path is one way to judge a step size; watching the loss fall is
 another, and often clearer. The chart below plots the loss at each iteration for
 whatever the three sliders are set to right now. A healthy run drops fast and flattens
 near zero; a too-large one bottoms out early and then climbs, the curve turning back
@@ -387,7 +385,7 @@ fig.style.color = "var(--tali-accent)";
 return fig;
 ```
 
-::: {.callout-warning title="The step size is a two-sided constraint"}
+::: {.callout-warning title="The step-size ceiling"}
 For a quadratic like this one, plain gradient descent converges only while
 $\eta < 2/\lambda_{\max}$, where $\lambda_{\max}$ is the largest curvature, here the
 $6$ of the steep direction. That puts the ceiling at $\eta < \tfrac{1}{3}$. Below it,
@@ -395,7 +393,7 @@ smaller is safer but slower; above it, no amount of patience helps. Most of the 
 training is keeping $\eta$ under a ceiling you cannot see directly.
 :::
 
-## A shove downhill: momentum {#sec-momentum}
+## Momentum {#sec-momentum}
 
 The slow part of every run above was the crawl along the valley floor, where the
 gradient is tiny and each step barely moves. **Momentum** fixes this by giving the ball
@@ -419,17 +417,17 @@ high, though, and momentum overshoots on its own, a third way to make the path u
 
 ## What to carry away {#sec-takeaways}
 
-::: {.callout-note title="Three things the valley taught us"}
+::: {.callout-note title="Summary"}
 - **Steepest is not shortest.** The negative gradient points across the valley, not at
   the minimum, so descent zig-zags. Curvature, not distance, sets the direction.
 - **The step size has a ceiling.** One number, shared across every parameter, has to be
   small enough for the steepest direction and is therefore usually too small for the
   rest. Cross the ceiling and the run diverges no matter what.
-- **Momentum buys back the crawl.** Accumulating velocity accelerates the shallow
+- **Momentum shortens the crawl.** Accumulating velocity accelerates the shallow
   directions and cancels the wobble in the steep ones, which is why nearly every modern
   optimizer keeps some form of it.
 :::
 
-Every trick that came later, adaptive rates, per-parameter scaling, learning-rate
-schedules, is a more careful answer to the same two questions you just felt by hand:
-which way, and how far.
+Every trick that came later (adaptive rates, per-parameter scaling, learning-rate
+schedules) is a more careful answer to the questions you worked through by hand here:
+which way to step, and how far.

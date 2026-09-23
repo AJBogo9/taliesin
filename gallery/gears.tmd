@@ -6,9 +6,9 @@ image-alt: "Two meshed 3D gears, a small blue driver turning a large bronze whee
 toc: false
 ---
 
-Two gears, meshed and spinning, every vertex computed in the `{js}` cell below. Change
-the tooth count and the geometry rebuilds; change the speed and the mesh keeps its
-ratio. Drag to orbit, scroll to zoom.
+The `{js}` cell below computes every vertex of the two meshed gears and spins them.
+Change the tooth count and the geometry rebuilds; change the speed and the mesh keeps
+its ratio. Drag to orbit, scroll to zoom.
 
 {{< include _includes/three-scene.tmd >}}
 

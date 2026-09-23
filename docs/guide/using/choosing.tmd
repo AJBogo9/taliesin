@@ -1,21 +1,19 @@
 ---
 title: "Choosing Taliesin"
-description: "What adopting Taliesin costs and what it is actually good at: how much of your source is portable, what the speed numbers are in absolute terms, and what happens if you leave."
+description: "What adopting Taliesin costs and what it is good at: how much of your source is portable, what the speed numbers are in absolute terms, and what happens if you leave."
 ---
 
-Every other chapter tells you how to use the tool. This one is for the decision *before*
-that: what you are committing to, what you get, and what leaving costs. It is deliberately
-specific, because the honest version of "should I adopt this" is a set of numbers, not a
-set of adjectives.
+Every other chapter tells you how to use the tool. This one helps you decide whether to
+adopt it: what you are committing to, what you get, and what leaving costs.
 
-## Your source stays yours {#sec-portability}
+## Source portability {#sec-portability}
 
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
-dialect only this program understands. Here is the measurement.
+dialect only this program understands.
 
-Across the **81 `.tmd` documents** in Taliesin's own corpus, **7,039 lines** of real
-writing, the largest sample that exists, **474 lines, 6.7%, carry any construct beyond
-plain CommonMark.** The other 93.3% is Markdown, and any Markdown tool reads it.
+Taliesin's own corpus is 81 `.tmd` documents and 7,039 lines of real writing, the largest
+sample that exists. Of those lines, 474 (6.7%) carry any construct beyond plain
+CommonMark. The other 93.3% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
@@ -28,32 +26,30 @@ plain CommonMark.** The other 93.3% is Markdown, and any Markdown tool reads it.
 
 *(Measured 2026-09-11 over `corpus/**/*.tmd`; a line using two constructs is counted once
 in the total and once per family, so the family rows sum to more than the total.
-**Reproduce it with `python3 tools/portability-census.py`**, which is where these numbers
-come from and which spells out each family's definition. The script is committed for a
-reason: this table was first published in July as "measured rather than asserted" while
-the script that measured it was not, and by August its document and line counts no longer
+Reproduce it with `python3 tools/portability-census.py`, which is where these numbers
+come from and which spells out each family's definition. The script is committed because
+this table was first published in July as "measured rather than asserted" while the
+script that measured it was not, and by August its document and line counts no longer
 reproduced.)*
 
-**None of those six is invented here.** Every one is Pandoc or Quarto vocabulary that
-predates Taliesin, which means the 6.7% is not stranded either: it is the same syntax
-another Pandoc-family tool already parses. `.tmd` is a file extension, not a format, and
-the same argument runs backwards: a project arriving from Quarto brings its sentences,
-fenced cells, `#|` options, `:::` divs, math, citations and cross-references across
-unchanged. `taliesin build . --check-only` names the short list of vocabulary that differs, with a file
-and a line for each, which is a better migration assistant than any page could be.
+None of those six constructs originated in Taliesin. Each is Pandoc or Quarto vocabulary
+that predates it, so the 6.7% is syntax another Pandoc-family tool already parses. `.tmd`
+is a file extension, not a format. A project arriving from Quarto likewise brings its
+sentences, fenced cells, `#|` options, `:::` divs, math, citations and cross-references
+across unchanged. `taliesin build . --check-only` names the short list of vocabulary that
+differs, with a file and a line for each.
 
-**One thing it cannot flag is an unknown cross-reference prefix.** Only `@fig-`, `@tbl-`,
-`@sec-`, `@eq-` and `@lst-` are references here; anything else (`@thm-`, `@def-`) is left
-as literal text on purpose, because `@rust-lang` in a sentence is indistinguishable from a
-typo. Grep your source for those prefixes before you migrate.
+The check cannot flag an unknown cross-reference prefix. Only `@fig-`, `@tbl-`, `@sec-`,
+`@eq-` and `@lst-` are references here; anything else (`@thm-`, `@def-`) stays literal
+text, because `@rust-lang` in a sentence is indistinguishable from a typo. Grep your
+source for those prefixes before you migrate.
 
-## The speed story, in absolutes {#sec-speed}
+## Speed measurements {#sec-speed}
 
-Speed is the reason this tool exists, so it is worth stating without a marketing
-multiplier. **These are absolute numbers on one machine, and they measure Taliesin's work
-only.** A batch document compiler doing a cold Pandoc pass with execution is doing
-different work; comparing the two as a ratio would be dishonest arithmetic, so no ratio
-appears here.
+Speed is the reason this tool exists. These are absolute numbers on one machine, and they
+measure Taliesin's work only. A batch document compiler doing a cold Pandoc pass with
+execution is doing different work, so a ratio between its times and these would be
+misleading.
 
 | Measurement | Value | What it covers |
 |---|---:|---|
@@ -71,41 +67,39 @@ appears here.
 `_freeze/` cache. The single-document ready row was re-measured 2026-09-01, median of
 five runs, release build: wall time from spawning `taliesin preview <file> <port>` to
 the first HTTP 200 from its socket, polled every 2 ms, for a small document
-(`corpus/native-tmd.tmd`); the ≈0.5 s companion figure is `corpus/highlight.tmd`,
-highlight-dense on purpose. Each build figure is the duration the build prints for
-itself, and each
-page count is the one it reports (`find … -name '*.html'` is not the page count, since a
-project may ship its own `404.html` and `_`-prefixed files are never pages). The warm-edit
-and cross-reference rows come from `tools/live-edit-bench`, re-measured 2026-08-27, release
-build; its committed `RESULTS.md` labels them indicative (the numbers vary by machine). The
-**structural** rows it also records, the op counts and payload bytes, are deterministic and
-gated by a regression test.)*
+(`corpus/native-tmd.tmd`); the ≈0.5 s companion figure is `corpus/highlight.tmd`, written
+to be highlight-dense. Each build figure is the duration the build prints for itself,
+and each page count is the one it reports (`find … -name '*.html'` is not the page count,
+since a project may ship its own `404.html` and `_`-prefixed files are never pages). The
+warm-edit and cross-reference rows come from `tools/live-edit-bench`, re-measured
+2026-08-27, release build; its committed `RESULTS.md` labels them indicative (the numbers
+vary by machine). The structural rows it also records, the op counts and payload bytes,
+are deterministic and gated by a regression test.)*
 
-The number that matters is not any single row: it is that the warm edit is a **diff**, so
-its cost tracks what you changed rather than how large the document is. See [the block
+Because the warm edit is a diff, its cost tracks what you changed rather than how large
+the document is. See [the block
 model](https://internals.taliesin.sh/block-model.html#why-the-diff-is-o-n-log-n) for the operation
 breakdown behind that payload figure.
 
-**The last row is the honest asterisk on that sentence.** Inside a multi-page project a
-save is not only the diff: the cross-reference registry is re-derived first, and its
-harvest renders every page to recover the cross-page figure and equation numbers. That pass
-scales with the size of the *project* while the diff scales with the size of the *edit*, so
-it is still O(pages) on every save. It is about 0.2 ms per page in this guide, and that
-figure is wall-clock across every core the machine offers rather than per-core cost: a
-200-page project of heavy pages would pay roughly 0.2 s here, against the 2.5 s the same
+The last row is an exception to that scaling. In a multi-page project a save also
+re-derives the cross-reference registry before the diff, and its harvest renders every
+page to recover the cross-page figure and equation numbers. That pass scales with the
+size of the *project* while the diff scales with the size of the *edit*, so it is still
+O(pages) on every save. It is about 0.2 ms per page in this guide, and that figure is
+wall-clock across every core the machine offers rather than per-core cost: a 200-page
+project of heavy pages would pay roughly 0.2 s here, against the 2.5 s the same
 extrapolation gave before 1.1.0. On a two-core laptop expect the memoization half of that
 improvement but not the concurrent half.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}
 
 Each of these is a thing users of comparable tools have asked for in public. They are
-listed with their sources so you can check that the need is real rather than
-retrofitted.
+listed with their sources so you can check that the need is real and was not retrofitted.
 
 - **Edit in your own editor, see output alongside.**
   ([marimo #3114](https://github.com/marimo-team/marimo/issues/3114)) The `.tmd` file is
-  the only editing surface; the browser is a read-only view, and click-to-source is the
-  one bridge back. It never writes to your source.
+  the only editing surface and the browser is a read-only view. Click-to-source, the only
+  path from the page back to the editor, never writes to your source.
 - **A format a human can read and `git diff`.**
   ([marimo #1379](https://github.com/marimo-team/marimo/discussions/1379)) `.tmd` is
   Markdown. See the table above for exactly how much of it is not.
@@ -120,43 +114,39 @@ retrofitted.
   [#10429](https://github.com/orgs/quarto-dev/discussions/10429)) Both are the same
   mechanism here: a per-cell cumulative content hash.
 
-**The strongest claim is the one nobody else makes.** Cached-output systems in this space
-carry a standing complaint that the cache can serve a *stale* result: an output produced
-by code that has since changed. Taliesin's cache key is the cumulative hash of a cell's own
-code plus every upstream cell in its language plus the interpreter's identity, so editing
-anything upstream invalidates that cell and everything downstream. **For the axes the key
-can see (cell code, its upstream, the interpreter) a stale hit is not unlikely, it is
-unrepresentable.** The key is deliberately blind to what a cell *reads*: a data file, an
-environment variable, a fetched URL, the clock, a library upgraded in place. Mark such a
-cell `#| cache: false` and it re-runs every time, along with everything downstream. See
+Cached-output systems in this space carry a standing complaint that the cache can serve a
+*stale* result: an output produced by code that has since changed. Taliesin's cache key is
+the cumulative hash of a cell's own code plus every upstream cell in its language plus the
+interpreter's identity, so editing anything upstream invalidates that cell and everything
+downstream. For the axes the key can see (cell code, its upstream, the interpreter), a
+stale hit cannot happen, and no comparable tool makes that claim. By design, the key does
+not cover what a cell *reads*: a data file, an environment variable, a fetched URL, the
+clock, a library upgraded in place. Mark such a cell `#| cache: false` and it re-runs
+every time, along with everything downstream. See
 [Executable content](code.tmd) and the cache notes in
 [Troubleshooting](../reference/troubleshooting.tmd).
 
 ## Continuity: what you are relying on {#sec-continuity}
 
-Read this part before you commit a book to it.
+Taliesin has one maintainer, and the scope is closed. Version 1.0 does not change that:
+it means the feature set is final for this tool's one use case, not that a team stands
+behind it. In practice there is no support contract or release cadence you can plan
+around, and nobody but the maintainer knows the codebase. The project continues only
+while the maintainer works on it.
 
-**Taliesin has one maintainer, and the scope is closed.** That is the plain fact, and 1.0
-does not change it: the version means the feature set is final for this tool's one use
-case, not that a team stands behind it. What it means concretely: there is no support
-contract, no release cadence you can plan around, and no second person who knows the
-codebase. If the maintainer stops, the project stops.
-
-What *does not* stop:
+What you keep if the maintainer stops:
 
 - **Your source is Markdown**, 93.3% of it plain CommonMark, all of it in your repository.
 - **Pages you already built keep working**: they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
 
-So the realistic downside is not "your writing is lost", it is "you migrate to another
-Pandoc-family tool and re-do a small fraction of the syntax." That is a cost worth naming,
-and it is bounded by the table in [Your source stays yours](#sec-portability).
+So the realistic downside is migrating to another Pandoc-family tool and redoing a small
+fraction of the syntax, with your writing intact. The table in [Source
+portability](#sec-portability) bounds that fraction.
 
-The mitigation the project actually offers is dogfooding rather than a promise:
-**everything the author writes goes through this tool.** Both books of this manual, the
-public website and the regression corpus are `.tmd` rendered by Taliesin: **112 tracked
-`.tmd` files, 12,904 lines**, of which the 81-document corpus is re-rendered by every
-`cargo test` run. The manual you are reading is not a description of the tool; it is
-output from it. A defect that breaks a page breaks the documentation for that page in the
-same commit.
+The project offers no guarantee of continuity. Its mitigation is that everything the
+author writes goes through this tool. Both books of this manual, the public website and
+the regression corpus are `.tmd` rendered by Taliesin: 112 tracked `.tmd` files, 12,904
+lines, of which the 81-document corpus is re-rendered by every `cargo test` run. A defect
+that breaks a page breaks the documentation for that page in the same commit.

@@ -4,9 +4,11 @@ description: "The prose surface: typography, offline math, diagrams, figures, ca
 bibliography: ../references.bib
 ---
 
-Everything you'd reach for in a technical post works out of the box, rendered
-server-side and shipped offline: no CDN, no client re-run when the reader's device
-flips to dark.
+The usual features of a technical post work without setup and ship offline: the page
+loads nothing from a CDN. Math and code highlighting render server-side, so nothing
+re-runs in the client for them when the reader's device switches to dark mode. A
+`{mermaid}` diagram renders in the browser and re-renders on that switch
+([Diagrams](#diagrams)).
 
 ## Prose and typography
 
@@ -23,7 +25,7 @@ tables with per-column alignment:
 > Smart typography turns straight quotes into curly ones and handles ellipses…,
 > matching the look of a hand-written post.
 
-Code blocks are syntax-highlighted **server-side** and get a hover **Copy** button.
+Code blocks are syntax-highlighted server-side and get a hover **Copy** button.
 A fence whose language token isn't recognised still renders, just unhighlighted and
 with no warning, so check the label if a block you expected to be highlighted looks
 flat (a common cause is a typo like ` ```pyton `). The language is read from the first
@@ -42,8 +44,8 @@ struct Block {
 ## Math
 
 Math renders server-side with KaTeX and ships fully offline (the fonts are bundled
-at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text; display
-math stands alone; and a labelled equation is **numbered and cross-referencable**.
+at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text, display
+math takes its own line, and a labelled equation is numbered and cross-referencable.
 Multi-line `aligned` environments work too. The discrete Fourier transform
 [@cooley1965] is given by @eq-dft:
 
@@ -77,9 +79,8 @@ gantt, and the rest); the syntax for each is in
 A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
 `#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`, and `@fig-`
 cross-references resolve to its number. @fig-scree is drawn by a matplotlib cell
-that sets *no* theme colours:
-inline figures default to a transparent background with neutral-grey axes, so they
-track the light/dark theme on their own.
+that sets no theme colours: inline figures default to a transparent background with
+neutral-grey axes, so they track the light/dark theme on their own.
 
 ```{python}
 #| label: fig-scree
@@ -104,17 +105,17 @@ for spine in ("top", "right"):
 plt.show()
 ```
 
-### What an image gets without asking
+### Image handling
 
-Point at a `.png`, `.jpg`/`.jpeg`, `.gif` or `.webp` and the rest is automatic. There
-is nothing to configure and nothing to pre-process.
+A `.png`, `.jpg`/`.jpeg`, `.gif` or `.webp` image needs no configuration and no
+pre-processing.
 
 ![A training loss curve falling from 1.0 to near zero over forty iterations.](figures/loss.png){#fig-loss-png}
 
 **Its box is reserved before it loads.** @fig-loss-png above is emitted with the
 intrinsic `width` and `height` read from the file itself, so the prose below it never
-jumps as the image arrives. This happens in the preview too, which is the point: a
-preview that does not shift the way the built page shifts is not previewing it.
+jumps as the image arrives. The preview does the same, so what you see while an image
+loads matches the built page.
 
 Images are copied across unchanged, so shrink or re-encode the source yourself if the
 byte count matters.
@@ -151,8 +152,8 @@ This page cites the *TeXbook* [@knuth1984] and the FFT paper [@cooley1965], and
 groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Cross-references
 resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-` and `@lst-`,
 carrying the resolved number when known (as `@eq-dft` and
-`@fig-scree` above do): **across chapters**, so a `@fig-` in one chapter resolves
-to its figure in another.
+`@fig-scree` above do). They also resolve across chapters, so a `@fig-` in one chapter
+resolves to its figure in another.
 
 In a site or book, `bibliography:` can instead live once in `_site.yml` and be shared
 by every page; a page's own `bibliography:` is then merged over it. See
@@ -161,25 +162,25 @@ by every page; a page's own `bibliography:` is then merged over it. See
 ## Footnotes and sidenotes
 
 Footnotes use the standard `[^label]` syntax. A reference renders as a superscript
-number, and the note itself renders **in the right margin, beside the line that cites
-it**.[^demo] There is no list of endnotes at the bottom of the page: a note sits where
-you need it, so reading one costs a glance instead of a jump to the end and back.
+number, and the note itself renders in the right margin, beside the line that cites
+it.[^demo] There is no list of endnotes at the bottom of the page, so reading a note does
+not mean jumping to the end and back.
 
 [^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
     anywhere for the body; Taliesin does the numbering and the placement.
 
 Narrow the window past the point where there is a margin to put a note in and the notes
-fold away; tapping a number reveals that one in place. Print does the same, since paper
-has no reader to tap.
+fold away; tapping a number reveals that one in place. In print every note sits in the
+flow, since paper cannot be tapped.
 
 Notes are for asides short enough to sit in a narrow column, and a definition carrying
 block content (a list, a quote, a code block) is flattened to its text with a warning,
 because a margin note can only hold inline content.
 
 For an aside with no reference to hang it off, a `::: {.column-margin}` block floats
-into the same margin column on a wide screen and folds into the flow on a narrow one:
-web-native marginalia a PDF can't do. `.column-margin` is the only spelling. Footnotes
-and margin blocks share one column, so the two never collide.
+into the same margin column on a wide screen and folds into the flow on a narrow one.
+`.column-margin` is the only spelling. Footnotes and margin blocks share one column, so
+the two never collide.
 
 ::: {.column-margin}
 This is a margin note. On a wide screen it sits in the margin, aligned to where it was
@@ -187,9 +188,8 @@ written; narrow the window and it collapses to an indented note. Math works here
 $\sigma^2 = \operatorname{Var}(X)$.
 :::
 
-The opposite move on the same axis is to make a block *wider* than the reading column:
-`::: {.column-page}` widens up to the page width, for content the ~70-character measure
-is simply wrong for.
+To make a block wider than the reading column, use `::: {.column-page}`: it widens up to
+the page width, for content that does not fit the ~70-character measure.
 
 ::: {.column-page}
 | Class | What it does | Reach for it when |
@@ -198,12 +198,12 @@ is simply wrong for.
 | `.column-page` | Widens the block up to the full page width | A wide table, a multi-panel plot, a diagram whose labels only fit at size |
 :::
 
-Most of what wants the room needs no escape. A code block, a folded cell, a numbered
-listing, a cell's output, a data table and a Mermaid diagram all take the wider band by
-themselves, because the reading measure fits 55 columns of code and PEP 8 asks for 79.
-The band is a ceiling rather than a size: a box is as wide as its content needs, never
-narrower than the prose and never wider than 100 columns. It centres on the prose unless a
-margin note has claimed the right side, in which case it right-aligns to the prose instead.
+Most wide content needs no escape. A code block, a folded cell, a numbered listing, a
+cell's output, a data table and a Mermaid diagram all take the wider band by themselves,
+because the reading measure fits 55 columns of code and PEP 8 asks for 79. The band sets a
+maximum width: a box is as wide as its content needs, never narrower than the prose and
+never wider than 100 columns. It centres on the prose unless a margin note has claimed the
+right side, in which case it right-aligns to the prose instead.
 
 Neither escape is a new block type: `.column-margin` and `.column-page` are plain
 classes, so they work on a table, a figure, a listing, or a bare div, and the block keeps
@@ -220,9 +220,9 @@ it in place. The directive must be alone on its line, and it is left literal ins
 fence or an inline code span (which is why the examples on this page do not fire). The
 path is resolved relative to the file that holds the directive.
 
-Includes are how you keep one author bio, one license footer, or one shared figure
-in a single file and pull it into many pages. Because the splice happens before the
-block model is built, the included blocks are first-class: they carry their own
+Use an include to keep an author bio, a license footer or a shared figure in a
+single file and pull it into many pages. Because the splice happens before the
+block model is built, the included blocks are ordinary blocks with their own
 block ids and source positions, and click-to-source still resolves into the
 partial's own file and line, not the page that pulled it in. The dev server also
 watches every transitively included file, so editing a partial re-renders every
@@ -233,7 +233,7 @@ page that uses it.
 
 A partial is just a `.tmd` file, but you usually do not want it discovered as its
 own page in a site build. A file (or folder) whose name starts with an underscore
-is skipped by the page walker, and the idiomatic home for shared partials is an
+is skipped by the page walker, and shared partials conventionally go in an
 `_includes/` directory near the project root. A nested post then reaches its shared
 partial with a relative climb, exactly as the corpus does:
 
@@ -242,10 +242,10 @@ partial with a relative climb, exactly as the corpus does:
 ```
 :::
 
-An include that cannot be expanded is left visible and reported, never dropped
-silently: an unsafe path (absolute, or one that climbs above the project root), an
-include cycle, and a missing or unreadable file each draw their own located
-warning instead of failing the build outright.
+An include that cannot be expanded is left visible and reported: an unsafe path
+(absolute, or one that climbs above the project root), an include cycle, and a
+missing or unreadable file each draw their own located warning instead of failing
+the build outright.
 
 ## Raw HTML passthrough
 

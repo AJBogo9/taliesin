@@ -8,14 +8,14 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | Command | Effect |
 |---|---|
 | `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
-| `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
+| `preview <dir>` | Live multi-page site/book preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
 | `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
-| `build <file.tmd> --stdout` | Write the page to **stdout** instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
-| `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/`; the directory needs a `_site.yml` |
-| `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write **nothing**: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
+| `build <file.tmd> --stdout` | Write the page to stdout instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
+| `build <dir> [--out <dir>]` | Build a multi-page site/book to `_site/` / `_book/`; the directory needs a `_site.yml` |
+| `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write nothing: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
 | `init [dir]` | Scaffold a previewable project in `dir` (default `.`): a `_site.yml`, an `index.tmd` and one dated post under `posts/`, and nothing else; refuses to overwrite |
-| `lsp` | Run a stdio **LSP server** for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does **not** provide syntax highlighting (see [below](#any-lsp-editor-except-the-colours)) |
+| `lsp` | Run a stdio LSP server for live `.tmd` diagnostics and editor intelligence in any LSP editor (Neovim, Helix, VS Code; Zed needs an extension). It does not provide syntax highlighting (see [below](#other-lsp-editors)) |
 | `doctor [dir] [--format human\|json]` | Audit whether the environment can run code cells: which Python is resolved and [why that one](#checking-the-environment-doctor), whether `ipykernel` imports, and `_site.yml` validity. A status line per item with a fix command; exits non-zero only if a *configured* interpreter is broken |
 
 A `<dir>` target needs a `_site.yml`: that file's presence is what makes a
@@ -45,25 +45,25 @@ throughout (and a `serve:` tag ahead of the first line).
 ## `--check-only`: the pre-publish gate
 
 `taliesin build <file|dir> --check-only` renders the document or project in memory, reports
-everything that flows through the diagnostics channel, and **writes nothing**: no `_site/`,
-no `.html`, no `_freeze/` entry. It never starts a kernel either, so `--no-exec` is implied
-rather than needed, and it refuses `--out` / `--stdout` / `--jobs` instead of
-accepting a flag that describes output it will not produce.
+everything that flows through the diagnostics channel, and writes nothing (no `_site/`,
+`.html` file or `_freeze/` entry). It never starts a kernel either, so `--no-exec` is
+implied, and it rejects `--out` / `--stdout` / `--jobs`, since each describes output it
+will not produce.
 
-**It is a static check, and its clean verdict says so.** A project with executable cells
+The check is static, and its clean verdict says so. A project with executable cells
 gets `no static problems found · N code cells not run` rather than a bare "no problems
 found", because a gate that never starts a kernel cannot promise those cells run: the
 publish `build` is what proves that, and the two-stage
-`taliesin build . --check-only && taliesin build . --strict` below is how you get both.
+`taliesin build . --check-only && taliesin build . --strict` below runs both.
 
 It reports unknown front-matter / `_site.yml` / cell-option / container keys (with
 did-you-mean), unknown callout kinds, broken `@xref` cross-references, unknown shortcodes, a
 missing `bibliography:`, duplicate heading `{#id}`s, and broken in-page `#anchor` links.
-It also catches these **publish-blocking** mistakes:
+It also catches these publish-blocking mistakes:
 
 | Rule | Flags |
 |---|---|
-| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: the lint stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
+| Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose local target file is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. External `http(s)://` links are never checked: the lint stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
 | Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a `{python}` cell that calls `define(` (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). |
@@ -77,7 +77,7 @@ with `--format json`, which is the machine-readable surface for *documents* (`do
 prose). It exits `0` when nothing that gates fired, so it drops straight into CI or a
 pre-commit hook.
 
-Each human `path` is rooted on the target **as you typed it**, so it opens from wherever
+Each human `path` is rooted on the target as you typed it, so it opens from wherever
 you ran the command: `taliesin build docs/guide --check-only` from the repository root
 reports `docs/guide/using/recipes.tmd:12:`, not a bare `using/recipes.tmd` that only
 resolves inside the project. (The `file` in `--format json` stays relative to the target,
@@ -91,52 +91,54 @@ taliesin build . --check-only --format json > problems.json
 
 ## What fails the run
 
-There are three severities, and they exist to keep the gate honest: advice about how a
-sentence reads must not have the same power over CI as a broken cross-reference.
+There are three severities, so that advice about how a sentence reads does not carry the
+same weight in CI as a broken cross-reference.
 
 | Severity | Means | Fails the run |
 |---|---|---|
 | `error` | The document is wrong: a broken ref, a dead link, unparseable YAML | always |
 | `warning` | Something will silently not work: an unknown key, a missing `alt` | always |
-| `suggestion` | Advice you may decline. **No check emits this today**: the last one that did (a `.bib` entry nothing cites) was cut on 2026-08-20 | never, unless you pass `--strict` |
+| `suggestion` | Advice you may decline. No check emits this today: the last one that did (a `.bib` entry nothing cites) was cut on 2026-08-20 | never, unless you pass `--strict` |
 
-A suggestion is always **printed**; only the exit code changes. `build --strict` uses the
+A suggestion is always printed; only the exit code changes. `build --strict` uses the
 same rule, so advice can never block a release, and the summary says so rather than
 reporting it as a problem beside an exit `0`.
 
-One warning is exempt from that table, deliberately: `external reference not bundled`, the
-offline-guarantee nudge a **writing** build prints when a page keeps a remote script,
+One warning is exempt from that table: `external reference not bundled`, the
+offline-guarantee nudge a writing build prints when a page keeps a remote script,
 image, stylesheet or `{js}` import. Keeping one can be intentional, and the tool does not
 download URLs at build time, so the nudge is printed (and carried in `--format json`) but
 never fails the run, with or without `--strict`.
 
 ::: {.callout-warning}
-## One thing fails a plain `build`: unparseable YAML
+## Unparseable YAML fails a plain `build`
 
 A `build` without `--check-only` or `--strict` writes its output and exits `0` even when it
 reported problems: a dead link or a missing image ships, and the closing tally names
-`--strict` as the flag that would have failed it. **The exception is a front-matter or
-`_site.yml` block that does not parse**, which fails the build unconditionally. Nothing in
-such a block is read, so the page ships without the `title:`, `bibliography:` or `listing:`
-you wrote (and a site without its nav and its `url:`) while printing `built` and exiting
-`0`. The output is still written; only the exit code changes.
+`--strict` as the flag that would have failed it. Two exceptions fail the build
+unconditionally. One is a front-matter or `_site.yml` block that does not parse. Nothing in
+such a block is read, so the page would otherwise ship without the `title:`,
+`bibliography:` or `listing:` you wrote (and a site without its nav and its `url:`) while
+printing `built` and exiting `0`. The other is a document with executable cells and no
+usable kernel; pass `--no-exec` to render them as source on purpose. In both cases the
+output is still written; only the exit code changes.
 :::
 
 Severity is carried by the validator that found the defect, not derived from the wording of
-its message — so a reworded message cannot silently reclassify a family, and there is no
-`TAL-*` code catalogue to keep in step.
+its message. A reworded message therefore cannot silently reclassify a family, and there is
+no `TAL-*` code catalogue to keep in step.
 
 `--format json` stays valid JSON even when the lint itself can't run: an unreadable or
 missing path (or an empty project) is reported as a single `{"error": "…"}` object on
-**stdout** (with a non-zero exit), so `taliesin build x --check-only --format json | jq`
+stdout (with a non-zero exit), so `taliesin build x --check-only --format json | jq`
 never chokes on a stray human message. Human format keeps that error on stderr.
 
-The lint is static, so it does **not** spawn interpreters and says nothing about whether a
+The lint is static, so it does not spawn interpreters and says nothing about whether a
 kernel works. That audit is `taliesin doctor`, which resolves the interpreter each language
 would run on and probes it. See the [configuration reference](frontmatter.html#project-site-yml) for how
 the interpreter is chosen.
 
-At a glance, here is everything the lint looks at, grouped by what it protects:
+Everything the lint looks at, grouped by what it protects:
 
 | Category | Catches |
 |---|---|
@@ -148,19 +150,19 @@ At a glance, here is everything the lint looks at, grouped by what it protects:
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
 | **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), and a `bibliography:` path that does not resolve |
 
-**Every one of those names a defect you cannot see in the rendered page.** That is the test
-this set is kept by.
+Each row names a defect you cannot see in the rendered page. A check stays in this set
+only if it catches such a defect.
 
-`--strict` also exists on a **writing** build, where it means the same thing one step
-further along: it promotes a normally non-fatal build into a hard failure, so the page is
-still written but `build` exits non-zero if **any located warning** fired or **any code
-cell errored** at runtime. Advice is exempt there too, and so is the
+`--strict` also exists on a writing build, where it means the same thing one step
+further along: it turns a normally non-fatal build into a failure, so the page is
+still written but `build` exits non-zero if any located warning fired or any code
+cell errored at runtime. Advice is exempt there too, and so is the
 `external reference not bundled` nudge above. Because a writing build runs cells,
-`--strict` adds the one thing a static lint structurally can't see (a cell that *throws*)
+`--strict` adds what a static lint structurally can't see (a cell that throws)
 on top of the located diagnostics, which makes
-`taliesin build . --check-only && taliesin build . --strict` a thorough two-stage CI gate:
+`taliesin build . --check-only && taliesin build . --strict` a two-stage CI gate:
 the lint fails fast and kernel-free on structure, then a strict build proves every cell
-actually runs.
+runs.
 
 `--version` / `-V` prints the version followed by the git commit it was built from,
 in parentheses:
@@ -170,7 +172,7 @@ Taliesin 0.2.0 (cdf0a13)
 ```
 
 `--help` / `-h` (or no arguments) prints the
-top-level usage. Putting `--help` / `-h` **after** a subcommand
+top-level usage. Putting `--help` / `-h` after a subcommand
 (`taliesin build --help`, `taliesin preview -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
 the default port (or one you pass) is already in use, what happens depends on who holds
@@ -185,29 +187,28 @@ is logged.
 | Flag | Effect |
 |---|---|
 | `--open` | Launch the default browser at the preview URL |
-| `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does **not** strip raw HTML (see below) |
+| `--no-exec` | Render code cells as source without executing them: no kernel is started, and a `{js}` cell is not handed to the browser either. It does not strip raw HTML (see below) |
 | `--port <N>` | Serve on port N. The same thing as the `[port]` positional, and it wins when both are given (`--port=<N>` works too) |
 
 ### Documents you did not write
 
-Previewing a `.tmd` runs it. That is the point of the tool, and it means **opening a
-document someone sent you is the same kind of decision as running a script they sent
-you.** Taliesin is honest about this rather than pretending to a sandbox it does not have
-(see also [`SECURITY.md`](https://github.com/AJBogo9/taliesin/blob/main/SECURITY.md)):
+Previewing a `.tmd` runs it, so opening a document someone sent you is the same kind of
+decision as running a script they sent you. Taliesin does not sandbox a document (see also
+[`SECURITY.md`](https://github.com/AJBogo9/taliesin/blob/main/SECURITY.md)):
 
 - **Code cells execute.** `{python}` runs against a Jupyter kernel with your
   permissions; a `{js}` cell runs in your browser on the preview's origin.
 - **Raw HTML passes through**, because Markdown says it does. That markup is inserted
   verbatim.
-- **`--no-exec` stops the code cells**, both kinds, and starts no kernel. It is *not* a
+- **`--no-exec` stops the code cells**, both kinds, and starts no kernel. It is not a
   sanitizer: raw `<script>` in the document body still reaches the page. There is
   deliberately no HTML sanitizer and no CSP, because a sanitizer that a document's own
   author can work around buys a false sense of safety.
-- **One thing is enforced rather than documented**: a `--check-only` lint never spawns an
-  interpreter at all.
+- **A `--check-only` lint never spawns an interpreter.** The items above are documented;
+  this one is enforced.
 
-The practical reading: `--no-exec` is the right flag for *skimming* a stranger's document,
-and a container or a throwaway user is the right answer for *trusting* one.
+`--no-exec` is the right flag for skimming a stranger's document; for trusting one, use a
+container or a throwaway user.
 
 `build` takes these flags (they may appear anywhere on the line):
 
@@ -216,22 +217,21 @@ and a container or a throwaway user is the right answer for *trusting* one.
 | `--out <dir>` | Write a portable `<dir>/index.html` + copied assets instead of a single file |
 | `--strict` | Exit non-zero if any cell errored or any located warning fired, except the `external reference not bundled` nudge (a CI gate; the page is still written) |
 | `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
-| `--no-exec` | Render code cells as source instead of running them. Without it, a build whose document *has* executable cells and no usable kernel fails, so this is how to ask for source-only output on purpose |
+| `--no-exec` | Render code cells as source instead of running them. Without it, a build whose document has executable cells and no usable kernel fails, so this is how to ask for source-only output on purpose |
 | `--format json` | Emit `{diagnostics: […]}` to stdout instead of only the log. It is not exclusive to `--check-only`: a writing build reports the same way |
 
 A `build` already content-gates the optional enhancer scripts (mermaid, `{js}`) to the
-constructs a page actually uses, so a prose page ships less JavaScript without losing any
+constructs a page uses, so a prose page ships less JavaScript without losing any
 feature.
 
-## Iterating on code: `preview` is the loop
+## Iterating on code with `preview`
 
-Writing Python or ML code inside a document should not mean thinking about publishing.
-Leave `taliesin preview` running and it is the loop: save the file, and only the cell you
-edited and the ones downstream of it re-execute, against a kernel that stays warm between
-saves. The kernel's *variables* survive, so a four-gigabyte load in cell 3 is paid once and
-re-running one cell does not re-run the expensive ones above it.
+Leave `taliesin preview` running while you write Python or ML code in a document. On each
+save, only the cell you edited and the ones downstream of it re-execute, against a kernel
+that stays warm between saves. The kernel's variables survive, so a four-gigabyte load in
+cell 3 is paid once and re-running one cell does not re-run the expensive ones above it.
 
-### Publishing afterwards executes nothing
+### Publishing after a preview
 
 Every preview run writes `_freeze/` as it goes, so:
 
@@ -240,43 +240,41 @@ taliesin build .
 #   exec  index.tmd  restored 3 cached cells · 0 re-ran
 ```
 
-That is the point of iterating this way: by the time you want the HTML, there is nothing
-left to compute. The cache is keyed on the cell's own code plus every upstream cell's, so
-there is nothing to clear by hand: no edit to code can produce a stale hit. The key does
-not see what a cell *reads* (a data file, an environment variable, an upgraded library),
-so mark a cell with an out-of-band input `#| cache: false`.
+By the time you want the HTML, there is nothing left to compute. The cache is keyed on the
+cell's own code plus every upstream cell's, so there is nothing to clear by hand: no edit
+to code can produce a stale hit. The key does not see what a cell *reads* (a data file, an
+environment variable, an upgraded library), so mark a cell with an out-of-band input
+`#| cache: false`.
 
-### There is only ever one kernel per project
+### One kernel per project
 
-One `preview` per project means one kernel set and one `_freeze/` writer, which is what
-stops two views of a document from disagreeing about what a cell produced. A second
-`preview` of a project that is already open recognizes the incumbent and hands over to it
-rather than starting a second one.
+One `preview` per project means one kernel set and one `_freeze/` writer, so two views
+of a document cannot disagree about what a cell produced. A second
+`preview` of a project that is already open stops the running preview and takes over its
+port rather than starting a second one.
 
-### Runs are top-down
+### Top-down runs
 
-A rebuild makes the document true from the top: it re-executes whatever the kernel is
-missing before the cell you changed, then that cell, then everything downstream. It never
-runs a cell in isolation against whatever state happens to be lying around, which is the
-hidden-state bug that makes notebooks irreproducible. What you see is always what the
-document says, read top to bottom.
+A rebuild runs from the top: it re-executes whatever the kernel is missing before the cell
+you changed, then that cell, then everything downstream. It never runs a cell in isolation
+against whatever state happens to be lying around, which is the hidden-state bug that
+makes notebooks irreproducible.
 
-## Portable, offline builds (email the whole thing as a zip)
+## Portable, offline builds
 
-A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**: open
+A `--out <dir>` build (single doc, site, or book) is a self-contained folder: open
 `index.html` straight from disk (`file://`), or zip the folder and send it. Everything
-the reader needs is copied in and works with no server and no network, **offline**:
+the reader needs is copied in and works with no server and no network:
 navigation and prev/next, the Cmd-K search across the whole book, all math (rendered to
 KaTeX at build time; the fonts ship inside the folder), the table of contents and its scrollspy,
 and any `{js}` cells (the
-`d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
+`d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is not shipped into
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 
-**Mermaid diagrams are offline too**, which is worth stating because it is the one part
-that looks like it should not be. The Mermaid runtime is vendored, never fetched: a
-`--out <dir>` folder carries it **as a file inside the folder** (`mermaid.min.js` beside
+**Mermaid diagrams are offline too.** The Mermaid runtime is vendored, never fetched: a
+`--out <dir>` folder carries it as a file inside the folder (`mermaid.min.js` beside
 the page for a single document, one shared `_assets/mermaid.<hash>.js` for a site or a
-book), written only when something in the build actually has a diagram. It is 3.5 MB, which is
+book), written only when something in the build has a diagram. It is 3.5 MB, which is
 why it goes beside the page rather than into it.
 
 The one build that does inline it is `taliesin build doc.tmd`, which produces a single HTML
@@ -312,7 +310,7 @@ published that way; none of them nests.
 emitted when a project `url:` is configured; the lint warns if a page sets a social
 `image:` with no `url:` to absolutize it against.
 
-## Starting from something: `init`
+## Starting a project: `init`
 
 `init` scaffolds a whole project, which is three files: a `_site.yml` holding the title, a
 hello-world `index.tmd` whose `listing:` collects `posts/`, and one dated post in it.
@@ -321,23 +319,23 @@ hello-world `index.tmd` whose `listing:` collects `posts/`, and one dated post i
 taliesin init my-site   # _site.yml + index.tmd + posts/my-first-post/index.tmd
 ```
 
-Everything after that is an edit to what you have rather than a starter you pick up front:
+`init` offers no choice of starter, and everything after it is an edit to what you have:
 write your next post by copying `posts/my-first-post/`, add a page by dropping another
 `.tmd` beside `index.tmd`, add a top nav with a `nav:` block, and turn the project into a
 book by listing the pages under `chapters:`. See
 [Configuration](frontmatter.tmd#project-site-yml).
 
 The scaffold is correct on its first save: it renders, and `build --check-only` passes on it
-with no diagnostics. That is not a promise, it is a test: `crates/server/tests/init_cli.rs`
+with no diagnostics. A test enforces this: `crates/server/tests/init_cli.rs`
 runs the real binary and then the real lint over what it wrote, so a front-matter key the
 validator would reject cannot survive in the scaffold. Like every write this tool makes,
 `init` refuses to overwrite an existing file.
 
 ## Checking the environment: `doctor`
 
-`doctor` answers one question, the one a stuck reader has: **can this machine run my code
-cells?** It resolves the interpreter each language would run on, probes it, and validates
-`_site.yml`, all without rendering anything.
+`doctor` checks whether this machine can run your code cells. It resolves the interpreter
+each language would run on, probes it, and validates `_site.yml`, all without rendering
+anything.
 
 ```
 taliesin doctor  ·  is your environment ready to run code cells?
@@ -358,7 +356,7 @@ A failure names the interpreter it found, why that one, and the command that fix
              fix: python3 -m pip install ipykernel
 ```
 
-The line in parentheses is **where the interpreter came from**, and the search is ordered.
+The line in parentheses is where the interpreter came from, and the search is ordered.
 First match wins:
 
 1. `python:` in `_site.yml`, resolved against the directory holding that file.
@@ -370,16 +368,16 @@ First match wins:
 A project `.venv` therefore outranks `TALIESIN_PYTHON` while an *ancestor* one does not,
 which is why the trail line reports where the walk looked and where it stopped: the
 common surprise is a venv one directory too far up. `--format json` prints the same
-findings as an object for a script to read, and the exit code is deliberately narrow:
-non-zero only when an interpreter you **configured** is broken, because a machine with no
+findings as an object for a script to read, and the exit code is narrow:
+non-zero only when an interpreter you configured is broken, because a machine with no
 project venv is a fact worth reporting, not a failure.
 
 ## Inspecting a document: `build --stdout`
 
-A way to look at a document in a terminal instead of a browser, which is handy for
-piping, diffing, and debugging.
+`build --stdout` shows a document in a terminal instead of a browser, for piping,
+diffing, and debugging.
 
-`build --stdout` writes one complete, self-contained HTML page to **stdout** instead of
+It writes one complete, self-contained HTML page to stdout instead of
 to a file, so you can redirect or pipe it:
 
 ```sh
@@ -395,9 +393,9 @@ reference to a computed figure left dangling:
 taliesin build post.tmd --stdout --no-exec > post.html
 ```
 
-`--no-exec` covers `{js}` cells too: a reactive cell is a code cell whose runtime happens
-to be the browser rather than a kernel, so it is rendered as highlighted source and never
-handed to the page. Asking for no execution and getting some anyway would be the surprise.
+`--no-exec` covers `{js}` cells too: a reactive cell is a code cell whose runtime is the
+browser rather than a kernel, so it is rendered as highlighted source and never handed to
+the page.
 
 The page carries the same `data-block-id` + `data-sourcepos` attributes that drive
 click-to-source and incremental updates, so this is the way to confirm a block carries
@@ -417,9 +415,8 @@ works from anywhere.
 `lsp` runs a local, offline **stdio LSP server** (Language Server Protocol) so an LSP
 editor gets live `.tmd` diagnostics as you type, the same validators the gate runs, on
 the unsaved buffer, plus completion, hover, go-to-definition, symbols, quick fixes and
-folding. Six capabilities, and every one of them answers a
-question: it is parse-only (no kernel, no code execution) and it never edits your source.
-The `.tmd` file is the single editing surface, and your editor is what edits it.
+folding. All six capabilities are read-only: the server is parse-only (no kernel, no code
+execution) and it never edits your source; your editor does.
 
 ```lua
 -- Neovim (nvim-lspconfig or vim.lsp.start)
@@ -441,19 +438,18 @@ file-types = ["md", "markdown", "tmd"]
 language-servers = ["taliesin", "marksman"]
 ```
 
-## "Any LSP editor", except the colours
+## Other LSP editors
 
-The server speaks LSP, so the intelligence above works anywhere. **Syntax highlighting
-does not travel with it**, and it is worth being blunt about that before you set this up
-somewhere and wonder why your document is grey:
+The server speaks LSP, so the intelligence above works anywhere. Syntax highlighting
+does not travel with it, and outside VS Code a `.tmd` document can look grey:
 
-- Taliesin ships **no tree-sitter grammar**. The only `.tmd` grammar in the repository is
+- Taliesin ships no tree-sitter grammar. The only `.tmd` grammar in the repository is
   the TextMate one inside the VS Code companion, which is a VS Code format.
 - The server answers `textDocument/semanticTokens` with "method not found". Semantic
-  tokens would not rescue this anyway: Helix does not implement them at all, and Zed
+  tokens would not fix this anyway: Helix does not implement them, and Zed
   ships them off.
 
-So outside VS Code, point your editor at **Markdown** for the colours (as the Helix
+So outside VS Code, point your editor at Markdown for the colours (as the Helix
 snippet above does) and let the LSP supply everything Markdown cannot know. You lose
 highlighting on the `.tmd`-specific syntax (`::: {.callout-note}` fences, `#|` cell
 options, `[@citekey]`, `@fig-` references) and keep it for the Markdown the rest of the
@@ -464,10 +460,7 @@ language server it already knows about; registering a new one is a published ext
 not a config block. You can still get highlighting today with
 `"file_types": { "Markdown": ["tmd"] }` in `settings.json`.
 
-One of its capabilities needs a word here, because it is the one an editor has to meet
-halfway.
-
-**Diagnostics are pushed, and they speak about the buffers you have open.** The server
+**Diagnostics are pushed, and they cover the buffers you have open.** The server
 publishes a document's findings as you type. For the whole book at once, including the
 chapters no editor has opened, run the gate:
 
@@ -482,8 +475,8 @@ which is where the same findings are already checked before publishing.
 | Variable | Purpose |
 |---|---|
 | `TALIESIN_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
-| `TALIESIN_CELL_SILENCE` | How long a cell may produce **no output at all** before it is interrupted, in seconds (default 600; `0` disables). This is the default liveness cap: the budget resets on every line a cell prints, so a long job that reports progress is never interrupted, while a genuinely wedged one still is |
-| `TALIESIN_CELL_TIMEOUT` | Optional per-cell **wall-clock** cap in seconds, **off by default**. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
+| `TALIESIN_CELL_SILENCE` | How long a cell may produce no output before it is interrupted, in seconds (default 600; `0` disables). This is the default liveness cap: the budget resets on every line a cell prints, so a long job that reports progress is never interrupted, while a wedged one still is |
+| `TALIESIN_CELL_TIMEOUT` | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound a cell's total runtime regardless of how much it prints (`0` disables). A streaming runaway is already caught by the output caps, so this is for bounding cost, not for safety |
 | `TALIESIN_RENDER_TIMEOUT` | Per-render wall-clock cap in seconds (default 30; `0` disables it). Rendering is not execution: it never legitimately takes seconds, so this is a watchdog against a pathological document, not a budget to tune. A render that exceeds it is abandoned with a located diagnostic instead of hanging the preview |
 | `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |

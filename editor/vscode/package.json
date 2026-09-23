@@ -162,7 +162,7 @@
           "type": "string",
           "default": "taliesin",
           "scope": "machine",
-          "markdownDescription": "Path to the `taliesin` executable (default: the `taliesin` launcher on `PATH`).\n\nMachine-scoped on purpose: this names a program the extension executes, so a repository's own `.vscode/settings.json` must not be able to redirect it."
+          "markdownDescription": "Path to the `taliesin` executable (default: the `taliesin` launcher on `PATH`).\n\nMachine-scoped: this names a program the extension executes, so a repository's own `.vscode/settings.json` must not be able to redirect it."
         },
         "taliesin.trace.server": {
           "type": "string",

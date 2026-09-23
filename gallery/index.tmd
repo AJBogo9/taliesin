@@ -1,6 +1,6 @@
 ---
 title: "Gallery"
-description: "Short one-page demos of what Taliesin can do: reactive graphics, executed reports, 3D scenes, and the craft of a good page."
+description: "Short one-page demos of what Taliesin can do: reactive graphics, executed reports, 3D scenes, and an API documentation page."
 toc: false
 listing:
   contents: .
