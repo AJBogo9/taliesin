@@ -4,7 +4,8 @@
 //! HTTP + asset plumbing (`serve_asset_from`, `content_type`, `percent_decode`), the
 //! bundled client + favicon + dev-menu CSS, port binding and the single-instance takeover
 //! probe, the origin/host/identity guards in [`security`], the shutdown signal, the file-watch
-//! predicates, and `guarded`/`panic_msg`/`unknown_flag_error`/`bad_format_error`.
+//! predicates, `parse_args` (the argv grammar every verb shares), and
+//! `guarded`/`panic_msg`/`bad_format_error`.
 //!
 //! **There is no server here.** The live preview is [`crate::serve_site`], for a project
 //! and for a single document alike — Wave 1.1 folded the single-document server away, since
@@ -655,23 +656,130 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|p| panic_msg(&*p))
 }
 
-/// Build a hard-error message for an unrecognized `--flag`: a `closest`-based "did you mean
-/// `--strict`?" when a known flag is within edit distance 2. Shared by the `build`/`preview`
-/// flag parsers so a typo'd flag fails loudly instead of being silently dropped. `known` is
-/// each parser's own accepted long-flag set. No `error:` prefix, so the caller frames it (raw
-/// `eprintln!` adds `error: `; `log::error` styles it).
-pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
-    match taliesin_core::closest(flag, known) {
-        Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
-        None => format!("unknown flag `{flag}`"),
+/// Read a verb's argv (the tokens after the verb) by the one grammar every verb shares, so
+/// no two verbs disagree about what a token is. Four parsers followed four rules until
+/// 2026-09-24: `doctor -jsn` was a directory, `preview -o x.tmd` a path, `--format=json` an
+/// unknown flag, and an extra positional was dropped by three verbs and kept by the fourth.
+///
+/// - Any token that starts with `-` is a flag, never a positional. A dash-named file is
+///   still reachable as `./-x.tmd`.
+/// - `--flag=value` means `--flag value`. A flag's value is the part after `=`, else the
+///   next token unless that token is itself a flag ([`FlagValue::take`]).
+/// - An unknown flag is refused with a did-you-mean over the verb's own flags (`known`), and
+///   a known flag given an `=value` it does not take is refused too.
+/// - At most `max` positionals: an extra one is refused, never silently dropped.
+///
+/// `on_flag` sees each flag and returns whether it knows it. Returns the positionals in
+/// order; an error is a message with no `error:` prefix, for `log::error` to frame.
+pub(crate) fn parse_args<'a>(
+    verb: &str,
+    args: &'a [String],
+    known: &[&'static str],
+    max: usize,
+    mut on_flag: impl FnMut(&'a str, &mut FlagValue<'a, '_>) -> Result<bool, String>,
+) -> Result<Vec<&'a str>, String> {
+    let mut positionals = Vec::new();
+    let mut next = 0;
+    while let Some(token) = args.get(next).map(String::as_str) {
+        next += 1;
+        if !token.starts_with('-') {
+            if positionals.len() == max {
+                // Hung under `crate::log`'s 10-column tag gutter, like `not_a_project_error`.
+                return Err(
+                    format!("unexpected argument `{token}`\n{}", crate::usage_line(verb))
+                        .replace('\n', "\n          "),
+                );
+            }
+            positionals.push(token);
+            continue;
+        }
+        let (name, inline) = match token.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (token, None),
+        };
+        let mut value = FlagValue {
+            inline,
+            args,
+            next: &mut next,
+            taken: false,
+        };
+        if !on_flag(name, &mut value)? {
+            return Err(unknown_flag_error(verb, name, known));
+        }
+        if inline.is_some() && !value.taken {
+            return Err(format!("`{name}` takes no value"));
+        }
     }
+    Ok(positionals)
+}
+
+/// Where a flag's value comes from, for [`parse_args`]'s `on_flag`.
+pub(crate) struct FlagValue<'a, 'n> {
+    inline: Option<&'a str>,
+    args: &'a [String],
+    next: &'n mut usize,
+    taken: bool,
+}
+
+impl<'a> FlagValue<'a, '_> {
+    /// The flag's value: the part after `=`, else the next token unless that token is itself
+    /// a flag, in which case it stays a flag and the value is `None`.
+    pub(crate) fn take(&mut self) -> Option<&'a str> {
+        self.taken = true;
+        if let Some(v) = self.inline {
+            return (!v.is_empty()).then_some(v);
+        }
+        let v = self
+            .args
+            .get(*self.next)
+            .map(String::as_str)
+            .filter(|t| !t.starts_with('-'))?;
+        *self.next += 1;
+        Some(v)
+    }
+}
+
+/// Build a hard-error message for an unrecognized flag: "did you mean `--strict`?" when a
+/// known flag is within edit distance 2 (`closest`), or is the one flag the typed name
+/// extends or abbreviates (`--output` for `--out`, three edits away); otherwise a pointer
+/// to the verb's `--help`, which lists its flags. [`parse_args`] is the one caller, so a
+/// typo'd flag fails loudly the same way on every verb. `known` is each verb's own
+/// accepted long-flag set. No `error:` prefix, so the caller frames it.
+fn unknown_flag_error(verb: &str, flag: &str, known: &[&'static str]) -> String {
+    match taliesin_core::closest(flag, known)
+        .or_else(|| extends_or_abbreviates(flag, known.iter().copied()))
+    {
+        Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
+        None => format!("unknown flag `{flag}` (run `taliesin {verb} --help` for its flags)"),
+    }
+}
+
+/// The one candidate a typed name extends or abbreviates, for the cases edit distance
+/// cannot see: `preview-site` is five edits from `preview`, and `--output` three from
+/// `--out`. The verb and flag did-you-means both consult it, only after `closest` declines.
+///
+/// A name shorter than two characters is not a signal, and ambiguity yields nothing rather
+/// than a coin flip: picking a winner when two candidates match would teach a rule that is
+/// not real.
+pub(crate) fn extends_or_abbreviates<'c>(
+    typed: &str,
+    candidates: impl IntoIterator<Item = &'c str>,
+) -> Option<&'c str> {
+    if typed.len() < 2 {
+        return None;
+    }
+    let mut hits = candidates
+        .into_iter()
+        .filter(|c| typed.starts_with(c) || c.starts_with(typed));
+    let first = hits.next()?;
+    hits.next().is_none().then_some(first)
 }
 
 /// One wording for a bad `--format` value, shared by every subcommand that takes
 /// `--format`/`--json` (`build`/`doctor`) so the same mistake reads
 /// identically everywhere. `got` is the offending value, or
 /// `None` when `--format` was given with nothing after it. No `error:` prefix — the caller
-/// frames it exactly like `unknown_flag_error` (raw `eprintln!`, or `log::error` styles it).
+/// frames it exactly like `unknown_flag_error` (`log::error` styles it).
 pub(crate) fn bad_format_error(got: Option<&str>) -> String {
     format!(
         "--format expects human or json (got {})",
@@ -1256,6 +1364,91 @@ mod protocol_contract {
         );
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod argv_tests {
+    use super::parse_args;
+
+    const KNOWN: &[&str] = &["--flag", "--value"];
+
+    /// The grammar, in one place, on a stand-in verb with one switch and one valued flag.
+    /// Returns `(positionals, flag seen, value)` or the error.
+    fn parse(tokens: &[&str]) -> Result<(Vec<String>, bool, Option<String>), String> {
+        let args: Vec<String> = tokens.iter().map(|s| s.to_string()).collect();
+        let (mut flag, mut value) = (false, None);
+        let positionals = parse_args("build", &args, KNOWN, 2, |name, v| {
+            match name {
+                "--flag" => flag = true,
+                "--value" => value = Some(v.take().ok_or("--value needs a value")?.to_string()),
+                _ => return Ok(false),
+            }
+            Ok(true)
+        })?;
+        Ok((
+            positionals.iter().map(|s| s.to_string()).collect(),
+            flag,
+            value,
+        ))
+    }
+
+    #[test]
+    fn every_verb_reads_a_token_the_same_way() {
+        // Positionals in order, flags anywhere.
+        let (pos, flag, _) = parse(&["a", "--flag", "b"]).unwrap();
+        assert_eq!((pos, flag), (vec!["a".to_string(), "b".to_string()], true));
+
+        // Any leading dash is a flag: a single-dash token is never a path.
+        let err = parse(&["a", "-o"]).unwrap_err();
+        assert!(err.contains("unknown flag `-o`"), "{err}");
+        // An unknown flag names the verb's nearest one.
+        let err = parse(&["--flga"]).unwrap_err();
+        assert!(err.contains("did you mean `--flag`"), "{err}");
+
+        // A value is the part after `=`, else the next token unless that is itself a flag.
+        assert_eq!(parse(&["--value=x"]).unwrap().2.as_deref(), Some("x"));
+        assert_eq!(parse(&["--value", "x"]).unwrap().2.as_deref(), Some("x"));
+        let err = parse(&["--value", "--flag"]).unwrap_err();
+        assert!(
+            err.contains("needs a value"),
+            "a flag is not a value: {err}"
+        );
+        let err = parse(&["--value="]).unwrap_err();
+        assert!(
+            err.contains("needs a value"),
+            "an empty `=` is no value: {err}"
+        );
+        // A switch given a value it does not take is refused rather than half-read.
+        let err = parse(&["--flag=yes"]).unwrap_err();
+        assert!(err.contains("`--flag` takes no value"), "{err}");
+
+        // At most `max` positionals: the extra one is named, with the verb's usage line.
+        let err = parse(&["a", "b", "c"]).unwrap_err();
+        assert!(err.contains("unexpected argument `c`"), "{err}");
+        assert!(err.contains(&crate::usage_line("build")), "{err}");
+    }
+
+    /// `build --output x.html` got a bare "unknown flag `--output`": it is three edits from
+    /// `--out`, past the did-you-mean's reach, though it plainly extends it (audit
+    /// 2026-09-24, first-hour #15). The verb names already answer a name that extends or
+    /// abbreviates one of theirs (`preview-site`); flags now take the same rule. With no
+    /// suggestion at all, the error says where the flags are listed.
+    #[test]
+    fn an_unknown_flag_that_extends_a_known_one_suggests_it() {
+        let err = parse(&["--values-file"]).unwrap_err();
+        assert!(err.contains("did you mean `--value`"), "{err}");
+        let err = parse(&["--fl"]).unwrap_err();
+        assert!(err.contains("did you mean `--flag`"), "{err}");
+        // Ambiguous is no answer: `--` opens both flags.
+        let err = parse(&["--"]).unwrap_err();
+        assert!(!err.contains("did you mean"), "{err}");
+        // Nothing close: point at the verb's own help instead of guessing.
+        let err = parse(&["-o"]).unwrap_err();
+        assert!(
+            !err.contains("did you mean") && err.contains("`taliesin build --help`"),
+            "{err}"
+        );
     }
 }
 

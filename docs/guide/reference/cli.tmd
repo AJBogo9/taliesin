@@ -40,7 +40,7 @@ project, the message names that ancestor and the command to run there instead:
 ```
 
 `preview` reports the same two forms, with `preview` in place of `build`
-throughout (and a `serve:` tag ahead of the first line).
+throughout.
 
 ## `--check-only`: the pre-publish gate
 
@@ -181,6 +181,11 @@ canonical URL instead of stacking a second server (every extra one would keep it
 file watcher and kernel re-executing the same sources, on a port nobody is watching). A
 port held by anything else falls back to the next free port. Either way the chosen URL
 is logged.
+
+Every command reads its arguments by one rule: a flag may appear anywhere on the line,
+`--flag=value` is the same as `--flag value`, an argument that starts with `-` is always a
+flag (spell a dash-named file `./-notes.tmd`), and an argument beyond the ones a command
+takes is refused rather than ignored.
 
 `preview` takes these flags (they may appear anywhere on the line):
 

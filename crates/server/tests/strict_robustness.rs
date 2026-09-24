@@ -274,6 +274,32 @@ fn build_rejects_unknown_flag_with_suggestion() {
     );
 }
 
+/// A project builds to a directory, so a second positional (the single-file `[out.html]`)
+/// has nowhere to go. `build site out.html` built `site/_site/`, exit 0, and never
+/// mentioned `out.html` (audit 2026-09-24, leads cluster 10).
+#[test]
+fn build_of_a_project_refuses_an_output_file() {
+    let dir = tmp_dir("site-outhtml");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+    let res = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg(dir.join("out.html"))
+        .arg("--no-exec")
+        .output()
+        .expect("run build");
+    let err = String::from_utf8_lossy(&res.stderr).into_owned();
+    let built = dir.join("_site").exists();
+    let _ = fs::remove_dir_all(&dir);
+    assert!(!res.status.success(), "must fail, stderr was:\n{err}");
+    assert!(
+        err.contains("out.html") && err.contains("--out"),
+        "names the ignored argument and the flag that means an output directory: {err}"
+    );
+    assert!(!built, "a refused build writes nothing");
+}
+
 #[test]
 fn build_rejects_value_less_out_flag() {
     let dir = tmp_dir("noout");

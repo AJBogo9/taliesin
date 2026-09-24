@@ -19,11 +19,14 @@ use std::process::Command;
 /// reaches `cannot_read` from `cmd_build`'s own `read_to_string`; `--check-only` reaches it
 /// from `lint::collect_diagnostics`, a different call site that the retired `check` verb used
 /// to own. Wave 5 removed `render`, `blocks` and `symbols`, wave 2 removed `read` and `map`,
-/// and wave 9 retired `check` into the flag below. Measured 2026-08-03, the front door that
-/// takes a path and still does NOT suggest: `run` ("no such file"). That is a pre-existing
-/// gap, not a regression from any cut, and it is named here so the next reader sees the
-/// omission is known rather than assuming this list is exhaustive.
-const FILE_COMMANDS: &[&[&str]] = &[&["build"], &["build", "--check-only"]];
+/// and wave 9 retired `check` into the flag below. `preview` answered a missing document
+/// with its own "no document at" and no suggestion until 2026-09-24 (audit leads, cli.rs:333);
+/// it refuses before binding a port, so the port it names is never used.
+const FILE_COMMANDS: &[&[&str]] = &[
+    &["build"],
+    &["build", "--check-only"],
+    &["preview", "--port", "4399"],
+];
 
 #[test]
 fn every_file_front_door_suggests_the_near_miss() {
@@ -33,7 +36,7 @@ fn every_file_front_door_suggests_the_near_miss() {
     fs::write(dir.join("intro.tmd"), "---\ntitle: T\n---\n\nHi.\n").unwrap();
 
     assert!(
-        FILE_COMMANDS.len() >= 2,
+        FILE_COMMANDS.len() >= 3,
         "the list of front doors under test must not silently shrink"
     );
     for argv in FILE_COMMANDS {

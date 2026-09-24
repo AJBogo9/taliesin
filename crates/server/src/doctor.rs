@@ -282,40 +282,38 @@ fn print_json(checks: &[Check], packages: &[(&'static str, crate::packages::Mani
 
 /// `taliesin doctor [dir] [--format human|json]`: audit the environment for running code cells.
 pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
-    let mut dir = ".".to_string();
+    // By the grammar every verb shares (`serve::parse_args`): a single-dash typo is a flag
+    // rather than a directory (`doctor -jsn` answered "cannot read -jsn"), and a second
+    // directory is refused rather than silently winning over the first.
     let mut json = false;
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--format" => match it.next().map(|s| s.as_str()) {
+    let parsed = crate::serve::parse_args("doctor", &args[2..], DOCTOR_FLAGS, 1, |flag, value| {
+        match flag {
+            "--format" => match value.take() {
                 Some("json") => json = true,
                 Some("human") => json = false,
-                other => {
-                    crate::log::error(&crate::serve::bad_format_error(other));
-                    return ExitCode::FAILURE;
-                }
+                other => return Err(crate::serve::bad_format_error(other)),
             },
             // `--json`: clig.dev shorthand for `--format json`.
             "--json" => json = true,
-            s if s.starts_with("--") => {
-                crate::log::error(&crate::serve::unknown_flag_error(s, DOCTOR_FLAGS));
-                return ExitCode::FAILURE;
-            }
-            s => dir = s.to_string(),
+            _ => return Ok(false),
         }
-    }
-    let dir = Path::new(&dir);
+        Ok(true)
+    });
+    let dir = match parsed {
+        Ok(dirs) => Path::new(dirs.first().copied().unwrap_or(".")),
+        Err(msg) => {
+            crate::log::error(&msg);
+            return ExitCode::FAILURE;
+        }
+    };
     // A path that is not there is a typo, and answering it is worse than refusing it: the
     // interpreter resolution walks UP from `dir` looking for a `.venv`, so
     // `doctor ~/blog/pots` happily reported on `~/blog`'s environment (or on `/`'s) and
     // exited 0. The one question this verb answers is "is THIS project ready", and it
     // cannot be answered about a directory that does not exist. `build` already refuses the
     // same way (Fable audit FA29).
-    if !dir.exists() {
-        crate::log::error(&format!(
-            "cannot read {}: No such file or directory",
-            dir.display()
-        ));
+    if let Err(e) = std::fs::metadata(dir) {
+        crate::log::error(&crate::lint::cannot_read(dir, &e));
         return ExitCode::FAILURE;
     }
 

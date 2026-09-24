@@ -60,7 +60,7 @@ fn repo_root() -> String {
 /// gutter (`"  " + a 7-wide tag + " "`), so a multi-line error reads as one block
 /// instead of half a message sitting flush against the left margin. `first` is the
 /// index of the message's own first line within `stderr` (the caller may have other
-/// log lines, or a `serve: ` prefix, ahead of it).
+/// log lines ahead of it).
 fn assert_continuations_hang_under_the_gutter(stderr: &str, first_line_needle: &str) {
     let lines: Vec<&str> = stderr.lines().collect();
     let start = lines

@@ -375,7 +375,18 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
             // `build` echoes the path exactly as the author typed it, and the two verbs
             // must answer the same refusal with the same-looking path.
             let typed = file.clone();
-            let file = file.canonicalize().unwrap_or(file);
+            // A missing document gets the one "cannot read" message every front door prints,
+            // with its did-you-mean for a near-miss sibling (`build` answers the same typo
+            // the same way).
+            let file = match file.canonicalize() {
+                Ok(file) => file,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        e.kind(),
+                        crate::lint::cannot_read(&typed, &e),
+                    ));
+                }
+            };
             if !file.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -565,7 +576,9 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let router = with_identity(router, &session_key);
     let router = with_host_guard(router);
 
-    let (listener, addr) = bind_with_fallback(port, &session_key).await?;
+    let (listener, addr) = bind_with_fallback(port, &session_key)
+        .await
+        .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
 
