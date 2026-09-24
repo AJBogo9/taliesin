@@ -6,7 +6,9 @@
 //! save via [`super::Site::refresh_xrefs`]. They were sequential `for page in &self.pages`
 //! loops, so a cold discover cost the sum of every page's render on one core while the
 //! other fifteen sat idle: measured 2026-08-27, `corpus/tech-blog` took 337 ms for 17
-//! pages before this module existed.
+//! pages before this module existed. The source scans behind the registry
+//! (`xref::scan_xref_targets` on every save, `xref::add_cell_label_targets` for the editor)
+//! run through it too.
 //!
 //! Each page's render is independent — it reads its own source and returns owned data —
 //! so this is plain data parallelism, not coordination. Deliberately `std::thread::scope`

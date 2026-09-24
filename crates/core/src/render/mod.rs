@@ -108,6 +108,8 @@ mod text;
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
 pub(crate) use text::{heading_text, indexable_text};
 mod theme;
+// The long-lived big-stack threads renders run on.
+mod workers;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
 use page::page_from_doc;
@@ -144,6 +146,7 @@ pub fn render_document(src: &str) -> RenderedDoc {
         None,
         None,
         None,
+        false,
     )
 }
 
@@ -209,7 +212,7 @@ pub fn render_document_with_includes_scoped(
     base_dir: &Path,
     chapter: Option<u32>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, None)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, None, false)
 }
 
 /// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
@@ -223,7 +226,28 @@ pub fn render_document_scoped_with_site(
     chapter: Option<u32>,
     site: Option<&SiteDefaults>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, site)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, site, false)
+}
+
+/// [`render_document_scoped_with_site`] for a caller that keeps only the page's cross-reference
+/// numbers ([`RenderedDoc::xref_numbers`]) and the text of its headings: the project's
+/// cross-reference harvest, which renders every page on every save.
+///
+/// Every number comes from the same walk, so it is the number the served page shows. What is
+/// skipped is what the harvest threw away: math outside a heading is left untypeset (a heading
+/// keeps its math, because its text names a cross-page `@sec-` link), code is not highlighted,
+/// and images are not measured. Typesetting and highlighting were most of a harvest render,
+/// directly and through every later pass that walks the HTML, and past a memo's capacity each
+/// save redid the whole project's: 10.7 s per save at 9,693 math expressions, 0.9 s for 200
+/// pages of highlighted code (audit 2026-09-24, F1). So the blocks are not the page: never
+/// serve them.
+pub(crate) fn render_numbers_scoped_with_site(
+    src: &str,
+    base_dir: &Path,
+    chapter: Option<u32>,
+    site: Option<&SiteDefaults>,
+) -> RenderedDoc {
+    render_doc_with_includes_impl(src, base_dir, chapter, None, site, true)
 }
 
 /// Render one **invoked** document: `build`, `preview`, `check`, `read`, `map` or the LSP
@@ -245,7 +269,7 @@ pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let site = SiteDefaults {
         bibliography: crate::site::shared_for_single_doc(&root),
     };
-    render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site))
+    render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site), false)
 }
 
 fn render_doc_with_includes_impl(
@@ -254,6 +278,7 @@ fn render_doc_with_includes_impl(
     chapter: Option<u32>,
     root: Option<&Path>,
     site: Option<&SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
     let (expanded, origins, include_warnings) =
         crate::includes::resolve_warned_in(src, base_dir, root);
@@ -290,6 +315,7 @@ fn render_doc_with_includes_impl(
         root.map(Path::to_path_buf),
         chapter,
         site.cloned(),
+        numbers_only,
     );
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
@@ -385,7 +411,7 @@ fn render_budget() -> Option<std::time::Duration> {
 /// channel as a broken ref, so the preview shows it, `check` exits non-zero, and a site
 /// build loses one page instead of the whole run.
 fn refused_render(warning: Warning) -> RenderedDoc {
-    let mut doc = render_internal_impl("", None, None, None, None, None);
+    let mut doc = render_internal_impl("", None, None, None, None, None, false);
     doc.warnings.push(warning);
     doc
 }
@@ -402,15 +428,20 @@ fn refused_render(warning: Warning) -> RenderedDoc {
 /// quadratic on balanced nested brackets (4.27 s at 128k in release, minutes by ~500k).
 /// That is neither a panic nor an abort — just unbounded CPU — so no `catch_unwind` and no
 /// depth guard can see it, and the warm preview loop simply freezes with no diagnostic. The
-/// worker is therefore *detached* rather than scoped, so a render that blows the budget can
+/// worker is therefore one this call never joins, so a render that blows the budget can
 /// be abandoned and the caller answered with a located error. The abandoned thread keeps
 /// running to completion (there is no safe way to kill a thread mid-parse); it is a bounded
 /// leak on a document that was already unrenderable, and the diagnostic tells the author
 /// which one. A panic is still propagated to the caller unchanged.
 ///
-/// Takes its inputs by value because a detached thread needs `'static`. This costs one
-/// `String` copy of the source on the [`render_document`] path; the include path already
-/// owns both its expanded source and its origins, so it hands them over rather than cloning.
+/// **The thread** is a parked worker ([`workers`]), not one spawned for this render: a
+/// whole-project pass renders every page, and a thread per render made a save of a 500-page
+/// book spawn and unmap 518 256 MB stacks.
+///
+/// Takes its inputs by value because the worker outlives this call and so needs `'static`.
+/// This costs one `String` copy of the source on the [`render_document`] path; the include
+/// path already owns both its expanded source and its origins, so it hands them over rather
+/// than cloning.
 fn render_internal(
     src: String,
     origins: Option<Vec<LineOrigin>>,
@@ -418,10 +449,10 @@ fn render_internal(
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
-    // Behind an `Arc` so the worker and the spawn-failure fallback can both reach it: a
-    // failed `Builder::spawn` drops its closure rather than handing it back, so the inputs
-    // cannot simply be moved in.
+    // Behind an `Arc` so the worker and the no-worker fallback can both reach it: a job the
+    // pool could not place is dropped unrun, so the inputs cannot simply be moved in.
     let input = std::sync::Arc::new(RenderInput {
         src,
         origins,
@@ -429,44 +460,43 @@ fn render_internal(
         include_root,
         chapter,
         site,
+        numbers_only,
     });
-    let big_stack = || std::thread::Builder::new().stack_size(256 * 1024 * 1024);
-
-    let Some(budget) = render_budget() else {
-        // Watchdog disabled: keep the worker *scoped*, so nothing can outlive this call.
-        return std::thread::scope(|scope| {
-            match big_stack().spawn_scoped(scope, || input.render()) {
-                Ok(handle) => match handle.join() {
-                    Ok(doc) => doc,
-                    Err(payload) => std::panic::resume_unwind(payload),
-                },
-                Err(_) => input.render(),
-            }
-        });
-    };
-
     // `sync_channel(1)` so an abandoned worker never blocks forever on its send.
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     let worker = std::sync::Arc::clone(&input);
-    match big_stack().spawn(move || {
+    let placed = workers::RENDER.run(Box::new(move || {
         // Catch here rather than letting the thread unwind, so a panic reaches the caller
         // as a payload to re-raise instead of being misreported as a timeout.
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker.render()));
         let _ = tx.send(out);
-    }) {
-        Ok(_detached) => match rx.recv_timeout(budget) {
-            Ok(Ok(doc)) => doc,
-            Ok(Err(payload)) => std::panic::resume_unwind(payload),
-            Err(_) => refused_render(Warning::new(format!(
-                "render exceeded {}s and was abandoned (is this document pathological? \
-                 deeply nested brackets render quadratically); \
-                 raise or disable the limit with TALIESIN_RENDER_TIMEOUT",
-                budget.as_secs()
-            ))),
-        },
+    }));
+    if !placed {
         // Spawning the big-stack worker can fail under a strict address-space limit
         // (e.g. `ulimit -v`). Render inline on the current thread rather than panicking.
-        Err(_) => input.render(),
+        return input.render();
+    }
+    let out = match render_budget() {
+        Some(budget) => match rx.recv_timeout(budget) {
+            Ok(out) => out,
+            Err(_) => {
+                return refused_render(Warning::new(format!(
+                    "render exceeded {}s and was abandoned (is this document pathological? \
+                     deeply nested brackets render quadratically); \
+                     raise or disable the limit with TALIESIN_RENDER_TIMEOUT",
+                    budget.as_secs()
+                )));
+            }
+        },
+        // Watchdog disabled: wait for as long as the render takes.
+        None => match rx.recv() {
+            Ok(out) => out,
+            Err(_) => return input.render(),
+        },
+    };
+    match out {
+        Ok(doc) => doc,
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -479,6 +509,7 @@ struct RenderInput {
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
+    numbers_only: bool,
 }
 
 impl RenderInput {
@@ -490,6 +521,7 @@ impl RenderInput {
             self.include_root.as_deref(),
             self.chapter,
             self.site.as_ref(),
+            self.numbers_only,
         )
     }
 }
@@ -501,6 +533,7 @@ fn render_internal_impl(
     include_root: Option<&Path>,
     chapter: Option<u32>,
     site: Option<&SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
     // Bound nesting BEFORE the parse. Past the measured cliff the recursive descent
     // overflows even this thread's 256 MB stack and *aborts the process* — uncatchable, and
@@ -510,7 +543,7 @@ fn render_internal_impl(
     // supplies a well-formed doc to hang the warning on (`""` cannot recurse: no nesting).
     if let Some((line, depth)) = overlong_nesting(src) {
         let (file, mapped) = map_origin(origins, line);
-        let mut doc = render_internal_impl("", None, base_dir, include_root, chapter, site);
+        let mut doc = render_internal_impl("", None, base_dir, include_root, chapter, site, false);
         doc.warnings.push(
             Warning::new(format!(
                 "document nests {depth} levels deep at this line, over the {MAX_NESTING_DEPTH}-level limit; \
@@ -683,6 +716,15 @@ fn render_internal_impl(
         .flatten();
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
+    // A numbers-only render shows a heading's math and nothing else a block shows (see
+    // `render_numbers_scoped_with_site`): none of it is a number.
+    let shown = |text: &str| {
+        if numbers_only {
+            String::new()
+        } else {
+            text.to_string()
+        }
+    };
     for node in root.children() {
         // A definition renders at its reference, never in place (the pre-pass above
         // already holds it). comrak has moved them all to the document end.
@@ -834,6 +876,16 @@ fn render_internal_impl(
                 cell_role,
             )
         };
+        // Emptied only now: every cell option this walk numbers by was read just above.
+        if numbers_only {
+            for d in node.descendants() {
+                match &mut d.data.borrow_mut().value {
+                    NodeValue::Math(m) if heading_level.is_none() => m.literal.clear(),
+                    NodeValue::CodeBlock(cb) => cb.literal.clear(),
+                    _ => {}
+                }
+            }
+        }
 
         // A block id is hashed from the block's SOURCE, and a note's source lives
         // somewhere else entirely (`[^a]: …`, anywhere in the document) while its text
@@ -918,7 +970,7 @@ fn render_internal_impl(
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
             html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
-            html.push_str(&crate::math::render(env, true));
+            html.push_str(&crate::math::render(&shown(env), true));
             html.push_str("</div>");
         } else if let Some((latex, anchor)) = is_paragraph
             .then(|| labelled_display_eq(&block_src))
@@ -936,7 +988,7 @@ fn render_internal_impl(
                 source_file.as_deref(),
                 src_line as u32,
             );
-            html.push_str(&emit_equation(&latex, &anchor, &attrs, &eq_num));
+            html.push_str(&emit_equation(&shown(&latex), &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
@@ -956,7 +1008,7 @@ fn render_internal_impl(
         } else if let Some(role) = &cell_role {
             // A labelled/captioned code cell -> a numbered, anchored figure/listing.
             let lang = cell.as_ref().map(|c| c.lang.clone()).unwrap_or_default();
-            let code = cell.as_ref().map(|c| c.code.clone()).unwrap_or_default();
+            let code = cell.as_ref().map(|c| shown(&c.code)).unwrap_or_default();
             match role {
                 CellRole::Figure { anchor, caption } => {
                     // Register from what will EXIST, like the `Listing` arm below — not
@@ -1210,7 +1262,7 @@ fn render_internal_impl(
         // not shove the text below it down the page. Relative to `base_dir` like every other
         // asset reference the build resolves (`copy_local_assets`), which is also what an
         // `{{< include >}}`d block's paths already resolve against.
-        if let Some(base) = base_dir {
+        if let Some(base) = base_dir.filter(|_| !numbers_only) {
             html = image_annotator.annotate(&html, base);
         }
         // Splice each note in immediately after its own `<sup>`. Last, so the note's

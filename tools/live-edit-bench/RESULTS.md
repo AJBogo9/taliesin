@@ -1,34 +1,30 @@
 # live-edit benchmark results (indicative)
 
-> Indicative numbers from the author's machine, re-measured **2026-08-27**; absolute times
-> vary by machine and build profile (release build). Regenerate with
-> `cargo run --release -p live-edit-bench`, which also rewrites the committed
-> `RESULTS.json`. The structural rows (op counts, payload bytes, payload ratio, DOM
-> preservation) are deterministic and gated
-> (`tools/live-edit-bench/tests/regression.rs`); only the timing rows drift between runs.
+> Numbers from the author's machine (16 threads), measured **2026-09-24**, release build, on
+> a machine shared with other work (1-minute load average 0.59 before the run; it is
+> recorded in `RESULTS.json`). Absolute times vary by machine and load. Regenerate with
+> `cargo build --release -p taliesin-server` and then `cargo run --release -p
+> live-edit-bench`, which rewrites `RESULTS.json`; without the release binary the
+> end-to-end table is skipped. The structural rows (op counts, payload bytes, payload
+> ratio, DOM preservation) are deterministic and gated
+> (`tools/live-edit-bench/tests/regression.rs`); the timing rows are not, because a wall
+> clock measures the machine.
 >
-> **Best-of-twelve is now the binary's job, not the reader's.** This note used to claim
-> best of twelve while `main` measured exactly once, so a plain `cargo run` published a
-> best-of-one under a best-of-twelve label. `BEST_OF` is a constant in `main.rs` now. The
-> cold-render row is deliberately exempt: only the first render in a process is cold (the
-> syntax set and the other lazy statics are built on first use), so best-of-twelve there
-> would have published ~13 ms as a "cold render" against a true ~105 ms.
+> **Three tables, three questions.** The first is one document's edit through the
+> render+diff seam. The second is the whole-project passes a save in a site preview runs
+> around that edit. The third is what the author waits for: the save to the first message
+> a real `taliesin preview` sends, and to the `publishDiagnostics` a real `taliesin lsp`
+> sends. Before 2026-09-24 the bench stopped at the first two and at 17 pages, so a
+> published per-save figure had no instrument for the watcher's debounce, rediscovery, the
+> edited page's own build, the search index a moved anchor rebuilds, the language server,
+> or a project large enough to show the per-page slope (audit 2026-09-24, F5). The
+> synthetic books (`write_synthetic_book`, 100 and 500 pages) give it that size.
 >
-> **The structural rows were regenerated 2026-09-24; the timing rows were not.** A line
-> shift above a `:::` container became a `SetMeta` that carries the container's inner
-> positions (it was a full `Update`), which changed the op counts and the payload. The
-> timing rows above and below are still the 2026-08-27 release-build measurement; they
-> were not re-measured with the fix because the machine was loaded that day, and a wall
-> clock taken under load would publish the load.
->
-> **The warm rows dropped ~4.5x on 2026-08-27** and the `refresh_xrefs` rows ~11x, from three
-> changes in `crates/core`: `highlight::highlight` gained the memo `math::render` already had
-> (it was 10.7 ms of a 12.6 ms warm render, re-deriving identical HTML every keystroke),
-> KaTeX moved onto one long-lived worker thread (its QuickJS context is a thread-local and
-> every render runs on a fresh thread, so the ~24.7 ms boot was being paid per page), and the
-> two whole-project render passes now fan out across cores (`site/fanout.rs`). The cold-render
-> row is unchanged and expected to be: a single cold document render is serial work none of
-> those three touch.
+> **Best-of-twelve is the binary's job, not the reader's**, for the first table: `BEST_OF`
+> is a constant in `main.rs`. The cold-render row is deliberately exempt: only the first
+> render in a process is cold (the syntax set and the other lazy statics are built on first
+> use), so best-of-twelve there would publish a warm render as a cold one. The other two
+> tables publish the median of ten (`RUNS`).
 
 What this shows, for one keystroke-sized edit to a paragraph above the cells in a real
 post: the warm server re-renders and diffs in a fraction of the cold-start time (lazy
@@ -43,47 +39,67 @@ Quarto, MyST) can match.
 
 | metric | value |
 |---|---|
-| cold full render | 104112.2 us |
-| warm edit (render + diff) | 2570.8 us |
-| diff only | 211.8 us |
+| cold full render | 126920.8 us |
+| warm edit (render + diff) | 2712.6 us |
+| diff only | 464.2 us |
 | ops emitted | 55 (insert 1, set_meta 54, update 0, remove 0) |
 | full page HTML | 287755 bytes |
 | warm-edit payload | 3241 bytes |
 | payload shrink vs full reload | 89x smaller |
 | open `<details>` survives as same DOM node | yes |
 
-## project-scale save: `Site::refresh_xrefs`
+## project-scale save: the whole-project passes
 
-**Read this before quoting the warm-edit row as "the cost of a save".** The rows above
-measure one document through the render+diff seam. A save inside a *site* preview also
-runs `Site::refresh_xrefs` first, and its harvest renders **every page in the project** to
-full HTML to recover the cross-page float numbers. So a site save costs the warm edit
-*plus* a pass whose size is the project's, not the edit's.
+Median of the runs, in-process, release build. A save of a page runs
+`refresh_xrefs`; one that moves an anchor also rebuilds the search index; one that
+changes the page set or a page's front matter runs `discover` instead. The language
+server runs `discover_registry` on every save.
 
-| project | pages | refresh_xrefs | per page |
-|---|---|---|---|
-| `docs/guide` | 16 | 3.2 ms | 0.20 ms |
-| `docs/internals` | 6 | 1.6 ms | 0.26 ms |
-| `corpus/tech-blog` | 17 | 4.6 ms | 0.27 ms |
+| project | pages | save: refresh_xrefs | anchor moved: + search index | front matter: discover | language server: registry |
+|---|---|---|---|---|---|
+| `docs/guide` | 16 | 2.7 ms | 3.5 ms | 7.2 ms | 2.3 ms |
+| `docs/internals` | 6 | 1.5 ms | 1.8 ms | 4.1 ms | 1.2 ms |
+| `corpus/tech-blog` | 17 | 2.0 ms | 5.3 ms | 7.9 ms | 1.8 ms |
+| `synthetic book` | 100 | 4.3 ms | 9.6 ms | 16.7 ms | 3.2 ms |
+| `synthetic book` | 500 | 21.0 ms | 52.0 ms | 81.3 ms | 12.8 ms |
 
-Measured 2026-08-27, best of three per project, release build. **Still O(pages) per save,
-but the constant is ~12x smaller and the work now uses every core**: the harvest renders
-pages through `site::fanout::map_ordered`, so the per-page rate above is wall-clock across
-`available_parallelism()` workers, not per-core cost. Re-extrapolating the 200-page synthetic
-project from the same page shape: ~2.5 s before, ~0.2 s now on a 16-thread machine, and the
-curve is still linear — a machine with two cores gets the memo win (the larger of the two)
-but not the fan-out.
+What the second table shows. Every save of a page runs `refresh_xrefs`, whose harvest renders
+every page for its cross-page numbers and heading titles. Since 2026-09-24 that render
+typesets no math and highlights no code (`render_numbers_scoped_with_site`), runs on
+long-lived render threads rather than one spawned per page, and follows a source scan that
+runs across cores; before, past the math memo's capacity every save re-typeset the whole
+project's math on the one KaTeX thread. A save that moves an anchor also rebuilds the search
+index, which needs the served text, so that pass still renders every page in full. Both are
+still O(pages): content-hashing each page's harvest, which would make the save flat, stays
+cut (`notes/DO-NOT-REBUILD.md`, FA23).
 
-The remaining O(pages) term is a known, deliberately-unbuilt optimization: content-hashing
-each page's harvest so a save re-renders only the pages that changed would make it flat.
-It was costed on 2026-08-27 and **cut**, because after the memo and the fan-out it is worth
-~3 ms on the largest project here, against a cache field on `Site` and a key that has to
-cover source, includes, chapter number and site defaults or it silently serves stale float
-numbers. Revisit it when a project exists that can feel it.
+## end to end: save to the first message
 
-Deliberately **not gated**: this is a wall clock, and wall clocks measure the machine, so
-by this project's own rule they carry a date and get re-measured before a release rather
-than pinned by a test that fails on a slower laptop.
+Median of the rounds, against the release binary. From the file write to the first
+websocket message the preview sends, so the watcher's debounce, rediscovery and the
+edited page's own build are all inside; the language server column is the save to
+`publishDiagnostics`, its 120 ms coalescing window inside.
+
+| project | pages | body | heading (moves anchors) | title | atomic save | preview RSS after | language server |
+|---|---|---|---|---|---|---|---|
+| `docs/guide` | 16 | 105 ms | 111 ms | 120 ms | 114 ms | 114 MB | 148 ms |
+| `corpus/tech-blog` | 17 | 122 ms | 109 ms | 109 ms | 110 ms | 139 MB | 148 ms |
+| `synthetic book` | 100 | 95 ms | 109 ms | 114 ms | 112 ms | 74 MB | 134 ms |
+| `synthetic book` | 500 | 113 ms | 167 ms | 180 ms | 180 ms | 137 MB | 150 ms |
+
+What the third table shows. Every preview column includes the watcher's debounce, so on a
+small project that wait is most of the row; compare a row with the second table to see what
+the project adds. The heading row moves
+anchors, so it rebuilds the search index on top of `refresh_xrefs`; the title and atomic
+rows rediscover the project. The language server column includes its 120 ms coalescing
+window. The RSS column is the preview's resident memory after all forty saves: until
+2026-09-24 every search index rebuild kept its per-page fragments alive, scattered through
+the allocator arenas of the threads that built them, and a preview's memory grew with each
+save that moved an anchor.
+
+The per-project rows are **not gated**: they are wall clocks, and wall clocks measure the
+machine, so by this project's own rule they carry a date and get re-measured before a
+release rather than pinned by a test that fails on a slower laptop.
 
 ## Where the payload goes
 

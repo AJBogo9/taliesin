@@ -46,8 +46,9 @@ flowchart TB
    then parses as ordinary blocks.
 4. **Parse** (`comrak`, with `sourcepos` on). One AST for the whole document, with
    every node carrying its `startLine:col-endLine:col`. The parse and the walk that
-   follows run on a worker thread with a 256 MB stack (`render_internal` spawns a
-   scoped thread, `stack_size(256 * 1024 * 1024)`). The large stack is there because
+   follows run on a worker thread with a 256 MB stack (`render_internal` hands the render
+   to a worker from `render/workers.rs`, which parks between renders rather than being
+   spawned for each one). The large stack is there because
    deeply nested Markdown (blockquotes, lists) drives deep recursion in both comrak's
    parser and Taliesin's block emission, and on the default ~8 MB thread stack that
    recursion overflows at around 3000 levels. A stack overflow is not a catchable panic:

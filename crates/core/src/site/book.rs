@@ -66,6 +66,14 @@ pub(super) fn build_book(
     mode: DraftMode,
     excluded: &mut Vec<String>,
 ) -> Book {
+    // Reading a chapter (its heading parsed, its front matter) needs nothing from the
+    // chapters before it, so every chapter is read across cores first and the walk below
+    // only numbers them. One after another, the reads were three quarters of registering a
+    // 500-page book, which the language server does on every save (audit 2026-09-24).
+    let mut named = Vec::new();
+    chapter_files(&config.chapters, &mut named);
+    let read = super::fanout::map_ordered(&named, |file| ChapterFile::read(root, file));
+    let files: HashMap<&str, ChapterFile> = named.into_iter().zip(read).collect();
     let mut entries = Vec::new();
     let mut num = 0u32;
     push_group(
@@ -76,6 +84,7 @@ pub(super) fn build_book(
         &mut num,
         mode,
         excluded,
+        &files,
     );
     Book {
         title: config.title.clone(),
@@ -90,6 +99,7 @@ pub(super) fn build_book(
 /// other shape — so a part nested inside a part silently deleted itself AND every chapter
 /// under it, with `check` still exiting 0. (The outer loop always did check that return;
 /// only the inner one dropped it.)
+#[allow(clippy::too_many_arguments)]
 fn push_group(
     root: &Path,
     list: &[serde_yaml::Value],
@@ -98,9 +108,10 @@ fn push_group(
     num: &mut u32,
     mode: DraftMode,
     excluded: &mut Vec<String>,
+    files: &HashMap<&str, ChapterFile>,
 ) {
     for ch in list {
-        if push_chapter_entry(root, ch, entries, num, mode, excluded) {
+        if push_chapter_entry(root, ch, entries, num, mode, excluded, files) {
             continue;
         }
         // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner entries.
@@ -121,6 +132,7 @@ fn push_group(
                     num,
                     mode,
                     excluded,
+                    files,
                 );
             }
             // Every chapter in this part was a draft and got dropped: drop the now-empty
@@ -145,24 +157,88 @@ fn push_chapter_entry(
     num: &mut u32,
     mode: DraftMode,
     excluded: &mut Vec<String>,
+    files: &HashMap<&str, ChapterFile>,
 ) -> bool {
     if let Some(file) = value.as_str() {
-        push_chapter(root, file, None, entries, num, mode, excluded);
+        push_chapter(root, file, None, entries, num, mode, excluded, files);
         return true;
     }
     if let Some(map) = value.as_mapping()
         && let Some(file) = map.get("file").and_then(|v| v.as_str())
     {
         let label = scalar(map.get("text"));
-        push_chapter(root, file, label.as_deref(), entries, num, mode, excluded);
+        push_chapter(
+            root,
+            file,
+            label.as_deref(),
+            entries,
+            num,
+            mode,
+            excluded,
+            files,
+        );
         return true;
     }
     false
+}
+
+/// Every chapter file a `chapters:` list names, in the shapes [`push_group`] reads. Only
+/// what to read ahead: a file this misses is read by [`push_chapter`] itself.
+fn chapter_files<'a>(list: &'a [serde_yaml::Value], out: &mut Vec<&'a str>) {
+    for value in list {
+        if let Some(file) = value.as_str() {
+            out.push(file);
+        } else if let Some(map) = value.as_mapping() {
+            if let Some(file) = map.get("file").and_then(|v| v.as_str()) {
+                out.push(file);
+            }
+            if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
+                chapter_files(seq, out);
+            }
+        }
+    }
+}
+
+/// What the book reads from one chapter file: the text of its leading `# H1` and whether
+/// that heading is `.unnumbered`, and its front matter's `draft:` and `title:`.
+#[derive(Clone, Default)]
+struct ChapterFile {
+    h1: Option<String>,
+    unnumbered: bool,
+    draft: bool,
+    title: Option<String>,
+}
+
+impl ChapterFile {
+    fn read(root: &Path, file: &str) -> ChapterFile {
+        let input = root.join(chapter_rel(file));
+        let src = crate::includes::read_source(&input).unwrap_or_default();
+        let (h1, unnumbered) = crate::render::leading_h1(&src).unzip();
+        // Throwaway warnings: `book_pages` re-parses this file with the real sink, so a
+        // listing-without-contents warning here would just duplicate it.
+        let fm = parse_front_matter(&input, file, &mut Vec::new());
+        ChapterFile {
+            h1,
+            unnumbered: unnumbered.unwrap_or(false),
+            draft: fm.draft,
+            title: fm.title,
+        }
+    }
+}
+
+/// One spelling per file, decided where the path is read: `./a.tmd` and `x/../a.tmd` are
+/// `a.tmd`. A rel that kept its `./` built the page to `./a.html`, which the stale sweep
+/// (keyed on `a.html`) deleted, so the book linked a chapter it did not publish.
+fn chapter_rel(file: &str) -> String {
+    crate::includes::normalize(Path::new(file))
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 /// Append one chapter entry, bumping the chapter counter unless it is unnumbered.
 /// `label` (from a `{ file:, text: }` entry) overrides the sidebar label; without
 /// it the label falls back to the text the first `# H1` shows, then front-matter
 /// `title:`, then the file stem.
+#[allow(clippy::too_many_arguments)]
 fn push_chapter(
     root: &Path,
     file: &str,
@@ -171,21 +247,14 @@ fn push_chapter(
     num: &mut u32,
     mode: DraftMode,
     excluded: &mut Vec<String>,
+    files: &HashMap<&str, ChapterFile>,
 ) {
-    // One spelling per file, decided where the path is read: `./a.tmd` and `x/../a.tmd` are
-    // `a.tmd`. A rel that kept its `./` built the page to `./a.html`, which the stale sweep
-    // (keyed on `a.html`) deleted, so the book linked a chapter it did not publish.
-    let rel = crate::includes::normalize(Path::new(file))
-        .to_string_lossy()
-        .replace('\\', "/");
-    let input = root.join(&rel);
-    let src = crate::includes::read_source(&input).unwrap_or_default();
-    let (h1, unnumbered) = crate::render::leading_h1(&src).unzip();
-    let unnumbered = unnumbered.unwrap_or(false);
-    // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
-    // warnings: `book_pages` re-parses this file with the real sink, so a
-    // listing-without-contents warning here would just duplicate it.
-    let fm = parse_front_matter(&input, file, &mut Vec::new());
+    let rel = chapter_rel(file);
+    let fm = match files.get(file) {
+        Some(read) => read.clone(),
+        None => ChapterFile::read(root, file),
+    };
+    let (h1, unnumbered) = (fm.h1, fm.unnumbered);
     // A draft chapter is dropped in the published view (recorded so the build can report
     // it) — no entry, no number bump, so the book renumbers as if it weren't listed. In
     // the preview view it stays, tagged, and is numbered in context.
@@ -227,11 +296,13 @@ pub(super) fn chapter_heading(input: &Path) -> Option<String> {
 }
 /// A book's pages: one [`Page`] per chapter, in reading order.
 pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<Warning>) -> Vec<Page> {
-    book.chapters()
-        .into_iter()
-        .map(|c| {
-            let input = root.join(&c.rel);
-            let fm = parse_front_matter(&input, &c.rel, warnings);
+    // Across cores, like the chapter reads in `build_book`; the warnings keep page order.
+    let chapters = book.chapters();
+    let pages = super::fanout::map_ordered(&chapters, |c| {
+        let input = root.join(&c.rel);
+        let mut found = Vec::new();
+        let fm = parse_front_matter(&input, &c.rel, &mut found);
+        (
             Page {
                 input,
                 rel: c.rel.clone(),
@@ -245,7 +316,15 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<Warning>) 
                 listings: fm.listings,
                 hero: fm.hero,
                 draft: c.draft,
-            }
+            },
+            found,
+        )
+    });
+    pages
+        .into_iter()
+        .map(|(page, found)| {
+            warnings.extend(found);
+            page
         })
         .collect()
 }

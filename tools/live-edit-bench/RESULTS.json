@@ -1,7 +1,7 @@
 {
   "doc": {
-    "cold_render_ns": 104112191,
-    "diff_ns": 211753,
+    "cold_render_ns": 126920760,
+    "diff_ns": 464176,
     "doc": "corpus/tech-blog/posts/em-algorithm/index.tmd",
     "dom_preserved": true,
     "edit_payload_bytes": 3241,
@@ -11,26 +11,100 @@
     "remove_count": 0,
     "set_meta_count": 54,
     "update_count": 0,
-    "warm_edit_ns": 2570809
+    "warm_edit_ns": 2712630
   },
+  "end_to_end": [
+    {
+      "atomic_ns": 113914437,
+      "body_ns": 105473674,
+      "heading_ns": 110987543,
+      "lsp_save_ns": 147649709,
+      "pages": 16,
+      "preview_rss_kib": 117636,
+      "project": "docs/guide",
+      "rounds": 10,
+      "title_ns": 119922171
+    },
+    {
+      "atomic_ns": 109980625,
+      "body_ns": 121861255,
+      "heading_ns": 108664058,
+      "lsp_save_ns": 148147559,
+      "pages": 17,
+      "preview_rss_kib": 142860,
+      "project": "corpus/tech-blog",
+      "rounds": 10,
+      "title_ns": 108936861
+    },
+    {
+      "atomic_ns": 111845127,
+      "body_ns": 94629429,
+      "heading_ns": 108976784,
+      "lsp_save_ns": 134244232,
+      "pages": 100,
+      "preview_rss_kib": 76600,
+      "project": "synthetic book",
+      "rounds": 10,
+      "title_ns": 114116220
+    },
+    {
+      "atomic_ns": 180476330,
+      "body_ns": 113292920,
+      "heading_ns": 166588109,
+      "lsp_save_ns": 149740696,
+      "pages": 500,
+      "preview_rss_kib": 140460,
+      "project": "synthetic book",
+      "rounds": 10,
+      "title_ns": 179507877
+    }
+  ],
+  "load_average_1m_before": "0.59",
   "projects": [
     {
+      "discover_ns": 7171839,
       "pages": 16,
       "project": "docs/guide",
-      "xref_refresh_ns": 3189137,
-      "xref_refresh_ns_per_page": 199321
+      "refresh_xrefs_ns": 2684575,
+      "registry_ns": 2304776,
+      "runs": 10,
+      "search_index_ns": 3470796
     },
     {
+      "discover_ns": 4070437,
       "pages": 6,
       "project": "docs/internals",
-      "xref_refresh_ns": 1567577,
-      "xref_refresh_ns_per_page": 261262
+      "refresh_xrefs_ns": 1473970,
+      "registry_ns": 1227992,
+      "runs": 10,
+      "search_index_ns": 1775104
     },
     {
+      "discover_ns": 7930985,
       "pages": 17,
       "project": "corpus/tech-blog",
-      "xref_refresh_ns": 4619264,
-      "xref_refresh_ns_per_page": 271721
+      "refresh_xrefs_ns": 2019019,
+      "registry_ns": 1819892,
+      "runs": 10,
+      "search_index_ns": 5313147
+    },
+    {
+      "discover_ns": 16718706,
+      "pages": 100,
+      "project": "synthetic book",
+      "refresh_xrefs_ns": 4333225,
+      "registry_ns": 3164816,
+      "runs": 10,
+      "search_index_ns": 9596795
+    },
+    {
+      "discover_ns": 81342907,
+      "pages": 500,
+      "project": "synthetic book",
+      "refresh_xrefs_ns": 21009145,
+      "registry_ns": 12755690,
+      "runs": 10,
+      "search_index_ns": 51984448
     }
   ]
 }

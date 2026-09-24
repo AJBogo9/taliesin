@@ -147,13 +147,9 @@ pub struct Site {
     config_warning_count: usize,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Assembled
-    /// from `search_sections`; the dev server rebuilds it whole whenever a cross-reference
+    /// from per-page fragments; the dev server rebuilds it whole whenever a cross-reference
     /// anchor moves, so a snippet never contradicts the page it links to.
     pub search_index_json: String,
-    /// The per-page fragments `search_index_json` is assembled from — `(page rel, that
-    /// page's JSON entries)` in page order — kept so an edited page's entries can be
-    /// re-extracted without re-rendering the whole site.
-    search_sections: Vec<(String, String)>,
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
@@ -484,7 +480,6 @@ impl Site {
             // index READS `xref_targets`, so building it here (as it used to) indexed every
             // cross-page `@fig-` before a single number had been harvested.
             search_index_json: String::new(),
-            search_sections: Vec::new(),
             excluded_drafts,
             standalone,
         }
@@ -498,13 +493,16 @@ impl Site {
     /// renumbered figure stale in the fragments of pages nobody has open, which is the
     /// exact snippet-contradicts-its-target defect this index ordering exists to prevent.
     pub fn rebuild_search_index(&mut self) {
-        self.search_sections = search::build_sections(
+        // The fragments are dropped once assembled. They were kept on `Site` for a per-page
+        // refresh nothing calls, and holding them kept each rebuild's strings alive in the
+        // allocator arenas of the threads that built them.
+        let sections = search::build_sections(
             &self.pages,
             &self.book,
             &self.xref_targets,
             Some(&self.render_defaults()),
         );
-        self.search_index_json = search::assemble(&self.search_sections);
+        self.search_index_json = search::assemble(&sections);
     }
 
     /// Whether this project is a book (`project: type: book`).
@@ -1287,6 +1285,8 @@ impl Site {
     ///
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
+    /// The render is `render::render_numbers_scoped_with_site`, which typesets nothing this
+    /// discards.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         // (anchor, number, defining page url) — the url is needed because an anchor the
@@ -1301,8 +1301,7 @@ impl Site {
             };
             let base = page.input.parent().unwrap_or(&self.root);
             let chapter = self.chapter_for(page);
-            let doc =
-                render::render_document_scoped_with_site(&src, base, chapter, Some(&defaults));
+            let doc = render::render_numbers_scoped_with_site(&src, base, chapter, Some(&defaults));
             let mut mine: Vec<(String, String, String)> = Vec::new();
             for (anchor, number) in doc.xref_numbers {
                 // These three conditions gate an INSERT, not just an enrich, so each has
@@ -2760,6 +2759,118 @@ pub(crate) mod tests {
             site.xref_targets
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The harvest renders every page on every save and keeps only the numbers and the
+    /// heading text, so a paragraph's math and a block's code are typeset for nothing: they
+    /// were most of a harvest render, and past a memo's capacity every save redid the whole
+    /// project's (10.7 s per save at 9,693 math expressions, audit 2026-09-24, F1). A
+    /// heading's math is still typeset, because its text names an unnumbered `@sec-` link.
+    /// Witnessed through the memos: what nothing typeset is not in them.
+    #[test]
+    fn the_harvest_numbers_a_page_without_typesetting_its_body_math() {
+        let root = write_site(
+            "harvest-math",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - one.tmd\n",
+                ),
+                ("index.tmd", "# Preface {.unnumbered}\n\nSee @sec-probe.\n"),
+                (
+                    "one.tmd",
+                    "# One\n\n## The $x_{h7731}$ case {#sec-probe}\n\n\
+                     Body $y_{b7731}$ text.\n\n$$ z_{e7731} $$ {#eq-probe}\n\n\
+                     ```python\nprobe_7731 = 1\n```\n\n\
+                     ```{python}\n#| label: lst-probe\n#| lst-cap: A listing.\nlisted_7731 = 2\n```\n",
+                ),
+            ],
+        );
+        let mut site = Site::discover_registry(&root);
+        site.harvest_xref_numbers();
+        assert_eq!(site.xref_targets["eq-probe"].number, "1.1");
+        assert_eq!(site.xref_targets["sec-probe"].number, "1.1");
+        assert_eq!(site.xref_targets["lst-probe"].number, "1.1");
+        for code in ["probe_7731 = 1\n", "listed_7731 = 2\n"] {
+            assert!(
+                !crate::highlight::is_memoized(code, "python"),
+                "the harvest highlighted `{code}`, which only the served page shows"
+            );
+        }
+        assert!(
+            crate::math::is_memoized("x_{h7731}", false),
+            "a heading's math names its section, so the harvest typesets it"
+        );
+        for (latex, display) in [("y_{b7731}", false), ("z_{e7731}", true)] {
+            assert!(
+                !crate::math::is_memoized(latex, display),
+                "the harvest typeset `{latex}`, which only the served page shows"
+            );
+        }
+        // The title is what the served page's heading reads, math included.
+        let page = site.page("one.tmd").unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let full = render::render_document_scoped_with_site(
+            &src,
+            &root,
+            site.chapter_for(page),
+            Some(&site.render_defaults()),
+        );
+        assert_eq!(
+            site.xref_targets["sec-probe"].title,
+            xref::heading_titles(&full.blocks)["sec-probe"]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The harvest's render skips typesetting, so it must still agree with the served render
+    /// on everything the harvest keeps: every number and every heading title, on every page
+    /// of every project here (the corpus and both books).
+    #[test]
+    fn the_numbers_render_agrees_with_the_full_render_on_every_real_page() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut roots = vec![repo.join("docs/guide"), repo.join("docs/internals")];
+        let mut stack = vec![repo.join("corpus")];
+        while let Some(dir) = stack.pop() {
+            if dir.join("_site.yml").is_file() {
+                roots.push(dir.clone());
+            }
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                if entry.path().is_dir() {
+                    stack.push(entry.path());
+                }
+            }
+        }
+        let mut pages = 0;
+        for root in roots {
+            let site = Site::discover_registry(&root);
+            let defaults = site.render_defaults();
+            for page in &site.pages {
+                let Ok(src) = crate::includes::read_source(&page.input) else {
+                    continue;
+                };
+                let base = page.input.parent().unwrap();
+                let chapter = site.chapter_for(page);
+                let full =
+                    render::render_document_scoped_with_site(&src, base, chapter, Some(&defaults));
+                let numbers =
+                    render::render_numbers_scoped_with_site(&src, base, chapter, Some(&defaults));
+                assert_eq!(
+                    numbers.xref_numbers,
+                    full.xref_numbers,
+                    "{}",
+                    page.input.display()
+                );
+                assert_eq!(
+                    xref::heading_titles(&numbers.blocks),
+                    xref::heading_titles(&full.blocks),
+                    "{}",
+                    page.input.display()
+                );
+                pages += 1;
+            }
+        }
+        assert!(pages > 50, "only {pages} pages compared");
     }
 
     /// A refresh must be all-or-nothing about the numbers. The harvest renders EVERY page, so
