@@ -126,3 +126,28 @@ jobs:
             "taliesin-$TAG-$TARGET.tar.gz" \
             "taliesin-$TAG-$TARGET.tar.gz.sha256" \
             --clobber
+
+  # The VS Code companion as a `.vsix` on the same release, so installing it needs neither a
+  # clone nor Node. It goes to no extension marketplace. `--no-dependencies` because esbuild
+  # bundles the one runtime dependency into the extension's single output file and
+  # `.vscodeignore` ships no `node_modules`.
+  vsix:
+    needs: create
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Package
+        run: |
+          npm ci
+          npx -y @vscode/vsce@4.0.0 package --no-dependencies
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" taliesin-companion-*.vsix --clobber

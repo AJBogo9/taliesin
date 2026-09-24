@@ -406,9 +406,8 @@ came from) without opening the browser dev tools.
 network. Every response passes a `Host` allowlist (the DNS-rebinding guard) and the
 websocket enforces an origin check, so a page on another site cannot drive it.
 
-Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
-that rebuilds it when the tool's sources change) so `taliesin preview <file>`
-works from anywhere.
+Put `target/release/taliesin` on your `PATH` (a symlink will do) so
+`taliesin preview <file>` works from anywhere.
 
 ## `taliesin lsp`: the editor server
 
@@ -419,8 +418,20 @@ folding. All six capabilities are read-only: the server is parse-only (no kernel
 execution) and it never edits your source; your editor does.
 
 ```lua
--- Neovim (nvim-lspconfig or vim.lsp.start)
-cmd = { "taliesin", "lsp" }
+-- Neovim 0.10 or later: init.lua. Neovim does not know `.tmd`, so map it to Markdown
+-- (which also gives the highlighting) and start the server for `.tmd` buffers only.
+vim.filetype.add({ extension = { tmd = "markdown" } })
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "markdown",
+  callback = function(args)
+    if not vim.endswith(args.file, ".tmd") then return end
+    vim.lsp.start({
+      name = "taliesin",
+      cmd = { "taliesin", "lsp" },
+      root_dir = vim.fs.root(args.buf, { "_site.yml", ".git" }),
+    })
+  end,
+})
 ```
 
 ```toml
