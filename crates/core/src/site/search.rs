@@ -234,8 +234,10 @@ pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, u
 /// took the tail off 18.7% of the Guide's section records and 25.9% of the Internals' —
 /// roughly 15% of each book's prose, silently: no signal to the reader searching for a
 /// phrase that is on the page, and none to the author. Uncapping grows the indexed text by
-/// only ~1.17x (measured on both books), and `score()` is `indexOf` scans over that text at
-/// well under a millisecond per keystroke, so the cap was never buying what it cost.
+/// only ~1.17x (measured on both books), so the cap was never buying what it cost. What a
+/// keystroke costs is the typo tier's pass over each record's words, not the `indexOf`
+/// scans: `score()` over the Guide's 130 records took about 4 ms per keystroke re-splitting
+/// every body, and about 2 ms once the words are split once per load (node, 2026-09-24).
 pub(super) fn section_text(html: &str) -> String {
     render::indexable_text(html)
 }

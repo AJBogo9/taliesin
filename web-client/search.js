@@ -97,7 +97,7 @@
   /** A built, match-ready index entry (memoized lowercase fields for the matcher). A
    * command-palette action is the same shape with `action:true` + a `run` callback and no
    * `url`/`page` (it executes instead of navigating). */
-  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, chapter?: number, path?: string, depth?: number, tLow: string, bLow: string, action?: boolean, run?: () => void }} SearchItem */
+  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, chapter?: number, path?: string, depth?: number, tLow: string, bLow: string, tWords?: string[], bWords?: string[], action?: boolean, run?: () => void }} SearchItem */
 
   // Lazily created in ensureUi() and always assigned before any use below, so they're
   // typed non-null; ensureUi() self-guards re-entry via `if (overlay) return`.
@@ -361,12 +361,36 @@
     return diff <= 1;
   }
 
-  // Does any whitespace-delimited word of `fieldLow` typo-match `term` (edit distance <= 1)?
-  /** @param {string} term @param {string} fieldLow */
-  function fuzzyWord(term, fieldLow) {
-    var words = fieldLow.split(/\s+/);
+  // The distinct words of a lowercased field: runs of letters, combining marks, digits and
+  // `_`, so punctuation never sticks to a word. Split on whitespace alone, "analysis." and
+  // "gödel’s" were each one word two edits from a one-edit typo, so the typo tier missed any
+  // word shown beside punctuation: a quarter of the Guide's (word, section) pairs.
+  var NOT_WORD = /[^\p{L}\p{M}\p{N}_]+/u;
+  /** @param {string} fieldLow @returns {string[]} */
+  function wordsOf(fieldLow) {
+    /** @type {Record<string, boolean>} */
+    var seen = {};
+    return fieldLow.split(NOT_WORD).filter(function (w) {
+      if (!w || seen[w]) return false;
+      seen[w] = true;
+      return true;
+    });
+  }
+  // An item's title and body words, split once per loaded index rather than per keystroke.
+  /** @param {SearchItem} item */
+  function titleWords(item) {
+    return item.tWords || (item.tWords = wordsOf(item.tLow));
+  }
+  /** @param {SearchItem} item */
+  function bodyWords(item) {
+    return item.bWords || (item.bWords = wordsOf(item.bLow));
+  }
+
+  // Does any word in `words` typo-match `term` (edit distance <= 1)?
+  /** @param {string} term @param {string[]} words */
+  function fuzzyWord(term, words) {
     for (var k = 0; k < words.length; k++) {
-      if (words[k] && within1(term, words[k])) return true;
+      if (within1(term, words[k])) return true;
     }
     return false;
   }
@@ -391,8 +415,8 @@
       var term = terms[k], pos = t.indexOf(term);
       if (pos >= 0) { total += 6; if (pos === 0) leadPrefix = true; }
       else if (b.indexOf(term) >= 0) { total += 3; allTitle = false; }
-      else if (term.length >= 4 && fuzzyWord(term, t)) { total += 2; }
-      else if (term.length >= 4 && fuzzyWord(term, b)) { total += 1; allTitle = false; }
+      else if (term.length >= 4 && fuzzyWord(term, titleWords(item))) { total += 2; }
+      else if (term.length >= 4 && fuzzyWord(term, bodyWords(item))) { total += 1; allTitle = false; }
       else if (strict) return { s: 0, missing: [] }; // hard AND: one miss rejects the item
       else { missing.push(term); allTitle = false; }
     }
@@ -611,7 +635,7 @@
     // for matching, not prose to show).
     var hit = terms.filter(function (term) { return r.missing.indexOf(term) < 0; });
     var everyInTitle = hit.every(function (term) {
-      return item.tLow.indexOf(term) >= 0 || (term.length >= 4 && fuzzyWord(term, item.tLow));
+      return item.tLow.indexOf(term) >= 0 || (term.length >= 4 && fuzzyWord(term, titleWords(item)));
     });
     if (!item.action && hit.length && !everyInTitle && item.body) {
       var snip = document.createElement("div");
