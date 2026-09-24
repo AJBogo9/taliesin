@@ -629,8 +629,11 @@ fn warn_nonstrict_problems(problems: usize) {
 /// the build silently, and return the count. The executor says which cells failed
 /// ([`exec::Executor::take_failures`]); reading it back out of the HTML was spoofable by a
 /// cell that merely printed the error markup (audit exec #11).
+///
+/// A hidden (`#| include: false`) cell's failure is counted but not logged here: the
+/// executor already said it, located, with what the cell raised.
 fn report_cell_errors(failures: &[exec::CellFailure], page_label: &str) -> usize {
-    for f in failures {
+    for f in failures.iter().filter(|f| !f.hidden) {
         log::warn(&cell_error_message(page_label, f));
     }
     failures.len()
@@ -692,6 +695,7 @@ fn cell_error_diagnostics(
 ) -> Vec<crate::lint::Diagnostic> {
     failures
         .iter()
+        .filter(|f| !f.hidden)
         .map(|f| {
             crate::lint::Diagnostic::new(
                 page_label.to_string(),
@@ -1498,6 +1502,9 @@ async fn build_one_page(
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for f in &exec.take_failures() {
         problems += 1;
+        if f.hidden {
+            continue; // already a located diagnostic among the exec warnings above
+        }
         let msg = cell_error_message(&page.rel, f);
         diagnostics.push(crate::lint::Diagnostic::new(
             page.rel.clone(),
@@ -3584,6 +3591,7 @@ mod build_diag_tests {
             sourcepos: "7:1-9:3".into(),
             source_file: None,
             failure: f,
+            hidden: false,
         };
         let unavailable = failure(crate::exec::Failure::NotRun(
             crate::exec::NOT_RUN_UNAVAILABLE,

@@ -56,7 +56,9 @@ table but not the code that made it.
 `include: false` goes further and hides both source and output, but the cell
 still executes (kernel state is kept), so a later cell still sees its variables.
 This is the option for a setup cell whose result you never want to see but whose state
-you need downstream. To skip execution entirely, run the whole document with
+you need downstream. If it fails, its traceback is hidden along with the rest of its
+output, so the failure is reported as an error diagnostic at the cell instead, and it
+fails `build --strict`. To skip execution entirely, run the whole document with
 `--no-exec` / `TALIESIN_NO_EXEC`.
 
 `cache: false` is orthogonal to both: the cell runs and shows normally, but its

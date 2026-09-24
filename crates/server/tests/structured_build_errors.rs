@@ -382,3 +382,58 @@ fn a_cell_that_prints_the_error_markup_is_neither_a_failure_nor_uncached() {
         "a successful cell was refused the cache:\n{stderr}"
     );
 }
+
+/// E4: a `#| include: false` cell that fails was silent everywhere. Its output block (the
+/// traceback) is dropped by design, and that was the only place the failure lived, so the
+/// page, the console, `--strict` and `--format json` all said nothing while every cell
+/// after it ran without its state and caching quietly stopped for the rest of the page.
+/// The failure is now a located, error-severity diagnostic at the cell, and it counts.
+#[test]
+fn a_failing_hidden_cell_is_a_located_error_that_fails_strict() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("hidden-fail");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\nIntro.\n\n```{python}\n#| include: false\n\
+         import not_a_real_module_xyz\n```\n\n```{python}\nprint('after')\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(dir.join("doc.tmd"))
+        .args(["--strict", "--format", "json"])
+        .output()
+        .expect("run taliesin");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "a failing hidden cell passed --strict:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("not_a_real_module_xyz"),
+        "the console must name what the hidden cell raised:\n{stderr}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let hit = v["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .find(|d| {
+            d["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("not_a_real_module_xyz"))
+        })
+        .unwrap_or_else(|| panic!("no diagnostic names the hidden cell's error: {v}"));
+    assert_eq!(hit["severity"], "error", "{hit}");
+    assert_eq!(
+        hit["line"], 7,
+        "located at the hidden cell's opening fence: {hit}"
+    );
+}

@@ -279,13 +279,16 @@ pub(crate) enum Failure {
 struct CellOut {
     html: String,
     failure: Option<Failure>,
+    /// The interpreter's `ename: evalue` when the cell raised, for the one place that has
+    /// to say it in words: a hidden cell's diagnostic, since its traceback is not on the page.
+    raised: Option<String>,
 }
 
 impl CellOut {
     fn ok(html: String) -> Self {
         CellOut {
             html,
-            failure: None,
+            ..CellOut::default()
         }
     }
 
@@ -293,6 +296,7 @@ impl CellOut {
         CellOut {
             html,
             failure: Some(failure),
+            raised: None,
         }
     }
 }
@@ -303,6 +307,10 @@ pub(crate) struct CellFailure {
     pub sourcepos: String,
     pub source_file: Option<String>,
     pub failure: Failure,
+    /// A `#| include: false` cell: its output (the traceback) is not on the page, so the
+    /// executor has already said so as a located error diagnostic, which the build must
+    /// count but not repeat.
+    pub hidden: bool,
 }
 
 /// How one run split between replay and re-execution, summed across languages so the
@@ -557,6 +565,39 @@ impl Executor {
         std::mem::take(&mut self.warnings)
     }
 
+    /// A failed `#| include: false` cell drops its output by design, and with it the only
+    /// place the failure showed: the page, the console, `--strict` and the JSON all said
+    /// nothing while every later cell ran without its state (audit E4). So it becomes a
+    /// located, error-severity diagnostic at the cell, on the console and in the same
+    /// channel as the other execution-only defects.
+    fn hidden_failure(&mut self, cell: &CellRef, failure: Failure, raised: Option<&str>) {
+        let what = match failure {
+            Failure::Raised => format!("raised {}", raised.unwrap_or("an uncaught exception")),
+            Failure::NotRun(kind) => format!("did not complete ({kind})"),
+            Failure::Truncated => "had its output cut at an output cap".to_string(),
+        };
+        let message = format!(
+            "the `#| include: false` cell {what}; its output is hidden, so the page does not \
+             show this, and the cells after it ran without its state"
+        );
+        let place = cell
+            .source_file
+            .as_deref()
+            .map(|f| format!("{f} "))
+            .unwrap_or_default();
+        crate::log::warn(&format!(
+            "cell error in {} ({place}@ {}): {message}",
+            self.page.as_deref().unwrap_or("document"),
+            cell.sourcepos
+        ));
+        let warning = render::Warning::new(message).severity(render::Severity::Error);
+        self.warnings
+            .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                0 => warning,
+                line => warning.at(cell.source_file.clone(), line),
+            });
+    }
+
     /// Drain the cells the last [`Executor::run`] saw fail (see [`Failure`]), in document
     /// order. This, not the output HTML, is what a build counts as a cell error.
     pub(crate) fn take_failures(&mut self) -> Vec<CellFailure> {
@@ -711,7 +752,11 @@ impl Executor {
                         sourcepos: cell.sourcepos.clone(),
                         source_file: cell.source_file.clone(),
                         failure,
+                        hidden: !cell.include,
                     });
+                    if !cell.include {
+                        self.hidden_failure(cell, failure, out.raised.as_deref());
+                    }
                 }
                 let inner = &out.html;
                 // `include: false` cells run (above) for their kernel-state side
@@ -1431,10 +1476,20 @@ impl Executor {
         match result {
             Ok(outs) => {
                 let failure = failure_of(&outs);
+                let raised = outs.list().iter().find_map(|o| match o {
+                    crate::kernel::Output::Error {
+                        ename,
+                        evalue,
+                        not_run: None,
+                        ..
+                    } => Some(format!("{ename}: {evalue}")),
+                    _ => None,
+                });
                 let outs: Vec<_> = outs.into_vec().iter().map(|o| paths.apply(o)).collect();
                 CellOut {
                     html: render_outputs(&outs),
                     failure,
+                    raised,
                 }
             }
             Err(e) => {
