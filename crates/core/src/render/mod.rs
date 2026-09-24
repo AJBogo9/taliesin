@@ -2477,9 +2477,13 @@ fn strip_link_targets_for_slug(s: &str) -> String {
 }
 
 /// The heading text `slugify` should see: markdown source with the two things that are
-/// markup rather than visible text taken out first.
+/// markup rather than visible text taken out first, then its character references
+/// decoded to the characters the reader sees (`R&amp;D` slugs as `r-d`, not `r-amp-d`).
+/// Decoded LAST, so a `&#36;` cannot become a math delimiter the pass above never saw.
 fn slug_source(block_src: &str) -> String {
-    strip_link_targets_for_slug(&strip_math_for_slug(block_src))
+    unescape_html(&strip_link_targets_for_slug(&strip_math_for_slug(
+        block_src,
+    )))
 }
 
 /// A deduped heading anchor slug; a repeated slug gets a `-N` suffix.

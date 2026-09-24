@@ -7727,6 +7727,27 @@ fn the_readme_does_not_advertise_withdrawn_constructs() {
     );
 }
 
+/// A heading's slug is built from the text the reader sees. A character reference in the
+/// source (`&amp;`, `&lt;`, `&#169;`) renders as one character, but the slug read the
+/// source spelling, so `## R&amp;D &lt;notes&gt;` was anchored `r-amp-d-lt-notes-gt`,
+/// words that appear nowhere on the page. A heading typed with the characters themselves
+/// is the control: its slug is unchanged.
+#[test]
+fn a_heading_slug_reads_character_references_as_the_characters_they_name() {
+    let id = |src: &str| {
+        render_document(src)
+            .blocks
+            .iter()
+            .find_map(|b| extract_attr(&b.html, "id"))
+    };
+    assert_eq!(
+        id("## R&amp;D &lt;notes&gt; &#169; x\n").as_deref(),
+        Some("r-d-notes-x")
+    );
+    assert_eq!(id("## R&D <notes> © x\n").as_deref(), Some("r-d-notes-x"));
+    assert_eq!(id("## Tom & Jerry\n").as_deref(), Some("tom-jerry"));
+}
+
 /// A heading that links somewhere must not put the link TARGET in its own anchor id.
 ///
 /// The slug is built from the heading's markdown line, and `slugify` keeps every
