@@ -1190,3 +1190,44 @@ fn tex_ligatures_in_text_fields_print_as_typeset() {
         "a URL is not text: {f}"
     );
 }
+
+/// IEEE punctuation on common shapes (audit 2026-09-24, bibtex #16). A title that ends in
+/// `?`, `!` or `.` keeps its own mark instead of gaining a comma or period inside the
+/// quote ("…Networks?,”", "…End?.”", Google Scholar's "t-SNE.,”"); a note does not double
+/// a period; a single page is "p." and a range is dashed even with one hyphen, as BibTeX's
+/// `n.dashify` does.
+#[test]
+fn ieee_punctuation_follows_the_title_and_the_page_count() {
+    let b = parse_bib(concat!(
+        "@article{q1, author={Xu, Keyulu}, title={How Powerful are Graph Neural Networks?}, journal={ICLR}, year={2019}}\n",
+        "@misc{q2, title={Is This the End?}}\n",
+        "@article{gs, title={Visualizing data using t-SNE.}, journal={JMLR}, year={2008}}\n",
+        "@misc{t6, title={Note only}, note={Accessed: 2023-01-01}}\n",
+        "@misc{t8, title={Title ending period.}, note={A note.}}\n",
+        "@article{p1, title={P}, journal={J}, pages={42}, year={2020}}\n",
+        "@article{p2, title={P}, journal={J}, pages={123-145}, year={2020}}\n",
+        "@article{p3, title={P}, journal={J}, pages={123 -- 145}, year={2020}}\n",
+        "@article{p7, title={P}, journal={J}, pages={1--5, 7--9}, year={2020}}\n",
+    ));
+    let f = |k: &str| b.format(k).unwrap();
+    assert_eq!(
+        f("q1"),
+        "K. Xu, \u{201c}How Powerful are Graph Neural Networks?\u{201d} <em>ICLR</em>, 2019."
+    );
+    assert_eq!(f("q2"), "\u{201c}Is This the End?\u{201d}");
+    assert!(
+        f("gs").starts_with("\u{201c}Visualizing data using t-SNE.\u{201d} <em>JMLR</em>"),
+        "{}",
+        f("gs")
+    );
+    assert_eq!(f("t6"), "\u{201c}Note only.\u{201d} Accessed: 2023-01-01.");
+    assert_eq!(f("t8"), "\u{201c}Title ending period.\u{201d} A note.");
+    assert!(f("p1").contains("<em>J</em>, p. 42, 2020"), "{}", f("p1"));
+    assert!(f("p2").contains("pp. 123\u{2013}145"), "{}", f("p2"));
+    assert!(f("p3").contains("pp. 123\u{2013}145"), "{}", f("p3"));
+    assert!(
+        f("p7").contains("pp. 1\u{2013}5, 7\u{2013}9"),
+        "{}",
+        f("p7")
+    );
+}

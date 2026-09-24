@@ -56,7 +56,7 @@ fn fmt_article(f: &Fields) -> String {
         segs.push(format!("no. {}", esc(&clean(n))));
     }
     if let Some(p) = f.get("pages").filter(|s| !s.is_empty()) {
-        segs.push(format!("pp. {}", esc(&clean_pages(p))));
+        segs.push(pages(p));
     }
     if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
         segs.push(esc(&clean(y)));
@@ -68,12 +68,13 @@ fn fmt_article(f: &Fields) -> String {
 
 /// Join a quoted title (`"Title,"`) with trailing IEEE segments (venue/year/…),
 /// adding the final period. When nothing follows, the dangling comma inside the
-/// closing quote becomes a period (`"Title."`) instead of `"Title,".`.
+/// closing quote becomes a period (`"Title."`) instead of `"Title,".`, and a title that
+/// already ends a sentence (`"Is This the End?"`) takes nothing.
 fn title_with_segs(mut out: String, segs: &[String]) -> String {
     if segs.is_empty() {
         if let Some(stripped) = out.strip_suffix(",\u{201d}") {
             out = format!("{stripped}.\u{201d}");
-        } else if !out.is_empty() && !out.ends_with('.') {
+        } else if !out.is_empty() && !ends_sentence(&out) {
             out.push('.');
         }
     } else {
@@ -148,7 +149,7 @@ fn fmt_inbook(f: &Fields) -> String {
         segs.push(esc(&clean(y)));
     }
     if let Some(p) = f.get("pages").filter(|s| !s.is_empty()) {
-        segs.push(format!("pp. {}", esc(&clean_pages(p))));
+        segs.push(pages(p));
     }
     // After the italic booktitle (which ends in `</em>`), a comma separates the
     // publisher/year/pages list; the whole entry ends with a period.
@@ -185,19 +186,34 @@ fn fmt_misc(f: &Fields) -> String {
     append_url(&mut out, f);
     if let Some(note) = f.get("note").filter(|s| !s.is_empty()) {
         // Start a new sentence after a URL (which ends in `</a>`, not punctuation).
-        if !out.ends_with(['.', ' ']) {
+        if !out.is_empty() && !ends_sentence(&out) {
             out.push('.');
         }
-        out.push_str(&format!(" {}.", esc(&clean(note))));
+        let note = esc(&clean(note));
+        let stop = if ends_sentence(&note) { "" } else { "." };
+        out.push_str(&format!(" {note}{stop}"));
     }
     out
 }
 
+/// Whether `s` already ends a sentence: a `.`, `?` or `!`, possibly inside a closing
+/// quote, so no period is added after it.
+fn ends_sentence(s: &str) -> bool {
+    s.trim_end_matches('\u{201d}').ends_with(['.', '?', '!'])
+}
+
 /// A title in IEEE quotes with the trailing comma inside the closing quote
-/// (`"Title,"`), ready for the venue/year to follow. Empty if no title.
+/// (`"Title,"`), ready for the venue/year to follow. Empty if no title. A title that
+/// ends in `.`, `?` or `!` keeps that mark instead ("How Powerful are GNNs?"), which is
+/// how IEEE prints it.
 fn quoted_title(f: &Fields) -> String {
-    match f.get("title").filter(|s| !s.is_empty()) {
-        Some(t) => format!("\u{201c}{},\u{201d}", esc(&clean(t))),
+    match f
+        .get("title")
+        .map(|t| esc(&clean(t)))
+        .filter(|t| !t.is_empty())
+    {
+        Some(t) if ends_sentence(&t) => format!("\u{201c}{t}\u{201d}"),
+        Some(t) => format!("\u{201c}{t},\u{201d}"),
         None => String::new(),
     }
 }
@@ -216,10 +232,35 @@ fn append_url(out: &mut String, f: &Fields) {
     }
 }
 
-/// Page ranges use an en dash (`12--34` -> `12\u{2013}34`), `---` included: before
-/// [`clean`], which would read that one as an em dash.
+/// The IEEE page segment: "p. 42" for one page, "pp. 123–145" for a range or a list.
+fn pages(p: &str) -> String {
+    let p = clean_pages(p);
+    let label = if p.contains(['\u{2013}', ',', '+']) {
+        "pp."
+    } else {
+        "p."
+    };
+    format!("{label} {}", esc(&p))
+}
+
+/// Page ranges use one en dash, however the range was written (`12-34`, `12--34`,
+/// `12 -- 34`), as BibTeX's `n.dashify` does. Done before [`clean`], which would read
+/// `---` as an em dash.
 fn clean_pages(s: &str) -> String {
-    clean(&s.replace("---", "\u{2013}").replace("--", "\u{2013}"))
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(c) = rest.chars().next() {
+        if c == '-' {
+            let run = rest.len() - rest.trim_start_matches('-').len();
+            out.truncate(out.trim_end().len());
+            out.push('\u{2013}');
+            rest = rest[run..].trim_start();
+        } else {
+            out.push(c);
+            rest = &rest[c.len_utf8()..];
+        }
+    }
+    clean(&out)
 }
 
 /// `4` -> `4th`, `21` -> `21st`; passes non-numeric editions through unchanged.
