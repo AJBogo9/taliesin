@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { PreviewServer } from "./server";
-import { SitePage } from "./paths";
 
 export interface LivePreview {
   panel: vscode.WebviewPanel;
@@ -13,8 +12,6 @@ export interface LivePreview {
    * preview serves every page of the book, so `docPath` is only where it *started*.
    */
   root: string | null;
-  /** The project's publishable pages, for looking a document's URL up. `null` off-project. */
-  pages: SitePage[] | null;
   /**
    * The page the webview is currently showing, as that page reported itself. Mutable, because
    * following a cross-page link inside the preview changes it without the host being asked.

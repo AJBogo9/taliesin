@@ -4,7 +4,7 @@ import { PreviewRegistry, LivePreview, previewKey } from "../previews";
 
 /** A LivePreview with only the fields the registry actually reads. */
 function fake(docPath: string, root: string | null = null): LivePreview {
-  return { docPath, root, panel: {} as never, server: {} as never, pages: null };
+  return { docPath, root, panel: {} as never, server: {} as never };
 }
 
 test("a second start for the same document reuses the first", () => {

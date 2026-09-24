@@ -7,6 +7,7 @@ import {
   State,
 } from "vscode-languageclient/node";
 import { disposeShadowsFor, embeddedCompletions } from "./embedded";
+import { serialize } from "./serial";
 
 // The language-intelligence half of the companion: a thin client over `taliesin lsp`.
 //
@@ -47,8 +48,19 @@ function binaryPath(): string {
   return vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 }
 
-/** Start the language server, replacing any running one. Resolves once it is ready. */
-async function start(output: vscode.LogOutputChannel): Promise<void> {
+/**
+ * Start the language server, replacing any running one. Resolves once it is ready.
+ *
+ * One start at a time. Activation, the restart command and a `taliesin.path` edit can all
+ * ask while a start is in flight, and two overlapping starts both spawned a server, while the
+ * older one's failure cleared the client the newer one had just set (audit 2026-09-24).
+ */
+const start = serialize(startNow);
+
+async function startNow(
+  output: vscode.LogOutputChannel,
+  fileEvents: vscode.FileSystemWatcher
+): Promise<void> {
   await stop();
   const command = binaryPath();
   // One definition for both profiles: there is no separate debug build of the server, and
@@ -67,17 +79,8 @@ async function start(output: vscode.LogOutputChannel): Promise<void> {
       { scheme: "untitled", language: "taliesin" },
     ],
     outputChannel: output,
-    // A `.tmd` edit is the only thing that changes an answer, but `_site.yml` and the
-    // bibliography feed diagnostics too, and a created image is what clears a stale
-    // "local asset not found" squiggle, so the server hears about all of them. The image
-    // extensions mirror `lsp_complete.rs`'s IMAGE_EXTS: the server registers the same
-    // globs itself where the editor allows dynamic registration, and the Rust test
-    // `the_companions_watcher_glob_mirrors_the_servers` pins this mirror.
-    synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher(
-        "**/{*.tmd,_site.yml,*.bib,*.png,*.jpg,*.jpeg,*.gif,*.svg,*.webp,*.avif}"
-      ),
-    },
+    // The one watcher `registerLanguageClient` made (see there).
+    synchronize: { fileEvents },
     // Completion inside a `{python}` / `{js}` cell is forwarded to whoever owns that
     // language and merged with ours. Ours still answers in a cell (that is where `#|` cell
     // options live), so this adds rather than replaces. See embedded.ts for why this one
@@ -144,10 +147,23 @@ export function registerLanguageClient(context: vscode.ExtensionContext): void {
   // picker rather than an undifferentiated wall of text.
   const output = vscode.window.createOutputChannel("Taliesin Language Server", { log: true });
   context.subscriptions.push(output);
+  // A `.tmd` edit is the only thing that changes an answer, but `_site.yml` and the
+  // bibliography feed diagnostics too, and a created image is what clears a stale
+  // "local asset not found" squiggle, so the server hears about all of them. The image
+  // extensions mirror `lsp_complete.rs`'s IMAGE_EXTS: the server registers the same
+  // globs itself where the editor allows dynamic registration, and the Rust test
+  // `the_companions_watcher_glob_mirrors_the_servers` pins this mirror.
+  //
+  // Made once and handed to every start: the language client disposes only the listeners it
+  // hooks on a watcher, never the watcher, so one made per start leaked one per restart.
+  const fileEvents = vscode.workspace.createFileSystemWatcher(
+    "**/{*.tmd,_site.yml,*.bib,*.png,*.jpg,*.jpeg,*.gif,*.svg,*.webp,*.avif}"
+  );
+  context.subscriptions.push(fileEvents);
 
   context.subscriptions.push(
     vscode.commands.registerCommand("taliesin.restartServer", async () => {
-      await start(output);
+      await start(output, fileEvents);
       if (client?.state === State.Running) {
         vscode.window.setStatusBarMessage("Taliesin: language server restarted", 3000);
       }
@@ -159,10 +175,10 @@ export function registerLanguageClient(context: vscode.ExtensionContext): void {
     // Pointing at a different binary means a different server: restart rather than keep
     // answering from the old one, which would silently serve a stale vocabulary.
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("taliesin.path")) void start(output);
+      if (e.affectsConfiguration("taliesin.path")) void start(output, fileEvents);
     }),
     { dispose: () => void stop() }
   );
 
-  void start(output);
+  void start(output, fileEvents);
 }
