@@ -1266,9 +1266,8 @@ impl Site {
         }
     }
 
-    /// Render-harvest: render each page once (scoped to its chapter, through
-    /// `render::render_numbers_scoped_with_site`, which typesets nothing this discards) and
-    /// fill in the CROSS-PAGE facts the lightweight source-scan can't know — a section / figure /
+    /// Render-harvest: render each page once (scoped to its chapter) and fill in the
+    /// CROSS-PAGE facts the lightweight source-scan can't know — a section / figure /
     /// equation / table / listing number is assigned only during render, so
     /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`, so a
     /// `@fig-x` to another page renders "Figure&nbsp;2.3" instead of a bare "Figure", and a
@@ -1286,6 +1285,8 @@ impl Site {
     ///
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
+    /// The render is `render::render_numbers_scoped_with_site`, which typesets nothing this
+    /// discards.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         // (anchor, number, defining page url) — the url is needed because an anchor the
