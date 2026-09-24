@@ -7,9 +7,11 @@ name: CI
 # So run on what actually lands — pushes to `main` and PRs — not on every WIP branch
 # push, and cache the cargo build to keep each run to ~1-2 min.
 #
-# The local equivalent is `./tools/gates.sh`, which runs this same set in one process
-# and refuses to be green unless every gate ran. The two must not drift: a gate added
-# here belongs there, and vice versa.
+# The local equivalent is `./tools/gates.sh`, which runs these gates in one process and
+# refuses to be green unless every gate ran. It also runs two that CI does not: the
+# portability census and the README VERSION-pin check, which needs the repo's tags.
+# `crates/core/tests/gate_script.rs` checks that the document and publish gates stay in
+# all three of this file, `gates.sh` and `.githooks/pre-push`.
 #
 # Every job runs unconditionally on the triggers below. The repository is public, and
 # `crates/core/tests/stale_docs.rs` fails if a job is made conditional on its visibility
@@ -55,11 +57,11 @@ jobs:
         run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      # The two gates the parity promise at the top of this file was missing. Both are
-      # STEPS on this job, not new jobs: they reuse the debug build `cargo test` just
-      # produced, so they cost a link rather than a second workspace build.
-      # `--check-only` renders in memory and writes nothing; `--no-exec` is what keeps
-      # both kernel-free. `.githooks/pre-push` runs the same two, as its steps 4 and 5.
+      # The document and publish gates are STEPS on this job, not new jobs: they reuse the
+      # debug build `cargo test` just produced, so they cost a link rather than a second
+      # workspace build. `--check-only` renders in memory and writes nothing; `--no-exec`
+      # is what keeps both kernel-free. `.githooks/pre-push` runs the same two, as its
+      # steps 4 and 5.
       # Both books: wave 9 wired the guide and covered one of two already-separate books.
       - name: Document gate (the manual is a shipped document)
         run: |

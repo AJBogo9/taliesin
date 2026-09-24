@@ -144,6 +144,10 @@ if [ -z "${TALIESIN_PYTHON:-}" ]; then
     echo "pre-push: no TALIESIN_PYTHON and no ./.venv/bin/python — the live-kernel tests"
     echo "          in the suite below will SKIP. This push is gated on less than usual."
 fi
+# The same for Node: `reactive_live_region.rs` skips when `node` is missing.
+if ! command -v node >/dev/null 2>&1; then
+    echo "pre-push: no node on PATH: the Node-backed test in the suite below will SKIP."
+fi
 
 echo "pre-push: gating main (fmt, clippy, test, docs lint, site compose). Bypass with --no-verify."
 echo "  [1/5] cargo fmt --check"
