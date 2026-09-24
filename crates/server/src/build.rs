@@ -434,16 +434,18 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             problems,
             unparseable,
             kernel_failure.as_deref(),
+            None,
         );
     }
     if let Some(dir) = out_dir {
-        let wrote = build_dir(&html, base, Path::new(dir), started);
+        let built = build_dir(&html, base, Path::new(dir), started);
         return finalize_build(
-            wrote,
+            built.is_some(),
             strict,
             problems,
             unparseable,
             kernel_failure.as_deref(),
+            built,
         );
     }
     let out: PathBuf = out_html
@@ -456,13 +458,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // page too, so `build doc.tmd out.html` into another directory doesn't
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
-            log::built(&format!("{}{}", out.display(), elapsed_note(started)));
             finalize_build(
                 true,
                 strict,
                 problems,
                 unparseable,
                 kernel_failure.as_deref(),
+                Some(format!("{}{}", out.display(), elapsed_note(started))),
             )
         }
         Err(e) => {
@@ -526,12 +528,17 @@ fn elapsed_note(started: std::time::Instant) -> String {
 /// pre-push gate and `tools/publish.sh --check` run. An unparseable block is different
 /// in kind: nothing in it was read, so the page silently lost its `title:`,
 /// `bibliography:` and `listing:` while reporting success.
+///
+/// `built` is the `built <what>` line for a build that wrote something, and it is printed
+/// only once the verdict is success: a failed build that announced `built` first read as a
+/// success followed by an unrelated error (first-hour #12).
 fn finalize_build(
     wrote: bool,
     strict: bool,
     problems: usize,
     unparseable: usize,
     kernel_failure: Option<&str>,
+    built: Option<String>,
 ) -> ExitCode {
     if !wrote {
         return ExitCode::FAILURE;
@@ -552,6 +559,9 @@ fn finalize_build(
     if strict && problems > 0 {
         warn_strict(problems);
         return ExitCode::FAILURE;
+    }
+    if let Some(line) = built {
+        log::built(&line);
     }
     warn_nonstrict_problems(problems);
     ExitCode::SUCCESS
@@ -1031,13 +1041,14 @@ const MERMAID_FILE: &str = "mermaid.min.js";
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
 /// `href=` value pointing to an existing file under `base`) to the same relative
 /// path under `dir`, leaving the HTML's paths untouched so the folder is portable.
-/// Returns whether the page was written (the caller finalizes the exit code, so a
+/// Returns the `built` line when the page was written, `None` when it was not (the caller
+/// finalizes the exit code and prints that line only for a build that succeeded, so a
 /// non-strict problem tally / a `--strict` failure decide it uniformly with the
 /// single-file path).
-fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> bool {
+fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> Option<String> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         log::error(&format!("cannot create {}: {e}", dir.display()));
-        return false;
+        return None;
     }
     let mut copied = copy_local_assets(html, base, dir);
     // The mermaid library, for a page that has a diagram. Not reachable through
@@ -1058,15 +1069,14 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));
-        return false;
+        return None;
     }
-    log::built(&format!(
+    Some(format!(
         "{}  ·  {copied} asset{}{}",
         index.display(),
         if copied == 1 { "" } else { "s" },
         elapsed_note(started)
-    ));
-    true
+    ))
 }
 
 /// Copy each referenced local asset (a relative `src=`/`href=` under `base`) to
@@ -2325,13 +2335,13 @@ async fn build_site_async(
     // an intentional download — skipping it would leave a dead link on a green build.
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
-    log::built(&format!(
+    let built = format!(
         "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{not_found}{seo_note}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
         elapsed_note(started),
-    ));
+    );
     // In `--strict` mode a problem (crashed cell / located warning / broken ref)
     // fails the build after writing it, so CI catches a broken site. Without `--strict`
     // the site still ships, but a closing tally (DX12) makes the shipped problems visible
@@ -2362,6 +2372,8 @@ async fn build_site_async(
     } else if strict_fail {
         warn_strict(problems);
     } else {
+        // Only a build that succeeded says `built` (first-hour #12).
+        log::built(&built);
         warn_nonstrict_problems(problems);
     }
     SiteBuildOutcome {
