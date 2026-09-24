@@ -1250,25 +1250,33 @@ fn same_file(a: &Path, b: &Path) -> bool {
 
 /// Bodies of the `<script type="application/tali-js">…</script>` cells in `html` (the
 /// author's `{js}` source, where relative `import()`/`fetch()` specifiers live —
-/// invisible to the `src=`/`href=` scan). `</script` is server-escaped in the source, so
-/// the next `</script>` reliably ends the body.
+/// invisible to the `src=`/`href=` scan). Read through [`taliesin_core::render::tags`], so a
+/// cell is a `<script>` tag whose `type` says so, never the text `type="application/tali-js"`
+/// wherever a page happens to show it (a code sample, an attribute value), which the
+/// substring scan this replaced took for a cell and read to its next `</script>`.
+/// `</script` is server-escaped in the source, so the next `</script` reliably ends the body.
 fn tali_js_cell_sources(html: &str) -> Vec<&str> {
-    let needle = "type=\"application/tali-js\"";
-    let mut out = Vec::new();
-    let mut i = 0;
-    while let Some(pos) = html[i..].find(needle) {
-        let tag = i + pos;
-        let Some(gt) = html[tag..].find('>') else {
-            break;
-        };
-        let body_start = tag + gt + 1;
-        let Some(end) = html[body_start..].find("</script>") else {
-            break;
-        };
-        out.push(&html[body_start..body_start + end]);
-        i = body_start + end + "</script>".len();
-    }
-    out
+    taliesin_core::render::tags(html)
+        .filter(|t| t.name.eq_ignore_ascii_case("script"))
+        .filter(|t| {
+            taliesin_core::render::attrs(t)
+                .any(|a| a.name.eq_ignore_ascii_case("type") && a.value == "application/tali-js")
+        })
+        .map(|t| {
+            let start = t.at + t.text.len();
+            let body = &html[start..];
+            let end = body
+                .match_indices("</")
+                .map(|(i, _)| i)
+                .find(|&i| {
+                    body.as_bytes()
+                        .get(i + 2..i + 8)
+                        .is_some_and(|b| b.eq_ignore_ascii_case(b"script"))
+                })
+                .unwrap_or(body.len());
+            &body[..end]
+        })
+        .collect()
 }
 
 /// Every quoted string literal in `src` whose value starts with `./` or `../` — the
@@ -3054,6 +3062,21 @@ mod mirror_tests {
         );
         let remote = refs.iter().find(|r| r.url.contains("esm.sh")).unwrap();
         assert_eq!(remote.line, Some(8), "located to the cell's sourcepos");
+    }
+
+    /// A `{js}` cell body is a `<script type="application/tali-js">` the walker reads as a
+    /// tag, not the text `type="application/tali-js"` wherever it appears: an attribute
+    /// value quoting it is not a cell, and what follows it is not that cell's source.
+    #[test]
+    fn a_js_cell_is_a_script_tag_not_a_string_that_names_one() {
+        let html = concat!(
+            "<p title='type=\"application/tali-js\">'>import(\"./not-a-cell.js\")</p>",
+            "<script type=\"application/tali-js\">const m = await import(\"./real.js\");</script>",
+        );
+        assert_eq!(
+            tali_js_cell_sources(html),
+            ["const m = await import(\"./real.js\");"]
+        );
     }
 
     #[test]

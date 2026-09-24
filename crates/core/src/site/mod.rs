@@ -4004,4 +4004,30 @@ pub(crate) mod tests {
         assert_eq!(w.line, Some(5), "{w:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// A chrome link carrying a `?query` is resolved without it, as a body link is: a nav
+    /// entry to a draft page is dead in the deploy however it is spelled. With the query
+    /// kept, the `.tmd` source on disk passed it as a raw file (audit 2026-09-24, WP9
+    /// residual).
+    #[test]
+    fn a_chrome_link_with_a_query_is_judged_by_its_page() {
+        let root = write_site(
+            "chrome-query",
+            &[
+                (
+                    "_site.yml",
+                    "title: T\nnav:\n  - { text: Wip, href: \"wip.tmd?v=1\" }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("wip.tmd", "---\ntitle: Wip\ndraft: true\n---\n\nNot yet.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let broken = site.validate_chrome_links();
+        assert!(
+            broken.iter().any(|w| w.message.contains("wip.tmd?v=1")),
+            "{broken:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
