@@ -11,15 +11,15 @@
 //! spaces in a list item was rewritten. Parsing with the renderer's own options is what makes
 //! a disagreement impossible rather than unlikely.
 //!
-//! Parse-only and cheap (0.2 ms for a 40 KB post in release), and it takes any text: a
-//! half-typed buffer parses like any other, an unclosed fence simply runs on. The walk is
-//! iterative, so a deeply nested document cannot overflow the caller's stack here.
+//! Parse-only and cheap (0.2 ms for a 40 KB post, release, 2026-09-24), and it takes any
+//! text: a half-typed buffer parses like any other, an unclosed fence simply runs on. The
+//! walk is iterative, so a deeply nested document cannot overflow the caller's stack here.
 
 use comrak::arena_tree::NodeEdge;
 use comrak::nodes::{NodeValue, Sourcepos};
 use comrak::{Arena, parse_document};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 /// What one source line is to comrak.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,7 +119,7 @@ impl Lines {
 /// matter is found by [`crate::frontmatter::front_matter_block`], the one splitter, and
 /// blanked before the parse, so its YAML is never read as markdown.
 ///
-/// Memoized on the text ([`Memo`]).
+/// Memoized on the text (see `Memo`).
 pub fn classify(src: &str) -> Lines {
     let hit = MEMO
         .lock()
@@ -144,12 +144,12 @@ pub fn classify(src: &str) -> Lines {
 /// whole-project passes before the page's own build, the anchor scan reads the same
 /// include-resolved text the render classifies, and on a save every page but the edited
 /// one is unchanged. Measured on `docs/guide` (2026-09-24, release): 224 parses for one
-/// `--check-only` of 16 pages, and `refresh_xrefs`, which runs on every save, went from
-/// 3.1 ms to 12.7 ms until repeats were served from here.
+/// `--check-only` of 16 pages, and without this memo `refresh_xrefs`, which runs on every
+/// save, took 12.7 ms where it took 3.1 ms before this module existed (3.7 ms with it).
 #[derive(Default)]
 struct Memo {
-    map: HashMap<String, Lines>,
-    order: VecDeque<String>,
+    map: HashMap<Arc<str>, Lines>,
+    order: VecDeque<Arc<str>>,
     bytes: usize,
 }
 
@@ -167,9 +167,10 @@ impl Memo {
             self.map.remove(&old);
             self.bytes -= old.len();
         }
+        let text: Arc<str> = text.into();
         self.bytes += text.len();
-        self.order.push_back(text.to_string());
-        self.map.insert(text.to_string(), lines);
+        self.order.push_back(Arc::clone(&text));
+        self.map.insert(text, lines);
     }
 }
 
