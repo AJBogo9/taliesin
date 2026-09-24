@@ -562,8 +562,9 @@ pub(crate) fn code_frame(src: &str, line: u32) -> String {
 
 const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
 
-/// Whether a file event under `root` should trigger a rebuild: a source-ish extension,
-/// outside the generated/VCS trees.
+/// Whether a file event under `root` should trigger a rebuild: a source-ish extension, or
+/// none (a directory, which can take pages with it when it is renamed or deleted), outside
+/// the generated/VCS trees.
 ///
 /// **The skip-dir scan runs on the path RELATIVE to `root`**, and that is load-bearing.
 /// The watcher hands this absolute event paths, so a whole-path scan asked whether any
@@ -578,10 +579,12 @@ pub(crate) fn relevant_path(p: &Path, root: &Path) -> bool {
         "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
         "png", "jpg", "jpeg", "webp", "gif",
     ];
-    let ext_ok = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
+    let ext_ok = match p.extension() {
+        None => true,
+        Some(e) => e
+            .to_str()
+            .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str())),
+    };
     let in_skip_dir = p.strip_prefix(root).unwrap_or(p).components().any(|c| {
         c.as_os_str()
             .to_str()
@@ -952,6 +955,8 @@ mod protocol_contract {
         // `.qmd` is no longer a source extension: a `.qmd` edit must not trigger a rebuild.
         assert!(!relevant_path(Path::new("/tmp/doc.qmd"), root));
         assert!(!relevant_path(Path::new("/tmp/doc.txt"), root));
+        // A directory has no extension, and renaming or deleting one takes its pages along.
+        assert!(relevant_path(Path::new("/tmp/posts/a-star"), root));
         // The generated/VCS trees are still vetoed — that is what keeps the executor's own
         // `_freeze/` writes from rebuilding every run.
         assert!(!relevant_path(Path::new("/tmp/_freeze/doc.tmd"), root));

@@ -203,15 +203,21 @@ impl Project {
 
     /// What `changed` moved of what discovery reads. Reads each changed source file once;
     /// anything else (an `{{< include >}}` partial's `.md`, a `.bib`, an image) is no page
-    /// and moves nothing here.
+    /// and moves nothing here, unless it was a directory pages lived in.
     fn what_moved(&self, changed: &HashSet<PathBuf>) -> Moved {
         let records = self.records.lock();
         let mut moved = Moved::default();
-        for path in changed
-            .iter()
-            .filter(|p| taliesin_core::ext::is_source_path(p))
-        {
+        for path in changed {
             let key = record_key(path);
+            if !taliesin_core::ext::is_source_path(path) {
+                // A directory renamed away or deleted takes every page under it along. (One
+                // renamed IN is replayed file by file by the watcher.)
+                moved.page_set |= !key.exists()
+                    && records
+                        .iter()
+                        .any(|(page, digest)| digest.is_some() && page.starts_with(&key));
+                continue;
+            }
             let exists = key.is_file();
             let digest = exists.then(|| digest_of(&key));
             if let Some(d) = digest {
@@ -1745,72 +1751,71 @@ fn page_label(page: &Page) -> String {
 
 fn spawn_watcher(app: Arc<SiteApp>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<PathBuf>();
-    let roots: Vec<PathBuf> = vec![app.root.dir.clone()];
+    let root = app.root.dir.clone();
+
+    // Pump events through a channel so one thread owns the watcher and can register watches
+    // for subdirectories that arrive after startup — the recursive-watch model added an
+    // inotify descriptor per directory including `node_modules`/`.git`, which a large
+    // project uses to exhaust `max_user_watches` and kill hot reload. The watches are
+    // registered here, before this returns, so nothing saved after startup goes unseen.
+    let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(ev) = res {
+                let _ = ev_tx.send(ev);
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                crate::log::error(&format!("file watcher unavailable: {e}"));
+                return;
+            }
+        };
+    // A non-recursive watch on every directory except the pruned generated/VCS trees.
+    for dir in crate::serve::watch_tree(&root) {
+        if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
+            crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
+        }
+    }
 
     std::thread::spawn(move || {
-        // Pump events through a channel so this thread owns the watcher and can register
-        // watches for subdirectories created after startup — the recursive-watch model
-        // added an inotify descriptor per directory including `node_modules`/`.git`,
-        // which a large project uses to exhaust `max_user_watches` and kill hot reload.
-        let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
-        let mut watcher =
-            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if let Ok(ev) = res {
-                    let _ = ev_tx.send(ev);
-                }
-            }) {
-                Ok(w) => w,
-                Err(e) => {
-                    crate::log::error(&format!("file watcher unavailable: {e}"));
-                    return;
-                }
-            };
-        // A non-recursive watch on every directory except the pruned generated/VCS trees.
-        for base in &roots {
-            for dir in crate::serve::watch_tree(base) {
-                if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
-                    crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
-                }
-            }
-        }
         for ev in ev_rx {
-            if !matches!(
-                ev.kind,
-                notify::EventKind::Modify(_)
-                    | notify::EventKind::Create(_)
-                    | notify::EventKind::Remove(_)
-            ) {
+            use notify::EventKind::{Create, Modify, Remove};
+            if !matches!(ev.kind, Modify(_) | Create(_) | Remove(_)) {
                 continue;
             }
+            // A directory can arrive by being created or by a rename: renamed inside the
+            // tree, or moved in from outside it. Both need watches of their own, since notify
+            // drops a moved directory's watch and a moved-in one never had any. Missing the
+            // rename left a renamed post folder 404ing and every later edit inside it unseen
+            // until a restart (audit 2026-09-24 C3).
+            let arrives = matches!(
+                ev.kind,
+                Create(_) | Modify(notify::event::ModifyKind::Name(_))
+            );
             for p in &ev.paths {
-                // A newly-created in-tree subdirectory needs its own non-recursive watch.
-                if matches!(ev.kind, notify::EventKind::Create(_)) {
-                    let is_dir = std::fs::symlink_metadata(p)
-                        .map(|m| m.is_dir())
-                        .unwrap_or(false);
-                    if is_dir
-                        && roots.iter().any(|r| p.starts_with(r))
-                        && !crate::serve::is_pruned_dir(p)
-                    {
-                        for d in crate::serve::watch_tree(p) {
-                            let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
-                        }
-                        // Files that already existed inside the new dir were created before
-                        // its watch existed, so their events were missed. Replay them as
-                        // changes (a new `.tmd` may add a page) — a `git checkout` or a
-                        // new-folder-with-pages otherwise wouldn't appear until an unrelated
-                        // save.
-                        for f in crate::serve::subtree_relevant_files(p) {
-                            let _ = sig_tx.send(f);
-                        }
+                let is_dir = std::fs::symlink_metadata(p)
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
+                if arrives && is_dir && p.starts_with(&root) && !crate::serve::is_pruned_dir(p) {
+                    for d in crate::serve::watch_tree(p) {
+                        let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
+                    }
+                    // Files already inside the arriving dir were never reported (created
+                    // before its watch existed, or moved in whole), so replay them as changes
+                    // (a new `.tmd` may add a page) — a `git checkout` or a folder of pages
+                    // otherwise wouldn't appear until an unrelated save.
+                    for f in crate::serve::subtree_relevant_files(p) {
+                        let _ = sig_tx.send(f);
                     }
                 }
                 // Ignore generated/VCS noise (esp. the executor's own `_freeze/` writes,
                 // which would otherwise rebuild every run). Judged relative to the project
                 // root: these are absolute event paths, and a project living under a
                 // directory that happens to be called `_site` is not generated noise.
-                if roots.iter().any(|r| crate::serve::relevant_path(p, r)) {
-                    let _ = sig_tx.send(p.clone());
+                if crate::serve::relevant_path(p, &root) && sig_tx.send(p.clone()).is_err() {
+                    // Nothing is listening any more: the preview is shutting down.
+                    return;
                 }
             }
         }
@@ -3799,6 +3804,145 @@ mod project_tests {
             "the listing is rebuilt with the new link, and the vanished page is not"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A live preview of a project with no HTTP in front of it: the real watcher and both
+    /// real build lanes over a real [`Project`], wired as [`serve`] wires them. A test changes
+    /// files on disk the way an editor does and reads what the preview then holds.
+    struct Live {
+        app: Arc<SiteApp>,
+        rt: tokio::runtime::Runtime,
+    }
+
+    impl Live {
+        fn start(dir: &Path) -> Live {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _enter = rt.enter();
+            let (build_tx, build_rx) = mpsc::unbounded_channel();
+            let (fast_tx, fast_rx) = mpsc::unbounded_channel();
+            let site = Site::discover_with(dir, taliesin_core::DraftMode::Include);
+            let app = Arc::new(SiteApp {
+                root: Arc::new(Project {
+                    dir: dir.to_path_buf(),
+                    site: Mutex::new(site),
+                    pages: Mutex::new(HashMap::new()),
+                    exec_lane: Mutex::new(ExecLane::default()),
+                    scope: None,
+                    records: Mutex::new(HashMap::new()),
+                }),
+                build_tx,
+                fast_tx,
+                interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            });
+            app.root.seed_records();
+            spawn_builder(app.clone(), build_rx);
+            spawn_fast_builder(app.clone(), fast_rx);
+            spawn_watcher(app.clone());
+            drop(_enter);
+            Live { app, rt }
+        }
+
+        /// Open a tab on `rel` as a browser does: the first paint, then a subscription to
+        /// the page's channel. Hold the receiver for as long as the tab is open.
+        fn open(&self, rel: &str) -> broadcast::Receiver<String> {
+            let _enter = self.rt.enter();
+            let project = &self.app.root;
+            let page = project.site.lock().page(rel).cloned().expect("a page");
+            ensure_and_render_page(&self.app, project, &page);
+            project.pages.lock()[&page.rel].tx.subscribe()
+        }
+
+        /// The live body of `rel`, or empty when it has no live state.
+        fn body(&self, rel: &str) -> String {
+            let pages = self.app.root.pages.lock();
+            pages
+                .get(rel)
+                .map(|ps| ps.doc.body_html())
+                .unwrap_or_default()
+        }
+
+        fn has_page(&self, rel: &str) -> bool {
+            self.app.root.site.lock().page(rel).is_some()
+        }
+    }
+
+    /// Poll `done` until it holds, or panic naming `what` after ten seconds.
+    fn until(what: &str, done: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Audit 2026-09-24 C3. A folder-per-post blog renames a post by renaming its folder
+    /// (`mv`, the VS Code explorer and every file manager make the same call). The watcher
+    /// dropped the event, since a directory has no file extension, and notify drops a moved
+    /// directory's watch: the new URL 404ed, and every later edit inside the folder went
+    /// unseen until a restart. The same held for a folder moved in from outside.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_renamed_or_moved_in_folder_is_served_and_watched() {
+        let dir = scratch("folder");
+        std::fs::create_dir_all(dir.join("posts/a-star")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("posts/a-star/index.tmd"),
+            "---\ntitle: Search\n---\n\nBody.\n",
+        )
+        .unwrap();
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        until("the first build", || {
+            live.body("index.tmd").contains("Search")
+        });
+
+        std::fs::rename(dir.join("posts/a-star"), dir.join("posts/a-star-v2")).unwrap();
+        until("the renamed folder's page is served", || {
+            live.has_page("posts/a-star-v2/index.tmd") && !live.has_page("posts/a-star/index.tmd")
+        });
+        std::fs::write(
+            dir.join("posts/a-star-v2/index.tmd"),
+            "---\ntitle: Retitled\n---\n\nBody.\n",
+        )
+        .unwrap();
+        until(
+            "an edit inside the renamed folder reaches the listing",
+            || live.body("index.tmd").contains("Retitled"),
+        );
+
+        let outside = scratch("folder-outside");
+        std::fs::create_dir_all(outside.join("ext")).unwrap();
+        std::fs::write(
+            outside.join("ext/page.tmd"),
+            "---\ntitle: Moved in\n---\n\nx\n",
+        )
+        .unwrap();
+        std::fs::rename(outside.join("ext"), dir.join("posts/ext")).unwrap();
+        until("a folder moved in from outside is served", || {
+            live.has_page("posts/ext/page.tmd")
+        });
+        std::fs::write(
+            dir.join("posts/ext/page.tmd"),
+            "---\ntitle: Moved and edited\n---\n\nx\n",
+        )
+        .unwrap();
+        until("and watched", || {
+            live.body("index.tmd").contains("Moved and edited")
+        });
+
+        // Moved out (to the trash, say): the only event is the folder's own rename away.
+        std::fs::rename(dir.join("posts/ext"), outside.join("ext")).unwrap();
+        until("a folder moved out takes its page along", || {
+            !live.has_page("posts/ext/page.tmd")
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     /// Audit 2026-09-24 invalidation #10. `reload_open_tabs` drops every page's state so the
