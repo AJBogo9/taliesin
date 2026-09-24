@@ -161,16 +161,52 @@ impl Diagnostic {
     }
 }
 
-pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
-    let mut d = Diagnostic::new(
-        w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
-        w.line,
-        w.message.clone(),
-    );
+/// The one `Warning -> Diagnostic` mapping. `page` is the document the warning came from,
+/// spelled the way this surface names files: as typed (`build <file>`), relative to the
+/// project root (a project's pages, and `_site.yml` for the project's own diagnostics),
+/// absolute (the LSP), or by file name (the preview, whose client resolves a `file` against
+/// the page's folder).
+///
+/// A warning's own `file` (an `{{< include >}}`d partial) is relative to that document's
+/// FOLDER, so it is joined onto it here, once, for every surface. It was passed through as
+/// written, and every CLI line named `_part.tmd` for `posts/one/_part.tmd`: a path relative
+/// to the wrong directory, which no editor could open (audit 2026-09-24, images #7).
+pub(crate) fn diag_from(w: &taliesin_core::render::Warning, page: &str) -> Diagnostic {
+    let file = match &w.file {
+        Some(file) => beside(page, file),
+        None => page.to_string(),
+    };
+    let mut d = Diagnostic::new(file, w.line, w.message.clone());
     d.severity = w.severity;
     d.col = w.col;
     d.end_col = w.end_col;
     d
+}
+
+/// `file`, written relative to the folder of `page`, in `page`'s own coordinates: joined and
+/// lexically normalized, so `posts/one/index.tmd` + `../_shared/x.tmd` is
+/// `posts/_shared/x.tmd`. A leading `..` a relative `page` cannot absorb is kept.
+fn beside(page: &str, file: &str) -> String {
+    let joined = Path::new(page)
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(file);
+    let mut out = std::path::PathBuf::new();
+    for c in joined.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+                if matches!(
+                    out.components().next_back(),
+                    Some(std::path::Component::Normal(_))
+                ) =>
+            {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out.to_string_lossy().into_owned()
 }
 
 /// Whether a render warning is **advice** rather than a defect, so `build --strict` reports
@@ -1349,6 +1385,30 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// A warning located in an included file names it beside the page that included it, in
+    /// the page's own coordinates, climbs included: the partial of `posts/one/index.tmd`
+    /// is `posts/one/_part.tmd`, and a shared one two levels up is `_includes/shared.tmd`,
+    /// not the `../../_includes/shared.tmd` that resolved outside the project.
+    #[test]
+    fn an_included_file_is_named_beside_its_page() {
+        let at =
+            |file: &str| taliesin_core::render::Warning::new("m").at(Some(file.to_string()), 3);
+        let page = "posts/one/index.tmd";
+        assert_eq!(
+            diag_from(&at("_part.tmd"), page).file,
+            "posts/one/_part.tmd"
+        );
+        assert_eq!(
+            diag_from(&at("../../_includes/shared.tmd"), page).file,
+            "_includes/shared.tmd"
+        );
+        assert_eq!(
+            diag_from(&taliesin_core::render::Warning::new("m"), page).file,
+            page,
+            "the page's own warning names the page"
+        );
     }
 
     /// The human line carries the severity word and the JSON carries the severity field, and

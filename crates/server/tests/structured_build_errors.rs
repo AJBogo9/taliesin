@@ -545,3 +545,57 @@ fn project_diagnostics_are_located_and_reach_every_json_channel() {
         );
     }
 }
+
+/// A diagnostic located in an `{{< include >}}`d partial names the partial by a path that
+/// opens from where the command ran. It named it relative to the including page's folder
+/// and printed that as if it were relative to the project, a file that does not exist
+/// (audit 2026-09-24, images #7).
+#[test]
+fn an_include_located_diagnostic_names_the_partial_by_its_real_path() {
+    let dir = tmp_dir("include-path");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    fs::create_dir_all(dir.join("posts/one")).unwrap();
+    fs::write(
+        dir.join("posts/one/index.tmd"),
+        "---\ntitle: One\n---\n\n{{< include _part.tmd >}}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("posts/one/_part.tmd"),
+        "Part.\n\n![a missing chart](gone.png)\n",
+    )
+    .unwrap();
+
+    let project =
+        stdout_json(
+            taliesin()
+                .arg("build")
+                .arg(&dir)
+                .args(["--check-only", "--format", "json"]),
+        );
+    let site_build = stdout_json(
+        taliesin()
+            .arg("build")
+            .arg(&dir)
+            .arg("--out")
+            .arg(dir.join("_out"))
+            .args(["--no-exec", "--format", "json"]),
+    );
+    // A single file, named from the project root as a user would type it.
+    let single = stdout_json(taliesin().current_dir(&dir).args([
+        "build",
+        "posts/one/index.tmd",
+        "--check-only",
+        "--format",
+        "json",
+    ]));
+    let _ = fs::remove_dir_all(&dir);
+    for v in [&project, &site_build, &single] {
+        assert_eq!(
+            located(v, "gone.png"),
+            ("posts/one/_part.tmd".to_string(), Some(3)),
+            "{v}"
+        );
+    }
+}

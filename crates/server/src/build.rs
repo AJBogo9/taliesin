@@ -498,13 +498,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 }
 
 /// `path:line: message` for a located warning, falling back to `path: message` for one the
-/// renderer could not place. `fallback` names the document when the warning came from it
-/// rather than from an `{{< include >}}`d file.
+/// renderer could not place. `fallback` names the document the warning came from; one
+/// located in an `{{< include >}}`d file names that file beside it ([`crate::lint::diag_from`]).
 pub(crate) fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
-    let file = w.file.as_deref().unwrap_or(fallback);
-    match w.line {
-        Some(l) => format!("{file}:{l}: {}", w.message),
-        None => format!("{file}: {}", w.message),
+    let d = crate::lint::diag_from(w, fallback);
+    match d.line {
+        Some(l) => format!("{}:{l}: {}", d.file, d.message),
+        None => format!("{}: {}", d.file, d.message),
     }
 }
 

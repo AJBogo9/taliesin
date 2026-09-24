@@ -56,14 +56,10 @@ pub(crate) fn site_config_diagnostics(
     site: &taliesin_core::Site,
     page_rel: &str,
 ) -> Vec<Diagnostic> {
-    let up = "../".repeat(page_rel.matches('/').count());
+    let config = format!("{}_site.yml", "../".repeat(page_rel.matches('/').count()));
     site.warnings
         .iter()
-        .map(|w| {
-            let mut d = diag_from(w, "_site.yml");
-            d.file = format!("{up}{}", d.file);
-            d
-        })
+        .map(|w| diag_from(w, &config))
         .collect()
 }
 
