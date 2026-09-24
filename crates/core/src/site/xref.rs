@@ -35,10 +35,11 @@ pub(super) fn scan_xref_targets(
 ) -> HashMap<String, XrefTarget> {
     let mut map: HashMap<String, XrefTarget> = HashMap::new();
     let mut warned: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for page in pages {
-        let Ok(raw) = std::fs::read_to_string(&page.input) else {
-            continue;
-        };
+    // Each page's scan is independent, so it runs across cores; the merge below stays in page
+    // order, which is what "first definition wins" needs. This pass runs on every save, and
+    // one page after another it was a fifth of a 500-page save (audit 2026-09-24).
+    let scans = super::fanout::map_ordered(pages, |page| {
+        let raw = std::fs::read_to_string(&page.input).ok()?;
         // Resolve `{{< include >}}` first, exactly like the render pipeline does: an anchor
         // authored in an included partial belongs to the page that includes it.
         let base = page
@@ -46,7 +47,13 @@ pub(super) fn scan_xref_targets(
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, origins) = crate::includes::resolve(&raw, base);
-        for ScannedAnchor { id, line } in scan_page_anchors(&src) {
+        Some((scan_page_anchors(&src), origins))
+    });
+    for (page, scan) in pages.iter().zip(scans) {
+        let Some((anchors, origins)) = scan else {
+            continue;
+        };
+        for ScannedAnchor { id, line } in anchors {
             match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
@@ -144,16 +151,20 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
 /// valid `@fig-` to a plotted figure on another page reads as broken. No warnings: a
 /// duplicate is reported by the passes that own the numbers.
 pub(super) fn add_cell_label_targets(pages: &[Page], map: &mut HashMap<String, XrefTarget>) {
-    for page in pages {
+    // Across cores, merged in page order, like `scan_xref_targets`.
+    let labels = super::fanout::map_ordered(pages, |page| {
         let Ok(raw) = crate::includes::read_source(&page.input) else {
-            continue;
+            return Vec::new();
         };
         let base = page
             .input
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        for id in cell_label_anchors(&src) {
+        cell_label_anchors(&src)
+    });
+    for (page, ids) in pages.iter().zip(labels) {
+        for id in ids {
             map.entry(id).or_insert_with(|| XrefTarget {
                 url: page.url.clone(),
                 ..XrefTarget::default()
