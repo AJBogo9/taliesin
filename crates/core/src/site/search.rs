@@ -189,11 +189,14 @@ pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, u
             rest = &rest[2..];
             continue;
         };
-        let Some(gt) = rest.find('>') else { break };
-        let open_tag = &rest[..gt];
-        let id = open_tag
-            .split_once("id=\"")
-            .and_then(|(_, a)| a.split_once('"').map(|(id, _)| id.to_string()));
+        // The opening tag through the one walker: quote-aware, `id` matched as a whole
+        // NAME, and the value decoded, so the index carries the id the browser resolves
+        // (`r&d-notes`, not the `r&amp;d-notes` a needle cut out of the markup).
+        let Some(open) = render::tags(rest).next() else {
+            break;
+        };
+        let gt = open.text.len() - 1;
+        let id = render::attr_value(&open, "id").map(std::borrow::Cow::into_owned);
         let close = format!("</h{level}>");
         let inner = &rest[gt + 1..];
         let Some(end) = inner.find(&close) else {
@@ -359,5 +362,18 @@ mod tests {
         );
         // The span between heading a's close and heading b's open is a's section.
         assert_eq!(section_text(&html[hs[0].4..hs[1].3]), "body of a");
+    }
+
+    /// The id a hit navigates to is the id the heading carries, read the way the browser
+    /// reads it. It was cut out of the open tag with `split_once("id=\"")`, so an explicit
+    /// `{#r&d-notes}` went into the index as `r&amp;d-notes` (a hit landed nowhere, the
+    /// palette just closed), and a `data-block-id` written before the real `id` was read in
+    /// its place.
+    #[test]
+    fn a_heading_id_is_read_decoded_and_as_a_whole_attribute_name() {
+        let html = "<h2 id=\"r&amp;d-notes\">R&amp;D notes</h2><p>zebra</p>\
+                    <h2 class=\"x\" data-block-id=\"no\" id=\"yes\">Other</h2><p>y</p>";
+        let ids: Vec<String> = headings_with_pos(html).into_iter().map(|h| h.1).collect();
+        assert_eq!(ids, vec!["r&d-notes", "yes"]);
     }
 }
