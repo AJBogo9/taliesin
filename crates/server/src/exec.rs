@@ -682,6 +682,7 @@ impl Executor {
     /// fresh kernel instead of replaying cached outputs.
     pub fn restart_kernel(&mut self) {
         reset_announcements();
+        crate::packages::forget(&self.python.path);
         self.langs.clear();
         self.force_next = true;
     }
@@ -1149,7 +1150,7 @@ impl Executor {
         // itself. `packages::manifest` is memoized process-wide, so the two strings were
         // identical by construction and the one axis the cumulative key structurally
         // cannot see had a warning that could never fire.
-        let packages_on_entry = self.freeze.recorded_packages(lang).map(str::to_string);
+        let packages_on_entry = self.freeze.recorded_packages(&interp).map(str::to_string);
         // And nothing at all from a WARM re-run: a kernel that already executed an earlier
         // version of some cell at or past `shared` (or a cell since deleted) still holds what
         // it left behind, so a renamed variable's old name keeps resolving and the output is
@@ -1170,7 +1171,7 @@ impl Executor {
             // replay produced nothing, and stamping it would relabel yesterday's outputs as
             // today's and destroy the one signal this exists for.
             if run_end > shared {
-                self.stamp_packages(lang);
+                self.stamp_packages(lang, &interp);
             }
         }
 
@@ -1251,10 +1252,14 @@ impl Executor {
         crate::packages::manifest(program)
     }
 
-    /// Record the package digest the outputs just executed were produced under.
-    fn stamp_packages(&mut self, lang: &'static str) {
+    /// Record the package digest the outputs just executed were produced under, under the
+    /// interpreter identity that seeds their keys (`interp`). Per interpreter, not per
+    /// language: the entries of two interpreters never share keys, so neither may their
+    /// digest, or a run under one relabels the other's and its next replay warns about a
+    /// change that never happened (audit exec #12).
+    fn stamp_packages(&mut self, lang: &'static str, interp: &str) {
         if let Some(m) = self.packages_now(lang) {
-            self.freeze.record_packages(lang, &m.digest);
+            self.freeze.record_packages(interp, &m.digest);
         }
     }
 
@@ -2254,6 +2259,110 @@ mod tests {
             "the run waited {:?}: the cells after the killed one were run anyway",
             started.elapsed()
         );
+    }
+
+    /// exec #12: the package digest behind `_freeze/` warned falsely, in two ways.
+    ///
+    /// (1) One digest per LANGUAGE. Build with interpreter A, then B, then A again: B's run
+    /// overwrote A's digest, so A's replay (of A's own entries, the key includes the
+    /// interpreter) compared A's packages with B's and announced a change that never
+    /// happened, on every alternation.
+    /// (2) The manifest is memoized for the process. Install a package, press "Restart
+    /// kernel": the fresh kernel's outputs were stamped with the digest from BEFORE the
+    /// install, so every later build (a new process, a fresh probe) warned forever, since a
+    /// replay never re-stamps.
+    ///
+    /// Two wrapper interpreters around the one real Python stand in for two environments:
+    /// each execs it, and adds a fake package to the manifest probe (`-c`) when its marker
+    /// file exists, which is how an install looks from here.
+    #[cfg(unix)]
+    #[test]
+    fn the_package_digest_is_kept_per_interpreter_and_re_probed_on_restart() {
+        let Some(real) = std::env::var_os("TALIESIN_PYTHON") else {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the package digest; this run did not."
+            );
+            return;
+        };
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-pkgdigest-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wrapper = |name: &str| {
+            let path = dir.join(name);
+            let marker = dir.join(format!("{name}.installed"));
+            write_exe(
+                &path,
+                &format!(
+                    "#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then \"{real}\" \"$@\"; \
+                     [ -f \"{marker}\" ] && printf 'zz-{name}\\t1.0\\n'; exit 0; fi\n\
+                     exec \"{real}\" \"$@\"\n",
+                    real = std::path::Path::new(&real).display(),
+                    marker = marker.display(),
+                ),
+            );
+            (path, marker)
+        };
+        let (py_a, _) = wrapper("py-a");
+        let (py_b, marker_b) = wrapper("py-b");
+        let page = dir.join("page.json");
+        let blocks = vec![python_cell_block_with("p-1", "print('pkg', 1)")];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let run_with = |py: &Path| {
+            let mut ex = Executor::with_freeze(page.clone());
+            ex.set_interpreters(crate::interpreter::Resolved::fixed(
+                py,
+                crate::interpreter::Provenance::Field,
+            ));
+            let _ = rt.block_on(ex.run(blocks.clone()));
+            let key = rt.block_on(interp_id("python", py));
+            (ex, key)
+        };
+        let digest = |py: &Path| crate::packages::probe(py).map(|m| m.digest);
+
+        // (1) A, then B: A's digest survives B's run, under A's own interpreter.
+        let (ex_a, key_a) = run_with(&py_a);
+        if ex_a.diagnostic().is_some() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return; // no working python kernel here
+        }
+        let (_, key_b) = run_with(&py_b);
+        let reloaded = FreezeCache::for_page(page.clone());
+        assert_eq!(
+            reloaded.recorded_packages(&key_a).map(str::to_string),
+            digest(&py_a),
+            "interpreter B's run overwrote the digest A's entries were produced under"
+        );
+        assert_eq!(
+            reloaded.recorded_packages(&key_b).map(str::to_string),
+            digest(&py_b)
+        );
+
+        // (2) "Install" into B, restart its kernel: the fresh kernel's output is stamped
+        // with the environment it ran in, not the one memoized before the install.
+        let mut ex = Executor::with_freeze(page.clone());
+        ex.set_interpreters(crate::interpreter::Resolved::fixed(
+            &py_b,
+            crate::interpreter::Provenance::Field,
+        ));
+        let _ = rt.block_on(ex.run(blocks.clone()));
+        std::fs::write(&marker_b, "").unwrap();
+        ex.restart_kernel();
+        let _ = rt.block_on(ex.run(blocks.clone()));
+        drop(ex);
+        let after = digest(&py_b);
+        assert!(after.is_some());
+        assert_eq!(
+            FreezeCache::for_page(page.clone())
+                .recorded_packages(&key_b)
+                .map(str::to_string),
+            after,
+            "the restarted kernel's output was stamped with the pre-install digest"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn python_cell_block_with(id: &str, code: &str) -> Block {

@@ -147,7 +147,7 @@ key/output pairs:
 ```json
 {
   "version": 5,
-  "packages": { "python": "5b5d92121322a910" },
+  "packages": { "python::/proj/.venv/bin/python::Python 3.12.3": "5b5d92121322a910" },
   "entries": [
     { "k": "9f1c…", "v": "<pre class=\"tali-stream\">…</pre>" },
     { "k": "a37e…", "v": "<img class=\"tali-fig tali-fig-light\" …>" }
@@ -175,14 +175,17 @@ The format has these properties:
   place, so a crash mid-write can't corrupt an existing cache; `_freeze/` (and any
   sub-dirs) are created on demand, and a write failure is logged but non-fatal (the
   build still works, just uncached).
-- **`packages`: what these outputs were produced under.** One digest per language over
-  the interpreter's installed `name==version` set (`packages.rs`). This is the axis the
+- **`packages`: what these outputs were produced under.** One digest per interpreter
+  identity (the id that seeds the keys, so two interpreters' entries and digests never
+  mix) over its installed `name==version` set (`packages.rs`). This is the axis the
   cumulative key structurally cannot see: an in-place `pip install --upgrade pandas` is
   the same interpreter reporting the same `--version`, so every key is unchanged and the
   old numbers restore. It is recorded only by a run that executed something (stamping a
   pure replay would relabel yesterday's outputs as today's) and compared when a restore
   comes off disk, so a replay that crossed a package change reports it on stderr, once
-  per language. It deliberately does not change what hits.
+  per language. The set is probed once per process and again after "Restart kernel",
+  since installing something is the usual reason to restart. It deliberately does not
+  change what hits.
   `taliesin doctor --format json` prints the same manifest in full, every package and
   version plus the digest, so you can find which package changed when the digest moves.
 

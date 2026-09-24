@@ -532,12 +532,16 @@ fn a_replay_that_crossed_a_package_change_is_announced() {
         .get_mut("packages")
         .and_then(|p| p.as_object_mut())
         .expect("the cache recorded a package digest");
-    assert!(
-        packages.contains_key("python"),
-        "no python digest recorded, so this test would assert nothing: {text}"
-    );
+    // One digest, keyed by the interpreter identity its outputs were produced under.
+    let key = packages
+        .keys()
+        .find(|k| k.starts_with("python::"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!("no python digest recorded, so this test would assert nothing: {text}")
+        });
     packages.insert(
-        "python".to_string(),
+        key,
         serde_json::Value::String("0000000000000000".to_string()),
     );
     fs::write(&file, serde_json::to_string(&cache).unwrap()).unwrap();

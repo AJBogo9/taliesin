@@ -263,8 +263,9 @@ previous build's client), so the reload fetches the fresh bundle.
 ## Executing cells
 
 `{python}` cells need a Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`).
-`{r}` was the second kernel language and was cut in Wave 6, so `Executor::langs` and
-`FreezeCache::packages` are one-key maps that **must stay maps**. Without a kernel, cells
+`{r}` was the second kernel language and was cut in Wave 6, so `Executor::langs` is a
+one-key map that **must stay a map**; `FreezeCache::packages` is keyed by interpreter
+identity (on-disk format). Without a kernel, cells
 render as source and the preview shows a "kernel unavailable" diagnostic.
 
 A cell is capped on **silence, not runtime**: one that produces no output for
