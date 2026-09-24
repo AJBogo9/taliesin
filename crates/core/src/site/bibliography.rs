@@ -125,8 +125,10 @@ impl Site {
         }
     }
 
-    /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: duplicate
-    /// keys within it, and an entry that is never closed (named by file and line).
+    /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: whatever the
+    /// one `.bib` reader finds in the files (a duplicate key, an entry never closed, a key no
+    /// citation can name, an undefined `@string` macro, a file that is not UTF-8), each
+    /// named by file and, inside a file, by line.
     ///
     /// Read-only — it never edits a `.bib` and never changes what renders. Empty for a
     /// project with no `_site.yml` `bibliography:`, so it costs nothing to call

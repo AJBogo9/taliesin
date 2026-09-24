@@ -9,8 +9,8 @@ use crate::render::{Block, Warning};
 use std::path::Path;
 
 /// Citations are present (`cite::process` appended the `tali-references` section), neither
-/// the page nor its project declares a `bibliography:`, and **not one reference resolved**
-/// — so every reference renders as a raw key with no diagnostic of its own.
+/// the page nor its project declares a `bibliography:`, and **not one reference resolved**,
+/// so every reference renders as a raw key with no diagnostic of its own.
 ///
 /// Two conditions, and each rules out a different false positive:
 ///

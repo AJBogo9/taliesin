@@ -1398,7 +1398,7 @@ fn a_bracket_is_a_citation_only_when_every_item_starts_with_at() {
     let mut xrefs = HashMap::new();
     xrefs.insert("fig-x".to_string(), "3".to_string());
     let mut blocks = vec![
-        block("<p>A [see @smith.2020, pp. 33–35; also @doe+roe, sec. 2].</p>"),
+        block("<p>A [see @smith.2020, pp. 33\u{2013}35; also @doe+roe, sec. 2].</p>"),
         block("<p>B Contact us [by mail at bob@smith.2020].</p>"),
         block("<p>C Email [bob@example.com] for details.</p>"),
         block("<p>D [x &lt; y @a].</p>"),
@@ -1408,7 +1408,7 @@ fn a_bracket_is_a_citation_only_when_every_item_starts_with_at() {
     let w = process(&mut blocks, &b, &xrefs, None);
     let html = |i: usize| blocks[i].html.clone();
     assert!(
-        html(0).contains("[see @smith.2020, pp. 33–35; also @doe+roe, sec. 2]"),
+        html(0).contains("[see @smith.2020, pp. 33\u{2013}35; also @doe+roe, sec. 2]"),
         "{}",
         html(0)
     );

@@ -314,6 +314,7 @@ enum CiteMode {
 
 /// Walk HTML, transforming only plain-text runs (never inside tags or inside
 /// `pre`/`code`/`script`/`style`/`annotation` elements).
+///
 /// `bare_key` is offered each bare `@word` in prose that is not a cross-reference, and
 /// answers whether it named a bibliography entry (and recorded it).
 fn transform_html(

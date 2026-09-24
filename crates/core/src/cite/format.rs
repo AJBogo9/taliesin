@@ -188,8 +188,8 @@ fn fmt_inbook(f: &Fields) -> String {
 fn fmt_misc(f: &Fields) -> String {
     let mut segs: Vec<String> = Vec::new();
     // A `@dataset`/`@online` often carries the issuing body (Kaggle, a standards org)
-    // as publisher/organization/institution — keep it rather than drop it. A thesis names
-    // its university as `school`.
+    // as publisher/organization/institution — keep it rather than drop it.
+    // A thesis names its university as `school`.
     if let Some(p) = f
         .get("publisher")
         .or_else(|| f.get("organization"))
@@ -295,7 +295,7 @@ fn crossref(child: &Fields, parent: &Fields) -> Fields {
     f
 }
 
-/// The IEEE page segment: "p. 42" for one page, "pp. 123–145" for a range or a list.
+/// The IEEE page segment: "p. 42" for one page, "pp." before a range or a list.
 fn pages(p: &str) -> String {
     let p = clean_pages(p);
     let label = if p.contains(['\u{2013}', ',', '+']) {
