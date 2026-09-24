@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use taliesin_core::render_document_with_includes;
+use taliesin_core::render_document_scoped_with_site;
 
 /// A throwaway dir under the system temp, unique per test name + process.
 fn tmp(name: &str) -> PathBuf {
@@ -25,7 +25,7 @@ fn duplicate_bib_key_warning_points_at_the_bibliography_line() {
     .unwrap();
     // `bibliography:` sits on source line 3 (line 1 = `---`, line 2 = `title:`).
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@dup].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
 
     let w = doc
         .warnings
@@ -45,7 +45,7 @@ fn missing_bib_file_warning_points_at_the_bibliography_line() {
     let dir = tmp("missing");
     // No refs.bib written: the declared file can't be read.
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@x].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
 
     let w = doc
         .warnings
@@ -65,7 +65,7 @@ fn non_bib_bibliography_is_flagged_not_silently_ignored() {
     // A CSL-YAML/JSON path (not `.bib`) is unsupported; it must warn (located at the
     // `bibliography:` line) rather than silently resolving no citations.
     let src = "---\ntitle: T\nbibliography: refs.yaml\n---\n\nSee [@x].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
 
     let w = doc
         .warnings
@@ -102,7 +102,7 @@ fn an_unclosed_entry_is_confined_to_its_own_file_and_reported_there() {
     )
     .unwrap();
     let src = "---\ntitle: T\nbibliography: [a.bib, b.bib]\n---\n\nSee [@a2] and [@b1].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
     let html = doc.body_html();
     assert!(html.contains("First in b"), "b1 resolves:\n{html}");
     assert!(
@@ -137,7 +137,7 @@ fn an_undefined_string_macro_is_reported_at_the_bibliography_line() {
     )
     .unwrap();
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
     let hits: Vec<_> = doc
         .warnings
         .iter()
@@ -166,7 +166,7 @@ fn a_bib_that_is_not_utf8_is_reported_as_such_not_as_missing() {
     )
     .unwrap();
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
-    let doc = render_document_with_includes(src, &dir);
+    let doc = render_document_scoped_with_site(src, &dir, None, None);
     assert!(
         !doc.warnings.iter().any(|w| w.message.contains("not found")),
         "{:?}",

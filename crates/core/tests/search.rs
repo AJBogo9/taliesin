@@ -7,7 +7,7 @@
 use taliesin_core::Site;
 
 mod common;
-use common::TempProj;
+use common::{RenderPage, TempProj};
 
 #[test]
 fn cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch() {

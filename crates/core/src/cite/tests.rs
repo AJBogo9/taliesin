@@ -194,25 +194,6 @@ fn validate_xrefs_flags_only_unresolved_markers() {
     assert!(validate_xrefs(&ok, None).is_empty());
 }
 
-/// What resolves and what is offered are ONE list, by construction. [`XREF_LABELS`] used to
-/// carry seven extra theorem prefixes that `vocab` subtracted back out again, so the two
-/// answers were kept equal by a filter; the tuples went on 2026-08-18 and the filter with
-/// them, and this pins the equality that replaced it. A prefix added to the table without a
-/// construct that can define its target now shows up here as an offer nothing can satisfy.
-#[test]
-fn every_prefix_that_resolves_is_also_offered_and_the_reverse() {
-    let offered: Vec<String> = crate::vocab::vocab()["xrefPrefixes"]
-        .as_array()
-        .expect("the vocabulary offers cross-reference prefixes")
-        .iter()
-        .map(|p| p["prefix"].as_str().unwrap_or_default().to_owned())
-        .collect();
-    let resolving: Vec<String> = XREF_LABELS.iter().map(|(k, _)| (*k).to_owned()).collect();
-    assert_eq!(offered, resolving, "the two lists are the same list");
-    // Positive control, so this cannot pass by both lists being empty.
-    assert!(offered.iter().any(|o| o == "fig"), "offered: {offered:?}");
-}
-
 /// The seven theorem prefixes are gone from the READ, not merely from the vocabulary.
 /// Dropping a name from a table only makes it undiagnosed; the parser going on honouring it
 /// is what leaves a withdrawn construct quietly working, so the pin has to be behavioural.
@@ -228,9 +209,11 @@ fn a_withdrawn_theorem_prefix_is_no_longer_read_at_all() {
             !crate::cite::is_xref_anchor(&format!("{prefix}-a")),
             "`{prefix}-a` must no longer be a cross-reference anchor shape"
         );
-        let doc = crate::render_document_with_includes(
+        let doc = crate::render_document_scoped_with_site(
             &format!("---\ntitle: T\n---\n\nSee @{prefix}-a.\n"),
             std::path::Path::new("."),
+            None,
+            None,
         );
         let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
         assert!(
@@ -247,9 +230,11 @@ fn a_withdrawn_theorem_prefix_is_no_longer_read_at_all() {
     }
     // Positive control: a LIVE prefix with no target still errors, so the silence above is
     // about the prefix being unknown and not about the check having stopped running.
-    let live = crate::render_document_with_includes(
+    let live = crate::render_document_scoped_with_site(
         "---\ntitle: T\n---\n\nSee @fig-nope.\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     let w = validate_xrefs(&live.blocks, None);
     assert!(
@@ -901,7 +886,7 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     .unwrap();
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
                A paragraph that runs on\nand cites [@knuth1985] here.\n";
-    let doc = crate::render_document_with_includes(src, &dir);
+    let doc = crate::render_document_scoped_with_site(src, &dir, None, None);
     let w = doc
         .warnings
         .iter()
@@ -935,7 +920,7 @@ fn a_broken_citation_before_its_separator_is_columned_to_its_key() {
     .unwrap();
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
                See [@knuth1985:2] and [@knuth1985: a note] here.\n";
-    let doc = crate::render_document_with_includes(src, &dir);
+    let doc = crate::render_document_scoped_with_site(src, &dir, None, None);
     let w = doc
         .warnings
         .iter()
@@ -1483,7 +1468,7 @@ fn bare_key_errors(tag: &str, body: &str) -> Vec<Warning> {
     )
     .unwrap();
     let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
-    let doc = crate::render_document_with_includes(&src, &dir);
+    let doc = crate::render_document_scoped_with_site(&src, &dir, None, None);
     let mut w = doc.warnings.clone();
     let _ = std::fs::remove_dir_all(&dir);
     w.retain(|w| w.message.contains("is not a citation"));

@@ -141,13 +141,12 @@ fn push_one(v: &serde_yaml::Value, warnings: &mut Vec<String>, out: &mut Vec<Aut
     }
 }
 
+/// A field's text, read by the one YAML scalar reader ([`crate::site::scalar`]), trimmed,
+/// and absent when blank.
 fn scalar(v: &serde_yaml::Value) -> Option<String> {
-    match v {
-        serde_yaml::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
+    crate::site::scalar(Some(v))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn string_list(v: &serde_yaml::Value) -> Vec<String> {

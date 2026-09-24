@@ -11,24 +11,6 @@
 //! `taliesin lsp`. Adding a completion here gives it to every editor at once. See
 //! `notes/2026-07-28-vscode-companion-audit.md`.
 
-/// Front-matter parents whose immediate children have their own vocabulary, DERIVED from
-/// core's `vocab()` instead of copied from it.
-///
-/// It was a hand-written list, duplicated verbatim in `lsp_nav.rs`, and it rotted through
-/// the cut: it still named `about` (retired 2026-07-17) and `prose-lint` (retired
-/// 2026-08-02) on 2026-08-17, outside every drift gate, so the server offered a nested
-/// vocabulary for two keys its own linter squiggles. The dotted `hero.actions` entry is a
-/// path into the map, not a parent word, so it is filtered out.
-pub(crate) fn nested_parents() -> &'static [String] {
-    static PARENTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    PARENTS.get_or_init(|| {
-        taliesin_core::vocab::vocab()["frontmatter"]["nested"]
-            .as_object()
-            .map(|m| m.keys().filter(|k| !k.contains('.')).cloned().collect())
-            .unwrap_or_default()
-    })
-}
-
 /// Build/vcs dirs never worth offering as a `{{< include >}}` target.
 const IGNORE_DIRS: &[&str] = &[".git", "target", "node_modules", "_site", "_freeze"];
 
@@ -40,12 +22,6 @@ fn is_id_char(c: char) -> bool {
 }
 fn is_hspace(c: char) -> bool {
     c == ' ' || c == '\t'
-}
-
-/// The shortcode that takes a file-path first argument.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Shortcode {
-    Include,
 }
 
 /// What completion applies at the cursor, decided from the line + document prefix.
@@ -65,8 +41,8 @@ pub(crate) enum CompletionContext {
         typed: String,
     },
     Cite,
+    /// The path argument of a `{{< include >}}`, the one shortcode that takes one.
     ShortcodePath {
-        shortcode: Shortcode,
         typed: String,
     },
     /// A `\command` being typed inside `$…$` / `$$…$$`. `typed` includes the backslash, so
@@ -374,9 +350,8 @@ fn cell_option_context(line_prefix: &str) -> CompletionContext {
 /// The contexts of a front-matter line.
 fn frontmatter_context(line_prefix: &str, doc_prefix: &str) -> CompletionContext {
     if let Some((key, typed)) = frontmatter_value(line_prefix) {
-        // A path-valued key offers files, not a word list. `frontmatterValues` only
-        // ever had `format` and `theme`, so every other key — including the six that
-        // name a file — was detected as a value position and then answered nothing.
+        // A path-valued key offers files, not a word list; any other key offers its closed
+        // value set (`vocab::frontmatter_values`), which is empty for free text.
         if let Some((_, kind)) = PATH_KEYS.iter().find(|(k, _)| *k == key) {
             return CompletionContext::Path { typed, kind: *kind };
         }
@@ -717,10 +692,7 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     if typed.contains('=') {
         return None;
     }
-    Some(CompletionContext::ShortcodePath {
-        shortcode: Shortcode::Include,
-        typed,
-    })
+    Some(CompletionContext::ShortcodePath { typed })
 }
 
 /// The cursor is inside an open `[@…` citation: the last `[@` has no `]` before the cursor.
@@ -832,7 +804,7 @@ fn nested_parent(doc_prefix: &str) -> Option<String> {
             let trimmed = line.trim();
             let key: String = trimmed.chars().take_while(|c| is_id_char(*c)).collect();
             let has_colon = trimmed[key.len()..].starts_with(':');
-            return if has_colon && nested_parents().iter().any(|p| p == &key) {
+            return if has_colon && taliesin_core::vocab::nested_parents().any(|p| p == key) {
                 Some(key)
             } else {
                 None
@@ -1395,7 +1367,6 @@ mod tests {
         assert_eq!(
             ctx("{{< include intro", "{{< include intro"),
             CompletionContext::ShortcodePath {
-                shortcode: Shortcode::Include,
                 typed: "intro".to_string()
             }
         );
@@ -1403,7 +1374,6 @@ mod tests {
         assert_eq!(
             ctx("{{< include a@b", "{{< include a@b"),
             CompletionContext::ShortcodePath {
-                shortcode: Shortcode::Include,
                 typed: "a@b".to_string()
             }
         );
@@ -1738,7 +1708,6 @@ mod tests {
                 "",
                 "{{< include ",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: String::new(),
                 },
             ),
@@ -1757,7 +1726,6 @@ mod tests {
                 "",
                 "{{< include a{b",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: "a{b".to_string(),
                 },
             ),
@@ -1766,7 +1734,6 @@ mod tests {
                 "",
                 "{{< include a >}} {{< include b",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: "b".to_string(),
                 },
             ),
@@ -1963,52 +1930,17 @@ mod tests {
     /// inserted a path the same server's lint then squiggled. Nothing derived the list and
     /// nothing pinned it, which is how it survived two retirement waves.
     ///
-    /// Checked against `vocab()`, the OFFERED set, because a key completion does not offer
-    /// is a key whose value position the author cannot reach from here either.
+    /// Checked against the OFFERED keys, because a key completion does not offer is a key
+    /// whose value position the author cannot reach from here either.
     #[test]
     fn path_keys_are_live_front_matter_keys() {
-        let vocab = taliesin_core::vocab::vocab();
-        let offered: Vec<String> = vocab["frontmatter"]["keys"]
-            .as_array()
-            .expect("the offered key list")
-            .iter()
-            .map(|k| k["name"].as_str().unwrap_or_default().to_string())
-            .collect();
+        let offered = taliesin_core::vocab::frontmatter_keys(None).expect("the top-level keys");
         assert!(!offered.is_empty(), "no offered keys, so this pins nothing");
         for (key, _) in PATH_KEYS {
             assert!(
-                offered.iter().any(|k| k == key),
-                "`{key}` offers path completion but is not a front-matter key any more                  (offered: {offered:?})"
-            );
-        }
-    }
-
-    /// The nested parents are derived, so this pins the derivation rather than the list:
-    /// every parent is itself an offered key, and the retired ones are gone.
-    #[test]
-    fn nested_parents_are_offered_keys_and_carry_no_retired_name() {
-        let vocab = taliesin_core::vocab::vocab();
-        let offered: Vec<String> = vocab["frontmatter"]["keys"]
-            .as_array()
-            .expect("the offered key list")
-            .iter()
-            .map(|k| k["name"].as_str().unwrap_or_default().to_string())
-            .collect();
-        let parents = nested_parents();
-        assert!(
-            !parents.is_empty(),
-            "no nested parents, so this pins nothing"
-        );
-        for p in parents {
-            assert!(
-                offered.iter().any(|k| k == p),
-                "nested parent `{p}` is not an offered front-matter key"
-            );
-        }
-        for retired in ["about", "prose-lint"] {
-            assert!(
-                !parents.iter().any(|p| p == retired),
-                "`{retired}` was retired and must not be a nested parent"
+                offered.iter().any(|(k, _)| k == key),
+                "`{key}` offers path completion but is not a front-matter key any more \
+                 (offered: {offered:?})"
             );
         }
     }

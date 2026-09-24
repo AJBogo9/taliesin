@@ -180,7 +180,7 @@ fn rendered_ids(tmd: &Path) -> Vec<String> {
         return Vec::new();
     };
     let base = tmd.parent().unwrap_or(Path::new("."));
-    let html = taliesin_core::render_document_with_includes(&src, base).body_html();
+    let html = taliesin_core::render_document_scoped_with_site(&src, base, None, None).body_html();
     let mut out = Vec::new();
     for tag in taliesin_core::render::tags(&html) {
         for attr in taliesin_core::render::attrs(&tag) {

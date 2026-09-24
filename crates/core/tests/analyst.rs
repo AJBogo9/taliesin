@@ -13,7 +13,7 @@
 //! See notes/2026-07-26-corpus-demand-probe-analyst.md for the findings this produced.
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 use taliesin_core::Site;
 
 fn analyst() -> Site {

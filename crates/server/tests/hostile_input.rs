@@ -123,7 +123,7 @@ const BATTERY: &[(&str, &str)] = &[
     // Unbalanced `:::` fenced divs.
     ("fence_open_no_close", "::: {.callout-note}\nbody text\n"),
     ("fence_close_no_open", "body\n:::\n"),
-    ("fence_nested_unclosed", "::: a\n::: b\n::: c\nx\n"),
+    ("fence_nested_unclosed", "::: {.a}\n::: {.b}\n::: {.c}\nx\n"),
     ("fence_columns_ncol_zero", "::: {.columns ncol=0}\nx\n:::\n"),
     (
         "fence_columns_ncol_huge",
@@ -257,7 +257,7 @@ fn large_but_legitimate_documents_still_render() {
         (
             "nest_div_deep",
             (0..5_000)
-                .map(|i| format!("::: d{i}\n"))
+                .map(|i| format!("::: {{.d{i}}}\n"))
                 .collect::<String>()
                 + "x\n",
         ),

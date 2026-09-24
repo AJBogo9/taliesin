@@ -7,7 +7,7 @@ use common::TempProj;
 fn unknown_callout_kind_warns_and_still_renders() {
     let proj = TempProj::new();
     let src = "# T\n\nIntro.\n\n::: {.callout-warnign}\nBody.\n:::\n";
-    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_scoped_with_site(src, &proj.0, None, None);
     let w = doc
         .warnings
         .iter()
@@ -36,7 +36,7 @@ fn unknown_callout_kind_warns_and_still_renders() {
 fn a_callout_kind_the_tool_does_not_define_warns_and_still_renders() {
     let proj = TempProj::new();
     let src = "# T\n\nIntro.\n\n::: {.callout-important}\nBody.\n:::\n";
-    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_scoped_with_site(src, &proj.0, None, None);
     let w = doc
         .warnings
         .iter()
@@ -59,7 +59,7 @@ fn a_callout_kind_the_tool_does_not_define_warns_and_still_renders() {
 fn recognized_callout_kind_does_not_warn() {
     let proj = TempProj::new();
     let src = "# T\n\n::: {.callout-tip}\nUse the thing.\n:::\n";
-    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_scoped_with_site(src, &proj.0, None, None);
     assert!(
         !doc.warnings
             .iter()
@@ -81,7 +81,7 @@ fn a_quote_in_a_div_class_or_callout_kind_never_writes_an_attribute() {
                ::: {.callout-x<b>y</b>}\nBody.\n:::\n\n\
                ::: {.callout-note\"onclick=\"alert(3) collapse=\"true\"}\nBody.\n:::\n\n\
                ::: {.a\"onmouseover=\"alert(2)}\nx\n:::\n";
-    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_scoped_with_site(src, &proj.0, None, None);
     let html = doc.body_html();
     let mut classes = Vec::new();
     for tag in taliesin_core::render::tags(&html) {

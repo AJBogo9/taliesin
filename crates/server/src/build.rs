@@ -397,7 +397,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         build_page_executing(&site, src, stem, path, mermaid_src)
     });
     let (html, mut problems, unparseable, mut diagnostics, kernel_failure) = match executed {
-        Ok(Ok(BuildResult::Page {
+        Ok(Ok(BuiltPage {
             html,
             problems,
             unparseable,
@@ -744,31 +744,27 @@ fn cell_error_diagnostics(
         .collect()
 }
 
-/// Render a single document to a self-contained HTML page, executing its code
-/// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
-/// build's per-page execution). A missing kernel logs a warning and the cells fall
-/// back to source, matching the preview's behaviour.
-/// Result of building a single page: the rendered HTML + its `--strict` problem count.
-enum BuildResult {
-    Page {
-        html: String,
-        problems: usize,
-        /// The `error`-severity subset of `problems`: diagnostics saying the document is
-        /// *wrong* rather than merely degraded. These fail the build with no `--strict`.
-        /// A crashed code cell is counted in `problems` but never here.
-        unparseable: usize,
-        /// The located diagnostics, structured, for `--format json`. Same set the human
-        /// log emits, in the same order.
-        diagnostics: Vec<crate::lint::Diagnostic>,
-        /// Set when the document has executable cells whose kernel could not start: the
-        /// full "here is everything I searched" report. The page is still written (as
-        /// under `--strict`), then the build exits non-zero with this message.
-        kernel_failure: Option<String>,
-    },
+/// A single document built: the rendered HTML + its `--strict` problem count.
+struct BuiltPage {
+    html: String,
+    problems: usize,
+    /// The `error`-severity subset of `problems`: diagnostics saying the document is
+    /// *wrong* rather than merely degraded. These fail the build with no `--strict`.
+    /// A crashed code cell is counted in `problems` but never here.
+    unparseable: usize,
+    /// The located diagnostics, structured, for `--format json`. Same set the human
+    /// log emits, in the same order.
+    diagnostics: Vec<crate::lint::Diagnostic>,
+    /// Set when the document has executable cells whose kernel could not start: the
+    /// full "here is everything I searched" report. The page is still written (as
+    /// under `--strict`), then the build exits non-zero with this message.
+    kernel_failure: Option<String>,
 }
 
-/// Build one document, executing its cells: [`crate::lint::PagePass`], the one page pass,
-/// over the one page `site` (the document's own discovery) holds.
+/// Build one document to a self-contained HTML page, executing its cells first so figures
+/// and `define(...)` outputs are baked in: [`crate::lint::PagePass`], the one page pass,
+/// over the one page `site` (the document's own discovery) holds. A missing kernel leaves
+/// the cells as source, matching the preview, and is reported in `kernel_failure`.
 ///
 /// Two names, deliberately: `stem` is the page-title fallback, while `label` is what a
 /// diagnostic is prefixed with and so must be a path an editor can open (the path as the
@@ -783,7 +779,7 @@ fn build_page_executing(
     stem: &str,
     label: &str,
     mermaid_src: &str,
-) -> std::io::Result<BuildResult> {
+) -> std::io::Result<BuiltPage> {
     let page = site
         .pages
         .first()
@@ -846,7 +842,7 @@ fn build_page_executing(
         // palette used to build its own from the DOM here, and searched raw TeX and
         // `<script>` bodies the preview's index does not.
         let search_index = site.inline_search_index(page);
-        BuildResult::Page {
+        BuiltPage {
             html: single_doc_page(&pass.doc, stem, mermaid_src, &search_index),
             problems,
             unparseable,
@@ -868,7 +864,13 @@ fn single_doc_page(
     mermaid_src: &str,
     search_index: &str,
 ) -> String {
-    let html = taliesin_core::render_single_doc_page(doc, stem, mermaid_src, search_index);
+    let html = taliesin_core::render_doc_to_page(
+        doc,
+        stem,
+        None,
+        search_index,
+        taliesin_core::AssetMode::Inline { mermaid_src },
+    );
     taliesin_core::site::rewrite_tmd_links(&html)
 }
 
@@ -902,15 +904,15 @@ mod single_doc_toc_tests {
         let file = dir.join(name);
         std::fs::write(&file, src).expect("write doc");
         let stem = name.strip_suffix(".tmd").unwrap_or(name);
-        let BuildResult::Page { html, .. } = build_page_executing(
+        build_page_executing(
             &taliesin_core::Site::discover_document(&file),
             src.to_string(),
             stem,
             file.to_str().expect("utf-8 path"),
             "",
         )
-        .expect("runtime");
-        html
+        .expect("runtime")
+        .html
     }
 
     fn doc(front: &str, headings: usize) -> String {
@@ -1586,11 +1588,10 @@ async fn build_one_page(
 }
 
 /// The result of a directory (site/book) build: whether it succeeded, and the structured
-/// diagnostics it produced (for `--format json` on `build`/`publish`), in deterministic
-/// page order.
-pub(crate) struct SiteBuildOutcome {
-    pub ok: bool,
-    pub diagnostics: Vec<crate::lint::Diagnostic>,
+/// diagnostics it produced (for `--format json`), in deterministic page order.
+struct SiteBuildOutcome {
+    ok: bool,
+    diagnostics: Vec<crate::lint::Diagnostic>,
 }
 
 /// The resolved shared-asset filenames (content-hashed), computed once per site build.
@@ -1792,66 +1793,9 @@ pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
     Some(format!("{n} {noun} not published: {}", excluded.join(", ")))
 }
 
-/// Run a directory (site/book) build to disk, returning whether it succeeded + its
-/// structured diagnostics. Shared by `cmd_build`'s directory branch, `build_json` (the MCP
-/// `build` tool), and `publish` (which needs the success signal, not just an opaque
-/// `ExitCode`, plus the freedom to keep working with the output dir afterward). `verb` is
-/// the CLI verb the caller was invoked as (`"build"`/`"publish"`), so a rejection names the
-/// right command to retry.
-///
-/// This is THE enforcement point for "a directory is a project, and a project is what
-/// `_site.yml` declares": every caller inherits the guard by construction rather than
-/// having to remember to add it. `cmd_build`'s own directory branch still checks this
-/// first too (it must run ahead of `--stdout`, which the guard here, reached only
-/// after those, would otherwise shadow; see `project_required.rs`'s
-/// `stdout_conflicts_are_loud`), so for `build` this is a redundant backstop. It is not
-/// redundant for `publish`, which used to call straight into the site build and skip the
-/// check entirely: `publish` on a directory with no `_site.yml` warned, synthesized a
-/// one-page site, and deployed it. `project_required.rs`'s
-/// `publish_of_a_non_project_directory_is_rejected_with_guidance` pins the fix.
-pub(crate) fn run_site_build(
-    root: &Path,
-    out_override: Option<&str>,
-    strict: bool,
-    jobs: Option<usize>,
-    verb: &str,
-) -> SiteBuildOutcome {
-    if !root.join("_site.yml").is_file() {
-        let msg = crate::serve::not_a_project_error(root, verb);
-        log::error(&msg);
-        return SiteBuildOutcome {
-            ok: false,
-            diagnostics: vec![crate::lint::Diagnostic::new(
-                root.display().to_string(),
-                None,
-                msg,
-            )],
-        };
-    }
-    // Executing code cells needs the async kernel, so the whole site build runs on a
-    // tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
-    // concurrent page builds (each its own kernel) actually overlap on the CPU.
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => {
-            let msg = format!("cannot start runtime: {e}");
-            log::error(&msg);
-            return SiteBuildOutcome {
-                ok: false,
-                diagnostics: vec![crate::lint::Diagnostic::new(
-                    root.display().to_string(),
-                    None,
-                    msg,
-                )],
-            };
-        }
-    };
-    rt.block_on(build_site_async(root, out_override, strict, jobs))
-}
-
+/// `build <dir>`: the site build ([`build_site_async`]) on a tokio runtime, its diagnostics
+/// printed as JSON under `--format json`. `cmd_build` has already refused a directory
+/// with no `_site.yml`, ahead of `--stdout` (`project_required.rs`).
 fn build_site(
     root: &Path,
     out_override: Option<&str>,
@@ -1859,7 +1803,27 @@ fn build_site(
     jobs: Option<usize>,
     json: bool,
 ) -> ExitCode {
-    let outcome = run_site_build(root, out_override, strict, jobs, "build");
+    // Executing code cells needs the async kernel, so the whole site build runs on a
+    // tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
+    // concurrent page builds (each its own kernel) actually overlap on the CPU.
+    let outcome = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt.block_on(build_site_async(root, out_override, strict, jobs)),
+        Err(e) => {
+            let msg = format!("cannot start runtime: {e}");
+            log::error(&msg);
+            SiteBuildOutcome {
+                ok: false,
+                diagnostics: vec![crate::lint::Diagnostic::new(
+                    root.display().to_string(),
+                    None,
+                    msg,
+                )],
+            }
+        }
+    };
     if json {
         println!("{}", crate::lint::diagnostics_json(&outcome.diagnostics));
     }
@@ -1895,8 +1859,6 @@ async fn build_site_async(
     strict: bool,
     jobs: Option<usize>,
 ) -> SiteBuildOutcome {
-    // Timed here rather than in `cmd_build`, so `publish` (which reaches the site build
-    // through `run_site_build`) reports its build time too.
     let started = std::time::Instant::now();
     let site = taliesin_core::Site::discover(root);
     // Structured diagnostics accumulated in deterministic order (config → pages → site-wide),
@@ -2330,7 +2292,7 @@ async fn build_site_async(
     // `og:image` a shared link unfurls with, stored site-root-relative by discovery (an
     // external URL is no local ref and ships nothing).
     for img in site.pages.iter().filter_map(|p| p.card_image.as_deref()) {
-        if is_local_ref(img) {
+        if taliesin_core::diagnostics::is_local_ref(img) {
             assets += usize::from(ship_referenced(img, root, Path::new(""), &out, &mut keep));
         }
     }
@@ -2678,25 +2640,15 @@ fn local_refs(html: &str) -> Vec<(String, usize)> {
             // The one list of URL attributes (`render::URL_ATTRS`) and the one reading of a
             // `srcset`, shared with the gate and the 404 rewrite.
             for v in taliesin_core::render::attr_urls(a.name, &a.value) {
-                if is_local_ref(v) && !out.iter().any(|(seen, _)| seen == v) {
+                if taliesin_core::diagnostics::is_local_ref(v)
+                    && !out.iter().any(|(seen, _)| seen == v)
+                {
                     out.push((v.to_string(), a.at));
                 }
             }
         }
     }
     out
-}
-
-fn is_local_ref(v: &str) -> bool {
-    !v.is_empty()
-        && !v.starts_with('#')
-        && !v.starts_with("//")
-        && !v.contains("://")
-        && !v.starts_with("data:")
-        && !v.starts_with("mailto:")
-        && !v.starts_with("tel:")
-        && !v.starts_with("vscode:")
-        && !v.starts_with("javascript:")
 }
 
 /// A reference the browser fetches over the network at view time: an absolute `http(s)://`

@@ -97,7 +97,7 @@ type Job = (String, bool, Sender<String>);
 /// Serialising the calls costs nothing worth measuring — a warm KaTeX render is ~0.07 ms,
 /// and [`CACHE`] absorbs the repeats — and it holds one JS context rather than one per
 /// render thread, which is also what makes the concurrent page loops in `site` affordable.
-static KATEX: LazyLock<Option<Mutex<Sender<Job>>>> = LazyLock::new(|| {
+static KATEX: LazyLock<Option<Sender<Job>>> = LazyLock::new(|| {
     let (tx, rx) = channel::<Job>();
     std::thread::Builder::new()
         .name("taliesin-katex".to_string())
@@ -110,7 +110,7 @@ static KATEX: LazyLock<Option<Mutex<Sender<Job>>>> = LazyLock::new(|| {
             }
         })
         .ok()
-        .map(|_| Mutex::new(tx))
+        .map(|_| tx)
 });
 
 /// Render on the KaTeX worker, falling back to the calling thread if the worker could not
@@ -121,13 +121,8 @@ fn render_uncached(latex: &str, display: bool) -> String {
         return render_on_this_thread(latex, display);
     };
     let (reply_tx, reply_rx) = channel();
-    // The lock is held only for the send: the worker processes serially anyway, and
-    // holding it across the recv would stop callers from queueing behind each other.
-    let sent = worker
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .send((latex.to_string(), display, reply_tx))
-        .is_ok();
+    // A `Sender` is `Sync`, so callers queue on it directly; the worker processes serially.
+    let sent = worker.send((latex.to_string(), display, reply_tx)).is_ok();
     if !sent {
         return render_on_this_thread(latex, display);
     }

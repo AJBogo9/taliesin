@@ -121,16 +121,11 @@ fn emit(sink: &ProgressSink, msg: String) {
 /// or it died mid-run before reaching them. Those cells were already announced
 /// `queued`; without this terminal `error` they'd stay `queued` and spin forever in
 /// the client. Pure observation — never changes what executes or caches.
-fn emit_cell_errors(
-    sink: &ProgressSink,
-    page: Option<&str>,
-    cells: &[CellRef],
-    range: std::ops::Range<usize>,
-) {
+fn emit_cell_errors(sink: &ProgressSink, cells: &[CellRef], range: std::ops::Range<usize>) {
     for cell in &cells[range] {
         emit(
             sink,
-            crate::protocol::cell_state(page, &cell.id, "error", None, None, None),
+            crate::protocol::cell_state(&cell.id, "error", None, None, None),
         );
     }
 }
@@ -145,14 +140,10 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Cell languages taliesin can execute, mapped to a stable kernel key. Anything
-/// else renders as highlighted source.
-pub(crate) fn kernel_lang(lang: &str) -> Option<&'static str> {
-    match lang {
-        "python" => Some("python"),
-        _ => None,
-    }
-}
+/// The one language a kernel runs (`render::executes_to_kernel` decides which cells), as it
+/// names the interpreter in the freeze key (`python::…`, [`interp_identity`]) and in the
+/// messages about its kernel.
+const KERNEL_LANG: &str = "python";
 
 /// The interpreter identity that seeds a page's cumulative hash chain.
 ///
@@ -353,24 +344,16 @@ pub(crate) struct CellFailure {
     pub hidden: bool,
 }
 
-/// How one run split between replay and re-execution, summed across languages so the
-/// caller can print one legible cache line (DX9): `cached` cells were restored (the warm
-/// in-memory prefix + the disk `_freeze` tail), `ran` cells actually executed.
+/// How one run split between replay and re-execution, so the caller can print one legible
+/// cache line (DX9): `cached` cells were restored (the warm in-memory prefix + the disk
+/// `_freeze` tail), `ran` cells actually executed.
 #[derive(Default, Clone, Copy)]
 struct CacheTally {
     cached: usize,
     ran: usize,
 }
 
-impl std::ops::AddAssign for CacheTally {
-    fn add_assign(&mut self, o: Self) {
-        self.cached += o.cached;
-        self.ran += o.ran;
-    }
-}
-
-/// Per-language warm kernel + the cells it has executed. One per executed language
-/// so a `{python}` and an `{r}` cell run against independent, isolated kernels.
+/// The warm kernel and the cells it has executed.
 #[derive(Default)]
 struct LangState {
     kernel: Option<Kernel>,
@@ -393,9 +376,9 @@ struct LangState {
     /// an edit, a cell since deleted) and left names behind that no key mentions, so what
     /// this run produces is not a function of its keys and is kept out of `_freeze`.
     executed: usize,
-    /// Whether this executor has already logged which interpreter this language runs
-    /// (the "which python?" signal). Reset by `restart_kernel` (which clears `langs`),
-    /// so a manual restart re-announces.
+    /// Whether this executor has already logged which interpreter runs its cells (the
+    /// "which python?" signal). Reset by `restart_kernel` (which resets this state), so a
+    /// manual restart re-announces.
     announced: bool,
 }
 
@@ -408,14 +391,12 @@ pub struct Executor {
     /// [`Executor::set_interpreters`]. The trail is what the build's "no kernel
     /// available" failure prints.
     python: Resolved,
-    /// One warm kernel per executed language, created lazily.
-    ///
-    /// **A map with one key, deliberately.** `{r}` was withdrawn on 2026-08-08, so
-    /// `kernel_lang` admits only `"python"` today — but the key is what
-    /// [`interp_identity`] hashes into every freeze key, and collapsing this to a scalar
-    /// is the tidy-up that would let a second language later reuse the first's state with
-    /// no test able to tell. See the module header's prohibition.
-    langs: HashMap<&'static str, LangState>,
+    /// The warm kernel, created lazily, and the cells it has executed. One, since `{r}` was
+    /// withdrawn on 2026-08-08. It was a map keyed by language, kept so a second language
+    /// could not reuse the first's state unnoticed; what that guarded is the freeze key's
+    /// `python::` prefix, which [`interp_identity`] builds and
+    /// `a_successful_probe_pins_the_freeze_key_format` pins byte for byte.
+    state: LangState,
     /// Disk-backed output cache for this document (the L2 behind the per-language
     /// in-memory `ran`). Disabled by [`Executor::new`]; bound to a `_freeze/` file
     /// by [`Executor::with_freeze`].
@@ -445,9 +426,8 @@ pub struct Executor {
     /// `None` on the headless `build` path. Side-effect-free: never changes what
     /// runs or caches.
     sink: ProgressSink,
-    /// The source rel-path this executor builds (the site server's page key), tagged
-    /// onto each `build-state` so a multi-page client knows which page it's about.
-    /// `None` for the single-doc server.
+    /// The source rel-path this executor builds (the page key), for the console lines
+    /// (`cell k/n`, the cache tally) a concurrent build prints for several pages at once.
     page: Option<String>,
     /// The OS pid of the kernel running the CURRENT cell, or `0` when no cell is
     /// executing. Written here around each cell, read by whoever else holds the `Arc` —
@@ -512,7 +492,7 @@ impl Executor {
         let cwd = std::path::Path::new(".");
         Self {
             python: crate::interpreter::resolve_python(None, cwd),
-            langs: HashMap::new(),
+            state: LangState::default(),
             freeze,
             force_next: false,
             no_exec: exec_disabled(),
@@ -527,10 +507,10 @@ impl Executor {
     }
 
     /// Stream this executor's per-build progress (`build-state` messages) through
-    /// `sink`, tagged with the page rel-path `page` (the site server's page key;
-    /// `None` for the single-doc server). The server sets this once after creating the
-    /// executor. The site `build` path passes a `None` sink (there is no client) but still
-    /// sets `page`, so its concurrent per-page `cell k/n` lines can be attributed.
+    /// `sink`, and name its console lines after `page` (the page key). The server sets
+    /// this once after creating the executor. The site `build` path passes a `None` sink
+    /// (there is no client) but still sets `page`, so its concurrent per-page `cell k/n`
+    /// lines can be attributed.
     /// Emission never changes what executes or caches, so freeze determinism is preserved
     /// regardless of the sink. A `&mut self` setter (not a consuming builder) so it can be
     /// applied to a pooled `&mut Executor`.
@@ -563,39 +543,24 @@ impl Executor {
         self.python = python;
     }
 
-    /// The launch spec + interpreter path (for logging) for a language.
-    fn spec(&self, lang: &str) -> Option<(KernelSpec, PathBuf)> {
-        match lang {
-            "python" => Some((
-                KernelSpec::python(&self.python.path),
-                self.python.path.clone(),
-            )),
-            _ => None,
-        }
-    }
-
-    /// This executor's resolution record for `lang`, for the surfaces that must explain
+    /// This executor's resolution record, for the surfaces that must explain
     /// a choice rather than just make it (the build's "no kernel available" failure).
     pub fn resolved(&self) -> &Resolved {
         &self.python
     }
 
-    /// A user-facing warning about the executor's state, if any: some language's
-    /// kernel start failed (recently), so its code cells are rendering as source.
-    /// Includes the interpreter's own error (e.g. a missing `ipykernel`) so the
-    /// failure isn't opaque.
+    /// A user-facing warning about the executor's state, if any: the kernel start failed
+    /// (recently), so the code cells are rendering as source. Includes the interpreter's own
+    /// error (e.g. a missing `ipykernel`) so the failure isn't opaque.
     pub fn diagnostic(&self) -> Option<String> {
-        self.langs.iter().find_map(|(lang, s)| {
-            if s.kernel.is_some() || s.failed_at.is_none() {
-                return None;
-            }
-            Some(Self::kernel_unavailable_message(
-                lang,
-                &self.python.path.display().to_string(),
-                "TALIESIN_PYTHON",
-                s.last_error.as_deref(),
-            ))
-        })
+        let s = &self.state;
+        if s.kernel.is_some() || s.failed_at.is_none() {
+            return None;
+        }
+        Some(Self::kernel_unavailable_message(
+            &self.python.path.display().to_string(),
+            s.last_error.as_deref(),
+        ))
     }
 
     /// Drain the located warnings the last [`Executor::run`] produced (execution-only
@@ -633,8 +598,8 @@ impl Executor {
         let warning = render::Warning::new(message).severity(render::Severity::Error);
         self.warnings
             .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                0 => warning,
-                line => warning.at(cell.source_file.clone(), line),
+                None => warning,
+                Some(line) => warning.at(cell.source_file.clone(), line),
             });
     }
 
@@ -645,7 +610,7 @@ impl Executor {
     }
 
     /// The build-fatal report: this document had cells to execute, a kernel start was
-    /// attempted for their language, and it failed. `None` when nothing needed a kernel
+    /// attempted, and it failed. `None` when nothing needed a kernel
     /// or every kernel started — including the case where every cell replayed from
     /// `_freeze/`, which never attempts a start and so is legitimately not a failure.
     ///
@@ -653,48 +618,42 @@ impl Executor {
     /// recorded by the resolver), because "kernel unavailable" without the search order
     /// leaves the author guessing which of four sources was consulted and which won.
     pub fn kernel_failure_report(&self) -> Option<String> {
-        self.langs.iter().find_map(|(lang, s)| {
-            if s.kernel.is_some() || s.failed_at.is_none() {
-                return None;
-            }
-            let resolved = self.resolved();
-            let var = "TALIESIN_PYTHON";
-            let tried = resolved.path.display();
-            let why = s
-                .last_error
-                .as_deref()
-                .map(|e| format!(" ({e})"))
-                .unwrap_or_default();
-            let order = resolved.trail.report(resolved.provenance);
-            let pkg = "ipykernel";
-            let body = format!(
-                "no {lang} kernel available, but this document has {lang} cells\n\
-                 tried {tried}{why}\n\
-                 {lang} interpreter resolution, in order:\n{order}\n\
-                 fix: give that interpreter its Jupyter kernel package ({pkg}), or point \
-                 {var} / `_site.yml {lang}:` at one that has it. `taliesin doctor` reports \
-                 which it is.\n\
-                 to render code cells as source on purpose instead, pass --no-exec."
-            );
-            // Hang every continuation line under `crate::log`'s 10-column tag gutter
-            // ("  " + a 7-wide tag + " "), so a multi-line error reads as one block
-            // instead of half a message sitting flush against the left margin.
-            Some(body.replace('\n', "\n          "))
-        })
+        let s = &self.state;
+        if s.kernel.is_some() || s.failed_at.is_none() {
+            return None;
+        }
+        let lang = KERNEL_LANG;
+        let resolved = self.resolved();
+        let tried = resolved.path.display();
+        let why = s
+            .last_error
+            .as_deref()
+            .map(|e| format!(" ({e})"))
+            .unwrap_or_default();
+        let order = resolved.trail.report(resolved.provenance);
+        let body = format!(
+            "no {lang} kernel available, but this document has {lang} cells\n\
+             tried {tried}{why}\n\
+             {lang} interpreter resolution, in order:\n{order}\n\
+             fix: give that interpreter its Jupyter kernel package (ipykernel), or point \
+             TALIESIN_PYTHON / `_site.yml {lang}:` at one that has it. `taliesin doctor` \
+             reports which it is.\n\
+             to render code cells as source on purpose instead, pass --no-exec."
+        );
+        // Hang every continuation line under `crate::log`'s 10-column tag gutter
+        // ("  " + a 7-wide tag + " "), so a multi-line error reads as one block
+        // instead of half a message sitting flush against the left margin.
+        Some(body.replace('\n', "\n          "))
     }
 
     /// The shared "kernel unavailable" diagnostic. Pure (so its wording is unit-testable).
     /// The usual cause is a fine interpreter that's just missing the Jupyter kernel package
-    /// (`ipykernel`/`IRkernel`), NOT a wrong interpreter path — so name both and route to
+    /// (`ipykernel`), NOT a wrong interpreter path — so name both and route to
     /// `doctor`, which reports exactly which it is (PL6). No "Restart kernel" clause: the
     /// message is shared with the headless `build` path and CI, where that dev-menu action doesn't
     /// exist (PA-B1); the live preview still surfaces the Restart button in its dev menu.
-    fn kernel_unavailable_message(
-        lang: &str,
-        path: &str,
-        var: &str,
-        last_error: Option<&str>,
-    ) -> String {
+    fn kernel_unavailable_message(path: &str, last_error: Option<&str>) -> String {
+        let (lang, var) = (KERNEL_LANG, "TALIESIN_PYTHON");
         match last_error {
             Some(e) => format!(
                 "{lang} kernel unavailable ({path}): {e}. Code cells render as source; fix \
@@ -709,8 +668,8 @@ impl Executor {
         }
     }
 
-    /// Drop every language's kernel and clear the failure backoff, so the next run
-    /// starts fresh kernels immediately. Backs the dev-menu "Restart kernel" action
+    /// Drop the kernel and clear the failure backoff, so the next run starts a fresh
+    /// kernel immediately. Backs the dev-menu "Restart kernel" action
     /// and recovery after fixing `TALIESIN_PYTHON`. (Dropping a kernel
     /// kills its child process.) Also forces the next run to re-execute every cell
     /// (ignoring disk-cache hits), so "Restart kernel" actually re-runs against the
@@ -718,25 +677,23 @@ impl Executor {
     pub fn restart_kernel(&mut self) {
         reset_announcements();
         crate::packages::forget(&self.python.path);
-        self.langs.clear();
+        self.state = LangState::default();
         self.force_next = true;
     }
 
     /// Whether this executor currently owns a booted kernel, i.e. whether dropping it
     /// would actually kill a child process.
     ///
-    /// A kernel is created lazily on the first executed cell, so a `LangState` can exist
-    /// with `kernel: None` (a language whose start *failed*, which is why this asks about
-    /// the kernel rather than about `langs` being non-empty). Callers use it to avoid
-    /// announcing a kernel death that did not happen — see `serve_site::exec_pool`.
+    /// A kernel is created lazily on the first executed cell, and a failed start leaves
+    /// none. Callers use it to avoid announcing a kernel death that did not happen — see
+    /// `serve_site::exec_pool`.
     pub fn has_live_kernel(&self) -> bool {
-        self.langs.values().any(|s| s.kernel.is_some())
+        self.state.kernel.is_some()
     }
 
-    /// Execute the document's code cells (changed cells + downstream, per language)
-    /// and return the block list with output blocks spliced in after each cell.
-    /// Each executable language runs against its own kernel; unknown languages are
-    /// left as source.
+    /// Execute the document's code cells (changed cells + downstream) and return the block
+    /// list with output blocks spliced in after each cell. Cells of a language no kernel
+    /// runs are left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
         // Each run reports its own execution warnings and failures: the last run's would
         // otherwise outlive the edit that fixed them.
@@ -747,14 +704,14 @@ impl Executor {
         if self.no_exec {
             return blocks;
         }
-        // Group executable cells by language, preserving document order.
-        let mut by_lang: HashMap<&'static str, Vec<CellRef>> = HashMap::new();
+        // The executable cells, in document order.
+        let mut cells: Vec<CellRef> = Vec::new();
         for (i, b) in blocks.iter().enumerate() {
             for (cell_block, out) in cells_of(b) {
                 if let Some(c) = &cell_block.cell
-                    && let Some(lang) = kernel_lang(&c.lang)
+                    && render::executes_to_kernel(&c.lang)
                 {
-                    by_lang.entry(lang).or_default().push(CellRef {
+                    cells.push(CellRef {
                         block_index: i,
                         id: cell_block.id.clone(),
                         code: c.code.clone(),
@@ -770,94 +727,88 @@ impl Executor {
             }
         }
 
-        // Drop kernels/caches for languages no longer present in the document.
-        self.langs.retain(|lang, _| by_lang.contains_key(lang));
-
-        if by_lang.is_empty() {
+        // A document with no cells left to run drops the kernel and its warm state.
+        if cells.is_empty() {
+            self.state = LangState::default();
             return blocks;
         }
 
-        // Map cell block index -> its output block (when non-empty), across langs.
+        // Map cell block index -> its output block (when non-empty).
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
         // Container block index -> (folded cell id, its output HTML), for the cells a
         // `:::` div swallowed: those go back into the slot the renderer left inside the
         // container, not into a block of their own.
         let mut slot_fills: HashMap<usize, Vec<(String, String)>> = HashMap::new();
-        let mut tally = CacheTally::default();
-        for (lang, cells) in &by_lang {
-            let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
-            tally += lang_tally;
-            for (cell, out) in cells.iter().zip(&outputs) {
-                if let Some(failure) = out.failure {
-                    self.failures.push(CellFailure {
-                        sourcepos: cell.sourcepos.clone(),
-                        source_file: cell.source_file.clone(),
-                        failure,
-                        hidden: !cell.include,
-                    });
-                    if !cell.include {
-                        self.hidden_failure(cell, failure, out.raised.as_deref());
-                    }
-                }
-                let inner = &out.html;
-                // `include: false` cells run (above) for their kernel-state side
-                // effects but contribute no visible output. Their define bridge is not
-                // output, so it goes out in a `hidden` block (or the container's slot).
+        let (outputs, tally) = self.compute_outputs(&cells).await;
+        for (cell, out) in cells.iter().zip(&outputs) {
+            if let Some(failure) = out.failure {
+                self.failures.push(CellFailure {
+                    sourcepos: cell.sourcepos.clone(),
+                    source_file: cell.source_file.clone(),
+                    failure,
+                    hidden: !cell.include,
+                });
                 if !cell.include {
-                    if !out.bridge.is_empty() {
-                        match &cell.out {
-                            OutTarget::Sibling => {
-                                output_blocks
-                                    .insert(cell.block_index, bridge_block(cell, &out.bridge));
-                            }
-                            OutTarget::Slot(id) => slot_fills
-                                .entry(cell.block_index)
-                                .or_default()
-                                .push((id.clone(), out.bridge.clone())),
+                    self.hidden_failure(cell, failure, out.raised.as_deref());
+                }
+            }
+            let inner = &out.html;
+            // `include: false` cells run (above) for their kernel-state side
+            // effects but contribute no visible output. Their define bridge is not
+            // output, so it goes out in a `hidden` block (or the container's slot).
+            if !cell.include {
+                if !out.bridge.is_empty() {
+                    match &cell.out {
+                        OutTarget::Sibling => {
+                            output_blocks.insert(cell.block_index, bridge_block(cell, &out.bridge));
                         }
+                        OutTarget::Slot(id) => slot_fills
+                            .entry(cell.block_index)
+                            .or_default()
+                            .push((id.clone(), out.bridge.clone())),
                     }
-                    continue;
                 }
-                if inner.trim().is_empty() {
-                    // A labelled figure/table cell that ran but emitted nothing left a
-                    // dead `@fig-`/`@tbl-` anchor render already committed to — only
-                    // knowable now, so warn (it can't be un-burned post-execution).
-                    if let Some(w) = empty_labelled_float_warning(cell, inner) {
-                        crate::log::warn(&w);
-                        // Also a located per-page diagnostic (the same channel the
-                        // static validators feed), so the preview panel shows the
-                        // defect at the cell instead of it living only in the
-                        // terminal. The cell's sourcepos/source_file are the block
-                        // model's own author-file pair, so the location is already
-                        // mapped; a generated block's empty sourcepos (line 0) stays
-                        // unlocated.
-                        let warning = render::Warning::new(w);
-                        self.warnings
-                            .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                                0 => warning,
-                                line => warning.at(cell.source_file.clone(), line),
-                            });
-                    }
-                    continue;
-                }
-                if let Some(w) = undescribed_image_warning(cell, inner) {
+                continue;
+            }
+            if inner.trim().is_empty() {
+                // A labelled figure/table cell that ran but emitted nothing left a
+                // dead `@fig-`/`@tbl-` anchor render already committed to — only
+                // knowable now, so warn (it can't be un-burned post-execution).
+                if let Some(w) = empty_labelled_float_warning(cell, inner) {
                     crate::log::warn(&w);
+                    // Also a located per-page diagnostic (the same channel the
+                    // static validators feed), so the preview panel shows the
+                    // defect at the cell instead of it living only in the
+                    // terminal. The cell's sourcepos/source_file are the block
+                    // model's own author-file pair, so the location is already
+                    // mapped; a generated block's empty sourcepos (line 0) stays
+                    // unlocated.
                     let warning = render::Warning::new(w);
                     self.warnings
                         .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                            0 => warning,
-                            line => warning.at(cell.source_file.clone(), line),
+                            None => warning,
+                            Some(line) => warning.at(cell.source_file.clone(), line),
                         });
                 }
-                match &cell.out {
-                    OutTarget::Sibling => {
-                        output_blocks.insert(cell.block_index, output_block(cell, inner));
-                    }
-                    OutTarget::Slot(id) => slot_fills
-                        .entry(cell.block_index)
-                        .or_default()
-                        .push((id.clone(), output_inner(cell, inner))),
+                continue;
+            }
+            if let Some(w) = undescribed_image_warning(cell, inner) {
+                crate::log::warn(&w);
+                let warning = render::Warning::new(w);
+                self.warnings
+                    .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                        None => warning,
+                        Some(line) => warning.at(cell.source_file.clone(), line),
+                    });
+            }
+            match &cell.out {
+                OutTarget::Sibling => {
+                    output_blocks.insert(cell.block_index, output_block(cell, inner));
                 }
+                OutTarget::Slot(id) => slot_fills
+                    .entry(cell.block_index)
+                    .or_default()
+                    .push((id.clone(), output_inner(cell, inner))),
             }
         }
         // One legible cache line per run (DX9): only when something replayed, so a cold
@@ -866,8 +817,7 @@ impl Executor {
         if tally.cached > 0 {
             crate::log::cache_tally(self.page.as_deref(), tally.cached, tally.ran);
         }
-        // A forced re-run (Restart kernel) applies to every language in this pass,
-        // then clears. Flush any newly executed outputs to `_freeze/` once.
+        // A forced re-run (Restart kernel) applies to this pass, then clears. Flush any newly executed outputs to `_freeze/` once.
         self.force_next = false;
         self.freeze.save();
 
@@ -884,23 +834,18 @@ impl Executor {
         result
     }
 
-    /// Outputs (inner HTML) for one language's cells: restore the unchanged warm
+    /// Outputs (inner HTML) for the document's cells: restore the unchanged warm
     /// prefix + any disk-cached tail, and execute the contiguous range in between
     /// (see [`plan`]). Freshly executed, cacheable, non-error outputs are persisted.
     /// Also returns a [`CacheTally`] (how many cells replayed vs re-ran) so the caller
     /// can print one legible cache summary per run (DX9).
-    async fn compute_outputs(
-        &mut self,
-        lang: &'static str,
-        cells: &[CellRef],
-    ) -> (Vec<CellOut>, CacheTally) {
+    async fn compute_outputs(&mut self, cells: &[CellRef]) -> (Vec<CellOut>, CacheTally) {
+        let lang = KERNEL_LANG;
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
-        let interp = match self.spec(lang) {
-            Some((_, program)) => interp_id(lang, &program).await,
-            None => lang.to_string(),
-        };
+        let program = self.python.path.clone();
+        let interp = interp_id(lang, &program).await;
         let code_refs: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
         let hashes = freeze::cumulative_hashes(&interp, &code_refs);
 
@@ -914,9 +859,8 @@ impl Executor {
         // state only a LIVE kernel holds (`plan()`'s "kernel variable state is never
         // faked" property), so a dead-idle kernel plans exactly like the cold start it
         // is.
-        if let Some(state) = self.langs.get_mut(lang)
-            && state.kernel.as_mut().is_some_and(|k| !k.is_alive())
-        {
+        let state = &mut self.state;
+        if state.kernel.as_mut().is_some_and(|k| !k.is_alive()) {
             crate::log::warn(&format!("{lang} kernel exited; discarding its warm state"));
             state.kernel = None;
             state.ran.clear();
@@ -934,11 +878,7 @@ impl Executor {
                     .get(&freeze_key(&cells[i], &hashes[i]))
                     .is_some()
         };
-        let ran: Vec<String> = self
-            .langs
-            .get(lang)
-            .map(|s| s.ran.iter().map(|r| r.hash.clone()).collect())
-            .unwrap_or_default();
+        let ran: Vec<String> = self.state.ran.iter().map(|r| r.hash.clone()).collect();
         let (shared, run_end) = plan(&ran, &hashes, known, |i| cells[i].cache);
 
         // Per-cell states from the zones `plan()` just computed (pure observation —
@@ -971,14 +911,7 @@ impl Executor {
             };
             emit(
                 &self.sink,
-                crate::protocol::cell_state(
-                    self.page.as_deref(),
-                    &cell.id,
-                    state,
-                    None,
-                    None,
-                    source,
-                ),
+                crate::protocol::cell_state(&cell.id, state, None, None, source),
             );
         }
 
@@ -992,13 +925,9 @@ impl Executor {
         // emits it **only** when it actually pays a cold `Kernel::start`; passing
         // `to_run` lets it build the `build-state` message on that path.
         if to_run > 0 {
-            self.ensure_kernel(lang, to_run).await;
+            self.ensure_kernel(to_run).await;
         }
-        let has_kernel = self
-            .langs
-            .get(lang)
-            .map(|s| s.kernel.is_some())
-            .unwrap_or(false);
+        let has_kernel = self.state.kernel.is_some();
 
         // Kernel BOOT failed (we needed to run cells but couldn't start the kernel).
         // Be honest: the build did NOT succeed, so it must not later emit a clean
@@ -1009,32 +938,25 @@ impl Executor {
         let boot_failed = to_run > 0 && !has_kernel;
         // Whether the kernel this run executes in has run the shared prefix and nothing else
         // (see `LangState::executed`). Read before the loop below adds this run's cells.
-        let pristine = self
-            .langs
-            .get(lang)
-            .is_some_and(|s| s.kernel.is_some() && s.executed == shared);
+        let pristine = has_kernel && self.state.executed == shared;
         if boot_failed {
             emit(
                 &self.sink,
-                crate::protocol::build_state(self.page.as_deref(), "error", 0, to_run as u32, lang),
+                crate::protocol::build_state("error", 0, to_run as u32, lang),
             );
-            emit_cell_errors(&self.sink, self.page.as_deref(), cells, shared..run_end);
+            emit_cell_errors(&self.sink, cells, shared..run_end);
         }
 
         // Outputs already known without running, pulled out before the execute loop
         // so they don't hold a borrow on `self` across `exec_cell`: the warm prefix
         // from the live kernel's in-memory record, the tail from the disk cache.
         let warm: Vec<CellOut> = self
-            .langs
-            .get(lang)
-            .map(|s| {
-                s.ran
-                    .iter()
-                    .take(shared)
-                    .map(|r| r.output.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
+            .state
+            .ran
+            .iter()
+            .take(shared)
+            .map(|r| r.output.clone())
+            .collect();
         let tail: Vec<CellOut> = (run_end..cells.len())
             .map(|i| {
                 let value = self.freeze.get(&freeze_key(&cells[i], &hashes[i]));
@@ -1078,14 +1000,11 @@ impl Executor {
                     outputs.push(match cached {
                         Some(value) => CellOut::restored(cell, value),
                         None => CellOut::failed(
-                            kernel_unavailable_html(
-                                lang,
-                                self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
-                            ),
+                            kernel_unavailable_html(lang, self.state.last_error.as_deref()),
                             Failure::NotRun(NOT_RUN_UNAVAILABLE),
                         ),
                     });
-                } else if !self.kernel_alive(lang) {
+                } else if !self.kernel_alive() {
                     // The kernel was up when this run started but has since exited (an
                     // earlier cell crashed it). Don't run the rest: each `execute`
                     // would just wait out the full cell timeout on a kernel that will
@@ -1099,14 +1018,7 @@ impl Executor {
                     // (This mid-run dead-kernel path is production-only; toy runs rarely hit it.)
                     emit(
                         &sink,
-                        crate::protocol::cell_state(
-                            page.as_deref(),
-                            &cell.id,
-                            "error",
-                            None,
-                            None,
-                            None,
-                        ),
+                        crate::protocol::cell_state(&cell.id, "error", None, None, None),
                     );
                     outputs.push(CellOut::failed(
                         KERNEL_DIED_HTML.to_string(),
@@ -1121,7 +1033,6 @@ impl Executor {
                         emit(
                             &sink,
                             crate::protocol::build_state(
-                                page.as_deref(),
                                 "executing",
                                 ran_count as u32,
                                 to_run as u32,
@@ -1137,20 +1048,11 @@ impl Executor {
                         let t0 = now_ms();
                         emit(
                             &sink,
-                            crate::protocol::cell_state(
-                                page.as_deref(),
-                                &cell.id,
-                                "running",
-                                Some(t0),
-                                None,
-                                None,
-                            ),
+                            crate::protocol::cell_state(&cell.id, "running", Some(t0), None, None),
                         );
                         t0
                     });
-                    let out = self
-                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref(), t0)
-                        .await;
+                    let out = self.exec_cell(&cell.code, &cell.id, t0).await;
                     if let Some(t0) = t0 {
                         let state = if out.failure.is_some() {
                             "error"
@@ -1164,7 +1066,6 @@ impl Executor {
                         emit(
                             &sink,
                             crate::protocol::cell_state(
-                                page.as_deref(),
                                 &cell.id,
                                 state,
                                 Some(t0),
@@ -1246,7 +1147,7 @@ impl Executor {
             // replay produced nothing, and stamping it would relabel yesterday's outputs as
             // today's and destroy the one signal this exists for.
             if run_end > shared {
-                self.stamp_packages(lang, &interp);
+                self.stamp_packages(&interp);
             }
         }
 
@@ -1259,7 +1160,8 @@ impl Executor {
         // run_end) ran as no-ops (empty output); recording them as `ran` would make
         // them part of the warm prefix, so when the kernel later self-heals they'd
         // be skipped instead of re-run — leaving stale/missing output.
-        if has_kernel && let Some(state) = self.langs.get_mut(lang) {
+        if has_kernel {
+            let state = &mut self.state;
             // A kernel that DIED mid-run (an early cell crashed it) now holds
             // nothing: the executed prefix plus the trailing KERNEL_DIED
             // placeholders must NOT be recorded as warm. Otherwise a later
@@ -1280,7 +1182,7 @@ impl Executor {
             };
         }
 
-        // The build for this language settled: report `idle` with the full count.
+        // The build settled: report `idle` with the full count.
         // An all-cached page (to_run == 0) reaches here without ever emitting
         // `warming-kernel`/`executing`, so its first and only signal is `idle`.
         // Skipped when the kernel boot failed: that build already settled on `error`
@@ -1288,13 +1190,7 @@ impl Executor {
         if !boot_failed {
             emit(
                 &sink,
-                crate::protocol::build_state(
-                    page.as_deref(),
-                    "idle",
-                    to_run as u32,
-                    to_run as u32,
-                    lang,
-                ),
+                crate::protocol::build_state("idle", to_run as u32, to_run as u32, lang),
             );
         }
         // Cache legibility (DX9): the warm prefix `[0, shared)` and the disk tail
@@ -1305,7 +1201,7 @@ impl Executor {
         // restored from DISK: the warm in-memory prefix was produced by the kernel running
         // in this process, so it cannot predate a package change this process could see.
         if cells.len() > run_end {
-            self.warn_if_packages_moved(lang, packages_on_entry.as_deref());
+            self.warn_if_packages_moved(packages_on_entry.as_deref());
         }
         (
             outputs,
@@ -1316,15 +1212,11 @@ impl Executor {
         )
     }
 
-    /// The package set this language's interpreter currently has, or `None` when it cannot
-    /// be probed (no interpreter, a probe that failed). Memoized inside
-    /// [`crate::packages::manifest`], so this is one subprocess per interpreter per process.
-    fn packages_now(&self, lang: &str) -> Option<crate::packages::Manifest> {
-        let program = match lang {
-            "python" => &self.python.path,
-            _ => return None,
-        };
-        crate::packages::manifest(program)
+    /// The package set the interpreter currently has, or `None` when it cannot be probed
+    /// (no interpreter, a probe that failed). Memoized inside [`crate::packages::manifest`],
+    /// so this is one subprocess per interpreter per process.
+    fn packages_now(&self) -> Option<crate::packages::Manifest> {
+        crate::packages::manifest(&self.python.path)
     }
 
     /// Record the package digest the outputs just executed were produced under, under the
@@ -1332,8 +1224,8 @@ impl Executor {
     /// language: the entries of two interpreters never share keys, so neither may their
     /// digest, or a run under one relabels the other's and its next replay warns about a
     /// change that never happened (audit exec #12).
-    fn stamp_packages(&mut self, lang: &'static str, interp: &str) {
-        if let Some(m) = self.packages_now(lang) {
+    fn stamp_packages(&mut self, interp: &str) {
+        if let Some(m) = self.packages_now() {
             self.freeze.record_packages(interp, &m.digest);
         }
     }
@@ -1349,7 +1241,7 @@ impl Executor {
     ///
     /// Three ways this stays quiet, each deliberate: an unprobeable interpreter (we do not
     /// know, which is not the same as "it changed"), a cache written before the digest was
-    /// recorded (likewise), and a matching digest. Announced once per process per language,
+    /// recorded (likewise), and a matching digest. Announced once per process,
     /// through the same `announce_once` the kernel failure uses, because a preview rebuilds
     /// on every keystroke.
     ///
@@ -1358,8 +1250,9 @@ impl Executor {
     /// already written this run's own digest over it, so reading it here compared the digest
     /// against itself — and `packages::manifest` is memoized process-wide, making the two
     /// identical by construction.
-    fn warn_if_packages_moved(&self, lang: &'static str, was: Option<&str>) {
-        let now = self.packages_now(lang);
+    fn warn_if_packages_moved(&self, was: Option<&str>) {
+        let lang = KERNEL_LANG;
+        let now = self.packages_now();
         if !crate::packages::crossed(was, now.as_ref().map(|m| m.digest.as_str())) {
             return;
         }
@@ -1375,7 +1268,7 @@ impl Executor {
         ));
     }
 
-    /// Ensure a live kernel for `lang` before executing. Cases, in order:
+    /// Ensure a live kernel before executing. Cases, in order:
     ///   - a kernel that died mid-session is dropped and respawned (self-healing,
     ///     so a crash doesn't make every later cell hang on the execute timeout);
     ///   - after a failed *start* we back off for `KERNEL_RETRY_AFTER` before
@@ -1387,17 +1280,17 @@ impl Executor {
     ///
     /// The `warming-kernel` signal is emitted **only** on the genuine cold-start
     /// path, so a still-live kernel never shows a long warm-up.
-    async fn ensure_kernel(&mut self, lang: &'static str, to_run: usize) {
-        // Build the launch spec before borrowing the per-language state mutably.
-        let Some((spec, program)) = self.spec(lang) else {
-            return;
-        };
+    async fn ensure_kernel(&mut self, to_run: usize) {
+        let lang = KERNEL_LANG;
+        // Build the launch spec before borrowing the kernel state mutably.
+        let program = self.python.path.clone();
+        let spec = KernelSpec::python(&program);
         let work_dir = self.work_dir.clone();
         // Owned before the mutable borrow of `state` below, so the announce can name the
         // resolved interpreter + its provenance without a second borrow of `self`.
         let prov = self.python.provenance;
         {
-            let state = self.langs.entry(lang).or_default();
+            let state = &mut self.state;
             if let Some(k) = state.kernel.as_mut() {
                 if k.is_alive() {
                     return; // already warm — no boot, no warming signal
@@ -1411,9 +1304,9 @@ impl Executor {
             {
                 return; // still backing off; cells render as source (no signal)
             }
-            // Committed to a cold boot: announce which interpreter runs
-            // this language, once per executor. Only languages the document actually
-            // runs reach here, so a doc with no cells never claims an interpreter.
+            // Committed to a cold boot: announce which interpreter runs the cells, once
+            // per executor. Only a document with cells to run reaches here, so a doc with
+            // no cells never claims an interpreter.
             if !state.announced {
                 crate::log::kernel(&format!(
                     "{lang} -> {}  (from {})",
@@ -1428,13 +1321,7 @@ impl Executor {
         // that presents `warming-kernel`, so the signal is honest.
         emit(
             &self.sink,
-            crate::protocol::build_state(
-                self.page.as_deref(),
-                "warming-kernel",
-                0,
-                to_run as u32,
-                lang,
-            ),
+            crate::protocol::build_state("warming-kernel", 0, to_run as u32, lang),
         );
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
         // Retry a transient start failure with a fresh port allocation. That re-roll now
@@ -1442,7 +1329,7 @@ impl Executor {
         // because every caller needs it and the one that lacked it flaked; before it
         // existed here, a lost port race silently rendered this doc's cells as source.
         let started = Kernel::start_with_retry(&spec, work_dir.as_deref()).await;
-        let state = self.langs.entry(lang).or_default();
+        let state = &mut self.state;
         match started {
             Ok(k) => {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
@@ -1460,9 +1347,7 @@ impl Executor {
                 // `announce_once` is what makes the per-page repeat one line: the answer
                 // to "which interpreter, and why" cannot differ between pages of one run.
                 announce_once(&Self::kernel_unavailable_message(
-                    lang,
                     &program.display().to_string(),
-                    "TALIESIN_PYTHON",
                     Some(&e.to_string()),
                 ));
                 state.failed_at = Some(Instant::now());
@@ -1471,42 +1356,29 @@ impl Executor {
         }
     }
 
-    /// Whether `lang` currently has a *live* kernel process. Used mid-run to bail
-    /// out instead of waiting out the cell timeout on a kernel that just died.
-    fn kernel_alive(&mut self, lang: &'static str) -> bool {
-        self.langs
-            .get_mut(lang)
-            .and_then(|s| s.kernel.as_mut())
-            .is_some_and(|k| k.is_alive())
+    /// Whether there is a *live* kernel process. Used mid-run to bail out instead of
+    /// waiting out the cell timeout on a kernel that just died.
+    fn kernel_alive(&mut self) -> bool {
+        self.state.kernel.as_mut().is_some_and(|k| k.is_alive())
     }
 
     /// Run one cell, streaming its output to the client as it arrives (item 175b).
     ///
-    /// `cell_id`, `page` and `started_ms` (the cell's `running` stamp) only address the
+    /// `cell_id` and `started_ms` (the cell's `running` stamp) only address the
     /// live messages; they do not affect the returned HTML, which is still the
     /// authoritative render of the whole output vector and is what gets cached and diffed
     /// into the block.
-    async fn exec_cell(
-        &mut self,
-        lang: &'static str,
-        code: &str,
-        cell_id: &str,
-        page: Option<&str>,
-        started_ms: Option<u64>,
-    ) -> CellOut {
+    async fn exec_cell(&mut self, code: &str, cell_id: &str, started_ms: Option<u64>) -> CellOut {
         // Cloned before the kernel borrow so the callback can emit while `self` is
         // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
         // same reason: it is read back after the borrow ends.
         let sink = self.sink.clone();
         let interrupt = self.interrupt.clone();
         let paths = self.paths.clone();
-        let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
-        let Some(state) = self.langs.get_mut(lang) else {
-            return CellOut::default(); // kernel unavailable: cell renders as source
-        };
+        let state = &mut self.state;
         let Some(kernel) = state.kernel.as_mut() else {
-            return CellOut::default();
+            return CellOut::default(); // kernel unavailable: cell renders as source
         };
         // Counted before the send: a cell that errors, is interrupted or never replies has
         // still been handed to the kernel and may have changed its state.
@@ -1533,12 +1405,7 @@ impl Executor {
                     crate::kernel::LiveOp::ReplaceLast(o) => ("replace_last", o),
                     crate::kernel::LiveOp::Reset => {
                         let running = crate::protocol::cell_state(
-                            page.as_deref(),
-                            &cell_id,
-                            "running",
-                            started_ms,
-                            None,
-                            None,
+                            &cell_id, "running", started_ms, None, None,
                         );
                         emit(&sink, running);
                         return;
@@ -1547,7 +1414,6 @@ impl Executor {
                 emit(
                     &sink,
                     crate::protocol::cell_output_append(
-                        page.as_deref(),
                         &cell_id,
                         op,
                         &render_outputs(&[paths.apply(shown)]),
@@ -1623,7 +1489,7 @@ impl Executor {
 ///
 /// **One definition, because two rules turn on it and they must not disagree.** [`plan`]
 /// keeps that cell and everything after it out of the warm prefix and re-runs the whole
-/// tail; the persist loop in [`Executor::execute_lang`] refuses to write any of that tail
+/// tail; the persist loop in `Executor::compute_outputs` refuses to write any of that tail
 /// to disk. The second rule was missing, so `plan`'s re-run was a runtime *mask* over disk
 /// entries that were already false when written — and deleting the directive lifted the
 /// mask and published the contradiction.
@@ -2105,12 +1971,7 @@ mod tests {
         // exist (PA-B1). It must never tell a headless caller to click it, must route to
         // `taliesin doctor`, and must name the env var to fix.
         for last in [Some("boom"), None] {
-            let msg = Executor::kernel_unavailable_message(
-                "python",
-                "/usr/bin/python3",
-                "TALIESIN_PYTHON",
-                last,
-            );
+            let msg = Executor::kernel_unavailable_message("/usr/bin/python3", last);
             assert!(
                 !msg.to_lowercase().contains("restart kernel"),
                 "must not reference the dev-menu Restart action: {msg}"
@@ -2122,25 +1983,6 @@ mod tests {
             assert!(
                 msg.contains("TALIESIN_PYTHON"),
                 "must name the env var: {msg}"
-            );
-        }
-    }
-
-    /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes
-    /// executes (`taliesin_core::render::executes_to_kernel`), while `kernel_lang` is
-    /// what actually runs one. If the two sets ever drift, a `label: fig-*` on a lang
-    /// core thinks executes but the kernel does not (or the reverse) re-opens the
-    /// phantom-anchor bug those two functions exist to prevent. Pin them equal — this
-    /// is the "shared executable set" the render-side comment relies on.
-    #[test]
-    fn kernel_lang_agrees_with_cores_executable_set() {
-        for lang in [
-            "python", "r", "bash", "sql", "julia", "js", "mermaid", "ruby", "",
-        ] {
-            assert_eq!(
-                kernel_lang(lang).is_some(),
-                taliesin_core::render::executes_to_kernel(lang),
-                "kernel_lang and executes_to_kernel disagree on {lang:?}"
             );
         }
     }
@@ -2930,11 +2772,10 @@ mod tests {
         );
 
         let msgs = captured.lock().unwrap();
-        // Every `build-state` is well-formed for this page. (The same sink now also
-        // carries `cell-state` messages — covered by the cell-state tests below — so
-        // this is scoped to build-state rather than asserting over every message.)
+        // Every `build-state` is well-formed. (The same sink now also carries
+        // `cell-state` messages — covered by the cell-state tests below — so this is
+        // scoped to build-state rather than asserting over every message.)
         for v in msgs.iter().filter(|v| v["type"] == "build-state") {
-            assert_eq!(v["page"], "ch1.tmd");
             assert_eq!(v["lang"], "python");
         }
         // The "executing" `ran` values climb 1, 2, 3 (one per cell), each ≤ total.
@@ -3022,10 +2863,6 @@ mod tests {
         }
 
         let msgs = captured.lock().unwrap();
-        // Every cell-state is well-formed and tagged with this page.
-        for v in msgs.iter().filter(|v| v["type"] == "cell-state") {
-            assert_eq!(v["page"], "ch1.tmd", "cell-state page wrong: {v}");
-        }
         // The two clean cells go queued → running → done, in that order.
         for id in ["b-1", "b-2"] {
             assert_eq!(
@@ -3111,10 +2948,6 @@ mod tests {
             appends.len()
         );
         for (_, v) in &appends {
-            assert_eq!(
-                v["page"], "ch1.tmd",
-                "append is not tagged with its page: {v}"
-            );
             assert!(
                 v["html"].as_str().unwrap().contains("tali-stream"),
                 "append must carry rendered HTML: {v}"
@@ -3583,19 +3416,14 @@ mod tests {
         // OOM kill would; then wait until the child is actually reaped, so the next
         // run's liveness probe cannot race the kill.
         let pid = ex
-            .langs
-            .get("python")
-            .and_then(|s| s.kernel.as_ref())
+            .state
+            .kernel
+            .as_ref()
             .and_then(Kernel::running_pid)
             .expect("a warm executor owns a kernel with a pid");
         unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
         let deadline = Instant::now() + Duration::from_secs(10);
-        while ex
-            .langs
-            .get_mut("python")
-            .and_then(|s| s.kernel.as_mut())
-            .is_some_and(|k| k.is_alive())
-        {
+        while ex.state.kernel.as_mut().is_some_and(|k| k.is_alive()) {
             assert!(Instant::now() < deadline, "SIGKILLed kernel never reaped");
             std::thread::sleep(Duration::from_millis(20));
         }
@@ -3629,7 +3457,7 @@ mod tests {
         );
         // And nothing EMPTY was recorded as warm: replaying that record on the next
         // unchanged rebuild is what made the loss stick.
-        let ran = &ex.langs.get("python").expect("python state").ran;
+        let ran = &ex.state.ran;
         assert_eq!(
             ran.len(),
             2,
@@ -3657,7 +3485,7 @@ mod tests {
         // the run-range → error mapping is exactly the cells in the half-open range.
         let (sink, captured) = capturing_sink();
         let cells = vec![cell("b-0"), cell("b-1"), cell("b-2"), cell("b-3")];
-        emit_cell_errors(&sink, Some("ch1.tmd"), &cells, 1..3);
+        emit_cell_errors(&sink, &cells, 1..3);
         let msgs = captured.lock().unwrap();
         let errored: Vec<&str> = msgs
             .iter()
@@ -3669,10 +3497,7 @@ mod tests {
             vec!["b-1", "b-2"],
             "exactly the half-open run range must be marked `error`",
         );
-        // Page is carried; out-of-range cells emit nothing here.
-        for v in msgs.iter() {
-            assert_eq!(v["page"], "ch1.tmd");
-        }
+        // Out-of-range cells emit nothing here.
         assert_eq!(msgs.len(), 2, "only the two in-range cells emit: {msgs:?}");
     }
 

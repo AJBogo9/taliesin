@@ -250,7 +250,7 @@ pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
 /// "which cells does this document have" (reading `block.cell` directly is the bug it
 /// exists to close — it forgets every cell inside a callout or a container).
 ///
-/// Only [`crate::exec::kernel_lang`] languages count. That is the same question `build` asks
+/// Only `render::executes_to_kernel` languages count. That is the same question `build` asks
 /// before it demands an interpreter, so the number is exactly the work `--check-only` did
 /// not do.
 fn collect_diagnostics(path: &Path, kernel_cells: &mut usize) -> Result<Vec<Diagnostic>, String> {
@@ -325,7 +325,7 @@ fn kernel_cell_count(blocks: &[taliesin_core::Block]) -> usize {
     blocks
         .iter()
         .flat_map(taliesin_core::render::Block::cells)
-        .filter(|c| crate::exec::kernel_lang(&c.lang).is_some())
+        .filter(|c| taliesin_core::render::executes_to_kernel(&c.lang))
         .count()
 }
 

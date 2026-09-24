@@ -532,9 +532,9 @@
      one word. It inherits the note's own face and size. */
   .tali-sidenote-back { display: none; }
   .tali-sidenote:target .tali-sidenote-back { display: inline; margin-left: .5em; }
-  /* Paper has no viewport and `taliesin pdf` lays out to a fixed page box whose side
-     margins (~90pt, measured on A4) are narrower than the note column, so the `-13.5rem`
-     pull would carry the note off the page. Print every note in the flow instead: a
+  /* Paper has no viewport, and a printed page box's side margins (~90pt, measured on A4)
+     are narrower than the note column, so the `-13.5rem` pull would carry the note off the
+     page. Print every note in the flow instead: a
      printed note must be *present* above all, and this is the one output where the reader
      cannot tap to reveal it. Verified by rendering: both notes appear in full in the PDF.
 
@@ -542,8 +542,8 @@
      word the marker sits on, so a printed paragraph carrying two notes reads in three
      pieces. The fix is not a CSS one — it is `float: footnote` (CSS Generated Content for
      Paged Media, which paged.js implements) putting notes at the foot of the printed
-     page. That belongs to the print track (item 159), not here, because it needs the page
-     box to reserve the space. Losing a note would be a defect; this is a cosmetic debt. */
+     page, which needs a paginator to reserve the space; the print track that would have
+     carried one was cut. Losing a note would be a defect; this is a cosmetic debt. */
   @media print {
     /* The reading grid is a screen layout; paper has one column. Collapsing the grid
        collapses every escape and the margin column with it, in one declaration, instead of

@@ -1,6 +1,6 @@
 //! The multi-page **site** dev server: a live preview of a whole website.
 //!
-//! It generalises the single-document [`crate::serve`] server to a project:
+//! One project per server; a single document previewed on its own is a project of one page.
 //!
 //!   - the URL selects which page to render (navigation between pages is just a
 //!     full page load, so navbar / prev-next links work with no SPA),
@@ -20,7 +20,6 @@ use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,14 +36,15 @@ use crate::serve::{
 mod exec_pool;
 use exec_pool::ExecPool;
 
-/// The whole live site: one project, served through the per-page live path. One builder
-/// task + one file watcher drive it.
-struct SiteApp {
-    /// The project being served.
-    root: Arc<Project>,
+/// The served project: the one thing a preview serves. Owns the live state the builders and
+/// router act on (the discovered [`Site`], plus the live per-page block state + broadcast
+/// channels, created lazily on first visit) and the two build lanes one builder task each
+/// drains.
+struct Project {
+    dir: PathBuf,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
-    /// The bypass lane for pages that need no kernel (AP3-1). See [`SiteApp::queue_build`].
+    /// The bypass lane for pages that need no kernel (AP3-1). See [`Project::queue_build`].
     fast_tx: mpsc::UnboundedSender<BuildMsg>,
     /// The OS pid of the code cell executing right now, or 0 when none is.
     ///
@@ -59,77 +59,6 @@ struct SiteApp {
     /// than the one asking. That is deliberate and cannot be narrowed; what the page that
     /// loses the cell is told about it is [`ExecLane`]'s job (A17).
     interrupt: Arc<std::sync::atomic::AtomicU32>,
-}
-
-impl SiteApp {
-    /// Queue a page rebuild on the lane that fits it (AP3-1).
-    ///
-    /// **The defect.** One builder task consumed the whole server's build queue, awaiting
-    /// each page to completion. It serialized on the wrong predicate: a page with **no code
-    /// cells** needs no kernel, yet it queued behind kernel work it would never use.
-    /// Measured on a two-page preview, a cell-free page's trivial prose edit landed in
-    /// **0.11 s** alone and **12.15 s** (110x) when an unrelated page was 1.2 s into a 12 s
-    /// `{python}` cell.
-    ///
-    /// **Why not just parallelise the builder.** Serialization is what makes the
-    /// task-owned `ExecPool` race-free, and `ExecPool` is under the M6a freeze. So there
-    /// are two *serial* lanes, not concurrent executors: the exec lane owns the pool and is
-    /// unchanged, and the fast lane owns nothing and never touches it. Neither lane gains
-    /// any concurrency of its own.
-    ///
-    /// **Routing, and why it cannot race.** A page's lane is decided by what its LAST
-    /// completed build found (`PageDoc::needs_kernel`, which starts `true` so an unbuilt
-    /// page takes the safe lane). That flag is written only at the end of a build, so
-    /// while a build of page P is in flight the flag still holds the value that routed it,
-    /// and every queued message for P routes to the same lane. Both lanes being serial,
-    /// P's builds stay totally ordered and the two lanes can never build P at once.
-    ///
-    /// The one cost is the edit that adds a page's *first* code cell: it routes to the fast
-    /// lane, which renders, discovers cells, and hands the message to the exec lane —
-    /// one wasted render, once, and the flag is right from then on.
-    fn queue_build(&self, rel: String) {
-        let cell_free = self
-            .root
-            .pages
-            .lock()
-            .get(&rel)
-            .map(|ps| ps.doc.cell_free)
-            .unwrap_or(false);
-        let tx = if cell_free {
-            &self.fast_tx
-        } else {
-            &self.build_tx
-        };
-        let _ = tx.send(BuildMsg::Build(rel));
-    }
-
-    /// Queue [`BuildMsg::IfMoved`] on the lane that fits the page, as [`queue_build`]
-    /// routes. On the exec lane it waits behind the page's own build in flight, so it is
-    /// judged against what that build left.
-    ///
-    /// [`queue_build`]: SiteApp::queue_build
-    fn queue_if_moved(&self, rel: String, paths: Vec<PathBuf>) {
-        let cell_free = self
-            .root
-            .pages
-            .lock()
-            .get(&rel)
-            .map(|ps| ps.doc.cell_free)
-            .unwrap_or(false);
-        let tx = if cell_free {
-            &self.fast_tx
-        } else {
-            &self.build_tx
-        };
-        let _ = tx.send(BuildMsg::IfMoved(rel, paths));
-    }
-}
-
-/// The served project. Owns the live state the builder and router act on: the discovered
-/// [`Site`], plus the live per-page block state + broadcast channels, created lazily on
-/// first visit.
-struct Project {
-    dir: PathBuf,
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
     /// Who the serial exec lane is running cells for, and who lost a cell to someone
@@ -197,6 +126,92 @@ fn digest_of(path: &Path) -> u64 {
 }
 
 impl Project {
+    /// A project served from `dir` with no live pages yet, and the receiving ends of its
+    /// two build lanes (the exec lane's, then the bypass lane's) for the builder tasks.
+    fn new(
+        dir: PathBuf,
+        site: Site,
+        scope: Option<PathBuf>,
+    ) -> (
+        Project,
+        mpsc::UnboundedReceiver<BuildMsg>,
+        mpsc::UnboundedReceiver<BuildMsg>,
+    ) {
+        let (build_tx, build_rx) = mpsc::unbounded_channel();
+        let (fast_tx, fast_rx) = mpsc::unbounded_channel();
+        let project = Project {
+            dir,
+            build_tx,
+            fast_tx,
+            interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            site: Mutex::new(site),
+            pages: Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope,
+            records: Mutex::new(HashMap::new()),
+        };
+        (project, build_rx, fast_rx)
+    }
+
+    /// Queue a page rebuild on the lane that fits it (AP3-1).
+    ///
+    /// **The defect.** One builder task consumed the whole server's build queue, awaiting
+    /// each page to completion. It serialized on the wrong predicate: a page with **no code
+    /// cells** needs no kernel, yet it queued behind kernel work it would never use.
+    /// Measured on a two-page preview, a cell-free page's trivial prose edit landed in
+    /// **0.11 s** alone and **12.15 s** (110x) when an unrelated page was 1.2 s into a 12 s
+    /// `{python}` cell.
+    ///
+    /// **Why not just parallelise the builder.** Serialization is what makes the
+    /// task-owned `ExecPool` race-free, and `ExecPool` is under the M6a freeze. So there
+    /// are two *serial* lanes, not concurrent executors: the exec lane owns the pool and is
+    /// unchanged, and the fast lane owns nothing and never touches it. Neither lane gains
+    /// any concurrency of its own.
+    ///
+    /// **Routing, and why it cannot race.** A page's lane is decided by what its LAST
+    /// completed build found (`PageDoc::needs_kernel`, which starts `true` so an unbuilt
+    /// page takes the safe lane). That flag is written only at the end of a build, so
+    /// while a build of page P is in flight the flag still holds the value that routed it,
+    /// and every queued message for P routes to the same lane. Both lanes being serial,
+    /// P's builds stay totally ordered and the two lanes can never build P at once.
+    ///
+    /// The one cost is the edit that adds a page's *first* code cell: it routes to the fast
+    /// lane, which renders, discovers cells, and hands the message to the exec lane —
+    /// one wasted render, once, and the flag is right from then on.
+    fn queue_build(&self, rel: String) {
+        let cell_free = self
+            .pages
+            .lock()
+            .get(&rel)
+            .map(|ps| ps.doc.cell_free)
+            .unwrap_or(false);
+        let tx = if cell_free {
+            &self.fast_tx
+        } else {
+            &self.build_tx
+        };
+        let _ = tx.send(BuildMsg::Build(rel));
+    }
+
+    /// Queue [`BuildMsg::IfMoved`] on the lane that fits the page, as [`queue_build`]
+    /// routes. On the exec lane it waits behind the page's own build in flight, so it is
+    /// judged against what that build left.
+    ///
+    /// [`queue_build`]: Project::queue_build
+    fn queue_if_moved(&self, rel: String, paths: Vec<PathBuf>) {
+        let cell_free = self
+            .pages
+            .lock()
+            .get(&rel)
+            .map(|ps| ps.doc.cell_free)
+            .unwrap_or(false);
+        let tx = if cell_free {
+            &self.fast_tx
+        } else {
+            &self.build_tx
+        };
+        let _ = tx.send(BuildMsg::IfMoved(rel, paths));
+    }
     /// Re-discover this project the same way it was discovered, scope included.
     fn rediscover(&self) -> Site {
         match &self.scope {
@@ -304,7 +319,7 @@ fn resolve_page_rel(project: &Project, sub: &str) -> Option<String> {
 
 /// What the serial exec lane is doing, as the websocket task needs to see it.
 ///
-/// **Why it exists (A17).** [`SiteApp::interrupt`] is one pool-wide pid, so the
+/// **Why it exists (A17).** [`Project::interrupt`] is one pool-wide pid, so the
 /// `restart_kernel` arm SIGINTs whatever cell is executing *anywhere* in the project. That
 /// is deliberate: the exec lane is serial, so a page's own Restart is queued behind the
 /// runaway build it is meant to abort, and the server-wide SIGINT is the only thing that
@@ -408,10 +423,6 @@ struct PageDoc {
     /// different title in reach is how the first one drifted.
     tab_title: String,
     toc: bool,
-    /// The chrome's own markup for this page (SEO meta, feed links, the draft banner).
-    /// No longer anything the AUTHOR wrote: the front-matter `include-*`/`css` family went
-    /// on 2026-08-02 and `_site.yml`'s `head:` on 2026-08-18, so nothing merges here.
-    includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     errored: bool,
@@ -422,7 +433,7 @@ struct PageDoc {
     /// `serve::DocState::generation`; see [`protocol::full_render`].
     generation: u64,
     /// Whether this page's LAST completed build found no kernel-executing cell, so its
-    /// next rebuild can take the bypass lane (AP3-1). See [`SiteApp::queue_build`] for why
+    /// next rebuild can take the bypass lane (AP3-1). See [`Project::queue_build`] for why
     /// this is read from the last build rather than the current source, and why that cannot
     /// race. Deliberately `false` by default: an unbuilt page takes the safe lane.
     cell_free: bool,
@@ -708,28 +719,15 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             format!("no .tmd pages found under {}", root.display()),
         ));
     }
-    let (build_tx, build_rx) = mpsc::unbounded_channel();
-    let (fast_tx, fast_rx) = mpsc::unbounded_channel();
-    let app = Arc::new(SiteApp {
-        root: Arc::new(Project {
-            dir: root.clone(),
-            site: Mutex::new(site),
-            pages: Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: scoped,
-            records: Mutex::new(HashMap::new()),
-        }),
-        build_tx,
-        fast_tx,
-        interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
-    });
+    let (project, build_rx, fast_rx) = Project::new(root.clone(), site, scoped);
+    let project = Arc::new(project);
     // Before the watcher can fire: the record has to describe the discovery the server
     // booted with, or the first front-matter edit of the session reads as "unchanged".
-    app.root.seed_records();
+    project.seed_records();
 
-    spawn_builder(app.clone(), build_rx);
-    spawn_fast_builder(app.clone(), fast_rx);
-    spawn_watcher(app.clone());
+    spawn_builder(project.clone(), build_rx);
+    spawn_fast_builder(project.clone(), fast_rx);
+    spawn_watcher(project.clone());
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
@@ -737,7 +735,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         .route("/search-index.js", get(search_index_js))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
-        .with_state(app.clone());
+        .with_state(project.clone());
     let router = with_identity(router, &session_key);
     let router = with_host_guard(router);
 
@@ -780,11 +778,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             None => open_in_browser(&local),
         }
     }
-    // `into_make_service_with_connect_info` surfaces the peer address to the router.
-    let server = axum::serve(
-        listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
-    );
+    let server = axum::serve(listener, router.into_make_service());
     // Race the server against a shutdown signal so Ctrl-C/SIGTERM returns cleanly and
     // the runtime teardown in `run` can reap the warm pool + kernels (see
     // `crate::serve::shutdown_signal`).
@@ -807,10 +801,6 @@ async fn favicon() -> impl IntoResponse {
     )
 }
 
-/// The full-text search index as a `search-index.js` script (assigns
-/// `window.TALIESIN_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
-/// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
-/// under file:// for a built book opened from disk.
 /// Serve the vendored mermaid library so a diagram in **preview** needs no network
 /// (OFF-2). The library is `include_str!`-compiled into the binary, so this reads nothing
 /// from disk and cannot 404. Immutable-cached: the bytes only change when the binary does.
@@ -830,8 +820,12 @@ async fn mermaid_lib_js() -> impl IntoResponse {
     )
 }
 
-async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    let json = { app.root.site.lock().search_index_json.clone() };
+/// The full-text search index as a `search-index.js` script (assigns
+/// `window.TALIESIN_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
+/// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
+/// under file:// for a built book opened from disk.
+async fn search_index_js(State(project): State<Arc<Project>>) -> impl IntoResponse {
+    let json = { project.site.lock().search_index_json.clone() };
     let json = if json.is_empty() {
         "[]".to_string()
     } else {
@@ -849,7 +843,7 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
 
 /// Resolve a `GET` or `HEAD` to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
-    State(app): State<Arc<SiteApp>>,
+    State(project): State<Arc<Project>>,
     method: axum::http::Method,
     uri: axum::http::Uri,
 ) -> axum::response::Response {
@@ -863,7 +857,6 @@ async fn page_or_asset(
             .into_response();
     }
     let path = percent_decode(uri.path().trim_start_matches('/'));
-    let project = &app.root;
     let sub = path.as_str();
     let lookup = if sub.is_empty() {
         // For a single-document preview the document IS the root. `preview note.tmd`
@@ -886,24 +879,9 @@ async fn page_or_asset(
     // 1) A live page of this project.
     let page = { project.site.lock().page(&lookup).cloned() };
     if let Some(page) = page {
-        return Html(ensure_and_render_page(&app, project, &page)).into_response();
+        return Html(ensure_and_render_page(&project, &page)).into_response();
     }
-    // 2) The project's route-served search index (not written to disk in preview). For a
-    //    mount this arrives as `/<prefix>/search-index.js`; without this Cmd-K search on a
-    //    mounted page would 404.
-    if lookup == "search-index.js" {
-        let j = project.site.lock().search_index_json.clone();
-        let j = if j.is_empty() { "[]".to_string() } else { j };
-        return (
-            [(
-                axum::http::header::CONTENT_TYPE,
-                "text/javascript; charset=utf-8",
-            )],
-            format!("window.TALIESIN_SEARCH_INDEX={j};"),
-        )
-            .into_response();
-    }
-    // 3) A static asset under this project's root, else this project's own 404 page
+    // 2) A static asset under this project's root, else this project's own 404 page
     //    (with a 404 status) so preview mirrors the deployed `404.html`.
     let asset = serve_asset(&project.dir, &lookup);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
@@ -932,7 +910,7 @@ fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
 
 /// Ensure the page has live state (creating it + queuing an execution build on
 /// first visit), then render its full live HTML for the first paint.
-fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) -> String {
+fn ensure_and_render_page(project: &Arc<Project>, page: &Page) -> String {
     let rel = page.rel.clone();
     if !project.pages.lock().contains_key(&rel) {
         // First-paint render (markdown + listing cards, no code execution yet);
@@ -947,7 +925,7 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
             .lock()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
-        app.queue_build(rel.clone());
+        project.queue_build(rel.clone());
     }
     site_page_html(project, page)
 }
@@ -973,7 +951,6 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
         tab_title: site.page_title(page, &pass.doc),
         toc: pass.toc,
-        includes: pass.doc.includes,
         blocks: pass.doc.blocks,
         diagnostics: pass.diags,
         errored: false,
@@ -1012,7 +989,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
                 tab_title: ps.doc.tab_title.clone(),
                 toc: ps.doc.toc,
                 body: ps.doc.body_html(),
-                includes: ps.doc.includes.clone(),
                 generation: ps.doc.generation,
             })
             .unwrap_or_default()
@@ -1059,7 +1035,6 @@ struct LivePage {
     tab_title: String,
     toc: bool,
     body: String,
-    includes: taliesin_core::render::PageIncludes,
     generation: u64,
 }
 
@@ -1075,7 +1050,6 @@ struct LivePage {
 fn shell_digest(site: &Site, dir: &Path, page: &Page, doc: &PageDoc) -> u64 {
     let live = LivePage {
         toc: doc.toc,
-        includes: doc.includes.clone(),
         ..LivePage::default()
     };
     let html = live_page_html(&SiteFrame::of(site, page), dir, page, &live);
@@ -1091,14 +1065,10 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         tab_title,
         toc,
         body,
-        includes: page_includes,
         generation,
     } = live;
     let (toc, generation) = (*toc, *generation);
     let chrome = &frame.chrome;
-    // Site-level `format: html:` includes first, then this page's own front matter.
-    let mut includes = chrome.includes.clone();
-    includes.merge(page_includes);
 
     // The TOC rail is an empty landmark the client fills once it has the headings; the
     // wrapper class that reserves the column for it is `SiteCtx::layout`'s business, not
@@ -1181,12 +1151,11 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         ship_katex: true,
         extra_head: &extra_head,
         body_class: &body_class,
-        include_in_header: &includes.in_header,
-        include_before_body: &includes.before_body,
+        head: &chrome.head,
+        before_body: &chrome.banner,
         body: &body,
         scripts_pre: &scripts_pre,
         scripts_post: &scripts_post,
-        include_after_body: &includes.after_body,
         ..taliesin_core::PageParts::defaults()
     })
 }
@@ -1221,7 +1190,7 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
-    State(app): State<Arc<SiteApp>>,
+    State(project): State<Arc<Project>>,
 ) -> axum::response::Response {
     if !ws_origin_ok(&headers) {
         return (
@@ -1232,15 +1201,14 @@ async fn ws_handler(
     }
     let rel = q.get("page").cloned().unwrap_or_default();
     ws.max_message_size(crate::serve::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| client_conn(socket, app, rel))
+        .on_upgrade(move |socket| client_conn(socket, project, rel))
         .into_response()
 }
 
-async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
+async fn client_conn(socket: WebSocket, project: Arc<Project>, page_key: String) {
     let (mut sink, mut stream) = socket.split();
 
     // Normalise the client's page key to a source rel (the key may be a url).
-    let project = app.root.clone();
     let rel = resolve_page_rel(&project, &page_key);
 
     // A `?page=` the owning project cannot resolve names no page at all, so there is
@@ -1268,7 +1236,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
         (full_render_json(&ps.doc), ps.tx.subscribe(), created)
     };
     if created {
-        app.queue_build(rel.clone());
+        project.queue_build(rel.clone());
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -1310,9 +1278,9 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                         // Decide that first and record it under the same lock that
                         // publishes it, so the victim's own in-flight build can say where
                         // its `KeyboardInterrupt` came from instead of just showing one.
-                        let pid = app.interrupt.load(std::sync::atomic::Ordering::SeqCst);
+                        let pid = project.interrupt.load(std::sync::atomic::Ordering::SeqCst);
                         let victim = {
-                            let mut lane = app.root.exec_lane.lock();
+                            let mut lane = project.exec_lane.lock();
                             let victim = cross_page_victim(&rel, &lane.page, pid);
                             if let Some(v) = &victim {
                                 lane.interrupted_by = Some((v.clone(), rel.clone()));
@@ -1330,9 +1298,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                                  requested on {rel} could go through"
                             ));
                         }
-                        let _ = app
-                            .build_tx
-                            .send(BuildMsg::Restart(rel.clone()));
+                        let _ = project.build_tx.send(BuildMsg::Restart(rel.clone()));
                     } else {
                         handle_client_msg(t.as_str());
                     }
@@ -1383,26 +1349,19 @@ fn full_render_json(d: &PageDoc) -> String {
     )
 }
 
-/// Like the single-doc server's `op_json`, but rewrites any author `.tmd` links
-/// in the block HTML to their `.html` targets before it goes over the wire.
-fn op_json(op: &BlockOp, generation: u64) -> String {
-    protocol::op(op, generation, taliesin_core::site::rewrite_tmd_links)
-}
-
 // --- build worker -------------------------------------------------------
 
-fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
+fn spawn_builder(project: Arc<Project>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         // The project's one ExecPool. `exec_pool.rs` is used verbatim. Interpreters come
         // from the project's own `_site.yml`/root (python:, a project .venv, env, or
         // default), asked again before every job ([`repoint`]). The pool is owned by this
         // task and dropped on channel close (server shutdown), which kills every kernel it
         // holds.
-        let project = app.root.clone();
         let py = resolve_python_for(&project);
-        let mut pool = ExecPool::new(project.dir.join("_freeze"), py, app.interrupt.clone());
+        let mut pool = ExecPool::new(project.dir.join("_freeze"), py, project.interrupt.clone());
         while let Some(msg) = build_rx.recv().await {
-            repoint(&mut pool, &project, &app.interrupt);
+            repoint(&mut pool, &project);
             match msg {
                 BuildMsg::Build(rel) => {
                     build_on_exec_lane(&project, &rel, &mut pool).await;
@@ -1445,11 +1404,15 @@ fn resolve_python_for(project: &Project) -> crate::interpreter::Resolved {
 /// 2026-09-24 C8, first-hour #9). Asked before every job on the lane, so a save or a Restart
 /// kernel picks the change up; resolving is a handful of `exists` calls. The pool's warm
 /// cap and eviction order are its own and untouched.
-fn repoint(pool: &mut ExecPool, project: &Project, interrupt: &Arc<std::sync::atomic::AtomicU32>) {
+fn repoint(pool: &mut ExecPool, project: &Project) {
     let python = resolve_python_for(project);
     // The new pool's first kernel says which interpreter it runs, and from where.
     if pool.python() != Some(python.path.as_path()) {
-        *pool = ExecPool::new(project.dir.join("_freeze"), python, interrupt.clone());
+        *pool = ExecPool::new(
+            project.dir.join("_freeze"),
+            python,
+            project.interrupt.clone(),
+        );
     }
 }
 
@@ -1480,17 +1443,16 @@ async fn build_on_exec_lane(
 /// never wait on one. A page routed here that turns out to HAVE kernel cells (the edit
 /// that adds the first one) is handed to the exec lane instead; that is the one wasted
 /// render this design costs, and it happens once per page.
-fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
+fn spawn_fast_builder(project: Arc<Project>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         while let Some(msg) = fast_rx.recv().await {
-            let project = app.root.clone();
             let rel = match msg {
                 BuildMsg::Build(rel) | BuildMsg::Restart(rel) => rel,
                 BuildMsg::IfMoved(rel, paths) if probes_moved(&project, &rel, &paths) => rel,
                 BuildMsg::IfMoved(..) => continue,
             };
             if build_page_guarded(&project, &rel, None).await == BuildOutcome::NeedsKernel {
-                let _ = app.build_tx.send(BuildMsg::Build(rel));
+                let _ = project.build_tx.send(BuildMsg::Build(rel));
             }
         }
     });
@@ -1602,7 +1564,7 @@ fn publish_edited_cells(
     ps.doc.generation = ps.doc.generation.wrapping_add(1);
     let generation = ps.doc.generation;
     for op in &ops {
-        let _ = ps.tx.send(op_json(op, generation));
+        let _ = ps.tx.send(protocol::op(op, generation));
     }
 }
 
@@ -1651,8 +1613,7 @@ fn edited_cells(
 /// would run, `{{< include >}}` resolved and cell options applied, so the routing decision
 /// and the work it routes around cannot disagree about what a cell is.
 ///
-/// `executes_to_kernel` is the shared predicate the render pass and the executor already
-/// agree on (`exec::tests::kernel_lang_agrees_with_cores_executable_set` pins them equal),
+/// `executes_to_kernel` is the one predicate the render pass and the executor both ask,
 /// which is what makes a `{js}` page cell-free here: `{js}` runs in the browser, so a page
 /// full of reactive cells needs the kernel lane exactly as much as a prose page does.
 fn is_cell_free(blocks: &[Block]) -> bool {
@@ -1853,7 +1814,6 @@ async fn build_page(
     let title_changed = ps.doc.tab_title != tab_title;
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
-    ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
     // client that server-rendered this page pre-exec re-mounts to pick up the outputs.
     if !ops.is_empty() {
@@ -1874,7 +1834,7 @@ async fn build_page(
     }
     .messages(
         || full_render_json(&ps.doc),
-        |op| op_json(op, generation),
+        |op| protocol::op(op, generation),
         || protocol::title(Some(&ps.doc.tab_title)),
         || protocol::diagnostics(&ps.doc.diagnostics),
     );
@@ -1884,7 +1844,7 @@ async fn build_page(
     if !ops.is_empty() {
         crate::log::update(ops.len());
     }
-    // Record which lane this page belongs on, for `SiteApp::queue_build` to read on the
+    // Record which lane this page belongs on, for `Project::queue_build` to read on the
     // NEXT save. Written last, after everything this pass publishes, so a routing decision
     // that sees the new value is always looking at a finished build (AP3-1).
     ps.doc.cell_free = cell_free;
@@ -1902,9 +1862,9 @@ fn page_label(page: &Page) -> String {
 
 // --- file watching ------------------------------------------------------
 
-fn spawn_watcher(app: Arc<SiteApp>) {
+fn spawn_watcher(project: Arc<Project>) {
     let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<PathBuf>();
-    let root = app.root.dir.clone();
+    let root = project.dir.clone();
 
     // Pump events through a channel so one thread owns the watcher and can register watches
     // for subdirectories that arrive after startup — the recursive-watch model added an
@@ -1978,13 +1938,13 @@ fn spawn_watcher(app: Arc<SiteApp>) {
         while let Some(first) = sig_rx.recv().await {
             let changed = gather(first, &mut sig_rx).await;
             // Guarded, like every other task that renders on the author's behalf. This one
-            // was not: `dispatch_changes` re-discovers the project, re-derives the
+            // was not: `rebuild_project` re-discovers the project, re-derives the
             // cross-reference registry and rebuilds the search index, and a panic in any of
             // them unwound the only task draining `sig_rx`. The server stayed up and the
             // page stayed served, so the preview did not visibly die — it silently stopped
             // reacting to saves, which reads as "the tool is broken" rather than "this
             // document is broken". Reporting it keeps the failure attached to the edit.
-            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed)) {
+            if let Err(msg) = crate::serve::guarded(|| rebuild_project(&project, &changed)) {
                 crate::log::error(&format!("rebuild failed: {msg}"));
             }
         }
@@ -2049,12 +2009,12 @@ fn pages_citing_a_moved_anchor(
         .collect()
 }
 
-/// Rebuild one project's affected pages from a batch of changed files (already filtered
-/// to this project by [`dispatch_changes`]): a `_site.yml` change, or a save that moves
+/// Rebuild the project's affected pages from a batch of changed files: a `_site.yml`
+/// change, or a save that moves
 /// the page set, re-discovers this project's site and reloads its open tabs; a save that
 /// moves what discovery reads of a page re-discovers and rebuilds every open page;
 /// otherwise rebuild every *open* page whose source or include set touches a changed file.
-fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<PathBuf>) {
+fn rebuild_project(project: &Arc<Project>, changed: &HashSet<PathBuf>) {
     let config_changed = changed
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
@@ -2163,7 +2123,7 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
         // Queued with the pages lock released: routing reads it.
         drop(pages);
         for (rel, probed) in ask {
-            app.queue_if_moved(rel, probed);
+            project.queue_if_moved(rel, probed);
         }
         read
     };
@@ -2264,7 +2224,7 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
         }
     }
     for rel in to_rebuild {
-        app.queue_build(rel);
+        project.queue_build(rel);
     }
     // The Cmd-K index is GLOBAL (one `search-index.js` for every tab), so a per-page
     // refresh keyed on the open tabs cannot keep it true: a renumbered figure would go stale
@@ -2295,12 +2255,6 @@ fn watched_pages(project: &Project) -> Vec<String> {
     let mut pages = project.pages.lock();
     pages.retain(|_, ps| ps.tx.receiver_count() > 0);
     pages.keys().cloned().collect()
-}
-
-/// Rebuild the project against a batch of changed files.
-fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
-    let project = app.root.clone();
-    rebuild_project(app, &project, changed);
 }
 
 /// Reload every open tab ([`reload_tabs`]), after a `_site.yml` change.
@@ -2336,7 +2290,6 @@ fn shell_digests(project: &Project, open: &[String]) -> HashMap<String, u64> {
                 let ps = pages.get(rel)?;
                 let doc = PageDoc {
                     toc: ps.doc.toc,
-                    includes: ps.doc.includes.clone(),
                     ..PageDoc::default()
                 };
                 Some((rel.clone(), doc))
@@ -2357,14 +2310,14 @@ mod protocol_contract {
     //! Locks the websocket message/op shapes the preview client consumes
     //! (web-client/client.js `@typedef` block). If a field name or `type` tag
     //! changes here, update the client's typedefs too — these are the two halves
-    //! of one contract. The `serve.rs` producers are covered by a sibling test.
+    //! of one contract.
     use super::*;
     use crate::testutil::parse;
     use taliesin_core::{BlockOp, render_document};
 
     #[test]
     fn op_messages_match_client_contract() {
-        let up = parse(op_json(
+        let up = parse(protocol::op(
             &BlockOp::Update {
                 target_id: "b1".into(),
                 html: "<p>x</p>".into(),
@@ -2378,7 +2331,7 @@ mod protocol_contract {
         // and skip a destructive re-mount on a byte-identical reconnect.
         assert_eq!(up["gen"], 7);
 
-        let ins = parse(op_json(
+        let ins = parse(protocol::op(
             &BlockOp::Insert {
                 after_id: Some("b1".into()),
                 html: "<p>y</p>".into(),
@@ -2390,7 +2343,7 @@ mod protocol_contract {
         assert!(ins.get("html").is_some());
         assert_eq!(ins["gen"], 7);
 
-        let rm = parse(op_json(
+        let rm = parse(protocol::op(
             &BlockOp::Remove {
                 target_id: "b2".into(),
             },
@@ -2409,7 +2362,7 @@ mod protocol_contract {
         // whole suite AND `tsc`, and silently degraded Ctrl-click to "opens at line 1"
         // for every line-shifted block. The client reads exactly these keys
         // (client.js `case "set_meta"`); they are the two halves of one contract.
-        let sm = parse(op_json(
+        let sm = parse(protocol::op(
             &BlockOp::SetMeta {
                 target_id: "b3".into(),
                 sourcepos: "12:1-14:9".into(),
@@ -2434,7 +2387,7 @@ mod protocol_contract {
         // A non-included block must emit source_file as JSON null (the client's
         // `if (msg.source_file)` is falsy for it and removes the attribute), not omit
         // the key and not emit the string "null".
-        let plain = parse(op_json(
+        let plain = parse(protocol::op(
             &BlockOp::SetMeta {
                 target_id: "b4".into(),
                 sourcepos: "3:1-3:5".into(),
@@ -2448,8 +2401,8 @@ mod protocol_contract {
     }
 
     #[test]
-    fn op_json_rewrites_tmd_links_in_block_html() {
-        let up = parse(op_json(
+    fn an_op_rewrites_tmd_links_in_block_html() {
+        let up = parse(protocol::op(
             &BlockOp::Update {
                 target_id: "b1".into(),
                 html: "<a href=\"blog.tmd\">b</a>".into(),
@@ -2464,13 +2417,13 @@ mod protocol_contract {
         // The full chain a previewing client receives: render two versions of a
         // page, diff them, and serialize. `tests/incremental.rs` covers render->
         // diff in core; this proves the serve-side serialization (incl. the
-        // .tmd->.html rewrite that happens *in* op_json, not at render time).
+        // .tmd->.html rewrite that happens *in* `protocol::op`, not at render time).
         let v1 = render_document("Intro.\n\nSee [post](other.tmd).\n");
         let v2 = render_document("Intro.\n\nSee [the post](other.tmd) now.\n");
         let ops = diff_blocks(&v1.blocks, &v2.blocks);
         assert_eq!(ops.len(), 1, "one paragraph edit -> one op: {ops:?}");
 
-        let msg = parse(op_json(&ops[0], 1));
+        let msg = parse(protocol::op(&ops[0], 1));
         assert_eq!(msg["type"], "update");
         assert_eq!(
             msg["target_id"].as_str().unwrap(),
@@ -2600,7 +2553,7 @@ mod project_tests {
     //! is browser-verified (no live-HTTP harness).
     use super::*;
 
-    /// A17. `SiteApp::interrupt` is ONE pool-wide pid, and the `restart_kernel` arm SIGINTs
+    /// A17. `Project::interrupt` is ONE pool-wide pid, and the `restart_kernel` arm SIGINTs
     /// whatever it holds. That is deliberate and load-bearing — the exec lane is serial, so
     /// when page A's runaway cell wedges the queue, page B's own Restart is queued behind
     /// that same build and only the server-wide SIGINT can unwedge it — but it means a
@@ -2732,14 +2685,8 @@ mod project_tests {
                 tx,
             },
         );
-        let project = Arc::new(Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(site),
-            pages: parking_lot::Mutex::new(pages),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let project = Arc::new(Project::new(dir.clone(), site, None).0);
+        *project.pages.lock() = pages;
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
@@ -2817,14 +2764,8 @@ mod project_tests {
                 tx: tx.clone(),
             },
         );
-        let project = Arc::new(Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(site),
-            pages: parking_lot::Mutex::new(pages),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let project = Arc::new(Project::new(dir.clone(), site, None).0);
+        *project.pages.lock() = pages;
         let rt = tokio::runtime::Runtime::new().unwrap();
         let msgs: Vec<serde_json::Value> = rt.block_on(async {
             let py = {
@@ -2951,7 +2892,7 @@ mod project_tests {
             "---\ntitle: First\n---\n\n# First\n\nOriginal body.\n",
         )
         .unwrap();
-        let (project, _app, _b, _f) = project_and_app(&dir);
+        let (project, _b, _f) = project_and_lanes(&dir);
         let changed: HashSet<PathBuf> = std::iter::once(post.clone()).collect();
         let moved = |project: &Project, changed: &HashSet<PathBuf>| {
             let m = project.what_moved(changed);
@@ -3018,7 +2959,7 @@ mod project_tests {
         let page = dir.join("index.tmd");
         let v1 = "---\ntitle: C\n---\n\nFirst.\n\n<!-- TODO -->\n\nLast.\n";
         std::fs::write(&page, v1).unwrap();
-        let (project, _app, _b, _f) = project_and_app(&dir);
+        let (project, _b, _f) = project_and_lanes(&dir);
         open_page(&project, "index.tmd");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, "index.tmd", None));
@@ -3061,14 +3002,7 @@ mod project_tests {
     #[test]
     fn only_a_resolvable_page_key_gets_a_page_state() {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/tarn");
-        let project = Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
-            pages: parking_lot::Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        };
+        let project = Project::new(dir.clone(), taliesin_core::site::Site::discover(&dir), None).0;
 
         // A real page resolves, by source rel and by output url alike.
         assert_eq!(
@@ -3111,8 +3045,9 @@ mod project_tests {
         // use. Measured on a two-page preview,
         // a cell-free page's prose edit landed in 0.11 s alone and 12.15 s (110x) when an
         // unrelated page was 1.2 s into a 12 s `{python}` cell.
-        let render =
-            |src: &str| taliesin_core::render_document_with_includes(src, Path::new(".")).blocks;
+        let render = |src: &str| {
+            taliesin_core::render_document_scoped_with_site(src, Path::new("."), None, None).blocks
+        };
         assert!(is_cell_free(&render("---\ntitle: T\n---\n\nJust prose.\n")));
         assert!(!is_cell_free(&render(
             "---\ntitle: T\n---\n\n```{python}\nprint(1)\n```\n"
@@ -3230,15 +3165,36 @@ mod project_tests {
                 tx: tokio::sync::broadcast::channel(4).0,
             },
         );
-        let project = Arc::new(Project {
-            dir,
-            site: parking_lot::Mutex::new(site),
-            pages: parking_lot::Mutex::new(pages),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let project = Arc::new(Project::new(dir, site, None).0);
+        *project.pages.lock() = pages;
         site_page_html(&project, &page)
+    }
+
+    /// One page of `site` as `build <dir>` writes it: rendered from `base`, finished, and
+    /// wrapped in its chrome linking the shared `_assets/` (`Site::page_html_external`).
+    fn built_site_page(
+        site: &taliesin_core::site::Site,
+        page: &taliesin_core::site::Page,
+        base: &Path,
+    ) -> String {
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let mut doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            None,
+            Some(&site.render_defaults()),
+        );
+        let mut warnings = Vec::new();
+        doc.toc = site.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+        let assets = taliesin_core::ExternalAssets {
+            app_css: "_assets/app.css",
+            katex_css: "_assets/katex.css",
+            app_js: "_assets/app.js",
+            mermaid_js: "_assets/mermaid.js",
+            jslibs_js: "_assets/jslibs.js",
+            font_preload: "",
+        };
+        site.page_html_external(page, &doc, assets)
     }
 
     #[test]
@@ -3312,16 +3268,7 @@ mod project_tests {
                 .join(project);
             let site = taliesin_core::site::Site::discover(&dir);
             let page = site.page(rel).expect("corpus page").clone();
-            let built = {
-                let src = std::fs::read_to_string(&page.input).unwrap();
-                let doc = taliesin_core::render_document_scoped_with_site(
-                    &src,
-                    &dir,
-                    None,
-                    Some(&site.render_defaults()),
-                );
-                site.render_page_doc_warned(&page, doc).0
-            };
+            let built = built_site_page(&site, &page, &dir);
             let preview = corpus_preview_page(project, rel);
 
             let (want, got) = (chrome_skeleton(&built), chrome_skeleton(&preview));
@@ -3348,9 +3295,9 @@ mod project_tests {
     /// It is the same test that used to pin the opposite claim (Fable audit FA16: the live
     /// shell hardcoded `lang: "en"` while the build read the front matter, so a Finnish page
     /// previewed as English and built as Finnish). What made that possible was two
-    /// assemblies each supplying their own value. Neither supplies one now -- both inherit
-    /// the single `en` in `PageParts::defaults()` -- so the drift axis is closed
-    /// structurally, and this test is what says so.
+    /// assemblies each supplying their own value. Neither supplies one now -- the one page
+    /// template writes `en` -- so the drift axis is closed structurally, and this test is
+    /// what says so.
     #[test]
     fn a_declared_lang_is_inert_on_both_the_preview_and_the_build() {
         let dir = std::env::temp_dir().join(format!("tali-preview-lang-{}", std::process::id()));
@@ -3374,14 +3321,8 @@ mod project_tests {
                 tx: tokio::sync::broadcast::channel(4).0,
             },
         );
-        let project = Arc::new(Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(site),
-            pages: parking_lot::Mutex::new(pages),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let project = Arc::new(Project::new(dir.clone(), site, None).0);
+        *project.pages.lock() = pages;
         let preview = site_page_html(&project, &page);
         assert!(
             preview.contains(r#"<html lang="en""#) && !preview.contains(r#"lang="fi""#),
@@ -3389,17 +3330,7 @@ mod project_tests {
             &preview[..preview.len().min(400)]
         );
 
-        let built = {
-            let site = project.site.lock();
-            let src = std::fs::read_to_string(&page.input).unwrap();
-            let doc = taliesin_core::render_document_scoped_with_site(
-                &src,
-                &dir,
-                None,
-                Some(&site.render_defaults()),
-            );
-            site.render_page_doc_warned(&page, doc).0
-        };
+        let built = built_site_page(&project.site.lock(), &page, &dir);
         assert!(
             built.contains(r#"<html lang="en""#) && !built.contains(r#"lang="fi""#),
             "the build must paint the same baseline, from the same const: {}",
@@ -3560,35 +3491,23 @@ mod project_tests {
         std::fs::canonicalize(&d).unwrap()
     }
 
-    /// A `Project` over `dir` as the live server builds one, plus the [`SiteApp`] around it
-    /// with both build lanes' receivers handed back. No worker task is spawned: what a test
-    /// of [`rebuild_project`] observes is which pages it QUEUED, not what a render produced.
-    fn project_and_app(
+    /// A `Project` over `dir` as the live server builds one, with both build lanes'
+    /// receivers handed back. No worker task is spawned: what a test of [`rebuild_project`]
+    /// observes is which pages it QUEUED, not what a render produced.
+    fn project_and_lanes(
         dir: &Path,
     ) -> (
         Arc<Project>,
-        SiteApp,
         mpsc::UnboundedReceiver<BuildMsg>,
         mpsc::UnboundedReceiver<BuildMsg>,
     ) {
-        let project = Arc::new(Project {
-            dir: dir.to_path_buf(),
-            site: Mutex::new(taliesin_core::site::Site::discover(dir)),
-            pages: Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let (project, build_rx, fast_rx) = Project::new(
+            dir.to_path_buf(),
+            taliesin_core::site::Site::discover(dir),
+            None,
+        );
         project.seed_records();
-        let (build_tx, build_rx) = mpsc::unbounded_channel();
-        let (fast_tx, fast_rx) = mpsc::unbounded_channel();
-        let app = SiteApp {
-            root: project.clone(),
-            build_tx,
-            fast_tx,
-            interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
-        };
-        (project, app, build_rx, fast_rx)
+        (Arc::new(project), build_rx, fast_rx)
     }
 
     /// Every page `rebuild_project` queued, on either lane, sorted. `queue_build` routes on
@@ -3631,7 +3550,7 @@ mod project_tests {
         )
         .unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         assert_eq!(
             project.site.lock().bibliography.len(),
             1,
@@ -3646,7 +3565,7 @@ mod project_tests {
         )
         .unwrap();
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed);
+        rebuild_project(&project, &changed);
 
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
@@ -3675,7 +3594,7 @@ mod project_tests {
         std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
         std::fs::write(dir.join("posts/b.tmd"), "---\ntitle: B\n---\n\nBody.\n").unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = watch(&project, "index.tmd");
         // Visited and left: a state with nobody on its channel.
         for rel in ["posts/a.tmd", "posts/b.tmd"] {
@@ -3686,7 +3605,7 @@ mod project_tests {
         }
 
         std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(post).collect());
+        rebuild_project(&project, &std::iter::once(post).collect());
 
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
@@ -3714,12 +3633,12 @@ mod project_tests {
         std::fs::write(dir.join("refs.bib"), "@article{k,\n year = {2020}\n}\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         assert!(project.site.lock().bibliography.is_empty());
         let _tab = open_rendered(&project, "index.tmd");
 
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed);
+        rebuild_project(&project, &changed);
 
         assert!(
             queued(&mut build_rx, &mut fast_rx).is_empty(),
@@ -3747,7 +3666,7 @@ mod project_tests {
         let post = dir.join("posts/a.tmd");
         std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = watch(&project, "index.tmd");
 
         // gedit's save: a temp file beside the page, renamed over it.
@@ -3755,7 +3674,7 @@ mod project_tests {
         std::fs::write(&tmp, "---\ntitle: New\n---\n\nBody.\n").unwrap();
         std::fs::rename(&tmp, &post).unwrap();
         let changed: HashSet<PathBuf> = [tmp, post].into_iter().collect();
-        rebuild_project(&app, &project, &changed);
+        rebuild_project(&project, &changed);
 
         assert_eq!(
             project
@@ -3793,7 +3712,7 @@ mod project_tests {
         std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
         std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let mut tab = watch(&project, "methods.tmd");
         let chapter = |project: &Project| {
             let site = project.site.lock();
@@ -3802,7 +3721,7 @@ mod project_tests {
         assert_eq!(chapter(&project), Some(2));
 
         std::fs::write(&intro, "# Introduction {.unnumbered}\n\nText.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(intro).collect());
+        rebuild_project(&project, &std::iter::once(intro).collect());
 
         assert_eq!(
             chapter(&project),
@@ -3835,11 +3754,11 @@ mod project_tests {
         let intro = dir.join("intro.tmd");
         std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
         std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let mut tab = watch(&project, "methods.tmd");
 
         std::fs::write(&intro, "# Opening\n\nText.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(intro).collect());
+        rebuild_project(&project, &std::iter::once(intro).collect());
 
         assert_eq!(
             tab.try_recv().as_deref().unwrap_or(""),
@@ -3866,12 +3785,12 @@ mod project_tests {
         .unwrap();
         let post = dir.join("posts/a.tmd");
         std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let mut tab = watch(&project, "index.tmd");
         let mut own = watch(&project, "posts/a.tmd");
 
         std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(post).collect());
+        rebuild_project(&project, &std::iter::once(post).collect());
 
         assert!(
             tab.try_recv().is_err(),
@@ -3913,14 +3832,14 @@ mod project_tests {
             "---\ntitle: Home\n---\n\nSee @fig-alpha.\n",
         )
         .unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let number =
             |project: &Project| project.site.lock().xref_targets["fig-alpha"].number.clone();
         assert_eq!(number(&project), "2");
         let _tab = open_rendered(&project, "index.tmd");
 
         std::fs::write(&partial, "No figure here any more.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(partial).collect());
+        rebuild_project(&project, &std::iter::once(partial).collect());
 
         assert_eq!(number(&project), "1");
         assert_eq!(
@@ -3951,7 +3870,7 @@ mod project_tests {
             "---\ntitle: Home\n---\n\nAs shown in [@k].\n",
         )
         .unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = open_rendered(&project, "index.tmd");
 
         std::fs::write(
@@ -3959,11 +3878,7 @@ mod project_tests {
             "@article{k,\n title = {Late Title},\n year = {2021}\n}\n",
         )
         .unwrap();
-        rebuild_project(
-            &app,
-            &project,
-            &std::iter::once(dir.join("refs.bib")).collect(),
-        );
+        rebuild_project(&project, &std::iter::once(dir.join("refs.bib")).collect());
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()],
@@ -4004,14 +3919,14 @@ mod project_tests {
             "---\ntitle: Home\n---\n\n![A picture](img/pic.png)\n",
         )
         .unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = open_rendered(&project, "index.tmd");
         let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
         let pic = dir.join("img/pic.png");
 
         // Added: the page reported it missing.
         std::fs::copy(corpus.join("diagnostics/logo.png"), &pic).unwrap();
-        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        rebuild_project(&project, &std::iter::once(pic.clone()).collect());
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()]
@@ -4028,7 +3943,7 @@ mod project_tests {
 
         // Replaced by a figure of another size.
         std::fs::copy(corpus.join("media/fit-small.png"), &pic).unwrap();
-        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        rebuild_project(&project, &std::iter::once(pic.clone()).collect());
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()]
@@ -4061,7 +3976,7 @@ mod project_tests {
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         let page = dir.join("index.tmd");
         std::fs::write(&page, "---\ntitle: Home\n---\n\n![Generated](gen.png)\n").unwrap();
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = open_rendered(&project, "index.tmd");
         let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
         let figure = dir.join("gen.png");
@@ -4072,7 +3987,7 @@ mod project_tests {
         // Written during the page's build, as its cells would: the build ends with it there.
         std::fs::copy(corpus.join("diagnostics/logo.png"), &figure).unwrap();
         rt.block_on(build_page(&project, "index.tmd", None));
-        rebuild_project(&app, &project, &saved(&figure));
+        rebuild_project(&project, &saved(&figure));
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()],
@@ -4099,7 +4014,7 @@ mod project_tests {
             "---\ntitle: Home\n---\n\n![Generated](gen.png)\n\nMore.\n",
         )
         .unwrap();
-        rebuild_project(&app, &project, &saved(&page));
+        rebuild_project(&project, &saved(&page));
         let mut outright = Vec::new();
         for rx in [&mut build_rx, &mut fast_rx] {
             while let Ok(msg) = rx.try_recv() {
@@ -4167,7 +4082,7 @@ mod project_tests {
         let page = dir.join("index.tmd");
         std::fs::write(&page, "---\ntitle: Home\n---\n\n# Home\n\nOld body.\n").unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let _tab = open_rendered(&project, "index.tmd");
         // A mark only this `Site` carries: a re-discovery replaces it with one without.
         project
@@ -4184,7 +4099,7 @@ mod project_tests {
         std::fs::rename(&tmp, &page).unwrap();
         std::fs::remove_file(&old).unwrap();
         let changed: HashSet<PathBuf> = [tmp, old, page].into_iter().collect();
-        rebuild_project(&app, &project, &changed);
+        rebuild_project(&project, &changed);
 
         assert!(
             project
@@ -4227,17 +4142,17 @@ mod project_tests {
         )
         .unwrap();
 
-        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let (project, mut build_rx, mut fast_rx) = project_and_lanes(&dir);
         let mut left = watch(&project, "posts/notes.tmd");
         let mut listing = watch(&project, "index.tmd");
 
         std::fs::rename(dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")).unwrap();
-        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths.
+        // Exactly what the watcher hands `rebuild_project` for that rename: both paths.
         let changed: HashSet<PathBuf> =
             [dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")]
                 .into_iter()
                 .collect();
-        rebuild_project(&app, &project, &changed);
+        rebuild_project(&project, &changed);
 
         let site = project.site.lock();
         assert!(
@@ -4267,7 +4182,7 @@ mod project_tests {
     /// real build lanes over a real [`Project`], wired as [`serve`] wires them. A test changes
     /// files on disk the way an editor does and reads what the preview then holds.
     struct Live {
-        app: Arc<SiteApp>,
+        project: Arc<Project>,
         rt: tokio::runtime::Runtime,
     }
 
@@ -4275,43 +4190,30 @@ mod project_tests {
         fn start(dir: &Path) -> Live {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let _enter = rt.enter();
-            let (build_tx, build_rx) = mpsc::unbounded_channel();
-            let (fast_tx, fast_rx) = mpsc::unbounded_channel();
             let site = Site::discover_with(dir, taliesin_core::DraftMode::Include);
-            let app = Arc::new(SiteApp {
-                root: Arc::new(Project {
-                    dir: dir.to_path_buf(),
-                    site: Mutex::new(site),
-                    pages: Mutex::new(HashMap::new()),
-                    exec_lane: Mutex::new(ExecLane::default()),
-                    scope: None,
-                    records: Mutex::new(HashMap::new()),
-                }),
-                build_tx,
-                fast_tx,
-                interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
-            });
-            app.root.seed_records();
-            spawn_builder(app.clone(), build_rx);
-            spawn_fast_builder(app.clone(), fast_rx);
-            spawn_watcher(app.clone());
+            let (project, build_rx, fast_rx) = Project::new(dir.to_path_buf(), site, None);
+            let project = Arc::new(project);
+            project.seed_records();
+            spawn_builder(project.clone(), build_rx);
+            spawn_fast_builder(project.clone(), fast_rx);
+            spawn_watcher(project.clone());
             drop(_enter);
-            Live { app, rt }
+            Live { project, rt }
         }
 
         /// Open a tab on `rel` as a browser does: the first paint, then a subscription to
         /// the page's channel. Hold the receiver for as long as the tab is open.
         fn open(&self, rel: &str) -> broadcast::Receiver<String> {
             let _enter = self.rt.enter();
-            let project = &self.app.root;
+            let project = &self.project;
             let page = project.site.lock().page(rel).cloned().expect("a page");
-            ensure_and_render_page(&self.app, project, &page);
+            ensure_and_render_page(project, &page);
             project.pages.lock()[&page.rel].tx.subscribe()
         }
 
         /// The live body of `rel`, or empty when it has no live state.
         fn body(&self, rel: &str) -> String {
-            let pages = self.app.root.pages.lock();
+            let pages = self.project.pages.lock();
             pages
                 .get(rel)
                 .map(|ps| ps.doc.body_html())
@@ -4319,7 +4221,7 @@ mod project_tests {
         }
 
         fn has_page(&self, rel: &str) -> bool {
-            self.app.root.site.lock().page(rel).is_some()
+            self.project.site.lock().page(rel).is_some()
         }
     }
 
@@ -4419,7 +4321,7 @@ mod project_tests {
         let live = Live::start(&dir);
         let _tab = live.open("index.tmd");
         let broken = || {
-            let pages = live.app.root.pages.lock();
+            let pages = live.project.pages.lock();
             pages.get("index.tmd").is_some_and(|ps| {
                 ps.doc
                     .diagnostics
@@ -4443,18 +4345,18 @@ mod project_tests {
         let dir = scratch("python");
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
-        let (project, app, _b, _f) = project_and_app(&dir);
+        let (project, _b, _f) = project_and_lanes(&dir);
         let before = {
             let s = project.site.lock();
             crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
         };
-        let mut pool = ExecPool::new(dir.join("_freeze"), before, app.interrupt.clone());
+        let mut pool = ExecPool::new(dir.join("_freeze"), before, project.interrupt.clone());
 
         // A `.venv` created while the preview runs.
         let venv = dir.join(".venv/bin/python");
         std::fs::create_dir_all(venv.parent().unwrap()).unwrap();
         std::fs::write(&venv, "").unwrap();
-        repoint(&mut pool, &project, &app.interrupt);
+        repoint(&mut pool, &project);
         assert_eq!(pool.python(), Some(venv.as_path()));
 
         // `python:` set in `_site.yml`, adopted by the re-discovery its save causes.
@@ -4464,7 +4366,7 @@ mod project_tests {
         )
         .unwrap();
         *project.site.lock() = project.rediscover();
-        repoint(&mut pool, &project, &app.interrupt);
+        repoint(&mut pool, &project);
         assert_eq!(pool.python(), Some(Path::new("/opt/py/bin/python")));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -4479,12 +4381,11 @@ mod project_tests {
         let dir = scratch("404");
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
-        let (_project, app, _b, _f) = project_and_app(&dir);
-        let app = Arc::new(app);
+        let (project, _b, _f) = project_and_lanes(&dir);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (status, body) = rt.block_on(async {
             let res = page_or_asset(
-                State(app.clone()),
+                State(project.clone()),
                 axum::http::Method::GET,
                 "/gone.html".parse().unwrap(),
             )
@@ -4521,12 +4422,11 @@ mod project_tests {
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
         std::fs::write(dir.join("style.css"), "body{}").unwrap();
-        let (_project, app, _b, _f) = project_and_app(&dir);
-        let app = Arc::new(app);
+        let (project, _b, _f) = project_and_lanes(&dir);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let answer = |method: Method, uri: &str| {
             let res = rt.block_on(page_or_asset(
-                State(app.clone()),
+                State(project.clone()),
                 method,
                 uri.parse().unwrap(),
             ));
@@ -4601,7 +4501,7 @@ mod project_tests {
         let dir = scratch("resurrect");
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
-        let (project, _app, _b, _f) = project_and_app(&dir);
+        let (project, _b, _f) = project_and_lanes(&dir);
         let page = project.site.lock().page("index.tmd").cloned().unwrap();
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -4630,14 +4530,7 @@ mod project_tests {
         }
         let site =
             taliesin_core::site::Site::discover_with(&dir, taliesin_core::DraftMode::Include);
-        let project = Arc::new(Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(site),
-            pages: parking_lot::Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            records: Mutex::new(HashMap::new()),
-        });
+        let project = Arc::new(Project::new(dir.clone(), site, None).0);
         open_page(&project, rel);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, rel, None));

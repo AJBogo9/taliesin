@@ -178,18 +178,6 @@ pub(crate) fn key_prefix(s: &str) -> &str {
     s[..run].trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'))
 }
 
-/// Parse the 1-based start line out of a `startLine:col-endLine:col` sourcepos.
-/// Returns `None` for a generated block (empty sourcepos) or a malformed value.
-/// Shared by `render::process` and `validate::validate_xrefs`.
-pub(crate) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
-    sourcepos
-        .split(':')
-        .next()?
-        .parse::<u32>()
-        .ok()
-        .filter(|&l| l > 0)
-}
-
 /// Parse the 1-based END line out of a `startLine:col-endLine:col` sourcepos, so a scan
 /// that wants the block's text has its whole extent and not just where it starts.
 pub(crate) fn sourcepos_end_line(sourcepos: &str) -> Option<u32> {

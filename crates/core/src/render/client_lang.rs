@@ -1,84 +1,37 @@
-//! The client-side cell-language registry: the languages whose "kernel" is the reader's
-//! browser rather than a Jupyter kernel.
+//! The `{js}` cell: the one cell language whose "kernel" is the reader's browser rather than
+//! a Jupyter kernel.
 //!
-//! Before this existed, `{js}` was spelled `lang == "js"` in six places (the figure
-//! materialization gate, the figure emitter's match, the plain-cell arm, the `--no-exec`
-//! fallback, the asset gates, the reactive-graph diagnostic). Adding a second such
-//! language meant finding all six, and missing one was silent — `reactive.rs`'s
-//! `runtime_defines` check is the proof: it read "any cell that is not `js`" as "a cell
-//! that could publish names at runtime", which a second browser-run language would have
-//! quietly broken.
+//! Before one predicate named it, `{js}` was spelled `lang == "js"` in six places (the
+//! figure materialization gate, the figure emitter's match, the plain-cell arm, the
+//! `--no-exec` fallback, the asset gates, the reactive-graph diagnostic), and missing one
+//! was silent: `reactive.rs`'s `runtime_defines` check read "any cell that is not `js`" as
+//! "a cell that could publish names at runtime". Every one of those places asks
+//! [`is_client_lang`] now. It was a registry of such languages until `{glsl}` and
+//! `{pyodide}` were withdrawn; its one entry is the two consts below.
 //!
-//! Every registered language emits **the same wrapper contract**: an output target
-//! `<div>` plus a sibling `<script type="{mime}">` carrying the author's source verbatim
-//! with the `//|` options as `data-*` attributes. That is what lets one enhancer registry
-//! on the client ([`tali-js.js`'s `registerLanguage`](../../assets/js/tali-js.js)) run
-//! them all, and what keeps teardown, the reactive graph and click-to-source language-
-//! agnostic.
+//! A `{js}` cell emits an output target `<div>` plus a sibling `<script type=
+//! "{JS_CELL_MIME}">` carrying the author's source verbatim with the `//|` options as
+//! `data-*` attributes, which [`tali-js.js`](../../assets/js/tali-js.js) looks up to run it.
 //!
-//! **This never touches exec/freeze/kernel.** A registered language is *not* executable in
-//! `executes_to_kernel`'s sense; the two sets are disjoint by construction and
-//! `client_langs_never_reach_a_kernel` pins that.
+//! **This never touches exec/freeze/kernel.** A `{js}` cell is not executable in
+//! `executes_to_kernel`'s sense; `client_langs_never_reach_a_kernel` pins that.
 
-/// One client-side cell language.
-pub struct ClientLang {
-    /// The fence language: ` ```{js} ` -> `"js"`.
-    pub lang: &'static str,
-    /// The `<script type>` its source rides in, and the key the client registry looks up.
-    pub mime: &'static str,
-    /// The wrapper `<div>`'s class (after the shared `cell`).
-    pub class: &'static str,
+/// The `<script type>` a `{js}` cell's source rides in, and the type `tali-js.js` runs.
+pub const JS_CELL_MIME: &str = "application/tali-js";
+
+/// The `{js}` cell wrapper `<div>`'s class (after the shared `cell`).
+pub(super) const JS_CELL_CLASS: &str = "tali-js-cell";
+
+/// Whether a fence language runs in the reader's browser (`{js}`) rather than in a kernel
+/// or not at all.
+pub fn is_client_lang(lang: &str) -> bool {
+    lang == "js"
 }
 
-/// The registered client-side cell languages.
-///
-/// **One entry, and the registry is kept anyway.** The alternative is spelling `lang ==
-/// "js"` back into the six places listed above, which is the shape this module's own
-/// history records as silently wrong once. Every entry must earn its bytes:
-/// `{sql}`/DuckDB and `{ts}`/esbuild stay cut until a corpus document needs one (each is a
-/// multi-MB vendored payload and its own licence question). Two entries were withdrawn:
-/// `{pyodide}`, which paid the multi-MB price for a CPython WASM build, and `{glsl}`, whose
-/// shader enhancer cost no vendored bytes but served one purpose-built corpus page and
-/// nothing a person wrote to be read. Neither name is diagnosed any more: a fence in an
-/// unknown language renders as a listing, which is what a display fence has always done.
-pub(crate) const CLIENT_LANGS: &[ClientLang] = &[ClientLang {
-    lang: "js",
-    mime: "application/tali-js",
-    class: "tali-js-cell",
-}];
-
-/// The registry entry for a fence language, or `None` for a kernel/highlight-only one.
-pub fn client_lang(lang: &str) -> Option<&'static ClientLang> {
-    CLIENT_LANGS.iter().find(|c| c.lang == lang)
-}
-
-/// False for a registered client language whose runtime is unavailable in this build.
-///
-/// Every registered language runs on browser APIs alone today, so this is unconditionally
-/// true. It is kept as a named seam rather than inlined because it is the gate the emitter
-/// ANDs into "should this cell become live markup", and the alternative to a compiled-out
-/// runtime emitting a live wrapper is an empty husk that loads nothing. A future language
-/// with an optional payload wires in here and nowhere else.
-pub fn client_lang_runnable(lang: &str) -> bool {
-    client_lang(lang).is_some()
-}
-
-/// True if a rendered body carries a cell of any client-side language. Gates the shared
-/// `tali-js.js` runtime, which every registered language's enhancer registers into.
-pub fn has_client_cells(body: &str) -> bool {
-    CLIENT_LANGS.iter().any(|c| has_script_type(body, c.mime))
-}
-
-/// True if a rendered body carries a cell of one named client-side language. Gates that
-/// language's own payload (d3 + Plot for `{js}`), so a page carrying only some other
-/// registered language does not ship half a megabyte of plotting library.
-pub fn has_client_cells_of(body: &str, lang: &str) -> bool {
-    client_lang(lang).is_some_and(|c| has_script_type(body, c.mime))
-}
-
-/// Whether an element in `body` carries `type="{mime}"`, read through the one walker. A
+/// True if a rendered body carries a `{js}` cell: an element with `type="{JS_CELL_MIME}"`,
+/// read through the one walker. Gates the cell runtime and the d3 + Plot libraries. A
 /// substring `contains(mime)` answered for prose that merely names the type, and shipped
 /// d3, Plot and the cell runtime to a page with no cell on it.
-fn has_script_type(body: &str, mime: &str) -> bool {
-    super::attr_values(body, "type").any(|t| t == mime)
+pub fn has_js_cells(body: &str) -> bool {
+    super::attr_values(body, "type").any(|t| t == JS_CELL_MIME)
 }

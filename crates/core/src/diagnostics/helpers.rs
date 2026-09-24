@@ -1,15 +1,5 @@
 //! HTML / sourcepos helpers shared by more than one validator family.
 
-/// 1-based start line from a block's `sourcepos` (`"startLine:col-..."`), if positive.
-pub(crate) fn start_line(sourcepos: &str) -> Option<u32> {
-    sourcepos
-        .split(':')
-        .next()?
-        .parse::<u32>()
-        .ok()
-        .filter(|&l| l > 0)
-}
-
 /// Every value of the attribute called `name` (e.g. `"id"`) found in `html`, appended to
 /// `out`. [`crate::render::attr_values`] is the one reader — see there for why a validator
 /// may not spell this as a `name="` needle of its own.
@@ -22,8 +12,8 @@ pub(crate) fn collect_attr_values<'a>(
 }
 
 /// Whether `v` is a local file reference, i.e. not external, an in-page anchor, a data
-/// URI, or a non-file scheme. (Mirrors the asset-bundling heuristic in the build path.)
-pub(crate) fn is_local_ref(v: &str) -> bool {
+/// URI, or a non-file scheme. The one definition: the build's file mirror asks it too.
+pub fn is_local_ref(v: &str) -> bool {
     !v.is_empty()
         && !v.starts_with('#')
         && !v.starts_with("//")

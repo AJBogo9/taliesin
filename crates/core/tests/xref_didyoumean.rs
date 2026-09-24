@@ -18,7 +18,7 @@ fn messages(warnings: &[taliesin_core::render::Warning]) -> Vec<&str> {
 fn near_miss_references_suggest_the_intended_target() {
     let dir = corpus_dir().join("diagnostics");
     let src = std::fs::read_to_string(dir.join("refs.tmd")).unwrap();
-    let doc = taliesin_core::render_document_with_includes(&src, &dir);
+    let doc = taliesin_core::render_document_scoped_with_site(&src, &dir, None, None);
 
     let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks, None);
     let xref_msgs = messages(&xrefs);

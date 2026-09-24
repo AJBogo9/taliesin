@@ -2,7 +2,8 @@
 //! single self-contained CSS string. Runs for two stylesheets: KaTeX's math fonts and
 //! the owned body typeface (`assets/css/fonts.css`). Each CSS lists woff2 first, so
 //! browsers use the embedded data URI and never request the woff/ttf fallbacks —
-//! rendered pages need no network and no sidecar assets.
+//! rendered pages need no network and no sidecar assets. Also encodes the default
+//! favicon (`web-client/favicon.svg`) for the `data:` URI a page without one carries.
 
 use std::env;
 use std::fs;
@@ -72,4 +73,9 @@ fn main() {
         &root.join("assets/fonts"),
         "fonts-inlined.css",
     );
+    let favicon = root.join("../../web-client/favicon.svg");
+    println!("cargo:rerun-if-changed={}", favicon.display());
+    let bytes = fs::read(&favicon).unwrap_or_else(|e| panic!("read {}: {e}", favicon.display()));
+    let out = Path::new(&env::var("OUT_DIR").unwrap()).join("favicon.b64");
+    fs::write(out, base64(&bytes)).unwrap();
 }

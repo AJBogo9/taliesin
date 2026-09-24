@@ -492,7 +492,7 @@ fn rewrite_one_xref(
     let href = if same_page {
         format!("#{}", esc(anchor))
     } else {
-        format!("{up}{}#{}", esc(&target.url), esc(anchor))
+        format!("{}#{}", page_href(up, &target.url), esc(anchor))
     };
     format!("<a href=\"{href}\" class=\"tali-xref\">{label}{qualifier}</a>")
 }

@@ -16,7 +16,7 @@ fn render_pin() -> String {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/media");
     let src = std::fs::read_to_string(dir.join("optimized-images.tmd"))
         .expect("the corpus pin document exists");
-    taliesin_core::render_document_with_includes(&src, &dir).body_html()
+    taliesin_core::render_document_scoped_with_site(&src, &dir, None, None).body_html()
 }
 
 #[test]

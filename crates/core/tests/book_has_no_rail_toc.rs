@@ -16,7 +16,7 @@
 //! entirely fails the first half.
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 use taliesin_core::{Site, render};
 
 fn tarn() -> Site {
@@ -121,8 +121,9 @@ fn a_website_page_keeps_its_rail_toc_and_scrollspy() {
         post.contains("class=\"tali-site-main has-toc\""),
         "…and its two-column layout: {post}"
     );
+    // A site page carries the scrollspy in the shared `app.js`, not inline.
     assert!(
-        post.contains("tali-toc-active"),
+        post.contains("<script src=\"_assets/app.js\" defer>"),
         "…and the scrollspy that drives it: {post}"
     );
 }

@@ -139,8 +139,7 @@ fn interrupts_paragraph(line: &str) -> bool {
     }
 }
 
-/// A Pandoc fenced-div marker: 3+ colons, then nothing (close) or an
-/// attribute block / bare class name (open).
+/// A fenced-div marker: 3+ colons, then nothing (close) or an attribute block (open).
 enum Fence {
     /// Opening fence; carries the raw attribute string (without the braces).
     Open(String),
@@ -156,16 +155,10 @@ fn parse_fence(s: &str) -> Option<Fence> {
     let rest = s[colons..].trim();
     if rest.is_empty() {
         Some(Fence::Close)
-    } else if let Some(inner) = rest.strip_prefix('{').and_then(|r| r.strip_suffix('}')) {
-        Some(Fence::Open(inner.trim().to_string()))
-    } else if rest.chars().next().is_some_and(char::is_alphabetic) {
-        // bare `::: classname` -> treat the first word as a class
-        Some(Fence::Open(format!(
-            ".{}",
-            rest.split_whitespace().next().unwrap_or("")
-        )))
     } else {
-        None
+        rest.strip_prefix('{')
+            .and_then(|r| r.strip_suffix('}'))
+            .map(|inner| Fence::Open(inner.trim().to_string()))
     }
 }
 
@@ -629,9 +622,9 @@ fn build_container(
     // Only a cell in a language the *kernel* runs earns a slot. A `{js}` cell mounts its
     // own live target client-side and never produces a server-side output block, so a slot
     // after one would be an element that can never fill — which is exactly what the
-    // `explorable/` snapshots caught. `executes_to_kernel` is the canonical set
-    // (drift-locked to `exec::kernel_lang` by a test), so this asks it rather than
-    // re-listing the languages.
+    // `explorable/` snapshots caught. `executes_to_kernel` is the canonical set (the
+    // executor picks its cells by it too), so this asks it rather than re-listing the
+    // languages.
     let mut nested: Vec<Block> = Vec::new();
     for b in inner.iter_mut() {
         nested.append(&mut b.nested);

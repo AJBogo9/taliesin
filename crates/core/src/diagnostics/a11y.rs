@@ -1,6 +1,7 @@
 //! Static accessibility checks (heading-level skips, alt-less and placeholder-alt images).
 
-use super::helpers::{heading_level, start_line};
+use super::helpers::heading_level;
+use crate::render::sourcepos_start_line as start_line;
 use crate::render::{Block, Tag, Warning, attr_value, tags};
 
 /// Static accessibility checks over the rendered block model. Read-only — reads only block

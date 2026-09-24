@@ -1,6 +1,7 @@
 //! Local `<img>` asset existence validation.
 
-use super::helpers::{is_local_ref, start_line};
+use super::helpers::is_local_ref;
+use crate::render::sourcepos_start_line as start_line;
 use crate::render::{Block, Severity, Warning};
 use std::path::Path;
 

@@ -14,6 +14,16 @@ pub(super) fn tmd_to_html(rel: &str) -> String {
     }
 }
 
+/// The attribute value of a link to the page at `url` from a page `up` levels deep (`../`
+/// per level): the url is the page's file name, so it is percent-encoded
+/// ([`super::feed::percent_encode_path`]) before it is escaped, or a `#`, `?`, `%` or space
+/// in the name would end the path (`posts/p#1.html` links to `posts/p`). The one builder of
+/// a link to a page by its url: the brand, a listing card, the back link, a cross-page
+/// reference and the book drawer and pager all call it.
+pub(super) fn page_href(up: &str, url: &str) -> String {
+    format!("{up}{}", esc(&super::feed::percent_encode_path(url)))
+}
+
 /// Resolve a config/author href for emission from a page at `up` depth: leave
 /// external/absolute/anchor links alone, map intra-site `.tmd` to `.html`, and
 /// prefix in-tree relative links with the page's `../` depth. A script-bearing scheme
@@ -95,7 +105,7 @@ pub fn rewrite_tmd_links(html: &str) -> String {
 /// file; the difference is the page a host serves for an unknown nested path, where the
 /// browser resolves a relative URL against the directory the reader mistyped.
 ///
-/// For the author's own `404.html` only ([`Site::render_page_doc_external`]): every other
+/// For the author's own `404.html` only ([`Site::page_html_external`]): every other
 /// page keeps relative URLs, which the portable `file://` build depends on. It makes the
 /// same root-deploy assumption as the generated 404 ([`Site::not_found_doc`]).
 pub(super) fn root_absolute_urls(html: &str) -> String {
@@ -244,18 +254,6 @@ pub(super) fn html_to_tmd(url: &str) -> Vec<String> {
             .collect(),
         None => Vec::new(),
     }
-}
-
-/// The 1-based start line from a block's `sourcepos` (`"startLine:col-…"`), if positive.
-/// A local copy of `diagnostics::start_line` (that one is private to its module); used to
-/// locate cross-page link warnings to their source line.
-pub(super) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
-    sourcepos
-        .split(':')
-        .next()?
-        .parse::<u32>()
-        .ok()
-        .filter(|&l| l > 0)
 }
 
 /// Every `id` attribute value in a block's HTML, added to `out` (the page's anchor set for

@@ -173,8 +173,8 @@ impl Site {
             "<header class=\"tali-site-nav\" data-tali-src=\"_site.yml\"><nav class=\"tali-nav-inner\" aria-label=\"Primary\">",
         );
         s.push_str(&format!(
-            "<a class=\"tali-nav-brand\" href=\"{up}{}\">{}</a>",
-            esc(&self.site_home_url()),
+            "<a class=\"tali-nav-brand\" href=\"{}\">{}</a>",
+            page_href(&up, &self.site_home_url()),
             self.brand_content(&brand_text, &up)
         ));
         // A real, focusable button toggles the mobile menu, so keyboard and
@@ -471,8 +471,8 @@ impl Site {
             return String::new();
         }
         format!(
-            "<a class=\"tali-book-brand\" href=\"{up}{}\">{}</a>",
-            esc(&self.book_home_url()),
+            "<a class=\"tali-book-brand\" href=\"{}\">{}</a>",
+            page_href(up, &self.book_home_url()),
             self.brand_content(title.map(String::as_str).unwrap_or(""), up)
         )
     }
@@ -522,7 +522,7 @@ impl Site {
     /// linking home, a search button, and the light/dark toggle) followed by the chapter
     /// list inside an off-canvas drawer. A book reads as one centred column, so the chapter
     /// list is summoned, not a permanent rail. (Returned together from one method because
-    /// the page assembler threads a single `book_sidebar` string; the topbar is `.tali-book-
+    /// the page assembler threads a single `book_chrome` string; the topbar is `.tali-book-
     /// topbar`, never the website `.tali-site-nav`.)
     pub(super) fn sidebar_html(&self, current: &Page, depth: usize) -> String {
         let Some(book) = &self.book else {
@@ -607,8 +607,8 @@ impl Site {
             // whole chain went with it: the label, the `Chapter::words` field, and the
             // include-expanding `word_count` pass this ran over every chapter at discovery.
             s.push_str(&format!(
-                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}</a></li>",
-                esc(&e.url),
+                "<li><a class=\"{cls}\" href=\"{}\"{aria}>{num}{}{draft_tag}</a></li>",
+                page_href(&up, &e.url),
                 esc(&e.title)
             ));
         }
@@ -641,9 +641,9 @@ impl Site {
         let left = prev
             .map(|p| {
                 format!(
-                    "<a class=\"tali-book-prev\" href=\"{up}{}\">\
+                    "<a class=\"tali-book-prev\" href=\"{}\">\
                      <span class=\"tali-back-glyph\">\u{2190}</span> {}</a>",
-                    esc(&p.url),
+                    page_href(&up, &p.url),
                     label(p)
                 )
             })
@@ -651,9 +651,9 @@ impl Site {
         let right = next
             .map(|n| {
                 format!(
-                    "<a class=\"tali-book-next\" href=\"{up}{}\">{} \
+                    "<a class=\"tali-book-next\" href=\"{}\">{} \
                      <span class=\"tali-fwd-glyph\">\u{2192}</span></a>",
-                    esc(&n.url),
+                    page_href(&up, &n.url),
                     label(n)
                 )
             })
@@ -682,9 +682,9 @@ impl Site {
         // hidden from the accessibility tree; a screen reader reads just the title.
         let html = format!(
             "<nav class=\"tali-listing-backnav\" data-block-id=\"{id}\" \
-             aria-label=\"Back to listing\"><a class=\"tali-back-link\" href=\"{up}{}\">\
+             aria-label=\"Back to listing\"><a class=\"tali-back-link\" href=\"{}\">\
              <span class=\"tali-back-glyph\" aria-hidden=\"true\">\u{2190}</span> {}</a></nav>",
-            esc(&owner.url),
+            page_href(&up, &owner.url),
             esc(owner.title.as_deref().unwrap_or_default())
         );
         Some(Block {
@@ -869,22 +869,22 @@ mod tests {
         }
         let (links, _) = links_and_handlers(&blog);
         for want in [
-            "blog\"&.html",                   // the brand
+            "blog%22&.html",                  // the brand
             "q\"onmouseover=\"alert(2).html", // the nav item, as a (broken) path
             "f\"onfocus=\"alert(3).html",     // the footer item
-            "posts/a\"b&c.html",              // the listing card
-            "posts/a\"b&c.html#sec-one",      // the cross-page reference
+            "posts/a%22b&c.html",             // the listing card
+            "posts/a%22b&c.html#sec-one",     // the cross-page reference
             "fav\"x.svg",                     // the favicon
         ] {
             assert!(links.iter().any(|l| l == want), "{want} missing: {links:?}");
         }
         let (links, _) = links_and_handlers(&post);
         assert!(
-            links.iter().any(|l| l == "../blog\"&.html"),
+            links.iter().any(|l| l == "../blog%22&.html"),
             "back link: {links:?}"
         );
         assert!(
-            post.contains("window.TALIESIN_PAGE_URL=\"posts/a\\\"b&c.html\""),
+            post.contains("window.TALIESIN_PAGE_URL=\"posts/a%22b&c.html\""),
             "the page url is a JS string literal"
         );
 
@@ -897,6 +897,98 @@ mod tests {
         assert!(!xml.contains("<later>"), "{xml}");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A page's href is built from its file name, which can hold URL syntax: `#` starts a
+    /// fragment, `?` a query, `%` an escape and a space ends nothing but is no URL byte. So
+    /// each is percent-encoded wherever a link is built from a file name (the brand, a
+    /// listing card, the back link, a cross-page reference, the book drawer and pager, the
+    /// page-url global and the search index), or `posts/p#1.html` links to `posts/p` with a
+    /// fragment `1.html` and the reader gets a 404.
+    #[test]
+    fn a_file_name_with_url_syntax_is_percent_encoded_in_every_href() {
+        let root = write_site(
+            "href-encode",
+            &[
+                (
+                    "_site.yml",
+                    "title: W\nnav:\n  right:\n    - text: X\n      href: https://example.com\n",
+                ),
+                (
+                    "the blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\nSee @sec-one.\n",
+                ),
+                (
+                    "posts/p#1.tmd",
+                    "---\ntitle: P\ndate: 2026-01-02\n---\n\n## One {#sec-one}\n\nBody.\n",
+                ),
+                (
+                    "posts/q?x 100%.tmd",
+                    "---\ntitle: Q\ndate: 2026-01-01\n---\n\nQ.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let blog = site.render_page("the blog.tmd").expect("the listing page");
+        let (links, _) = links_and_handlers(&blog);
+        for want in [
+            "posts/p%231.html",          // a listing card
+            "posts/q%3Fx%20100%25.html", // another
+            "posts/p%231.html#sec-one",  // the cross-page reference
+        ] {
+            assert!(links.iter().any(|l| l == want), "{want} missing: {links:?}");
+        }
+        // The brand points at the first page, there being no `index.tmd`.
+        let brand = crate::render::tags(&blog)
+            .find(|t| crate::render::attr_value(t, "class").as_deref() == Some("tali-nav-brand"))
+            .and_then(|t| crate::render::attr_value(&t, "href").map(|h| h.into_owned()));
+        assert_eq!(brand.as_deref(), Some("posts/p%231.html"), "the brand");
+        let post = site.render_page("posts/p#1.tmd").expect("the post");
+        let (links, _) = links_and_handlers(&post);
+        assert!(
+            links.iter().any(|l| l == "../the%20blog.html"),
+            "back link: {links:?}"
+        );
+        assert!(
+            post.contains("window.TALIESIN_PAGE_URL=\"posts/p%231.html\""),
+            "the page-url global the palette compares a result's url with"
+        );
+        assert!(
+            site.search_index_json.contains("\"posts/p%231.html\""),
+            "the search index's page url, which the palette navigates to"
+        );
+
+        let book = write_site(
+            "href-encode-book",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - 'i#x.tmd'\n  - 'c 1.tmd'\n",
+                ),
+                ("i#x.tmd", "---\ntitle: Intro\n---\n\nx\n"),
+                ("c 1.tmd", "---\ntitle: One\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&book);
+        let first = site.render_page("i#x.tmd").expect("the first chapter");
+        let (links, _) = links_and_handlers(&first);
+        assert!(
+            links.iter().filter(|l| *l == "c%201.html").count() >= 2,
+            "the drawer entry and the pager: {links:?}"
+        );
+        assert!(
+            links.iter().any(|l| l == "i%23x.html"),
+            "the book brand: {links:?}"
+        );
+        let second = site.render_page("c 1.tmd").expect("the second chapter");
+        let (links, _) = links_and_handlers(&second);
+        assert!(
+            links.iter().any(|l| l == "i%23x.html"),
+            "the pager: {links:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&book);
     }
 
     /// The book chrome: chapter links, the pager and the book brand carry file names too.
@@ -918,7 +1010,7 @@ mod tests {
         let (links, handler) = links_and_handlers(&html);
         assert!(handler.is_empty(), "an event handler: {handler:?}");
         assert!(
-            links.iter().filter(|l| *l == "c\"1&.html").count() >= 2,
+            links.iter().filter(|l| *l == "c%221&.html").count() >= 2,
             "the drawer entry and the pager: {links:?}"
         );
         // Both brand slots (topbar and drawer head), read off the brand element itself.
@@ -931,7 +1023,7 @@ mod tests {
             })
             .collect();
         assert!(
-            !brands.is_empty() && brands.iter().all(|h| h == "i\"x.html"),
+            !brands.is_empty() && brands.iter().all(|h| h == "i%22x.html"),
             "the brand: {brands:?}"
         );
         // The pager's other half, on the second chapter.
@@ -941,7 +1033,7 @@ mod tests {
         let prev = crate::render::tags(&second)
             .find(|t| crate::render::attr_value(t, "class").as_deref() == Some("tali-book-prev"))
             .and_then(|t| crate::render::attr_value(&t, "href").map(|h| h.into_owned()));
-        assert_eq!(prev.as_deref(), Some("i\"x.html"), "{links:?}");
+        assert_eq!(prev.as_deref(), Some("i%22x.html"), "{links:?}");
 
         let _ = std::fs::remove_dir_all(&root);
     }

@@ -1,41 +1,26 @@
 //! The prose selection: what counts as prose in a `.tmd`, and how many words of it there
-//! are. [`word_count`] is the reading-time measure, and via [`for_each_prose_line`] it is
-//! the single definition of "prose" — front matter, fenced code, `:::` fences, and inline
-//! code/math/links/HTML all excluded — shared by the reading-time estimate, the book
-//! chapter-cost signal, the LSP outline, and `map`.
+//! are. [`word_count`] is the LSP outline's section length, the one consumer left of the
+//! reading-time estimate, the book chapter-cost signal and `map` it once also served.
 //!
 //! This module was also an opt-in prose LINTER (doubled words, weasel words, a
 //! `prose-lint: { banned: [...] }` list). It was retired on 2026-08-02: it was opt-in and
-//! never opted into, by the person who writes daily. The selection walk survives because it
-//! always had the other, load-bearing consumer.
+//! never opted into, by the person who writes daily.
 
-/// Count prose words in markdown `src` — the reading-time measure. Uses the prose
-/// selection of [`for_each_prose_line`] (front matter, fenced code, `:::` fences, and
-/// inline code/math/links/HTML all excluded), matching the client's live count that drops
-/// `<pre>`/`.katex` from the DOM. `src` is expected include-expanded (so an included
-/// file's prose counts). Rounding to whole minutes lives at the call site.
+/// Count prose words in markdown `src`: its lines as the render reads them, skipping front
+/// matter, code (fenced or indented), raw HTML (a comment, `<pre>`) and `:::` div fences,
+/// with inline code/math/links/HTML blanked by [`strip_inline`]. What is code is the
+/// render's own answer ([`crate::render::rendered_lines`]). `src` is expected
+/// include-expanded (so an included file's prose counts).
 pub fn word_count(src: &str) -> usize {
-    let mut n = 0;
-    for_each_prose_line(src, |_, text| n += words(text).len());
-    n
-}
-
-/// Walk `src`'s prose lines — skipping front matter, code (fenced or indented), raw HTML
-/// (a comment, `<pre>`) and `:::` div fences — invoking `f(1-based line, stripped)` with
-/// the [`strip_inline`]'d prose text of each remaining line. What is code is the render's
-/// own answer ([`crate::render::rendered_lines`]). The single source of "what counts as
-/// prose"; [`word_count`] is its only caller today, and it stays a separate walk so the
-/// next prose measure cannot disagree with the reading time.
-fn for_each_prose_line(src: &str, mut f: impl FnMut(usize, &str)) {
     let lines = crate::render::rendered_lines(src);
-    for (i, raw) in src.lines().enumerate() {
+    src.lines()
+        .enumerate()
         // `:::` div fence lines carry attributes, not prose.
-        if !lines.line(i).kind.is_markdown() || raw.trim_start().starts_with(":::") {
-            continue;
-        }
-        let text = strip_inline(raw);
-        f(i + 1, &text);
-    }
+        .filter(|(i, raw)| {
+            lines.line(*i).kind.is_markdown() && !raw.trim_start().starts_with(":::")
+        })
+        .map(|(_, raw)| words(&strip_inline(raw)).len())
+        .sum()
 }
 
 /// Blank out inline code, math, link/image targets, autolinks, and HTML tags (replaced with

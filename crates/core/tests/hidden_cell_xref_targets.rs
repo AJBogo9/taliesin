@@ -24,10 +24,10 @@
 //! cannot over-reach into them).
 
 use std::path::Path;
-use taliesin_core::render_document_with_includes;
+use taliesin_core::render_document_scoped_with_site;
 
 fn doc(src: &str) -> taliesin_core::RenderedDoc {
-    render_document_with_includes(src, Path::new("."))
+    render_document_scoped_with_site(src, Path::new("."), None, None)
 }
 
 fn warnings(src: &str) -> Vec<String> {

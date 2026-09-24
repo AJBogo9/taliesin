@@ -191,10 +191,11 @@ pub struct Block {
     /// difference between a tab's output appearing in its own panel and every tab's
     /// output stacked below the tabset, hidden ones included.
     ///
-    /// Entries are the child blocks themselves (same id, sourcepos, source_file and
-    /// html), so the executor can ask a nested cell exactly the questions it asks a
-    /// top-level one. They are already flattened when a container folds another
-    /// container, so an entry's own `nested` is always empty.
+    /// Entries are the child blocks themselves (same id, sourcepos and source_file), so the
+    /// executor can ask a nested cell exactly the questions it asks a top-level one; their
+    /// `html` is not read, the container's own `html` being what the page shows. They are
+    /// already flattened when a container folds another container, so an entry's own
+    /// `nested` is always empty.
     pub nested: Vec<Block>,
 }
 
@@ -347,9 +348,11 @@ pub struct RenderedDoc {
     /// when set, `None` when absent. The site uses this so an explicit `toc: false`
     /// overrides the site-wide default (a plain `bool` can't tell "off" from "unset").
     pub toc_explicit: Option<bool>,
-    /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
-    /// `css` from the doc's front matter, injected into the page template.
-    pub includes: PageIncludes,
+    /// Markup for the page's `<head>` that no render produces: the render leaves it empty,
+    /// and a page built without a source (the generated 404, `Site::not_found_doc`) carries
+    /// its own layout here. Injected **verbatim, unescaped**, like the chrome's own head
+    /// markup; the author is trusted (see the crate-level "Trust model" doc).
+    pub head: String,
     /// Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …): the
     /// core can't return a `Result`, so it reports these for the server to log +
     /// surface in the dev menu. Front-matter typo warnings are separate (the
@@ -400,21 +403,6 @@ pub struct ExternalAssets<'a> {
     pub font_preload: &'a str,
 }
 
-/// Ready-to-inject markup from the `include-in-header` / `include-before-body` /
-/// `include-after-body` / `css` front-matter (and site `format: html:`) keys.
-/// Each string is already resolved (inline `text:` or a referenced file's
-/// contents; `css` files wrapped in `<style>`), so the template just drops it in.
-///
-/// These strings are injected **verbatim, unescaped**: the author is trusted
-/// (see the crate-level "Trust model" doc). Don't populate them from any
-/// untrusted source without sanitizing first.
-#[derive(Debug, Clone, Default)]
-pub struct PageIncludes {
-    pub in_header: String,
-    pub before_body: String,
-    pub after_body: String,
-}
-
 /// What a page inherits from its project's `_site.yml`. One value rather than a parameter
 /// per key, so adding the next project-wide policy does not widen six render signatures
 /// again. `None` at a render entry point means "no project": a single `.tmd` invoked
@@ -434,21 +422,6 @@ pub struct SiteDefaults {
     /// against the site root by `Site::discover` — so the render pass neither re-derives
     /// "relative to what?" nor repeats a bad-path diagnostic once per page.
     pub bibliography: Vec<std::path::PathBuf>,
-}
-
-impl PageIncludes {
-    /// Append `other` after `self` (site-level first, then the page's own).
-    pub fn merge(&mut self, other: &PageIncludes) {
-        for (dst, src) in [
-            (&mut self.in_header, &other.in_header),
-            (&mut self.before_body, &other.before_body),
-            (&mut self.after_body, &other.after_body),
-        ] {
-            if !src.is_empty() {
-                dst.push_str(src);
-            }
-        }
-    }
 }
 
 impl RenderedDoc {

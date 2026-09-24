@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 mod model;
 pub use model::{
-    AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
-    PageIncludes, RenderedDoc, Severity, SiteDefaults, Warning,
+    AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode, RenderedDoc,
+    Severity, SiteDefaults, Warning,
 };
 pub(crate) use model::{BufLine, CellRole, CodeFold};
 
@@ -41,7 +41,7 @@ pub(crate) fn parse_options() -> Options<'static> {
 }
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
-/// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
+/// Does not resolve `{{< include >}}` (use [`render_document_scoped_with_site`]).
 mod fm_extract;
 use fm_extract::DocFront;
 #[cfg(test)]
@@ -60,9 +60,7 @@ mod cell_numbered;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 pub use cell_numbered::{caption_label, markdown_fragment, numbered_caption};
 mod client_lang;
-pub use client_lang::{
-    ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
-};
+pub use client_lang::{JS_CELL_MIME, has_js_cells, is_client_lang};
 // `pub(crate)` only so `frontmatter` can reach `extension::dataset::DATASET_KEYS`: the
 // front-matter linter validates `datasets:` sub-keys against the same closed list the
 // renderer reads, rather than a second copy that could drift from it.
@@ -112,11 +110,9 @@ mod theme;
 mod workers;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
-use page::page_from_doc;
 pub use page::{
-    PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    html_page_from_doc_in_site_external, render_doc_to_page, render_doc_to_page_external,
-    render_single_doc_page, title_with_site_suffix,
+    PageParts, SiteCtx, assemble_html_page, favicon_link, render_doc_to_page,
+    title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -176,8 +172,8 @@ pub fn no_exec_in_force() -> bool {
 /// The languages Taliesin executes against a warm kernel, whose *output block* can
 /// therefore carry a figure/table anchor. This is the canonical set: the render pass
 /// reserves a `@fig-`/`@tbl-` number only for a lang that will actually produce the
-/// float, and `taliesin-server`'s `exec::kernel_lang` (which does the running) is
-/// drift-locked to it by a test. A lang that is neither executed here nor emitted at
+/// float, and `taliesin-server`'s executor (which does the running) picks its cells by
+/// this same function. A lang that is neither executed here nor emitted at
 /// render time (mermaid/`{js}`) — `{bash}`, `{sql}`, `{julia}`, … — produces no float,
 /// so labelling one as a figure/table must NOT burn a number or register a phantom
 /// anchor.
@@ -197,29 +193,13 @@ pub fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
     }
 }
 
-/// Like [`render_document`], but first expands `{{< include >}}` shortcodes
-/// relative to `base_dir`, mapping each block back to its origin file, and
-/// resolves citations/cross-references against the doc's bibliography.
-pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
-    render_document_with_includes_scoped(src, base_dir, None)
-}
-
-/// Like [`render_document_with_includes`] but with an optional book chapter number, so a
-/// numbered chapter renders "Figure 2.3" / "Table 2.1". Only the site book path passes
-/// `Some(n)`; everything else is `None` (continuous numbering).
-pub fn render_document_with_includes_scoped(
-    src: &str,
-    base_dir: &Path,
-    chapter: Option<u32>,
-) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, None, false)
-}
-
-/// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
-/// its project's `_site.yml` ([`SiteDefaults`]): the project-wide `bibliography:` laid under
-/// the page's own. Everything else passes `None` and is byte-identical to
-/// [`render_document_with_includes_scoped`]. Public so the server's site build + live
-/// preview render each page with the project's policies.
+/// Like [`render_document`], but first expands `{{< include >}}` shortcodes relative to
+/// `base_dir`, mapping each block back to its origin file, and resolves citations and
+/// cross-references against the doc's bibliography. `chapter` is a numbered book chapter's
+/// number, so it renders "Figure 2.3" / "Table 2.1" (`None`: continuous numbering). `site`
+/// carries what the page inherits from its project's `_site.yml` ([`SiteDefaults`]): the
+/// project-wide `bibliography:` laid under the page's own (`None`: no project). What the
+/// site build, the live preview and the project's passes render each page with.
 pub fn render_document_scoped_with_site(
     src: &str,
     base_dir: &Path,
@@ -591,10 +571,6 @@ fn render_internal_impl(
     // but skips the visible `<h1>` header (nav landing pages don't need it).
     let hide_title_block = front.title_block_hidden();
     let bib_paths = front.bibliography();
-    // Populated only by a project's `_site.yml head:` (merged in by `site::page_chrome`) and
-    // by the chrome's own draft banner; a document's front matter has had no include keys
-    // since the raw-injection family was retired on 2026-08-02.
-    let includes = PageIncludes::default();
     // Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<Warning> = Vec::new();
@@ -1029,21 +1005,16 @@ fn render_internal_impl(
                     // `include`. Registering an anchor + burning a number for one would
                     // point `@fig-x` at a "Figure N" no element carries and shift every
                     // later figure down by one. `executes_to_kernel` is the canonical
-                    // executable set (`exec::kernel_lang` is drift-locked to it).
+                    // executable set (the executor picks its cells by it too).
                     let include = cell.as_ref().is_none_or(|c| c.include);
-                    // Under `--no-exec` a client-side figure (`{js}`, `{glsl}`) no longer
+                    // Under `--no-exec` a client-side figure (`{js}`) no longer
                     // materializes, so it must not burn a figure number or register an
                     // anchor — the same reasoning the comment above gives for
                     // `{bash}`/`{sql}`, reached for the same reason (nothing will emit the
                     // float). It falls through to the keeps-its-source arm below and warns
                     // like any other non-executing labelled cell.
-                    // `client_lang_runnable` is the same reasoning one step further: a
-                    // client language whose runtime is unavailable in this build also
-                    // materializes nothing, so it must not burn a figure number either.
-                    let emitted_at_render_time = lang == "mermaid"
-                        || (client_lang(&lang).is_some()
-                            && client_lang_runnable(&lang)
-                            && !no_exec_in_force());
+                    let emitted_at_render_time =
+                        lang == "mermaid" || (is_client_lang(&lang) && !no_exec_in_force());
                     if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
                             warnings.push(if include {
@@ -1094,8 +1065,7 @@ fn render_internal_impl(
                                 &attrs,
                                 &fig_num,
                             )),
-                            l if client_lang(l).is_some() => html.push_str(&emit_client_figure(
-                                client_lang(l).expect("guarded by the match arm"),
+                            l if is_client_lang(l) => html.push_str(&emit_client_figure(
                                 &code,
                                 &id,
                                 cell.as_ref().map(|c| &c.js),
@@ -1219,26 +1189,20 @@ fn render_internal_impl(
                     }
                 }
             }
-        } else if let Some((c, spec)) = cell
-            .as_ref()
-            .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
-        {
-            if no_exec_in_force() || !client_lang_runnable(&c.lang) {
+        } else if let Some(c) = cell.as_ref().filter(|c| is_client_lang(&c.lang)) {
+            if no_exec_in_force() {
                 // `--no-exec`: a client-side cell is a code cell whose kernel is the
                 // browser, so it renders as source like a `{python}` cell with no kernel
                 // does (item 79). `emit` keeps the highlighted source and the block's
                 // id/sourcepos, so click-to-source and the incremental swap are unaffected.
-                //
-                // A language whose runtime is unavailable in this build takes the identical
-                // arm, for the identical reason: nothing will run it, so emitting the live
-                // wrapper would leave a husk. Doing it here rather than as a post-pass over
-                // finished HTML also means the wrapper is never emitted, so no later stage
-                // has to recover the author's source back out of a `<script>` element.
+                // Doing it here rather than as a post-pass over finished HTML means the
+                // wrapper is never emitted, so no later stage has to recover the author's
+                // source back out of a `<script>` element.
                 emit(node, &attrs, &mut html);
             } else {
-                // Native interactive client-side cell (`{js}`, `{glsl}`): the matching
-                // enhancer runs it in the reader's browser (no Observable runtime).
-                html.push_str(&emit_client_cell(spec, &c.code, &id, &c.js, &attrs));
+                // Native interactive `{js}` cell: `tali-js.js` runs it in the reader's
+                // browser (no Observable runtime).
+                html.push_str(&emit_client_cell(&c.code, &id, &c.js, &attrs));
             }
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
             // `echo: false` / `include: false`: keep the block so the executor still
@@ -1434,7 +1398,7 @@ fn render_internal_impl(
         // path overrides this via `page_toc` using `toc_explicit`.
         toc: toc_explicit.unwrap_or(false),
         toc_explicit,
-        includes,
+        head: String::new(),
         warnings,
         xref_numbers: xref_registry,
         blocks,
@@ -1901,30 +1865,6 @@ fn map_span(
     (file, start_line, map_origin(origins, last).1)
 }
 
-/// Render a complete, viewable HTML page (used by the one-shot CLI). The
-/// front-matter `title:` becomes the document `<title>`; `fallback_title` is
-/// used when the source declares none.
-///
-/// ```
-/// let html = taliesin_core::render_html_page("---\ntitle: Demo\n---\n\nHi.\n", "fallback");
-/// assert!(html.contains("<title>Demo</title>"));
-/// assert!(html.contains("Hi."));
-/// ```
-pub fn render_html_page(src: &str, fallback_title: &str) -> String {
-    // The in-process full-page API ships everything (like a preview); the static
-    // `build`/`render` CLI opts into content-gating via `render_doc_to_page`.
-    page_from_doc(&render_document(src), fallback_title, OutputMode::Preview)
-}
-
-/// Like [`render_html_page`], resolving `{{< include >}}` relative to `base_dir`.
-pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title: &str) -> String {
-    page_from_doc(
-        &render_document_with_includes(src, base_dir),
-        fallback_title,
-        OutputMode::Preview,
-    )
-}
-
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
@@ -2199,16 +2139,6 @@ fn mermaid_url_for(mode: OutputMode, sidecar: &str) -> String {
     }
 }
 
-/// The client enhancers: the `window.taliEnhancers` registry + built-ins (copy
-/// buttons) in code-enhance.js, then the
-/// self-registering mermaid module (which lazy-loads the mermaid library on first
-/// use). Emitted after the registry so it is defined when mermaid registers.
-/// Syntax highlighting arrives already done from the server. Callers invoke
-/// `window.taliEnhanceCode(root)` after (re)mounting; it is idempotent.
-pub fn code_scripts() -> String {
-    code_scripts_for("", OutputMode::Preview)
-}
-
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
 /// (copy buttons + the whole reader menu + skip-link and
 /// keyboard a11y) rides on every page, since every page benefits. The
@@ -2258,7 +2188,7 @@ pub(super) fn code_scripts_in(body: &str, mode: OutputMode, mermaid_src: &str) -
         } else {
             String::new()
         },
-        talijs_s = gate(has_client_cells(body), TALIESIN_JS),
+        talijs_s = gate(has_js_cells(body), TALIESIN_JS),
     )
 }
 
@@ -2290,7 +2220,7 @@ pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
 // cells draw with. The small enhancer (`tali-js.js`) ships unconditionally in
-// `code_scripts()` (it registers and no-ops without cells, like mermaid); these heavy libs
+// every page's enhancer scripts (it registers and no-ops without cells, like mermaid); these heavy libs
 // are gated on `has_js_cells` in a static BUILD only, and ride unconditionally in a
 // preview — see `page::needs_js_libs`.
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
@@ -2298,7 +2228,7 @@ const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
 const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. The enhancer
-/// itself rides in [`code_scripts`].
+/// itself rides in the framework scripts ([`code_scripts_for`]).
 ///
 /// **When to emit is not this function's decision** — `page::needs_js_libs` owns it:
 /// unconditional in a preview (a doc can gain its first `{js}` cell on any edit, and the
@@ -2307,11 +2237,6 @@ const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 /// which described the build and silently mis-described the preview it was breaking.
 pub(crate) fn js_cell_head() -> String {
     format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
-}
-
-/// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
-pub fn has_js_cells(body: &str) -> bool {
-    has_client_cells_of(body, "js")
 }
 
 // `code-enhance.js` is authored as ordered per-feature fragments under
@@ -2812,14 +2737,12 @@ fn register_xref(
     }
 }
 
-/// The 1-based start line of a `L:C-L:C` sourcepos, or 0 when it carries none (a generated
-/// block with an empty sourcepos — not click-to-source anyway, and `locatable()` requires
-/// a `[1-9]` line, so 0 reads as "no location").
-pub fn sourcepos_start_line(sp: &str) -> u32 {
-    sp.split(':')
-        .next()
-        .and_then(|l| l.parse().ok())
-        .unwrap_or(0)
+/// The 1-based start line of a `L:C-L:C` sourcepos, or `None` when it carries none (a
+/// generated block with an empty sourcepos, not click-to-source anyway) or a malformed one.
+/// The one reader of a block's start line: the validators, the citation passes, the site's
+/// link check and the executor all ask it.
+pub fn sourcepos_start_line(sp: &str) -> Option<u32> {
+    sp.split(':').next()?.parse::<u32>().ok().filter(|&l| l > 0)
 }
 
 /// A labelled cell whose output the executor will never emit (`#| include: false`) has
@@ -2871,7 +2794,7 @@ fn apply_table_captions(
         // The current block's location, captured before any mutable borrow of it, so a
         // duplicate-label warning can point at it (click-to-source).
         let bfile = blocks[i].source_file.clone();
-        let bline = sourcepos_start_line(&blocks[i].sourcepos);
+        let bline = sourcepos_start_line(&blocks[i].sourcepos).unwrap_or(0);
         // A code cell whose executed output is a numbered table (`#| label: tbl-x`):
         // assign its number in document order (so it interleaves correctly with
         // Markdown tables) and register the xref. The executor injects the matching
@@ -2893,7 +2816,10 @@ fn apply_table_captions(
             // duplicate-label warning on a folded cell points at the cell, not its container.
             let (file, line) = if is_nested {
                 let nb = &blocks[i].nested[j];
-                (nb.source_file.clone(), sourcepos_start_line(&nb.sourcepos))
+                (
+                    nb.source_file.clone(),
+                    sourcepos_start_line(&nb.sourcepos).unwrap_or(0),
+                )
             } else {
                 (bfile.clone(), bline)
             };
@@ -2933,7 +2859,7 @@ fn apply_table_captions(
                     id,
                     tbl_num.clone(),
                     blocks[i + 1].source_file.as_deref(),
-                    sourcepos_start_line(&blocks[i + 1].sourcepos),
+                    sourcepos_start_line(&blocks[i + 1].sourcepos).unwrap_or(0),
                 );
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
@@ -2997,8 +2923,8 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
             ))
             .severity(Severity::Error);
             warnings.push(match sourcepos_start_line(&b.sourcepos) {
-                0 => w,
-                line => w.at(b.source_file.clone(), line),
+                None => w,
+                Some(line) => w.at(b.source_file.clone(), line),
             });
         }
     }
@@ -4002,39 +3928,12 @@ fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: &str) -> Str
     )
 }
 
-/// The raw output format of a Pandoc passthrough fence: `{=html}` -> "html".
-fn raw_block_format(info: &str) -> Option<String> {
+/// Whether a fence is a raw HTML passthrough (`{=html}`, any case), whose body is output.
+fn is_raw_html_fence(info: &str) -> bool {
     info.trim()
         .strip_prefix("{=")
         .and_then(|s| s.strip_suffix('}'))
-        .map(|f| f.trim().to_ascii_lowercase())
-        .filter(|f| !f.is_empty())
-}
-
-/// Minimal standard-alphabet base64 (mirrors `build.rs`); used to inline the
-/// favicon as a `data:` URI (see [`page::favicon_link`]).
-fn base64_encode(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        s.push(T[(n >> 18 & 63) as usize] as char);
-        s.push(T[(n >> 12 & 63) as usize] as char);
-        s.push(if chunk.len() > 1 {
-            T[(n >> 6 & 63) as usize] as char
-        } else {
-            '='
-        });
-        s.push(if chunk.len() > 2 {
-            T[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    s
+        .is_some_and(|f| f.trim().eq_ignore_ascii_case("html"))
 }
 
 /// [`html_escape`] appending to `out`, for the emitters that build a page in one buffer.
@@ -4055,7 +3954,7 @@ pub use html_escape as escape_attr;
 
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see
-/// [`html_page_from_doc_in_site`]); all of it is driven by `--tali-*` vars so a
+/// [`render_doc_to_page`]); all of it is driven by `--tali-*` vars so a
 /// theme extension restyles it for free. Deliberately leaner than a full
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");

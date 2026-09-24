@@ -48,7 +48,7 @@ fn single_doc_render_of_a_site_page_resolves_the_same_includes_as_the_site_build
     let src = std::fs::read_to_string(base.join("index.tmd")).unwrap();
 
     // The site build's page render infers the root and finds `_site.yml`.
-    let as_site_page = taliesin_core::render_document_with_includes(&src, &base);
+    let as_site_page = taliesin_core::render_document_scoped_with_site(&src, &base, None, None);
     // The single-document commands (`build`/`preview`/`check`/`read` of one file).
     let as_single_doc = taliesin_core::render_single_doc(&src, &base);
 

@@ -18,15 +18,13 @@
   "categories": [
     "Programming Languages",
     "Linters",
-    "Snippets",
-    "Notebooks"
+    "Snippets"
   ],
   "keywords": [
     "taliesin",
     "tmd",
     "markdown",
-    "literate programming",
-    "slides"
+    "literate programming"
   ],
   "icon": "icons/icon.png",
   "main": "./out/extension.js",

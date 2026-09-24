@@ -9,7 +9,7 @@
 //! that lint was cut on 2026-08-20.
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 use taliesin_core::Site;
 
 fn site() -> Site {

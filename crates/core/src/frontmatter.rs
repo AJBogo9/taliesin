@@ -237,8 +237,8 @@ fn validate_image_alt(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warn
         v.and_then(|v| v.as_str())
             .is_some_and(|s| !s.trim().is_empty())
     }
-    // "missing alt text" is the needle the diagnostics catalogue already maps to
-    // TAL-A11Y-ALT, so this joins the existing family rather than minting a code.
+    // Worded as the body-image check words it ("missing alt text"), so the two read as one
+    // family.
     const HINT: &str = "(set `image-alt:`, or `image-alt: \"\"` if it is purely decorative)";
 
     if is_set(map.get("image")) && map.get("image-alt").is_none() {

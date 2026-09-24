@@ -1,6 +1,7 @@
 //! Static validation of the `{js}` reactive graph (dangling inputs + dependency cycles).
 
-use super::helpers::{collect_attr_values, start_line};
+use super::helpers::collect_attr_values;
+use crate::render::sourcepos_start_line as start_line;
 use crate::render::{Block, Severity, Warning};
 
 /// One `{js}` cell's reactive wiring, distilled from the block model for the static graph
@@ -108,10 +109,10 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
         .iter()
         .filter_map(|b| {
             let cell = b.cell.as_ref()?;
-            // Every client-side language shares the `//| name`/`viewof`/`input` wiring, so
-            // a second registered language taking a `//| input:` is a node in the same graph
-            // and gets the same dangling-input / cycle diagnostics.
-            crate::render::client_lang(&cell.lang)?;
+            // A `{js}` cell's `//| name`/`viewof`/`input` wiring makes it a node of the graph.
+            if !crate::render::is_client_lang(&cell.lang) {
+                return None;
+            }
             let mut defines = Vec::new();
             if let Some(n) = cell.js.name.as_deref() {
                 defines.push(n.to_string());
@@ -174,7 +175,7 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     // always recorded in `nested`, since it is the class of cell that earns an output slot.
     let runtime_defines = blocks.iter().any(|b| {
         b.cells()
-            .any(|c| crate::render::client_lang(&c.lang).is_none() && c.code.contains("define("))
+            .any(|c| !crate::render::is_client_lang(&c.lang) && c.code.contains("define("))
     });
     if !runtime_defines {
         let candidates: Vec<String> = defined.iter().cloned().collect();

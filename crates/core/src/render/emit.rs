@@ -33,7 +33,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             escape_html(&c.literal, out);
             out.push_str("</code>");
         }
-        NodeValue::CodeBlock(cb) if raw_block_format(&cb.info).as_deref() == Some("html") => {
+        NodeValue::CodeBlock(cb) if is_raw_html_fence(&cb.info) => {
             // Pandoc raw passthrough: ```{=html} ... ``` is raw *output*,
             // not a code listing, so its body is emitted verbatim (block data
             // attrs injected into the leading tag, like any other raw HTML block).
@@ -402,8 +402,8 @@ fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, ou
 /// rest (the id changes, so the op *looks* applied while the DOM keeps the old
 /// content), and `remove` strands roots 2..N in the page forever. That would make
 /// the preview disagree with what `build` publishes, which is the one thing the
-/// block model exists to prevent. `crates/core/tests/block_single_root.rs` asserts it
-/// for every document in the corpus.
+/// block model exists to prevent. `every_block_in_every_real_document_has_exactly_one_root`
+/// (`render/tests.rs`) asserts it for every document in the corpus.
 fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
     let lead = literal.trim_start();
     let injectable = !attrs.is_empty()
@@ -467,12 +467,12 @@ pub(crate) fn is_closed_single_root(html: &str) -> bool {
 
 /// The top-level shape [`top_level`] found: how many root nodes (it stops counting at 2),
 /// and whether every element it opened was closed without a stray closing tag.
-struct TopLevel {
-    roots: usize,
+pub(super) struct TopLevel {
+    pub(super) roots: usize,
     closed: bool,
 }
 
-fn top_level(literal: &str) -> TopLevel {
+pub(super) fn top_level(literal: &str) -> TopLevel {
     let b = literal.as_bytes();
     let mut i = 0;
     let mut depth = 0usize;

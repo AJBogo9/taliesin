@@ -11,7 +11,8 @@ use std::fs;
 fn doc_html() -> String {
     let path = corpus_dir().join("highlight.tmd");
     let src = fs::read_to_string(&path).unwrap();
-    let doc = taliesin_core::render_document_with_includes(&src, path.parent().unwrap());
+    let doc =
+        taliesin_core::render_document_scoped_with_site(&src, path.parent().unwrap(), None, None);
     doc.blocks.iter().map(|b| b.html.as_str()).collect()
 }
 

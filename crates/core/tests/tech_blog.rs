@@ -14,17 +14,17 @@
 
 use std::fs;
 
-use taliesin_core::{Site, render_document_with_includes};
+use taliesin_core::{Site, render_document_scoped_with_site};
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 
 /// Render a corpus post (resolving its includes) and return the body HTML.
 fn render_post(rel: &str) -> String {
     let path = corpus_dir().join(rel);
     let base = path.parent().unwrap();
     let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-    render_document_with_includes(&src, base).body_html()
+    render_document_scoped_with_site(&src, base, None, None).body_html()
 }
 
 /// Shortcode / fenced-div / cell-option / attribute markers that must never
@@ -213,7 +213,14 @@ fn js_cells_render_as_live_placeholders() {
 fn js_page_ships_libs_when_cells_present() {
     let dir = corpus_dir().join("tech-blog/posts/fourier-transform");
     let src = std::fs::read_to_string(dir.join("index.tmd")).unwrap();
-    let page = taliesin_core::render_html_page_with_includes(&src, &dir, "post");
+    let doc = taliesin_core::render_document_scoped_with_site(&src, &dir, None, None);
+    let page = taliesin_core::render_doc_to_page(
+        &doc,
+        "post",
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    );
     assert!(
         page.contains("@observablehq/plot") && page.contains("d3js.org"),
         "vendored Plot/d3 not shipped on a page with {{js}} cells"
@@ -234,15 +241,25 @@ fn js_page_ships_libs_when_cells_present() {
     // `Plot.plot(...)` against a head with no Plot. Preview now ships them unconditionally
     // like every other enhancer, so the weight claim moves to the mode that makes it.
     let doc = taliesin_core::render_document("---\ntitle: x\n---\n\nJust prose, no cells.\n");
-    let built = taliesin_core::render_doc_to_page(&doc, "p", taliesin_core::OutputMode::Build);
+    let built = taliesin_core::render_doc_to_page(
+        &doc,
+        "p",
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    );
     assert!(
         !built.contains("@observablehq/plot"),
         "Plot shipped in a static build of a doc with no cells"
     );
 
     // The preview counterpart, stated so the asymmetry is deliberate rather than a gap.
-    let previewed =
-        taliesin_core::render_doc_to_page(&doc, "p", taliesin_core::OutputMode::Preview);
+    let body = doc.body_html();
+    let previewed = taliesin_core::assemble_html_page(&taliesin_core::PageParts {
+        mode: taliesin_core::OutputMode::Preview,
+        body: &body,
+        ..taliesin_core::PageParts::defaults()
+    });
     assert!(
         previewed.contains("@observablehq/plot"),
         "preview must ship Plot before a cell exists, or the edit that adds the first \

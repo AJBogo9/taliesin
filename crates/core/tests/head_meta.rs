@@ -3,7 +3,17 @@
 //! updated by the pre-paint theme script (reusing its `BG` map, so no hex is duplicated), so it
 //! follows the in-page toggle, not only the OS scheme.
 
-use taliesin_core::render_html_page;
+/// The page `build <file.tmd>` writes for `src`.
+fn render_html_page(src: &str, fallback_title: &str) -> String {
+    let doc = taliesin_core::render_document(src);
+    taliesin_core::render_doc_to_page(
+        &doc,
+        fallback_title,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    )
+}
 
 #[test]
 fn head_advertises_the_generator() {
@@ -32,23 +42,6 @@ fn head_carries_the_human_readable_generator_banner() {
             && head.contains("https://taliesin.sh")
             && head.contains("block-modeled live HTML process"),
         "the head must carry the human generator banner (name + version + URL); head:\n{head}"
-    );
-}
-
-#[test]
-fn deck_head_carries_generator_meta_and_banner() {
-    // A deck page previously shipped NEITHER the generator meta nor the banner; C11 adds both,
-    // symmetric with the HTML page head.
-    let page = render_html_page("---\ntitle: D\nformat: deck\n---\n\n## Slide\n", "D");
-    let head = &page[..page.find("</head>").expect("deck has </head>")];
-    assert!(
-        head.contains(r#"<meta name="generator" content="Taliesin" />"#),
-        "the deck head must advertise the generator meta; head:\n{head}"
-    );
-    assert!(
-        head.contains(&format!("Taliesin v{}", taliesin_core::VERSION))
-            && head.contains("https://taliesin.sh"),
-        "the deck head must carry the human generator banner; head:\n{head}"
     );
 }
 

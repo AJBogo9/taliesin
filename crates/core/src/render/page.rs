@@ -5,73 +5,6 @@
 use super::*;
 use std::sync::LazyLock;
 
-pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_from_doc(doc, fallback_title, mode)
-}
-
-/// Render an already-built [`RenderedDoc`] into a standalone HTML page (no site
-/// chrome). Lets the `build` CLI run code cells first and then emit the page from
-/// the executed blocks; the in-process [`render_html_page`] path stays unchanged.
-/// `mode` decides how much optional machinery ships (see [`OutputMode`]).
-pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    page_from_doc(doc, fallback_title, mode)
-}
-
-/// `build <file.tmd>`'s page: [`render_doc_to_page`] in [`OutputMode::Build`], carrying the
-/// document's own Cmd-K index inline. `search_index` is the script body
-/// `Site::inline_search_index` returns, the index `preview <file.tmd>` serves; a
-/// single-file page has no `search-index.js` beside it to load one from, and the palette
-/// used to build its own out of the DOM instead, which indexed raw TeX, `<script>` bodies
-/// and a 1500-character cut of each section the preview's index does not.
-///
-/// A non-empty `mermaid_src` fetches the vendored mermaid library from that href beside the
-/// page instead of inlining it. **The caller owns the href and has undertaken to write that
-/// file**, the same contract [`render_doc_to_page_external`] has for `_assets/`. That is
-/// `build <file.tmd> --out <dir>`, whose contract is a folder rather than a file. The
-/// library was the one inlined blob paying for a guarantee that mode never needed: measured
-/// 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B. Everything
-/// else stays inline there, because this is about mermaid's size and not about
-/// externalizing the framework. Plain `build <file.tmd>` passes `""` and keeps inlining,
-/// since one self-contained file is its whole point.
-pub fn render_single_doc_page(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    mermaid_src: &str,
-    search_index: &str,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        search_index,
-        OutputMode::Build,
-        AssetMode::Inline { mermaid_src },
-    )
-}
-
-/// Like [`render_doc_to_page`] but links the shared `_assets/` files instead of inlining the
-/// framework. For a chrome-less page emitted *inside* a multi-page build — today only
-/// `404.html`, which is not one of the site's pages and so never passes through
-/// [`html_page_from_doc_in_site_external`].
-///
-/// The caller owns the href form. Every other page in a build gets depth-relative hrefs;
-/// this one must be handed **root-absolute** ones, because a static host serves it for any
-/// unknown path at any depth and a `../` prefix would resolve against the wrong directory.
-pub fn render_doc_to_page_external(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    assets: ExternalAssets,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        "",
-        OutputMode::Build,
-        AssetMode::External(assets),
-    )
-}
-
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
 /// footer, and post prev/next HTML. Built by `taliesin_core::site` and injected
 /// around the page body. Empty fields render nothing.
@@ -82,12 +15,13 @@ pub struct SiteCtx {
     pub post_nav_html: String,
     /// A book's chapter chrome — the sticky `.tali-book-topbar` + the off-canvas chapter
     /// drawer (Some only for a book project); when set, the page uses the centred book
-    /// reading column instead of the website layout (navbar on top). (Field name kept for
-    /// stability; it no longer holds a left sidebar.)
-    pub book_sidebar: Option<String>,
-    /// Site-level `format: html:` includes (header/body/css from `_site.yml`),
-    /// merged ahead of each page's own front-matter includes.
-    pub includes: PageIncludes,
+    /// reading column instead of the website layout (navbar on top).
+    pub book_chrome: Option<String>,
+    /// The chrome's own `<head>` markup for this page: its OpenGraph/SEO meta and the feed
+    /// links. Nothing an author writes reaches it.
+    pub head: String,
+    /// Markup at the top of the `<body>`: the draft banner on a draft page, else empty.
+    pub banner: String,
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
     /// none configured), emitted as `<link rel="icon">`.
     pub favicon: String,
@@ -120,7 +54,7 @@ impl SiteCtx {
     /// client fills in. Where the navbar, the reading column, the TOC rail, the prev/next
     /// and the footer GO is decided here, once.
     pub fn layout(&self, content: &str, has_toc: bool) -> (String, String) {
-        match self.book_sidebar.as_deref() {
+        match self.book_chrome.as_deref() {
             // Book: a centred reading column (content + optional TOC) under a sticky topbar;
             // the chapter list is an off-canvas drawer, with prev/next-chapter under the
             // column. One column, always: a book has no right rail (item 76), so there is no
@@ -162,7 +96,7 @@ impl SiteCtx {
 /// index) and any page already titled exactly the site name stay bare — never "Name ·
 /// Name", never a suffix on an empty title or a standalone (no-site) doc. `title` is the
 /// already-resolved page `<title>`; the returned string is still unescaped. Shared by the
-/// static build (`html_page_inner`) and the live site preview so both tabs agree.
+/// static build (`render_doc_to_page`) and the live site preview so both tabs agree.
 pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> String {
     let name = site_name.trim();
     if name.is_empty() || is_home || title.is_empty() || title == name {
@@ -173,24 +107,20 @@ pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> St
 }
 
 /// The pieces a caller supplies to [`assemble_html_page`]. Everything that
-/// differs between the three HTML shells (the static build, the single-doc live
-/// preview, and the multi-page site preview) lives here; the page skeleton +
-/// `<head>` ordering live once in [`assemble_html_page`]. The empty defaults
+/// differs between the two HTML shells (the static build and the live preview) lives
+/// here; the page skeleton + `<head>` ordering live once in [`assemble_html_page`],
+/// `<html lang="en">` included: nothing sets a page's language since the `lang:`
+/// front-matter key was cut on 2026-08-20, which makes build/preview parity on it
+/// structural. (FA16 was that parity broken: the preview hardcoded `en` while the build
+/// read the front matter, so a `lang: fi` page previewed as English.) The empty defaults
 /// (`extra_head`/`scripts_*` = `""`) reproduce the static build; the dev servers
 /// fill those slots with their live machinery (dev menu, websocket client).
 pub struct PageParts<'a> {
-    /// How the page is emitted: live `Preview` (ship everything), static `Build`
-    /// (content-gate enhancers), or `Bare` (zero `<script>`, CSS-only theming). The
-    /// live servers set `Preview`; the build CLI threads `Build`/`Bare`.
+    /// How the page is emitted: live `Preview` (ship everything) or static `Build`
+    /// (content-gate enhancers). The preview sets `Preview`; every built page `Build`.
     pub mode: OutputMode,
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
-    /// BCP-47 language tag for `<html lang>`. Always the `en` from [`PageParts::defaults`]
-    /// since the `lang:` front-matter key was cut on 2026-08-20: NO caller sets it, which is
-    /// what makes build/preview parity structural rather than a promise each one keeps.
-    /// (FA16 was exactly that promise being broken -- the preview hardcoded `en` while the
-    /// build read the front matter, so a `lang: fi` page previewed as English.)
-    pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
     pub favicon: &'a str,
     /// Also ship the multi-page site chrome CSS (navbar / footer / prev-next).
@@ -204,8 +134,10 @@ pub struct PageParts<'a> {
     /// A `<body>` attribute string including its leading space (e.g. ` class="…"`),
     /// or `""`.
     pub body_class: &'a str,
-    pub include_in_header: &'a str,
-    pub include_before_body: &'a str,
+    /// Markup appended to the `<head>`: the page's meta (see [`SiteCtx::head`]).
+    pub head: &'a str,
+    /// Markup at the top of the `<body>`, ahead of the chrome (see [`SiteCtx::banner`]).
+    pub before_body: &'a str,
     /// The body region: chrome + content (build/site) or the live `#tali-root`.
     pub body: &'a str,
     /// Scripts emitted *before* the shared enhancer registry (the static
@@ -214,7 +146,6 @@ pub struct PageParts<'a> {
     /// Scripts emitted *after* it (the static `taliEnhanceCode` call + TOC scripts,
     /// or the live websocket client).
     pub scripts_post: &'a str,
-    pub include_after_body: &'a str,
     /// How framework CSS/JS is delivered (inline blobs, or links to `_assets/`).
     pub assets: AssetMode<'a>,
 }
@@ -228,18 +159,16 @@ impl<'a> PageParts<'a> {
         PageParts {
             mode: OutputMode::Build,
             title: "",
-            lang: "en",
             favicon: "",
             with_site_css: false,
             ship_katex: false,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body: "",
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::Inline { mermaid_src: "" },
         }
     }
@@ -318,7 +247,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     // The head CSS block + framework script tags differ by asset mode; the body frame,
     // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
-    // The enhancer registry, emitted in <head> AHEAD of `{include_in_header}`.
+    // The enhancer registry, emitted in <head> AHEAD of `{head}`.
     //
     // `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`, and the documented
     // way to ship an extension enhancer is a `<script>` in the project's `_site.yml` `head:`
@@ -350,7 +279,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
-            // enhancer itself rides in code_scripts().
+            // enhancer itself rides in the framework scripts below.
             let js_head_html = if needs_js_libs(p.body, p.mode) {
                 js_cell_head()
             } else {
@@ -403,12 +332,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // time this runs), and the deferred jslibs (d3/Plot) have executed by the
             // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
             //
-            // Gated on [`has_client_cells`], NOT on `{js}` alone: every registered
-            // client-side language runs through this one runtime, so a second language
-            // added to the registry needs it just as much. A language with its own
-            // enhancer follows it inline (and must, since it would call
-            // `window.taliJs.registerLanguage` on the object this script has just defined).
-            let tali_js_inline = if has_client_cells(p.body) {
+            // Gated on [`has_js_cells`].
+            let tali_js_inline = if has_js_cells(p.body) {
                 format!("\n<script>{TALIESIN_JS}</script>")
             } else {
                 String::new()
@@ -430,7 +355,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="{lang}">
+<html lang="en">
 <head>
 {GENERATOR_BANNER}<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -441,19 +366,18 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {theme_init}
 {style_block}{katex_block}
 {js_head}
-{enhancer_registry}{include_in_header}
+{enhancer_registry}{head}
 {extra_head}</head>
 <body{body_class}>
-{skip_link}{include_before_body}
+{skip_link}{before_body}
 {body}
 {scripts_pre}
 {code_scripts}
 {scripts_post}
-{include_after_body}
+
 </body>
 </html>
 "#,
-        lang = escape_attr(p.lang),
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_init,
@@ -461,15 +385,14 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         katex_block = katex_block,
         js_head = js_head_html,
         enhancer_registry = enhancer_registry,
-        include_in_header = p.include_in_header,
+        head = p.head,
         extra_head = p.extra_head,
         body_class = p.body_class,
-        include_before_body = p.include_before_body,
+        before_body = p.before_body,
         body = p.body,
         scripts_pre = scripts_pre,
         code_scripts = framework_scripts,
         scripts_post = scripts_post,
-        include_after_body = p.include_after_body,
     )
 }
 
@@ -490,57 +413,6 @@ const SPECULATION_RULES: &str = r#"<script type="speculationrules">{"prefetch":[
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
 
-fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        "",
-        mode,
-        AssetMode::Inline { mermaid_src: "" },
-    )
-}
-
-/// Like `html_page_from_doc`, but wraps the page body in the site chrome
-/// (navbar above, prev/next + footer below) and ships the site CSS. The
-/// single-page path (`html_page_from_doc`) is unchanged (`site == None`).
-///
-/// Every caller is a static-build context (the `build` CLI, the 404 page, mounted
-/// sub-site serving, the lint pass's discard); the live site preview assembles its own
-/// `PageParts` directly. So this content-gates enhancers like any other build.
-pub fn html_page_from_doc_in_site(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    site: &SiteCtx,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        Some(site),
-        "",
-        OutputMode::Build,
-        AssetMode::Inline { mermaid_src: "" },
-    )
-}
-
-/// Like [`html_page_from_doc_in_site`] but links the shared `_assets/` files instead of
-/// inlining the framework CSS/JS. Used by the multi-page `build <dir>` path.
-pub fn html_page_from_doc_in_site_external(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    site: &SiteCtx,
-    assets: ExternalAssets,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        Some(site),
-        "",
-        OutputMode::Build,
-        AssetMode::External(assets),
-    )
-}
-
 /// Resolve the `<title>` text, in order of how deliberately the author chose it:
 ///
 /// 1. the document's own front-matter `title:`;
@@ -554,10 +426,7 @@ pub fn html_page_from_doc_in_site_external(
 /// title, so it beats the heading. Before step 3 existed, a front-matter-less document
 /// rendered `<title>the-file-stem</title>` standalone and `<title></title>` in a site,
 /// where `og:title` then quietly borrowed the site's own name.
-/// `pub(super)` only so the print assembler (`render/print.rs`) resolves a `<title>` through
-/// the SAME policy rather than growing a fourth copy of it — the drift this module's
-/// `site_page_title` doc comment warns about. Visibility only; no behaviour change.
-pub(super) fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> String {
+fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> String {
     let fallback = (!fallback_title.is_empty()).then_some(fallback_title);
     let h1 = leading_h1_text(&doc.blocks);
     let ranked = if in_site {
@@ -576,7 +445,7 @@ pub(super) fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bo
 
 /// The display-ready `<title>` for a page in a site: [`resolve_title`]'s ranking, then the
 /// site-name suffix ([`title_with_site_suffix`]). The whole title policy behind one call,
-/// because it has three consumers that MUST agree — the static build (`html_page_inner`),
+/// because it has three consumers that MUST agree — the static build (`render_doc_to_page`),
 /// the live preview's server-rendered `<title>`, and the `full_render` websocket message,
 /// which the client assigns straight to `document.title`.
 ///
@@ -599,14 +468,33 @@ pub(crate) fn site_page_title(
     title_with_site_suffix(&resolved, site_name, is_home)
 }
 
-fn html_page_inner(
+/// Render a finished [`RenderedDoc`] into a complete HTML page: **the one page assembler**
+/// every built page goes through, in [`OutputMode::Build`]. (The live preview assembles
+/// its own [`PageParts`], because its body is a websocket-driven mount, not a document.)
+///
+/// - `site`: the page's chrome inside a project (`Site::page_chrome`), or `None` for a
+///   standalone document: the single-file build and both 404 pages.
+/// - `search_index`: a standalone page's own Cmd-K index, the script body
+///   `Site::inline_search_index` returns, the index `preview <file.tmd>` serves. A
+///   single-file page has no `search-index.js` beside it to load one from. A site page's
+///   index comes from `site.search_index` instead, so a site caller passes `""`.
+/// - `assets`: [`AssetMode::Inline`] bakes the framework into the page (the single-file
+///   build, the preview's 404); [`AssetMode::External`] links the shared `_assets/` files
+///   (the site build, the build's 404, whose caller must hand it **root-absolute** hrefs:
+///   a static host serves it for any unknown path at any depth).
+///
+/// An inline page with a non-empty `mermaid_src` fetches the vendored mermaid library from
+/// that href beside the page instead of inlining it. **The caller owns the href and has
+/// undertaken to write that file**, the same contract `_assets/` has. That is
+/// `build <file.tmd> --out <dir>`, whose contract is a folder rather than a file: measured
+/// 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B. Plain
+/// `build <file.tmd>` passes `""` and keeps inlining, since one self-contained file is its
+/// whole point.
+pub fn render_doc_to_page(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: Option<&SiteCtx>,
-    // The JS that inlines a standalone page's own index ([`render_single_doc_page`]); a
-    // site page's comes from `site.search_index` instead.
     search_index: &str,
-    mode: OutputMode,
     assets: AssetMode,
 ) -> String {
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
@@ -632,7 +520,7 @@ fn html_page_inner(
     // the book branch below now emits a one-column grid unconditionally, and a `SiteCtx`
     // assembled some other way with `doc.toc` still set would drop the nav into a layout
     // that has no track for it. Gating at the source keeps that unrepresentable.
-    let toc = if doc.toc && !site.is_some_and(|s| s.book_sidebar.is_some()) {
+    let toc = if doc.toc && !site.is_some_and(|s| s.book_chrome.is_some()) {
         // `tabindex="-1"`, like `<main>`, so the skip link below can move focus INTO the
         // landmark rather than merely near it (AP7-5). Not a tab stop.
         toc_html(&doc.blocks).replacen(
@@ -713,26 +601,19 @@ fn html_page_inner(
         }
         None => content,
     };
-    // Site-level `format: html:` includes (from `_site.yml`) apply to every page
-    // first; the page's own front-matter includes follow.
-    let mut includes = match site {
-        Some(s) => {
-            let mut merged = s.includes.clone();
-            merged.merge(&doc.includes);
-            merged
+    // The `<head>` additions: a site page's chrome meta, then the doc's own; a standalone
+    // doc has no chrome, so its OpenGraph/SEO meta comes from its own front matter.
+    let (head, banner) = match site {
+        Some(s) => (format!("{}{}", s.head, doc.head), s.banner.as_str()),
+        None => {
+            let meta = social_meta_head(
+                doc.title.as_deref(),
+                doc.description.as_deref(),
+                doc.is_article,
+            );
+            (format!("{}{meta}", doc.head), "")
         }
-        None => doc.includes.clone(),
     };
-    // A standalone doc has no site chrome, so emit its OpenGraph/SEO meta here from
-    // its own front matter. Site pages already carry richer per-page meta via the
-    // chrome includes, so this only runs off-site (`site` is `None`).
-    if site.is_none() {
-        includes.in_header.push_str(&social_meta_head(
-            doc.title.as_deref(),
-            doc.description.as_deref(),
-            doc.is_article,
-        ));
-    }
     let favicon = match site {
         Some(s) if !s.favicon.is_empty() => favicon_link(&s.favicon),
         // No configured favicon (a book, or any project that sets none): fall back
@@ -740,14 +621,14 @@ fn html_page_inner(
         _ => default_favicon(),
     };
     assemble_html_page(&PageParts {
-        mode,
+        mode: OutputMode::Build,
         title: &t,
         favicon: &favicon,
         with_site_css: site.is_some(),
         ship_katex,
         body_class: &body_class,
-        include_in_header: &includes.in_header,
-        include_before_body: &includes.before_body,
+        head: &head,
+        before_body: banner,
         body: &body_content,
         // A static page is a read-only view with no editor bridge, so it ships no
         // click-to-source handler (that would draw a dead `.tali-hl` outline on every
@@ -755,7 +636,6 @@ fn html_page_inner(
         // live-preview-only feature (client.js wires it to the editor).
         scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
-        include_after_body: &includes.after_body,
         assets,
         ..PageParts::defaults()
     })
@@ -781,14 +661,13 @@ pub fn favicon_link(href: &str) -> String {
     format!("<link rel=\"icon\"{ty} href=\"{h}\" />")
 }
 
-/// The bundled taliesin mark (the T mark), inlined as a base64 SVG data
-/// URI — the default favicon when a project configures none.
-const FAVICON_SVG: &str = include_str!("../../../../web-client/favicon.svg");
+/// The bundled taliesin mark (the T mark, `web-client/favicon.svg`), base64-encoded by
+/// `build.rs` for a `data:` URI: the default favicon when a project configures none.
+const FAVICON_SVG_BASE64: &str = include_str!(concat!(env!("OUT_DIR"), "/favicon.b64"));
 
 pub(super) fn default_favicon() -> String {
     format!(
-        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
-        base64_encode(FAVICON_SVG.as_bytes())
+        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{FAVICON_SVG_BASE64}\" />"
     )
 }
 
@@ -829,18 +708,16 @@ mod tests {
             assemble_html_page(&PageParts {
                 mode: OutputMode::Build,
                 title: "T",
-                lang: "en",
                 favicon: "",
                 with_site_css: true,
                 ship_katex: false,
                 extra_head: "",
                 body_class: "",
-                include_in_header: "",
-                include_before_body: "",
+                head: "",
+                before_body: "",
                 body,
                 scripts_pre: "",
                 scripts_post: "",
-                include_after_body: "",
                 assets: AssetMode::External(ext),
             })
         };
@@ -895,18 +772,16 @@ mod tests {
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,
             title: "T",
-            lang: "en",
             favicon: "",
             with_site_css: true,
             ship_katex: true,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body,
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::External(ext),
         });
         // Links, not inlined framework CSS.
@@ -935,18 +810,16 @@ mod tests {
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,
             title: "T",
-            lang: "en",
             favicon: "",
             with_site_css: true,
             ship_katex: false,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body: "<main id=\"tali-main\"><p>prose only</p></main>",
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::External(ext),
         });
         assert!(html.contains("href=\"a.css\""), "app.css always linked");

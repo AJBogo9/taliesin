@@ -8,7 +8,7 @@
 //! notes/2026-07-22-corpus-demand-probe-docs-maintainer.md for the findings this produced.
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 use taliesin_core::Site;
 
 fn tarn() -> Site {

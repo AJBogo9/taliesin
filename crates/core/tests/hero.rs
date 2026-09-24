@@ -8,7 +8,7 @@
 use taliesin_core::Site;
 
 mod common;
-use common::TempProj;
+use common::{RenderPage, TempProj};
 
 /// A throwaway one-page site whose `index.tmd` front matter is `fm`; returns the
 /// rendered home page HTML.
