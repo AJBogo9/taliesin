@@ -3575,6 +3575,62 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The editor searches the `.bib` files the render reads (audit 2026-09-24, bibtex #10):
+    /// a project's shared `_site.yml` `bibliography:` as well as the page's own, whichever
+    /// YAML spelling the page uses. It read only a line scan of the page's front matter, so
+    /// the documented shared-bibliography workflow got no hover, no go-to-definition and no
+    /// key completion, and a flow list (`[a.bib, b.bib]`) was read as one path.
+    #[test]
+    fn citations_resolve_against_the_shared_and_the_page_bibliography() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-sharedbib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: S\nbibliography: shared.bib\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("shared.bib"), "@misc{shared1, title={Shared}}\n").unwrap();
+        std::fs::write(dir.join("posts/a.bib"), "@misc{own1, title={Own A}}\n").unwrap();
+        std::fs::write(dir.join("posts/b.bib"), "@misc{own2, title={Own B}}\n").unwrap();
+        let doc = dir.join("posts/post.tmd");
+        let text = "---\ntitle: P\nbibliography: [a.bib, b.bib]\n---\n\n\
+                    [@shared1] [@own2]\n\nSee [@\n"
+            .to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        for (id, col, file, entry) in [
+            (601, 3, "shared.bib", "@misc{shared1"),
+            (603, 15, "posts/b.bib", "@misc{own2"),
+        ] {
+            let md = hover_raw_at(&client, &uri, id, 5, col)
+                .map(|h| hover_markdown(&h))
+                .unwrap_or_default();
+            assert!(md.contains(entry), "hover at column {col}: {md:?}");
+            match definition_at(&client, &uri, id + 1, 5, col) {
+                Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                    assert_eq!(loc.uri, Url::from_file_path(dir.join(file)).unwrap())
+                }
+                other => panic!("definition at column {col}: {other:?}"),
+            }
+        }
+        let items = complete_at(&client, &uri, 605, 7, 6);
+        let mut got: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        got.sort_unstable();
+        assert_eq!(got, ["own1", "own2", "shared1"]);
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn code_action_offers_a_quick_fix_for_a_frontmatter_typo() {
         let (server, client) = Connection::memory();

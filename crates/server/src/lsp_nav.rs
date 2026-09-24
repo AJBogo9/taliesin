@@ -389,8 +389,9 @@ pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
     None
 }
 
-/// The `.bib` files a citation in the buffer at `uri` resolves against, in the order the
-/// render reads them: a later file's entry wins a key two files define.
+/// The `.bib` files a citation in the buffer at `uri` resolves against: the page's own and
+/// its project's shared `bibliography:`, in the order the render reads them, so a later
+/// file's entry wins a key two files define.
 pub(crate) fn bib_files(uri: &lsp_types::Url, text: &str) -> Vec<std::path::PathBuf> {
     let Some(dir) = uri
         .to_file_path()
@@ -399,10 +400,7 @@ pub(crate) fn bib_files(uri: &lsp_types::Url, text: &str) -> Vec<std::path::Path
     else {
         return Vec::new();
     };
-    frontmatter_bib_paths(text)
-        .iter()
-        .map(|rel| dir.join(rel))
-        .collect()
+    taliesin_core::render::bibliography_files(text, &dir)
 }
 
 /// The entry the render cites for `key` among `files` (see [`bib_files`]): the file, its
@@ -442,49 +440,6 @@ pub(crate) fn line_col(text: &str, at: usize) -> (u32, u32) {
         .chars()
         .count();
     (lines as u32, col as u32)
-}
-
-fn strip_quotes(s: &str) -> String {
-    let s = s.strip_prefix(['"', '\'']).unwrap_or(s);
-    let s = s.strip_suffix(['"', '\'']).unwrap_or(s);
-    s.to_string()
-}
-
-/// The front-matter `bibliography:` paths (scalar or YAML list), raw as written.
-pub(crate) fn frontmatter_bib_paths(text: &str) -> Vec<String> {
-    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
-    if lines.first().map(|l| l.trim()) != Some("---") {
-        return vec![];
-    }
-    let mut out = vec![];
-    let mut i = 1;
-    while i < lines.len() {
-        let t = lines[i].trim();
-        if t == "---" || t == "..." {
-            break;
-        }
-        if let Some(rest) = lines[i].strip_prefix("bibliography:") {
-            let val = rest.trim();
-            if !val.is_empty() {
-                out.push(strip_quotes(val));
-            } else {
-                for l in &lines[i + 1..] {
-                    let t2 = l.trim();
-                    if t2 == "---" || t2 == "..." {
-                        break;
-                    }
-                    match l.trim_start().strip_prefix('-') {
-                        Some(item) if !item.trim().is_empty() => {
-                            out.push(strip_quotes(item.trim()))
-                        }
-                        _ => break,
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-    out
 }
 
 #[cfg(test)]
@@ -921,83 +876,5 @@ mod tests {
             Target::Cite { key, .. } => assert_eq!(key, "smith2020"),
             other => panic!("expected the citation on the line after the CR, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn frontmatter_bib_paths_reads_scalar_and_list() {
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: refs.bib\n---\n"),
-            vec!["refs.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: \"a.bib\"\n---"),
-            vec!["a.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography:\n  - a.bib\n  - b.bib\n---"),
-            vec!["a.bib".to_string(), "b.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\ntitle: x\n---"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            frontmatter_bib_paths("bibliography: x.bib"),
-            Vec::<String>::new()
-        );
-    }
-
-    /// A buffer whose lines end at a lone `\r` is four CommonMark lines (see
-    /// `lsp_pos::lines`); the `\n`-split read it as one line and found no front matter,
-    /// so every citation in the document lost hover and go-to-definition.
-    #[test]
-    fn frontmatter_bib_paths_reads_a_lone_cr_buffer() {
-        assert_eq!(
-            frontmatter_bib_paths("---\rbibliography: refs.bib\r---\r"),
-            vec!["refs.bib".to_string()]
-        );
-    }
-
-    /// Where the front-matter scan starts, where it stops, and that it walks forwards.
-    ///
-    /// Every fixture above puts `bibliography:` on the *first* line of a *terminated* front
-    /// matter, which is the one shape that hides all three of this loop's defects: a cursor that
-    /// walks backwards still reads line 1, a scan that never terminates still finds the key, and a
-    /// bound one line too wide is only reached when the document has no closing `---`.
-    #[test]
-    fn frontmatter_bib_paths_scans_forwards_and_only_inside_the_front_matter() {
-        // Not the first key: the scan has to walk forwards to reach it.
-        assert_eq!(
-            frontmatter_bib_paths("---\ntitle: x\nbibliography: refs.bib\n---\n"),
-            vec!["refs.bib".to_string()]
-        );
-        // A `bibliography:` line in the body is not front matter.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n---\n\nbibliography: body.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-        // `...` closes front matter as well as `---`.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n...\nbibliography: body.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-        // Unterminated front matter (an author mid-edit): stop at the last line, not past it.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-    }
-
-    /// A `bibliography:` list ends at its first non-item, and an empty `-` is a non-item.
-    ///
-    /// The guard is the whole stopping rule: without it an empty `-` yields an empty path (which
-    /// `dir.join` resolves to the document's own directory) and the scan carries on past the end
-    /// of the list, so a half-typed entry silently changes which files are read.
-    #[test]
-    fn a_bibliography_list_stops_at_the_first_non_item() {
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography:\n  - a.bib\n  -\n  - b.bib\n---\n"),
-            vec!["a.bib".to_string()]
-        );
     }
 }
