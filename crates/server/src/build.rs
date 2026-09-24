@@ -3328,8 +3328,8 @@ mod mirror_tests {
     }
 
     /// A code sample that merely *shows* an attribute is TEXT, and the scrapers must read
-    /// tags only. `escape_html` does not escape `"`, so an inline `<code>` span showing
-    /// `<a href="draft.md">` puts a literal `href="` into the document's text — and the
+    /// tags only. `escape_html` did not escape `"` until 2026-09-24, so an inline `<code>`
+    /// span showing `<a href="draft.md">` put a literal `href="` into the document's text, and the
     /// substring scan harvested it, so `deploy_referenced_sources` published a file nothing
     /// on the site linked. Exactly the FA11/FA12 defect one layer down: those were fixed on
     /// the render side by `render::rewrite_attr_in_tags`, and the build scrapers never got

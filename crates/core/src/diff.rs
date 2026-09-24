@@ -175,8 +175,9 @@ fn addressable(html: &str) -> bool {
 /// 319 µs to 1704 µs. [`sourcepos_mentions`] is an upper bound and cheap; at most one
 /// mention on each side cannot be ambiguous, because the block model gives EVERY block its
 /// own `data-sourcepos` (`crates/core/tests/corpus.rs` enforces it), so a single mention is
-/// the outer attribute and never text. Only a block with more (a container, or prose
-/// quoting the attribute: comrak does not escape `"` inside a `<code>` span) is walked.
+/// the outer attribute and never text. Only a block with more (a container) is walked.
+/// Prose that quotes the attribute no longer counts: text escapes `"` since 2026-09-24, so
+/// a code sample's `data-sourcepos=&quot;` does not match the needle.
 fn anchor_op(old: &Block, new: &Block) -> BlockOp {
     let inner = if sourcepos_mentions(&old.html) <= 1 && sourcepos_mentions(&new.html) <= 1 {
         eq_ignoring_sourcepos(&old.html, &new.html).then(Vec::new)
@@ -886,7 +887,7 @@ mod tests {
     /// A paragraph that *quotes* `data-sourcepos="…"` must still get `SetMeta` when only
     /// its line numbers move.
     ///
-    /// comrak does not escape `"` inside a `<code>` span, so the attribute name appears
+    /// Until 2026-09-24 the text escaper left `"` alone, so the attribute appeared
     /// verbatim in the page's visible TEXT. The attribute count matched the string, counted
     /// two, and concluded the block wrapped inner blocks — so every line-number shift above
     /// such a paragraph took a destructive `Update` that replaces the element and discards

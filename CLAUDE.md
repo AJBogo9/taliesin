@@ -344,9 +344,9 @@ cross-checks the hook, `gates.sh` and `ci.yml`
   `39:1-6:25` on a paragraph comrak merged across an include boundary, which `client.js`'s
   `highlightAtLine` skips outright. `map_span` is the single answer to both ends.
 - **Read finished HTML through `render::tags` / `render::attrs`, never a bare
-  `find("src=\"")`.** `escape_html` does not escape `"`, so a code sample that merely
-  *shows* `<a href="x.md">` puts a real-looking attribute into the page's TEXT, and the
-  mermaid/Plot bundles every page inlines build HTML out of string fragments
+  `find("src=\"")`.** Text escapes `"` since 2026-09-24, but a code sample that merely
+  *shows* `<a href=x.md>` (unquoted) still puts a real-looking attribute into the page's
+  TEXT, and the mermaid/Plot bundles every page inlines build HTML out of string fragments
   (`<img src="${e}"`). A substring scan reads all of it as markup: that hand-rolled scan
   has been the same bug four times (FA11, FA12, then both halves of FA13 — a stolen
   anchor, a rewritten code sample, a never-linked `.md` published into a deploy, and a
