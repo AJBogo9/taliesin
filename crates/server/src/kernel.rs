@@ -1805,20 +1805,39 @@ fn take_ascii_digits(b: &[u8], i: usize) -> Option<usize> {
     (j > i).then_some(j)
 }
 
-/// Strip ANSI SGR escape sequences (IPython colourises tracebacks).
+/// Strip terminal escape sequences and keep the text between them: CSI (`ESC [` up to a
+/// final byte in `@`..=`~`, which covers the SGR colour codes IPython puts in tracebacks),
+/// OSC (`ESC ]` up to BEL or `ESC \`: an OSC 8 hyperlink around its link text, a window
+/// title), and any other escape as `ESC` plus one character. Skipping from `ESC` to the
+/// next letter, as this used to, is right only for CSI and ate the text of an OSC 8 link.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            // Skip until the terminating letter of the escape sequence.
-            for c in chars.by_ref() {
-                if c.is_ascii_alphabetic() {
-                    break;
+        if ch != '\u{1b}' {
+            out.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('[') => {
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
                 }
             }
-        } else {
-            out.push(ch);
+            Some(']') => {
+                while let Some(c) = chars.next() {
+                    if c == '\u{7}' {
+                        break;
+                    }
+                    if c == '\u{1b}' && chars.peek() == Some(&'\\') {
+                        chars.next();
+                        break;
+                    }
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -2283,6 +2302,29 @@ mod tests {
         assert!(
             !out.contains("[31m") && !out.contains("[0m"),
             "ANSI SGR code leaked as visible text: {out}"
+        );
+    }
+
+    /// exec #17: `strip_ansi` skipped from ESC to the next ASCII letter, which is right for
+    /// a colour code (`ESC [ 31 m`) and wrong for every other escape. An OSC-8 hyperlink
+    /// (`ESC ] 8 ; ; url ST text ESC ] 8 ; ; ST`, what `rich` and modern tracebacks print)
+    /// ate the text after it: "link end" came out as `ttp://x.exampleinknd`. The link text
+    /// is what a reader should see; the escape sequences around it are not.
+    #[test]
+    fn strip_ansi_keeps_the_text_of_an_osc8_hyperlink() {
+        let st = "\u{1b}]8;;http://x.example\u{1b}\\link\u{1b}]8;;\u{1b}\\ end";
+        assert_eq!(strip_ansi(st), "link end", "ST-terminated OSC 8");
+        let bel = "\u{1b}]8;;http://x.example\u{7}link\u{1b}]8;;\u{7} end";
+        assert_eq!(strip_ansi(bel), "link end", "BEL-terminated OSC 8");
+        assert_eq!(
+            strip_ansi("\u{1b}[1;31mred\u{1b}[0m plain"),
+            "red plain",
+            "a colour code still goes"
+        );
+        assert_eq!(
+            strip_ansi("\u{1b}]0;title\u{7}after"),
+            "after",
+            "a window title goes"
         );
     }
 
