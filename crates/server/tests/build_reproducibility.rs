@@ -70,7 +70,7 @@ fn write_repro_site(root: &Path) {
     fs::write(
         root.join("index.tmd"),
         "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  \
-         type: grid\n---\n\nWelcome to the reproducibility blog.\n",
+         type: list\n---\n\nWelcome to the reproducibility blog.\n",
     )
     .unwrap();
 

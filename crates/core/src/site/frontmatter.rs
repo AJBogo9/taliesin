@@ -180,8 +180,7 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
     Some(ListingSpec {
         id: scalar(v.get("id")),
         contents,
-        grid: ty.as_deref() == Some("grid"),
-        with_image: matches!(ty.as_deref(), Some("grid") | Some("list")),
+        with_image: ty.as_deref() == Some("list"),
         max_items,
     })
 }
@@ -189,6 +188,22 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `type: grid` was CUT on 2026-09-24: its CSS went on 2026-08-15, after which it
+    /// rendered exactly like `list` while the docs promised tiled cards. The parser must no
+    /// longer read it, so a stale `grid` is the default text list, not a second spelling of
+    /// `list`; only `list` shows the thumbnails.
+    #[test]
+    fn parse_listing_spec_no_longer_reads_type_grid() {
+        let spec = |ty: &str| {
+            let v: serde_yaml::Value =
+                serde_yaml::from_str(&format!("contents: posts\ntype: {ty}\n")).unwrap();
+            parse_listing_spec(&v).unwrap()
+        };
+        assert!(!spec("grid").with_image, "`type: grid` is no longer read");
+        assert!(spec("list").with_image, "`type: list` keeps the thumbnails");
+        assert!(!spec("default").with_image, "`default` stays text-only");
+    }
 
     /// `hero.image:`/`image-alt:` were retired on 2026-08-02 and their two-column layout
     /// deleted on 2026-08-08, so `parse_hero` no longer reads either key. Dropping a key

@@ -497,6 +497,10 @@ headings deliberately excluded).
 
 ### Decided against
 
+- **`listing: type: grid`** (cut 2026-09-24): its CSS went on 2026-08-15 with the ruled-list
+  redesign, after which it rendered exactly like `list` while the guide promised tiled cards.
+  The parser no longer reads it (`parse_listing_spec_no_longer_reads_type_grid`); a listing is
+  one ruled list, and `list` is the only value that shows thumbnails.
 - **The reader's code download** (C-READ-2's code half, `render/repro.rs`): **cut 2026-08-14 on the
   owner's call, out of scope for the MVP.** The whole feature went — the module, the `.tali-repro`
   CSS, the search-index skip and `REPRO_BLOCK_ID` with it, plus the manual's "Running it yourself"

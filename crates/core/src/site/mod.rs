@@ -89,20 +89,17 @@ pub struct HeroAction {
     pub primary: bool,
 }
 
-/// A `listing:` front-matter block: a request to render a grid/list of cards for
-/// the documents under `contents`.
+/// A `listing:` front-matter block: a request to render a list of cards for the
+/// documents under `contents`.
 #[derive(Debug, Clone)]
 pub struct ListingSpec {
     /// Optional target id (`listing: { id: x }`) → fills `::: {#x}`; else appended.
     pub id: Option<String>,
     /// The directory whose pages are listed (relative to the hosting page).
     pub contents: String,
-    /// `type: grid` → card-grid layout; `list` and `default` are both a stacked
-    /// list and differ only in `with_image` (below).
-    pub grid: bool,
-    /// Whether cards show their `image:` thumbnail: `grid` and `list`, not plain
-    /// `default`. Lets a reading-first `list` keep the figure thumbnails while a
-    /// formal text listing (e.g. a CV's projects) stays image-free.
+    /// Whether cards show their `image:` thumbnail: `type: list`, not the plain default.
+    /// Lets a reading-first `list` keep the figure thumbnails while a formal text listing
+    /// (e.g. a CV's projects) stays image-free. `type: grid` was cut on 2026-09-24.
     pub with_image: bool,
     /// `max-items:` cap, if any.
     pub max_items: Option<usize>,
@@ -1411,7 +1408,6 @@ impl Site {
         warnings: &mut Vec<Warning>,
     ) -> String {
         let up = "../".repeat(host.url.matches('/').count());
-        let layout = if spec.grid { "grid" } else { "default" };
         let items = self.collection(host, spec, warnings);
         let cards: String = items
             .iter()
@@ -1430,7 +1426,7 @@ impl Site {
             .map(|id| format!(" data-block-id=\"{}\"", esc(id)))
             .unwrap_or_default();
         format!(
-            "<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\"{id_attr}>{cards}</ul>"
+            "<ul role=\"list\" class=\"tali-listing tali-listing-default\"{id_attr}>{cards}</ul>"
         )
     }
 
@@ -3061,7 +3057,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "index.tmd",
-                    "---\ntitle: Home\nlisting:\n  type: grid\n---\n\nHi.\n",
+                    "---\ntitle: Home\nlisting:\n  type: list\n---\n\nHi.\n",
                 ),
             ],
         );
@@ -3107,7 +3103,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "index.tmd",
-                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Posts\n",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: list\n---\n\n# Posts\n",
                 ),
                 (
                     "posts/p.tmd",
@@ -3126,10 +3122,9 @@ pub(crate) mod tests {
 
     #[test]
     fn list_layout_shows_thumbnail_but_default_stays_text_only() {
-        // `type: list` is a stacked (non-grid) layout that KEEPS the `image:` thumbnail
-        // (reading-first feed); plain `type: default` is the same stacked layout WITHOUT
-        // the thumbnail (a formal text list, e.g. a CV's projects). Both must differ only
-        // in the image, and neither is the `grid` tile layout.
+        // `type: list` KEEPS the `image:` thumbnail (reading-first feed); plain
+        // `type: default` is the same layout WITHOUT the thumbnail (a formal text list,
+        // e.g. a CV's projects). The two differ only in the image.
         let root = write_site(
             "listvsdefault",
             &[
@@ -3155,9 +3150,8 @@ pub(crate) mod tests {
         // page bundles site.css, which mentions every class).
         // list: stacked layout, thumbnail present.
         assert!(
-            feed.contains("class=\"tali-listing tali-listing-default\"")
-                && !feed.contains("class=\"tali-listing tali-listing-grid\""),
-            "list is a stacked (non-grid) layout: {feed}"
+            feed.contains("class=\"tali-listing tali-listing-default\""),
+            "list is the one listing layout: {feed}"
         );
         assert!(
             feed.contains("class=\"tali-card-img\"") && feed.contains("alt=\"A nice pic\""),
@@ -3188,7 +3182,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "blog.tmd",
-                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Blog\n",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: list\n---\n\n# Blog\n",
                 ),
                 (
                     "posts/a.tmd",
@@ -3208,11 +3202,11 @@ pub(crate) mod tests {
         // any page. The tag is left open here because a standalone listing also carries its
         // `data-block-id` (see `a_standalone_listing_block_is_targetable_by_the_op_that_…`).
         assert!(
-            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-grid\""),
+            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-default\""),
             "the listing container must be a <ul>: {blog}"
         );
         assert!(
-            !blog.contains("<div class=\"tali-listing tali-listing-grid\">"),
+            !blog.contains("<div class=\"tali-listing"),
             "the old <div> container must be gone: {blog}"
         );
         // The explicit role is load-bearing, not belt-and-braces: `list-style: none` (which

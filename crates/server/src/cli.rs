@@ -42,9 +42,9 @@ const INIT_SITE_YML: &str =
 /// The `listing:` block is what wires the example post below into the homepage. Without
 /// it, the first post an author has is reachable by typing its URL and by nothing else,
 /// with the listing machinery already built and simply not pointed at the one directory
-/// the scaffold writes. `type:` is spelled out even though `list` is the default: it is
-/// the one knob a new author wants (swap it for `grid` and the homepage becomes a card
-/// grid), and a scaffold is read as an example.
+/// the scaffold writes. `type: list` shows each post's `image:` as a thumbnail (the
+/// default does not); it is the one knob a new author wants, and a scaffold is read as an
+/// example.
 const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\nlisting:\n  contents: posts\n  type: list\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\

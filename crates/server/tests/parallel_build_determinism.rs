@@ -165,7 +165,7 @@ fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
     // would depend on its siblings if any build-order edge existed.
     fs::write(
         root.join("index.tmd"),
-        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n---\n\nWelcome to the blog.\n",
+        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: list\n---\n\nWelcome to the blog.\n",
     )
     .unwrap();
     // Siblings with ascending dates → the listing (date desc) shows them newest first.
