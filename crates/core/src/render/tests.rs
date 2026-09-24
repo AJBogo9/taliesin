@@ -657,6 +657,44 @@ fn mermaid_library_inlined_into_build_pages_only() {
     );
 }
 
+/// A `{js}` cell's source rides inside a `<script>` element, where two sequences are
+/// markup whatever JS means by them, both matched case-insensitively by the parser:
+/// `</script` closes the element, and `<!--` followed by `<script` enters the state in
+/// which `</script>` closes nothing, so the rest of the page is swallowed. Only the
+/// lowercase `</script` was escaped: `"</SCRIPT><b>x</b>"` put a real `<b>` in the page
+/// and `"<!--<script>"` swallowed everything after the cell. Both are now written as
+/// escapes JS reads as the same characters in a string, template or regex literal.
+#[test]
+fn js_cell_source_can_neither_close_nor_swallow_its_script_element() {
+    let src =
+        "const a = \"</SCRIPT><b>x</b>\";\nconst b = \"<!--<script>\";\nconst c = `</Script >`;";
+    let doc = render_document(&format!("```{{js}}\n{src}\n```\n\nAfter the cell.\n"));
+    let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    let names: Vec<&str> = tags(&html).map(|t| t.name).collect();
+    assert!(
+        !names.contains(&"b"),
+        "the source wrote an element: {names:?}"
+    );
+    assert_eq!(
+        names.last(),
+        Some(&"p"),
+        "the paragraph after the cell: {names:?}"
+    );
+    // The one script element's body, up to the only `</script` (in any case) left.
+    let open = tags(&html)
+        .find(|t| attr_value(t, "type").as_deref() == Some("application/tali-js"))
+        .expect("the cell's script");
+    let body = &html[open.at + open.text.len()..];
+    let end = body.to_ascii_lowercase().find("</script").expect("closed");
+    let body = &body[..end];
+    assert!(!body.contains("<!--"), "{body}");
+    // Undoing the two escapes gives the author's source back, character for character.
+    assert_eq!(
+        body.replace("<\\/", "</").replace("\\x3C", "<"),
+        format!("{src}\n")
+    );
+}
+
 /// The page-assembly gates decide from MARKUP, never from text that merely shows it. Each
 /// read the finished body with a substring `contains`, so prose documenting the construct
 /// shipped its payload: `<span class="katex">` in inline code cost a math-free page 369 KB
