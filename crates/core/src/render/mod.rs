@@ -3905,13 +3905,12 @@ fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: &str) -> Str
     )
 }
 
-/// The raw output format of a Pandoc passthrough fence: `{=html}` -> "html".
-fn raw_block_format(info: &str) -> Option<String> {
+/// Whether a fence is a raw HTML passthrough (`{=html}`, any case), whose body is output.
+fn is_raw_html_fence(info: &str) -> bool {
     info.trim()
         .strip_prefix("{=")
         .and_then(|s| s.strip_suffix('}'))
-        .map(|f| f.trim().to_ascii_lowercase())
-        .filter(|f| !f.is_empty())
+        .is_some_and(|f| f.trim().eq_ignore_ascii_case("html"))
 }
 
 /// [`html_escape`] appending to `out`, for the emitters that build a page in one buffer.

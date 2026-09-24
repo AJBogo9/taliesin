@@ -644,7 +644,7 @@ impl Site {
             // Empty outside a book: a website page's back-to-listing link is a block at the
             // top of the page (`expand_page`), not chrome under it.
             post_nav_html: self.book_nav_html(page, depth),
-            book_sidebar: book.then(|| self.sidebar_html(page, depth)),
+            book_chrome: book.then(|| self.sidebar_html(page, depth)),
             head,
             banner,
             favicon,

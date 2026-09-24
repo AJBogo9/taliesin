@@ -24,12 +24,6 @@ fn is_hspace(c: char) -> bool {
     c == ' ' || c == '\t'
 }
 
-/// The shortcode that takes a file-path first argument.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Shortcode {
-    Include,
-}
-
 /// What completion applies at the cursor, decided from the line + document prefix.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum CompletionContext {
@@ -47,8 +41,8 @@ pub(crate) enum CompletionContext {
         typed: String,
     },
     Cite,
+    /// The path argument of a `{{< include >}}`, the one shortcode that takes one.
     ShortcodePath {
-        shortcode: Shortcode,
         typed: String,
     },
     /// A `\command` being typed inside `$…$` / `$$…$$`. `typed` includes the backslash, so
@@ -697,10 +691,7 @@ fn detect_shortcode_path(line_prefix: &str) -> Option<CompletionContext> {
     if typed.contains('=') {
         return None;
     }
-    Some(CompletionContext::ShortcodePath {
-        shortcode: Shortcode::Include,
-        typed,
-    })
+    Some(CompletionContext::ShortcodePath { typed })
 }
 
 /// The cursor is inside an open `[@…` citation: the last `[@` has no `]` before the cursor.
@@ -1364,7 +1355,6 @@ mod tests {
         assert_eq!(
             ctx("{{< include intro", "{{< include intro"),
             CompletionContext::ShortcodePath {
-                shortcode: Shortcode::Include,
                 typed: "intro".to_string()
             }
         );
@@ -1372,7 +1362,6 @@ mod tests {
         assert_eq!(
             ctx("{{< include a@b", "{{< include a@b"),
             CompletionContext::ShortcodePath {
-                shortcode: Shortcode::Include,
                 typed: "a@b".to_string()
             }
         );
@@ -1707,7 +1696,6 @@ mod tests {
                 "",
                 "{{< include ",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: String::new(),
                 },
             ),
@@ -1726,7 +1714,6 @@ mod tests {
                 "",
                 "{{< include a{b",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: "a{b".to_string(),
                 },
             ),
@@ -1735,7 +1722,6 @@ mod tests {
                 "",
                 "{{< include a >}} {{< include b",
                 CompletionContext::ShortcodePath {
-                    shortcode: Shortcode::Include,
                     typed: "b".to_string(),
                 },
             ),

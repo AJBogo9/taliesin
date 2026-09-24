@@ -1920,8 +1920,8 @@ fn front_matter_without_title_yields_no_blocks() {
 ///
 /// The parser-side pin for the `lang:` cut (2026-08-20): the key named a real read until
 /// then, so asserting it is merely *unknown* would not catch a parser that still honoured
-/// it. Both page builders inherit `PageParts::defaults()` now and neither passes a value,
-/// which is what makes preview/build parity structural instead of a promise (see
+/// it. Both page builders share the one page template, which has no language slot, and
+/// that is what makes preview/build parity structural instead of a promise (see
 /// `serve_site`'s `a_declared_lang_is_inert_on_both_the_preview_and_the_build`).
 #[test]
 fn html_lang_is_the_en_baseline_and_front_matter_cannot_change_it() {
@@ -8211,7 +8211,7 @@ fn the_site_shell_wraps_a_book_and_a_website_differently() {
 
     // A book: topbar + drawer chrome, a centred column, and NO navbar/rail wrapper at all.
     let book = SiteCtx {
-        book_sidebar: Some("<div id=\"topbar\"></div>".into()),
+        book_chrome: Some("<div id=\"topbar\"></div>".into()),
         footer_html: "<footer></footer>".into(),
         ..website.clone()
     };

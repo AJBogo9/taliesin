@@ -131,11 +131,6 @@ impl TempProj {
         fs::write(f, content).unwrap();
         self
     }
-
-    /// Install an extension `name` whose `_extension.yml` is `manifest`.
-    pub fn ext(&self, name: &str, manifest: &str) -> &Self {
-        self.file(&format!("_extensions/{name}/_extension.yml"), manifest)
-    }
 }
 
 impl Default for TempProj {

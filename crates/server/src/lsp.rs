@@ -1135,7 +1135,7 @@ fn resolve_completion(
     docs: &std::collections::HashMap<lsp_types::Url, String>,
     params: &lsp_types::CompletionParams,
 ) -> Option<lsp_types::CompletionResponse> {
-    use crate::lsp_complete::{CompletionContext as Ctx, Shortcode};
+    use crate::lsp_complete::CompletionContext as Ctx;
     use lsp_types::{
         CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Position,
         Range, TextEdit,
@@ -1455,7 +1455,7 @@ fn resolve_completion(
             .into_iter()
             .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
             .collect(),
-        Ctx::ShortcodePath { shortcode, typed } => {
+        Ctx::ShortcodePath { typed } => {
             let doc_dir = uri.to_file_path().ok()?;
             let doc_dir = doc_dir.parent()?.to_path_buf();
             let dir_part = match typed.rfind('/') {
@@ -1471,9 +1471,6 @@ fn resolve_completion(
                         is_dir: e.file_type().map(|t| t.is_dir()).unwrap_or(false),
                     })
                     .collect();
-            let file_detail = match shortcode {
-                Shortcode::Include => "partial",
-            };
             // Replace the whole typed path (incl. any dir prefix) so descending overwrites
             // cleanly rather than appending to a half-typed segment. The start is the cursor
             // less the typed length in scalars, re-expressed in UTF-16; the end is the cursor.
@@ -1486,7 +1483,7 @@ fn resolve_completion(
                 ),
                 pos,
             );
-            crate::lsp_complete::shortcode_path_candidates(&entries, &typed, file_detail)
+            crate::lsp_complete::shortcode_path_candidates(&entries, &typed, "partial")
                 .into_iter()
                 .map(|c| {
                     let is_dir = c.value.ends_with('/');

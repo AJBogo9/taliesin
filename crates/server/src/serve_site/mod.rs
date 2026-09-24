@@ -3295,9 +3295,9 @@ mod project_tests {
     /// It is the same test that used to pin the opposite claim (Fable audit FA16: the live
     /// shell hardcoded `lang: "en"` while the build read the front matter, so a Finnish page
     /// previewed as English and built as Finnish). What made that possible was two
-    /// assemblies each supplying their own value. Neither supplies one now -- both inherit
-    /// the single `en` in `PageParts::defaults()` -- so the drift axis is closed
-    /// structurally, and this test is what says so.
+    /// assemblies each supplying their own value. Neither supplies one now -- the one page
+    /// template writes `en` -- so the drift axis is closed structurally, and this test is
+    /// what says so.
     #[test]
     fn a_declared_lang_is_inert_on_both_the_preview_and_the_build() {
         let dir = std::env::temp_dir().join(format!("tali-preview-lang-{}", std::process::id()));

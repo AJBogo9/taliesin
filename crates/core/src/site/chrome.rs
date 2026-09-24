@@ -522,7 +522,7 @@ impl Site {
     /// linking home, a search button, and the light/dark toggle) followed by the chapter
     /// list inside an off-canvas drawer. A book reads as one centred column, so the chapter
     /// list is summoned, not a permanent rail. (Returned together from one method because
-    /// the page assembler threads a single `book_sidebar` string; the topbar is `.tali-book-
+    /// the page assembler threads a single `book_chrome` string; the topbar is `.tali-book-
     /// topbar`, never the website `.tali-site-nav`.)
     pub(super) fn sidebar_html(&self, current: &Page, depth: usize) -> String {
         let Some(book) = &self.book else {

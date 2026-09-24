@@ -15,9 +15,8 @@ pub struct SiteCtx {
     pub post_nav_html: String,
     /// A book's chapter chrome — the sticky `.tali-book-topbar` + the off-canvas chapter
     /// drawer (Some only for a book project); when set, the page uses the centred book
-    /// reading column instead of the website layout (navbar on top). (Field name kept for
-    /// stability; it no longer holds a left sidebar.)
-    pub book_sidebar: Option<String>,
+    /// reading column instead of the website layout (navbar on top).
+    pub book_chrome: Option<String>,
     /// The chrome's own `<head>` markup for this page: its OpenGraph/SEO meta and the feed
     /// links. Nothing an author writes reaches it.
     pub head: String,
@@ -55,7 +54,7 @@ impl SiteCtx {
     /// client fills in. Where the navbar, the reading column, the TOC rail, the prev/next
     /// and the footer GO is decided here, once.
     pub fn layout(&self, content: &str, has_toc: bool) -> (String, String) {
-        match self.book_sidebar.as_deref() {
+        match self.book_chrome.as_deref() {
             // Book: a centred reading column (content + optional TOC) under a sticky topbar;
             // the chapter list is an off-canvas drawer, with prev/next-chapter under the
             // column. One column, always: a book has no right rail (item 76), so there is no
@@ -108,24 +107,20 @@ pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> St
 }
 
 /// The pieces a caller supplies to [`assemble_html_page`]. Everything that
-/// differs between the three HTML shells (the static build, the single-doc live
-/// preview, and the multi-page site preview) lives here; the page skeleton +
-/// `<head>` ordering live once in [`assemble_html_page`]. The empty defaults
+/// differs between the two HTML shells (the static build and the live preview) lives
+/// here; the page skeleton + `<head>` ordering live once in [`assemble_html_page`],
+/// `<html lang="en">` included: nothing sets a page's language since the `lang:`
+/// front-matter key was cut on 2026-08-20, which makes build/preview parity on it
+/// structural. (FA16 was that parity broken: the preview hardcoded `en` while the build
+/// read the front matter, so a `lang: fi` page previewed as English.) The empty defaults
 /// (`extra_head`/`scripts_*` = `""`) reproduce the static build; the dev servers
 /// fill those slots with their live machinery (dev menu, websocket client).
 pub struct PageParts<'a> {
-    /// How the page is emitted: live `Preview` (ship everything), static `Build`
-    /// (content-gate enhancers), or `Bare` (zero `<script>`, CSS-only theming). The
-    /// live servers set `Preview`; the build CLI threads `Build`/`Bare`.
+    /// How the page is emitted: live `Preview` (ship everything) or static `Build`
+    /// (content-gate enhancers). The preview sets `Preview`; every built page `Build`.
     pub mode: OutputMode,
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
-    /// BCP-47 language tag for `<html lang>`. Always the `en` from [`PageParts::defaults`]
-    /// since the `lang:` front-matter key was cut on 2026-08-20: NO caller sets it, which is
-    /// what makes build/preview parity structural rather than a promise each one keeps.
-    /// (FA16 was exactly that promise being broken -- the preview hardcoded `en` while the
-    /// build read the front matter, so a `lang: fi` page previewed as English.)
-    pub lang: &'a str,
     /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
     pub favicon: &'a str,
     /// Also ship the multi-page site chrome CSS (navbar / footer / prev-next).
@@ -164,7 +159,6 @@ impl<'a> PageParts<'a> {
         PageParts {
             mode: OutputMode::Build,
             title: "",
-            lang: "en",
             favicon: "",
             with_site_css: false,
             ship_katex: false,
@@ -361,7 +355,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="{lang}">
+<html lang="en">
 <head>
 {GENERATOR_BANNER}<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -384,7 +378,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 </body>
 </html>
 "#,
-        lang = escape_attr(p.lang),
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_init,
@@ -530,7 +523,7 @@ pub fn render_doc_to_page(
     // the book branch below now emits a one-column grid unconditionally, and a `SiteCtx`
     // assembled some other way with `doc.toc` still set would drop the nav into a layout
     // that has no track for it. Gating at the source keeps that unrepresentable.
-    let toc = if doc.toc && !site.is_some_and(|s| s.book_sidebar.is_some()) {
+    let toc = if doc.toc && !site.is_some_and(|s| s.book_chrome.is_some()) {
         // `tabindex="-1"`, like `<main>`, so the skip link below can move focus INTO the
         // landmark rather than merely near it (AP7-5). Not a tab stop.
         toc_html(&doc.blocks).replacen(
@@ -718,7 +711,6 @@ mod tests {
             assemble_html_page(&PageParts {
                 mode: OutputMode::Build,
                 title: "T",
-                lang: "en",
                 favicon: "",
                 with_site_css: true,
                 ship_katex: false,
@@ -783,7 +775,6 @@ mod tests {
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,
             title: "T",
-            lang: "en",
             favicon: "",
             with_site_css: true,
             ship_katex: true,
@@ -822,7 +813,6 @@ mod tests {
         let html = assemble_html_page(&PageParts {
             mode: OutputMode::Build,
             title: "T",
-            lang: "en",
             favicon: "",
             with_site_css: true,
             ship_katex: false,

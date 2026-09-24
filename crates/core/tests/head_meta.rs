@@ -46,23 +46,6 @@ fn head_carries_the_human_readable_generator_banner() {
 }
 
 #[test]
-fn deck_head_carries_generator_meta_and_banner() {
-    // A deck page previously shipped NEITHER the generator meta nor the banner; C11 adds both,
-    // symmetric with the HTML page head.
-    let page = render_html_page("---\ntitle: D\nformat: deck\n---\n\n## Slide\n", "D");
-    let head = &page[..page.find("</head>").expect("deck has </head>")];
-    assert!(
-        head.contains(r#"<meta name="generator" content="Taliesin" />"#),
-        "the deck head must advertise the generator meta; head:\n{head}"
-    );
-    assert!(
-        head.contains(&format!("Taliesin v{}", taliesin_core::VERSION))
-            && head.contains("https://taliesin.sh"),
-        "the deck head must carry the human generator banner; head:\n{head}"
-    );
-}
-
-#[test]
 fn pre_paint_script_keeps_a_theme_color_meta_in_sync() {
     // The theme-color meta is created + set from the same `BG[mode]` the canvas uses, at the
     // one `apply()` choke point every theme change routes through — so it tracks the reader's

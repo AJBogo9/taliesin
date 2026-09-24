@@ -33,7 +33,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             escape_html(&c.literal, out);
             out.push_str("</code>");
         }
-        NodeValue::CodeBlock(cb) if raw_block_format(&cb.info).as_deref() == Some("html") => {
+        NodeValue::CodeBlock(cb) if is_raw_html_fence(&cb.info) => {
             // Pandoc raw passthrough: ```{=html} ... ``` is raw *output*,
             // not a code listing, so its body is emitted verbatim (block data
             // attrs injected into the leading tag, like any other raw HTML block).
