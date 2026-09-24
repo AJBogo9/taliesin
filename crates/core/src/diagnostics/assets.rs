@@ -124,8 +124,12 @@ fn unpublished(root: &Path, base: &Path, path: &str, what: &str) -> Option<Strin
     use crate::includes::{Reach, Unpublishable, publishable};
     Some(
         match publishable(root, base, Path::new(path), Reach::Referenced) {
-            Ok(below) if root.join(&below).is_file() => return None,
-            Ok(_) => {
+            Ok(below) => {
+                let file = root.join(&below);
+                crate::reads::probe(&file);
+                if file.is_file() {
+                    return None;
+                }
                 format!("{what} not found: `{path}` (no such file under the document directory)")
             }
             Err(Unpublishable::Outside) => format!(

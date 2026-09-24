@@ -237,13 +237,17 @@ async fn try_bind(
 /// same sources, on a port nobody is looking at. Or the port belongs to something
 /// else, and we fall back to the next free one, so a second project can be previewed
 /// alongside the first.
+///
+/// Also returns what the caller should say about a replaced preview. The caller prints it
+/// after its banner: printed here, it went before the banner's screen clear and into the
+/// scrollback (audit 2026-09-24, WP11 residual).
 pub(crate) async fn bind_with_fallback(
     port: u16,
     root: &Path,
-) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+) -> std::io::Result<(tokio::net::TcpListener, SocketAddr, Vec<String>)> {
     let host = [127, 0, 0, 1];
     let mut last_err = match try_bind(host, port).await {
-        Ok(bound) => return Ok(bound),
+        Ok((listener, addr)) => return Ok((listener, addr, Vec::new())),
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => Some(e),
         Err(e) => return Err(e),
     };
@@ -264,12 +268,17 @@ pub(crate) async fn bind_with_fallback(
             .filter(|i| i.root == root && holds_the_port(i.pid, i.port))
             .collect();
 
-    if !mine.is_empty() {
-        for inc in &mine {
-            crate::log::warn(&format!(
+    let replaced: Vec<String> = mine
+        .iter()
+        .map(|inc| {
+            format!(
                 "port {}: replacing an existing preview of this project (pid {})",
                 inc.port, inc.pid
-            ));
+            )
+        })
+        .collect();
+    if !mine.is_empty() {
+        for inc in &mine {
             // SAFETY: SIGTERM to the pid that owns the port which just identified itself,
             // over loopback, as a preview of the very root we are about to serve, i.e. this
             // user's own server.
@@ -283,7 +292,7 @@ pub(crate) async fn bind_with_fallback(
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
                 match try_bind(host, port).await {
-                    Ok(bound) => return Ok(bound),
+                    Ok((listener, addr)) => return Ok((listener, addr, replaced)),
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                         if Instant::now() >= deadline {
                             last_err = Some(e);
@@ -301,7 +310,7 @@ pub(crate) async fn bind_with_fallback(
         match try_bind(host, p).await {
             // The caller says so, after its banner: printed here, it went before the screen
             // clear and into the scrollback.
-            Ok(bound) => return Ok(bound),
+            Ok((listener, addr)) => return Ok((listener, addr, replaced)),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
         }
@@ -560,10 +569,22 @@ pub(crate) fn code_frame(src: &str, line: u32) -> String {
     out
 }
 
-const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
+const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", "node_modules"];
 
-/// Whether a file event under `root` should trigger a rebuild: a source-ish extension,
-/// outside the generated/VCS trees.
+/// Whether a path component names a tree the watcher leaves alone: a generated one, or a
+/// `.`-prefixed one (`.git`, a project's `.venv`), which discovery and the build skip too.
+/// A project's `.venv` held 2,334 of the real tech-blog's 2,372 watched directories, and
+/// grew by 190 with each `pip install` (audit 2026-09-24 invalidation #14).
+fn skipped_name(name: &str) -> bool {
+    name.starts_with('.') || SKIP_DIRS.contains(&name)
+}
+
+/// Whether a file event under `root` should reach the rebuild: any path outside the
+/// generated and `.`-prefixed trees. What it then rebuilds is decided by what the pages
+/// read (`serve_site`'s `PageDoc::reads`), not by the file's extension: a list of
+/// extensions let `.css` and `.json` through, which nothing reads, and dropped a `.pdf` a
+/// page links, whose "broken link" then outlived the file's creation (audit 2026-09-24
+/// invalidation #12).
 ///
 /// **The skip-dir scan runs on the path RELATIVE to `root`**, and that is load-bearing.
 /// The watcher hands this absolute event paths, so a whole-path scan asked whether any
@@ -574,33 +595,22 @@ const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"
 /// A path that is not under `root` keeps the whole-path scan, so a caller with no
 /// meaningful root loses no vetting.
 pub(crate) fn relevant_path(p: &Path, root: &Path) -> bool {
-    const EXTS: &[&str] = &[
-        "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
-        "png", "jpg", "jpeg", "webp", "gif",
-    ];
-    let ext_ok = p
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
-    let in_skip_dir = p.strip_prefix(root).unwrap_or(p).components().any(|c| {
-        c.as_os_str()
-            .to_str()
-            .is_some_and(|s| SKIP_DIRS.contains(&s))
-    });
-    ext_ok && !in_skip_dir
+    !p.strip_prefix(root).unwrap_or(p).components().any(|c| {
+        matches!(c, std::path::Component::Normal(name) if name.to_str().is_some_and(skipped_name))
+    })
 }
 
-/// Whether a directory should be pruned from the watch set by its own name — a
-/// generated/VCS tree we never register an inotify watch inside.
+/// Whether a directory should be pruned from the watch set by its own name — a generated
+/// or `.`-prefixed tree we never register an inotify watch inside.
 pub(crate) fn is_pruned_dir(dir: &Path) -> bool {
     dir.file_name()
         .and_then(|n| n.to_str())
-        .is_some_and(|n| SKIP_DIRS.contains(&n))
+        .is_some_and(skipped_name)
 }
 
 /// Every directory under `base` (inclusive) that we register a non-recursive watch on,
-/// pruning generated/VCS subtrees (`node_modules`, `.git`, `_site`, `_book`, `_freeze`)
-/// whole. notify's `Recursive` mode walks the *entire* tree and adds one inotify watch
+/// pruning generated and `.`-prefixed subtrees (`node_modules`, `_site`, `_book`,
+/// `_freeze`, `.git`, `.venv`) whole. notify's `Recursive` mode walks the *entire* tree and adds one inotify watch
 /// descriptor per directory — a big `node_modules` alone can exhaust `max_user_watches`
 /// and silently kill hot reload — so we enumerate only the directories a rebuild can
 /// actually depend on and watch each non-recursively (which reports create/modify/remove
@@ -949,9 +959,17 @@ mod protocol_contract {
         // silently never rebuild on a `.tmd` edit — the core edit loop would be broken.
         let root = Path::new("/tmp");
         assert!(relevant_path(Path::new("/tmp/doc.tmd"), root));
-        // `.qmd` is no longer a source extension: a `.qmd` edit must not trigger a rebuild.
-        assert!(!relevant_path(Path::new("/tmp/doc.qmd"), root));
-        assert!(!relevant_path(Path::new("/tmp/doc.txt"), root));
+        // A directory has no extension, and renaming or deleting one takes its pages along.
+        assert!(relevant_path(Path::new("/tmp/posts/a-star"), root));
+        // Whether a file matters is what the pages read, not its extension: a page can link
+        // a `.pdf` or a `.csv`, and creating it clears that link's "broken" (audit
+        // 2026-09-24 invalidation #12). A `.`-prefixed path is read by nothing.
+        assert!(relevant_path(Path::new("/tmp/files/report.pdf"), root));
+        assert!(!relevant_path(Path::new("/tmp/.venv/lib/site.py"), root));
+        assert!(!relevant_path(
+            Path::new("/tmp/.goutputstream-AB12CD"),
+            root
+        ));
         // The generated/VCS trees are still vetoed — that is what keeps the executor's own
         // `_freeze/` writes from rebuilding every run.
         assert!(!relevant_path(Path::new("/tmp/_freeze/doc.tmd"), root));
@@ -995,6 +1013,7 @@ mod protocol_contract {
             "sub/deep",
             "node_modules/pkg",
             ".git/objects",
+            ".venv/lib/python3.12/site-packages",
             "_site/assets",
             "_freeze",
         ] {
@@ -1012,6 +1031,11 @@ mod protocol_contract {
         assert!(!dirs.contains(&root.join("_site")));
         assert!(!dirs.contains(&root.join("_site/assets")));
         assert!(!dirs.contains(&root.join("_freeze")));
+        // A `.`-prefixed tree is no page's and nothing a page reads, as discovery and the
+        // build agree; a project's own `.venv` held 2,334 of the real tech-blog's 2,372
+        // watched directories (audit 2026-09-24 invalidation #14).
+        assert!(!dirs.contains(&root.join(".venv")));
+        assert!(!dirs.contains(&root.join(".venv/lib")));
         let _ = std::fs::remove_dir_all(&root);
     }
 

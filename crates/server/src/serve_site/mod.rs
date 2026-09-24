@@ -102,6 +102,27 @@ impl SiteApp {
         };
         let _ = tx.send(BuildMsg::Build(rel));
     }
+
+    /// Queue [`BuildMsg::IfMoved`] on the lane that fits the page, as [`queue_build`]
+    /// routes. On the exec lane it waits behind the page's own build in flight, so it is
+    /// judged against what that build left.
+    ///
+    /// [`queue_build`]: SiteApp::queue_build
+    fn queue_if_moved(&self, rel: String, paths: Vec<PathBuf>) {
+        let cell_free = self
+            .root
+            .pages
+            .lock()
+            .get(&rel)
+            .map(|ps| ps.doc.cell_free)
+            .unwrap_or(false);
+        let tx = if cell_free {
+            &self.fast_tx
+        } else {
+            &self.build_tx
+        };
+        let _ = tx.send(BuildMsg::IfMoved(rel, paths));
+    }
 }
 
 /// The served project. Owns the live state the builder and router act on: the discovered
@@ -122,27 +143,57 @@ struct Project {
     /// one-document preview into "every `.tmd` in the parent directory" — the scoping would
     /// hold until the first save and then evaporate.
     scope: Option<PathBuf>,
-    /// A digest of each page's front-matter block, as of the last discovery — the record
-    /// that says whether a `.tmd` save changed anything DISCOVERY reads.
+    /// What discovery read of each source file the preview has asked it about, as of the
+    /// discovery in force: a page's input maps to its
+    /// [`discovery_digest`](taliesin_core::site::discovery_digest) (its front-matter block
+    /// and its leading `# H1`), and a source file discovery found is no page (a partial, a
+    /// book file `chapters:` does not list) maps to `None`.
     ///
-    /// Front matter is discovery input, not render input. `title:`, `date:`,
-    /// `description:`, `image:`, `categories:`, `listing:`, `hero:` and `draft:` are parsed
-    /// once into [`Site::pages`], and every OTHER page renders its listing cards, nav
-    /// labels, prev/next and search entries out of that copy. A save that only re-renders
-    /// the edited page therefore leaves all of them stale — measured on a live preview:
-    /// editing a listed post's `title:` never reached the index, not on save and not on a
-    /// hard reload, and the preview kept contradicting what `build` produced until a file
-    /// was added or the server restarted. Five pages of the author's own sites carry a
-    /// `listing:`.
+    /// Front matter and the H1 are discovery input, not only render input. They are parsed
+    /// once into [`Site::pages`] and the book's chapters, and every OTHER page renders its
+    /// listing cards, nav labels, prev/next, drawer and chapter numbers out of that copy, so
+    /// a save that only re-renders the edited page leaves all of them stale.
     ///
-    /// Kept as a digest rather than fixed by re-discovering on every save: discovery is
-    /// ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, 10.2ms vs 3.8ms on
-    /// `corpus/tech-blog`, warm process, re-measured 2026-08-27 — the absolutes fell ~10x
-    /// with 1.1.0's render memos and concurrent harvest, the RATIO did not move), which is
-    /// real money on a keystroke path
-    /// that exists to be fast. Hashing the block of each changed file is a read and a
-    /// hash, and body edits — the overwhelming majority — leave it untouched.
-    front_matter: Mutex<HashMap<PathBuf, u64>>,
+    /// This is what classifies a save, by what it changed rather than by how the editor
+    /// wrote it ([`Project::what_moved`]): a page whose digest held is an edit in place
+    /// whether the editor wrote the file in place or renamed a temp file over it. Deciding
+    /// by event kind made every atomic save a possible page-set change (audit 2026-09-24
+    /// C1, C9): it paid a whole re-discovery, and that re-discovery reseeded this record
+    /// before anything asked whether the front matter moved, so an atomic `title:` edit
+    /// never reached the listing that shows it.
+    ///
+    /// A digest rather than a re-discovery per save: discovery renders every page twice
+    /// (the cross-reference harvest and the search index), and a body edit, nearly every
+    /// save, leaves the digest untouched.
+    records: Mutex<HashMap<PathBuf, Option<u64>>>,
+}
+
+/// What a batch of changed files moved of what discovery reads ([`Project::what_moved`]).
+#[derive(Default)]
+struct Moved {
+    /// A page's source is gone, or a source file discovery never classified exists: the
+    /// page set may have changed.
+    page_set: bool,
+    /// What discovery reads of a page that is still there changed.
+    records: bool,
+    /// The digest of every changed source file that exists, read BEFORE the re-discovery
+    /// this batch may cause, so a save that lands during it is compared against what this
+    /// batch saw rather than silently recorded as already seen.
+    digests: HashMap<PathBuf, u64>,
+}
+
+/// The key a path is recorded under: its canonical form when it exists, else the path as
+/// given (a deleted file does not canonicalize, and the watcher reports the path it had).
+fn record_key(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The [`discovery_digest`](taliesin_core::site::discovery_digest) of the source at `path`,
+/// read as discovery reads it. An unreadable file digests as an empty one, which is what
+/// discovery makes of it.
+fn digest_of(path: &Path) -> u64 {
+    let src = taliesin_core::includes::read_source(path).unwrap_or_default();
+    taliesin_core::site::discovery_digest(&src)
 }
 
 impl Project {
@@ -154,59 +205,96 @@ impl Project {
         }
     }
 
-    /// Record the front-matter digest of every page in the current `Site`. Called wherever
-    /// a fresh `Site` is adopted, so the record always describes the discovery in force.
-    fn seed_front_matter(&self) {
+    /// Record what discovery read of every page of the `Site` the server booted with.
+    fn seed_records(&self) {
         let inputs: Vec<PathBuf> = self
             .site
             .lock()
             .pages
             .iter()
-            .map(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()))
+            .map(|p| record_key(&p.input))
             .collect();
-        let mut record = self.front_matter.lock();
-        record.clear();
+        let mut records = self.records.lock();
+        records.clear();
         for input in inputs {
-            let digest = front_matter_digest(&input);
-            record.insert(input, digest);
+            let digest = digest_of(&input);
+            records.insert(input, Some(digest));
         }
     }
 
-    /// Whether any of `changed` is a page of this project whose front-matter block moved,
-    /// updating the record as it goes. A path the record does not hold is not a page of
-    /// this project — an `{{< include >}}` partial, a `.bib`, an image — and a body-only
-    /// edit leaves the digest equal, so both answer `false` and cost one read.
-    fn front_matter_moved(&self, changed: &HashSet<PathBuf>) -> bool {
-        let mut moved = false;
-        let mut record = self.front_matter.lock();
+    /// What `changed` moved of what discovery reads. Reads each changed source file once;
+    /// anything else (an `{{< include >}}` partial's `.md`, a `.bib`, an image) is no page
+    /// and moves nothing here, unless it was a directory pages lived in.
+    fn what_moved(&self, changed: &HashSet<PathBuf>) -> Moved {
+        let records = self.records.lock();
+        let mut moved = Moved::default();
         for path in changed {
-            let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
-            let Some(previous) = record.get(&canon).copied() else {
+            let key = record_key(path);
+            if !taliesin_core::ext::is_source_path(path) {
+                // A directory renamed away or deleted takes every page under it along. (One
+                // renamed IN is replayed file by file by the watcher.)
+                moved.page_set |= !key.exists()
+                    && records
+                        .iter()
+                        .any(|(page, digest)| digest.is_some() && page.starts_with(&key));
                 continue;
-            };
-            let digest = front_matter_digest(&canon);
-            if digest != previous {
-                record.insert(canon, digest);
-                moved = true;
+            }
+            let exists = key.is_file();
+            let digest = exists.then(|| digest_of(&key));
+            if let Some(d) = digest {
+                moved.digests.insert(key.clone(), d);
+            }
+            match (records.get(&key), digest) {
+                // A page whose source is gone.
+                (Some(Some(_)), None) => moved.page_set = true,
+                (Some(Some(recorded)), Some(d)) => moved.records |= d != *recorded,
+                // Discovery found this is no page, and no content can make it one: that is
+                // decided by where the file is and by `chapters:`.
+                (Some(None), _) => {}
+                // A source file discovery has never classified may be a new page.
+                (None, digest) => moved.page_set |= digest.is_some(),
             }
         }
         moved
     }
-}
 
-/// A digest of one file's `---` front-matter block, or of the empty string when it has none
-/// (a page that gains or loses its whole block moves either way).
-fn front_matter_digest(path: &Path) -> u64 {
-    let src = std::fs::read_to_string(path).unwrap_or_default();
-    taliesin_core::hash::fnv1a(taliesin_core::frontmatter::front_matter_block(&src).unwrap_or(""))
+    /// Adopt a freshly discovered `site` and bring the record up to date with it. A page
+    /// takes the digest `fresh` read before the discovery, or keeps the one it has; a page
+    /// new to the record is read now; a changed source file that is no page is recorded as
+    /// none. `forget_non_pages` drops every recorded "no page", for a `_site.yml` change,
+    /// whose `chapters:` can make any file a page.
+    fn adopt(&self, site: Site, fresh: &HashMap<PathBuf, u64>, forget_non_pages: bool) {
+        let pages: HashSet<PathBuf> = site.pages.iter().map(|p| record_key(&p.input)).collect();
+        *self.site.lock() = site;
+        let mut records = self.records.lock();
+        records.retain(|key, digest| match digest {
+            Some(_) => pages.contains(key),
+            None => !forget_non_pages && !pages.contains(key),
+        });
+        for key in &pages {
+            match fresh.get(key) {
+                Some(d) => {
+                    records.insert(key.clone(), Some(*d));
+                }
+                None if !matches!(records.get(key), Some(Some(_))) => {
+                    records.insert(key.clone(), Some(digest_of(key)));
+                }
+                None => {}
+            }
+        }
+        for key in fresh.keys().filter(|key| !pages.contains(*key)) {
+            records.insert(key.clone(), None);
+        }
+    }
 }
 
 /// The project source `rel` a client's `?page=` sub-key names, or `None` when it names no
 /// page in this project.
 ///
 /// The `None` case is load-bearing: the ws handler refuses such a connection instead of
-/// creating a `PageState` for it. A `PageState` is a 256-slot broadcast ring and nothing
-/// evicts it, so allocating one per unrecognized key let any peer that can reach the socket
+/// creating a `PageState` for it. A `PageState` is a 256-slot broadcast ring that only a
+/// save finding no tab on it evicts ([`watched_pages`]), so allocating one per unrecognized
+/// key let any peer that can reach the socket
 /// grow the map without bound by reconnecting with fresh garbage. Nothing is lost by
 /// refusing: `build_page` already returns immediately for a key `Site::page` cannot resolve,
 /// so the entry could only ever hold an empty document.
@@ -289,11 +377,13 @@ fn interrupted_notice(by: &str) -> String {
     )
 }
 
-/// A job for the executor worker: rebuild a page, or restart its kernel first
-/// (the dev-menu "Restart kernel" action) then rebuild.
+/// A job for the executor worker: rebuild a page, restart its kernel first (the dev-menu
+/// "Restart kernel" action) then rebuild, or rebuild it if one of the files it only looked
+/// at is not as its last build left it ([`probes_moved`]).
 enum BuildMsg {
     Build(String),
     Restart(String),
+    IfMoved(String, Vec<PathBuf>),
 }
 
 struct PageState {
@@ -336,6 +426,45 @@ struct PageDoc {
     /// this is read from the last build rather than the current source, and why that cannot
     /// race. Deliberately `false` by default: an unbuilt page takes the safe lane.
     cell_free: bool,
+    /// Every file this page's last render read or looked for, recorded by the read sites
+    /// themselves ([`taliesin_core::reads`]) and keyed as [`record_key`] keys them: its
+    /// source, each `{{< include >}}` it tried, each `.bib` it loaded (the project's shared
+    /// one too), each image it measured or checked, each page a link of its points at. A
+    /// change to any of them rebuilds the page ([`rebuild_project`]).
+    reads: taliesin_core::reads::Reads,
+    /// Each file this page's last build only looked at ([`Access::Probed`]: an image, a
+    /// linked file), as that build left it: its [`stamp`] once the page's cells had run.
+    ///
+    /// [`Access::Probed`]: taliesin_core::reads::Access::Probed
+    stamps: HashMap<PathBuf, Option<Stamp>>,
+}
+
+/// What a file looked like: its length and modification time.
+type Stamp = (u64, std::time::SystemTime);
+
+/// The [`Stamp`] of the file at `path`, `None` when there is none.
+fn stamp(path: &Path) -> Option<Stamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+/// Whether one of `paths`, files page `rel` only looked at, is not as its last build left
+/// it ([`PageDoc::stamps`]).
+///
+/// Asked instead of rebuilding outright, because such a file can be the page's own
+/// output: a cell writes `gen.png` for the `![…](gen.png)` below it. Rebuilding the page
+/// for that write ran its cells again, and a `#| cache: false` cell, which re-runs on
+/// every build, wrote the file again: measured, 77 runs in 8 s of an idle preview. The
+/// write lands before the build that made it ends, so that build's stamp already holds
+/// it, and asking after the build is what tells the page's own write from a later one.
+fn probes_moved(project: &Project, rel: &str, paths: &[PathBuf]) -> bool {
+    let pages = project.pages.lock();
+    let Some(ps) = pages.get(rel) else {
+        return false;
+    };
+    paths
+        .iter()
+        .any(|p| ps.doc.stamps.get(p).is_none_or(|was| *was != stamp(p)))
 }
 
 impl PageDoc {
@@ -588,7 +717,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             pages: Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: scoped,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         }),
         build_tx,
         fast_tx,
@@ -596,7 +725,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     });
     // Before the watcher can fire: the record has to describe the discovery the server
     // booted with, or the first front-matter edit of the session reads as "unchanged".
-    app.root.seed_front_matter();
+    app.root.seed_records();
 
     spawn_builder(app.clone(), build_rx);
     spawn_fast_builder(app.clone(), fast_rx);
@@ -612,7 +741,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let router = with_identity(router, &session_key);
     let router = with_host_guard(router);
 
-    let (listener, addr) = bind_with_fallback(port, &session_key)
+    let (listener, addr, replaced) = bind_with_fallback(port, &session_key)
         .await
         .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
     let requested = port;
@@ -629,8 +758,11 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         &format!("site, {page_count} pages"),
     );
     // After the banner, never before it: the soft clear pushes whatever came first up into
-    // the scrollback, where the project's own diagnostics and the port fallback used to go
-    // (audit 2026-09-24, WP2 residual).
+    // the scrollback, where the project's own diagnostics, the port fallback and the
+    // takeover of an earlier preview used to go (audit 2026-09-24, WP2 and WP11 residuals).
+    for line in &replaced {
+        crate::log::warn(line);
+    }
     // (Port 0 asks for any free port, so the one bound is not a fallback.)
     if requested != 0 && port != requested {
         crate::log::warn(&format!("port {requested} in use; using {port}"));
@@ -715,11 +847,21 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         .into_response()
 }
 
-/// Resolve a request to a page (rendered live) or a static asset under the root.
+/// Resolve a `GET` or `HEAD` to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
     State(app): State<Arc<SiteApp>>,
+    method: axum::http::Method,
     uri: axum::http::Uri,
 ) -> axum::response::Response {
+    // Reads only. The fallback answered every method as a GET, so a `POST` or a `DELETE`
+    // got the page or the file (audit 2026-09-24, WP1 residual).
+    if method != axum::http::Method::GET && method != axum::http::Method::HEAD {
+        return (
+            axum::http::StatusCode::METHOD_NOT_ALLOWED,
+            [(axum::http::header::ALLOW, "GET, HEAD")],
+        )
+            .into_response();
+    }
     let path = percent_decode(uri.path().trim_start_matches('/'));
     let project = &app.root;
     let sub = path.as_str();
@@ -766,10 +908,22 @@ async fn page_or_asset(
     let asset = serve_asset(&project.dir, &lookup);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
         let html = { project.site.lock().render_404_page() };
+        let html = format!("{html}{RECHECK_404_JS}");
         return (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response();
     }
     asset
 }
+
+/// What the preview adds to the build's 404 page: a check, once a second, whether the page
+/// it stands for exists now, reloading onto it when it does.
+///
+/// A tab lands on the 404 page when the page it was open on vanishes (renamed, deleted, or
+/// deleted and written again in two saves, as `git` and some editors do), and the 404 page
+/// carries no live client, so the tab stayed there after the page came back (audit
+/// 2026-09-24 invalidation #13). A `HEAD` of the tab's own URL is the whole question, and it
+/// keeps working across a restart of the preview.
+const RECHECK_404_JS: &str = "<script>setInterval(()=>fetch(location.href,{method:'HEAD',\
+    cache:'no-store'}).then(r=>{if(r.ok)location.reload()},()=>{}),1000);</script>\n";
 
 /// Serve a file under `root`, with path-traversal protection.
 fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
@@ -803,13 +957,17 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
 /// exactly as the build finishes it (numbering, cross-references, `listing:` cards). The
 /// caller holds the site lock across it.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
-    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
+    let (src, read) =
+        taliesin_core::reads::record(|| taliesin_core::includes::read_source(&page.input));
+    let Ok(src) = src else {
         return PageDoc {
             errored: true,
+            reads: keyed(read),
             ..Default::default()
         };
     };
-    let pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
+    let mut pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
+    taliesin_core::reads::merge(&mut pass.reads, read);
     PageDoc {
         // Resolved off the *finished* doc, exactly as the static build resolves it, so the
         // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
@@ -823,7 +981,19 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         // The first-paint render never runs cells, so it learns nothing about this page's
         // lane: leave it on the safe one until a real build reports back (AP3-1).
         cell_free: false,
+        reads: keyed(pass.reads),
+        stamps: HashMap::new(),
     }
+}
+
+/// `reads` keyed as the watcher's changed paths are ([`record_key`]), so the two compare.
+fn keyed(reads: taliesin_core::reads::Reads) -> taliesin_core::reads::Reads {
+    let mut out = taliesin_core::reads::Reads::new();
+    let keyed = reads
+        .into_iter()
+        .map(|(path, access)| (record_key(&path), access));
+    taliesin_core::reads::merge(&mut out, keyed.collect());
+    out
 }
 
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
@@ -834,24 +1004,101 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body at all), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, body, page_includes, generation) = {
+    let live = {
         let pages = project.pages.lock();
-        let ps = pages.get(&page.rel);
-        match ps {
-            Some(ps) => (
-                ps.doc.tab_title.clone(),
-                ps.doc.toc,
-                ps.doc.body_html(),
-                ps.doc.includes.clone(),
-                ps.doc.generation,
-            ),
-            None => (String::new(), false, String::new(), Default::default(), 0),
-        }
+        pages
+            .get(&page.rel)
+            .map(|ps| LivePage {
+                tab_title: ps.doc.tab_title.clone(),
+                toc: ps.doc.toc,
+                body: ps.doc.body_html(),
+                includes: ps.doc.includes.clone(),
+                generation: ps.doc.generation,
+            })
+            .unwrap_or_default()
     };
-    let chrome = { project.site.lock().page_chrome(page) };
+    let frame = SiteFrame::of(&project.site.lock(), page);
+    live_page_html(&frame, &project.dir, page, &live)
+}
+
+/// What a live page takes from its site, taken under the site lock and assembled without
+/// it: the chrome it is wrapped in, and the dev menu's drafts row.
+struct SiteFrame {
+    chrome: taliesin_core::render::SiteCtx,
+    drafts_global: String,
+}
+
+impl SiteFrame {
+    fn of(site: &Site, page: &Page) -> SiteFrame {
+        // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
+        // link resolves from any page depth. A build ships neither this global nor the dev
+        // menu.
+        let items: Vec<String> = site
+            .pages
+            .iter()
+            .filter(|p| p.draft)
+            .map(|p| {
+                format!(
+                    "{{\"url\":\"/{}\",\"title\":\"{}\"}}",
+                    js_str(&p.url),
+                    js_str(p.title.as_deref().unwrap_or(&p.rel)),
+                )
+            })
+            .collect();
+        SiteFrame {
+            chrome: site.page_chrome(page),
+            drafts_global: format!("window.TALIESIN_DRAFTS=[{}];", items.join(",")),
+        }
+    }
+}
+
+/// What a live page takes from its own last build ([`PageDoc`]). All empty for a page with
+/// no live state.
+#[derive(Default)]
+struct LivePage {
+    tab_title: String,
+    toc: bool,
+    body: String,
+    includes: taliesin_core::render::PageIncludes,
+    generation: u64,
+}
+
+/// A digest of what a tab on `page` shows outside its `#tali-root`: the `<body>` of the live
+/// page with its blocks and its generation left out (navbar, book drawer, pager, footer, the
+/// draft banner, the dev menu's drafts row). That reaches an open tab only by a reload; the
+/// blocks reach it as ops and the title as a `title` message.
+///
+/// The `<head>` is left out on purpose. It carries the page's own social meta, which follows
+/// its `title:` and `description:`, and a tab cannot show it: counting it would reload the
+/// page an author is typing a `title:` into, throwing away its live state, for nothing the
+/// reader can see.
+fn shell_digest(site: &Site, dir: &Path, page: &Page, doc: &PageDoc) -> u64 {
+    let live = LivePage {
+        toc: doc.toc,
+        includes: doc.includes.clone(),
+        ..LivePage::default()
+    };
+    let html = live_page_html(&SiteFrame::of(site, page), dir, page, &live);
+    let body = taliesin_core::render::tags(&html)
+        .find(|t| t.name.eq_ignore_ascii_case("body"))
+        .map_or(0, |t| t.at);
+    taliesin_core::hash::fnv1a(&html[body..])
+}
+
+/// The live page: `frame` around `live`, with the preview client.
+fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -> String {
+    let LivePage {
+        tab_title,
+        toc,
+        body,
+        includes: page_includes,
+        generation,
+    } = live;
+    let (toc, generation) = (*toc, *generation);
+    let chrome = &frame.chrome;
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
-    includes.merge(&page_includes);
+    includes.merge(page_includes);
 
     // The TOC rail is an empty landmark the client fills once it has the headings; the
     // wrapper class that reserves the column for it is `SiteCtx::layout`'s business, not
@@ -880,7 +1127,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
-        js_str(&project.dir.to_string_lossy()),
+        js_str(&dir.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
@@ -891,7 +1138,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         format!("{};", chrome.search_index)
     };
     // Body links (author `.tmd` references) -> `.html`; chrome links already are.
-    let body = taliesin_core::site::rewrite_tmd_links(&body);
+    let body = taliesin_core::site::rewrite_tmd_links(body);
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
@@ -914,24 +1161,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let boot = protocol::boot_id();
-    // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
-    // link resolves from any page depth. A build ships neither this global nor the dev menu.
-    let drafts_global = {
-        let site = project.site.lock();
-        let items: Vec<String> = site
-            .pages
-            .iter()
-            .filter(|p| p.draft)
-            .map(|p| {
-                format!(
-                    "{{\"url\":\"/{}\",\"title\":\"{}\"}}",
-                    js_str(&p.url),
-                    js_str(p.title.as_deref().unwrap_or(&p.rel)),
-                )
-            })
-            .collect();
-        format!("window.TALIESIN_DRAFTS=[{}];", items.join(","))
-    };
+    let drafts_global = &frame.drafts_global;
     let scripts_pre = format!(
         "<script>{doc_global} {toc_flag} {search_cfg} {drafts_global} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
@@ -944,7 +1174,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
-        title: &tab_title,
+        title: tab_title,
         favicon: &favicon,
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
@@ -1016,7 +1246,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     // A `?page=` the owning project cannot resolve names no page at all, so there is
     // nothing to render, subscribe to, or rebuild — `build_page` already returns
     // immediately on such a key. Allocating a `PageState` for it anyway (a 256-slot
-    // broadcast ring that is never evicted) let anyone who can reach this socket grow the
+    // broadcast ring that only a save finding no tab on it evicts) let anyone who can reach this socket grow the
     // map without bound just by reconnecting with a fresh bogus key, clearable only by
     // restarting the preview. Refuse the key instead of allocating for it.
     let Some(rel) = rel else {
@@ -1165,18 +1395,22 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
     tokio::spawn(async move {
         // The project's one ExecPool. `exec_pool.rs` is used verbatim. Interpreters come
         // from the project's own `_site.yml`/root (python:, a project .venv, env, or
-        // default). The pool is owned by this task and dropped on channel close (server
-        // shutdown), which kills every kernel it holds.
+        // default), asked again before every job ([`repoint`]). The pool is owned by this
+        // task and dropped on channel close (server shutdown), which kills every kernel it
+        // holds.
         let project = app.root.clone();
-        let py = {
-            let s = project.site.lock();
-            crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
-        };
+        let py = resolve_python_for(&project);
         let mut pool = ExecPool::new(project.dir.join("_freeze"), py, app.interrupt.clone());
         while let Some(msg) = build_rx.recv().await {
+            repoint(&mut pool, &project, &app.interrupt);
             match msg {
                 BuildMsg::Build(rel) => {
                     build_on_exec_lane(&project, &rel, &mut pool).await;
+                }
+                BuildMsg::IfMoved(rel, paths) => {
+                    if probes_moved(&project, &rel, &paths) {
+                        build_on_exec_lane(&project, &rel, &mut pool).await;
+                    }
                 }
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes every
@@ -1193,6 +1427,30 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             }
         }
     });
+}
+
+/// The interpreter `project` runs its cells with, resolved as of now (`_site.yml` `python:`,
+/// the project's `.venv`, `TALIESIN_PYTHON`, an ancestor `.venv`, else `python3`).
+fn resolve_python_for(project: &Project) -> crate::interpreter::Resolved {
+    let site = project.site.lock();
+    crate::interpreter::resolve_python(site.config.python.as_deref(), &project.dir)
+}
+
+/// Point the exec lane's `pool` at the interpreter the project resolves to now: a fresh pool
+/// when it changed, the old one dropped with every kernel it holds.
+///
+/// It was resolved once, when the preview started, so a `python:` edited in `_site.yml`
+/// never reached a kernel, not even through Restart kernel, and a `.venv` created while the
+/// preview ran was ignored, though the guide says to fix the kernel and save (audit
+/// 2026-09-24 C8, first-hour #9). Asked before every job on the lane, so a save or a Restart
+/// kernel picks the change up; resolving is a handful of `exists` calls. The pool's warm
+/// cap and eviction order are its own and untouched.
+fn repoint(pool: &mut ExecPool, project: &Project, interrupt: &Arc<std::sync::atomic::AtomicU32>) {
+    let python = resolve_python_for(project);
+    // The new pool's first kernel says which interpreter it runs, and from where.
+    if pool.python() != Some(python.path.as_path()) {
+        *pool = ExecPool::new(project.dir.join("_freeze"), python, interrupt.clone());
+    }
 }
 
 /// Build `rel` on the exec lane, publishing which page the lane is running cells for while
@@ -1225,8 +1483,12 @@ async fn build_on_exec_lane(
 fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         while let Some(msg) = fast_rx.recv().await {
-            let (BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = msg;
             let project = app.root.clone();
+            let rel = match msg {
+                BuildMsg::Build(rel) | BuildMsg::Restart(rel) => rel,
+                BuildMsg::IfMoved(rel, paths) if probes_moved(&project, &rel, &paths) => rel,
+                BuildMsg::IfMoved(..) => continue,
+            };
             if build_page_guarded(&project, &rel, None).await == BuildOutcome::NeedsKernel {
                 let _ = app.build_tx.send(BuildMsg::Build(rel));
             }
@@ -1281,10 +1543,10 @@ fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks:
     }
     let pre = finished();
     let mut pages = project.pages.lock();
-    let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
-        doc: PageDoc::default(),
-        tx: broadcast::channel(256).0,
-    });
+    // A page with no state was dropped while this build ran (see `build_page`'s publish).
+    let Some(ps) = pages.get_mut(rel) else {
+        return;
+    };
     ps.doc.blocks = pre;
     let _ = ps.tx.send(full_render_json(&ps.doc));
 }
@@ -1458,10 +1720,14 @@ async fn build_page(
     let Some(page) = page else {
         return BuildOutcome::Done;
     };
-    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
+    let (src, mut reads) =
+        taliesin_core::reads::record(|| taliesin_core::includes::read_source(&page.input));
+    let Ok(src) = src else {
         let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
+            // Still a dependency: writing the source again rebuilds the page.
+            ps.doc.reads = keyed(reads);
             let _ = ps.tx.send(protocol::error(&format!(
                 "cannot read {}",
                 page.input.display()
@@ -1545,18 +1811,35 @@ async fn build_page(
     // to the site root first. Scoped tightly under the site lock.
     {
         let site = project.site.lock();
-        let cross = site.validate_cross_page_links_for(rel);
+        // The pages this one links to are read to judge its links, so they are dependencies.
+        let (cross, read) =
+            taliesin_core::reads::record(|| site.validate_cross_page_links_for(rel));
+        taliesin_core::reads::merge(&mut reads, read);
         diags.extend(cross.iter().map(|w| diag_from(w, &label)));
         let config = format!("{}_site.yml", "../".repeat(rel.matches('/').count()));
         diags.extend(crate::lint::project_diagnostics(&site, &config));
     }
+    taliesin_core::reads::merge(&mut reads, std::mem::take(&mut pass.reads));
+    let reads = keyed(reads);
+    // After the cells ran, and before the lock: the files this page only looked at, as it
+    // leaves them ([`probes_moved`]).
+    let stamps: HashMap<PathBuf, Option<Stamp>> = reads
+        .iter()
+        .filter(|(_, access)| **access == taliesin_core::reads::Access::Probed)
+        .map(|(path, _)| (path.clone(), stamp(path)))
+        .collect();
     let doc = pass.doc;
 
     let mut pages = project.pages.lock();
-    let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
-        doc: PageDoc::default(),
-        tx: broadcast::channel(256).0,
-    });
+    // Every build is queued for a page that has state (a visit creates it first), so a
+    // page without one had it dropped while this build ran: `reload_open_tabs` cleared it
+    // for a re-discovered site, or nobody had the page open. Publishing would put the state
+    // back, rendered against the defaults this build captured before the drop, and every
+    // later GET would serve that stale body (audit 2026-09-24, invalidation #10). The next
+    // visit renders it fresh instead.
+    let Some(ps) = pages.get_mut(rel) else {
+        return BuildOutcome::Done;
+    };
     let recovered = std::mem::take(&mut ps.doc.errored);
     let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
     // A burst that aims at raw HTML the DOM does not hold as one element (a comment, a
@@ -1578,6 +1861,8 @@ async fn build_page(
     }
     ps.doc.blocks = doc.blocks;
     ps.doc.diagnostics = diags;
+    ps.doc.reads = reads;
+    ps.doc.stamps = stamps;
     // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
     // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
     let generation = ps.doc.generation;
@@ -1617,125 +1902,73 @@ fn page_label(page: &Page) -> String {
 
 // --- file watching ------------------------------------------------------
 
-/// One debounced file-change signal: the path plus whether it is *structural* (a
-/// `.tmd` created or removed, which may change the site's page set).
-struct Change {
-    path: PathBuf,
-    structural: bool,
-}
-
-fn is_tmd(p: &Path) -> bool {
-    // Native `.tmd` source docs, plus `.md` (watched for includes).
-    matches!(
-        p.extension().and_then(|e| e.to_str()),
-        Some("tmd") | Some("md")
-    )
-}
-
-/// Whether a watch event may have moved the project's PAGE SET, as opposed to editing a
-/// file in place. This is the whole of what [`Change::structural`] means, extracted out of
-/// [`spawn_watcher`]'s event loop so the classification is unit-testable without a live
-/// watcher, a debounce window or a running server.
-///
-/// A **rename** is the third member of this class and was missing until 2026-09-02. It
-/// reads as an in-place `Modify`, so `mv a.tmd b.tmd` left `structural` false and no
-/// branch of [`rebuild_project`] answered for it: the site went on listing `a.tmd`, the tab
-/// open on it was never told to reload, and `/b.html` 404ed until the server was
-/// restarted. A same-filesystem rename never creates and never removes — verified against
-/// a live `notify` 8.2 watcher, which emits `Modify(Name(From))` on the old path,
-/// `Modify(Name(To))` on the new, then a cookie-paired `Modify(Name(Both))` carrying both.
-/// The class to match is `Name(_)` rather than any particular `RenameMode`: FSEvents
-/// reports `Name(Any)` and Windows reports only the `From`/`To` pair.
-///
-/// The cost of admitting it is a `rediscover()` on an editor that saves atomically (write a
-/// temp file, rename it over the original). That is absorbed one level up by
-/// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an editor's
-/// save-via-rename of an existing one" case that guard was already written for: the page
-/// set is unchanged, so the save falls through to the ordinary per-page rebuild.
-fn may_change_page_set(kind: &notify::EventKind) -> bool {
-    matches!(
-        kind,
-        notify::EventKind::Create(_)
-            | notify::EventKind::Remove(_)
-            | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
-    )
-}
-
 fn spawn_watcher(app: Arc<SiteApp>) {
-    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
-    let roots: Vec<PathBuf> = vec![app.root.dir.clone()];
+    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<PathBuf>();
+    let root = app.root.dir.clone();
+
+    // Pump events through a channel so one thread owns the watcher and can register watches
+    // for subdirectories that arrive after startup — the recursive-watch model added an
+    // inotify descriptor per directory including `node_modules`/`.git`, which a large
+    // project uses to exhaust `max_user_watches` and kill hot reload. The watches are
+    // registered here, before this returns, so nothing saved after startup goes unseen.
+    let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(ev) = res {
+                let _ = ev_tx.send(ev);
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                crate::log::error(&format!("file watcher unavailable: {e}"));
+                return;
+            }
+        };
+    // A non-recursive watch on every directory except the pruned generated/VCS trees.
+    for dir in crate::serve::watch_tree(&root) {
+        if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
+            crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
+        }
+    }
 
     std::thread::spawn(move || {
-        // Pump events through a channel so this thread owns the watcher and can register
-        // watches for subdirectories created after startup — the recursive-watch model
-        // added an inotify descriptor per directory including `node_modules`/`.git`,
-        // which a large project uses to exhaust `max_user_watches` and kill hot reload.
-        let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
-        let mut watcher =
-            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if let Ok(ev) = res {
-                    let _ = ev_tx.send(ev);
-                }
-            }) {
-                Ok(w) => w,
-                Err(e) => {
-                    crate::log::error(&format!("file watcher unavailable: {e}"));
-                    return;
-                }
-            };
-        // A non-recursive watch on every directory except the pruned generated/VCS trees.
-        for base in &roots {
-            for dir in crate::serve::watch_tree(base) {
-                if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
-                    crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
-                }
-            }
-        }
         for ev in ev_rx {
-            if !matches!(
-                ev.kind,
-                notify::EventKind::Modify(_)
-                    | notify::EventKind::Create(_)
-                    | notify::EventKind::Remove(_)
-            ) {
+            use notify::EventKind::{Create, Modify, Remove};
+            if !matches!(ev.kind, Modify(_) | Create(_) | Remove(_)) {
                 continue;
             }
-            let structural = may_change_page_set(&ev.kind);
+            // A directory can arrive by being created or by a rename: renamed inside the
+            // tree, or moved in from outside it. Both need watches of their own, since notify
+            // drops a moved directory's watch and a moved-in one never had any. Missing the
+            // rename left a renamed post folder 404ing and every later edit inside it unseen
+            // until a restart (audit 2026-09-24 C3).
+            let arrives = matches!(
+                ev.kind,
+                Create(_) | Modify(notify::event::ModifyKind::Name(_))
+            );
             for p in &ev.paths {
-                // A newly-created in-tree subdirectory needs its own non-recursive watch.
-                if matches!(ev.kind, notify::EventKind::Create(_)) {
-                    let is_dir = std::fs::symlink_metadata(p)
-                        .map(|m| m.is_dir())
-                        .unwrap_or(false);
-                    if is_dir
-                        && roots.iter().any(|r| p.starts_with(r))
-                        && !crate::serve::is_pruned_dir(p)
-                    {
-                        for d in crate::serve::watch_tree(p) {
-                            let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
-                        }
-                        // Files that already existed inside the new dir were created before
-                        // its watch existed, so their events were missed. Replay them as
-                        // structural changes (a new `.tmd` may add a page) — a `git checkout`
-                        // or a new-folder-with-pages otherwise wouldn't appear until an
-                        // unrelated save.
-                        for f in crate::serve::subtree_relevant_files(p) {
-                            let _ = sig_tx.send(Change {
-                                path: f,
-                                structural: true,
-                            });
-                        }
+                let is_dir = std::fs::symlink_metadata(p)
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
+                if arrives && is_dir && p.starts_with(&root) && !crate::serve::is_pruned_dir(p) {
+                    for d in crate::serve::watch_tree(p) {
+                        let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
+                    }
+                    // Files already inside the arriving dir were never reported (created
+                    // before its watch existed, or moved in whole), so replay them as changes
+                    // (a new `.tmd` may add a page) — a `git checkout` or a folder of pages
+                    // otherwise wouldn't appear until an unrelated save.
+                    for f in crate::serve::subtree_relevant_files(p) {
+                        let _ = sig_tx.send(f);
                     }
                 }
                 // Ignore generated/VCS noise (esp. the executor's own `_freeze/` writes,
                 // which would otherwise rebuild every run). Judged relative to the project
                 // root: these are absolute event paths, and a project living under a
                 // directory that happens to be called `_site` is not generated noise.
-                if roots.iter().any(|r| crate::serve::relevant_path(p, r)) {
-                    let _ = sig_tx.send(Change {
-                        path: p.clone(),
-                        structural,
-                    });
+                if crate::serve::relevant_path(p, &root) && sig_tx.send(p.clone()).is_err() {
+                    // Nothing is listening any more: the preview is shutting down.
+                    return;
                 }
             }
         }
@@ -1743,14 +1976,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
 
     tokio::spawn(async move {
         while let Some(first) = sig_rx.recv().await {
-            let mut changed: HashSet<PathBuf> = HashSet::new();
-            let mut structural = first.structural && is_tmd(&first.path);
-            changed.insert(first.path);
-            tokio::time::sleep(Duration::from_millis(80)).await;
-            while let Ok(c) = sig_rx.try_recv() {
-                structural |= c.structural && is_tmd(&c.path);
-                changed.insert(c.path);
-            }
+            let changed = gather(first, &mut sig_rx).await;
             // Guarded, like every other task that renders on the author's behalf. This one
             // was not: `dispatch_changes` re-discovers the project, re-derives the
             // cross-reference registry and rebuilds the search index, and a panic in any of
@@ -1758,12 +1984,44 @@ fn spawn_watcher(app: Arc<SiteApp>) {
             // page stayed served, so the preview did not visibly die — it silently stopped
             // reacting to saves, which reads as "the tool is broken" rather than "this
             // document is broken". Reporting it keeps the failure attached to the edit.
-            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed, structural))
-            {
+            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed)) {
                 crate::log::error(&format!("rebuild failed: {msg}"));
             }
         }
     });
+}
+
+/// How long the watcher waits for a save's events to stop before acting on them. Every
+/// editor's save, in place or by a rename over the old file (`sed -i` included), delivers
+/// all its events within about a millisecond, measured on 2026-09-24 (audit perf #4).
+const QUIET: Duration = Duration::from_millis(15);
+
+/// The longest a batch waits for its events to stop: a stream that never pauses (a cell
+/// writing a file in a loop) is acted on at this interval.
+const MOST_QUIET: Duration = Duration::from_millis(250);
+
+/// One save's changed paths: `first`, and whatever follows it until the events stop for
+/// [`QUIET`] (or [`MOST_QUIET`] has passed).
+///
+/// It was a fixed 80 ms sleep after the first event, which was 80 to 92% of every save on
+/// the author's own projects, and the floor that put every kind of save past 100 ms at
+/// about 40 to 100 pages (audit 2026-09-24 F3). A save split across two batches costs a
+/// second pass and nothing else: each batch is judged by what it changed.
+async fn gather(first: PathBuf, rx: &mut mpsc::UnboundedReceiver<PathBuf>) -> HashSet<PathBuf> {
+    let mut changed = HashSet::from([first]);
+    let deadline = tokio::time::Instant::now() + MOST_QUIET;
+    // Ends on a quiet `QUIET`, at the deadline, or when the watcher is gone.
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Ok(Some(path)) = tokio::time::timeout(QUIET.min(left), rx.recv()).await else {
+            break;
+        };
+        changed.insert(path);
+        if left.is_zero() {
+            break;
+        }
+    }
+    changed
 }
 
 /// Which of the `open` pages actually cite one of `moved_anchors`, read from each open
@@ -1792,21 +2050,11 @@ fn pages_citing_a_moved_anchor(
 }
 
 /// Rebuild one project's affected pages from a batch of changed files (already filtered
-/// to this project by [`dispatch_changes`]): a `_site.yml` change (or a `.tmd`
-/// added/removed that changes the page set) re-discovers this project's site and reloads
-/// its open tabs; otherwise rebuild every *open* page whose source or include set touches
-/// a changed file. `structural` is set when the batch created/removed a `.tmd`.
-fn rebuild_project(
-    app: &SiteApp,
-    project: &Arc<Project>,
-    changed: &HashSet<PathBuf>,
-    structural: bool,
-) {
-    let changed_canon: HashSet<PathBuf> = changed
-        .iter()
-        .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
-        .collect();
-
+/// to this project by [`dispatch_changes`]): a `_site.yml` change, or a save that moves
+/// the page set, re-discovers this project's site and reloads its open tabs; a save that
+/// moves what discovery reads of a page re-discovers and rebuilds every open page;
+/// otherwise rebuild every *open* page whose source or include set touches a changed file.
+fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<PathBuf>) {
     let config_changed = changed
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
@@ -1824,109 +2072,100 @@ fn rebuild_project(
             crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
             return;
         }
-        *project.site.lock() = new;
-        project.seed_front_matter();
+        project.adopt(new, &HashMap::new(), true);
         reload_open_tabs(project);
         return;
     }
 
     // The registry as it stands BEFORE anything below re-derives it — snapshotted here
-    // because `structural` re-discovers (replacing the whole `Site`) and that is one of the
-    // two ways it moves. Both ways have to be compared against the same "before", or the
-    // rebuild selection below silently doesn't apply to one of them.
+    // because a re-discovery replaces the whole `Site` and that is one of the two ways it
+    // moves. Both ways have to be compared against the same "before", or the rebuild
+    // selection below silently doesn't apply to one of them.
     let targets_before = project.site.lock().xref_targets.clone();
 
-    // A `.tmd` was created/removed: re-discover, and if the page set actually changed
-    // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
-    // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
-    // normal per-page rebuild against the refreshed site.
-    if structural {
-        let new = project.rediscover();
-        let set_changed = page_rels(&new) != page_rels(&project.site.lock());
-        *project.site.lock() = new;
-        project.seed_front_matter();
-        if set_changed {
-            reload_open_tabs(project);
-            return;
-        }
-    }
-
-    // A page's own front matter moved, so the project's view of that page did: its listing
-    // card, its nav label, the prev/next arrows either side of it and its search entry are
-    // all rendered by OTHER pages out of `Site::pages`, which only discovery writes. See
-    // [`Project::front_matter`] for the measurement and for why this is gated rather than
-    // run every save. Re-discovering here rebuilds the cross-reference registry and the
-    // search index as a side effect, exactly as the `structural` path above does, so the
-    // `refresh_xrefs` below is skipped for the same reason.
+    // What this batch changed of what discovery reads ([`Project::records`]), decided by
+    // content: an editor that renames a temp file over the page, or a `git checkout` that
+    // unlinks and recreates it, saved an existing page like any other editor.
     //
-    // Deliberately NOT `reload_open_tabs`: the page set is unchanged, so every open tab can
-    // take this as ops on its existing DOM. A hard reload would be correct too and is what
-    // a `_site.yml` edit does, but it would throw away the live state — an open
-    // `<details>`, a playing video, a `{js}` widget — on every `title:` an author types.
-    let front_matter_moved = !structural && project.front_matter_moved(changed);
-    if front_matter_moved {
-        // Discovery first, then the swap: the lock is not held across it (the same shape as
-        // the two adoptions above, and discovery is the ~76 ms half).
+    // A page's front matter or leading `# H1` moved, so the project's view of that page
+    // did: its listing card, its nav label, the prev/next either side of it, a book's
+    // drawer label and every later chapter's number are all rendered by OTHER pages out of
+    // `Site::pages`, which only discovery writes. Re-discovering rebuilds the
+    // cross-reference registry and the search index as a side effect, so the
+    // `refresh_xrefs` below is skipped then.
+    //
+    // A re-discovery (this, or a page added, renamed or deleted) reloads the tabs whose
+    // chrome it moved and rebuilds every other open page. Discovery first, then the swap:
+    // the site lock is not held across it.
+    let moved = project.what_moved(changed);
+    let rediscovered = moved.page_set || moved.records;
+    // Rebuild only pages a tab is watching and that depend on a change.
+    let mut open = watched_pages(project);
+    if rediscovered {
+        let before = shell_digests(project, &open);
         let new = project.rediscover();
-        *project.site.lock() = new;
-        project.seed_front_matter();
+        project.adopt(new, &moved.digests, false);
+        // The chrome is outside `#tali-root`, where no block op reaches, so a tab whose
+        // chrome moved (a book's drawer and pager naming a retitled chapter, a pager next
+        // to a page added or removed) reloads, and so does a tab whose page is gone. Every
+        // other tab keeps its DOM and its live state (an open `<details>`, a playing video,
+        // a `{js}` widget) and takes what moved in its body as ops below. Reloading every
+        // tab instead was correct but threw that state away, and rebuilding every tab alone
+        // left each one on the old chrome with nothing sent at all (audit 2026-09-24 C5).
+        let after = shell_digests(project, &open);
+        let stale: Vec<String> = open
+            .iter()
+            .filter(|rel| after.get(*rel).is_none_or(|d| before.get(*rel) != Some(d)))
+            .cloned()
+            .collect();
+        reload_tabs(project, &stale);
+        open.retain(|rel| !stale.contains(rel));
     }
 
-    // Rebuild only pages that are open (have live state) and depend on a change.
-    let open: Vec<String> = project.pages.lock().keys().cloned().collect();
-    let mut to_rebuild: Vec<String> = if front_matter_moved {
-        // Every open page renders some part of the moved page's metadata, or could: a
-        // listing card, a nav label, a prev/next arrow. The set is capped by
-        // `MAX_WARM_PAGES`, so this is a handful of renders on an edit that is rare next to
-        // body edits — and it is the same shape as the moved-anchor rebuild below.
-        project.pages.lock().keys().cloned().collect()
+    let mut to_rebuild: Vec<String> = if rediscovered {
+        // Every open page renders some part of the moved page's metadata or of the page
+        // set, or could: a listing card, a nav label, a prev/next arrow. The set is the
+        // pages a tab is watching, so this is a handful of renders on an edit that is rare
+        // next to body edits, and it is the same shape as the moved-anchor rebuild below.
+        open.clone()
     } else {
-        let site = project.site.lock();
-        // The project-wide `bibliography:` from `_site.yml` is a render input of EVERY page
-        // (`Site::render_defaults` lays it under each page's own) and is named in no page's
-        // own source, so neither walk below — both of which read the PAGE — can ever see it.
-        // That left a shared `.bib` save with no way in at all: it is not `_site.yml` by
-        // name, a write is not structural, it moves no front matter, it is not a `.tmd` so
-        // it skips `refresh_xrefs`, and it moves no anchor. Every branch declined it, the
-        // open tab kept serving the citation it had, and a browser reload served the same
-        // one — `ensure_and_render_page` only re-renders a page with no live state.
+        // A page depends on every file its last render read or looked for
+        // ([`PageDoc::reads`]), recorded by the read sites themselves rather than re-derived
+        // from its source: two re-derivations (the include walk, the front-matter
+        // `bibliography:`) plus a special case for `_site.yml`'s shared one each missed a
+        // file the render read, so a shared `.bib` declared before it existed, an image
+        // added or re-exported at a new size, never rebuilt the page that showed it (audit
+        // 2026-09-24 C4, C7). A changed directory takes every file under it along.
         //
-        // Canonicalized once here rather than per page: `Site::bibliography` is the same set
-        // for all of them, already resolved to absolute readable paths at discovery, but
-        // *lexically* (`includes::try_join_in` returns the un-canonicalized join), so it
-        // still needs the same treatment `changed_canon` gave the event paths.
-        let shared: Vec<PathBuf> = site
-            .bibliography
-            .iter()
-            .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
-            .collect();
-        open.iter()
-            .filter(|rel| {
-                let Some(page) = site.page(rel) else {
-                    return false;
-                };
-                let mut deps: HashSet<PathBuf> = shared.iter().cloned().collect();
-                deps.insert(
-                    page.input
-                        .canonicalize()
-                        .unwrap_or_else(|_| page.input.clone()),
-                );
-                if let Ok(src) = std::fs::read_to_string(&page.input) {
-                    let base = page.input.parent().unwrap_or(Path::new("."));
-                    for dep in taliesin_core::includes::dependencies(&src, base) {
-                        deps.insert(dep.canonicalize().unwrap_or(dep));
-                    }
-                    // A page also depends on the resources its front matter names. Without
-                    // these, a `.bib`/`.csl`/`.css` edit was a watched event that matched no
-                    // page, so the preview kept rendering the stale citation.
-                    for dep in taliesin_core::includes::resource_dependencies(&src, base) {
-                        deps.insert(dep.canonicalize().unwrap_or(dep));
-                    }
-                }
-                deps.intersection(&changed_canon).next().is_some()
-            })
-            .cloned()
-            .collect()
+        // A file the page only looked at (an image) is asked about first: it can be the
+        // page's own output ([`probes_moved`]).
+        let changed: Vec<PathBuf> = changed.iter().map(|p| record_key(p)).collect();
+        let mut read = Vec::new();
+        let mut ask = Vec::new();
+        let pages = project.pages.lock();
+        for rel in &open {
+            let Some(ps) = pages.get(rel.as_str()) else {
+                continue;
+            };
+            let (text, probed): (Vec<_>, Vec<_>) = ps
+                .doc
+                .reads
+                .iter()
+                .filter(|(path, _)| changed.iter().any(|c| path.starts_with(c)))
+                .partition(|(_, access)| **access == taliesin_core::reads::Access::Read);
+            if !text.is_empty() {
+                read.push(rel.clone());
+            } else if !probed.is_empty() {
+                let probed = probed.into_iter().map(|(path, _)| path.clone()).collect();
+                ask.push((rel.clone(), probed));
+            }
+        }
+        // Queued with the pages lock released: routing reads it.
+        drop(pages);
+        for (rel, probed) in ask {
+            app.queue_if_moved(rel, probed);
+        }
+        read
     };
     // Re-derive the cross-reference registry FIRST: everything below reads it, and both its
     // producers ran only at discovery, so a warm preview froze every cross-page number at
@@ -1941,10 +2180,11 @@ fn rebuild_project(
     // left the registry rotting, which is the exact cross-page case this fixes. A cross-page
     // ref is precisely the dependency `to_rebuild` cannot see.
     //
-    // `.tmd` only: an anchor can be created or renumbered by a page source or an
-    // `{{< include >}}` partial (both `.tmd`), never by a `.bib`/`.css`/image, which the
-    // dependency walk above also feeds us. `structural` already re-discovered, which rebuilds
-    // the registry, so refreshing again would just burn the pass twice.
+    // A `.tmd` or `.md` only: an anchor can be created or renumbered by a page source or an
+    // `{{< include >}}` partial, which is as often a `.md` as a `.tmd` (a `.md` partial was
+    // missed until 2026-09-24, leaving every citing page one number off: audit C6), never by
+    // a `.bib`/`.css`/image, which the dependency walk above also feeds us. A re-discovery above already rebuilt the
+    // registry, so refreshing again would just burn the pass twice.
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
     // pages rebuilt after it MUST see the fresh registry. A re-scan plus one render per page,
@@ -1958,12 +2198,13 @@ fn rebuild_project(
     // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
     // (unlike `build_page`) has none of its own.
     //
-    // NOT when `structural`: that path re-discovered above, which rebuilds the registry as a
-    // side effect, so refreshing again would burn the whole pass twice.
-    let touches_source = changed
-        .iter()
-        .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
-    if touches_source && !structural && !front_matter_moved {
+    // NOT after a re-discovery above, which rebuilds the registry as a side effect, so
+    // refreshing again would burn the whole pass twice.
+    let touches_source = changed.iter().any(|p| {
+        p.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("tmd") || e.eq_ignore_ascii_case("md"))
+    });
+    if touches_source && !rediscovered {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             project.site.lock().refresh_xrefs();
         }));
@@ -1977,12 +2218,12 @@ fn rebuild_project(
     // so it is absent from `to_rebuild` and keeps serving its cached body — measured with the
     // registry provably holding "1.2" while the open tab still showed "Figure 1.1".
     //
-    // Deliberately OUTSIDE the `!structural` gate above, which is the subtler half of that
-    // same measurement. The registry moves on BOTH paths — `refresh_xrefs` here, `discover`
-    // there — so gating this on the refresh skips the reader-visible half exactly when a
-    // `.tmd` is created/removed rather than written in place. Reproduced: delete+recreate
-    // (a `git checkout`, or any editor that unlinks before writing) served "Figure 1.2" from
-    // `intro.html` while the open `methods.html` tab sat on "Figure 1.1".
+    // Deliberately OUTSIDE the gate on the refresh above, which is the subtler half of that
+    // same measurement. The registry moves on BOTH paths, `refresh_xrefs` here and a
+    // re-discovery above, so gating this on the refresh skips the reader-visible half
+    // exactly when the save re-discovered. Reproduced when a delete+recreate still
+    // re-discovered: it served "Figure 1.2" from `intro.html` while the open `methods.html`
+    // tab sat on "Figure 1.1".
     //
     // There is no project-wide reverse index anymore (the "Referenced by" backlinks it
     // drove were deleted 2026-08-04), so this diffs the registry PER ANCHOR — which
@@ -2022,43 +2263,93 @@ fn rebuild_project(
             }
         }
     }
+    for rel in to_rebuild {
+        app.queue_build(rel);
+    }
     // The Cmd-K index is GLOBAL (one `search-index.js` for every tab), so a per-page
     // refresh keyed on the open tabs cannot keep it true: a renumbered figure would go stale
     // in the fragments of every page nobody happens to have open, and Cmd-K would surface a
     // snippet contradicting the page it links to. The index is rebuilt whole, and only on a
     // real anchor move; a prose edit reaches the palette on the next discovery.
+    //
+    // Last, and on a copy of the site rather than under its lock: it renders every page, and
+    // the builds queued above, the pages a reader is watching, take that lock to render, so
+    // their ops waited behind a whole-project pass. Only this task writes the `Site`, so the
+    // copy is the site in force when it is put back.
     if moved {
-        project.site.lock().rebuild_search_index();
+        let mut site = project.site.lock().clone();
+        site.rebuild_search_index();
+        *project.site.lock() = site;
     }
-    for rel in to_rebuild {
-        app.queue_build(rel);
-    }
+}
+
+/// The pages a tab is watching, after dropping the state of every other page.
+///
+/// A page's state outlives its tab: a GET creates one, and every page a reader ever opened
+/// kept one. Rebuilding those on every save made a front-matter edit cost one render per
+/// page ever visited (2544 ms after one visit of each of 221 pages, audit 2026-09-24
+/// invalidation #9). A page nobody watches renders fresh on its next visit instead, as a
+/// page never visited does; a build of it already queued finds no state and publishes
+/// nothing (see `build_page`).
+fn watched_pages(project: &Project) -> Vec<String> {
+    let mut pages = project.pages.lock();
+    pages.retain(|_, ps| ps.tx.receiver_count() > 0);
+    pages.keys().cloned().collect()
 }
 
 /// Rebuild the project against a batch of changed files.
-fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
+fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
     let project = app.root.clone();
-    rebuild_project(app, &project, changed, structural);
+    rebuild_project(app, &project, changed);
 }
 
-/// Reload every open tab and drop its cached block state, so the reload re-renders
-/// fresh against the (re-discovered) site — used after a `_site.yml` or page-set
-/// change. The reload message is delivered before each channel's sender is dropped.
-fn reload_open_tabs(project: &Arc<Project>) {
-    let mut pages = project.pages.lock();
-    for ps in pages.values() {
-        let _ = ps.tx.send(protocol::reload());
+/// Reload every open tab ([`reload_tabs`]), after a `_site.yml` change.
+fn reload_open_tabs(project: &Project) {
+    let all: Vec<String> = project.pages.lock().keys().cloned().collect();
+    reload_tabs(project, &all);
+}
+
+/// Reload the tabs open on `rels` and drop those pages' cached block state, so each reload
+/// re-renders fresh against the re-discovered site. The reload message is delivered before
+/// the channel's sender is dropped.
+fn reload_tabs(project: &Project, rels: &[String]) {
+    if rels.is_empty() {
+        return;
     }
-    pages.clear();
+    let mut pages = project.pages.lock();
+    for rel in rels {
+        if let Some(ps) = pages.remove(rel) {
+            let _ = ps.tx.send(protocol::reload());
+        }
+    }
     crate::log::update(0);
 }
 
-/// The site's page identifiers, sorted — to tell whether a `.tmd` add/remove actually
-/// changed the page set (vs. an editor save-via-rename of an existing page).
-fn page_rels(site: &Site) -> Vec<String> {
-    let mut v: Vec<String> = site.pages.iter().map(|p| p.rel.clone()).collect();
-    v.sort();
-    v
+/// Each watched page's [`shell_digest`] against the site in force. A page the site no
+/// longer has is left out.
+fn shell_digests(project: &Project, open: &[String]) -> HashMap<String, u64> {
+    // Each tab's own parts first, then the site: the two locks are never held together.
+    let docs: Vec<(String, PageDoc)> = {
+        let pages = project.pages.lock();
+        open.iter()
+            .filter_map(|rel| {
+                let ps = pages.get(rel)?;
+                let doc = PageDoc {
+                    toc: ps.doc.toc,
+                    includes: ps.doc.includes.clone(),
+                    ..PageDoc::default()
+                };
+                Some((rel.clone(), doc))
+            })
+            .collect()
+    };
+    let site = project.site.lock();
+    docs.into_iter()
+        .filter_map(|(rel, doc)| {
+            let page = site.page(&rel)?;
+            Some((rel, shell_digest(&site, &project.dir, page, &doc)))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -2447,7 +2738,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2532,7 +2823,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         let rt = tokio::runtime::Runtime::new().unwrap();
         let msgs: Vec<serde_json::Value> = rt.block_on(async {
@@ -2643,62 +2934,75 @@ mod project_tests {
     /// The gate that decides whether a save touched what DISCOVERY reads.
     ///
     /// It has to answer both ways, and each answer costs something different. A missed
-    /// front-matter change is the defect this exists for: a listed post's `title:` never
-    /// reached the index listing, on save or on reload, so the preview contradicted `build`
-    /// until the server was restarted. A false positive is a re-discovery on a keystroke,
-    /// and discovery is ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, warm
-    /// process, re-measured 2026-08-27) — so a body edit, which is nearly every edit, must
+    /// change is the defect this exists for: a listed post's `title:` never reached the
+    /// index listing, on save or on reload, so the preview contradicted `build` until the
+    /// server was restarted. A false positive is a re-discovery on a keystroke, and
+    /// discovery renders every page twice, so a body edit, which is nearly every edit, must
     /// not trip it.
     #[test]
-    fn a_front_matter_edit_moves_the_record_and_a_body_edit_does_not() {
-        let dir = std::env::temp_dir().join(format!("tali-fm-record-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn a_save_moves_the_record_only_when_what_discovery_reads_moved() {
+        let dir = scratch("record");
         std::fs::create_dir_all(dir.join("posts")).unwrap();
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nBody.\n").unwrap();
         let post = dir.join("posts/first.tmd");
-        std::fs::write(&post, "---\ntitle: First\n---\n\nOriginal body.\n").unwrap();
-
-        let project = Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
-            pages: parking_lot::Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            front_matter: Mutex::new(HashMap::new()),
-        };
-        project.seed_front_matter();
+        std::fs::write(
+            &post,
+            "---\ntitle: First\n---\n\n# First\n\nOriginal body.\n",
+        )
+        .unwrap();
+        let (project, _app, _b, _f) = project_and_app(&dir);
         let changed: HashSet<PathBuf> = std::iter::once(post.clone()).collect();
+        let moved = |project: &Project, changed: &HashSet<PathBuf>| {
+            let m = project.what_moved(changed);
+            (m.page_set, m.records)
+        };
 
         // Nothing written yet: the record already describes what is on disk.
-        assert!(!project.front_matter_moved(&changed), "no edit, no move");
+        assert_eq!(
+            moved(&project, &changed),
+            (false, false),
+            "no edit, no move"
+        );
 
-        // A body edit leaves the block byte-identical.
-        std::fs::write(&post, "---\ntitle: First\n---\n\nRewritten body.\n").unwrap();
-        assert!(
-            !project.front_matter_moved(&changed),
+        // A body edit leaves what discovery reads byte-identical.
+        std::fs::write(&post, "---\ntitle: First\n---\n\n# First\n\nRewritten.\n").unwrap();
+        assert_eq!(
+            moved(&project, &changed),
+            (false, false),
             "a body edit must not cost a re-discovery"
         );
 
-        // The `title:` a listing card renders.
-        std::fs::write(&post, "---\ntitle: Renamed\n---\n\nRewritten body.\n").unwrap();
-        assert!(project.front_matter_moved(&changed), "title: moved");
-        // And the record is updated, so the same save is not reported twice.
-        assert!(!project.front_matter_moved(&changed), "record updated");
+        // The `title:` a listing card renders, and the heading a chapter is named by.
+        std::fs::write(&post, "---\ntitle: Renamed\n---\n\n# First\n\nRewritten.\n").unwrap();
+        assert_eq!(moved(&project, &changed), (false, true), "title: moved");
+        std::fs::write(&post, "---\ntitle: First\n---\n\n# Second\n\nRewritten.\n").unwrap();
+        assert_eq!(moved(&project, &changed), (false, true), "the H1 moved");
 
-        // Losing the block entirely is a move too — the page drops to its `# H1` title.
-        std::fs::write(&post, "Just a body.\n").unwrap();
-        assert!(project.front_matter_moved(&changed), "block removed");
+        // Once the re-discovery it caused is adopted, the same content is no move.
+        let m = project.what_moved(&changed);
+        project.adopt(project.rediscover(), &m.digests, false);
+        assert_eq!(moved(&project, &changed), (false, false), "record updated");
 
-        // A file this project does not publish is not tracked, so it costs nothing.
+        // A page that is gone may change the page set.
+        std::fs::remove_file(&post).unwrap();
+        assert_eq!(moved(&project, &changed), (true, false), "page deleted");
+
+        // A source file discovery has never classified may be a new page, once; after the
+        // re-discovery finds it is none, saving it costs nothing.
         let partial = dir.join("_includes/part.tmd");
         std::fs::create_dir_all(partial.parent().unwrap()).unwrap();
         std::fs::write(&partial, "---\ntitle: Not a page\n---\n\nx\n").unwrap();
-        assert!(
-            !project.front_matter_moved(&std::iter::once(partial).collect()),
+        let saved: HashSet<PathBuf> = std::iter::once(partial.clone()).collect();
+        assert_eq!(moved(&project, &saved), (true, false), "never classified");
+        let m = project.what_moved(&saved);
+        project.adopt(project.rediscover(), &m.digests, false);
+        std::fs::write(&partial, "---\ntitle: Still not a page\n---\n\ny\n").unwrap();
+        assert_eq!(
+            moved(&project, &saved),
+            (false, false),
             "an include partial is not a page of the site"
         );
-
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2715,6 +3019,7 @@ mod project_tests {
         let v1 = "---\ntitle: C\n---\n\nFirst.\n\n<!-- TODO -->\n\nLast.\n";
         std::fs::write(&page, v1).unwrap();
         let (project, _app, _b, _f) = project_and_app(&dir);
+        open_page(&project, "index.tmd");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, "index.tmd", None));
         let mut rx = project.pages.lock()["index.tmd"].tx.subscribe();
@@ -2762,7 +3067,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         };
 
         // A real page resolves, by source rel and by output url alike.
@@ -2931,7 +3236,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         site_page_html(&project, &page)
     }
@@ -3075,7 +3380,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         let preview = site_page_html(&project, &page);
         assert!(
@@ -3121,6 +3426,42 @@ mod project_tests {
         // guessing wrong there costs a wasted render, while guessing wrong the other way
         // would publish a page with its outputs missing.
         assert!(!PageDoc::default().cell_free);
+    }
+
+    /// Give `rel` the live state a visit gives it (`client_conn` allocates exactly this), so
+    /// a build of it has somewhere to publish.
+    fn open_page(project: &Project, rel: &str) {
+        project.pages.lock().insert(
+            rel.to_string(),
+            PageState {
+                doc: PageDoc::default(),
+                tx: broadcast::channel(256).0,
+            },
+        );
+    }
+
+    /// A tab open on `rel` holding the page as it really renders: its cross-references in
+    /// its blocks and the files it read in [`PageDoc::reads`], with a receiver on its
+    /// channel.
+    fn open_rendered(project: &Arc<Project>, rel: &str) -> broadcast::Receiver<String> {
+        let page = project.site.lock().page(rel).cloned().unwrap();
+        let doc = render_markdown_only(&project.site.lock(), &page);
+        let (tx, rx) = broadcast::channel(256);
+        project
+            .pages
+            .lock()
+            .insert(rel.to_string(), PageState { doc, tx });
+        rx
+    }
+
+    /// A tab open on `rel`: a state (as [`page_state_with_blocks`] makes it) and a receiver
+    /// on its channel, which is what keeps the page rebuilt on a save. Hold the receiver for
+    /// as long as the tab should count as open.
+    fn watch(project: &Project, rel: &str) -> broadcast::Receiver<String> {
+        let ps = page_state_with_blocks("<p>x</p>");
+        let rx = ps.tx.subscribe();
+        project.pages.lock().insert(rel.to_string(), ps);
+        rx
     }
 
     fn page_state_with_blocks(html: &str) -> PageState {
@@ -3236,9 +3577,9 @@ mod project_tests {
             pages: Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
-        project.seed_front_matter();
+        project.seed_records();
         let (build_tx, build_rx) = mpsc::unbounded_channel();
         let (fast_tx, fast_rx) = mpsc::unbounded_channel();
         let app = SiteApp {
@@ -3259,7 +3600,10 @@ mod project_tests {
     ) -> Vec<String> {
         let mut out = Vec::new();
         for rx in [build_rx, fast_rx] {
-            while let Ok(BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = rx.try_recv() {
+            while let Ok(
+                BuildMsg::Build(rel) | BuildMsg::Restart(rel) | BuildMsg::IfMoved(rel, _),
+            ) = rx.try_recv()
+            {
                 out.push(rel);
             }
         }
@@ -3269,15 +3613,9 @@ mod project_tests {
 
     /// Finding 16. `_site.yml`'s project-wide `bibliography:` is a render input of every
     /// page (`Site::render_defaults` lays it under each page's own), and it is named in no
-    /// page's own source — so neither `includes::dependencies` nor
-    /// `includes::resource_dependencies`, which both read the PAGE, can see it.
-    ///
-    /// That left the save with no way in at all: `refs.bib` is not `_site.yml` by name, a
-    /// write is not structural, it moves no front matter, it is not a `.tmd` so it skips
-    /// `refresh_xrefs`, and it moves no cross-reference anchor. Every branch of
-    /// `rebuild_project` declined it and the open tab kept serving the citation it had —
-    /// and a browser reload served the same one, because `ensure_and_render_page` only
-    /// re-renders a page that has no live state.
+    /// page's own source, so a dependency walk that read the PAGE could never see it: the
+    /// open tab kept serving the citation it had, and a browser reload served the same one.
+    /// The page's render reads the file, and what a render reads is what it depends on.
     #[test]
     fn a_shared_bibliography_save_rebuilds_the_pages_that_inherit_it() {
         let dir = scratch("shared-bib");
@@ -3299,10 +3637,7 @@ mod project_tests {
             1,
             "the project must actually resolve its shared `.bib`, or this proves nothing"
         );
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+        let _tab = open_rendered(&project, "index.tmd");
 
         // The author fixes a wrong year and saves. Nothing else on disk moves.
         std::fs::write(
@@ -3311,7 +3646,7 @@ mod project_tests {
         )
         .unwrap();
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed, false);
+        rebuild_project(&app, &project, &changed);
 
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
@@ -3321,8 +3656,55 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A page that does NOT resolve any shared `.bib` must stay off the rebuild list: the
-    /// seed is a dependency, not a licence to rebuild every open tab on any save. Without
+    /// Audit 2026-09-24 invalidation #9. A page's state outlives its tab: every page a
+    /// reader ever opened kept one, and a front-matter save rebuilt all of them, so a save
+    /// took 453 ms with two pages visited and 2544 ms after one visit of each of 221 pages.
+    /// A page nobody is watching is not rebuilt: its state is dropped, and its next visit
+    /// renders it fresh, which is what a visit to a never-opened page does anyway.
+    #[test]
+    fn a_save_rebuilds_only_the_pages_a_tab_is_watching() {
+        let dir = scratch("watched");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
+        std::fs::write(dir.join("posts/b.tmd"), "---\ntitle: B\n---\n\nBody.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = watch(&project, "index.tmd");
+        // Visited and left: a state with nobody on its channel.
+        for rel in ["posts/a.tmd", "posts/b.tmd"] {
+            project
+                .pages
+                .lock()
+                .insert(rel.to_string(), page_state_with_blocks("<p>x</p>"));
+        }
+
+        std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(post).collect());
+
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing a tab shows is rebuilt, and no page nobody is watching"
+        );
+        let mut kept: Vec<String> = project.pages.lock().keys().cloned().collect();
+        kept.sort();
+        assert_eq!(
+            kept,
+            vec!["index.tmd".to_string()],
+            "an unwatched page's state is dropped, so its next visit renders it fresh"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A page that does NOT read a `.bib` must stay off the rebuild list when it changes: a
+    /// dependency, not a licence to rebuild every open tab on any save. Without
     /// this, the fix above would read as correct while quietly rebuilding the whole warm
     /// set on every image or stylesheet write.
     #[test]
@@ -3334,13 +3716,10 @@ mod project_tests {
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
         assert!(project.site.lock().bibliography.is_empty());
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+        let _tab = open_rendered(&project, "index.tmd");
 
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed, false);
+        rebuild_project(&app, &project, &changed);
 
         assert!(
             queued(&mut build_rx, &mut fast_rx).is_empty(),
@@ -3349,112 +3728,892 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Finding 17, the classification half. A same-filesystem rename never creates and
-    /// never removes: on Linux/inotify `mv a.tmd b.tmd` emits exactly
-    /// `Modify(Name(From))` on the old path, `Modify(Name(To))` on the new, and then a
-    /// cookie-paired `Modify(Name(Both))` carrying both — verified against a live
-    /// `notify` 8.2 watcher while writing this. macOS (FSEvents) reports `Name(Any)` and
-    /// Windows reports the `From`/`To` pair, so the class to match is `Name(_)`, never a
-    /// particular `RenameMode`.
-    ///
-    /// A rename IS a create plus a remove as far as the page set is concerned, so it
-    /// belongs in the same class. The cost of admitting it is a `rediscover()` on an
-    /// editor that saves atomically (write temp, rename over) — absorbed one level up by
-    /// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an
-    /// editor's save-via-rename of an existing one" case that guard was already written
-    /// for.
+    /// Audit 2026-09-24 C1. An editor that saves by writing a temp file and renaming it
+    /// over the page (vim, JetBrains, gedit, `sed -i`), and a `git checkout`, deliver a
+    /// front-matter edit as a rename or an unlink plus a create. The preview read those as a
+    /// possible page-set change, re-discovered and reseeded its record before it asked
+    /// whether the front matter moved, and so never rebuilt the listing that shows the
+    /// post: the open tab kept the old card, and a fresh GET served the same stale body.
     #[test]
-    fn a_rename_is_classified_as_moving_the_page_set() {
-        use notify::EventKind::{Access, Create, Modify, Remove};
-        use notify::event::{
-            AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode,
-        };
-
-        for mode in [
-            RenameMode::From,
-            RenameMode::To,
-            RenameMode::Both,
-            RenameMode::Any,
-            RenameMode::Other,
-        ] {
-            assert!(
-                may_change_page_set(&Modify(ModifyKind::Name(mode))),
-                "a rename ({mode:?}) moves the page set on every platform's backend"
-            );
-        }
-        // The two that always were structural stay so.
-        assert!(may_change_page_set(&Create(CreateKind::File)));
-        assert!(may_change_page_set(&Remove(RemoveKind::File)));
-        // …and an in-place edit is still just a page rebuild. Widening `Modify(_)` whole
-        // would make every keystroke re-discover the project, at the cost `Project::
-        // front_matter` measures, which is the whole reason this classification exists.
-        assert!(!may_change_page_set(&Modify(ModifyKind::Data(
-            DataChange::Content
-        ))));
-        assert!(!may_change_page_set(&Modify(ModifyKind::Metadata(
-            MetadataKind::WriteTime
-        ))));
-        assert!(!may_change_page_set(&Access(AccessKind::Any)));
-    }
-
-    /// Finding 17, the reader-visible half. With the rename classified structural,
-    /// `rebuild_project` re-discovers, sees the page set actually move, and reloads the
-    /// open tabs — which is the only thing that repaints a navbar, a listing and a
-    /// breadcrumb, and the only thing that gets the tab sitting on the vanished page off it.
-    ///
-    /// Before the fix this ran with `structural == false` and stopped at
-    /// `front_matter_moved`, which fires here only by accident (the old path's front-matter
-    /// digest goes to that of the empty string once the file is gone) and covers just the
-    /// `Site` swap. It never reloads, so the tab keeps its stale chrome, and for a page with
-    /// no front-matter block at all it does not even fire: nothing runs, the site goes on
-    /// listing the old page and the new URL 404s.
-    #[test]
-    fn renaming_a_page_reloads_the_open_tabs_onto_the_new_page_set() {
-        let dir = scratch("rename");
+    fn an_atomic_save_of_a_listed_post_title_rebuilds_the_listing() {
+        let dir = scratch("atomic-title");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
-        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
-        std::fs::write(dir.join("notes.tmd"), "---\ntitle: Notes\n---\n\nProse.\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
-        let mut tab = project.pages.lock()["index.tmd"].tx.subscribe();
+        let _tab = watch(&project, "index.tmd");
 
-        std::fs::rename(dir.join("notes.tmd"), dir.join("journal.tmd")).unwrap();
-        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths,
-        // both `.tmd`, classified by the same predicate the event loop uses.
-        let structural = may_change_page_set(&notify::EventKind::Modify(
-            notify::event::ModifyKind::Name(notify::event::RenameMode::Both),
-        ));
-        let changed: HashSet<PathBuf> = [dir.join("notes.tmd"), dir.join("journal.tmd")]
-            .into_iter()
-            .collect();
-        rebuild_project(
-            &app,
-            &project,
-            &changed,
-            structural && is_tmd(Path::new("notes.tmd")),
+        // gedit's save: a temp file beside the page, renamed over it.
+        let tmp = dir.join("posts/.goutputstream-AB12CD");
+        std::fs::write(&tmp, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        std::fs::rename(&tmp, &post).unwrap();
+        let changed: HashSet<PathBuf> = [tmp, post].into_iter().collect();
+        rebuild_project(&app, &project, &changed);
+
+        assert_eq!(
+            project
+                .site
+                .lock()
+                .page("posts/a.tmd")
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("New")
         );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing shows the post's title, so it must be rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C2. Discovery reads a page's leading `# H1` as well as its front
+    /// matter: the H1 names a book chapter in the drawer and the pager (before `title:`),
+    /// its `.unnumbered` decides every later chapter's number, and it titles a website page
+    /// that has no `title:`. The record hashed only the `---` block, so an in-place edit of
+    /// the H1 never re-discovered, and every chapter's section, figure and equation numbers
+    /// stayed wrong, in open tabs and on fresh GETs.
+    #[test]
+    fn an_in_place_edit_of_a_chapter_heading_rediscovers_the_book() {
+        let dir = scratch("h1-edit");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\nchapters:\n  - intro.tmd\n  - methods.tmd\n",
+        )
+        .unwrap();
+        let intro = dir.join("intro.tmd");
+        std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
+        std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut tab = watch(&project, "methods.tmd");
+        let chapter = |project: &Project| {
+            let site = project.site.lock();
+            site.chapter_for(site.page("methods.tmd").unwrap())
+        };
+        assert_eq!(chapter(&project), Some(2));
+
+        std::fs::write(&intro, "# Introduction {.unnumbered}\n\nText.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(intro).collect());
+
+        assert_eq!(
+            chapter(&project),
+            Some(1),
+            "the chapter after an unnumbered one is chapter 1"
+        );
+        assert_eq!(
+            tab.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "its numbers and its drawer moved, so the open chapter reloads"
+        );
+        assert!(queued(&mut build_rx, &mut fast_rx).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C5. A book's drawer and pager are chrome: they sit outside
+    /// `#tali-root`, where no block op reaches. Retitling a chapter re-discovered the book
+    /// and rebuilt every open chapter, whose bodies had not changed, so every tab kept the
+    /// old label with nothing sent at all, while a comment claimed the tabs took the change
+    /// as ops. After a re-discovery a tab whose chrome moved reloads, and one whose chrome
+    /// held takes the change as ops, keeping its live state.
+    #[test]
+    fn a_rediscovery_reloads_exactly_the_tabs_whose_chrome_moved() {
+        let dir = scratch("chrome-book");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\nchapters:\n  - intro.tmd\n  - methods.tmd\n",
+        )
+        .unwrap();
+        let intro = dir.join("intro.tmd");
+        std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
+        std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut tab = watch(&project, "methods.tmd");
+
+        std::fs::write(&intro, "# Opening\n\nText.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(intro).collect());
 
         assert_eq!(
             tab.try_recv().as_deref().unwrap_or(""),
             protocol::reload(),
-            "the open tab must be told to reload: its navbar still links to the old page"
+            "the drawer and the pager on this chapter name the retitled one"
         );
         assert!(
             project.pages.lock().is_empty(),
-            "the live block state is dropped so the reload re-renders against the new site"
+            "so it re-renders on the reload"
         );
-        let site = project.site.lock();
-        assert!(site.page("journal.tmd").is_some(), "the new page is served");
-        assert!(site.page("notes.tmd").is_none(), "the old page is not");
-        drop(site);
+        assert!(queued(&mut build_rx, &mut fast_rx).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // A website's listing shows the post's title in its body, which ops reach, and its
+        // chrome does not name the post: it keeps its DOM. So does the post itself, whose
+        // `<head>` meta follows its title but which no reader sees.
+        let dir = scratch("chrome-site");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut tab = watch(&project, "index.tmd");
+        let mut own = watch(&project, "posts/a.tmd");
+
+        std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(post).collect());
+
         assert!(
-            queued(&mut build_rx, &mut fast_rx).is_empty(),
-            "a reload re-renders on the request; queueing a build for a dropped page too \
-             would be a second render of the same paint"
+            tab.try_recv().is_err(),
+            "no reload for a tab whose chrome held"
+        );
+        assert!(own.try_recv().is_err(), "nor for the page being retitled");
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string(), "posts/a.tmd".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C6. An `{{< include >}}` partial can hold an anchor as well as a
+    /// page can, and a partial is often a `.md`. The cross-reference registry was refreshed
+    /// only for a `.tmd` save, so a figure removed from a `.md` partial left every page
+    /// citing the figure after it one number off, in the tab and on a fresh GET, until some
+    /// `.tmd` anywhere was saved.
+    #[test]
+    fn an_anchor_renumbered_in_a_md_partial_reaches_the_page_citing_it() {
+        let dir = scratch("md-renumber");
+        std::fs::create_dir_all(dir.join("_partials")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("g.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        )
+        .unwrap();
+        let partial = dir.join("_partials/figpart.md");
+        std::fs::write(&partial, "![Gamma](g.svg){#fig-gamma}\n").unwrap();
+        std::fs::write(
+            dir.join("figs.tmd"),
+            "---\ntitle: Figures\n---\n\n{{< include _partials/figpart.md >}}\n\n\
+             ![Alpha](g.svg){#fig-alpha}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nSee @fig-alpha.\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let number =
+            |project: &Project| project.site.lock().xref_targets["fig-alpha"].number.clone();
+        assert_eq!(number(&project), "2");
+        let _tab = open_rendered(&project, "index.tmd");
+
+        std::fs::write(&partial, "No figure here any more.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(partial).collect());
+
+        assert_eq!(number(&project), "1");
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page citing the renumbered figure is rebuilt"
+        );
+        let index = project.site.lock().search_index_json.clone();
+        assert!(
+            index.contains("Figure 1") && !index.contains("Figure 2"),
+            "and the search index says what the page now says: {index}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C4. The natural order is to declare `bibliography: refs.bib` in
+    /// `_site.yml`, then create `refs.bib`. Discovery dropped a declared file that did not
+    /// exist yet, so no page depended on it: creating it rebuilt nothing, citations stayed
+    /// raw keys, and the dev menu went on saying the file was not found while it existed,
+    /// even after the page itself was rebuilt. A file a render looked for and did not find
+    /// is a dependency like any other.
+    #[test]
+    fn a_shared_bibliography_created_after_it_was_declared_is_picked_up() {
+        let dir = scratch("late-bib");
+        std::fs::write(dir.join("_site.yml"), "title: T\nbibliography: refs.bib\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nAs shown in [@k].\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{k,\n title = {Late Title},\n year = {2021}\n}\n",
+        )
+        .unwrap();
+        rebuild_project(
+            &app,
+            &project,
+            &std::iter::once(dir.join("refs.bib")).collect(),
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page looked for the file, so creating it rebuilds the page"
+        );
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        let pages = project.pages.lock();
+        let doc = &pages["index.tmd"].doc;
+        assert!(
+            doc.body_html().contains("Late Title"),
+            "the citation resolves"
+        );
+        assert!(
+            !doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("not found")),
+            "and nothing says the file is missing: {:?}",
+            doc.diagnostics
+        );
+        drop(pages);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C7 (images #5). The render reads each local raster image it shows,
+    /// for the `width`/`height` that reserve its box, and checks that every local asset
+    /// exists, but no image was a dependency of its page: adding a missing image left its
+    /// "not found" error on screen after a reload, and re-exporting a figure at a new size
+    /// kept the old dimensions baked into the page, tab and fresh GET alike.
+    #[test]
+    fn adding_or_replacing_an_image_rebuilds_the_page_that_shows_it() {
+        let dir = scratch("image");
+        std::fs::create_dir_all(dir.join("img")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\n![A picture](img/pic.png)\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let pic = dir.join("img/pic.png");
+
+        // Added: the page reported it missing.
+        std::fs::copy(corpus.join("diagnostics/logo.png"), &pic).unwrap();
+        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()]
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock()["index.tmd"]
+                .doc
+                .body_html()
+                .contains("width=\"1\""),
+            "the added image is measured"
+        );
+
+        // Replaced by a figure of another size.
+        std::fs::copy(corpus.join("media/fit-small.png"), &pic).unwrap();
+        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()]
+        );
+        assert!(
+            probes_moved(&project, "index.tmd", &[record_key(&pic)]),
+            "not as the last build left it, so the lane rebuilds"
+        );
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock()["index.tmd"]
+                .doc
+                .body_html()
+                .contains("width=\"320\""),
+            "the new size replaces the old one"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A figure a page's own cells write (`savefig("gen.png")`, shown as `![…](gen.png)`) is
+    /// the page's output. With images a dependency (C7), rebuilding the page for it ran its
+    /// cells again, and a `#| cache: false` cell re-runs on every build, so it wrote the file
+    /// again: 77 runs in 8 s of an idle preview. A file the page only looked at is asked
+    /// about after the page's build instead: the page's own write is already in what that
+    /// build left, a later write by the author is not, and a file the page reads as text
+    /// (its source, which an author edits while cells run) is rebuilt outright.
+    #[test]
+    fn a_file_the_pages_own_cells_wrote_does_not_rebuild_it() {
+        let dir = scratch("own-output");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\n![Generated](gen.png)\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let figure = dir.join("gen.png");
+        let saved =
+            |path: &Path| -> HashSet<PathBuf> { std::iter::once(path.to_path_buf()).collect() };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        // Written during the page's build, as its cells would: the build ends with it there.
+        std::fs::copy(corpus.join("diagnostics/logo.png"), &figure).unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        rebuild_project(&app, &project, &saved(&figure));
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page is asked about"
+        );
+        let figure_key = record_key(&figure);
+        assert!(
+            !probes_moved(&project, "index.tmd", std::slice::from_ref(&figure_key)),
+            "the page's own output is no change to it"
+        );
+
+        // Replaced by the author afterwards: the page shows it, so it is rebuilt.
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::copy(corpus.join("media/fit-small.png"), &figure).unwrap();
+        assert!(probes_moved(
+            &project,
+            "index.tmd",
+            std::slice::from_ref(&figure_key)
+        ));
+
+        // The source is read as text, so saving it rebuilds the page with no question.
+        std::fs::write(
+            &page,
+            "---\ntitle: Home\n---\n\n![Generated](gen.png)\n\nMore.\n",
+        )
+        .unwrap();
+        rebuild_project(&app, &project, &saved(&page));
+        let mut outright = Vec::new();
+        for rx in [&mut build_rx, &mut fast_rx] {
+            while let Ok(msg) = rx.try_recv() {
+                outright.push(matches!(msg, BuildMsg::Build(rel) if rel == "index.tmd"));
+            }
+        }
+        assert_eq!(outright, vec![true]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The loop above, live: a `#| cache: false` cell that writes the figure its page
+    /// shows runs once per save, not once per build it causes. Gated on a live kernel.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_cell_writing_the_figure_its_page_shows_does_not_rebuild_forever() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise a cell that writes its page's figure; this run did not."
+            );
+            return;
+        }
+        let dir = scratch("own-output-live");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let logo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../corpus/diagnostics/logo.png")
+            .canonicalize()
+            .unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            format!(
+                "---\ntitle: Loop\n---\n\n```{{python}}\n#| cache: false\nimport os, shutil\n\
+                 os.makedirs('_freeze', exist_ok=True)\n\
+                 open('_freeze/runs.txt', 'a').write('x')\n\
+                 shutil.copy({logo:?}, 'gen.png')\n```\n\n![Generated](gen.png)\n"
+            ),
+        )
+        .unwrap();
+        let runs = || {
+            std::fs::read_to_string(dir.join("_freeze/runs.txt"))
+                .map(|s| s.len())
+                .unwrap_or(0)
+        };
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        until("the cell's first run", || runs() >= 1);
+        std::thread::sleep(Duration::from_secs(3));
+        assert!(
+            runs() <= 2,
+            "the cell ran {} times in 3 s with nothing saved",
+            runs()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C9 (perf #3). Every rename-over save counted as a possible page-set
+    /// change, so an atomic save of a body edit paid a whole re-discovery (every page read
+    /// and rendered twice): 369 ms against 195 ms in place at 221 pages. A page that is
+    /// still there, with what discovery reads of it unchanged, is an edit in place, however
+    /// the editor wrote it.
+    #[test]
+    fn an_atomic_save_of_a_body_edit_does_not_rediscover() {
+        let dir = scratch("atomic-body");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\n# Home\n\nOld body.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+        // A mark only this `Site` carries: a re-discovery replaces it with one without.
+        project
+            .site
+            .lock()
+            .warnings
+            .push(taliesin_core::render::Warning::new("KEPT"));
+
+        // JetBrains' safe write: temp file, original moved aside, temp renamed over it.
+        let tmp = dir.join("index.tmd___jb_tmp___");
+        let old = dir.join("index.tmd___jb_old___");
+        std::fs::write(&tmp, "---\ntitle: Home\n---\n\n# Home\n\nNew body.\n").unwrap();
+        std::fs::rename(&page, &old).unwrap();
+        std::fs::rename(&tmp, &page).unwrap();
+        std::fs::remove_file(&old).unwrap();
+        let changed: HashSet<PathBuf> = [tmp, old, page].into_iter().collect();
+        rebuild_project(&app, &project, &changed);
+
+        assert!(
+            project
+                .site
+                .lock()
+                .warnings
+                .iter()
+                .any(|w| w.message == "KEPT"),
+            "a body edit re-discovered the project"
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "and the page itself is still rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Finding 17. A same-filesystem rename never creates and never removes: on
+    /// Linux/inotify `mv a.tmd b.tmd` emits `Modify(Name(From))` on the old path,
+    /// `Modify(Name(To))` on the new, then a `Modify(Name(Both))` carrying both. Read as an
+    /// edit in place, it left the site listing the old page and 404ing the new URL until a
+    /// restart. The old path is a page that is gone and the new one a source file discovery
+    /// never classified, so `rebuild_project` re-discovers and serves the new page set: the
+    /// tab left on the vanished page reloads (onto the 404 the build would give it), and the
+    /// listing that links the page takes the new link as ops.
+    #[test]
+    fn renaming_a_page_moves_the_page_set_and_reloads_the_tab_left_on_it() {
+        let dir = scratch("rename");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("posts/notes.tmd"),
+            "---\ntitle: Notes\n---\n\nProse.\n",
+        )
+        .unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut left = watch(&project, "posts/notes.tmd");
+        let mut listing = watch(&project, "index.tmd");
+
+        std::fs::rename(dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")).unwrap();
+        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths.
+        let changed: HashSet<PathBuf> =
+            [dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")]
+                .into_iter()
+                .collect();
+        rebuild_project(&app, &project, &changed);
+
+        let site = project.site.lock();
+        assert!(
+            site.page("posts/journal.tmd").is_some(),
+            "the new page is served"
+        );
+        assert!(
+            site.page("posts/notes.tmd").is_none(),
+            "the old page is not"
+        );
+        drop(site);
+        assert_eq!(
+            left.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "the tab on the vanished page must not go on showing it"
+        );
+        assert!(listing.try_recv().is_err(), "the listing's chrome held");
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing is rebuilt with the new link, and the vanished page is not"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A live preview of a project with no HTTP in front of it: the real watcher and both
+    /// real build lanes over a real [`Project`], wired as [`serve`] wires them. A test changes
+    /// files on disk the way an editor does and reads what the preview then holds.
+    struct Live {
+        app: Arc<SiteApp>,
+        rt: tokio::runtime::Runtime,
+    }
+
+    impl Live {
+        fn start(dir: &Path) -> Live {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let _enter = rt.enter();
+            let (build_tx, build_rx) = mpsc::unbounded_channel();
+            let (fast_tx, fast_rx) = mpsc::unbounded_channel();
+            let site = Site::discover_with(dir, taliesin_core::DraftMode::Include);
+            let app = Arc::new(SiteApp {
+                root: Arc::new(Project {
+                    dir: dir.to_path_buf(),
+                    site: Mutex::new(site),
+                    pages: Mutex::new(HashMap::new()),
+                    exec_lane: Mutex::new(ExecLane::default()),
+                    scope: None,
+                    records: Mutex::new(HashMap::new()),
+                }),
+                build_tx,
+                fast_tx,
+                interrupt: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            });
+            app.root.seed_records();
+            spawn_builder(app.clone(), build_rx);
+            spawn_fast_builder(app.clone(), fast_rx);
+            spawn_watcher(app.clone());
+            drop(_enter);
+            Live { app, rt }
+        }
+
+        /// Open a tab on `rel` as a browser does: the first paint, then a subscription to
+        /// the page's channel. Hold the receiver for as long as the tab is open.
+        fn open(&self, rel: &str) -> broadcast::Receiver<String> {
+            let _enter = self.rt.enter();
+            let project = &self.app.root;
+            let page = project.site.lock().page(rel).cloned().expect("a page");
+            ensure_and_render_page(&self.app, project, &page);
+            project.pages.lock()[&page.rel].tx.subscribe()
+        }
+
+        /// The live body of `rel`, or empty when it has no live state.
+        fn body(&self, rel: &str) -> String {
+            let pages = self.app.root.pages.lock();
+            pages
+                .get(rel)
+                .map(|ps| ps.doc.body_html())
+                .unwrap_or_default()
+        }
+
+        fn has_page(&self, rel: &str) -> bool {
+            self.app.root.site.lock().page(rel).is_some()
+        }
+    }
+
+    /// Poll `done` until it holds, or panic naming `what` after ten seconds.
+    fn until(what: &str, done: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Audit 2026-09-24 C3. A folder-per-post blog renames a post by renaming its folder
+    /// (`mv`, the VS Code explorer and every file manager make the same call). The watcher
+    /// dropped the event, since a directory has no file extension, and notify drops a moved
+    /// directory's watch: the new URL 404ed, and every later edit inside the folder went
+    /// unseen until a restart. The same held for a folder moved in from outside.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_renamed_or_moved_in_folder_is_served_and_watched() {
+        let dir = scratch("folder");
+        std::fs::create_dir_all(dir.join("posts/a-star")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("posts/a-star/index.tmd"),
+            "---\ntitle: Search\n---\n\nBody.\n",
+        )
+        .unwrap();
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        until("the first build", || {
+            live.body("index.tmd").contains("Search")
+        });
+
+        std::fs::rename(dir.join("posts/a-star"), dir.join("posts/a-star-v2")).unwrap();
+        until("the renamed folder's page is served", || {
+            live.has_page("posts/a-star-v2/index.tmd") && !live.has_page("posts/a-star/index.tmd")
+        });
+        std::fs::write(
+            dir.join("posts/a-star-v2/index.tmd"),
+            "---\ntitle: Retitled\n---\n\nBody.\n",
+        )
+        .unwrap();
+        until(
+            "an edit inside the renamed folder reaches the listing",
+            || live.body("index.tmd").contains("Retitled"),
+        );
+
+        let outside = scratch("folder-outside");
+        std::fs::create_dir_all(outside.join("ext")).unwrap();
+        std::fs::write(
+            outside.join("ext/page.tmd"),
+            "---\ntitle: Moved in\n---\n\nx\n",
+        )
+        .unwrap();
+        std::fs::rename(outside.join("ext"), dir.join("posts/ext")).unwrap();
+        until("a folder moved in from outside is served", || {
+            live.has_page("posts/ext/page.tmd")
+        });
+        std::fs::write(
+            dir.join("posts/ext/page.tmd"),
+            "---\ntitle: Moved and edited\n---\n\nx\n",
+        )
+        .unwrap();
+        until("and watched", || {
+            live.body("index.tmd").contains("Moved and edited")
+        });
+
+        // Moved out (to the trash, say): the only event is the folder's own rename away.
+        std::fs::rename(dir.join("posts/ext"), outside.join("ext")).unwrap();
+        until("a folder moved out takes its page along", || {
+            !live.has_page("posts/ext/page.tmd")
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    /// Audit 2026-09-24 invalidation #12. The watcher dropped every event outside a list of
+    /// extensions, which disagreed with what the pages read: a page linking a `.pdf` kept
+    /// its "broken link" after the file was created. Whether a save matters is decided by
+    /// what the pages read, so the list is gone.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn creating_a_linked_file_of_any_kind_clears_its_broken_link() {
+        let dir = scratch("linked-pdf");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nRead [the report](report.pdf).\n",
+        )
+        .unwrap();
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        let broken = || {
+            let pages = live.app.root.pages.lock();
+            pages.get("index.tmd").is_some_and(|ps| {
+                ps.doc
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("report.pdf"))
+            })
+        };
+        until("the missing file is reported", broken);
+        std::fs::write(dir.join("report.pdf"), b"%PDF-1.4\n").unwrap();
+        until("creating it clears the report", || !broken());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C8 and first-hour #9. The interpreter was resolved once, when the
+    /// preview started, so a `python:` edited in `_site.yml` never reached a kernel, not
+    /// even through Restart kernel, and a `.venv` created while the preview ran was ignored,
+    /// though the guide says to fix the kernel and save. The exec lane re-resolves before
+    /// every job and moves to a fresh pool when the answer changed.
+    #[test]
+    fn the_exec_lane_follows_the_interpreter_the_project_resolves_to_now() {
+        let dir = scratch("python");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        let (project, app, _b, _f) = project_and_app(&dir);
+        let before = {
+            let s = project.site.lock();
+            crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
+        };
+        let mut pool = ExecPool::new(dir.join("_freeze"), before, app.interrupt.clone());
+
+        // A `.venv` created while the preview runs.
+        let venv = dir.join(".venv/bin/python");
+        std::fs::create_dir_all(venv.parent().unwrap()).unwrap();
+        std::fs::write(&venv, "").unwrap();
+        repoint(&mut pool, &project, &app.interrupt);
+        assert_eq!(pool.python(), Some(venv.as_path()));
+
+        // `python:` set in `_site.yml`, adopted by the re-discovery its save causes.
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\npython: /opt/py/bin/python\n",
+        )
+        .unwrap();
+        *project.site.lock() = project.rediscover();
+        repoint(&mut pool, &project, &app.interrupt);
+        assert_eq!(pool.python(), Some(Path::new("/opt/py/bin/python")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 invalidation #13. A tab whose page vanishes reloads onto the 404
+    /// page, which carries no live client: when the page came back (deleted and written
+    /// again in two saves, as `git` and some editors do, or restored by hand) the tab stayed
+    /// on the 404. The preview's 404 page asks again, once a second, whether the page it
+    /// stands for is there, and reloads onto it when it is.
+    #[test]
+    fn the_previews_404_page_rechecks_the_page_it_stands_for() {
+        let dir = scratch("404");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        let (_project, app, _b, _f) = project_and_app(&dir);
+        let app = Arc::new(app);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (status, body) = rt.block_on(async {
+            let res = page_or_asset(
+                State(app.clone()),
+                axum::http::Method::GET,
+                "/gone.html".parse().unwrap(),
+            )
+            .await;
+            let status = res.status();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        });
+        assert_eq!(status, axum::http::StatusCode::NOT_FOUND);
+        let script = taliesin_core::render::tags(&body)
+            .filter(|t| t.name.eq_ignore_ascii_case("script"))
+            .map(|t| {
+                let rest = &body[t.at + t.text.len()..];
+                rest[..rest.find("</script>").unwrap_or(rest.len())].to_string()
+            })
+            .find(|js| js.contains("location.reload"));
+        let script = script.expect("the 404 page carries a check that reloads it");
+        assert!(
+            script.contains("fetch(location.href"),
+            "it asks about the page it stands for: {script}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 WP1 residual. The preview answered every HTTP method for a page or a
+    /// static file, a `POST` or a `DELETE` included, as if it were a `GET`. It serves reads
+    /// only: `GET` and `HEAD`, and `405` with an `Allow` header for anything else.
+    #[test]
+    fn the_preview_serves_pages_and_files_to_get_and_head_only() {
+        use axum::http::{Method, StatusCode, header};
+        let dir = scratch("methods");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        std::fs::write(dir.join("style.css"), "body{}").unwrap();
+        let (_project, app, _b, _f) = project_and_app(&dir);
+        let app = Arc::new(app);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let answer = |method: Method, uri: &str| {
+            let res = rt.block_on(page_or_asset(
+                State(app.clone()),
+                method,
+                uri.parse().unwrap(),
+            ));
+            let allow = res.headers().get(header::ALLOW).cloned();
+            (res.status(), allow)
+        };
+        for uri in ["/style.css", "/index.html"] {
+            assert_eq!(answer(Method::GET, uri).0, StatusCode::OK, "{uri}");
+            assert_eq!(answer(Method::HEAD, uri).0, StatusCode::OK, "{uri}");
+            for method in [Method::POST, Method::PUT, Method::DELETE] {
+                let (status, allow) = answer(method.clone(), uri);
+                assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{method} {uri}");
+                assert_eq!(
+                    allow.as_ref().and_then(|a| a.to_str().ok()),
+                    Some("GET, HEAD")
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 F3 (perf #4). The watcher slept a fixed 80 ms after the first event
+    /// of every save, 80 to 92% of each save on the author's projects, while every editor's
+    /// save finishes its events within about a millisecond. It now waits for its events to
+    /// stop, so a save reaches its open page in the render's time plus a short quiet
+    /// period.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_save_reaches_its_open_page_without_a_fixed_wait() {
+        let dir = scratch("quiet");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\nFirst.\n").unwrap();
+        let live = Live::start(&dir);
+        let mut tab = live.open("index.tmd");
+        until("the first build", || {
+            live.body("index.tmd").contains("First.")
+        });
+        let drain = |tab: &mut broadcast::Receiver<String>| while tab.try_recv().is_ok() {};
+        std::thread::sleep(Duration::from_millis(200));
+        drain(&mut tab);
+
+        let mut took = Vec::new();
+        for i in 0..5 {
+            let marker = format!("Saved {i}.");
+            let started = std::time::Instant::now();
+            std::fs::write(&page, format!("---\ntitle: Home\n---\n\n{marker}\n")).unwrap();
+            until("the save reaches the page", || {
+                live.body("index.tmd").contains(&marker)
+            });
+            took.push(started.elapsed());
+            std::thread::sleep(Duration::from_millis(100));
+            drain(&mut tab);
+        }
+        took.sort();
+        let median = took[took.len() / 2];
+        assert!(
+            median < Duration::from_millis(60),
+            "a save took {median:?} to reach its open page (all: {took:?})"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 invalidation #10. `reload_open_tabs` drops every page's state so the
+    /// reload re-renders against the new site, and a page nobody has open has none. A build
+    /// already in flight for such a page used to put a state back when it finished, carrying
+    /// the render defaults it captured before the drop: measured, a `bibliography:` switched
+    /// in `_site.yml` while a closed page's cell ran left that page serving the old citation
+    /// on every later GET. Both publishing steps of a build must leave a dropped page alone.
+    #[test]
+    fn a_build_in_flight_does_not_bring_back_a_dropped_page_state() {
+        let dir = scratch("resurrect");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+        let (project, _app, _b, _f) = project_and_app(&dir);
+        let page = project.site.lock().page("index.tmd").cloned().unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock().is_empty(),
+            "the post-exec publish recreated the state of a page nobody has open"
+        );
+        publish_pre_exec_body(&project, "index.tmd", &page, &[]);
+        assert!(
+            project.pages.lock().is_empty(),
+            "the pre-exec publish recreated the state of a page nobody has open"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3477,8 +4636,9 @@ mod project_tests {
             pages: parking_lot::Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
+        open_page(&project, rel);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, rel, None));
         let wire = protocol::diagnostics(&project.pages.lock()[rel].doc.diagnostics);

@@ -461,6 +461,7 @@ fn render_internal(
         chapter,
         site,
         numbers_only,
+        reads: crate::reads::current(),
     });
     // `sync_channel(1)` so an abandoned worker never blocks forever on its send.
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
@@ -510,19 +511,24 @@ struct RenderInput {
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
     numbers_only: bool,
+    /// The caller's recording of the files the render reads ([`crate::reads`]), carried to
+    /// the worker thread the render runs on.
+    reads: Option<crate::reads::Recording>,
 }
 
 impl RenderInput {
     fn render(&self) -> RenderedDoc {
-        render_internal_impl(
-            &self.src,
-            self.origins.as_deref(),
-            self.base_dir.as_deref(),
-            self.include_root.as_deref(),
-            self.chapter,
-            self.site.as_ref(),
-            self.numbers_only,
-        )
+        crate::reads::within(self.reads.clone(), || {
+            render_internal_impl(
+                &self.src,
+                self.origins.as_deref(),
+                self.base_dir.as_deref(),
+                self.include_root.as_deref(),
+                self.chapter,
+                self.site.as_ref(),
+                self.numbers_only,
+            )
+        })
     }
 }
 

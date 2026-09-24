@@ -508,6 +508,86 @@ fn includes_are_resolved_with_origin_files() {
 /// invoked document is confined to its own directory (PT-2, see `include_root_parity.rs`)
 /// so `../../` escapes. A named-page test cannot see the document nobody named. Sweeping
 /// every doc through the single-doc entry point is what makes that unmissable.
+/// The gate on the preview's dependency set ([`taliesin_core::reads`]). The preview rebuilds
+/// an open page when a file its render read changes, and it learns what was read only from
+/// the read sites that note it: one that stopped noting would silently stop that page
+/// updating. So on every corpus document, what a render records must hold every file
+/// another reader says the page uses: each `{{< include >}}` that put a block on the page,
+/// each `.bib` it resolves (the project's shared one too), each local image it shows.
+#[test]
+fn every_corpus_doc_records_the_files_its_render_reads() {
+    let mut files = Vec::new();
+    collect_tmd(&corpus_dir(), &mut files);
+    let (mut includes, mut bibs, mut images) = (0, 0, 0);
+    for f in &files {
+        // Partials are pulled into a page, never rendered on their own.
+        if f.components().any(|c| {
+            c.as_os_str()
+                .to_str()
+                .is_some_and(|s| s.starts_with('_') && s != "_")
+        }) {
+            continue;
+        }
+        let label = f
+            .strip_prefix(corpus_dir())
+            .unwrap_or(f)
+            .display()
+            .to_string();
+        let src = fs::read_to_string(f).unwrap();
+        let dir = f.parent().unwrap();
+        let (doc, recorded) = taliesin_core::reads::record(|| {
+            let doc = taliesin_core::render_single_doc(&src, dir);
+            taliesin_core::diagnostics::validate_local_assets(&doc.blocks, dir);
+            doc
+        });
+        let abs = |p: &Path| taliesin_core::includes::absolutize(p);
+        let mut want: Vec<(&str, PathBuf)> = Vec::new();
+        for b in &doc.blocks {
+            if let Some(sf) = &b.source_file {
+                want.push(("include", abs(&dir.join(sf))));
+            }
+            for tag in taliesin_core::render::tags(&b.html) {
+                if !tag.name.eq_ignore_ascii_case("img") {
+                    continue;
+                }
+                let Some(src) = taliesin_core::render::attrs(&tag)
+                    .find(|a| a.name.eq_ignore_ascii_case("src"))
+                    .map(|a| a.value.to_string())
+                else {
+                    continue;
+                };
+                if src.is_empty() || src.starts_with('/') || src.contains(':') {
+                    continue; // remote, root-absolute or a data: URI: no file of the page's
+                }
+                let path = taliesin_core::render::asset_fs_path(&src);
+                want.push(("image", abs(&dir.join(path))));
+            }
+        }
+        for bib in taliesin_core::render::bibliography_files(&src, dir) {
+            want.push(("bibliography", abs(&bib)));
+        }
+        for (kind, path) in &want {
+            match *kind {
+                "include" => includes += 1,
+                "image" => images += 1,
+                _ => bibs += 1,
+            }
+            assert!(
+                recorded.contains_key(path),
+                "{label}: its render reads the {kind} {} but did not record it, so the \
+                 preview would not rebuild the page when it changes",
+                path.display()
+            );
+        }
+    }
+    // Anti-vacuity: the gate is only worth anything if the corpus exercises each kind.
+    assert!(
+        includes >= 2 && bibs >= 2 && images >= 2,
+        "the corpus should exercise every kind: {includes} includes, {bibs} \
+         bibliographies, {images} images"
+    );
+}
+
 #[test]
 fn every_corpus_doc_resolves_its_includes_when_built_alone() {
     /// Drop `<code>`/`<pre>` subtrees, so a document that *shows* the include syntax

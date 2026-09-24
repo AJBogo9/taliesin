@@ -19,8 +19,15 @@ use crate::render::{Severity, Warning};
 use std::path::{Path, PathBuf};
 
 /// Resolve `_site.yml`'s `bibliography:` entries against the site root, dropping (with a
-/// warning) any that a page-level `bibliography:` would also refuse. Returns the readable
-/// absolute paths, in declaration order.
+/// warning) any that a page-level `bibliography:` would also refuse. Returns the absolute
+/// paths, in declaration order.
+///
+/// A file that does not exist yet is kept: whether it exists is a fact about the disk when a
+/// page renders, not when the project was discovered. Dropping it here meant no render ever
+/// looked for it, so the preview never learned the author had created it (the natural order
+/// is to declare `bibliography: refs.bib`, then write `refs.bib`), and the "not found" this
+/// used to say stayed on screen after the file existed (audit 2026-09-24 C4). The one `.bib`
+/// reader reports a missing file when it is read, in `validate_shared_bibliography`.
 ///
 /// The messages match `render::load_bibliography`'s word for word: one bad `.bib` path
 /// should read the same whether it was written in a page or in the project config.
@@ -57,8 +64,7 @@ pub(super) fn resolve_shared(
         // `Site::discover` uses for the head/body/css includes: a project-wide config key
         // may not point outside the project.
         match crate::includes::try_join_in(root, path, Some(root)) {
-            Ok(p) if p.is_file() => out.push(p),
-            Ok(_) => warn(format!("bibliography file not found: {path}")),
+            Ok(p) => out.push(p),
             Err(crate::includes::Refused::OutsideRoot) => warn(format!(
                 "bibliography `{path}` is outside the project root and was not read"
             )),
@@ -313,8 +319,13 @@ mod tests {
         assert!(site.validate_shared_bibliography().is_empty());
     }
 
+    /// Each bad declaration is said once, not once per page, which is why resolution
+    /// happens at discovery rather than in the render pass. A file that is not there is the
+    /// exception to saying it at discovery: it is kept, because a page's render will look
+    /// for it (and the preview then rebuilds the page when it appears, audit 2026-09-24 C4),
+    /// and the hygiene check reports it, against the disk as it is when a verb runs.
     #[test]
-    fn a_shared_bib_path_that_does_not_resolve_warns_once_at_discovery() {
+    fn a_shared_bib_path_that_does_not_resolve_warns_once() {
         let root = write_site(
             "shared-bib-bad-path",
             &[
@@ -327,21 +338,27 @@ mod tests {
             ],
         );
         let site = Site::discover(&root);
-        assert!(site.bibliography.is_empty(), "none of the three resolves");
+        assert_eq!(
+            site.bibliography,
+            vec![root.join("missing.bib")],
+            "only the file not written yet is kept"
+        );
         let w: Vec<&str> = site
             .warnings
             .iter()
             .map(|m| m.message.as_str())
             .filter(|m| m.contains("bibliography"))
             .collect();
-        // Three declarations, three diagnostics — and each exactly once, not once per page,
-        // which is the reason resolution happens here rather than in the render pass.
-        assert_eq!(w.len(), 3, "one diagnostic per bad declaration: {w:?}");
-        assert!(w.iter().any(|m| m.contains("not found")), "{w:?}");
+        assert_eq!(w.len(), 2, "one diagnostic per refused declaration: {w:?}");
         assert!(
             w.iter().any(|m| m.contains("outside the project root")),
             "{w:?}"
         );
         assert!(w.iter().any(|m| m.contains("only BibTeX")), "{w:?}");
+        let missing = messages(&site.validate_shared_bibliography());
+        assert_eq!(
+            missing,
+            vec!["bibliography file not found: missing.bib".to_string()]
+        );
     }
 }

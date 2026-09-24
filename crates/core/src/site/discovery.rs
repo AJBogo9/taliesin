@@ -105,6 +105,30 @@ pub(super) fn website_page(root: &Path, input: PathBuf, warnings: &mut Vec<Warni
     }
 }
 
+/// A digest of everything discovery reads of one page's source: its front-matter block and
+/// its leading `# H1`, the text that heading shows and whether it is `.unnumbered`. The H1
+/// names a book chapter before its `title:` does (`book::push_chapter`), numbers or skips
+/// it, and titles a website page that has no `title:` ([`website_page`]).
+///
+/// Two sources with one digest discover to the same page, which is what lets the preview
+/// re-discover a project only when a save moves this. A digest of the front-matter block
+/// alone missed an edit of the heading: a chapter retitled or made `.unnumbered` in place
+/// left the drawer, the pager and every later chapter's numbers stale (audit 2026-09-24 C2).
+pub fn discovery_digest(src: &str) -> u64 {
+    let src = crate::includes::normalize_line_endings(src);
+    let mut read = crate::frontmatter::front_matter_block(&src)
+        .unwrap_or("")
+        .to_string();
+    // A separator no front matter can end with, so no block and heading pair collides
+    // with another split of the same text.
+    read.push('\0');
+    if let Some((text, unnumbered)) = crate::render::leading_h1(&src) {
+        read.push_str(&text);
+        read.push(if unnumbered { '\u{1}' } else { '\u{2}' });
+    }
+    crate::hash::fnv1a(&read)
+}
+
 /// A page's front-matter `image:`, stored site-root-relative so a listing card on another
 /// page and the `og:image` can link it (it is written relative to the page's own
 /// directory). An absolute/external URL (og:image social card, CDN-hosted thumb) is left
@@ -190,4 +214,40 @@ fn rel_str(root: &Path, p: &Path) -> String {
         .unwrap_or(p)
         .to_string_lossy()
         .replace('\\', "/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::discovery_digest;
+
+    /// The digest moves with everything discovery reads of a page and with nothing else, so
+    /// the preview neither misses a retitled chapter nor re-discovers on a body edit.
+    #[test]
+    fn the_discovery_digest_moves_with_what_discovery_reads_and_nothing_else() {
+        let base = discovery_digest("---\ntitle: A\n---\n\n# Intro\n\nBody.\n");
+        let same = |src: &str| discovery_digest(src) == base;
+        assert!(
+            same("---\ntitle: A\n---\n\n# Intro\n\nAnother body.\n"),
+            "a body edit"
+        );
+        assert!(
+            !same("---\ntitle: B\n---\n\n# Intro\n\nBody.\n"),
+            "the front matter"
+        );
+        assert!(
+            !same("---\ntitle: A\n---\n\n# Introduction\n\nBody.\n"),
+            "the heading's text"
+        );
+        assert!(
+            !same("---\ntitle: A\n---\n\n# Intro {.unnumbered}\n\nBody.\n"),
+            "the heading's `.unnumbered`"
+        );
+        assert!(
+            !same("---\ntitle: A\n---\n\nBody.\n"),
+            "the heading removed"
+        );
+        // What the heading SHOWS is what names the chapter, so markup around the same
+        // text changes nothing discovery keeps.
+        assert!(same("---\ntitle: A\n---\n\n# *Intro*\n\nBody.\n"));
+    }
 }

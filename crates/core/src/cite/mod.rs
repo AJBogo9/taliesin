@@ -113,6 +113,7 @@ pub(crate) fn read_bib_files(
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     for (name, path) in files {
+        crate::reads::note(path);
         match std::fs::read_to_string(path) {
             Ok(text) => warnings.extend(parse::read_into(bib, name, &text, strings)),
             // A file that exists but is not UTF-8 (a Latin-1 export) is named for what it
