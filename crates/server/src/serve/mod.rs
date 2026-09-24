@@ -299,10 +299,9 @@ pub(crate) async fn bind_with_fallback(
 
     for p in port.saturating_add(1)..=port.saturating_add(9) {
         match try_bind(host, p).await {
-            Ok(bound) => {
-                crate::log::warn(&format!("port {port} in use; using {p}"));
-                return Ok(bound);
-            }
+            // The caller says so, after its banner: printed here, it went before the screen
+            // clear and into the scrollback.
+            Ok(bound) => return Ok(bound),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
         }

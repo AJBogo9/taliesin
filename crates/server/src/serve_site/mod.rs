@@ -567,9 +567,8 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     // Where to point the browser: a document target opens at its own page rather than at
     // the project's home, so `preview chapter-7.tmd` shows chapter 7.
     let focus = doc.as_deref().and_then(|f| focus_url(&site, f));
-    for w in &site.warnings {
-        crate::build::log_located(w, "_site.yml");
-    }
+    // Printed after the banner, below: the banner opens with a screen clear.
+    let startup: Vec<taliesin_core::render::Warning> = site.warnings.clone();
     let page_count = site.pages.len();
     // A project with nothing to serve: `build <dir> --check-only` already exits 1 here,
     // while `preview` used to bind a port, 404 `/`, and boot a kernel for nothing. The two
@@ -616,6 +615,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let (listener, addr) = bind_with_fallback(port, &session_key)
         .await
         .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
+    let requested = port;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
 
@@ -628,8 +628,16 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         &root.display().to_string(),
         &format!("site, {page_count} pages"),
     );
-    // After the banner rather than with the site warnings above, which the soft clear
-    // pushes up into the scrollback: this one is about the thing the author just asked for.
+    // After the banner, never before it: the soft clear pushes whatever came first up into
+    // the scrollback, where the project's own diagnostics and the port fallback used to go
+    // (audit 2026-09-24, WP2 residual).
+    // (Port 0 asks for any free port, so the one bound is not a fallback.)
+    if requested != 0 && port != requested {
+        crate::log::warn(&format!("port {requested} in use; using {port}"));
+    }
+    for w in &startup {
+        crate::build::log_located(w, "_site.yml");
+    }
     if let Some(w) = &unpublished {
         crate::log::warn(w);
     }
