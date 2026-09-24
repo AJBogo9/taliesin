@@ -158,8 +158,7 @@
     cellErrCount = errs.length;
     cellErrEl.textContent = "";
     cellErrEl.style.display = errs.length ? "flex" : "none";
-    errs.forEach((el, i) => {
-      if (!el.id) el.id = "tali-cellerr-" + i;
+    errs.forEach((el) => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "tali-cellerr";
