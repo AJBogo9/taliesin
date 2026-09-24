@@ -976,3 +976,32 @@ fn an_unclosed_entry_ends_where_the_next_one_starts_and_is_reported() {
     );
     assert!(w.is_empty(), "{w:?}");
 }
+
+/// A key with a character `[@…]` cannot name is reported and not stored, instead of being
+/// stored truncated with no fields (audit 2026-09-24, bibtex #14).
+///
+/// The key read used to stop at the first character `is_cite_key_char` rejects, so
+/// `smith&jones2020` became the key `smith` with an empty entry: citing it printed an empty
+/// reference row, and the phantom replaced a real `smith` entry defined earlier.
+#[test]
+fn a_key_the_citation_syntax_cannot_name_is_reported_not_stored_truncated() {
+    let (b, w) = parse_bib_warned(
+        "@misc{smith, title={Real smith}, year={2019}}\n\
+         @misc{smith&jones2020, title={Ampersand}, year={2020}}\n\
+         @misc{o'brien2020, title={Apostrophe}, year={2020}}\n",
+    );
+    let smith = b.format("smith").expect("the real entry");
+    assert!(
+        smith.contains("Real smith"),
+        "no phantom replaces it: {smith}"
+    );
+    assert!(b.format("o").is_none(), "no truncated key is stored");
+    for (key, line) in [("smith&jones2020", "line 2"), ("o'brien2020", "line 3")] {
+        assert!(
+            w.iter()
+                .any(|m| m.contains(key) && m.contains("cannot be cited") && m.contains(line)),
+            "{key}: {w:?}"
+        );
+    }
+    assert!(!w.iter().any(|m| m.contains("duplicate")), "{w:?}");
+}

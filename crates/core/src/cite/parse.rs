@@ -103,12 +103,15 @@ pub(crate) fn read_into(
             }
             continue;
         }
-        // Read the entry key with the SAME predicate the in-prose reference scanner
-        // uses (`is_cite_key_char`), so any key the bib stores can also be `[@cited]`.
-        // Skip whitespace on both sides (`@article{ key ,` stays tolerant) since the
-        // predicate — unlike the old `!= ',' && != '}'` catch-all — stops at spaces.
+        // Read the entry key the way BibTeX does, up to the comma, a space or the closing
+        // delimiter, and only then ask whether the in-prose reference scanner could name
+        // it: stopping at the first character `is_cite_key_char` rejects stored
+        // `smith&jones2020` as the key `smith` with no fields.
         skip_ws(&chars, &mut i);
-        let key = take_while(&chars, &mut i, super::is_cite_key_char);
+        let key_at = i;
+        let key = take_while(&chars, &mut i, |c| {
+            c != ',' && c != close && !c.is_whitespace()
+        });
         let mut fields = HashMap::new();
         skip_ws(&chars, &mut i);
         if i < chars.len() && chars[i] == ',' {
@@ -159,6 +162,17 @@ pub(crate) fn read_into(
             }
         }
         if key.is_empty() {
+            continue;
+        }
+        // Every key the bib stores can also be `[@cited]`: the scanner and this check share
+        // one predicate. A key it cannot name is reported and left out, never stored as a
+        // row nothing can cite.
+        if !key.chars().all(super::is_cite_key_char) {
+            warnings.push(format!(
+                "{}: key `{key}` cannot be cited: a `[@…]` key may use only letters, digits \
+                 and `- _ : . + /`, so the entry was skipped",
+                place(key_at)
+            ));
             continue;
         }
         match end {

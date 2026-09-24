@@ -148,7 +148,7 @@ Everything the lint looks at, grouped by what it protects:
 | **Local media** | Missing local images (`src`/`href`) |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
-| **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), an entry that is never closed, and a `bibliography:` path that does not resolve |
+| **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), an entry that is never closed, a key no `[@…]` citation can name, and a `bibliography:` path that does not resolve |
 
 Each row names a defect you cannot see in the rendered page. A check stays in this set
 only if it catches such a defect.
