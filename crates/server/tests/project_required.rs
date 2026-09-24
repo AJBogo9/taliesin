@@ -468,6 +468,21 @@ fn a_standalone_document_builds_and_previews_without_site_chrome() {
     assert!(ok, "single-document build; stderr: {stderr}");
     let built = std::fs::read_to_string(&out).expect("built page");
     let _ = std::fs::remove_file(&out);
+    // Read through the tag walker, never a substring scan: the inlined base CSS names
+    // `.tali-site-nav` in its print rules, so the class name is on every page as TEXT.
+    let classes: Vec<String> = taliesin_core::render::tags(&built)
+        .flat_map(|t| {
+            taliesin_core::render::attrs(&t)
+                .filter(|a| a.name.eq_ignore_ascii_case("class"))
+                .flat_map(|a| {
+                    a.value
+                        .split_ascii_whitespace()
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
     for marker in [
         "tali-site-nav",
         "tali-nav-brand",
@@ -475,8 +490,8 @@ fn a_standalone_document_builds_and_previews_without_site_chrome() {
         "tali-site-footer",
     ] {
         assert!(
-            !built.contains(marker),
-            "a standalone BUILD must carry no `{marker}`"
+            !classes.iter().any(|c| c == marker),
+            "a standalone BUILD must carry no element of class `{marker}`"
         );
     }
     // And no theme control either. It never survived the build as a CONTROL: only the
