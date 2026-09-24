@@ -231,6 +231,31 @@ mod tests {
         );
     }
 
+    /// A shared `.bib` that is not UTF-8 was skipped in silence, leaving every page's
+    /// citations as raw keys with no diagnostic that named the file (audit 2026-09-24,
+    /// bibtex #9). The project check reports it.
+    #[test]
+    fn a_shared_bib_that_is_not_utf8_is_reported_against_the_project() {
+        let root = write_site(
+            "shared-bib-latin1",
+            &[
+                ("_site.yml", "title: T\nbibliography: refs.bib\n"),
+                ("index.tmd", "---\ntitle: A\n---\n\nSee [@k].\n"),
+            ],
+        );
+        std::fs::write(
+            root.join("refs.bib"),
+            b"@article{k, author={M\xfcller, Hans}, title={T}, year={2020}}\n",
+        )
+        .unwrap();
+        let w = messages(&Site::discover(&root).validate_shared_bibliography());
+        assert!(
+            w.iter()
+                .any(|m| m.contains("refs.bib") && m.contains("not valid UTF-8")),
+            "{w:?}"
+        );
+    }
+
     #[test]
     fn a_project_declaring_no_bibliography_is_never_linted() {
         let root = write_site(

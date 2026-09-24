@@ -109,6 +109,11 @@ pub(crate) fn read_bib_files(
     for (name, path) in files {
         match std::fs::read_to_string(path) {
             Ok(text) => warnings.extend(parse::read_into(bib, name, &text, strings)),
+            // A file that exists but is not UTF-8 (a Latin-1 export) is named for what it
+            // is: "not found" sends the author hunting for a typo in a correct path.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => warnings.push(format!(
+                "bibliography `{name}` is not valid UTF-8, so it was not read; save it as UTF-8"
+            )),
             Err(_) => warnings.push(format!("bibliography file not found: {name}")),
         }
     }

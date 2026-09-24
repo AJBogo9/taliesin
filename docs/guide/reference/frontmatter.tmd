@@ -386,13 +386,14 @@ Read-only checks come with it, reported against `_site.yml` by `build` and
 `build --check-only`. A **duplicate key** inside the shared files would otherwise
 silently last-write-win. An **entry that is never closed** ends where the next entry
 starts, and the message names its file and line. Each file is read on its own, so an
-entry left open at the end of one file cannot swallow the start of the next. A **key that `[@…]` cannot
-name** (one containing `&` or `'`) is reported and its entry skipped, since no citation
-could reach it. An **`@string` macro nothing defines** is reported too. The shared files
-are read before a page's own, so a page's `.bib` may use a macro a shared file defines
-(the `IEEEabrv.bib` pattern). These are warnings, so they fail `build --check-only` with
-or without `--strict`. A page's *own* `bibliography:` gets the same checks, reported on
-its `bibliography:` line. The checks never edit a `.bib`.
+entry left open at the end of one file cannot swallow the start of the next. A **key
+that `[@…]` cannot name** (one containing `&` or `'`) is reported and its entry
+skipped, since no citation could reach it. An **`@string` macro nothing defines** is
+reported too. The shared files are read before a page's own, so a page's `.bib` may use
+a macro a shared file defines (the `IEEEabrv.bib` pattern). A file that is not UTF-8 is
+reported as such. These are warnings, so they fail `build --check-only` with or without
+`--strict`. A page's *own* `bibliography:` gets the same checks, reported on its
+`bibliography:` line. The checks never edit a `.bib`.
 
 **Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`.
 Taliesin picks the interpreter by the first source that exists, so a project can pin

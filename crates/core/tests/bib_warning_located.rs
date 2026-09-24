@@ -151,3 +151,32 @@ fn an_undefined_string_macro_is_reported_at_the_bibliography_line() {
     );
     assert_eq!(hits[0].line, Some(3));
 }
+
+/// A `.bib` saved in Latin-1 (older JabRef and BibDesk defaults) exists, so "not found"
+/// sent the author hunting for a typo in a path that was right (audit 2026-09-24, bibtex
+/// #9). It is named for what it is. Decoding Latin-1 is not a feature: the fix is to save
+/// the file as UTF-8.
+#[test]
+fn a_bib_that_is_not_utf8_is_reported_as_such_not_as_missing() {
+    let dir = tmp("latin1");
+    // `M\xfcller` is "Müller" in Latin-1, and invalid as UTF-8.
+    fs::write(
+        dir.join("refs.bib"),
+        b"@article{k, author={M\xfcller, Hans}, title={T}, year={2020}}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
+    let doc = render_document_with_includes(src, &dir);
+    assert!(
+        !doc.warnings.iter().any(|w| w.message.contains("not found")),
+        "{:?}",
+        doc.warnings
+    );
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("not valid UTF-8"))
+        .unwrap_or_else(|| panic!("{:?}", doc.warnings));
+    assert!(w.message.contains("refs.bib"), "{}", w.message);
+    assert_eq!(w.line, Some(3));
+}
