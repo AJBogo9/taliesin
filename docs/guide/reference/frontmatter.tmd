@@ -469,7 +469,7 @@ my-site/
 ├── _includes/           # `_`-prefixed ⇒ skipped: partials for {{< include >}}
 │   └── _disclaimer.tmd
 │   └── my-theme/
-├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (gitignored)
+├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (keep it out of git)
 └── _site/               # build output (_book/ for a book; else build --out)
 ```
 

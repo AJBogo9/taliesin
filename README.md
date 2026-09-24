@@ -68,13 +68,13 @@ the AGPL licence means forking is always available and is often the right choice
 
 An editor-agnostic Rust dev server owns all logic behind a versioned websocket
 protocol. A plain browser preview is the client; Ctrl-clicking a block opens
-its source in your editor (a `vscode://` deep link by default). The protocol is
-open, so a third-party editor client (a VS Code extension, etc.) can speak it too.
+its source in VS Code (a `vscode://` deep link, which is not configurable). The protocol
+is open, so another editor client can speak it too.
 
 ```
 crates/core     parser (comrak + sourcepos) + block model + render
 crates/server   dev server, websocket, file watcher, kernel pool
-web-client/     browser preview client (vanilla JS), the only client
+web-client/     browser scripts (vanilla JS): the preview client, search, scrollspy
 ```
 
 ## Install & prerequisites
@@ -155,7 +155,7 @@ warm kernel reused across edits:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `TALIESIN_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
+| `TALIESIN_PYTHON` | `python3` | Interpreter for `{python}` cells. A `_site.yml` `python:` or a `.venv` in the project directory outranks it. |
 | `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). This is the default liveness cap: a cell that keeps printing is never interrupted, however long it runs. `0` disables it. |
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound total runtime regardless of output; `0` disables it. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
@@ -184,17 +184,20 @@ the preview in a browser; Ctrl-clicking a block jumps to its `.tmd` source.
 Point it at a single file or a directory (a multi-page site project):
 
 ```sh
-cargo run -p taliesin-server -- preview corpus/posts/born-machines.tmd  # one doc
-cargo run -p taliesin-server -- preview corpus/tech-blog                # a whole site
-cargo run -p taliesin-server -- build   corpus/tech-blog                # static _site/
-cargo run -p taliesin-server -- build   corpus/posts/born-machines.tmd --stdout > out.html
+taliesin preview post.tmd              # one document
+taliesin preview my-site               # a whole site
+taliesin build   my-site               # static my-site/_site/
+taliesin build   post.tmd --stdout > out.html
 ```
+
+From a clone, `cargo run -p taliesin-server --` stands in for `taliesin`, and
+`corpus/tech-blog` is a complete site to try it on.
 
 The preview binds to loopback only.
 
-Code execution needs a Python with `ipykernel`; point the server at it with the
-`TALIESIN_PYTHON` env var (defaults to `python3`). Cells render as source if no
-kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
+Code execution needs a Python with `ipykernel`: a project `.venv` is found on its
+own, and `TALIESIN_PYTHON` points elsewhere (see the prerequisites above). Cells render as
+source if no kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
 become their own blocks keyed to the cell, so they swap in place.
 
 The core parses `.tmd` with comrak (sourcepos), splits the document into top-level
