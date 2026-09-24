@@ -19,7 +19,6 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-block-id",
     "data-inputs",
     "data-name",
-    "data-section-end",
     "data-source-file",
     "data-sourcepos",
     "data-tali-cell",
@@ -60,7 +59,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-nav-wired",
     "data-processed",
     "data-scroll-a11y",
-    "data-section-end",
     "data-source-file",
     "data-sourcepos",
     "data-src",
@@ -104,16 +102,6 @@ const NO_RUNTIME_CONSUMER: &[(&str, &str)] = &[
     (
         "data-tali-xref",
         "build-time only: cite/validate.rs:15 scans for it as a Rust string needle to report unresolved cross-references",
-    ),
-    (
-        "data-section-end",
-        "informational substrate, no consumer YET and that is the decision, not an oversight: \
-         `section-extents` option (b), ruled 2026-07-26. Blocks are flat siblings with no \
-         per-section wrapper, so the DOM could not say where a section stops; render/mod.rs's \
-         `mark_section_extents` now records it on each heading. Emitted default-on so a consumer \
-         (per-section length, section-scoped read state or change marks, a JS-driven fold) needs \
-         no render change to arrive. Option (a), a real <section> wrapper, was explicitly \
-         deferred: it changes the parent/child shape the incremental diff mounts.",
     ),
     (
         "data-tali-out-for",

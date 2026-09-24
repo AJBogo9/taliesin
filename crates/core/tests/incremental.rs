@@ -38,6 +38,26 @@ fn editing_one_paragraph_is_a_single_in_place_update() {
 }
 
 #[test]
+fn editing_a_sections_last_block_leaves_its_headings_alone() {
+    // A heading's html must not depend on any other block. It used to carry the id of the
+    // last block of its section, so editing that block re-emitted the heading and every
+    // heading enclosing it: the preview flashed sections nobody touched and the heading
+    // lost focus and its cursor-sync highlight.
+    let v1 = render_document("## Intro\n\nAlpha.\n\n### Sub\n\nBeta.\n\n## Next\n\nGamma.\n");
+    let v2 =
+        render_document("## Intro\n\nAlpha.\n\n### Sub\n\nBeta EDITED.\n\n## Next\n\nGamma.\n");
+    let ops = diff_blocks(&v1.blocks, &v2.blocks);
+    assert_eq!(
+        ops,
+        vec![BlockOp::Update {
+            target_id: v1.blocks[3].id.clone(),
+            html: v2.blocks[3].html.clone(),
+        }],
+        "one edited paragraph is one op, whatever section it closes"
+    );
+}
+
+#[test]
 fn appending_a_paragraph_is_a_single_insert_after_the_last_block() {
     let v1 = render_document("Alpha.\n\nBeta.\n");
     let v2 = render_document("Alpha.\n\nBeta.\n\nGamma.\n");

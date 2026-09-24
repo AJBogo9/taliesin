@@ -38,7 +38,6 @@ const CORPUS_DOCS: &[&str] = &[
     "highlight.tmd",
     "layout/dense-output.tmd",
     "layout/escapes.tmd",
-    "layout/structure.tmd",
     "media/gallery.tmd",
     "media/optimized-images.tmd",
     "media/themed-figure.tmd",
