@@ -246,18 +246,6 @@ pub(super) fn html_to_tmd(url: &str) -> Vec<String> {
     }
 }
 
-/// The 1-based start line from a block's `sourcepos` (`"startLine:col-…"`), if positive.
-/// A local copy of `diagnostics::start_line` (that one is private to its module); used to
-/// locate cross-page link warnings to their source line.
-pub(super) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
-    sourcepos
-        .split(':')
-        .next()?
-        .parse::<u32>()
-        .ok()
-        .filter(|&l| l > 0)
-}
-
 /// Every `id` attribute value in a block's HTML, added to `out` (the page's anchor set for
 /// the cross-page link check). Read through the one walker, like every other consumer of
 /// finished HTML: the needle this used to scan for also matched `data-block-id="…"`, so

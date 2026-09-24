@@ -36,6 +36,6 @@ pub use a11y::validate_a11y;
 pub use anchors::validate_internal_anchors;
 pub use assets::{validate_front_matter_image, validate_local_assets};
 pub use bibliography::citations_without_bibliography;
-pub use helpers::extract_suggestion;
+pub use helpers::{extract_suggestion, is_local_ref};
 pub use links::validate_local_links;
 pub use reactive::validate_js_reactive_graph;

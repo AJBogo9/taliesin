@@ -671,14 +671,13 @@ pub fn favicon_link(href: &str) -> String {
     format!("<link rel=\"icon\"{ty} href=\"{h}\" />")
 }
 
-/// The bundled taliesin mark (the T mark), inlined as a base64 SVG data
-/// URI — the default favicon when a project configures none.
-const FAVICON_SVG: &str = include_str!("../../../../web-client/favicon.svg");
+/// The bundled taliesin mark (the T mark, `web-client/favicon.svg`), base64-encoded by
+/// `build.rs` for a `data:` URI: the default favicon when a project configures none.
+const FAVICON_SVG_BASE64: &str = include_str!(concat!(env!("OUT_DIR"), "/favicon.b64"));
 
 pub(super) fn default_favicon() -> String {
     format!(
-        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
-        base64_encode(FAVICON_SVG.as_bytes())
+        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{FAVICON_SVG_BASE64}\" />"
     )
 }
 

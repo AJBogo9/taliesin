@@ -2292,7 +2292,7 @@ async fn build_site_async(
     // `og:image` a shared link unfurls with, stored site-root-relative by discovery (an
     // external URL is no local ref and ships nothing).
     for img in site.pages.iter().filter_map(|p| p.card_image.as_deref()) {
-        if is_local_ref(img) {
+        if taliesin_core::diagnostics::is_local_ref(img) {
             assets += usize::from(ship_referenced(img, root, Path::new(""), &out, &mut keep));
         }
     }
@@ -2640,25 +2640,15 @@ fn local_refs(html: &str) -> Vec<(String, usize)> {
             // The one list of URL attributes (`render::URL_ATTRS`) and the one reading of a
             // `srcset`, shared with the gate and the 404 rewrite.
             for v in taliesin_core::render::attr_urls(a.name, &a.value) {
-                if is_local_ref(v) && !out.iter().any(|(seen, _)| seen == v) {
+                if taliesin_core::diagnostics::is_local_ref(v)
+                    && !out.iter().any(|(seen, _)| seen == v)
+                {
                     out.push((v.to_string(), a.at));
                 }
             }
         }
     }
     out
-}
-
-fn is_local_ref(v: &str) -> bool {
-    !v.is_empty()
-        && !v.starts_with('#')
-        && !v.starts_with("//")
-        && !v.contains("://")
-        && !v.starts_with("data:")
-        && !v.starts_with("mailto:")
-        && !v.starts_with("tel:")
-        && !v.starts_with("vscode:")
-        && !v.starts_with("javascript:")
 }
 
 /// A reference the browser fetches over the network at view time: an absolute `http(s)://`

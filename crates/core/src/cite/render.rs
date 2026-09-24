@@ -3,7 +3,8 @@
 //! section. Transforms only plain-text runs (never tags/code/math), so block
 //! sourcepos is untouched.
 
-use super::{Bibliography, sourcepos_start_line};
+use super::Bibliography;
+use crate::render::sourcepos_start_line;
 use crate::render::{Block, Severity, Warning, escape_attr as esc};
 use std::collections::HashMap;
 

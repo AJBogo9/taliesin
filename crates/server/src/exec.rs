@@ -598,8 +598,8 @@ impl Executor {
         let warning = render::Warning::new(message).severity(render::Severity::Error);
         self.warnings
             .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                0 => warning,
-                line => warning.at(cell.source_file.clone(), line),
+                None => warning,
+                Some(line) => warning.at(cell.source_file.clone(), line),
             });
     }
 
@@ -786,8 +786,8 @@ impl Executor {
                     let warning = render::Warning::new(w);
                     self.warnings
                         .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                            0 => warning,
-                            line => warning.at(cell.source_file.clone(), line),
+                            None => warning,
+                            Some(line) => warning.at(cell.source_file.clone(), line),
                         });
                 }
                 continue;
@@ -797,8 +797,8 @@ impl Executor {
                 let warning = render::Warning::new(w);
                 self.warnings
                     .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                        0 => warning,
-                        line => warning.at(cell.source_file.clone(), line),
+                        None => warning,
+                        Some(line) => warning.at(cell.source_file.clone(), line),
                     });
             }
             match &cell.out {

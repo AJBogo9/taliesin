@@ -212,9 +212,9 @@ mod poison_tests;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
-    join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls,
-    sourcepos_start_line, tmd_to_html,
+    join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls, tmd_to_html,
 };
+use render::sourcepos_start_line;
 
 /// A document's path as every verb names it: its folder canonicalized, its own name kept. A
 /// symlinked page keeps the name its link has in the project, which is the page the site

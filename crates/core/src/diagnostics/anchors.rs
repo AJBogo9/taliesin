@@ -1,6 +1,7 @@
 //! In-page anchor-link validation (`[text](#anchor)` targets that match no element id).
 
-use super::helpers::{collect_attr_values, start_line};
+use super::helpers::collect_attr_values;
+use crate::render::sourcepos_start_line as start_line;
 use crate::render::{Block, Severity, Warning};
 
 /// Same-page `href="#fragment"` values (without `#`) from MANUAL `<a>` links only.

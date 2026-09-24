@@ -2726,14 +2726,12 @@ fn register_xref(
     }
 }
 
-/// The 1-based start line of a `L:C-L:C` sourcepos, or 0 when it carries none (a generated
-/// block with an empty sourcepos — not click-to-source anyway, and `locatable()` requires
-/// a `[1-9]` line, so 0 reads as "no location").
-pub fn sourcepos_start_line(sp: &str) -> u32 {
-    sp.split(':')
-        .next()
-        .and_then(|l| l.parse().ok())
-        .unwrap_or(0)
+/// The 1-based start line of a `L:C-L:C` sourcepos, or `None` when it carries none (a
+/// generated block with an empty sourcepos, not click-to-source anyway) or a malformed one.
+/// The one reader of a block's start line: the validators, the citation passes, the site's
+/// link check and the executor all ask it.
+pub fn sourcepos_start_line(sp: &str) -> Option<u32> {
+    sp.split(':').next()?.parse::<u32>().ok().filter(|&l| l > 0)
 }
 
 /// A labelled cell whose output the executor will never emit (`#| include: false`) has
@@ -2785,7 +2783,7 @@ fn apply_table_captions(
         // The current block's location, captured before any mutable borrow of it, so a
         // duplicate-label warning can point at it (click-to-source).
         let bfile = blocks[i].source_file.clone();
-        let bline = sourcepos_start_line(&blocks[i].sourcepos);
+        let bline = sourcepos_start_line(&blocks[i].sourcepos).unwrap_or(0);
         // A code cell whose executed output is a numbered table (`#| label: tbl-x`):
         // assign its number in document order (so it interleaves correctly with
         // Markdown tables) and register the xref. The executor injects the matching
@@ -2807,7 +2805,10 @@ fn apply_table_captions(
             // duplicate-label warning on a folded cell points at the cell, not its container.
             let (file, line) = if is_nested {
                 let nb = &blocks[i].nested[j];
-                (nb.source_file.clone(), sourcepos_start_line(&nb.sourcepos))
+                (
+                    nb.source_file.clone(),
+                    sourcepos_start_line(&nb.sourcepos).unwrap_or(0),
+                )
             } else {
                 (bfile.clone(), bline)
             };
@@ -2847,7 +2848,7 @@ fn apply_table_captions(
                     id,
                     tbl_num.clone(),
                     blocks[i + 1].source_file.as_deref(),
-                    sourcepos_start_line(&blocks[i + 1].sourcepos),
+                    sourcepos_start_line(&blocks[i + 1].sourcepos).unwrap_or(0),
                 );
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
@@ -2911,8 +2912,8 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
             ))
             .severity(Severity::Error);
             warnings.push(match sourcepos_start_line(&b.sourcepos) {
-                0 => w,
-                line => w.at(b.source_file.clone(), line),
+                None => w,
+                Some(line) => w.at(b.source_file.clone(), line),
             });
         }
     }
@@ -3911,32 +3912,6 @@ fn raw_block_format(info: &str) -> Option<String> {
         .and_then(|s| s.strip_suffix('}'))
         .map(|f| f.trim().to_ascii_lowercase())
         .filter(|f| !f.is_empty())
-}
-
-/// Minimal standard-alphabet base64 (mirrors `build.rs`); used to inline the
-/// favicon as a `data:` URI (see [`page::favicon_link`]).
-fn base64_encode(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
-        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        s.push(T[(n >> 18 & 63) as usize] as char);
-        s.push(T[(n >> 12 & 63) as usize] as char);
-        s.push(if chunk.len() > 1 {
-            T[(n >> 6 & 63) as usize] as char
-        } else {
-            '='
-        });
-        s.push(if chunk.len() > 2 {
-            T[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    s
 }
 
 /// [`html_escape`] appending to `out`, for the emitters that build a page in one buffer.

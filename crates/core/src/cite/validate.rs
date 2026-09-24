@@ -1,6 +1,7 @@
 //! Static cross-reference validation: flag `data-tali-xref` markers left unresolved.
 
-use super::{sourcepos_end_line, sourcepos_start_line, token_span};
+use super::{sourcepos_end_line, token_span};
+use crate::render::sourcepos_start_line;
 use crate::render::{Block, Severity, Warning};
 use std::collections::BTreeSet;
 

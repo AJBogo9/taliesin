@@ -1,6 +1,7 @@
 //! Static validation of the `{js}` reactive graph (dangling inputs + dependency cycles).
 
-use super::helpers::{collect_attr_values, start_line};
+use super::helpers::collect_attr_values;
+use crate::render::sourcepos_start_line as start_line;
 use crate::render::{Block, Severity, Warning};
 
 /// One `{js}` cell's reactive wiring, distilled from the block model for the static graph
