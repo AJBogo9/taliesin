@@ -2,9 +2,10 @@
 // Client-side command palette (Cmd/Ctrl-K): full-text search to jump around a
 // long document — the book, a paper, any page with a table of contents. Matches
 // both headings and the body text of each section, and shows a snippet around the
-// hit. A single doc builds its index from the live DOM on open; a site/book lazy-
-// loads the cross-page index (search-index.js) on first open via window.TALIESIN_SEARCH_URL,
-// so the full-text index never bloats every page. Self-contained: injects its own
+// hit. The index is always the one the server built (`site/search.rs`): a site/book
+// lazy-loads it (search-index.js) on first open via window.TALIESIN_SEARCH_URL, so the
+// full-text index never bloats every page, and a single-file build inlines its own.
+// There is no second index built from the DOM here. Self-contained: injects its own
 // themed overlay CSS and rides along as one <script> beside the TOC scrollspy. Not
 // concatenated into the client.js bundle; type-checked separately (web-client/jsconfig.json).
 (function () {
@@ -172,13 +173,16 @@
     return out;
   }
 
-  // Build the index: every anchored heading, plus the lowercased text of the
-  // blocks that follow it until the next heading (so body keywords match too).
+  // Build the match-ready index from the server's (every page's title + anchored headings,
+  // each with its section's body text). A result carries its page url so selecting it can
+  // navigate across chapters.
+  //
+  // It used to fall back to an index read from the live DOM for a single document, a
+  // second extractor that searched raw TeX from KaTeX's MathML, `<script>` bodies and the
+  // first 1500 characters of each section, none of which the server's index does. A
+  // single-file build now inlines the server's index, so the fallback is gone.
   /** @returns {SearchItem[]} */
   function buildIndex() {
-    // Site/book: search the whole project from the inlined cross-page index
-    // (every page's title + anchored headings). A result carries its page url so
-    // selecting it can navigate across chapters.
     if (window.TALIESIN_SEARCH_INDEX) {
       var built = window.TALIESIN_SEARCH_INDEX.map(function (e) {
         var body = e.b || "";
@@ -205,47 +209,12 @@
       });
       return built;
     }
-    // Single doc: build from the current DOM (so it reflects live edits).
-    var main = document.querySelector("main") || document.body;
-    var heads = main.querySelectorAll("h1[id],h2[id],h3[id],h4[id]");
-    /** @type {SearchItem[]} */
-    var out = [];
-    for (var i = 0; i < heads.length; i++) {
-      var h = heads[i];
-      var title = headingText(h);
-      if (!title) continue;
-      var sbody = sectionText(h, heads[i + 1]);
-      out.push({
-        id: h.id,
-        title: title,
-        level: parseInt(h.tagName.charAt(1), 10) || 1,
-        body: sbody,
-        tLow: title.toLowerCase(),
-        bLow: sbody.toLowerCase(),
-      });
-    }
-    return out;
-  }
-
-  /** @param {Element} h */
-  function headingText(h) {
-    return (h.textContent || "").trim();
-  }
-
-  /** @param {Element} h @param {Element | undefined} next */
-  function sectionText(h, next) {
-    var txt = "";
-    var node = h.nextElementSibling;
-    while (node && node !== next && txt.length < 1500) {
-      txt += " " + (node.textContent || "");
-      node = node.nextElementSibling;
-    }
-    return txt.replace(/\s+/g, " ").trim();
+    return [];
   }
 
   // Load the cross-page index from `search-index.js` (a site/book links to it via
   // TALIESIN_SEARCH_URL instead of inlining it into every page), then run `cb`. A
-  // single doc (no URL) just runs `cb` against the live DOM index.
+  // single-file build (no URL) inlined its index, so it just runs `cb`.
   //
   // In a LIVE PREVIEW (a websocket is present) the server's index is refreshed as pages
   // are edited, so re-fetch it on every open with a cache-busting query — otherwise the
@@ -256,7 +225,7 @@
   /** @param {() => void} cb */
   function loadIndexThen(cb) {
     var livePreview = typeof window.TALIESIN_WS_PATH === "string" && !!window.TALIESIN_WS_PATH;
-    // Single doc: no cross-page index, search the DOM.
+    // An inlined index (a single-file build): nothing to load.
     if (!window.TALIESIN_SEARCH_URL) {
       cb();
       return;
@@ -326,10 +295,8 @@
   function open() {
     ensureUi();
     var isSite = !!(window.TALIESIN_SEARCH_URL || window.TALIESIN_SEARCH_INDEX);
-    // Single doc with no headings AND no available actions: nothing to do. With the command
-    // palette the always-available theme action normally keeps Cmd-K openable even on a
-    // heading-less doc, so it can still run commands.
-    if (!isSite && !buildIndex().length && !availableActions().length) return;
+    // No index to search AND no available action to run: nothing to open.
+    if (!isSite && !availableActions().length) return;
     if (prevRootOverflow === null) {
       prevRootOverflow = document.documentElement.style.overflow;
     }
@@ -453,17 +420,12 @@
   var expandedPages = {};
   /** @type {string | null} */
   var lastQuery = null;
-  // Whether results group by page: a site/book index carries `url` on every record, the
-  // single-doc DOM index does not, so there is nothing to group a single doc by.
-  var grouped = false;
-
   /** @param {string} query @param {number} [keepSel] preserve the cursor across a re-render */
   function render(query, keepSel) {
     var q = query.trim().toLowerCase();
     var terms = q ? q.split(/\s+/).filter(Boolean) : [];
     lastTerms = terms; // so go() can flash the matched term after navigating
     if (q !== lastQuery) { expandedPages = {}; lastQuery = q; }
-    grouped = !!window.TALIESIN_SEARCH_INDEX;
     // Command-palette actions come first: all available ones when the query is empty (a
     // discoverable menu — the point of a palette), else those whose title/keywords match.
     var acts = availableActions();
@@ -478,9 +440,9 @@
       // order (`page_fragment` emits them that way already), indented by heading level. This
       // used to filter to `level === 0`, i.e. the same flat chapter list the drawer shows,
       // leaving every section record in the index reachable only by typing a query that
-      // happened to match it. A single doc shows its heading list, as before.
+      // happened to match it.
       index.forEach(function (it) {
-        view.push({ it: it, missing: [], pick: true, head: grouped && !it.level });
+        view.push({ it: it, missing: [], pick: true, head: !it.level });
       });
     } else {
       /** @type {{ it: SearchItem, s: number, missing: string[] }[]} */
@@ -497,62 +459,56 @@
           (a.it.level || 0) - (b.it.level || 0);
       });
       if (scored.length > MAX_RESULTS) scored = scored.slice(0, MAX_RESULTS);
-      if (!grouped) {
-        scored.forEach(function (h) {
-          view.push({ it: h.it, missing: h.missing, pick: true, s: h.s });
+      // Group by page, pages in best-hit order, so one dense chapter can't monopolise the
+      // visible rows: each page shows its top few sections and offers the rest.
+      /** @type {string[]} */
+      var order = [];
+      /** @type {Record<string, { it: SearchItem, s: number, missing: string[] }[]>} */
+      var byPage = {};
+      scored.forEach(function (h) {
+        var key = h.it.url || "";
+        if (!byPage[key]) { byPage[key] = []; order.push(key); }
+        byPage[key].push(h);
+      });
+      order.forEach(function (key) {
+        var hits = byPage[key];
+        // If the page's OWN entry matched, that entry is the chapter row (one row, not a
+        // label plus a duplicate of it) and it is selectable; otherwise the row is a plain
+        // label, so Enter on the top result still lands on a section, never on a chapter
+        // the query never matched.
+        /** @type {{ it: SearchItem, s: number, missing: string[] } | null} */
+        var pageHit = null;
+        for (var k = 0; k < hits.length; k++) {
+          if (!hits[k].it.level) { pageHit = hits.splice(k, 1)[0]; break; }
+        }
+        var ref = pageHit ? pageHit.it : hits[0].it;
+        view.push({
+          it: pageHit ? pageHit.it : {
+            id: "", title: ref.page || ref.url || "", level: 0, body: "",
+            url: ref.url, page: ref.page, chapter: ref.chapter, tLow: "", bLow: "",
+          },
+          missing: pageHit ? pageHit.missing : [],
+          pick: !!pageHit,
+          s: pageHit ? pageHit.s : undefined,
+          head: true,
         });
-      } else {
-        // Group by page, pages in best-hit order, so one dense chapter can't monopolise the
-        // visible rows: each page shows its top few sections and offers the rest.
-        /** @type {string[]} */
-        var order = [];
-        /** @type {Record<string, { it: SearchItem, s: number, missing: string[] }[]>} */
-        var byPage = {};
-        scored.forEach(function (h) {
-          var key = h.it.url || "";
-          if (!byPage[key]) { byPage[key] = []; order.push(key); }
-          byPage[key].push(h);
-        });
-        order.forEach(function (key) {
-          var hits = byPage[key];
-          // If the page's OWN entry matched, that entry is the chapter row (one row, not a
-          // label plus a duplicate of it) and it is selectable; otherwise the row is a plain
-          // label, so Enter on the top result still lands on a section, never on a chapter
-          // the query never matched.
-          /** @type {{ it: SearchItem, s: number, missing: string[] } | null} */
-          var pageHit = null;
-          for (var k = 0; k < hits.length; k++) {
-            if (!hits[k].it.level) { pageHit = hits.splice(k, 1)[0]; break; }
-          }
-          var ref = pageHit ? pageHit.it : hits[0].it;
+        // The per-page cap exists to stop ONE dense chapter monopolising the visible rows.
+        // When every hit is on the same page there is nothing to balance against, so
+        // capping would only hide results the reader asked for.
+        var cap = order.length > 1 ? PER_GROUP : hits.length;
+        var show = expandedPages[key] ? hits.length : Math.min(hits.length, cap);
+        for (var s = 0; s < show; s++) {
+          view.push({ it: hits[s].it, missing: hits[s].missing, pick: true, s: hits[s].s });
+        }
+        if (show < hits.length) {
+          var n = hits.length - show;
           view.push({
-            it: pageHit ? pageHit.it : {
-              id: "", title: ref.page || ref.url || "", level: 0, body: "",
-              url: ref.url, page: ref.page, chapter: ref.chapter, tLow: "", bLow: "",
-            },
-            missing: pageHit ? pageHit.missing : [],
-            pick: !!pageHit,
-            s: pageHit ? pageHit.s : undefined,
-            head: true,
+            it: { id: "", title: "+" + n + " more in this chapter", level: 0, body: "",
+                  tLow: "", bLow: "" },
+            missing: [], pick: true, expand: key,
           });
-          // The per-page cap exists to stop ONE dense chapter monopolising the visible rows.
-          // When every hit is on the same page there is nothing to balance against, so
-          // capping would only hide results the reader asked for.
-          var cap = order.length > 1 ? PER_GROUP : hits.length;
-          var show = expandedPages[key] ? hits.length : Math.min(hits.length, cap);
-          for (var s = 0; s < show; s++) {
-            view.push({ it: hits[s].it, missing: hits[s].missing, pick: true, s: hits[s].s });
-          }
-          if (show < hits.length) {
-            var n = hits.length - show;
-            view.push({
-              it: { id: "", title: "+" + n + " more in this chapter", level: 0, body: "",
-                    tLow: "", bLow: "" },
-              missing: [], pick: true, expand: key,
-            });
-          }
-        });
-      }
+        }
+      });
     }
 
     matches = view.filter(function (r) { return r.pick; });
@@ -601,7 +557,7 @@
     if (r.expand) cls += " tali-s-more";
     // Indent a section under its chapter by its depth within that chapter (see buildIndex),
     // so the outline reads as one.
-    if (!r.head && !r.expand && !item.action && grouped && item.depth) {
+    if (!r.head && !r.expand && !item.action && item.depth) {
       cls += " tali-s-d" + Math.min(item.depth, 4);
     }
     li.className = cls;
@@ -627,11 +583,9 @@
     highlight(title, item.title, terms);
     var sec = document.createElement("span");
     sec.className = "tali-s-sec";
-    // Label an action "Action" so it reads as a command, not a destination; a grouped result
-    // gets its ancestor heading path (the chapter is already the row above it); an ungrouped
-    // single-doc result keeps its heading level.
+    // Label an action "Action" so it reads as a command, not a destination; a result gets
+    // its ancestor heading path (the chapter is already the row above it).
     if (item.action) sec.textContent = "Action";
-    else if (!grouped) sec.textContent = item.page || "H" + item.level;
     else if (terms.length && item.path) sec.textContent = item.path;
     else sec.textContent = "";
     head.append(title, sec);

@@ -44,6 +44,25 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
     format!("[{body}]")
 }
 
+impl Site {
+    /// The whole Cmd-K index inlined as the script body of `page`, for a page that ships
+    /// with no `search-index.js` beside it: `build <file.tmd>`, one self-contained file,
+    /// whose project is the one [`Site::discover_single`] builds for the preview, so both
+    /// verbs search the same index. It names the page too (`TALIESIN_PAGE_URL`), so a hit
+    /// scrolls in place instead of navigating to a url the build may have written under
+    /// another name. Empty when the index is.
+    pub fn inline_search_index(&self, page: &Page) -> String {
+        if self.search_index_json.is_empty() || self.search_index_json == "[]" {
+            return String::new();
+        }
+        format!(
+            "window.TALIESIN_PAGE_URL=\"{}\";window.TALIESIN_SEARCH_INDEX={};",
+            json_str(&page.url),
+            self.search_index_json
+        )
+    }
+}
+
 /// The search-index entries for ONE page as a JSON-array **body** (comma-joined
 /// `{u,p,i,l,t,b}` objects, no surrounding brackets). `None` when the page is
 /// excluded from search (the author's 404 chrome page) or its source can't be read.

@@ -1032,7 +1032,7 @@ fn a_named_mermaid_file_is_linked_instead_of_inlined() {
         "the single-file build still inlines"
     );
 
-    let linked = super::render_doc_to_page_mermaid_file(&doc, "stem", "mermaid.min.js");
+    let linked = super::render_single_doc_page(&doc, "stem", "mermaid.min.js", "");
     assert!(
         !linked.contains("__esbuild_esm_mermaid"),
         "a named sibling file must replace the inlined library, not accompany it"

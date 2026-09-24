@@ -354,7 +354,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         }
         return build_site(Path::new(path), out_dir, strict, jobs, json);
     }
-    let mode = taliesin_core::OutputMode::Build;
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -387,7 +386,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // inlining: each is one file, and one file that renders a diagram offline is the point.
     let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
     let executed =
-        crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
+        crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mermaid_src));
     let (html, mut problems, unparseable, mut diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
@@ -783,7 +782,6 @@ fn build_page_executing(
     base: &Path,
     stem: &str,
     label: &str,
-    mode: taliesin_core::OutputMode,
     mermaid_src: &str,
 ) -> std::io::Result<BuildResult> {
     let rt = tokio::runtime::Runtime::new()?;
@@ -969,20 +967,24 @@ fn build_page_executing(
         // Handing it the path as typed would therefore have left the gate silently dead for
         // `taliesin build paper.tmd` run from the file's own directory, which is the
         // commonest spelling of the command.
-        if doc.toc_explicit.is_none() {
-            let file = Path::new(label);
-            let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
-            let single = taliesin_core::Site::discover_single(&file);
-            if let Some(page) = single.pages.first() {
-                doc.toc = single.page_toc(page, None, &doc.blocks);
-            }
+        let file = Path::new(label);
+        let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
+        let single = taliesin_core::Site::discover_single(&file);
+        let page = single.pages.first();
+        if doc.toc_explicit.is_none()
+            && let Some(page) = page
+        {
+            doc.toc = single.page_toc(page, None, &doc.blocks);
         }
+        // The Cmd-K index is that same `Site`'s, inlined, because one file has no
+        // `search-index.js` beside it. It is the index `preview <file.tmd>` serves; the
+        // palette used to build its own from the DOM here, and searched raw TeX and
+        // `<script>` bodies the preview's index does not.
+        let search_index = page
+            .map(|p| single.inline_search_index(p))
+            .unwrap_or_default();
         BuildResult::Page {
-            html: if mermaid_src.is_empty() {
-                taliesin_core::render_doc_to_page(&doc, stem, mode)
-            } else {
-                taliesin_core::render_doc_to_page_mermaid_file(&doc, stem, mermaid_src)
-            },
+            html: taliesin_core::render_single_doc_page(&doc, stem, mermaid_src, &search_index),
             problems,
             unparseable,
             diagnostics,
@@ -1000,15 +1002,9 @@ mod single_doc_toc_tests {
         let file = dir.join(name);
         std::fs::write(&file, src).expect("write doc");
         let stem = name.strip_suffix(".tmd").unwrap_or(name);
-        let BuildResult::Page { html, .. } = build_page_executing(
-            src,
-            dir,
-            stem,
-            file.to_str().expect("utf-8 path"),
-            taliesin_core::OutputMode::Build,
-            "",
-        )
-        .expect("runtime");
+        let BuildResult::Page { html, .. } =
+            build_page_executing(src, dir, stem, file.to_str().expect("utf-8 path"), "")
+                .expect("runtime");
         html
     }
 
