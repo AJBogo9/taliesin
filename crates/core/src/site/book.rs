@@ -242,7 +242,7 @@ fn chapter_heading_in(src: &str) -> (Option<String>, bool) {
     (None, false)
 }
 /// A book's pages: one [`Page`] per chapter, in reading order.
-pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -> Vec<Page> {
+pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<Warning>) -> Vec<Page> {
     book.chapters()
         .into_iter()
         .map(|c| {

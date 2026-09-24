@@ -702,3 +702,35 @@ fn strict_site_build_fails_on_a_missing_image_alone() {
     assert!(err.contains("index.tmd:5:"), "located to its line: {err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A `_site.yml` that silently drops a book part must fail `build --strict`, exactly as it
+/// fails `--check-only`. The config's diagnostics used to be plain strings that only the
+/// lint turned into problems: the writing build logged them as advice, so `--strict` exited
+/// 0 over a book with a chapter missing (audit 2026-09-24 NEW-B).
+#[test]
+fn a_book_part_the_config_drops_fails_a_strict_build() {
+    let dir = tmp_dir("dropped-part");
+    fs::write(
+        dir.join("_site.yml"),
+        "title: B\nchapters:\n  - index.tmd\n  - file: a.tmd\n    part: Two\n    chapters:\n      - b.tmd\n",
+    )
+    .unwrap();
+    for n in ["index", "a", "b"] {
+        fs::write(dir.join(format!("{n}.tmd")), format!("# {n}\n\nBody.\n")).unwrap();
+    }
+    let strict = taliesin()
+        .args(["build"])
+        .arg(&dir)
+        .arg("--out")
+        .arg(dir.join("_out"))
+        .arg("--strict")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&strict.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !strict.status.success(),
+        "a book missing a chapter must not build green under --strict:\n{err}"
+    );
+    assert!(err.contains("DROPPED"), "names what went missing:\n{err}");
+}

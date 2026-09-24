@@ -431,6 +431,31 @@ pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
     block_key_span(block, key).map(|(l, _, _)| l)
 }
 
+/// The 1-based line of `text` (a YAML document: `_site.yml`, or a front-matter block) where
+/// `key` holds `value`, or where a bare list item is `value` (`key: None`), at any depth and
+/// inside a one-line flow mapping (`- { text: Go, href: a.tmd }`). The first such line.
+///
+/// A key alone is ambiguous whenever it repeats (every nav item has a `text:`, every listing
+/// an `id:`); the line that also carries the value is the one a diagnostic about that value
+/// means. One reader for `_site.yml`'s diagnostics and a page's front-matter ones.
+pub(crate) fn value_line(text: &str, key: Option<&str>, value: &str) -> Option<usize> {
+    let unquote = |v: &str| v.trim().trim_matches(['"', '\'']).to_string();
+    text.lines()
+        .position(|l| {
+            let l = l.trim_start().trim_start_matches("- ");
+            match key {
+                None => unquote(l) == value,
+                Some(k) => l.split([',', '{', '}']).any(|part| {
+                    part.trim()
+                        .strip_prefix(k)
+                        .and_then(|rest| rest.strip_prefix(':'))
+                        .is_some_and(|v| unquote(v) == value)
+                }),
+            }
+        })
+        .map(|i| i + 1)
+}
+
 /// `(line, col, end_col)` of a top-level `key:`, all 1-based (see [`block_key_line`] for the
 /// line rule). Top-level keys are unindented, so `col` is 1, or 2 for a quoted key, which
 /// is the same key to YAML (`"title": x`). Columns are Unicode-scalar counts; a front-matter

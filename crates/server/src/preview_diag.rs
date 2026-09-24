@@ -47,17 +47,22 @@ pub(crate) fn cross_page_diagnostics(
         .collect()
 }
 
-/// `_site.yml` config warnings (unknown keys / typos), attributed to the config file.
-/// The missing-`_site.yml` advisory is dropped: a bare dir of `.tmd` is a valid project.
-pub(crate) fn site_config_diagnostics(site: &taliesin_core::Site) -> Vec<Diagnostic> {
+/// The project's own diagnostics (`_site.yml`, a page's front matter as discovery reads
+/// it), located for the page at `page_rel`: each names its file relative to the site root,
+/// and the client resolves a `file` against the page's own folder, so it climbs to the
+/// root first. Located and clickable, at the severity its validator set; they were pinned
+/// on `_site.yml` with no line.
+pub(crate) fn site_config_diagnostics(
+    site: &taliesin_core::Site,
+    page_rel: &str,
+) -> Vec<Diagnostic> {
+    let up = "../".repeat(page_rel.matches('/').count());
     site.warnings
         .iter()
-        .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
-        .map(|m| {
-            diag_from(
-                &taliesin_core::render::Warning::new(m.as_str()),
-                "_site.yml",
-            )
+        .map(|w| {
+            let mut d = diag_from(w, "_site.yml");
+            d.file = format!("{up}{}", d.file);
+            d
         })
         .collect()
 }
@@ -175,7 +180,7 @@ mod tests {
             "fixture precondition: an unknown _site.yml key should warn; if not, use the \
              exact unknown-key form the config linter recognizes (site/config/mod.rs)"
         );
-        let diags = site_config_diagnostics(&site);
+        let diags = site_config_diagnostics(&site, "index.tmd");
         assert!(
             !diags.is_empty(),
             "expected the config warning surfaced as a diagnostic"

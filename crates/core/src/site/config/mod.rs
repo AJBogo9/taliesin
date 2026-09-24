@@ -128,18 +128,35 @@ const FOOTER_SECTION_KEYS: &[&str] = &["left", "center", "right"];
 const NAV_ITEM_KEYS: &[&str] = &["text", "href", "icon"];
 
 /// Stable prefix on the warning a malformed `_site.yml` pushes. A malformed config is a
-/// *real* error (the site silently degrades to defaults), distinct from a legitimately
-/// absent `_site.yml`. The site build matches this prefix to count a malformed config as a
-/// `--strict` problem, and the live preview watcher matches it to keep the last-good site
-/// instead of replacing it with the degraded default. Keep it stable: those consumers key
-/// off it (see `crates/server/src/build.rs` + `serve_site/mod.rs`).
+/// *real* error (the site silently degrades to defaults). The site build matches this
+/// prefix to fail on a malformed config with no `--strict`, and the live preview watcher
+/// matches it to keep the last-good site instead of replacing it with the degraded
+/// default. Keep it stable: those consumers key off it (see `crates/server/src/build.rs`
+/// + `serve_site/mod.rs`).
 pub const MALFORMED_CONFIG_PREFIX: &str = "_site.yml is not valid YAML";
 
-/// Stable prefix on the advisory a *missing* `_site.yml` pushes. A bare directory of `.tmd`
-/// pages is a legitimate project, so this is a note rather than a defect: `build` already
-/// declines to count it toward `--strict`, and `check` must not fail on it either. Keep it
-/// stable (see `crates/server/src/check.rs`).
-pub const MISSING_CONFIG_PREFIX: &str = "no _site.yml at";
+/// The project config's file name, which every diagnostic about it is located in.
+const SITE_YML: &str = "_site.yml";
+
+/// A diagnostic about `_site.yml` itself, at `line` when the key it is about could be
+/// found (see [`key_line`]). Located in the file rather than prefixed onto the message:
+/// a `_site.yml:7:` baked into the text was a location no reader could click, and every
+/// verb then attributed the whole string to `_site.yml` with no line (audit 2026-09-24
+/// NEW-A).
+pub(super) fn config_warning(line: Option<usize>, severity: Severity, message: String) -> Warning {
+    let mut w = Warning::new(message).severity(severity);
+    w.file = Some(SITE_YML.to_string());
+    w.line = line.map(|l| l as u32);
+    w
+}
+
+/// The line of `_site.yml` that lists the chapter `rel`, as a `file:` or a bare list item.
+pub(super) fn chapter_line(root: &Path, rel: &str) -> Option<usize> {
+    let text = read_site_yml(root).ok()?;
+    let src = ConfigSource(Some(&text));
+    src.at_value(Some("file"), rel)
+        .or_else(|| src.at_value(None, rel))
+}
 
 /// `_site.yml`'s text, a leading byte-order mark stripped: the one reader of the file
 /// (the project load below, and `bibliography::shared_for_single_doc`). YAML takes a BOM
@@ -154,48 +171,49 @@ pub(super) fn read_site_yml(root: &Path) -> std::io::Result<String> {
 }
 
 /// Load + parse `_site.yml` at `root` into the native flat schema.
-pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
+///
+/// A directory with no `_site.yml` says nothing: it is a document's own folder (a lone
+/// document is a project of one page), and every verb refuses a DIRECTORY with none before
+/// it discovers anything. The advisory this used to push had no reader but four filters
+/// that dropped it.
+pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<Warning>) -> SiteConfig {
     let Ok(text) = read_site_yml(root) else {
-        // A directory still holding the pre-rename `_quarto.yml` is NOT the bare-directory
-        // case: it has a config and every setting in it is being ignored, so the project
-        // builds with its `title:` and everything else silently defaulted. Reporting it as
-        // "no config here" is what hid it, because that advisory is the one `check` drops
-        // from its tally on purpose. Name the file that is actually on disk instead.
+        // A directory still holding the pre-rename `_quarto.yml` is not a folder with no
+        // config: it has one and every setting in it is being ignored, so the project
+        // builds with its `title:` and everything else silently defaulted. Name the file
+        // that is actually on disk.
         if root.join("_quarto.yml").is_file() {
-            warnings.push(format!(
+            let mut w = Warning::new(format!(
                 "found `_quarto.yml` at {}, but the project config is now `_site.yml`: \
                  rename it, or its settings go on being ignored",
                 root.display()
             ));
-            return SiteConfig::default();
+            w.file = Some("_quarto.yml".to_string());
+            warnings.push(w);
         }
-        // A missing `_site.yml` is legitimate (a bare directory of `.tmd` pages), not an
-        // error — distinct from the malformed case below, which downstream counts.
-        warnings.push(format!("{MISSING_CONFIG_PREFIX} {}", root.display()));
         return SiteConfig::default();
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             // Malformed YAML: degrade to defaults but tag the warning so the build can
-            // fail `--strict` on it and the preview can keep its last-good config.
-            warnings.push(format!("{MALFORMED_CONFIG_PREFIX}: {e}"));
+            // fail on it and the preview can keep its last-good config.
+            warnings.push(config_warning(
+                e.location().map(|l| l.line()),
+                Severity::Error,
+                format!("{MALFORMED_CONFIG_PREFIX}: {e}"),
+            ));
             return SiteConfig::default();
         }
     };
     parse_native(&value, warnings, ConfigSource(Some(&text)))
 }
 
-/// Whether a discovery warning is the benign "this directory has no `_site.yml`" advisory,
-/// as opposed to a real defect. `check` uses it to keep an advisory out of its problem tally.
-pub fn is_missing_config_warning(warning: &str) -> bool {
-    warning.starts_with(MISSING_CONFIG_PREFIX)
-}
-
-/// Whether a discovery warning is the malformed-`_site.yml` marker (a real error, not the
-/// benign "no _site.yml" case). Shared by the server's build + watcher.
-pub fn is_malformed_config_warning(warning: &str) -> bool {
-    warning.starts_with(MALFORMED_CONFIG_PREFIX)
+/// Whether a discovery warning is the malformed-`_site.yml` marker: nothing in the file
+/// was read. Shared by the server's build (which fails on it with no `--strict`) and its
+/// watcher (which keeps the last-good site).
+pub fn is_malformed_config_warning(warning: &Warning) -> bool {
+    warning.message.starts_with(MALFORMED_CONFIG_PREFIX)
 }
 
 /// `url:`, when set, must be an absolute origin with a scheme: it seeds every machine-read
@@ -204,14 +222,18 @@ pub fn is_malformed_config_warning(warning: &str) -> bool {
 /// `Sitemap: ex.com/sitemap.xml` — machine-invalid, under a green `check`. Warn (a
 /// diagnostic, not a knob — the `page-layout` / site-`image:` precedent). A blank `url:` is
 /// treated as unset by [`Site::canonical_base`], so it is left alone.
-fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
+fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<Warning>, src: ConfigSource<'_>) {
     let Some(url) = value.get("url").and_then(|v| v.as_str()).map(str::trim) else {
         return;
     };
     if !url.is_empty() && !(url.starts_with("http://") || url.starts_with("https://")) {
-        warnings.push(format!(
-            "url: `{url}` has no scheme — sitemap, robots.txt, feed and og:url need an \
-             absolute URL (write `https://{url}`)"
+        warnings.push(config_warning(
+            src.at("url"),
+            Severity::Warning,
+            format!(
+                "url: `{url}` has no scheme — sitemap, robots.txt, feed and og:url need an \
+                 absolute URL (write `https://{url}`)"
+            ),
         ));
     }
 }
@@ -240,8 +262,22 @@ const CHAPTER_ITEM_KEYS: &[&str] = &["file", "text", "part", "chapters"];
 /// - one mapping carrying `file:` **and** `part:`/`chapters:`. `push_chapter_entry` matches
 ///   the `file:` first and returns `true`, so `push_group` never reads the rest of that
 ///   mapping. A forgotten `- ` before `part:` writes exactly this.
-fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
-    fn walk(list: &[serde_yaml::Value], warnings: &mut Vec<String>, src: ConfigSource<'_>) {
+///
+/// Every one of these is an error: each is a chapter the author wrote that the book will not
+/// have.
+fn validate_chapters(
+    value: &serde_yaml::Value,
+    warnings: &mut Vec<Warning>,
+    src: ConfigSource<'_>,
+) {
+    let dropped =
+        |line: Option<usize>, message: String| config_warning(line, Severity::Error, message);
+    fn walk(
+        list: &[serde_yaml::Value],
+        warnings: &mut Vec<Warning>,
+        src: ConfigSource<'_>,
+        dropped: &dyn Fn(Option<usize>, String) -> Warning,
+    ) {
         for item in list {
             // A bare path string is the common form and always well-formed.
             let Some(map) = item.as_mapping() else {
@@ -249,12 +285,14 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
             };
             for k in map.keys().filter_map(|k| k.as_str()) {
                 if !CHAPTER_ITEM_KEYS.contains(&k) {
-                    warnings.push(format!(
-                        "{} unknown chapter key `{k}`{} — an entry taliesin cannot read as \
-                         a chapter (`file:`) or a part (`part:`) is DROPPED from the book \
-                         silently, so this is a missing chapter, not a cosmetic warning",
+                    warnings.push(dropped(
                         src.at(k),
-                        did_you_mean(k, CHAPTER_ITEM_KEYS)
+                        format!(
+                            "unknown chapter key `{k}`{} — an entry taliesin cannot read as \
+                             a chapter (`file:`) or a part (`part:`) is DROPPED from the book \
+                             silently, so this is a missing chapter, not a cosmetic warning",
+                            did_you_mean(k, CHAPTER_ITEM_KEYS)
+                        ),
                     ));
                 }
             }
@@ -262,10 +300,11 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
             // when every key it does carry is spelled correctly (e.g. a lone `text:`).
             if !map.contains_key("file") && !map.contains_key("part") {
                 let first = map.keys().filter_map(|k| k.as_str()).next().unwrap_or("");
-                warnings.push(format!(
-                    "{} a `chapters:` entry names no `file:` and no `part:`, so it is \
-                     dropped from the book: give it a `file:`",
-                    src.at(first)
+                warnings.push(dropped(
+                    src.at(first),
+                    "a `chapters:` entry names no `file:` and no `part:`, so it is \
+                     dropped from the book: give it a `file:`"
+                        .to_string(),
                 ));
             }
             // A chapter and a part in ONE mapping: `push_chapter_entry` consumes it on the
@@ -278,17 +317,19 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
             {
                 // Anchor on the key that vanished, not the `file:` that survived: that is
                 // the line the missing `- ` belongs in front of.
-                let dropped = if map.contains_key("part") {
+                let lost = if map.contains_key("part") {
                     "part"
                 } else {
                     "chapters"
                 };
-                warnings.push(format!(
-                    "{} a `chapters:` entry carries both `file:` and `{dropped}:`, and the \
-                     `file:` wins: the `{dropped}:` and every chapter under it is DROPPED \
-                     from the book silently, so split them into two list entries (a \
-                     missing `- ` before `part:` merges them into this one)",
-                    src.at(dropped)
+                warnings.push(dropped(
+                    src.at(lost),
+                    format!(
+                        "a `chapters:` entry carries both `file:` and `{lost}:`, and the \
+                         `file:` wins: the `{lost}:` and every chapter under it is DROPPED \
+                         from the book silently, so split them into two list entries (a \
+                         missing `- ` before `part:` merges them into this one)"
+                    ),
                 ));
                 // The whole subtree is already reported gone; walking it would only add
                 // diagnostics about chapters that are not built either way.
@@ -296,16 +337,12 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
             }
             if let Some(inner) = map.get("chapters") {
                 match inner.as_sequence() {
-                    Some(seq) => walk(seq, warnings, src),
+                    Some(seq) => walk(seq, warnings, src, dropped),
                     // A part whose `chapters:` is empty loses nothing (and `push_group`
                     // pops the now-empty header), so only a *value* that is not a list
                     // reports: that one is a chapter the author wrote and will not get.
                     None if inner.is_null() => {}
-                    None => warnings.push(format!(
-                        "{} a part's `chapters:` is not a list, so the part reads as empty: \
-                         every chapter under it is DROPPED from the book, and the emptied \
-                         part header goes with it (write the entries as a list, \
-                         `- intro.tmd`)",
+                    None => warnings.push(dropped(
                         // The entry's own `part:` if it has one: the message is about a
                         // part, so a line showing one reads better than the enclosing
                         // `chapters:` key.
@@ -313,7 +350,12 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
                             "part"
                         } else {
                             "chapters"
-                        })
+                        }),
+                        "a part's `chapters:` is not a list, so the part reads as empty: \
+                         every chapter under it is DROPPED from the book, and the emptied \
+                         part header goes with it (write the entries as a list, \
+                         `- intro.tmd`)"
+                            .to_string(),
                     )),
                 }
             }
@@ -321,15 +363,16 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
     }
     if let Some(chapters) = value.get("chapters") {
         match chapters.as_sequence() {
-            Some(list) => walk(list, warnings, src),
+            Some(list) => walk(list, warnings, src, &dropped),
             // `chapters: []` / a bare `chapters:` is a book with no chapters yet, which is
             // what an author writing one starts from. Nothing is lost, so nothing reports.
             None if chapters.is_null() => {}
-            None => warnings.push(format!(
-                "{} `chapters:` is not a list, so it names no chapters at all: every \
+            None => warnings.push(dropped(
+                src.at("chapters"),
+                "`chapters:` is not a list, so it names no chapters at all: every \
                  chapter under it is DROPPED and the project builds as a plain website, \
-                 not a book (write the entries as a list, `- intro.tmd`)",
-                src.at("chapters")
+                 not a book (write the entries as a list, `- intro.tmd`)"
+                    .to_string(),
             )),
         }
     }
@@ -337,11 +380,11 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
 
 fn parse_native(
     value: &serde_yaml::Value,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     src: ConfigSource<'_>,
 ) -> SiteConfig {
     validate_keys(value, warnings, src);
-    validate_url(value, warnings);
+    validate_url(value, warnings, src);
     validate_chapters(value, warnings, src);
     // Through `scalar`, like a page's front matter: a number or bool where text is expected
     // (`title: 2026`) is read as its text rather than dropped.
@@ -381,86 +424,71 @@ fn did_you_mean(key: &str, candidates: &[&'static str]) -> String {
 pub(super) struct ConfigSource<'a>(pub Option<&'a str>);
 
 impl ConfigSource<'_> {
-    /// The `file:line:` prefix for a diagnostic about `key`, in the same linter form as
-    /// the page-level warnings (so the editor can jump to it). Falls back to the bare
-    /// filename when the key cannot be located — a warning without a line still beats a
-    /// wrong one.
-    fn at(&self, key: &str) -> String {
-        Self::prefix(self.0.and_then(|t| key_line(t, key)))
+    /// The line of `_site.yml` a diagnostic about `key` points at (so the editor can jump
+    /// to it), or `None` when the key cannot be located — a warning without a line still
+    /// beats a wrong one.
+    fn at(&self, key: &str) -> Option<usize> {
+        self.0.and_then(|t| key_line(t, key))
     }
 
     /// Like [`Self::at`], for the line where `key` holds `value` (`None`: a bare list item
     /// `- value`). Nav and footer items share their keys, so the first `text:` in the file
     /// is usually some other item's: the line that also carries the value is the one meant.
-    fn at_value(&self, key: Option<&str>, value: &str) -> String {
-        let unquote = |v: &str| v.trim().trim_matches(['"', '\'']).to_string();
-        let found = self.0.and_then(|t| {
-            t.lines().position(|l| {
-                let l = l.trim_start().trim_start_matches("- ");
-                match key {
-                    None => unquote(l) == value,
-                    Some(k) => l.split([',', '{', '}']).any(|part| {
-                        part.trim()
-                            .strip_prefix(k)
-                            .and_then(|rest| rest.strip_prefix(':'))
-                            .is_some_and(|v| unquote(v) == value)
-                    }),
-                }
-            })
-        });
-        Self::prefix(found.map(|i| i + 1))
-    }
-
-    fn prefix(line: Option<usize>) -> String {
-        match line {
-            Some(line) => format!("_site.yml:{line}:"),
-            None => "_site.yml:".to_string(),
-        }
+    fn at_value(&self, key: Option<&str>, value: &str) -> Option<usize> {
+        self.0
+            .and_then(|t| crate::frontmatter::value_line(t, key, value))
     }
 }
 
 /// The 1-based line where `key` is written in `_site.yml`, at any nesting depth (a list
-/// item's `- key:` counts). First match wins: a duplicate key is a YAML error the parse
-/// step already reports.
+/// item's `- key:` counts), or `None` when it is written on more than one line. A key that
+/// repeats at one level is a YAML error the parse step already reports, but one that
+/// repeats across entries (two `part:`s, a `chapters:` in a part) has no one line to name:
+/// the first match is usually another entry's, and pointing there sent the author three
+/// lines above the entry that lost its chapters (leads config/mod.rs:329).
 pub(crate) fn key_line(text: &str, key: &str) -> Option<usize> {
-    text.lines()
-        .position(|l| {
-            let t = l.trim_start().trim_start_matches("- ").trim_start();
-            // Also look inside a flow mapping: `- { file: a.tmd, text: A }` is how chapter
-            // and nav entries are usually written, and a diagnostic about one of those keys
-            // is worth a line number.
-            let t = t.strip_prefix('{').map_or(t, str::trim_start);
-            // Match the key token exactly, not a prefix: `nav:` must not match `navigation:`.
-            t.strip_prefix(key)
-                .is_some_and(|rest| rest.starts_with(':'))
-        })
-        .map(|i| i + 1)
+    let mut lines = text.lines().enumerate().filter(|(_, l)| {
+        let t = l.trim_start().trim_start_matches("- ").trim_start();
+        // Also look inside a flow mapping: `- { file: a.tmd, text: A }` is how chapter
+        // and nav entries are usually written, and a diagnostic about one of those keys
+        // is worth a line number.
+        let t = t.strip_prefix('{').map_or(t, str::trim_start);
+        // Match the key token exactly, not a prefix: `nav:` must not match `navigation:`.
+        t.strip_prefix(key)
+            .is_some_and(|rest| rest.starts_with(':'))
+    });
+    match (lines.next(), lines.next()) {
+        (Some((i, _)), None) => Some(i + 1),
+        _ => None,
+    }
 }
 
 /// Warn on unrecognized keys against the closed native schema: top-level, and the
 /// nested `nav:`/`footer:` structures (a typo in one of those silently drops
 /// the whole section/item, so it warns with a "did you mean"). Every
-/// warning is prefixed `_site.yml` so it is file-located rather than an anonymous string.
-fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
+/// warning is located in `_site.yml` rather than anonymous.
+fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<Warning>, src: ConfigSource<'_>) {
     let Some(map) = value.as_mapping() else {
         // An empty file is an empty config; anything else names no key at all.
         if !value.is_null() {
-            warnings.push(
-                "_site.yml: its top level is not a mapping of `key: value` settings, so \
-                 every setting in it is ignored"
+            warnings.push(config_warning(
+                None,
+                Severity::Error,
+                "its top level is not a mapping of `key: value` settings, so every setting \
+                 in it is ignored"
                     .to_string(),
-            );
+            ));
         }
         return;
     };
-    let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
+    let warn = |warnings: &mut Vec<Warning>, what: &str, key: &str, allowed: &[&'static str]| {
         // Through `unknown_key_message` so the config speaks the same sentence the
         // front-matter validator does, `what` and all: one wording for one kind of
         // mistake, in whichever vocabulary the author was writing.
-        warnings.push(format!(
-            "{} {}",
+        warnings.push(config_warning(
             src.at(key),
-            crate::frontmatter::unknown_key_message(what, key, allowed)
+            Severity::Warning,
+            crate::frontmatter::unknown_key_message(what, key, allowed),
         ));
     };
     for (k, v) in map {
@@ -484,7 +512,7 @@ fn validate_nav_like(
     v: &serde_yaml::Value,
     section_keys: &[&'static str],
     ctx: &str,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     src: ConfigSource<'_>,
 ) {
     match v {
@@ -494,10 +522,13 @@ fn validate_nav_like(
                 if section_keys.contains(&key) {
                     validate_items(section, ctx, warnings, src);
                 } else {
-                    warnings.push(format!(
-                        "{} unknown {ctx} section `{key}`{}",
+                    warnings.push(config_warning(
                         src.at(key),
-                        did_you_mean(key, section_keys)
+                        Severity::Warning,
+                        format!(
+                            "unknown {ctx} section `{key}`{}",
+                            did_you_mean(key, section_keys)
+                        ),
                     ));
                 }
             }
@@ -514,7 +545,7 @@ fn validate_nav_like(
 fn validate_items(
     v: &serde_yaml::Value,
     ctx: &str,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     src: ConfigSource<'_>,
 ) {
     let items: Vec<&serde_yaml::Value> = match v {
@@ -526,10 +557,13 @@ fn validate_items(
             serde_yaml::Value::Mapping(m) => {
                 for k in m.keys().filter_map(|k| k.as_str()) {
                     if !NAV_ITEM_KEYS.contains(&k) {
-                        warnings.push(format!(
-                            "{} unknown {ctx} item key `{k}`{}",
+                        warnings.push(config_warning(
                             src.at(k),
-                            did_you_mean(k, NAV_ITEM_KEYS)
+                            Severity::Warning,
+                            format!(
+                                "unknown {ctx} item key `{k}`{}",
+                                did_you_mean(k, NAV_ITEM_KEYS)
+                            ),
                         ));
                     }
                 }
@@ -537,10 +571,13 @@ fn validate_items(
                 if let Some(name) = icon.as_deref()
                     && super::chrome::social_icon(name).is_none()
                 {
-                    warnings.push(format!(
-                        "{} unknown {ctx} icon `{name}`: no bundled icon has that name, so \
-                         the link shows its text or URL instead",
-                        src.at_value(Some("icon"), name)
+                    warnings.push(config_warning(
+                        src.at_value(Some("icon"), name),
+                        Severity::Warning,
+                        format!(
+                            "unknown {ctx} icon `{name}`: no bundled icon has that name, so \
+                             the link shows its text or URL instead"
+                        ),
                     ));
                 }
                 if ctx == "nav" && !m.contains_key("href") {
@@ -549,19 +586,25 @@ fn validate_items(
                         (None, Some(icon)) => ("icon", icon),
                         (None, None) => ("", String::new()),
                     };
-                    warnings.push(format!(
-                        "{} a `nav:` item (`{name}`) has no `href:`, so it is dropped from the \
-                         navbar",
-                        src.at_value(Some(key), &name)
+                    warnings.push(config_warning(
+                        src.at_value(Some(key), &name),
+                        Severity::Warning,
+                        format!(
+                            "a `nav:` item (`{name}`) has no `href:`, so it is dropped from \
+                             the navbar"
+                        ),
                     ));
                 }
             }
             scalar_item if ctx == "nav" => {
                 if let Some(name) = scalar(Some(scalar_item)) {
-                    warnings.push(format!(
-                        "{} a bare `nav:` entry (`{name}`) has no `href:`, so it is dropped \
-                         from the navbar: write it as `{{ text: …, href: {name} }}`",
-                        src.at_value(None, &name)
+                    warnings.push(config_warning(
+                        src.at_value(None, &name),
+                        Severity::Warning,
+                        format!(
+                            "a bare `nav:` entry (`{name}`) has no `href:`, so it is dropped \
+                             from the navbar: write it as `{{ text: …, href: {name} }}`"
+                        ),
                     ));
                 }
             }
@@ -634,6 +677,15 @@ fn nav_item(v: &serde_yaml::Value) -> Option<NavItem> {
 mod config_tests {
     use super::*;
 
+    /// A config warning as `file:line: message`, the form a terminal prints it in.
+    fn located(w: &Warning) -> String {
+        let file = w.file.as_deref().unwrap_or("");
+        match w.line {
+            Some(l) => format!("{file}:{l}: {}", w.message),
+            None => format!("{file}: {}", w.message),
+        }
+    }
+
     fn tmp(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("tali-cfg-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
@@ -647,6 +699,7 @@ mod config_tests {
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\npython: .venv/bin/python\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
     }
@@ -660,6 +713,7 @@ mod config_tests {
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\nhead: |\n  <meta name=\"x\" content=\"y\">\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert_eq!(
             cfg.title.as_deref(),
             Some("X"),
@@ -682,6 +736,7 @@ mod config_tests {
         let v: serde_yaml::Value =
             serde_yaml::from_str("title: X\nexternal-prefixes:\n  - tarn\n").unwrap();
         let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert_eq!(
             cfg.title.as_deref(),
             Some("X"),
@@ -720,6 +775,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
             parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 w.iter().any(|m| m.contains(needle)),
                 "expected {needle:?} for:\n{yaml}\ngot: {w:?}"
@@ -749,6 +805,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
             parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 w.iter().any(|m| m.contains("`chapters:` is not a list")),
                 "expected a not-a-list diagnostic for:\n{yaml}\ngot: {w:?}"
@@ -764,6 +821,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
             parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 !w.iter().any(|m| m.contains("not a list")),
                 "an empty chapter list loses nothing and must stay silent ({yaml:?}): {w:?}"
@@ -788,6 +846,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
             parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 w.iter().any(|m| m.contains("both `file:`")),
                 "expected a file/part collision diagnostic for:\n{yaml}\ngot: {w:?}"
@@ -809,6 +868,7 @@ mod config_tests {
         )
         .unwrap();
         parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(w.is_empty(), "valid chapters warn about nothing: {w:?}");
     }
 
@@ -830,6 +890,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
             let cfg = parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert_eq!(cfg.bibliography, want, "shape {yaml:?}");
             assert!(
                 w.iter().all(|m| !m.contains("config key")),
@@ -863,6 +924,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("image: assets/og-card.png\n").unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(
             w.iter().any(|m| m.contains("image")),
             "a site-level `image:` must be diagnosed, not silently ignored: {w:?}"
@@ -879,6 +941,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(
             w.iter()
                 .any(|m| m.starts_with("_site.yml:3:") && m.contains("pythn")),
@@ -898,6 +961,18 @@ mod config_tests {
         assert_eq!(key_line("nav:\n  - text: Blog\n", "text"), Some(2));
     }
 
+    /// A key written more than once has no one line to name: the first occurrence is
+    /// usually another entry's. Two `part:` entries put a merged `file:`+`part:` warning at
+    /// the FIRST part, three lines above the one that lost its chapters (leads
+    /// config/mod.rs:329). A warning without a line still beats a wrong one.
+    #[test]
+    fn a_key_written_twice_has_no_line() {
+        let text =
+            "chapters:\n  - part: One\n    chapters: [a.tmd]\n  - file: b.tmd\n    part: Two\n";
+        assert_eq!(key_line(text, "file"), Some(4), "written once: located");
+        assert_eq!(key_line(text, "part"), None, "written twice: no line");
+    }
+
     #[test]
     fn a_scheme_less_url_is_diagnosed_not_silently_shipped() {
         // `url: ex.com` (no scheme) builds clean and emits `<loc>ex.com/</loc>` +
@@ -907,6 +982,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("title: X\nurl: ex.com\n").unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(
             w.iter().any(|m| m.contains("url") && m.contains("scheme")),
             "a scheme-less url: must be diagnosed: {w:?}"
@@ -922,6 +998,7 @@ mod config_tests {
             let v: serde_yaml::Value =
                 serde_yaml::from_str(&format!("title: X\nurl: \"{url}\"\n")).unwrap();
             let _ = parse_native(&v, &mut w, ConfigSource(None));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 !w.iter().any(|m| m.contains("scheme")),
                 "a scheme'd or blank url must not warn ({url:?}): {w:?}"
@@ -939,6 +1016,7 @@ mod config_tests {
         let v: serde_yaml::Value =
             serde_yaml::from_str("toc: true\nchapters:\n  - a.tmd\n").unwrap();
         parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         let msg = w
             .iter()
             .find(|m| m.contains("`toc`"))
@@ -954,6 +1032,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str("pyton: .venv/bin/python\n").unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(None));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(
             w.iter().any(|m| m.contains("pyton")),
             "an unknown config key must warn (did-you-mean python): {w:?}"
@@ -971,27 +1050,21 @@ mod config_tests {
         let cfg = load_config(&dir, &mut warnings);
         assert!(cfg.title.is_none(), "malformed config degrades to default");
         assert!(
-            warnings.iter().any(|w| is_malformed_config_warning(w)),
+            warnings.iter().any(is_malformed_config_warning),
             "malformed YAML must be tagged: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A folder with no `_site.yml` is a lone document's own folder, and says nothing about
+    /// it: every verb refuses a DIRECTORY with none before it discovers anything, so the
+    /// advisory this used to push had no reader, only four filters that dropped it.
     #[test]
-    fn missing_site_yml_is_not_a_malformed_config() {
-        // A bare directory with no `_site.yml` is legitimate; its warning must NOT match
-        // the malformed marker (so the build doesn't fail `--strict` on a missing file).
+    fn a_folder_without_site_yml_reports_nothing() {
         let dir = tmp("missing");
         let mut warnings = Vec::new();
         let _ = load_config(&dir, &mut warnings);
-        assert!(
-            warnings.iter().any(|w| w.starts_with("no _site.yml")),
-            "missing config warns: {warnings:?}"
-        );
-        assert!(
-            !warnings.iter().any(|w| is_malformed_config_warning(w)),
-            "a missing file must not be reported as malformed: {warnings:?}"
-        );
+        assert!(warnings.is_empty(), "{warnings:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1018,15 +1091,11 @@ mod config_tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.contains("_quarto.yml") && w.contains("_site.yml")),
+                .any(|w| w.message.contains("_quarto.yml") && w.message.contains("_site.yml")),
             "name the file that is there AND the name it needs: {warnings:?}"
         );
         assert!(
-            !warnings.iter().any(|w| is_missing_config_warning(w)),
-            "must not fall back to the advisory `check` filters out: {warnings:?}"
-        );
-        assert!(
-            !warnings.iter().any(|w| is_malformed_config_warning(w)),
+            !warnings.iter().any(is_malformed_config_warning),
             "it is not malformed YAML: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -1042,7 +1111,7 @@ mod config_tests {
         let mut warnings = Vec::new();
         let _ = load_config(&dir, &mut warnings);
         let _ = std::fs::remove_dir_all(&dir);
-        warnings
+        warnings.iter().map(located).collect()
     }
 
     #[test]
@@ -1105,7 +1174,7 @@ mod config_tests {
         let cfg = load_config(&dir, &mut warnings);
         assert_eq!(cfg.title.as_deref(), Some("My Site"));
         assert!(
-            !warnings.iter().any(|w| is_malformed_config_warning(w)),
+            !warnings.iter().any(is_malformed_config_warning),
             "a valid config is not malformed: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -1148,6 +1217,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        let w: Vec<String> = w.iter().map(located).collect();
         let dropped: Vec<&String> = w.iter().filter(|m| m.contains("no `href:`")).collect();
         assert_eq!(dropped.len(), 2, "{w:?}");
         assert!(
@@ -1168,6 +1238,7 @@ mod config_tests {
         let mut w = Vec::new();
         let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
         let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(
             w[0].starts_with("_site.yml:3:") && w[0].contains("unknown nav icon `githb`"),
@@ -1207,6 +1278,7 @@ mod config_tests {
             let mut w = Vec::new();
             let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
             let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+            let w: Vec<String> = w.iter().map(located).collect();
             assert!(
                 w.iter().any(|m| m.contains("not a mapping")),
                 "{text:?}: {w:?}"
@@ -1215,6 +1287,7 @@ mod config_tests {
         // An empty file is an empty config, not a mistake.
         let mut w = Vec::new();
         let _ = parse_native(&serde_yaml::Value::Null, &mut w, ConfigSource(Some("")));
+        let w: Vec<String> = w.iter().map(located).collect();
         assert!(w.is_empty(), "{w:?}");
     }
 

@@ -484,15 +484,14 @@ fn collect_site_diagnostics(
     if let Some(line) = crate::build::draft_report_line(&site.excluded_drafts) {
         log::info(&line);
     }
-    // No filter for the "no `_site.yml`" advisory: `collect_diagnostics` has already
-    // refused a directory that has none, so `discover` cannot raise it here. It used to be
-    // filtered out on the grounds that a bare directory of pages was a legitimate project
-    // — the pre-wave-13 stance, and the second half of why the gate passed on a tree
-    // `build` refuses.
+    // The project's own diagnostics, each at the file and line that wrote it (relative to
+    // the site root, like a page's `rel`) and at the severity its validator set. They were
+    // strings, every one reported as an error in `_site.yml` with no line, a page's
+    // `draft:` included (audit 2026-09-24 NEW-A).
     let mut out: Vec<Diagnostic> = site
         .warnings
         .iter()
-        .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
+        .map(|w| diag_from(w, "_site.yml"))
         .collect();
     let defaults = site.render_defaults();
     for page in &site.pages {

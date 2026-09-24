@@ -24,29 +24,37 @@ pub(crate) struct FrontInfo {
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
 /// needs. Tolerant: a missing or malformed block just yields defaults. `label` (the
-/// page rel) tags any warning (`warnings`) raised while parsing, e.g. a `listing:`
-/// with no `contents:`.
+/// page rel) locates any warning (`warnings`) raised while parsing, e.g. a `listing:`
+/// with no `contents:`, at the line of the page that wrote it.
+///
+/// Only what discovery alone decides is reported here. An `author:` sub-key typo was too,
+/// and the page's own render reports it again, located, so every project lint printed it
+/// twice: once from here, pinned on `_site.yml`.
 pub(crate) fn parse_front_matter(
     path: &Path,
     label: &str,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> FrontInfo {
     let Ok(src) = crate::includes::read_source(path) else {
         return FrontInfo::default();
     };
-    let Some(val) = crate::frontmatter::front_matter_value(&src) else {
+    let Some(block) = crate::frontmatter::front_matter_block(&src) else {
         return FrontInfo::default();
     };
-    // Parsed for its DIAGNOSTICS only. Nothing in the site layer reads a page's authors
-    // since JSON-LD was cut on 2026-08-08 — `render/mod.rs` parses `author:` again for the
-    // byline — but an author sub-key typo is otherwise invisible (the value is just
-    // dropped), and the page rel tags the message the way a `listing:` warning is tagged.
-    warnings.extend(
-        crate::author::parse(val.get("author"))
-            .1
-            .into_iter()
-            .map(|m| format!("{label}: {m}")),
-    );
+    let Some(val) = crate::frontmatter::parse_front_matter_block(block) else {
+        return FrontInfo::default();
+    };
+    // A warning about a top-level key of this page, at the line that key is written on.
+    let at = |key: &str, message: String| {
+        let mut w = Warning::new(message);
+        w.file = Some(label.to_string());
+        w.line = crate::frontmatter::block_key_line(block, key);
+        w
+    };
+    let listings = parse_listings(val.get("listing"), label, &mut |m| {
+        warnings.push(at("listing", m))
+    });
+    let draft = draft_flag(&val, &mut |m| warnings.push(at("draft", m)));
     FrontInfo {
         title: scalar(val.get("title")),
         date: scalar(val.get("date")),
@@ -54,9 +62,9 @@ pub(crate) fn parse_front_matter(
         image: scalar(val.get("image")),
         image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),
-        listings: parse_listings(val.get("listing"), label, warnings),
+        listings,
         hero: parse_hero(val.get("hero")),
-        draft: draft_flag(&val, label, warnings),
+        draft,
     }
 }
 
@@ -69,7 +77,7 @@ pub(crate) fn parse_front_matter(
 /// the tool cannot tell what, so it fails SAFE: the page is held back as a draft and the
 /// value is reported. It used to fall back to "not a draft", which published the page,
 /// listed it and put it in the feed with no diagnostic. A null `draft:` is unset.
-fn draft_flag(val: &serde_yaml::Value, label: &str, warnings: &mut Vec<String>) -> bool {
+fn draft_flag(val: &serde_yaml::Value, warn: &mut dyn FnMut(String)) -> bool {
     let v = match val.get("draft") {
         None | Some(serde_yaml::Value::Null) => return false,
         Some(v) => v,
@@ -80,8 +88,8 @@ fn draft_flag(val: &serde_yaml::Value, label: &str, warnings: &mut Vec<String>) 
     if let Some(s) = v.as_str()
         && let Some(b) = crate::frontmatter::yaml_bool_word(s)
     {
-        warnings.push(format!(
-            "{label}: `draft: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `draft: {b}`"
+        warn(format!(
+            "`draft: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `draft: {b}`"
         ));
         return b;
     }
@@ -89,9 +97,9 @@ fn draft_flag(val: &serde_yaml::Value, label: &str, warnings: &mut Vec<String>) 
         Some(s) => format!("`draft: {s}` is not a boolean"),
         None => "`draft:` holds a list or a mapping, not a boolean".to_string(),
     };
-    warnings.push(format!(
-        "{label}: {what}, so the page is held back as a draft \u{2014} write `draft: true` \
-         or `draft: false`"
+    warn(format!(
+        "{what}, so the page is held back as a draft \u{2014} write `draft: true` or \
+         `draft: false`"
     ));
     true
 }
@@ -148,12 +156,12 @@ pub(crate) fn string_list(v: Option<&serde_yaml::Value>) -> Vec<String> {
 }
 
 /// Parse a `listing:` value: a single map, or a sequence of maps. A map with
-/// no `contents:` (nothing to list) is warned about via `warnings`, keyed by `label`
-/// (the page rel), instead of being silently dropped.
+/// no `contents:` (nothing to list) is reported through `warn` instead of being silently
+/// dropped; `label` (the page rel) names the page in the message.
 pub(crate) fn parse_listings(
     v: Option<&serde_yaml::Value>,
     label: &str,
-    warnings: &mut Vec<String>,
+    warn: &mut dyn FnMut(String),
 ) -> Vec<ListingSpec> {
     let maps: Vec<&serde_yaml::Value> = match v {
         Some(serde_yaml::Value::Sequence(seq)) => seq.iter().collect(),
@@ -166,7 +174,7 @@ pub(crate) fn parse_listings(
             Some(spec) => specs.push(spec),
             // A `listing:` mapping that parsed to nothing lacks `contents:`, so it
             // renders no cards — warn rather than drop it silently.
-            None if m.is_mapping() => warnings.push(format!(
+            None if m.is_mapping() => warn(format!(
                 "`{label}`: a `listing:` block has no `contents:` and was skipped (nothing to list)"
             )),
             None => {}

@@ -484,3 +484,64 @@ fn the_cell_that_crashed_the_kernel_is_named_as_the_one() {
         "a headless build has no save to wait for:\n{stderr}"
     );
 }
+
+/// `(file, line)` of the first diagnostic whose message contains `needle`.
+fn located(v: &serde_json::Value, needle: &str) -> (String, Option<u64>) {
+    let d = v["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .find(|d| d["message"].as_str().unwrap_or("").contains(needle))
+        .unwrap_or_else(|| panic!("no diagnostic mentions `{needle}`: {v}"));
+    (
+        d["file"].as_str().unwrap_or("").to_string(),
+        d["line"].as_u64(),
+    )
+}
+
+/// A project's own diagnostics (its `_site.yml`, a page's front matter as discovery reads
+/// it) are located at the file and line that wrote them, and every verb reports them the
+/// same way. They were strings: `--check-only` pinned all of them on `_site.yml` with no
+/// line, a page's `draft:` included, and a writing build's `--format json` carried none
+/// of them (audit 2026-09-24 NEW-A, config-seam #10).
+#[test]
+fn project_diagnostics_are_located_and_reach_every_json_channel() {
+    let dir = tmp_dir("site-warnings");
+    fs::write(dir.join("_site.yml"), "title: S\ntitel: oops\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    fs::create_dir_all(dir.join("posts")).unwrap();
+    fs::write(
+        dir.join("posts/p.tmd"),
+        "---\ntitle: P\ndraft: maybe\n---\n\nBody.\n",
+    )
+    .unwrap();
+
+    let check =
+        stdout_json(
+            taliesin()
+                .arg("build")
+                .arg(&dir)
+                .args(["--check-only", "--format", "json"]),
+        );
+    let build = stdout_json(
+        taliesin()
+            .arg("build")
+            .arg(&dir)
+            .arg("--out")
+            .arg(dir.join("_out"))
+            .args(["--no-exec", "--format", "json"]),
+    );
+    let _ = fs::remove_dir_all(&dir);
+    for v in [&check, &build] {
+        assert_eq!(
+            located(v, "unknown config key"),
+            ("_site.yml".to_string(), Some(2)),
+            "a config key is located in _site.yml: {v}"
+        );
+        assert_eq!(
+            located(v, "draft: maybe"),
+            ("posts/p.tmd".to_string(), Some(3)),
+            "a page's front matter is located in that page: {v}"
+        );
+    }
+}

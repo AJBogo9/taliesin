@@ -563,13 +563,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     // the project's home, so `preview chapter-7.tmd` shows chapter 7.
     let focus = doc.as_deref().and_then(|f| focus_url(&site, f));
     for w in &site.warnings {
-        // "no _site.yml at …" is a finding about a *project*. When the author asked to see
-        // one document, its absence is the expected case — it is precisely what put us on
-        // the single-document path — so reporting it reads as a fault where there is none.
-        if scoped.is_some() && taliesin_core::site::is_missing_config_warning(w) {
-            continue;
-        }
-        crate::log::warn(w);
+        crate::build::log_located(w, "_site.yml");
     }
     let page_count = site.pages.len();
     // A project with nothing to serve: `build <dir> --check-only` already exits 1 here,
@@ -1600,7 +1594,7 @@ async fn build_page(
         diags.extend(crate::preview_diag::cross_page_diagnostics(
             &site, rel, &label,
         ));
-        diags.extend(crate::preview_diag::site_config_diagnostics(&site));
+        diags.extend(crate::preview_diag::site_config_diagnostics(&site, rel));
     }
     diags.extend(warnings.iter().map(|w| diag_from(w, &label)));
 
@@ -3594,6 +3588,29 @@ mod project_tests {
             .find(|m| m["message"].as_str().unwrap_or("").contains("nope.png"))
             .unwrap_or_else(|| panic!("the missing image is reported: {msgs:?}"));
         assert_eq!(missing["level"], "error", "{missing}");
+    }
+
+    /// A project diagnostic in the dev menu is located, so the row is clickable, and its
+    /// file resolves from the page's own folder (the client joins it onto `baseDir`). It
+    /// was pinned on `_site.yml` with no line, so a config typo could not be clicked and
+    /// a nested page would have resolved it in the wrong folder.
+    #[test]
+    fn a_project_diagnostic_is_clickable_from_a_nested_page() {
+        let msgs = wire_diagnostics(
+            "located",
+            &[
+                ("_site.yml", "title: T\ntitel: oops\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("posts/p.tmd", "---\ntitle: P\n---\n\nBody.\n"),
+            ],
+            "posts/p.tmd",
+        );
+        let typo = msgs
+            .iter()
+            .find(|m| m["message"].as_str().unwrap_or("").contains("titel"))
+            .unwrap_or_else(|| panic!("the config typo is reported: {msgs:?}"));
+        assert_eq!(typo["file"], "../_site.yml", "{typo}");
+        assert_eq!(typo["line"], 2, "{typo}");
     }
 }
 

@@ -133,9 +133,15 @@ pub struct Site {
     /// project that declares none. Laid **under** each page's own `bibliography:`, so a
     /// page can override a shared entry (`site::bibliography`).
     pub bibliography: Vec<PathBuf>,
-    /// Warnings gathered during discovery (bad config, etc.), surfaced by the
-    /// caller (build logs / preview diagnostics).
-    pub warnings: Vec<String>,
+    /// Diagnostics about the project itself, gathered during discovery: its `_site.yml`,
+    /// a page's front matter as discovery reads it, a label two pages define. Each is
+    /// located, relative to the site root: `file` is `_site.yml` or a page's `rel` (a
+    /// partial is joined onto its page's folder), `line` is that file's own line, and
+    /// `severity` is the validator's. Every verb reports them exactly as it reports a
+    /// page's render warnings. They were strings with the location baked into the text,
+    /// which `--check-only` pinned on `_site.yml` with no line, a writing build logged as
+    /// advice, and `--format json` dropped (audit 2026-09-24 NEW-A, NEW-B).
+    pub warnings: Vec<Warning>,
     /// How many of the leading entries in `warnings` came from parsing `_site.yml`
     /// itself, rather than from page discovery. See [`config_warnings`](Self::config_warnings).
     config_warning_count: usize,
@@ -291,7 +297,7 @@ impl Site {
     /// scheme-less `url:` warning are all config defects that are not YAML parse failures.
     /// The whole-project answer is still `build <dir> --check-only`; this is only the
     /// narrower question of whether the *config file* is clean.
-    pub fn config_warnings(&self) -> &[String] {
+    pub fn config_warnings(&self) -> &[Warning] {
         &self.warnings[..self.config_warning_count]
     }
 
@@ -340,8 +346,7 @@ impl Site {
         // Everything `load_config` just pushed is a diagnostic about `_site.yml` itself, and
         // it runs first, so the config warnings are exactly this prefix of `warnings`. Kept
         // as a length because a caller that wants only those (`doctor`'s `config` row) had
-        // no way to ask: filtering by message text misses `validate_url`'s scheme-less-`url:`
-        // warning, which carries no `_site.yml` prefix. See `config_warnings`.
+        // no way to ask. See `config_warnings`.
         let config_warning_count = warnings.len();
 
         // A book takes its page set + order from the explicit `chapters:` list;
@@ -370,9 +375,13 @@ impl Site {
         if let Some(book) = &book {
             for c in book.chapters() {
                 if !root.join(&c.rel).exists() {
-                    warnings.push(format!(
-                        "chapter file not found: `{}` (listed in _site.yml `chapters:`)",
-                        c.rel
+                    warnings.push(config_warning(
+                        chapter_line(root, &c.rel),
+                        Severity::Error,
+                        format!(
+                            "chapter file not found: `{}` (listed in _site.yml `chapters:`)",
+                            c.rel
+                        ),
                     ));
                 }
             }
@@ -984,7 +993,7 @@ impl Site {
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks, src));
-        self.expand_page(page, blocks, warnings);
+        self.expand_page(page, blocks, warnings, src);
         self.page_toc(page, toc_explicit, blocks)
     }
 
@@ -1229,11 +1238,11 @@ impl Site {
         // announced twice — and a third definition from announcing a fourth time.
         // Matching the curly-quoted anchor makes it exact, so `fig-a` never matches a
         // warning about `fig-abc`.
-        let dup_reported = |warnings: &[String], anchor: &str| {
+        let dup_reported = |warnings: &[Warning], anchor: &str| {
             let quoted = format!("\u{201c}{anchor}\u{201d}");
-            warnings
-                .iter()
-                .any(|w| w.contains("duplicate cross-reference label") && w.contains(&quoted))
+            warnings.iter().any(|w| {
+                w.message.contains("duplicate cross-reference label") && w.message.contains(&quoted)
+            })
         };
         for (anchor, number, url) in updates {
             match self.xref_targets.entry(anchor) {
@@ -1248,14 +1257,21 @@ impl Site {
                             // A cell-labelled anchor (`#| label:`) has no source line to point
                             // at (it's harvested from the rendered block, not the source scan),
                             // so name BOTH colliding pages instead — the first (winning) page
-                            // and the second that redefines it.
-                            self.warnings.push(format!(
+                            // and the second that redefines it — and locate it on the second.
+                            let mut w = Warning::new(format!(
                                 "duplicate cross-reference label \u{201c}{}\u{201d} defined on both {} and {}; using {}",
                                 e.key(),
                                 e.get().url,
                                 url,
                                 e.get().url
-                            ));
+                            ))
+                            .severity(Severity::Error);
+                            w.file = self
+                                .pages
+                                .iter()
+                                .find(|p| p.url == url)
+                                .map(|p| p.rel.clone());
+                            self.warnings.push(w);
                         }
                         continue;
                     }
@@ -1306,8 +1322,15 @@ impl Site {
     /// `hero:` block replaces the title block, each `listing:` expands into post cards, and
     /// a page that one listing owns opens with a link back to it. Both the static build and
     /// the live preview call this, so the results stay in the block model (mounted + diffed
-    /// like any other block).
-    pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
+    /// like any other block). `src` is the page's source when the caller holds it, which
+    /// locates a listing's diagnostics at the front-matter line that wrote them.
+    pub fn expand_page(
+        &self,
+        page: &Page,
+        blocks: &mut Vec<Block>,
+        warnings: &mut Vec<Warning>,
+        src: Option<&str>,
+    ) {
         // A `hero:` block replaces the title block (a landing-page header treatment).
         if let Some(hero) = &page.hero {
             set_title_block(blocks, self.hero_html(page, hero));
@@ -1338,12 +1361,19 @@ impl Site {
                 // only other sign.
                 None => {
                     if let Some(want) = &spec.id {
-                        warnings.push(Warning::new(format!(
+                        let mut w = Warning::new(format!(
                             "the listing on `{}` has `id: {want}`, but no element on the page \
                              has that id, so its cards were added at the end; put a \
                              `::: {{#{want}}}` block where they belong",
                             page.rel
-                        )));
+                        ));
+                        // The file line of the `id:` that names it: the block starts on the
+                        // line after the opening `---`.
+                        w.line = src
+                            .and_then(crate::frontmatter::front_matter_block)
+                            .and_then(|b| crate::frontmatter::value_line(b, Some("id"), want))
+                            .map(|l| l as u32 + 1);
+                        warnings.push(w);
                     }
                     blocks.push(listing_block(id, cards));
                 }
@@ -2279,7 +2309,7 @@ pub(crate) mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.contains("draft") && w.contains("YAML 1.2")),
+                .any(|w| w.message.contains("draft") && w.message.contains("YAML 1.2")),
             "a `draft: yes` page must warn to use `true`: {warnings:?}"
         );
         let _ = fs::remove_dir_all(&root);
@@ -2317,7 +2347,8 @@ pub(crate) mod tests {
             assert!(
                 warnings
                     .iter()
-                    .any(|w| w.starts_with(held) && w.contains("not a boolean")),
+                    .any(|w| w.file.as_deref() == Some(held)
+                        && w.message.contains("not a boolean")),
                 "{held} reported: {warnings:?}"
             );
         }
@@ -2327,7 +2358,7 @@ pub(crate) mod tests {
                 "{kept} published: {rels:?}"
             );
             assert!(
-                !warnings.iter().any(|w| w.starts_with(kept)),
+                !warnings.iter().any(|w| w.file.as_deref() == Some(kept)),
                 "{kept} is not reported: {warnings:?}"
             );
         }
@@ -3377,7 +3408,7 @@ pub(crate) mod tests {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains("listing") && w.contains("contents")),
+                .any(|w| w.message.contains("listing") && w.message.contains("contents")),
             "{:?}",
             site.warnings
         );
@@ -3400,7 +3431,8 @@ pub(crate) mod tests {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
+                .any(|w| w.message.contains("missing.tmd")
+                    && w.message.contains("chapter file not found")),
             "{:?}",
             site.warnings
         );
@@ -3656,6 +3688,114 @@ pub(crate) mod tests {
             html.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;2.1</a>"),
             "cross-page figure ref numbered after discover: {html}"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A site warning as `file:line: message`, the form every verb prints it in.
+    fn loc(w: &Warning) -> String {
+        let file = w.file.as_deref().unwrap_or("_site.yml");
+        match w.line {
+            Some(l) => format!("{file}:{l}: {}", w.message),
+            None => format!("{file}: {}", w.message),
+        }
+    }
+
+    /// Every project diagnostic is located at the file and line that wrote it: a config key
+    /// in `_site.yml`, a page's front matter in that page. They were strings with whatever
+    /// location the producer baked into the text, which is how a page's `draft:` came to be
+    /// reported against `_site.yml` with no line (audit 2026-09-24 NEW-A).
+    #[test]
+    fn site_warnings_are_located_where_they_were_written() {
+        let root = write_site(
+            "located",
+            &[
+                ("_site.yml", "title: T\ntitel: oops\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("posts/p.tmd", "---\ntitle: P\ndraft: maybe\n---\n\nBody.\n"),
+            ],
+        );
+        let site = Site::discover_with(&root, DraftMode::Include);
+        let found = |needle: &str| {
+            site.warnings
+                .iter()
+                .map(loc)
+                .find(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("no warning mentions {needle}: {:?}", site.warnings))
+        };
+        assert!(
+            found("titel").starts_with("_site.yml:2: "),
+            "{}",
+            found("titel")
+        );
+        assert!(
+            found("draft").starts_with("posts/p.tmd:3: "),
+            "{}",
+            found("draft")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A duplicate label written below an `{{< include >}}` is reported at the line the
+    /// author wrote it on. The scan counted lines of the include-expanded buffer, so it
+    /// named a line past the end of a short page (leads xref.rs:72).
+    #[test]
+    fn a_duplicate_label_below_an_include_is_located_at_its_own_line() {
+        let part: String = (1..=20).map(|i| format!("filler {i}\n\n")).collect();
+        let root = write_site(
+            "dup-after-include",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n## First {#sec-dup}\n",
+                ),
+                (
+                    "posts/one/index.tmd",
+                    "---\ntitle: One\n---\n\n{{< include _part.tmd >}}\n\n## Again {#sec-dup}\n",
+                ),
+                ("posts/one/_part.tmd", &part),
+            ],
+        );
+        let site = Site::discover(&root);
+        let dup = site
+            .warnings
+            .iter()
+            .map(loc)
+            .find(|l| l.contains("duplicate cross-reference label"))
+            .unwrap_or_else(|| panic!("the duplicate is reported: {:?}", site.warnings));
+        assert!(dup.starts_with("posts/one/index.tmd:7: "), "{dup}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The warning for a listing whose `id:` matches nothing names the line that wrote the
+    /// `id:`, so it is clickable like every other page diagnostic (audit 2026-09-24, WP5
+    /// residual).
+    #[test]
+    fn a_listing_id_that_matches_nothing_is_located() {
+        let src = "---\ntitle: Home\nlisting:\n  - contents: posts\n    id: nowhere\n---\n\nHi.\n";
+        let root = write_site(
+            "listing-id",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", src),
+                ("posts/a.tmd", "---\ntitle: A\n---\n\nA.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let page = site.page("index.tmd").unwrap().clone();
+        let mut doc = render::render_document_scoped_with_site(
+            src,
+            &root,
+            None,
+            Some(&site.render_defaults()),
+        );
+        let mut warnings = Vec::new();
+        site.finish_blocks(&page, &mut doc.blocks, &mut warnings, Some(src), None);
+        let w = warnings
+            .iter()
+            .find(|w| w.message.contains("id: nowhere"))
+            .unwrap_or_else(|| panic!("the listing id is reported: {warnings:?}"));
+        assert_eq!(w.line, Some(5), "{w:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

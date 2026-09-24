@@ -188,12 +188,8 @@ fn interpreter_check(r: &Resolved, p: &Probe) -> Check {
 /// Still a ⚠ rather than a ✗ (`doctor` exits non-zero only on a broken *interpreter*): the
 /// pre-publish gate for a project is `build <dir> --check-only`, which reports all of these
 /// with their line numbers, and the fix line says so rather than repeating the list here.
-fn config_check(warnings: &[String]) -> Check {
-    // The "no `_site.yml` here" advisory is benign and cannot reach this row anyway (the
-    // caller only builds a `Site` when the file exists); filtered so it never could.
-    let mut bad = warnings
-        .iter()
-        .filter(|w| !taliesin_core::site::is_missing_config_warning(w));
+fn config_check(warnings: &[taliesin_core::render::Warning]) -> Check {
+    let mut bad = warnings.iter();
     let Some(first) = bad.next() else {
         return Check {
             name: "config",
@@ -210,7 +206,7 @@ fn config_check(warnings: &[String]) -> Check {
     Check {
         name: "config",
         status: Status::Warn,
-        detail: format!("_site.yml: {first}{more}"),
+        detail: format!("{}{more}", crate::build::locate(first, "_site.yml")),
         fix: Some("run `taliesin build <dir> --check-only` for the located list".to_string()),
         executes: None,
     }
@@ -604,10 +600,18 @@ mod tests {
         assert_eq!(clean.status, Status::Ok);
         assert_eq!(clean.detail, "_site.yml is valid");
 
+        use taliesin_core::render::Warning;
+        let config = |line: Option<u32>, message: &str| {
+            let mut w = Warning::new(message);
+            w.file = Some("_site.yml".to_string());
+            w.line = line;
+            w
+        };
         // A typo'd key: no YAML parse failure anywhere in the message.
-        let typo = config_check(&[
-            "_site.yml:1: unknown config key `titel` (did you mean `title`?)".to_string(),
-        ]);
+        let typo = config_check(&[config(
+            Some(1),
+            "unknown config key `titel` (did you mean `title`?)",
+        )]);
         assert_eq!(typo.status, Status::Warn, "detail: {}", typo.detail);
         assert!(typo.detail.contains("titel"), "{}", typo.detail);
         assert!(
@@ -623,19 +627,21 @@ mod tests {
 
         // The scheme-less `url:` warning is the one no text filter could have caught: it
         // carries neither the malformed-YAML prefix nor an `_site.yml` prefix at all.
-        let url = config_check(&["url: `ex.com` has no scheme — sitemap, robots.txt, feed \
-                                  and og:url need an absolute URL"
-            .to_string()]);
+        let url = config_check(&[config(
+            Some(2),
+            "url: `ex.com` has no scheme — sitemap, robots.txt, feed and og:url need an \
+             absolute URL",
+        )]);
         assert_eq!(url.status, Status::Warn, "detail: {}", url.detail);
 
         // Several are summarised, not dumped: the located list belongs to `--check-only`.
-        let many = config_check(&["one".to_string(), "two".to_string(), "three".to_string()]);
+        let many = config_check(&[
+            config(None, "one"),
+            config(None, "two"),
+            config(None, "three"),
+        ]);
         assert!(many.detail.contains("one"), "{}", many.detail);
         assert!(many.detail.contains("(+2 more)"), "{}", many.detail);
-
-        // The benign "no _site.yml here" advisory is not a config defect.
-        let missing = config_check(&[format!("{} .", taliesin_core::site::MISSING_CONFIG_PREFIX)]);
-        assert_eq!(missing.status, Status::Ok, "detail: {}", missing.detail);
     }
 
     #[test]

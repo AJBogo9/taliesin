@@ -500,7 +500,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 /// `path:line: message` for a located warning, falling back to `path: message` for one the
 /// renderer could not place. `fallback` names the document when the warning came from it
 /// rather than from an `{{< include >}}`d file.
-fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
+pub(crate) fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
     let file = w.file.as_deref().unwrap_or(fallback);
     match w.line {
         Some(l) => format!("{file}:{l}: {}", w.message),
@@ -516,7 +516,7 @@ fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
 /// the validator that found the defect, so `build` and `--check-only` can no longer
 /// deciding what fails the run — so a reporting channel that discards it is the channel
 /// that has to be fixed, not the exit code alone.
-fn log_located(w: &taliesin_core::render::Warning, fallback: &str) {
+pub(crate) fn log_located(w: &taliesin_core::render::Warning, fallback: &str) {
     let line = locate(w, fallback);
     match w.severity {
         taliesin_core::Severity::Error => log::error(&line),
@@ -2032,26 +2032,23 @@ async fn build_site_async(
     // Structured diagnostics accumulated in deterministic order (config → pages → site-wide),
     // for `--format json`. Mirrors the human log the build already emits.
     let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
-    // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
-    // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
-    let mut config_problems = 0usize;
-    // ...and the same finding is error-severity: with the config unparsed the site has no
-    // title, no nav and no `url:`, so the feed/sitemap surface silently vanishes. Every
-    // other `site.warnings` entry (a missing config, a benign notice) stays advice.
-    let mut config_errors = 0usize;
+    // The project's own diagnostics (`_site.yml`, a page's front matter as discovery reads
+    // it), reported and counted exactly as a page's are, so `--strict` fails on what
+    // `--check-only` fails on. They were logged as advice and counted not at all, and a
+    // `_site.yml` that dropped a book part built green under `--strict` (audit 2026-09-24
+    // NEW-B). Located relative to the site root, like every other line this build prints.
+    let config_problems = crate::lint::blocking(&site.warnings);
+    // A malformed `_site.yml` is also unparseable: with the config unread the site has no
+    // title, no nav and no `url:`, so the feed/sitemap surface silently vanishes. That
+    // fails the build with no `--strict`, like an unparseable front matter.
+    let config_errors = site
+        .warnings
+        .iter()
+        .filter(|w| taliesin_core::site::is_malformed_config_warning(w))
+        .count();
     for w in &site.warnings {
-        if taliesin_core::site::is_malformed_config_warning(w) {
-            config_problems += 1;
-            config_errors += 1;
-            diagnostics.push(crate::lint::Diagnostic::new(
-                "_site.yml".to_string(),
-                None,
-                w.clone(),
-            ));
-            log::error(w);
-            continue;
-        }
-        log::warn(w);
+        log_located(w, "_site.yml");
+        diagnostics.push(crate::lint::diag_from(w, "_site.yml"));
     }
     // Drafts (`draft: true`) are excluded from the build; report what was held back so a
     // forgotten `draft:` flag is visible rather than a silently missing page.

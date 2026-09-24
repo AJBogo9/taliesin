@@ -11,7 +11,7 @@ use super::*;
 pub(super) fn website_pages(
     root: &Path,
     mode: DraftMode,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     excluded: &mut Vec<String>,
 ) -> Vec<Page> {
     let mut inputs = Vec::new();
