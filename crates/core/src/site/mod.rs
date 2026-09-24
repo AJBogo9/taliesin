@@ -1370,6 +1370,18 @@ impl Site {
         warnings: &mut Vec<Warning>,
     ) -> Vec<&Page> {
         let prefix = Self::listing_prefix(host, spec);
+        // A `contents:` that names no directory (a typo, a glob) can list nothing. An
+        // existing directory with no pages in it yet is a new blog, and stays silent.
+        if !self.root.join(&prefix).is_dir() {
+            warnings.push(
+                Warning::new(format!(
+                    "the listing on `{}` has `contents: {}`, but there is no such directory \
+                     beside the page, so it lists nothing",
+                    host.rel, spec.contents
+                ))
+                .severity(Severity::Error),
+            );
+        }
         let mut items: Vec<&Page> = Vec::new();
         for p in &self.pages {
             if p.rel == host.rel || !p.rel.starts_with(&prefix) {
@@ -2564,6 +2576,59 @@ pub(crate) mod tests {
             site.page("index.html").is_none(),
             "nothing answers `index.html`, which is why the root needs the mapping"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A `listing:` whose `contents:` names no directory (a typo, a glob) renders no
+    /// cards, and nothing said so. An existing directory with no pages in it yet is a new
+    /// blog, not a mistake, and stays silent.
+    #[test]
+    fn a_listing_whose_contents_names_no_directory_is_diagnosed() {
+        let root = write_site(
+            "listingcontents",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "typo.tmd",
+                    "---\ntitle: Typo\nlisting:\n  contents: post\n---\n\nx\n",
+                ),
+                (
+                    "glob.tmd",
+                    "---\ntitle: Glob\nlisting:\n  contents: \"posts/*.tmd\"\n---\n\nx\n",
+                ),
+                (
+                    "ok.tmd",
+                    "---\ntitle: Ok\nlisting:\n  contents: posts\n---\n\nx\n",
+                ),
+                ("posts/a.tmd", "---\ntitle: A\n---\n\nx\n"),
+                (
+                    "empty.tmd",
+                    "---\ntitle: Empty\nlisting:\n  contents: drafts\n---\n\nx\n",
+                ),
+                ("drafts/.keep", ""),
+            ],
+        );
+        let site = Site::discover(&root);
+        for (rel, contents) in [("typo.tmd", "post"), ("glob.tmd", "posts/*.tmd")] {
+            let (_, warnings) = render_page(&site, rel);
+            assert!(
+                warnings
+                    .iter()
+                    .any(|w| w.message.contains(&format!("`contents: {contents}`"))
+                        && w.message.contains("no such directory")
+                        && w.severity == Severity::Error),
+                "{rel}: {warnings:?}"
+            );
+        }
+        for rel in ["ok.tmd", "empty.tmd"] {
+            let (_, warnings) = render_page(&site, rel);
+            assert!(
+                !warnings
+                    .iter()
+                    .any(|w| w.message.contains("no such directory")),
+                "{rel}: {warnings:?}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

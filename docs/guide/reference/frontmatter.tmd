@@ -200,10 +200,10 @@ is what every listing that used to spell it out asked for.
 
 | Sub-key | Type | Default | Meaning |
 |---|---|---|---|
-| `contents` | string | (required) | A single directory to crawl for documents, relative to this page (one directory string, not a list or glob). Every `.tmd` under it with a `title:` becomes a card; without it, there is nothing to list |
+| `contents` | string | (required) | A single directory to crawl for documents, relative to this page (one directory string, not a list or glob). Every `.tmd` under it with a `title:` becomes a card; without it, there is nothing to list. A `contents:` that names no directory is reported |
 | `id` | string | (none) | Fill a matching `::: {#id}` block in the page body instead of appending the listing to the end |
-| `type` | string | (list) | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's `image:` as a thumbnail beside the text; the default (anything else, or omitted) is the same stacked layout without images, for a formal text list |
-| `max-items` | int | (none) | Cap the number of items shown; omit it to list every match |
+| `type` | string | (list) | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's `image:` as a thumbnail beside the text; the default (omitted) is the same stacked layout without images, for a formal text list. Any other value is reported |
+| `max-items` | int | (none) | Cap the number of items shown (a whole number; any other value is reported and caps nothing); omit it to list every match |
 
 ```yaml
 ---

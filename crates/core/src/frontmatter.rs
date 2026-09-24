@@ -61,6 +61,10 @@ pub(crate) const EXECUTE_KEYS: &[&str] = &["cache"];
 /// (`a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed` pins that).
 pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items"];
 
+/// The `listing: type:` values `site::frontmatter::parse_listing_spec` reads. Any other
+/// value renders the default text list, so it is reported rather than accepted in silence.
+pub(crate) const LISTING_TYPES: &[&str] = &["grid", "list"];
+
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
 ///
 /// Text and links only: the banner is type, not a figure. `image`/`image-alt` were retired
@@ -109,12 +113,14 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     // `listing:` is one mapping or a sequence of mappings (a page carrying two lists).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
-            validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out)
+            validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out);
+            validate_listing_values(m, block, &mut out);
         }
         Some(serde_yaml::Value::Sequence(seq)) => {
             for item in seq {
                 if let Some(m) = item.as_mapping() {
                     validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out);
+                    validate_listing_values(m, block, &mut out);
                 }
             }
         }
@@ -298,6 +304,37 @@ fn validate_child_keys(
                 nested_key_span(block, parent, key),
             ));
         }
+    }
+}
+
+/// A `listing:` value its parser cannot use: a `type:` outside [`LISTING_TYPES`], which
+/// renders the default text list, and a `max-items:` that is not a whole number (`"2"`,
+/// `2.0`, `-1`), which leaves the listing uncapped and so also makes it the posts' owning
+/// listing. Both used to be dropped in silence.
+fn validate_listing_values(m: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    if let Some(ty) = crate::site::scalar(m.get("type"))
+        && !LISTING_TYPES.contains(&ty.as_str())
+    {
+        out.push(located_span(
+            unknown_key_message("listing type", &ty, LISTING_TYPES),
+            nested_key_span(block, "listing", "type"),
+        ));
+    }
+    if let Some(v) = m.get("max-items")
+        && !v.is_null()
+        && v.as_u64().is_none()
+    {
+        let shown = match v {
+            serde_yaml::Value::String(s) => format!("\"{s}\""),
+            other => crate::site::scalar(Some(other)).unwrap_or_else(|| "…".to_string()),
+        };
+        out.push(located_span(
+            format!(
+                "`max-items: {shown}` is not a whole number, so the listing is not capped \
+                 (write a count, like `max-items: 3`)"
+            ),
+            nested_key_span(block, "listing", "max-items"),
+        ));
     }
 }
 
@@ -653,6 +690,53 @@ mod tests {
         // case IS the witness — do not delete it as redundant.
         let m2 = msgs("---\ntitle: X\nlisting:\n  - contents: a\n    sort-uii: false\n---\n");
         assert_eq!(m2, vec!["unknown listing key `sort-uii`"]);
+    }
+
+    /// A `listing:` value the parser cannot use was dropped in silence: a `type:` outside
+    /// the vocabulary rendered the default text list, and a `max-items:` that is not a
+    /// whole number (`"2"`, `2.0`, `-1`) left the listing uncapped (which also made it the
+    /// posts' owning listing). Both are located now.
+    #[test]
+    fn listing_type_and_max_items_values_are_validated() {
+        let ws = validate_front_matter(
+            "---\ntitle: X\nlisting:\n  contents: posts\n  type: lists\n  max-items: 2.0\n---\n",
+        );
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("type"))
+            .unwrap_or_else(|| panic!("{ws:?}"));
+        assert_eq!(
+            w.message,
+            "unknown listing type `lists` (did you mean `list`?)"
+        );
+        assert_eq!(w.line, Some(5), "{w:?}");
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("max-items"))
+            .unwrap_or_else(|| panic!("{ws:?}"));
+        assert!(
+            w.message.contains("`max-items: 2.0` is not a whole number"),
+            "{w:?}"
+        );
+        assert_eq!(w.line, Some(6), "{w:?}");
+
+        for bad in ["\"2\"", "-1"] {
+            let m = msgs(&format!(
+                "---\ntitle: X\nlisting:\n  - contents: posts\n    max-items: {bad}\n---\n"
+            ));
+            assert!(
+                m.iter().any(|w| w.contains("not a whole number")),
+                "{bad}: {m:?}"
+            );
+        }
+        assert_eq!(
+            msgs("---\ntitle: X\nlisting:\n  contents: posts\n  type: table\n---\n"),
+            vec!["unknown listing type `table`"]
+        );
+        assert!(
+            msgs("---\ntitle: X\nlisting:\n  contents: posts\n  type: list\n  max-items: 3\n---\n")
+                .is_empty()
+        );
     }
 
     /// The listing category-filter chips were deleted 2026-08-03 (visual minimalism
