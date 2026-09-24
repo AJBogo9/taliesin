@@ -478,10 +478,11 @@ fn in_math(doc_prefix: &str, class: &taliesin_core::lines::Lines) -> bool {
         .any(|s| !s.closed)
 }
 
-/// A ` ```{lang} ` cell language being typed: a fence line whose brace is open.
+/// A ` ```{lang} ` cell language being typed: a fence line whose brace is open. The line is
+/// one core's classifier opens a fence on, so the fence is whatever run of backticks or
+/// tildes starts it, three or more.
 fn detect_cell_language(line_prefix: &str) -> Option<String> {
-    let t = line_prefix.trim_start();
-    let rest = t.strip_prefix("```").or_else(|| t.strip_prefix("~~~"))?;
+    let rest = line_prefix.trim_start().trim_start_matches(['`', '~']);
     let inner = rest.strip_prefix('{')?;
     // Still inside the brace, and still on the bare language name.
     if inner.contains('}') || inner.contains(char::is_whitespace) {
@@ -1343,6 +1344,17 @@ mod tests {
             ctx("```py", "---\nt: x\n---\n\n```py"),
             CompletionContext::None
         );
+        // A longer fence opens a cell as well (the one that can hold a ``` sample), and the
+        // classifier already said this line opens a fence: it was offered nothing.
+        for fence in ["````{py", "~~~~{py", "  ```{py"] {
+            assert_eq!(
+                ctx(fence, &format!("---\nt: x\n---\n\n{fence}")),
+                CompletionContext::CellLanguage {
+                    typed: "py".to_string()
+                },
+                "{fence}"
+            );
+        }
     }
 
     #[test]
