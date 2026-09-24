@@ -351,6 +351,8 @@ pub(crate) fn content_type(path: &Path) -> &'static str {
         Some("webp") => "image/webp",
         Some("avif") => "image/avif",
         Some("ico") => "image/x-icon",
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("txt") => "text/plain; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("json") => "application/json; charset=utf-8",
@@ -1254,6 +1256,32 @@ mod protocol_contract {
         );
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod content_type_tests {
+    use super::content_type;
+    use std::path::Path;
+
+    /// A static page or text file a project ships displays in the preview as it does on
+    /// any static host. With no arm for either, `widget.html` came back as
+    /// `application/octet-stream`, so the browser downloaded it and an `<iframe>` of it
+    /// broke in the preview only.
+    #[test]
+    fn a_static_page_and_a_text_file_display_instead_of_downloading() {
+        for (name, want) in [
+            ("widget.html", "text/html; charset=utf-8"),
+            ("OLD.HTM", "text/html; charset=utf-8"),
+            ("notes.txt", "text/plain; charset=utf-8"),
+        ] {
+            assert_eq!(content_type(Path::new(name)), want, "{name}");
+        }
+        // Anything unknown still falls back to the generic binary type.
+        assert_eq!(
+            content_type(Path::new("blob.bin")),
+            "application/octet-stream"
+        );
     }
 }
 
