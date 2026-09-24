@@ -57,12 +57,12 @@ interface Window {
   // --- Cmd-K search palette (search.js) ---
   /** Install-once guard so the palette wires its global listeners a single time. */
   taliSearchInstalled?: boolean;
-  /** Inlined / lazy-loaded cross-page search index (site + book): raw serialized
+  /** The server's search index, lazy-loaded (site + book) or inlined (a single-file
+   *  build): raw serialized
    *  entries (i=anchor id, t=title, l=level [0 = a whole-page entry], b=body text,
    *  u=page url, p=page label, c=book chapter number, h=ancestor heading path).
    *  `c` and `h` are absent outside a book / on a top-level heading, and are what let
-   *  the palette render the index as the book's outline rather than a flat row list.
-   *  A single doc builds its index from the live DOM instead. */
+   *  the palette render the index as the book's outline rather than a flat row list. */
   TALIESIN_SEARCH_INDEX?: Array<{
     i: string;
     t: string;

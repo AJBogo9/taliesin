@@ -44,6 +44,25 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
     format!("[{body}]")
 }
 
+impl Site {
+    /// The whole Cmd-K index inlined as the script body of `page`, for a page that ships
+    /// with no `search-index.js` beside it: `build <file.tmd>`, one self-contained file,
+    /// whose project is the one [`Site::discover_single`] builds for the preview, so both
+    /// verbs search the same index. It names the page too (`TALIESIN_PAGE_URL`), so a hit
+    /// scrolls in place instead of navigating to a url the build may have written under
+    /// another name. Empty when the index is.
+    pub fn inline_search_index(&self, page: &Page) -> String {
+        if self.search_index_json.is_empty() || self.search_index_json == "[]" {
+            return String::new();
+        }
+        format!(
+            "window.TALIESIN_PAGE_URL=\"{}\";window.TALIESIN_SEARCH_INDEX={};",
+            json_str(&page.url),
+            self.search_index_json
+        )
+    }
+}
+
 /// The search-index entries for ONE page as a JSON-array **body** (comma-joined
 /// `{u,p,i,l,t,b}` objects, no surrounding brackets). `None` when the page is
 /// excluded from search (the author's 404 chrome page) or its source can't be read.
@@ -150,6 +169,10 @@ pub(super) fn page_fragment(
 /// does. Getting the order wrong indexes text the page never shows: Ship A found every
 /// heading indexed unnumbered under a page reading "5.2 How nulls behave", when the
 /// numbering was a separate step this skipped.
+///
+/// The one thing the served page has that a render cannot is what its cells print, since
+/// nothing here runs them. Each executed figure's and table's numbered caption is added
+/// after its cell ([`executed_captions`]), before the registry resolves refs in it.
 pub(super) fn render_finished(
     page: &Page,
     chapter: Option<u32>,
@@ -159,59 +182,82 @@ pub(super) fn render_finished(
     let src = crate::includes::read_source(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
     let mut doc = render::render_document_scoped_with_site(&src, base, chapter, site_defaults);
+    if !render::no_exec_in_force() {
+        for b in &mut doc.blocks {
+            let captions = executed_captions(b);
+            b.html.push_str(&captions);
+        }
+    }
     super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
     Some((src, doc))
+}
+
+/// The numbered captions the executor puts under `block`'s cells' output ("Figure 5.2:
+/// Variance explained…"), built as `exec.rs` builds them: core's one caption function, then
+/// its cross-references marked for the registry to resolve. A caption is written in the
+/// source and its number is reserved at render, so it is known without running the cell;
+/// the output itself is not, and is not indexed. Only a cell whose output the page keeps
+/// carries a `figure`/`table` (the render leaves both unset for `include: false`), and
+/// `--no-exec` shows none of them.
+fn executed_captions(block: &render::Block) -> String {
+    block
+        .cells()
+        .filter_map(|c| {
+            let (label, number, caption) = match (&c.figure, &c.table) {
+                (Some(f), _) => ("Figure", &f.number, &f.caption),
+                (None, Some(t)) => ("Table", &t.number, &t.caption),
+                (None, None) => return None,
+            };
+            Some(format!(
+                "<figcaption>{}</figcaption>",
+                crate::cite::link_xrefs_in_fragment(&render::numbered_caption(
+                    label,
+                    number,
+                    caption.as_deref(),
+                ))
+            ))
+        })
+        .collect()
 }
 
 /// Scan rendered HTML for `<h1..6 id="…">text</hN>`, returning, per anchored
 /// heading, `(level, id, text, open_byte, close_end_byte)` — the byte span lets
 /// the caller slice each section's body (heading-close → next heading-open).
+///
+/// The headings are the ones the one walker ([`render::tags`]) finds, so a heading is an
+/// element on the page: markup inside a `<!-- comment -->` or a `<script>` body is not
+/// one. A bare `find("<h")` took both for headings, and the palette offered results
+/// pointing at ids the page does not carry. The id is read through the walker too:
+/// quote-aware, matched as a whole NAME, and decoded, so the index carries the id the
+/// browser resolves (`r&d-notes`, not the `r&amp;d-notes` a needle cut out of the markup).
 pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
     let mut out = Vec::new();
-    let mut pos = 0; // byte offset of `rest` within `html`
-    let mut rest = html;
-    while let Some(p) = rest.find("<h") {
-        pos += p;
-        rest = &rest[p..];
-        let open_start = pos;
-        let level = rest
-            .as_bytes()
-            .get(2)
-            .map(|b| b.wrapping_sub(b'0'))
-            .filter(|l| (1..=6).contains(l));
-        let Some(level) = level else {
-            pos += 2;
-            rest = &rest[2..];
+    // Where the last heading closed: a tag before this sits inside that heading.
+    let mut done = 0;
+    for open in render::tags(html) {
+        let level = match open.name.as_bytes() {
+            [b'h' | b'H', l @ b'1'..=b'6'] => l - b'0',
+            _ => continue,
+        };
+        if open.at < done {
             continue;
-        };
-        // The opening tag through the one walker: quote-aware, `id` matched as a whole
-        // NAME, and the value decoded, so the index carries the id the browser resolves
-        // (`r&d-notes`, not the `r&amp;d-notes` a needle cut out of the markup).
-        let Some(open) = render::tags(rest).next() else {
-            break;
-        };
-        let gt = open.text.len() - 1;
-        let id = render::attr_value(&open, "id").map(std::borrow::Cow::into_owned);
+        }
+        let inner_start = open.at + open.text.len();
         let close = format!("</h{level}>");
-        let inner = &rest[gt + 1..];
-        let Some(end) = inner.find(&close) else {
-            pos += gt + 1;
-            rest = inner;
+        let Some(end) = html[inner_start..].find(&close) else {
             continue;
         };
-        let close_end = pos + gt + 1 + end + close.len();
-        if let Some(id) = id {
+        let close_end = inner_start + end + close.len();
+        done = close_end;
+        if let Some(id) = render::attr_value(&open, "id") {
             out.push((
                 level,
-                id,
-                section_text(&inner[..end]),
-                open_start,
+                id.into_owned(),
+                render::heading_text(&html[inner_start..inner_start + end]),
+                open.at,
                 close_end,
             ));
         }
-        let advance = gt + 1 + end + close.len();
-        pos += advance;
-        rest = &rest[advance..];
     }
     out
 }
@@ -226,8 +272,10 @@ pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, u
 /// took the tail off 18.7% of the Guide's section records and 25.9% of the Internals' —
 /// roughly 15% of each book's prose, silently: no signal to the reader searching for a
 /// phrase that is on the page, and none to the author. Uncapping grows the indexed text by
-/// only ~1.17x (measured on both books), and `score()` is `indexOf` scans over that text at
-/// well under a millisecond per keystroke, so the cap was never buying what it cost.
+/// only ~1.17x (measured on both books), so the cap was never buying what it cost. What a
+/// keystroke costs is the typo tier's pass over each record's words, not the `indexOf`
+/// scans: `score()` over the Guide's 130 records took about 4 ms per keystroke re-splitting
+/// every body, and about 2 ms once the words are split once per load (node, 2026-09-24).
 pub(super) fn section_text(html: &str) -> String {
     render::indexable_text(html)
 }
@@ -326,7 +374,7 @@ mod tests {
             !text.contains("\\pi"),
             "raw LaTeX leaked into the index: {text}"
         );
-        assert_eq!(text, "Euler: eiπ .");
+        assert_eq!(text, "Euler: eiπ.");
     }
 
     #[test]
@@ -357,6 +405,116 @@ mod tests {
         );
         // The span between heading a's close and heading b's open is a's section.
         assert_eq!(section_text(&html[hs[0].4..hs[1].3]), "body of a");
+    }
+
+    /// Code is searchable as the reader sees it. A space went in at every tag, and syntax
+    /// highlighting wraps each token in a `<span>`, so the index held `matplotlib . pyplot`
+    /// and `np . linspace ( 0 , 10 )`: typing `plt.show()` or `np.linspace` found nothing
+    /// on any page. Inline code in prose read `( exec.rs )` the same way.
+    #[test]
+    fn code_is_indexed_with_its_tokens_joined() {
+        let doc = crate::render::render_document(
+            "Run it (`exec.rs`) now.\n\n```python\nimport matplotlib.pyplot as plt\n\
+             bins = np.linspace(0, 10, 12)\nplt.show()\n```\n\nAfter.\n",
+        );
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            html.contains("<span"),
+            "sanity: the fence is highlighted: {html}"
+        );
+        let text = section_text(&html);
+        for needle in [
+            "(exec.rs) now.",
+            "import matplotlib.pyplot as plt",
+            "np.linspace(0, 10, 12)",
+            "plt.show()",
+        ] {
+            assert!(
+                text.contains(needle),
+                "{needle:?} is not searchable: {text}"
+            );
+        }
+        // A code block is still its own block: its first and last words do not weld onto
+        // the prose around it.
+        assert!(text.contains("now. import") && text.ends_with("plt.show() After."));
+    }
+
+    /// A result's title is the heading's text as the TOC shows it, one extractor for both:
+    /// `(exec.rs)`, not `( exec.rs )`, and inline math once, as its glyphs, unsplit.
+    #[test]
+    fn a_result_title_reads_like_its_toc_entry() {
+        let doc = crate::render::render_document("## The executor (`exec.rs`) under $H_0$ {#ex}\n");
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        let hs = headings_with_pos(&html);
+        assert_eq!(hs.len(), 1, "{html}");
+        // KaTeX closes the glyphs with an invisible U+200B, which the TOC carries too.
+        assert_eq!(
+            hs[0].2.trim_end_matches('\u{200b}'),
+            "The executor (exec.rs) under H0"
+        );
+    }
+
+    /// A diagram's source is not on the page: mermaid.js replaces the `<pre>` with the
+    /// drawing. Indexed, it put `flowchart LR BR["Browser preview<br/>…` into snippets.
+    /// The caption is the diagram's text the reader sees, so it stays searchable.
+    #[test]
+    fn mermaid_source_is_not_indexed_but_its_caption_is() {
+        let doc = crate::render::render_document(
+            "Before.\n\n```{mermaid}\nflowchart LR\n  Alpha --> Beta\n```\n\n\
+             ```{mermaid}\n%%| label: fig-flow\n%%| fig-cap: The flowcaption.\n\
+             sequenceDiagram\n  A->>B: hi\n```\n\nAfter.\n",
+        );
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(html.matches("class=\"mermaid\"").count() == 2, "{html}");
+        let text = section_text(&html);
+        for gone in ["flowchart", "Alpha", "Beta", "sequenceDiagram", "hi"] {
+            assert!(
+                !text.contains(gone),
+                "diagram source {gone:?} indexed: {text}"
+            );
+        }
+        assert!(
+            text.starts_with("Before. Figure 1") && text.ends_with("The flowcaption. After."),
+            "{text}"
+        );
+    }
+
+    /// A commented-out heading is not on the page, so it is not a result. It was found by a
+    /// bare `find("<h")`, which cannot tell a comment from markup: the palette offered
+    /// "Old section title" pointing at an id no element carries, and it took the visible
+    /// prose after the comment away from the real section. An apostrophe in a comment
+    /// used to empty the rest of its section the same way.
+    #[test]
+    fn a_commented_out_heading_is_not_a_result() {
+        let html = "<h2 id=\"a\">A</h2><!-- TODO: don't forget -->\
+                    <p>Kept.</p><!--\n<h2 id=\"old\">Old section title</h2>\n\
+                    <p>Old paragraph.</p>\n--><p>Current prose.</p>\
+                    <h2 id=\"b\">B</h2><p>b</p>";
+        let hs = headings_with_pos(html);
+        let ids: Vec<&str> = hs.iter().map(|h| h.1.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
+        assert_eq!(
+            section_text(&html[hs[0].4..hs[1].3]),
+            "Kept. Current prose."
+        );
+    }
+
+    /// Heading markup inside a `<script>` body is a JavaScript string, not a heading. Read
+    /// as one, it filed a phantom result under an id the static page lacks, gave it the
+    /// script's own source as its text, and took the prose after the script with it.
+    #[test]
+    fn heading_markup_inside_a_script_is_not_a_result() {
+        let html = "<h2 id=\"real\">Real</h2><p>Real prose.</p><div id=\"app\"></div>\
+                    <script>const tpl = '<h2 id=\"phantom\">Phantom</h2><p>body</p>';\
+                    document.getElementById(\"app\").innerHTML = tpl;</script>\
+                    <p>After the script.</p><h2 id=\"second\">Second</h2><p>2</p>";
+        let hs = headings_with_pos(html);
+        let ids: Vec<&str> = hs.iter().map(|h| h.1.as_str()).collect();
+        assert_eq!(ids, ["real", "second"]);
+        assert_eq!(
+            section_text(&html[hs[0].4..hs[1].3]),
+            "Real prose. After the script."
+        );
     }
 
     /// The id a hit navigates to is the id the heading carries, read the way the browser

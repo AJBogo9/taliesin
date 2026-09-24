@@ -101,12 +101,12 @@ mod image_meta;
 use image_meta::ImageAnnotator;
 // Text projection: a plain-text VIEW of the block model, not an output format. Named for
 // the `read` verb until wave 9 cut it, and documented as reached via a
-// `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its one live
-// consumer is `indexable_text` below.
+// `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its live
+// consumers are `indexable_text` and `heading_text` below.
 mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
-pub(crate) use text::indexable_text;
+pub(crate) use text::{heading_text, indexable_text};
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
@@ -114,7 +114,7 @@ use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
     html_page_from_doc_in_site_external, render_doc_to_page, render_doc_to_page_external,
-    render_doc_to_page_mermaid_file, title_with_site_suffix,
+    render_single_doc_page, title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -3658,11 +3658,33 @@ enum Separate {
 fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
+    // Depth of `<pre>`/`<code>` elements around the current position. Code carries every
+    // space the reader sees as text of its own (a listing's newlines, the gap between two
+    // tokens), and syntax highlighting wraps each token in a `<span>`, so a tag in there
+    // marks up a TOKEN and a boundary splits it: `np.linspace` was indexed `np . linspace`
+    // and no code on any page could be found by typing it.
+    let mut code = 0usize;
+    // A word boundary a tag asked for, left in front of the next text (see [`push_text`]).
+    let mut pending = false;
     let mut i = 0;
     while let Some(rel) = html[i..].find('<') {
         let lt = i + rel;
+        // Markup starts with a name, a `/`, a `!` or a `?` after the `<`, as the walker
+        // ([`tags`]) and the browser read it. Any other `<` is text (`1 < 2` in a raw-HTML
+        // block), and read as a tag it hid everything up to the next `>`.
+        let markup = html
+            .as_bytes()
+            .get(lt + 1)
+            .is_some_and(|b| b.is_ascii_alphabetic() || matches!(b, b'/' | b'!' | b'?'));
+        if !markup {
+            if skip_math == 0 {
+                push_text(&mut out, &mut pending, &html[i..=lt]);
+            }
+            i = lt + 1;
+            continue;
+        }
         if skip_math == 0 {
-            out.push_str(&html[i..lt]);
+            push_text(&mut out, &mut pending, &html[i..lt]);
         }
         // The tag body up to the `>` that closes it, through [`tag_end`]: quote-aware (a
         // `>` inside a quoted attribute value does not end the tag), and a comment is one
@@ -3680,18 +3702,30 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             .take_while(|c| c.is_ascii_alphanumeric())
             .flat_map(|c| c.to_lowercase())
             .collect();
+        // A diagram's source: mermaid.js replaces this `<pre>` with the drawing, so its
+        // text is never on the page (the caption, in the `<figcaption>`, is).
+        let diagram = !is_close
+            && name == "pre"
+            && tags(&html[lt..])
+                .next()
+                .and_then(|t| attr_value(&t, "class"))
+                .is_some_and(|c| c.split_ascii_whitespace().any(|c| c == "mermaid"));
+        let is_code = (name == "pre" && !diagram) || name == "code";
+        if is_code && is_close {
+            code = code.saturating_sub(1);
+        }
         // Decided from the tag NAME, so it has to follow the parse above rather than
-        // precede it. Nothing else is pushed in between, so the space still lands
-        // exactly where the tag was.
+        // precede it. Never inside code, and never at a `<code>` tag
+        // itself, which is inline (`(<code>exec.rs</code>)` reads "(exec.rs)"); a
+        // `<pre>` is a block, so its own two tags still separate it from the prose.
         let boundary = match separate {
             Separate::Never => false,
-            Separate::EveryTag => true,
+            Separate::EveryTag => code == 0 && name != "code",
         };
-        // Never double a boundary that is already there. `</span> <span>` carries a
-        // real space of its own, and pushing a second one publishes "models.  14 April".
-        if boundary && !out.ends_with(char::is_whitespace) {
-            out.push(' ');
+        if is_code && !is_close && !tag.trim_end().ends_with('/') {
+            code += 1;
         }
+        pending |= boundary;
         if name == "math" {
             if is_close {
                 skip_math = skip_math.saturating_sub(1);
@@ -3699,7 +3733,7 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
                 skip_math += 1;
             }
         } else if !is_close
-            && RAW_TEXT_ELEMENTS.contains(&name.as_str())
+            && (RAW_TEXT_ELEMENTS.contains(&name.as_str()) || diagram)
             && !tag.trim_end().ends_with('/')
         {
             // A `<script>`/`<style>` body is not visible text — same reason `<math>`
@@ -3713,7 +3747,8 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             // is text, and a counter would take it for an open tag and silently drop
             // the whole rest of the page from the index. This is the HTML raw-text
             // rule ([`raw_text_end`], the walker's), which is also why
-            // `emit_client_cell` escapes `</script` in the source it ships.
+            // `emit_client_cell` escapes `</script` in the source it ships. A diagram's
+            // `<pre>` holds escaped text only, so its first `</pre` is its own.
             let close = raw_text_end(html, i, &name);
             // Swallow the close tag too (`>` or ` foo>`).
             i = html[close..]
@@ -3722,9 +3757,30 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
         }
     }
     if skip_math == 0 {
-        out.push_str(&html[i..]);
+        push_text(&mut out, &mut pending, &html[i..]);
     }
     out.trim().to_string()
+}
+
+/// Append a run of `text` to [`strip_tags_inner`]'s output, first leaving the word boundary
+/// a tag asked for (`pending`). The space goes in only where the page shows one: not
+/// against one already there (`</span> <span>` carries its own, and a second published
+/// "models.  14 April"), and not between text and punctuation that touches it, which no tag
+/// separates on the page (`Figure 1</span>: The caption` read "Figure 1 : The caption",
+/// `(<em>x</em>)` read "( x )").
+fn push_text(out: &mut String, pending: &mut bool, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if std::mem::take(pending)
+        && !out.ends_with(|c: char| c.is_whitespace() || matches!(c, '(' | '['))
+        && !text.starts_with(|c: char| {
+            c.is_whitespace() || matches!(c, '.' | ',' | ':' | ';' | '!' | '?' | ')' | ']')
+        })
+    {
+        out.push(' ');
+    }
+    out.push_str(text);
 }
 
 /// The plain text of a document's leading `# H1`, when that H1 is the document's *first*

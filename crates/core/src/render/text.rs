@@ -35,6 +35,17 @@ pub(crate) fn indexable_text(html: &str) -> String {
         .join(" ")
 }
 
+/// The text of ONE heading, for a search result's title: the TOC entry's own extraction
+/// ([`strip_tags`], no boundary at any tag), decoded and whitespace-collapsed like
+/// [`indexable_text`]. A heading is one run of text, so a tag inside it separates nothing:
+/// read with a boundary at each one, `$H_0$` came out `H 0` beside a TOC reading `H0`.
+pub(crate) fn heading_text(html: &str) -> String {
+    decode(&strip_tags(html))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,6 +72,48 @@ mod tests {
             "Title Body text"
         );
         assert_eq!(indexable_text("<p>a   b\n\nc</p>"), "a b c");
+    }
+
+    /// A tag boundary separates fields and blocks; it never parts text from punctuation
+    /// that touches it on the page. Every numbered caption read "Figure 1 : The caption"
+    /// against a page reading "Figure 1: The caption", and "(<em>x</em>)" read "( x )".
+    #[test]
+    fn a_boundary_never_parts_text_from_the_punctuation_it_touches() {
+        assert_eq!(
+            indexable_text(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>: \
+                 The caption.</figcaption>"
+            ),
+            "Figure 1: The caption."
+        );
+        assert_eq!(
+            indexable_text("<p>Some (<em>emph</em>), then <a href=\"#x\">a link</a>.</p>"),
+            "Some (emph), then a link."
+        );
+        // Fields and blocks still separate, and an existing space is not doubled.
+        assert_eq!(
+            indexable_text("<p>First.</p><p>Second.</p><div><span>A</span><span>B</span></div>"),
+            "First. Second. A B"
+        );
+        assert_eq!(
+            indexable_text("<p>x</p><script>y</script><p>(z)</p>"),
+            "x (z)"
+        );
+    }
+
+    /// A `<` that opens no tag is text, as the walker ([`tags`]) and the browser read it:
+    /// an unescaped `a < b` in a raw-HTML block shows on the page. Read as the start of a
+    /// tag, it hid everything up to the next `>`.
+    #[test]
+    fn a_lt_that_opens_no_tag_is_text() {
+        let html = "<p>If 1 < 2 and 3 > 2, then <b>so</b>.</p>";
+        assert_eq!(strip_tags(html), "If 1 < 2 and 3 > 2, then so.");
+        assert_eq!(
+            indexable_text("<p>If 1 < 2 and 3 > 2.</p><p>Next.</p>"),
+            "If 1 < 2 and 3 > 2. Next."
+        );
+        // A comment, a closing tag and a doctype are still markup.
+        assert_eq!(strip_tags("<!DOCTYPE html><p>a<!-- b -->c</p>"), "ac");
     }
 
     /// A `{js}`/`{glsl}` cell ships its author source inside a `<script type="…">` in the

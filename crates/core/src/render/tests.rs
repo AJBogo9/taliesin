@@ -1032,7 +1032,7 @@ fn a_named_mermaid_file_is_linked_instead_of_inlined() {
         "the single-file build still inlines"
     );
 
-    let linked = super::render_doc_to_page_mermaid_file(&doc, "stem", "mermaid.min.js");
+    let linked = super::render_single_doc_page(&doc, "stem", "mermaid.min.js", "");
     assert!(
         !linked.contains("__esbuild_esm_mermaid"),
         "a named sibling file must replace the inlined library, not accompany it"
@@ -5365,6 +5365,53 @@ fn syntax_comment_token_meets_wcag_aa() {
         wcag_contrast(dark, dark_bg) >= 4.5,
         "dark comment {dark} vs {dark_bg} = {:.2}",
         wcag_contrast(dark, dark_bg)
+    );
+}
+
+/// Two fades that mark a target, not motion: under reduced motion the global rule collapses
+/// every animation to .001ms, and a fade with fill-mode `forwards` then lands on its
+/// transparent end keyframe, so the target is never marked. The search-hit flash was
+/// exempted for this; the preview's click-to-source outline (`tali-hl-flash`) has the same
+/// shape and went invisible. And on paper, a post's "back to listing" link is chrome like the
+/// navbar beside it, a dead word, so it is hidden with it (audit 2026-09-24, WP6 leftovers).
+#[test]
+fn reduced_motion_keeps_the_target_fades_and_print_drops_the_back_link() {
+    let block = |open: &str| -> &str {
+        let from = BASE_CSS.find(open).expect("the media block exists") + open.len();
+        let body = &BASE_CSS[from..];
+        // The block ends at the first line that closes it at the media block's indent.
+        &body[..body.find("\n  }\n").expect("the media block closes")]
+    };
+    let reduce = block("@media (prefers-reduced-motion: reduce) {");
+    assert!(
+        reduce.contains("[data-block-id].tali-hl-flash { animation-duration: .7s !important; }"),
+        "the click-to-source outline keeps its fade under reduced motion: {reduce}"
+    );
+    // The print chrome list: the rule that hides the controls also hides the navbar.
+    let from = BASE_CSS
+        .find("#tali-controls, #tali-diagnostics")
+        .expect("the print chrome list");
+    let hide = &BASE_CSS[from..from + BASE_CSS[from..].find('{').expect("a rule")];
+    assert!(
+        hide.contains(".tali-listing-backnav") && hide.contains(".tali-site-nav"),
+        "the back link is hidden on paper with the navbar: {hide}"
+    );
+}
+
+/// The palette is a modal: the shared focus trap marks the overlay `aria-modal`, which is
+/// meaningful only on a dialog, and a screen reader announces a dialog by its name. The
+/// overlay had neither, so it read as an unnamed generic container (audit 2026-09-24, search
+/// #9d); the book drawer, the other modal, has been a named dialog since 2369d80.
+#[test]
+fn the_cmd_k_overlay_is_a_named_dialog() {
+    assert!(
+        SEARCH_JS.contains("overlay.setAttribute(\"role\", \"dialog\");")
+            && SEARCH_JS.contains("overlay.setAttribute(\"aria-label\", \"Search\");"),
+        "the overlay the focus trap marks aria-modal must be a named role=dialog"
+    );
+    assert!(
+        SEARCH_JS.contains("window.taliFocusTrap(overlay, input)"),
+        "the dialog is the node the trap marks aria-modal"
     );
 }
 

@@ -17,26 +17,33 @@ pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputM
     page_from_doc(doc, fallback_title, mode)
 }
 
-/// Like [`render_doc_to_page`] in [`OutputMode::Build`], but the vendored mermaid library is
-/// fetched from `mermaid_src` beside the page instead of inlined into it. **The caller owns
-/// the href and has undertaken to write that file**, the same contract
-/// [`render_doc_to_page_external`] has for `_assets/`.
+/// `build <file.tmd>`'s page: [`render_doc_to_page`] in [`OutputMode::Build`], carrying the
+/// document's own Cmd-K index inline. `search_index` is the script body
+/// `Site::inline_search_index` returns, the index `preview <file.tmd>` serves; a
+/// single-file page has no `search-index.js` beside it to load one from, and the palette
+/// used to build its own out of the DOM instead, which indexed raw TeX, `<script>` bodies
+/// and a 1500-character cut of each section the preview's index does not.
 ///
-/// The one caller is `build <file.tmd> --out <dir>`, whose contract is a folder rather than a
-/// file. The library was the one inlined blob paying for a guarantee that mode never needed:
-/// measured 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B.
-/// Everything else stays inline there, because this is about mermaid's size and not about
-/// externalizing the framework. Plain `build <file.tmd>` keeps inlining, since one
-/// self-contained file is its whole point.
-pub fn render_doc_to_page_mermaid_file(
+/// A non-empty `mermaid_src` fetches the vendored mermaid library from that href beside the
+/// page instead of inlining it. **The caller owns the href and has undertaken to write that
+/// file**, the same contract [`render_doc_to_page_external`] has for `_assets/`. That is
+/// `build <file.tmd> --out <dir>`, whose contract is a folder rather than a file. The
+/// library was the one inlined blob paying for a guarantee that mode never needed: measured
+/// 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B. Everything
+/// else stays inline there, because this is about mermaid's size and not about
+/// externalizing the framework. Plain `build <file.tmd>` passes `""` and keeps inlining,
+/// since one self-contained file is its whole point.
+pub fn render_single_doc_page(
     doc: &RenderedDoc,
     fallback_title: &str,
     mermaid_src: &str,
+    search_index: &str,
 ) -> String {
     html_page_inner(
         doc,
         fallback_title,
         None,
+        search_index,
         OutputMode::Build,
         AssetMode::Inline { mermaid_src },
     )
@@ -59,6 +66,7 @@ pub fn render_doc_to_page_external(
         doc,
         fallback_title,
         None,
+        "",
         OutputMode::Build,
         AssetMode::External(assets),
     )
@@ -487,6 +495,7 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode)
         doc,
         fallback_title,
         None,
+        "",
         mode,
         AssetMode::Inline { mermaid_src: "" },
     )
@@ -508,6 +517,7 @@ pub fn html_page_from_doc_in_site(
         doc,
         fallback_title,
         Some(site),
+        "",
         OutputMode::Build,
         AssetMode::Inline { mermaid_src: "" },
     )
@@ -525,6 +535,7 @@ pub fn html_page_from_doc_in_site_external(
         doc,
         fallback_title,
         Some(site),
+        "",
         OutputMode::Build,
         AssetMode::External(assets),
     )
@@ -592,6 +603,9 @@ fn html_page_inner(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: Option<&SiteCtx>,
+    // The JS that inlines a standalone page's own index ([`render_single_doc_page`]); a
+    // site page's comes from `site.search_index` instead.
+    search_index: &str,
     mode: OutputMode,
     assets: AssetMode,
 ) -> String {
@@ -648,11 +662,10 @@ fn html_page_inner(
     let search_script = if toc.is_empty() && site.is_none() {
         String::new()
     } else {
-        let index = site
-            .map(|s| s.search_index.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|idx| format!("<script>{idx}</script>\n"))
-            .unwrap_or_default();
+        let index = match site.map_or(search_index, |s| s.search_index.as_str()) {
+            "" => String::new(),
+            idx => format!("<script>{idx}</script>\n"),
+        };
         match &assets {
             // Inline: the per-page index (if any) followed by the palette runtime.
             AssetMode::Inline { .. } => format!("{index}{}", search_scripts()),
