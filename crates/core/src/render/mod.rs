@@ -146,6 +146,7 @@ pub fn render_document(src: &str) -> RenderedDoc {
         None,
         None,
         None,
+        false,
     )
 }
 
@@ -211,7 +212,7 @@ pub fn render_document_with_includes_scoped(
     base_dir: &Path,
     chapter: Option<u32>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, None)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, None, false)
 }
 
 /// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
@@ -225,7 +226,27 @@ pub fn render_document_scoped_with_site(
     chapter: Option<u32>,
     site: Option<&SiteDefaults>,
 ) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, site)
+    render_doc_with_includes_impl(src, base_dir, chapter, None, site, false)
+}
+
+/// [`render_document_scoped_with_site`] for a caller that keeps only the page's cross-reference
+/// numbers ([`RenderedDoc::xref_numbers`]) and the text of its headings: the project's
+/// cross-reference harvest, which renders every page on every save.
+///
+/// Every number comes from the same walk, so it is the number the served page shows. What is
+/// skipped is what the harvest threw away: math outside a heading is left untypeset (a heading
+/// keeps its math, because its text names a cross-page `@sec-` link), and images are not
+/// measured. Typesetting was most of a harvest render, directly and through every later pass
+/// that walks the HTML, and past the math memo's capacity each save re-typeset the whole
+/// project's math on the one KaTeX thread: 10.7 s per save at 9,693 expressions (audit
+/// 2026-09-24, F1). So the blocks are not the page: never serve them.
+pub(crate) fn render_numbers_scoped_with_site(
+    src: &str,
+    base_dir: &Path,
+    chapter: Option<u32>,
+    site: Option<&SiteDefaults>,
+) -> RenderedDoc {
+    render_doc_with_includes_impl(src, base_dir, chapter, None, site, true)
 }
 
 /// Render one **invoked** document: `build`, `preview`, `check`, `read`, `map` or the LSP
@@ -247,7 +268,7 @@ pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let site = SiteDefaults {
         bibliography: crate::site::shared_for_single_doc(&root),
     };
-    render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site))
+    render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site), false)
 }
 
 fn render_doc_with_includes_impl(
@@ -256,6 +277,7 @@ fn render_doc_with_includes_impl(
     chapter: Option<u32>,
     root: Option<&Path>,
     site: Option<&SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
     let (expanded, origins, include_warnings) =
         crate::includes::resolve_warned_in(src, base_dir, root);
@@ -292,6 +314,7 @@ fn render_doc_with_includes_impl(
         root.map(Path::to_path_buf),
         chapter,
         site.cloned(),
+        numbers_only,
     );
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
@@ -387,7 +410,7 @@ fn render_budget() -> Option<std::time::Duration> {
 /// channel as a broken ref, so the preview shows it, `check` exits non-zero, and a site
 /// build loses one page instead of the whole run.
 fn refused_render(warning: Warning) -> RenderedDoc {
-    let mut doc = render_internal_impl("", None, None, None, None, None);
+    let mut doc = render_internal_impl("", None, None, None, None, None, false);
     doc.warnings.push(warning);
     doc
 }
@@ -425,6 +448,7 @@ fn render_internal(
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
     // Behind an `Arc` so the worker and the no-worker fallback can both reach it: a job the
     // pool could not place is dropped unrun, so the inputs cannot simply be moved in.
@@ -435,6 +459,7 @@ fn render_internal(
         include_root,
         chapter,
         site,
+        numbers_only,
     });
     // `sync_channel(1)` so an abandoned worker never blocks forever on its send.
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
@@ -483,6 +508,7 @@ struct RenderInput {
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
+    numbers_only: bool,
 }
 
 impl RenderInput {
@@ -494,6 +520,7 @@ impl RenderInput {
             self.include_root.as_deref(),
             self.chapter,
             self.site.as_ref(),
+            self.numbers_only,
         )
     }
 }
@@ -505,6 +532,7 @@ fn render_internal_impl(
     include_root: Option<&Path>,
     chapter: Option<u32>,
     site: Option<&SiteDefaults>,
+    numbers_only: bool,
 ) -> RenderedDoc {
     // Bound nesting BEFORE the parse. Past the measured cliff the recursive descent
     // overflows even this thread's 256 MB stack and *aborts the process* — uncatchable, and
@@ -514,7 +542,7 @@ fn render_internal_impl(
     // supplies a well-formed doc to hang the warning on (`""` cannot recurse: no nesting).
     if let Some((line, depth)) = overlong_nesting(src) {
         let (file, mapped) = map_origin(origins, line);
-        let mut doc = render_internal_impl("", None, base_dir, include_root, chapter, site);
+        let mut doc = render_internal_impl("", None, base_dir, include_root, chapter, site, false);
         doc.warnings.push(
             Warning::new(format!(
                 "document nests {depth} levels deep at this line, over the {MAX_NESTING_DEPTH}-level limit; \
@@ -687,11 +715,27 @@ fn render_internal_impl(
         .flatten();
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
+    // A numbers-only render typesets a heading's math and nothing else's (see
+    // `render_numbers_scoped_with_site`): the math a block shows is never a number.
+    let typeset = |latex: &str| {
+        if numbers_only {
+            String::new()
+        } else {
+            latex.to_string()
+        }
+    };
     for node in root.children() {
         // A definition renders at its reference, never in place (the pre-pass above
         // already holds it). comrak has moved them all to the document end.
         if matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) {
             continue;
+        }
+        if numbers_only && !matches!(node.data.borrow().value, NodeValue::Heading(_)) {
+            for d in node.descendants() {
+                if let NodeValue::Math(m) = &mut d.data.borrow_mut().value {
+                    m.literal.clear();
+                }
+            }
         }
         // A `:::` marker reaches the parse as a thematic break, to end the blocks above it
         // (`DivFences::replace_markers`); it is not a rule on the page.
@@ -922,7 +966,7 @@ fn render_internal_impl(
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
             html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
-            html.push_str(&crate::math::render(env, true));
+            html.push_str(&crate::math::render(&typeset(env), true));
             html.push_str("</div>");
         } else if let Some((latex, anchor)) = is_paragraph
             .then(|| labelled_display_eq(&block_src))
@@ -940,7 +984,7 @@ fn render_internal_impl(
                 source_file.as_deref(),
                 src_line as u32,
             );
-            html.push_str(&emit_equation(&latex, &anchor, &attrs, &eq_num));
+            html.push_str(&emit_equation(&typeset(&latex), &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
@@ -1214,7 +1258,7 @@ fn render_internal_impl(
         // not shove the text below it down the page. Relative to `base_dir` like every other
         // asset reference the build resolves (`copy_local_assets`), which is also what an
         // `{{< include >}}`d block's paths already resolve against.
-        if let Some(base) = base_dir {
+        if let Some(base) = base_dir.filter(|_| !numbers_only) {
             html = image_annotator.annotate(&html, base);
         }
         // Splice each note in immediately after its own `<sup>`. Last, so the note's

@@ -75,6 +75,17 @@ pub fn render(latex: &str, display: bool) -> String {
     html
 }
 
+/// Whether `(latex, display)` has been typeset in this process, i.e. is in the memo. Test-only:
+/// the witness that a pass did or did not typeset something.
+#[cfg(test)]
+pub(crate) fn is_memoized(latex: &str, display: bool) -> bool {
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map
+        .contains_key(&(latex.to_string(), display))
+}
+
 /// One KaTeX request: the expression, its mode, and where to send the HTML back.
 type Job = (String, bool, Sender<String>);
 

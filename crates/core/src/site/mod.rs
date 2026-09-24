@@ -1268,8 +1268,9 @@ impl Site {
         }
     }
 
-    /// Render-harvest: render each page once (scoped to its chapter) and fill in the
-    /// CROSS-PAGE facts the lightweight source-scan can't know — a section / figure /
+    /// Render-harvest: render each page once (scoped to its chapter, through
+    /// `render::render_numbers_scoped_with_site`, which typesets nothing this discards) and
+    /// fill in the CROSS-PAGE facts the lightweight source-scan can't know — a section / figure /
     /// equation / table / listing number is assigned only during render, so
     /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`, so a
     /// `@fig-x` to another page renders "Figure&nbsp;2.3" instead of a bare "Figure", and a
@@ -1301,8 +1302,7 @@ impl Site {
             };
             let base = page.input.parent().unwrap_or(&self.root);
             let chapter = self.chapter_for(page);
-            let doc =
-                render::render_document_scoped_with_site(&src, base, chapter, Some(&defaults));
+            let doc = render::render_numbers_scoped_with_site(&src, base, chapter, Some(&defaults));
             let mut mine: Vec<(String, String, String)> = Vec::new();
             for (anchor, number) in doc.xref_numbers {
                 // These three conditions gate an INSERT, not just an enrich, so each has
@@ -2760,6 +2760,109 @@ pub(crate) mod tests {
             site.xref_targets
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// The harvest renders every page on every save and keeps only the numbers and the
+    /// heading text, so a paragraph's math is typeset for nothing: it was most of a harvest
+    /// render, and past the math memo's capacity every save re-typeset the whole project on the
+    /// one KaTeX thread (10.7 s per save at 9,693 expressions, audit 2026-09-24, F1). A
+    /// heading's math is still typeset, because its text names an unnumbered `@sec-` link.
+    /// Witnessed through the memo: an expression nothing typeset is not in it.
+    #[test]
+    fn the_harvest_numbers_a_page_without_typesetting_its_body_math() {
+        let root = write_site(
+            "harvest-math",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - one.tmd\n",
+                ),
+                ("index.tmd", "# Preface {.unnumbered}\n\nSee @sec-probe.\n"),
+                (
+                    "one.tmd",
+                    "# One\n\n## The $x_{h7731}$ case {#sec-probe}\n\n\
+                     Body $y_{b7731}$ text.\n\n$$ z_{e7731} $$ {#eq-probe}\n",
+                ),
+            ],
+        );
+        let mut site = Site::discover_registry(&root);
+        site.harvest_xref_numbers();
+        assert_eq!(site.xref_targets["eq-probe"].number, "1.1");
+        assert_eq!(site.xref_targets["sec-probe"].number, "1.1");
+        assert!(
+            crate::math::is_memoized("x_{h7731}", false),
+            "a heading's math names its section, so the harvest typesets it"
+        );
+        for (latex, display) in [("y_{b7731}", false), ("z_{e7731}", true)] {
+            assert!(
+                !crate::math::is_memoized(latex, display),
+                "the harvest typeset `{latex}`, which only the served page shows"
+            );
+        }
+        // The title is what the served page's heading reads, math included.
+        let page = site.page("one.tmd").unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let full = render::render_document_scoped_with_site(
+            &src,
+            &root,
+            site.chapter_for(page),
+            Some(&site.render_defaults()),
+        );
+        assert_eq!(
+            site.xref_targets["sec-probe"].title,
+            xref::heading_titles(&full.blocks)["sec-probe"]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The harvest's render skips typesetting, so it must still agree with the served render
+    /// on everything the harvest keeps: every number and every heading title, on every page
+    /// of every project here (the corpus and both books).
+    #[test]
+    fn the_numbers_render_agrees_with_the_full_render_on_every_real_page() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut roots = vec![repo.join("docs/guide"), repo.join("docs/internals")];
+        let mut stack = vec![repo.join("corpus")];
+        while let Some(dir) = stack.pop() {
+            if dir.join("_site.yml").is_file() {
+                roots.push(dir.clone());
+            }
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                if entry.path().is_dir() {
+                    stack.push(entry.path());
+                }
+            }
+        }
+        let mut pages = 0;
+        for root in roots {
+            let site = Site::discover_registry(&root);
+            let defaults = site.render_defaults();
+            for page in &site.pages {
+                let Ok(src) = crate::includes::read_source(&page.input) else {
+                    continue;
+                };
+                let base = page.input.parent().unwrap();
+                let chapter = site.chapter_for(page);
+                let full =
+                    render::render_document_scoped_with_site(&src, base, chapter, Some(&defaults));
+                let numbers =
+                    render::render_numbers_scoped_with_site(&src, base, chapter, Some(&defaults));
+                assert_eq!(
+                    numbers.xref_numbers,
+                    full.xref_numbers,
+                    "{}",
+                    page.input.display()
+                );
+                assert_eq!(
+                    xref::heading_titles(&numbers.blocks),
+                    xref::heading_titles(&full.blocks),
+                    "{}",
+                    page.input.display()
+                );
+                pages += 1;
+            }
+        }
+        assert!(pages > 50, "only {pages} pages compared");
     }
 
     /// A refresh must be all-or-nothing about the numbers. The harvest renders EVERY page, so
