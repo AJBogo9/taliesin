@@ -312,11 +312,9 @@
      title inherits `--tali-fg` from the row and the two tokens hold the same value in both
      palettes. */
   .tali-card:hover, .tali-card:focus-visible { background: var(--tali-code-bg); }
-  /* `order: 1` and not a DOM move, so this stays a stylesheet-only change: the emitter still
-     writes the `<img>` first. That leaves the thumbnail's alt text still announced ahead of
-     the title in the row's accessible name — a pre-existing defect, not one this rule adds.
-     The fix for it is `alt=""` on a thumbnail inside a link that already carries the title,
-     or emitting the image after `.tali-card-body`; both belong to the emitter, not here.
+  /* `order: 1` places the thumbnail after the body. The emitter now also writes the `<img>`
+     after `.tali-card-body` (2026-09-24), so the row's accessible name opens with the post,
+     not the thumbnail's alt text, and this rule and the DOM agree.
      `flex: 0 1 12rem` keeps the 192px size but stays SHRINKABLE, and `min-width: 0` defeats
      the automatic minimum size a replaced element otherwise imposes — without those two the
      row overflows at 320px and at 200% text zoom (SC 1.4.4). `max-width` is the same 12rem

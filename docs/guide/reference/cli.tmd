@@ -307,8 +307,8 @@ published that way; none of them nests.
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
 `og:url` / `og:image` tags, `sitemap.xml`, `robots.txt`, and the Atom feeds are only
-emitted when a project `url:` is configured; the lint warns if a page sets a social
-`image:` with no `url:` to absolutize it against.
+emitted when a project `url:` is configured. Without it a page's `image:` still shows on
+its listing card, and no `og:image` is published.
 
 ## Starting a project: `init`
 

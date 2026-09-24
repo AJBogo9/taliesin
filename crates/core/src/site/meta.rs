@@ -239,6 +239,34 @@ Body.
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A book chapter reads the same front matter as a website page, but its `image:` was
+    /// dropped (`card_image: None`), so a shared chapter unfurled with no picture while the
+    /// key linted clean. It resolves exactly as a website page's does.
+    #[test]
+    fn a_book_chapter_unfurls_with_its_own_image() {
+        let root = write_site(
+            "ogbook",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nurl: https://ex.com\nchapters:\n  - index.tmd\n  - ch/one.tmd\n",
+                ),
+                ("index.tmd", "# Preface\n\nx\n"),
+                (
+                    "ch/one.tmd",
+                    "---\ntitle: One\nimage: cover.png\nimage-alt: A cover.\n---\n\n# One\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("ch/one.tmd").unwrap();
+        assert!(
+            html.contains(r#"<meta property="og:image" content="https://ex.com/ch/cover.png">"#),
+            "{html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// An absolute `image:` is used as written. `discovery.rs` deliberately leaves an
     /// external URL alone rather than folding it into a relative path, and joining a base
     /// onto it here would undo that.

@@ -1468,9 +1468,14 @@ impl Site {
         // heading-skip lint cannot see it, because the whole listing is ONE <ul> block
         // (T12, 2026-09-01). The stylesheet keys off `.tali-card-title`, never the tag,
         // so the rendering is unchanged.
+        //
+        // The thumbnail goes AFTER the body: the whole card is one link, whose accessible
+        // name is its text in DOM order, and emitting the image first opened every card's
+        // name with its alt text. `site.css` draws the image after the body already
+        // (`order: 1`), so the move changes nothing on screen.
         format!(
-            "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{draft_badge}{date}<h2 class=\"tali-card-title\">{title}</h2>{desc}</div></a></li>",
+            "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">\
+             <div class=\"tali-card-body\">{draft_badge}{date}<h2 class=\"tali-card-title\">{title}</h2>{desc}</div>{img}</a></li>",
             src = esc(&p.rel)
         )
     }
@@ -3049,6 +3054,40 @@ pub(crate) mod tests {
                 .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
             "{:?}",
             site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A card is one link, and a link's accessible name is its text in DOM order, so the
+    /// thumbnail's alt, emitted first, opened the name of every card ("A cover 1 September
+    /// 2026 Post One ..."). The image is emitted after the card body. `site.css` already
+    /// draws it there (`.tali-card-img { order: 1 }`), so nothing moves on screen.
+    #[test]
+    fn a_listing_card_names_its_post_before_its_thumbnail() {
+        let root = write_site(
+            "cardorder",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: list\n---\n\n# Posts\n",
+                ),
+                (
+                    "posts/p.tmd",
+                    "---\ntitle: Post One\nimage: pic.png\nimage-alt: A cover\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (html, _) = render_page(&site, "index.tmd");
+        let card = &html[html.find("class=\"tali-card\"").expect("a card")..];
+        let (title, img) = (
+            card.find("tali-card-title").expect("title"),
+            card.find("tali-card-img").expect("thumbnail"),
+        );
+        assert!(
+            title < img,
+            "the post's title comes before the thumbnail: {card}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
