@@ -55,7 +55,7 @@ impl Book {
 }
 /// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list,
 /// assigning each chapter a running number (an unnumbered chapter — the `index.tmd`
-/// preface or one whose H1 carries `.unnumbered`/`{-}` — is skipped in the count).
+/// preface or one whose H1 carries `.unnumbered` — is skipped in the count).
 /// Each list entry is one of three shapes: a bare path string
 /// (`- intro.tmd`), a `{ file:, text: }` chapter with a label override, or a
 /// `{ part:, chapters: }` group whose inner list takes the same string-or-`{file,text}`
@@ -161,8 +161,8 @@ fn push_chapter_entry(
 }
 /// Append one chapter entry, bumping the chapter counter unless it is unnumbered.
 /// `label` (from a `{ file:, text: }` entry) overrides the sidebar label; without
-/// it the label falls back to the first `# H1`, then front-matter `title:`, then
-/// the file stem.
+/// it the label falls back to the text the first `# H1` shows, then front-matter
+/// `title:`, then the file stem.
 fn push_chapter(
     root: &Path,
     file: &str,
@@ -180,7 +180,8 @@ fn push_chapter(
         .replace('\\', "/");
     let input = root.join(&rel);
     let src = crate::includes::read_source(&input).unwrap_or_default();
-    let (h1, unnumbered) = chapter_heading_in(&src);
+    let (h1, unnumbered) = crate::render::leading_h1(&src).unzip();
+    let unnumbered = unnumbered.unwrap_or(false);
     // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
     // warnings: `book_pages` re-parses this file with the real sink, so a
     // listing-without-contents warning here would just duplicate it.
@@ -218,28 +219,11 @@ fn push_chapter(
         depth: 0, // only a part header nests; a chapter is always a leaf
     });
 }
-/// A page's leading `# H1` text (attributes stripped) and whether that heading is
-/// unnumbered (`{.unnumbered}` / `{-}`). Used for a book chapter's title fallback and,
-/// via the `.0`, for a titleless website page's title ([`discovery::website_pages`]).
-pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
-    let Ok(src) = crate::includes::read_source(input) else {
-        return (None, false);
-    };
-    chapter_heading_in(&src)
-}
-/// [`chapter_heading`] against an already-read source, so `push_chapter` (which also needs
-/// the text for its prose count) reads each chapter file once rather than twice.
-fn chapter_heading_in(src: &str) -> (Option<String>, bool) {
-    // `content_lines` skips front matter + fenced code (so a `# comment` inside ```yaml/```sh
-    // isn't mistaken for the chapter's H1); take the first real `# ` heading.
-    for t in content_lines(src) {
-        if let Some(rest) = t.strip_prefix("# ") {
-            let unnumbered = rest.contains(".unnumbered") || rest.contains("{-}");
-            let title = rest.split('{').next().unwrap_or(rest).trim().to_string();
-            return (Some(title), unnumbered);
-        }
-    }
-    (None, false)
+/// The text a page's leading `# H1` shows ([`crate::render::leading_h1`]): a titleless
+/// website page's title ([`discovery::website_pages`]).
+pub(super) fn chapter_heading(input: &Path) -> Option<String> {
+    let src = crate::includes::read_source(input).ok()?;
+    crate::render::leading_h1(&src).map(|(text, _)| text)
 }
 /// A book's pages: one [`Page`] per chapter, in reading order.
 pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -> Vec<Page> {
@@ -272,6 +256,13 @@ mod tests {
 
     /// Build a book from an inline `chapters:` list against a temp dir of empty chapters.
     fn book_of(yaml: &str, files: &[&str]) -> Book {
+        let bodies: Vec<(&str, String)> = files.iter().map(|f| (*f, format!("# {f}\n"))).collect();
+        let bodies: Vec<(&str, &str)> = bodies.iter().map(|(f, b)| (*f, b.as_str())).collect();
+        book_from(yaml, &bodies)
+    }
+
+    /// Build a book from an inline `chapters:` list against a temp dir of chapter files.
+    fn book_from(yaml: &str, files: &[(&str, &str)]) -> Book {
         let dir = std::env::temp_dir().join(format!(
             "tali-book-test-{}",
             std::time::SystemTime::now()
@@ -280,8 +271,8 @@ mod tests {
                 .as_nanos()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        for f in files {
-            std::fs::write(dir.join(f), format!("# {f}\n")).unwrap();
+        for (f, body) in files {
+            std::fs::write(dir.join(f), body).unwrap();
         }
         let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
         let config = SiteConfig {
@@ -295,6 +286,53 @@ mod tests {
         let book = build_book(&dir, &config, DraftMode::Include, &mut Vec::new());
         std::fs::remove_dir_all(&dir).ok();
         book
+    }
+
+    /// A chapter's label is the text its `# H1` shows on the page. It was a slice of the
+    /// source line, cut at the first `{` (audit 2026-09-24, B5 and escaping #3): inline
+    /// code, emphasis, entities and escapes reached the drawer, the pager, `<title>`,
+    /// og:title and the search index raw; `# The {x} set of things` read "The"; and a
+    /// `{-}` the renderer never honoured unnumbered a chapter whose heading then showed a
+    /// literal `{-}`. Only a trailing attribute block the renderer reads (`{.unnumbered}`,
+    /// `{#id}`) is not text.
+    #[test]
+    fn a_chapter_is_labelled_by_the_text_its_heading_shows() {
+        let book = book_from(
+            "chapters:\n  - a.tmd\n  - b.tmd\n  - c.tmd\n  - d.tmd\n  - e.tmd\n  - f.tmd\n",
+            &[
+                (
+                    "a.tmd",
+                    "# The *best* chapter with `code` & R&amp;D &copy; \\* star\n\nBody.\n",
+                ),
+                ("b.tmd", "# Appendix {-}\n\nBody.\n"),
+                ("c.tmd", "# The {x} set of things\n\nBody.\n"),
+                (
+                    "d.tmd",
+                    "<!--\n# Old Title\n-->\n\n# Real Title {.unnumbered #sec-real}\n",
+                ),
+                ("e.tmd", "Setext Title\n============\n\nBody.\n"),
+                (
+                    "f.tmd",
+                    "---\ntitle: From front matter\n---\n\n## Only a section\n",
+                ),
+            ],
+        );
+        let got: Vec<(&str, Option<u32>)> = book
+            .chapters()
+            .iter()
+            .map(|c| (c.title.as_str(), c.number))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("The best chapter with code & R&D \u{a9} * star", Some(1)),
+                ("Appendix {-}", Some(2)),
+                ("The {x} set of things", Some(3)),
+                ("Real Title", None),
+                ("Setext Title", Some(4)),
+                ("From front matter", Some(5)),
+            ]
+        );
     }
 
     #[test]

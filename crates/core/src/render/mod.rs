@@ -2537,6 +2537,49 @@ fn heading_attr_line(block_src: &str) -> &str {
     trimmed
 }
 
+/// A document's first top-level `# H1` as its page shows it: the heading's text, and
+/// whether its attribute block carries `.unnumbered`. `None` when there is no such
+/// heading. What names a book chapter in its drawer, pager and `<title>`, and a titleless
+/// website page everywhere its title goes.
+///
+/// Parsed and emitted as the render does (front matter and `:::` markers blanked, the
+/// trailing attribute block read by [`parse_heading_attr`] and nothing else), so the label
+/// is the heading's own text: `*best*` reads "best", `R&amp;D` reads "R&D", and a `{x}` in
+/// the middle of a title or a `{-}` the renderer does not read stays text.
+pub(crate) fn leading_h1(src: &str) -> Option<(String, bool)> {
+    let src = crate::includes::normalize_line_endings(src);
+    let body = crate::frontmatter::blank_front_matter(&src);
+    let processed = preprocess(&body, &DivFences::find(&body));
+    let arena = Arena::new();
+    let root = parse_document(&arena, &processed, &parse_options());
+    let node = root
+        .children()
+        .find(|n| matches!(&n.data.borrow().value, NodeValue::Heading(h) if h.level == 1))?;
+    let sp = node.data.borrow().sourcepos;
+    let lines: Vec<&str> = processed.lines().collect();
+    let block_src = slice_lines(
+        &lines,
+        BufLine::new(sp.start.line),
+        BufLine::new(sp.end.line),
+    );
+    let mut html = String::new();
+    emit(node, "", &mut html);
+    let unnumbered = match parse_heading_attr(&block_src) {
+        Some(_) => {
+            html = strip_heading_attr(&html);
+            let line = heading_attr_line(&block_src);
+            line.rfind('{').is_some_and(|open| {
+                parse_attrs(&line[open + 1..line.len() - 1])
+                    .classes
+                    .iter()
+                    .any(|c| c == "unnumbered")
+            })
+        }
+        None => false,
+    };
+    Some((indexable_text(&html), unnumbered))
+}
+
 /// A trailing Pandoc attribute on a heading line (`## Title {#id .class}`).
 /// Returns `(text_without_attr, explicit_id)`, or `None` when there is no attr.
 pub(crate) fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {

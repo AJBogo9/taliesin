@@ -1301,7 +1301,7 @@ impl Site {
     /// sections, the floats and the theorems alike, so all three stay in lockstep.
     /// There is no key to turn numbering on: a chapter is numbered iff this gives it a
     /// number, i.e. it is a `chapters:` entry that is not the `index` preface and whose
-    /// H1 carries no `.unnumbered`/`{-}` (see `book.rs`).
+    /// H1 carries no `.unnumbered` (see `book.rs`).
     pub fn chapter_for(&self, page: &Page) -> Option<u32> {
         book::chapter_of(&self.book, page)
     }
@@ -1665,20 +1665,13 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
 
 /// Walk a raw `.tmd` source's *content* lines: those comrak reads as markdown, so not the
 /// front matter, not code (fenced or indented) and not raw HTML (a comment, `<pre>`,
-/// `<script>`). Each yielded line is already `trim_start`ed. This is the skeleton both
-/// raw-source scanners share — [`xref::scan_page_anchors`] (heading `{#id}` anchors) and
-/// [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#`
-/// inside front matter, a `# comment` inside a code sample or a heading the author commented
-/// out is never mistaken for a heading in either. It does NOT resolve `{{< include >}}`: that
-/// stays a deliberate caller choice (the xref scan resolves includes first so an anchor in
-/// a partial belongs to its page; chapter-title detection reads the file raw).
-pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
-    content_lines_numbered(src).map(|(_, t)| t)
-}
-
-/// [`content_lines`] paired with each line's 1-based source line number, so a scan can point
-/// a diagnostic at exactly where an anchor lives. Lines are split as comrak splits them, so
-/// a raw file with a lone `\r` still lines up with its classification.
+/// `<script>`). Each yielded line is already `trim_start`ed, paired with its 1-based source
+/// line number so a scan can point a diagnostic at exactly where an anchor lives. The
+/// skeleton of the raw-source anchor scan, [`xref::scan_page_anchors`], so a `{#sec-x}`
+/// inside front matter, a code sample or a heading the author commented out is never taken
+/// for an anchor. It does NOT resolve `{{< include >}}`: the caller does, so an anchor in a
+/// partial belongs to its page. Lines are split as comrak splits them, so a raw file with a
+/// lone `\r` still lines up with its classification.
 pub(super) fn content_lines_numbered(src: &str) -> impl Iterator<Item = (usize, &str)> {
     let lines = crate::render::rendered_lines(src);
     crate::lines::split(src)
@@ -1693,10 +1686,10 @@ pub(crate) mod tests {
 
     #[test]
     fn content_lines_skips_front_matter_and_fenced_code() {
-        // The skeleton both raw-source scanners (xref anchors, chapter titles) now share:
-        // front matter (even a `#`-looking line in it) and fenced code (```/~~~, even a
-        // `# comment` inside) are dropped; the real headings + prose survive, trim_start'ed.
-        // A `#` in either region must never read as a heading in either scanner.
+        // The skeleton of the raw-source anchor scan: front matter (even a `#`-looking
+        // line in it) and fenced code (```/~~~, even a `# comment` inside) are dropped; the
+        // real headings + prose survive, trim_start'ed. A `{#id}` in either region must
+        // never read as an anchor.
         let src = concat!(
             "---\n",
             "title: X\n",
@@ -1713,7 +1706,7 @@ pub(crate) mod tests {
             "~~~\n",
             "## Real H2 {#sec-x}\n",
         );
-        let lines: Vec<&str> = content_lines(src).collect();
+        let lines: Vec<&str> = content_lines_numbered(src).map(|(_, t)| t).collect();
         assert!(lines.contains(&"# Real H1"), "real H1 survives: {lines:?}");
         assert!(
             lines.contains(&"## Real H2 {#sec-x}"),
@@ -1748,6 +1741,11 @@ pub(crate) mod tests {
                     "explicit.tmd",
                     "---\ntitle: Explicit\n---\n\n# A different heading\n\nx\n",
                 ),
+                // The title is the text the heading SHOWS, not its markdown source.
+                (
+                    "iter.tmd",
+                    "# Using the `Iterator` trait &amp; *friends*\n\nx\n",
+                ),
             ],
         );
         let site = Site::discover(&root);
@@ -1759,6 +1757,10 @@ pub(crate) mod tests {
         };
         assert_eq!(title_of("about.tmd").as_deref(), Some("About the author"));
         assert_eq!(title_of("explicit.tmd").as_deref(), Some("Explicit"));
+        assert_eq!(
+            title_of("iter.tmd").as_deref(),
+            Some("Using the Iterator trait & friends")
+        );
         // og:title now uses the H1 (not the site name), and the <title> agrees with it.
         let html = site.render_page("about.tmd").unwrap();
         assert!(
