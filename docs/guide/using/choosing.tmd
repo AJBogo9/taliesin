@@ -11,20 +11,20 @@ adopt it: what you are committing to, what you get, and what leaving costs.
 The first worry about a single-author tool is lock-in: that a year of writing ends up in a
 dialect only this program understands.
 
-Taliesin's own corpus is 80 `.tmd` documents and 7,138 lines of real writing, the largest
-sample that exists. Of those lines, 467 (6.5%) carry any construct beyond plain
-CommonMark. The other 93.5% is Markdown, and any Markdown tool reads it.
+Taliesin's own corpus is 80 `.tmd` documents and 7,099 lines of real writing, the largest
+sample that exists. Of those lines, 453 (6.4%) carry any construct beyond plain
+CommonMark. The other 93.6% is Markdown, and any Markdown tool reads it.
 
 | Construct | Lines | Share |
 |---|---:|---:|
-| Executable fence (` ```{python} `) | 103 | 1.4% |
-| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 96 | 1.3% |
+| Executable fence (` ```{python} `) | 103 | 1.5% |
+| Attribute block (`{#sec-id}`, `{.unnumbered}`) | 96 | 1.4% |
 | Citation / cross-reference (`[@key]`, `@fig-x`) | 90 | 1.3% |
-| Cell option (`#\| label: fig-x`) | 80 | 1.1% |
 | Fenced div (`::: {.callout-note}`) | 76 | 1.1% |
+| Cell option (`#\| label: fig-x`) | 66 | 0.9% |
 | Shortcode (`{{< include … >}}`) | 22 | 0.3% |
 
-*(Measured 2026-09-24 over `corpus/**/*.tmd`; a line using two constructs is counted once
+*(Measured 2026-09-25 over `corpus/**/*.tmd`; a line using two constructs is counted once
 in the total and once per family, so the family rows sum to more than the total.
 Reproduce it with `python3 tools/portability-census.py`, which is where these numbers
 come from and which spells out each family's definition. The script is committed because
@@ -33,7 +33,7 @@ script that measured it was not, and by August its document and line counts no l
 reproduced.)*
 
 None of those six constructs originated in Taliesin. Each is Pandoc or Quarto vocabulary
-that predates it, so the 6.5% is syntax another Pandoc-family tool already parses. `.tmd`
+that predates it, so the 6.4% is syntax another Pandoc-family tool already parses. `.tmd`
 is a file extension, not a format. A project arriving from Quarto likewise brings its
 sentences, fenced cells, `#|` options, `:::` divs, math, citations and cross-references
 across unchanged. Taliesin reads only `.tmd` pages and does not read `_quarto.yml`, so
@@ -145,7 +145,7 @@ while the maintainer works on it.
 
 What you keep if the maintainer stops:
 
-- **Your source is Markdown**, 93.5% of it plain CommonMark, all of it in your repository.
+- **Your source is Markdown**, 93.6% of it plain CommonMark, all of it in your repository.
 - **Pages you already built keep working**: they are static HTML with no runtime
   dependency on the tool that made them.
 - **The code is AGPL-3.0**, so a fork is always available to anyone who wants one.
