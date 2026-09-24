@@ -144,8 +144,11 @@ fn plausible_pid(raw: i64) -> Option<i32> {
 #[cfg(target_os = "linux")]
 fn holds_the_port(pid: i32, port: u16) -> bool {
     // `/proc/net/tcp`: after a header line, one socket per line, fields `sl local_address
-    // rem_address st ... inode`, the address as `HEXIP:HEXPORT` and `0A` meaning LISTEN.
-    // A preview binds IPv4 loopback only, so the IPv4 table is the whole search.
+    // rem_address st ... inode`, the address as `HEXIP:HEXPORT` (the IP as the in-memory
+    // word, so native-endian) and `0A` meaning LISTEN. A preview binds IPv4 loopback only,
+    // so the IPv4 table is the whole search, and only a socket on 127.0.0.1 or 0.0.0.0 can
+    // have answered a probe sent to 127.0.0.1: one on another address with the same port
+    // number belongs to someone the probe never reached.
     let Ok(table) = std::fs::read_to_string("/proc/net/tcp") else {
         return false;
     };
@@ -154,10 +157,12 @@ fn holds_the_port(pid: i32, port: u16) -> bool {
         .skip(1)
         .filter_map(|line| {
             let f: Vec<&str> = line.split_whitespace().collect();
-            let (_, hex_port) = f.get(1)?.split_once(':')?;
+            let (hex_ip, hex_port) = f.get(1)?.split_once(':')?;
             let inode = f.get(9)?;
-            let listens_here =
-                u16::from_str_radix(hex_port, 16).ok()? == port && *f.get(3)? == "0A";
+            let ip = std::net::Ipv4Addr::from(u32::from_str_radix(hex_ip, 16).ok()?.to_ne_bytes());
+            let listens_here = u16::from_str_radix(hex_port, 16).ok()? == port
+                && (ip == std::net::Ipv4Addr::LOCALHOST || ip.is_unspecified())
+                && *f.get(3)? == "0A";
             listens_here.then(|| format!("socket:[{inode}]"))
         })
         .collect();
@@ -265,8 +270,8 @@ pub(crate) async fn bind_with_fallback(
                 "port {}: replacing an existing preview of this project (pid {})",
                 inc.port, inc.pid
             ));
-            // SAFETY: SIGTERM to a pid that owns the port that just identified itself, over
-            // loopback, as a preview of the very root we are about to serve, i.e. this
+            // SAFETY: SIGTERM to the pid that owns the port which just identified itself,
+            // over loopback, as a preview of the very root we are about to serve, i.e. this
             // user's own server.
             // SIGTERM rather than SIGKILL so it runs its kernel-reaping teardown.
             unsafe { libc::kill(inc.pid, libc::SIGTERM) };
@@ -1543,6 +1548,15 @@ mod takeover_tests {
         assert!(
             !other_holds,
             "a process that does not listen on {port} does not hold it"
+        );
+
+        // The same port number on another address is not the port the probe reached: a
+        // probe to 127.0.0.1 is never answered from 127.0.0.2.
+        let elsewhere = std::net::TcpListener::bind("127.0.0.2:0").unwrap();
+        let other_port = elsewhere.local_addr().unwrap().port();
+        assert!(
+            !holds_the_port(me, other_port),
+            "a listener on 127.0.0.2:{other_port} does not hold 127.0.0.1:{other_port}"
         );
 
         // A port that is no longer listening is held by nobody.
