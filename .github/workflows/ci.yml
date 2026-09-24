@@ -11,59 +11,14 @@ name: CI
 # and refuses to be green unless every gate ran. The two must not drift: a gate added
 # here belongs there, and vice versa.
 #
-# ── Why every job carries `if: github.event.repository.private != true` ──
-# This workflow was deleted on 2026-07-26 because it billed Actions minutes on a
-# PRIVATE repo. Standard GitHub-hosted runners are free and unlimited on PUBLIC
-# repositories (unchanged by the 2026-01-01 pricing revision, which explicitly kept
-# public-repo standard-runner usage free), so publication removes the reason for
-# deletion — but publication has not happened yet, and this file has to be committed
-# before it can be inherited by the published history. The guard makes the workflow
-# inert while the repo is private and arms it the instant it is public, with no
-# follow-up commit to forget.
-# `github.event.repository` is absent for some event types, and `null != true` is
-# true, so the guard degrades toward RUNNING rather than toward silence.
-#
-# ── Both workflows have now actually run ──
-# Measured 2026-08-17: `gh api repos/<owner>/taliesin/actions/permissions` returned
-# `{"enabled": false}`. Actions was switched off at the REPOSITORY-SETTINGS level, which
-# was the actual remedy applied on 2026-07-26, so GitHub created no workflow run at all
-# regardless of the guard above: 382 runs existed, the newest of them from 2026-07-26,
-# and not one since this file was restored on 2026-07-28. `release.yml` had never fired
-# either.
-#
-# That is no longer the state. Actions is enabled again (re-measured 2026-08-20), and a
-# manual `workflow_dispatch` of each workflow has completed and gone fully green on this
-# branch: CI run 32395506257 (six jobs: test, kernel, typecheck, editor-vscode, audit,
-# deny) and Release run 32395509519 (four jobs, including both macOS targets), both
-# SUCCESS against the same tree. The rehearsal was not a formality: it caught and fixed
-# two real defects the guard's absence had kept invisible: a job-wide cell timeout
-# shorter than one of the kernel job's own fixtures ever needed, and a `.gitignore` rule
-# that hid a hand-authored image from every fresh clone while a warm local build stayed
-# green. The ~300 lines of YAML across 10 jobs and a 3-OS matrix are REHEARSED, not
-# theoretical, going into publication. Credit a dispatched run for what it verified; an
-# automatic push/PR trigger still will not create a run until the repository itself is
-# public, per the guard below.
-#
-# `workflow_dispatch` below exists FOR that rehearsal, and now for the guard condition
-# itself too. Re-enabling Actions is a billing decision, so it stays the author's; this
-# at least makes the rehearsal a Run-workflow click on a chosen branch rather than a
-# scratch tag or a throwaway fork. `release.yml` already carried one. Adding it bills
-# nothing while the repo is private: with Actions off, no run is created by any trigger.
-#
-# The guard used to be ONE condition (`github.event.repository.private != true`), which
-# made that first sentence false: the workflow_dispatch event payload includes
-# `repository`, so on a private repo the condition evaluated false and every job
-# SKIPPED. A manual dispatch produced a green checkmark certifying nothing, and the only
-# way to actually rehearse was deleting the guards on a throwaway branch. The guard is
-# now TWO conditions: `github.event.repository.private != true || github.event_name ==
-# 'workflow_dispatch'`. A deliberate manual dispatch now runs every job regardless of
-# visibility; the automatic triggers (push, pull_request, schedule) still skip on a
-# private repo, so the billing protection the guard exists for is unchanged.
+# Every job runs unconditionally on the triggers below. The repository is public, and
+# `crates/core/tests/stale_docs.rs` fails if a job is made conditional on its visibility
+# again, because the docs say CI checks every push to `main` and every pull request.
 on:
   push:
     branches: [main]
   pull_request:
-  # The one-click rehearsal: see the paragraph above.
+  # A manual run on a chosen branch.
   workflow_dispatch:
   # Weekly RustSec advisory scan even with no commits, so a newly-disclosed CVE
   # in a (possibly transitive) dependency surfaces on its own.
@@ -72,7 +27,6 @@ on:
 
 jobs:
   test:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,8 +57,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       # The two gates the parity promise at the top of this file was missing. Both are
       # STEPS on this job, not new jobs: they reuse the debug build `cargo test` just
-      # produced, so they cost a link rather than a second workspace build, and a new job
-      # would need its own visibility guard to satisfy `crates/core/tests/stale_docs.rs`.
+      # produced, so they cost a link rather than a second workspace build.
       # `--check-only` renders in memory and writes nothing; `--no-exec` is what keeps
       # both kernel-free. `.githooks/pre-push` runs the same two, as its steps 4 and 5.
       # Both books: wave 9 wired the guide and covered one of two already-separate books.
@@ -121,7 +74,6 @@ jobs:
   # turns the canary test into a HARD FAIL if the interpreter ever goes missing, so the exec
   # stack can never silently re-skip back to zero coverage.
   kernel:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,7 +114,6 @@ jobs:
   # search.js, toc-spy.js). They carry `// @ts-check` and have silently
   # regressed to tsc errors before a release; this gate keeps them honest.
   typecheck:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -187,7 +138,6 @@ jobs:
   # rotting. A heavier @vscode/test-electron e2e existed here as a local/F5 check until
   # 2026-08-09, when it went for running under no script, hook or workflow.
   editor-vscode:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -212,7 +162,6 @@ jobs:
   # deprecated but currently advisory-free; this is the backstop that tells us if
   # that (or any transitive dep) ever grows a CVE — at which point we migrate.
   audit:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -224,7 +173,6 @@ jobs:
   # new dep with a disallowed license or a banned source fails the build, not just a CVE).
   # Verified locally against the current tree — advisories/licenses/bans/sources all ok.
   deny:
-    if: github.event.repository.private != true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

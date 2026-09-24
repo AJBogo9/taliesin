@@ -299,20 +299,17 @@ suite, the Node-backed reactive test, both `tsc` type-checks, the companion's te
 `tools/publish.sh --check` and the portability census. Never call one of these verified
 without its output.
 
-**`.githooks/pre-push` is the only gate that runs automatically today.** It is wired via
-`core.hooksPath`, so it is invisible in `.git/hooks`, and **unset in a fresh clone** — it
-exists for nobody but the author. A push that includes `main` runs fmt, clippy, the
-workspace tests, both document gates and `tools/publish.sh --check`; a WIP-branch push
-skips it, and `git push --no-verify` bypasses. `gate_script.rs` cross-checks the two lists
+**CI and the pre-push hook run on their own.** `.github/workflows/ci.yml` runs on every
+push to `main`, every pull request and a weekly schedule; the repo is public, so no job
+skips, and `stale_docs.rs` fails if a job is made conditional on visibility again. A red run
+is visible to strangers. `.githooks/pre-push` runs locally before a push that includes
+`main`: fmt, clippy, the workspace tests, both document gates and
+`tools/publish.sh --check`. It is wired via `core.hooksPath`, so it is invisible in
+`.git/hooks`, **unset in a fresh clone**, and exists for nobody but the author; a
+WIP-branch push skips it, and `git push --no-verify` bypasses. `gate_script.rs`
+cross-checks the hook, `gates.sh` and `ci.yml`
 (`every_pre_push_command_is_also_run_by_the_gate_script`,
 `every_docs_book_is_linted_by_every_gate_file`), so a third book cannot inherit a hole.
-
-`.github/workflows/ci.yml` and `release.yml` guard every job on
-`github.event.repository.private != true || github.event_name == 'workflow_dispatch'`:
-while this repo is private, the automatic triggers (push/PR/schedule) still skip, but a
-manual `workflow_dispatch` runs every job regardless. Both workflows have been dispatched
-and gone fully green this way (verified 2026-08-20). Credit a dispatched run for what it
-verified; an automatic trigger still will not fire until the repo is public.
 
 ## Conventions
 

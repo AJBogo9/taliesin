@@ -94,8 +94,8 @@ The Rust crates in `Cargo.lock` (comrak, axum, tokio, syntect, etc.) are fetched
 by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
 and ISC). They are not redistributed in this repository. `deny.toml` pins the
 allowed license set. Run `cargo deny check` on any dependency change: the
-`.githooks/pre-push` gate covers fmt/clippy/test only, and the restored workflow is
-inert while this repo is private. `./tools/gates.sh` runs it with every other gate.
+`.githooks/pre-push` gate does not run it, CI's `deny` job runs it on every push to
+`main` and every pull request, and `./tools/gates.sh` runs it with every other gate.
 
 One build dependency embeds third-party *data* into the compiled binary rather
 than only linking code:

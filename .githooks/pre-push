@@ -2,12 +2,10 @@
 # Pre-push gate. Runs the fast, environment-independent checks LOCALLY before a push
 # reaches origin, so a break is caught here instead of after it has landed on main.
 #
-# This is still the ONLY automatic gate in the repo. `.github/workflows/ci.yml` was
-# restored on 2026-07-28, but every job in it is guarded on `repository.private != true`
-# so that it bills no Actions minutes until this repo is public — which means it runs
-# nothing and certifies nothing today, and the jobs it alone would run are manual.
-# Deliberately still NOT gated here, because each needs an environment this hook cannot
-# assume:
+# `.github/workflows/ci.yml` runs the same fmt, clippy, suite, document and publish
+# gates on every push to main and every pull request, after the push has landed; this hook
+# is the local check before it. Deliberately NOT gated here, because each needs an
+# environment this hook cannot assume (CI and `tools/gates.sh` run them):
 #   - JS typecheck + VS Code grammar  (need node)
 #   - cargo audit / cargo deny advisory scan  (need the tools + network; run them on
 #                                              any dependency change)

@@ -328,8 +328,8 @@ fi
 # direction: not a gate that skipped, but a gate that was never listed.
 # `crates/core/tests/gate_script.rs` now compares the two lists on every run.
 #
-# The hook keeps running both. It is the only gate that runs automatically and this
-# script is manual, so the two are a pair, not a move.
+# The hook keeps running both. It runs on its own before a push to main and this script
+# is manual, so the two are a pair, not a move.
 #
 # DEBUG profile on purpose: the clippy and test gates above have already built the
 # workspace, so these cost a link rather than a second full build (the hook records

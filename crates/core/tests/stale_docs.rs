@@ -177,22 +177,21 @@ fn docs_do_not_claim_quarto_config_still_works() {
 // to nothing, so any doc that names it fails the derived gate. A needle test whose
 // subject file is gone is the vacuous shape this file exists to prevent.
 
-/// The workflow was restored on 2026-07-28, but **every job is guarded on repository
-/// visibility** so it stays inert until this repo is public. That means the false claim
-/// this test was built to catch is still false: nothing in CI checks a push today. A doc
-/// that credits "CI" for a gate is worse than silence — it tells the next reader (or
-/// agent) a push is checked for them in ways it is not.
+/// The repository is public, so every workflow job runs on its own triggers: CI checks
+/// every push to `main`, every pull request and a weekly schedule. The prose that
+/// described the private-repo era ("the only gate that runs automatically", "inert while
+/// this repo is private") outlived that era by a month, and this test used to enforce it.
 ///
-/// The two halves are asserted together on purpose. Making the workflow live is one
-/// deletion (the guard) and it must not be possible to do that half without noticing the
-/// prose it makes stale, in either direction.
+/// The two halves are asserted together on purpose. A visibility guard on a job would make
+/// CI skip again without any file saying so, and a doc that still says CI does not run
+/// sends the next reader (or agent) to a gate that is not the only one.
 #[test]
-fn docs_do_not_promise_a_ci_that_enforces_gates() {
-    // Walk the directory rather than naming ci.yml, so a workflow added later cannot
-    // start billing a private repo just by not being on a hand-written list.
+fn ci_runs_unguarded_and_the_docs_do_not_say_otherwise() {
+    // Walk the directory rather than naming ci.yml, so a workflow added later is held to
+    // the same rule without being on a hand-written list.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .expect(".github/workflows is missing: the workflow was restored on 2026-07-28")
+        .expect(".github/workflows is missing")
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "yml" || x == "yaml"))
@@ -203,66 +202,49 @@ fn docs_do_not_promise_a_ci_that_enforces_gates() {
         "no workflows found under {}",
         dir.display()
     );
-
-    let mut total_jobs = 0;
     for f in &files {
         let workflow = std::fs::read_to_string(f).unwrap();
-        // Everything below `jobs:`, so the `on:` keys above it are not counted as jobs
-        // and the guard named in a header comment is not counted as a guard.
-        let (_, body) = workflow
-            .split_once("\njobs:\n")
-            .unwrap_or_else(|| panic!("{} has no jobs: block", f.display()));
-        let jobs = body
-            .lines()
-            .filter(|l| {
-                l.strip_prefix("  ").is_some_and(|k| {
-                    !k.starts_with(' ')
-                        && k.trim_end().ends_with(':')
-                        && k.starts_with(|c: char| c.is_ascii_lowercase())
-                })
-            })
-            .count();
-        let guards = body
-            .matches("if: github.event.repository.private != true")
-            .count();
         assert!(
-            jobs > 0 && guards == jobs,
-            "{guards} of {jobs} jobs in {} carry the repository-visibility guard. If the \
-             repo is public now, dropping the guard is right — but then these docs have to \
-             start crediting CI, so update them (and this test) rather than only the YAML.",
+            !workflow.contains("github.event.repository.private"),
+            "{} conditions a job on repository visibility. The repo is public and the docs \
+             say CI runs on every push; a guard that can skip a job makes them false.",
             f.display()
         );
-        total_jobs += jobs;
     }
+    let ci = read(".github/workflows/ci.yml");
+    let (on, _) = ci
+        .split_once("\njobs:\n")
+        .expect("ci.yml has no jobs: block");
     assert!(
-        total_jobs >= 7,
-        "only {total_jobs} guarded jobs across {} workflow file(s): the restored gate set \
-         had seven, so something was deleted rather than un-guarded",
-        files.len()
+        on.contains("  push:\n    branches: [main]") && on.contains("  pull_request:"),
+        "ci.yml no longer triggers on pushes to main and on pull requests, which is what \
+         CLAUDE.md and CONTRIBUTING.md say it does"
     );
-    // THIRD_PARTY.md and deny.toml were the two that actually carried a false claim past
-    // this gate: both asserted "CI enforces" the licence policy while `cargo deny` runs
-    // nowhere but by hand. A gate whose file list omits the files that drift is not a gate.
     for rel in [
         "CLAUDE.md",
+        "CONTRIBUTING.md",
         "README.md",
         "THIRD_PARTY.md",
         "deny.toml",
-        ".claude/hooks/cargo-fmt.sh",
+        ".githooks/pre-push",
+        "tools/gates.sh",
         ".claude/agents/corpus-verifier.md",
         "docs/internals/extending.tmd",
     ] {
         let text = read(rel);
-        // Match the shapes that actually shipped, not one canonical phrasing. `deny.toml`
-        // carried TWO independent claims and the first pass at this gate caught only one:
-        // the header said "wired into CI" and a comment twelve lines below still called
-        // cargo-audit "the other CI job". A gate that knows one spelling of a false claim
-        // leaves its siblings in the same file.
-        for needle in ["CI enforces", "CI-gated", "wired into CI", "CI job"] {
+        // The spellings that actually shipped, one per file that carried the premise.
+        for needle in [
+            "only gate that runs automatically",
+            "ONLY automatic gate",
+            "inert while",
+            "until this repo is public",
+            "until the repo is public",
+            "while this repo is private",
+        ] {
             assert!(
                 !text.contains(needle),
-                "{rel} still promises a CI gate ({needle:?}), but the workflow is gone \
-                 and the check is manual"
+                "{rel} still says CI does not run ({needle:?}), but the repo is public and \
+                 ci.yml runs on every push to main and every pull request"
             );
         }
     }
