@@ -394,3 +394,44 @@ fn a_port_holder_naming_another_process_does_not_get_it_signalled() {
         "a process named by an unverified port holder was sent SIGTERM"
     );
 }
+
+/// Running this same binary is not the same as holding the port. The check compared only
+/// `/proc/<pid>/exe`, so a holder could name ANY process of this binary (the author's own
+/// `taliesin lsp`, a preview of another project) and have it terminated (audit 2026-09-24,
+/// Part H). The pid is signalled only if it owns the socket listening on the probed port.
+#[test]
+fn a_port_holder_naming_another_taliesin_process_does_not_get_it_signalled() {
+    let dir = tmp_dir("liar-sibling");
+    write_site(&dir);
+    let band_base = free_run(2);
+
+    // A process of this very binary that holds no port: an idle LSP server, kept waiting by
+    // a stdin this test holds open.
+    let mut bystander = taliesin()
+        .arg("lsp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn lsp");
+    let port = spawn_liar(
+        band_base,
+        &fs::canonicalize(&dir).unwrap(),
+        bystander.id() as i32,
+    );
+
+    let _preview = Server::spawn(&dir, port);
+    assert!(
+        wait_until_ready(port + 1, Duration::from_secs(60)),
+        "the preview steps past a port whose holder it could not verify, landing on {}",
+        port + 1
+    );
+
+    let alive = bystander.try_wait().expect("try_wait").is_none();
+    let _ = bystander.kill();
+    let _ = bystander.wait();
+    assert!(
+        alive,
+        "a taliesin process that does not hold the port was sent SIGTERM on a holder's say-so"
+    );
+}

@@ -130,38 +130,51 @@ fn plausible_pid(raw: i64) -> Option<i32> {
         .then_some(raw as i32)
 }
 
-/// Strip the marker the kernel appends to `/proc/*/exe` once the binary behind it has
-/// been replaced. Rebuilding while a preview runs is routine here (the `taliesin`
-/// launcher rebuilds on source change), and that preview is still a preview.
+/// Confirm against the OS that `pid` owns the socket listening on `port`, instead of
+/// taking the port holder's word for it: the pid it names must be the process that
+/// answered. `/proc/<pid>/fd` answers both halves at once. It lists the process's
+/// sockets, and reading it for a process owned by another user fails outright, so a
+/// hostile responder cannot borrow this preview's privileges to signal something it could
+/// not signal itself.
+///
+/// This compared `/proc/<pid>/exe` with this binary until 2026-09-24, which let a holder
+/// name ANY process of this binary (the author's own `taliesin lsp`, another project's
+/// preview) and have it terminated. Holding the port is the fact the takeover rests on.
 #[cfg(target_os = "linux")]
-fn without_deleted_marker(p: &Path) -> PathBuf {
-    let s = p.to_string_lossy();
-    let stripped: &str = s.strip_suffix(" (deleted)").unwrap_or(&s);
-    PathBuf::from(stripped)
-}
-
-/// Confirm against the OS that `pid` is another instance of *this binary*, instead of
-/// taking the port holder's word for it. `/proc/<pid>/exe` answers both halves at once:
-/// it names the executable, and reading it for a process owned by another user fails
-/// outright, so a hostile responder cannot borrow this preview's privileges to signal
-/// something it could not signal itself.
-#[cfg(target_os = "linux")]
-fn is_sibling_preview(pid: i32) -> bool {
-    let (Ok(mine), Ok(theirs)) = (
-        std::env::current_exe(),
-        std::fs::read_link(format!("/proc/{pid}/exe")),
-    ) else {
+fn holds_the_port(pid: i32, port: u16) -> bool {
+    // `/proc/net/tcp`: after a header line, one socket per line, fields `sl local_address
+    // rem_address st ... inode`, the address as `HEXIP:HEXPORT` and `0A` meaning LISTEN.
+    // A preview binds IPv4 loopback only, so the IPv4 table is the whole search.
+    let Ok(table) = std::fs::read_to_string("/proc/net/tcp") else {
         return false;
     };
-    without_deleted_marker(&mine) == without_deleted_marker(&theirs)
+    let listening: Vec<String> = table
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let (_, hex_port) = f.get(1)?.split_once(':')?;
+            let inode = f.get(9)?;
+            let listens_here =
+                u16::from_str_radix(hex_port, 16).ok()? == port && *f.get(3)? == "0A";
+            listens_here.then(|| format!("socket:[{inode}]"))
+        })
+        .collect();
+    let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return false;
+    };
+    fds.flatten().any(|fd| {
+        std::fs::read_link(fd.path())
+            .is_ok_and(|target| listening.iter().any(|l| target.as_os_str() == l.as_str()))
+    })
 }
 
 /// No cheap portable equivalent of the `/proc` check, so elsewhere the root match and
-/// [`plausible_pid`] are what stand between a responder and a SIGTERM. The residual
-/// exposure is a same-user process being terminated, which such an attacker could do
-/// directly anyway.
+/// [`plausible_pid`] are what stand between a responder and a SIGTERM. Nothing ties the
+/// pid to the port there, so a holder on another account can name any process of the
+/// user running the preview.
 #[cfg(not(target_os = "linux"))]
-fn is_sibling_preview(_pid: i32) -> bool {
+fn holds_the_port(_pid: i32, _port: u16) -> bool {
     true
 }
 
@@ -234,15 +247,15 @@ pub(crate) async fn bind_with_fallback(
     // Probe concurrently: a port held by something that accepts connections but never
     // answers costs the full timeout, and ten of those in series would stall startup.
     // Both halves of the filter matter: the root match says the incumbent is redundant,
-    // and `is_sibling_preview` says the pid it handed us is really its own, since a
-    // responder that simply names a pid must not have it signalled on its say-so.
+    // and `holds_the_port` says the pid it handed us is the process that answered, since
+    // a responder that simply names a pid must not have it signalled on its say-so.
     let root = canonical(root);
     let mine: Vec<Incumbent> =
         futures_util::future::join_all((port..=port.saturating_add(9)).map(identify))
             .await
             .into_iter()
             .flatten()
-            .filter(|i| i.root == root && is_sibling_preview(i.pid))
+            .filter(|i| i.root == root && holds_the_port(i.pid, i.port))
             .collect();
 
     if !mine.is_empty() {
@@ -251,8 +264,9 @@ pub(crate) async fn bind_with_fallback(
                 "port {}: replacing an existing preview of this project (pid {})",
                 inc.port, inc.pid
             ));
-            // SAFETY: SIGTERM to a pid that just identified itself, over loopback, as a
-            // preview of the very root we are about to serve, i.e. this user's own server.
+            // SAFETY: SIGTERM to a pid that owns the port that just identified itself, over
+            // loopback, as a preview of the very root we are about to serve, i.e. this
+            // user's own server.
             // SIGTERM rather than SIGKILL so it runs its kernel-reaping teardown.
             unsafe { libc::kill(inc.pid, libc::SIGTERM) };
         }
@@ -1275,6 +1289,38 @@ mod percent_decode_tests {
 mod takeover_tests {
     use super::{PROBE_TIMEOUT, identify, plausible_pid};
     use std::time::Instant;
+
+    /// The takeover signals a pid only if that pid owns the socket listening on the port
+    /// that answered. Being some process of this user, or even of this binary, is not it.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn only_the_process_listening_on_the_port_holds_it() {
+        use super::holds_the_port;
+        let me = std::process::id() as i32;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(holds_the_port(me, port), "this process listens on {port}");
+
+        // Another live process of this user, holding no socket at all.
+        let mut other = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let other_holds = holds_the_port(other.id() as i32, port);
+        let _ = other.kill();
+        let _ = other.wait();
+        assert!(
+            !other_holds,
+            "a process that does not listen on {port} does not hold it"
+        );
+
+        // A port that is no longer listening is held by nobody.
+        drop(listener);
+        assert!(
+            !holds_the_port(me, port),
+            "{port} closed, so no one holds it"
+        );
+    }
 
     /// Any local process can hold a port in the fallback range and answer the identity
     /// probe, so the reply is untrusted input, and its size is part of that. A holder that
