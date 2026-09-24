@@ -55,7 +55,7 @@ impl Site {
         }
         format!(
             "window.TALIESIN_PAGE_URL=\"{}\";window.TALIESIN_SEARCH_INDEX={};",
-            json_str(&page.url),
+            json_str(&super::feed::percent_encode_path(&page.url)),
             self.search_index_json
         )
     }
@@ -108,7 +108,7 @@ pub(super) fn page_fragment(
         };
         entries.push(format!(
             "{{\"u\":\"{}\",\"p\":\"{}\",\"i\":\"{}\",\"l\":{},\"t\":\"{}\",\"b\":\"{}\"{}{}}}",
-            json_str(&page.url),
+            json_str(&super::feed::percent_encode_path(&page.url)),
             json_str(&page_title),
             json_str(id),
             level,

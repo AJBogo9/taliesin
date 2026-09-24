@@ -212,7 +212,8 @@ mod poison_tests;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
-    join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls, tmd_to_html,
+    join_rel, join_rel_in_root, manual_local_links, page_href, resolve_href, root_absolute_urls,
+    tmd_to_html,
 };
 use render::sourcepos_start_line;
 
@@ -625,7 +626,7 @@ impl Site {
             format!(
                 "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\";\
                  window.TALIESIN_SEARCH_URL=\"{up}search-index.js\"",
-                search::json_str(&page.url)
+                search::json_str(&feed::percent_encode_path(&page.url))
             )
         };
         SiteCtx {
@@ -1586,7 +1587,7 @@ impl Site {
     }
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
-        let href = format!("{up}{}", esc(&p.url));
+        let href = page_href(up, &p.url);
         // A post with an `image:` shows it; a post without simply does not. The monogram
         // placeholder that used to fill the empty slot went on 2026-08-15 with spec §9's cut
         // #12: it existed to keep a text-only post ALIGNED beside its imaged neighbours in a
