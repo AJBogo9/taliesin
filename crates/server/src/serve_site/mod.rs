@@ -2013,9 +2013,10 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
     // left the registry rotting, which is the exact cross-page case this fixes. A cross-page
     // ref is precisely the dependency `to_rebuild` cannot see.
     //
-    // `.tmd` only: an anchor can be created or renumbered by a page source or an
-    // `{{< include >}}` partial (both `.tmd`), never by a `.bib`/`.css`/image, which the
-    // dependency walk above also feeds us. A re-discovery above already rebuilt the
+    // A `.tmd` or `.md` only: an anchor can be created or renumbered by a page source or an
+    // `{{< include >}}` partial, which is as often a `.md` as a `.tmd` (a `.md` partial was
+    // missed until 2026-09-24, leaving every citing page one number off: audit C6), never by
+    // a `.bib`/`.css`/image, which the dependency walk above also feeds us. A re-discovery above already rebuilt the
     // registry, so refreshing again would just burn the pass twice.
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
@@ -2032,9 +2033,10 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
     //
     // NOT after a re-discovery above, which rebuilds the registry as a side effect, so
     // refreshing again would burn the whole pass twice.
-    let touches_source = changed
-        .iter()
-        .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
+    let touches_source = changed.iter().any(|p| {
+        p.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("tmd") || e.eq_ignore_ascii_case("md"))
+    });
     if touches_source && !rediscovered {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             project.site.lock().refresh_xrefs();
@@ -3264,6 +3266,19 @@ mod project_tests {
         );
     }
 
+    /// A tab open on `rel` holding the page as it really renders (so its cross-references
+    /// are in its blocks), with a receiver on its channel.
+    fn open_citing(project: &Arc<Project>, rel: &str) -> broadcast::Receiver<String> {
+        let page = project.site.lock().page(rel).cloned().unwrap();
+        let doc = render_markdown_only(&project.site.lock(), &page);
+        let (tx, rx) = broadcast::channel(256);
+        project
+            .pages
+            .lock()
+            .insert(rel.to_string(), PageState { doc, tx });
+        rx
+    }
+
     /// A tab open on `rel`: a state (as [`page_state_with_blocks`] makes it) and a receiver
     /// on its channel, which is what keeps the page rebuilt on a save. Hold the receiver for
     /// as long as the tab should count as open.
@@ -3694,6 +3709,52 @@ mod project_tests {
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string(), "posts/a.tmd".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C6. An `{{< include >}}` partial can hold an anchor as well as a
+    /// page can, and a partial is often a `.md`. The cross-reference registry was refreshed
+    /// only for a `.tmd` save, so a figure removed from a `.md` partial left every page
+    /// citing the figure after it one number off, in the tab and on a fresh GET, until some
+    /// `.tmd` anywhere was saved.
+    #[test]
+    fn an_anchor_renumbered_in_a_md_partial_reaches_the_page_citing_it() {
+        let dir = scratch("md-renumber");
+        std::fs::create_dir_all(dir.join("_partials")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("g.svg"),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        )
+        .unwrap();
+        let partial = dir.join("_partials/figpart.md");
+        std::fs::write(&partial, "![Gamma](g.svg){#fig-gamma}\n").unwrap();
+        std::fs::write(
+            dir.join("figs.tmd"),
+            "---\ntitle: Figures\n---\n\n{{< include _partials/figpart.md >}}\n\n\
+             ![Alpha](g.svg){#fig-alpha}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nSee @fig-alpha.\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let number =
+            |project: &Project| project.site.lock().xref_targets["fig-alpha"].number.clone();
+        assert_eq!(number(&project), "2");
+        let _tab = open_citing(&project, "index.tmd");
+
+        std::fs::write(&partial, "No figure here any more.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(partial).collect());
+
+        assert_eq!(number(&project), "1");
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page citing the renumbered figure is rebuilt"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
