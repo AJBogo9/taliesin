@@ -101,7 +101,7 @@ mod image_meta;
 use image_meta::ImageAnnotator;
 // Text projection: a plain-text VIEW of the block model, not an output format. Named for
 // the `read` verb until wave 9 cut it, and documented as reached via a
-// `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its one live
+// `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its live
 // consumers are `indexable_text` and `heading_text` below.
 mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
@@ -3667,6 +3667,20 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut i = 0;
     while let Some(rel) = html[i..].find('<') {
         let lt = i + rel;
+        // Markup starts with a name, a `/`, a `!` or a `?` after the `<`, as the walker
+        // ([`tags`]) and the browser read it. Any other `<` is text (`1 < 2` in a raw-HTML
+        // block), and read as a tag it hid everything up to the next `>`.
+        let markup = html
+            .as_bytes()
+            .get(lt + 1)
+            .is_some_and(|b| b.is_ascii_alphabetic() || matches!(b, b'/' | b'!' | b'?'));
+        if !markup {
+            if skip_math == 0 {
+                out.push_str(&html[i..=lt]);
+            }
+            i = lt + 1;
+            continue;
+        }
         if skip_math == 0 {
             out.push_str(&html[i..lt]);
         }

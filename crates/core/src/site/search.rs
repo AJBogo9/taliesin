@@ -166,52 +166,41 @@ pub(super) fn render_finished(
 /// Scan rendered HTML for `<h1..6 id="…">text</hN>`, returning, per anchored
 /// heading, `(level, id, text, open_byte, close_end_byte)` — the byte span lets
 /// the caller slice each section's body (heading-close → next heading-open).
+///
+/// The headings are the ones the one walker ([`render::tags`]) finds, so a heading is an
+/// element on the page: markup inside a `<!-- comment -->` or a `<script>` body is not
+/// one. A bare `find("<h")` took both for headings, and the palette offered results
+/// pointing at ids the page does not carry. The id is read through the walker too:
+/// quote-aware, matched as a whole NAME, and decoded, so the index carries the id the
+/// browser resolves (`r&d-notes`, not the `r&amp;d-notes` a needle cut out of the markup).
 pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
     let mut out = Vec::new();
-    let mut pos = 0; // byte offset of `rest` within `html`
-    let mut rest = html;
-    while let Some(p) = rest.find("<h") {
-        pos += p;
-        rest = &rest[p..];
-        let open_start = pos;
-        let level = rest
-            .as_bytes()
-            .get(2)
-            .map(|b| b.wrapping_sub(b'0'))
-            .filter(|l| (1..=6).contains(l));
-        let Some(level) = level else {
-            pos += 2;
-            rest = &rest[2..];
+    // Where the last heading closed: a tag before this sits inside that heading.
+    let mut done = 0;
+    for open in render::tags(html) {
+        let level = match open.name.as_bytes() {
+            [b'h' | b'H', l @ b'1'..=b'6'] => l - b'0',
+            _ => continue,
+        };
+        if open.at < done {
             continue;
-        };
-        // The opening tag through the one walker: quote-aware, `id` matched as a whole
-        // NAME, and the value decoded, so the index carries the id the browser resolves
-        // (`r&d-notes`, not the `r&amp;d-notes` a needle cut out of the markup).
-        let Some(open) = render::tags(rest).next() else {
-            break;
-        };
-        let gt = open.text.len() - 1;
-        let id = render::attr_value(&open, "id").map(std::borrow::Cow::into_owned);
+        }
+        let inner_start = open.at + open.text.len();
         let close = format!("</h{level}>");
-        let inner = &rest[gt + 1..];
-        let Some(end) = inner.find(&close) else {
-            pos += gt + 1;
-            rest = inner;
+        let Some(end) = html[inner_start..].find(&close) else {
             continue;
         };
-        let close_end = pos + gt + 1 + end + close.len();
-        if let Some(id) = id {
+        let close_end = inner_start + end + close.len();
+        done = close_end;
+        if let Some(id) = render::attr_value(&open, "id") {
             out.push((
                 level,
-                id,
-                render::heading_text(&inner[..end]),
-                open_start,
+                id.into_owned(),
+                render::heading_text(&html[inner_start..inner_start + end]),
+                open.at,
                 close_end,
             ));
         }
-        let advance = gt + 1 + end + close.len();
-        pos += advance;
-        rest = &rest[advance..];
     }
     out
 }
@@ -403,6 +392,44 @@ mod tests {
         assert_eq!(
             hs[0].2.trim_end_matches('\u{200b}'),
             "The executor (exec.rs) under H0"
+        );
+    }
+
+    /// A commented-out heading is not on the page, so it is not a result. It was found by a
+    /// bare `find("<h")`, which cannot tell a comment from markup: the palette offered
+    /// "Old section title" pointing at an id no element carries, and it took the visible
+    /// prose after the comment away from the real section. An apostrophe in a comment
+    /// used to empty the rest of its section the same way.
+    #[test]
+    fn a_commented_out_heading_is_not_a_result() {
+        let html = "<h2 id=\"a\">A</h2><!-- TODO: don't forget -->\
+                    <p>Kept.</p><!--\n<h2 id=\"old\">Old section title</h2>\n\
+                    <p>Old paragraph.</p>\n--><p>Current prose.</p>\
+                    <h2 id=\"b\">B</h2><p>b</p>";
+        let hs = headings_with_pos(html);
+        let ids: Vec<&str> = hs.iter().map(|h| h.1.as_str()).collect();
+        assert_eq!(ids, ["a", "b"]);
+        assert_eq!(
+            section_text(&html[hs[0].4..hs[1].3]),
+            "Kept. Current prose."
+        );
+    }
+
+    /// Heading markup inside a `<script>` body is a JavaScript string, not a heading. Read
+    /// as one, it filed a phantom result under an id the static page lacks, gave it the
+    /// script's own source as its text, and took the prose after the script with it.
+    #[test]
+    fn heading_markup_inside_a_script_is_not_a_result() {
+        let html = "<h2 id=\"real\">Real</h2><p>Real prose.</p><div id=\"app\"></div>\
+                    <script>const tpl = '<h2 id=\"phantom\">Phantom</h2><p>body</p>';\
+                    document.getElementById(\"app\").innerHTML = tpl;</script>\
+                    <p>After the script.</p><h2 id=\"second\">Second</h2><p>2</p>";
+        let hs = headings_with_pos(html);
+        let ids: Vec<&str> = hs.iter().map(|h| h.1.as_str()).collect();
+        assert_eq!(ids, ["real", "second"]);
+        assert_eq!(
+            section_text(&html[hs[0].4..hs[1].3]),
+            "Real prose. After the script."
         );
     }
 

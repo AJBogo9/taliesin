@@ -74,6 +74,21 @@ mod tests {
         assert_eq!(indexable_text("<p>a   b\n\nc</p>"), "a b c");
     }
 
+    /// A `<` that opens no tag is text, as the walker ([`tags`]) and the browser read it:
+    /// an unescaped `a < b` in a raw-HTML block shows on the page. Read as the start of a
+    /// tag, it hid everything up to the next `>`.
+    #[test]
+    fn a_lt_that_opens_no_tag_is_text() {
+        let html = "<p>If 1 < 2 and 3 > 2, then <b>so</b>.</p>";
+        assert_eq!(strip_tags(html), "If 1 < 2 and 3 > 2, then so.");
+        assert_eq!(
+            indexable_text("<p>If 1 < 2 and 3 > 2.</p><p>Next.</p>"),
+            "If 1 < 2 and 3 > 2. Next."
+        );
+        // A comment, a closing tag and a doctype are still markup.
+        assert_eq!(strip_tags("<!DOCTYPE html><p>a<!-- b -->c</p>"), "ac");
+    }
+
     /// A `{js}`/`{glsl}` cell ships its author source inside a `<script type="…">` in the
     /// page body, and a `<script>` body is CDATA, not text: nothing there is on the page. It
     /// was reaching the index anyway (measured live on gallery.taliesin.sh, where
