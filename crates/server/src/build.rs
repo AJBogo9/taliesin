@@ -382,7 +382,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
     let executed =
         crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
-    let (html, problems, unparseable, mut diagnostics, kernel_failure) = match executed {
+    let (html, mut problems, unparseable, mut diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
             problems,
@@ -415,17 +415,10 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // or any located warning fails the build instead of shipping a broken page with
     // exit 0. Without `--strict` the warnings were already logged; we still write.
 
-    // Structured diagnostics to stdout (the human log stays on stderr, so the JSON stream
-    // pipes cleanly). The page is still written — `--format json` only changes the
-    // *reporting* channel, not what a build produces.
-    if json {
-        println!("{}", crate::lint::diagnostics_json(&diagnostics));
-    }
-
     // `--stdout`: the page IS the output, so nothing is written and nothing is copied
     // beside it (an asset the page references stays where the author put it — a stdout
     // dump has no directory of its own to populate). The human log is already on stderr,
-    // so the HTML pipes cleanly.
+    // so the HTML pipes cleanly. `--format json` is refused beside it (both are stdout).
     if stdout {
         print!("{html}");
         return finalize_build(
@@ -436,40 +429,62 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             kernel_failure.as_deref(),
         );
     }
-    if let Some(dir) = out_dir {
-        let wrote = build_dir(&html, base, Path::new(dir), started);
-        return finalize_build(
-            wrote,
-            strict,
-            problems,
-            unparseable,
-            kernel_failure.as_deref(),
-        );
-    }
-    let out: PathBuf = out_html
-        .map(PathBuf::from)
-        .unwrap_or_else(|| base.join(format!("{stem}.html")));
-    match std::fs::write(&out, &html) {
-        Ok(()) => {
-            let dest = out.parent().unwrap_or(base);
-            // Bundle the doc's own referenced assets (images, audio, …) next to the
-            // page too, so `build doc.tmd out.html` into another directory doesn't
-            // leave them dangling. A no-op for an in-place build.
-            copy_local_assets(&html, base, dest);
-            log::built(&format!("{}{}", out.display(), elapsed_note(started)));
-            finalize_build(
-                true,
-                strict,
-                problems,
-                unparseable,
-                kernel_failure.as_deref(),
+    // The page, then the local files it references copied beside it, so the output keeps
+    // working away from the source tree (a no-op for an in-place build).
+    let written = match out_dir {
+        Some(dir) => build_dir(&html, base, Path::new(dir)),
+        None => {
+            let out: PathBuf = out_html
+                .map(PathBuf::from)
+                .unwrap_or_else(|| base.join(format!("{stem}.html")));
+            match std::fs::write(&out, &html) {
+                Ok(()) => {
+                    let bundled = copy_local_assets(&html, base, out.parent().unwrap_or(base));
+                    Some((out, bundled))
+                }
+                Err(e) => {
+                    log::error(&format!("cannot write {}: {e}", out.display()));
+                    None
+                }
+            }
+        }
+    };
+    if let Some((page, bundled)) = &written {
+        for w in &bundled.problems {
+            log_located(w, path);
+            diagnostics.push(crate::lint::diag_from(w, path));
+        }
+        problems += crate::lint::blocking(&bundled.problems);
+        // A folder always says what it holds; a single file mentions its copies only when
+        // it made some, so an in-place build (whose assets are already beside it) is quiet.
+        let assets = if out_dir.is_some() || bundled.copied > 0 {
+            format!(
+                "  ·  {} asset{}",
+                bundled.copied,
+                if bundled.copied == 1 { "" } else { "s" }
             )
-        }
-        Err(e) => {
-            log::error(&format!("cannot write {}: {e}", out.display()));
-            ExitCode::FAILURE
-        }
+        } else {
+            String::new()
+        };
+        log::built(&format!(
+            "{}{assets}{}",
+            page.display(),
+            elapsed_note(started)
+        ));
     }
+    // Structured diagnostics to stdout (the human log stays on stderr, so the JSON stream
+    // pipes cleanly), after the bundling pass so its refusals are in it too. The page is
+    // still written: `--format json` only changes the *reporting* channel.
+    if json {
+        println!("{}", crate::lint::diagnostics_json(&diagnostics));
+    }
+    finalize_build(
+        written.is_some(),
+        strict,
+        problems,
+        unparseable,
+        kernel_failure.as_deref(),
+    )
 }
 
 /// `path:line: message` for a located warning, falling back to `path: message` for one the
@@ -1040,15 +1055,15 @@ const MERMAID_FILE: &str = "mermaid.min.js";
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
 /// `href=` value pointing to an existing file under `base`) to the same relative
 /// path under `dir`, leaving the HTML's paths untouched so the folder is portable.
-/// Returns whether the page was written (the caller finalizes the exit code, so a
-/// non-strict problem tally / a `--strict` failure decide it uniformly with the
-/// single-file path).
-fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> bool {
+/// Returns the page written and what was bundled beside it, or `None` when the page could
+/// not be written (the caller reports and finalizes, so a non-strict problem tally / a
+/// `--strict` failure decide the exit uniformly with the single-file path).
+fn build_dir(html: &str, base: &Path, dir: &Path) -> Option<(PathBuf, Bundled)> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         log::error(&format!("cannot create {}: {e}", dir.display()));
-        return false;
+        return None;
     }
-    let mut copied = copy_local_assets(html, base, dir);
+    let mut bundled = copy_local_assets(html, base, dir);
     // The mermaid library, for a page that has a diagram. Not reachable through
     // `copy_local_assets`: its href is a string inside the loader script, not an `src=`
     // attribute, and it comes from the binary rather than from `base`. Content-gated exactly
@@ -1056,7 +1071,7 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
     if taliesin_core::has_mermaid(html) {
         let to = dir.join(MERMAID_FILE);
         match std::fs::write(&to, taliesin_core::mermaid_min_js()) {
-            Ok(()) => copied += 1,
+            Ok(()) => bundled.copied += 1,
             Err(e) => {
                 // Not fatal: the page is still written and the loader shows its
                 // `[data-mermaid-error]` banner over the diagram source rather than a blank.
@@ -1067,28 +1082,40 @@ fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));
-        return false;
+        return None;
     }
-    log::built(&format!(
-        "{}  ·  {copied} asset{}{}",
-        index.display(),
-        if copied == 1 { "" } else { "s" },
-        elapsed_note(started)
-    ));
-    true
+    Some((index, bundled))
+}
+
+/// What [`copy_local_assets`] left beside a page: how many referenced files are in place
+/// at the destination, and the references it refused to bundle, located at the block
+/// that carries each one so the caller can report and count them like any diagnostic.
+struct Bundled {
+    copied: usize,
+    problems: Vec<taliesin_core::render::Warning>,
 }
 
 /// Copy each referenced local asset (a relative `src=`/`href=` under `base`) to
 /// the same relative path under `dest`, so a built page's images/audio/etc. travel
 /// with it. Skips paths escaping the tree (absolute or `..`) and no-op self-copies
-/// (an in-place build, where the asset already sits next to the output). Returns
-/// the number copied. Shared by the portable `--out` folder and the single-file
-/// build (so `build doc.tmd out.html` into another directory isn't left with
-/// dangling asset references).
-fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
+/// (an in-place build, where the asset already sits next to the output). Shared by the
+/// portable `--out` folder and the single-file build (so `build doc.tmd out.html` into
+/// another directory isn't left with dangling asset references).
+///
+/// **It never replaces a different file.** The destination is a directory the author
+/// chose, not one this build owns, so a file already at the target path with other bytes
+/// is someone's: another post built into the same folder, or a file of the author's that
+/// shares the name. Overwriting it was silent data loss, so it is refused with an error
+/// naming both paths. The same bytes are what a rebuild into the same folder finds, and
+/// count as bundled.
+fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> Bundled {
     let mut copied = 0usize;
+    let mut problems = Vec::new();
+    // Destinations already accounted for, so two spellings of one file (`a.png` and
+    // `./a.png`, `my%20pic.png` and `my pic.png`) are bundled and counted once.
+    let mut placed = std::collections::HashSet::new();
     let boundary = taliesin_core::includes::repo_boundary(base);
-    for r in local_refs(html) {
+    for (r, at) in local_refs(html) {
         // The filesystem path comes from the shared resolution step (`asset_fs_path`,
         // also behind the local-asset validator and the dev server's request decode):
         // no ?query / #fragment (a static host ignores those, so `img.png?v=2` is the
@@ -1114,18 +1141,53 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
         let to = dest.join(&path);
         // In-place build: the asset is already where the page points, and copying a
         // file onto itself would truncate it.
-        if same_file(&from, &to) {
+        if same_file(&from, &to) || !placed.insert(to.clone()) {
             continue;
         }
-        if let Some(parent) = to.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match std::fs::copy(&from, &to) {
-            Ok(_) => copied += 1,
-            Err(e) => log::warn(&format!("cannot copy {}: {e}", from.display())),
+        match bundle_file(&from, &to, &path) {
+            Ok(placed) => copied += usize::from(placed),
+            Err(mut w) => {
+                w.file = source_file_before(html, at);
+                w.line = sourcepos_line_before(html, at);
+                problems.push(w);
+            }
         }
     }
-    copied + copy_js_imports(html, base, dest)
+    copied += copy_js_imports(html, base, dest, &mut problems);
+    Bundled { copied, problems }
+}
+
+/// Put `from` at `to`, beside a page built into a directory this build does not own.
+/// `Ok(true)` once the file is in place (copied, or the same bytes were already there),
+/// `Ok(false)` after an I/O failure it has logged, and an error-severity warning naming
+/// `shown` (the reference as the page spells it) when a DIFFERENT file already holds `to`:
+/// that file is someone's, so it is never replaced (see [`copy_local_assets`]).
+fn bundle_file(
+    from: &Path,
+    to: &Path,
+    shown: &str,
+) -> Result<bool, taliesin_core::render::Warning> {
+    if to.exists() {
+        if std::fs::read(to).ok() == std::fs::read(from).ok() {
+            return Ok(true);
+        }
+        return Err(taliesin_core::render::Warning::new(format!(
+            "asset not bundled: `{shown}` would replace {}, a different file already there \
+             (remove it to let the build copy over it)",
+            to.display()
+        ))
+        .severity(taliesin_core::Severity::Error));
+    }
+    if let Some(parent) = to.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::copy(from, to) {
+        Ok(_) => Ok(true),
+        Err(e) => {
+            log::warn(&format!("cannot copy {}: {e}", from.display()));
+            Ok(false)
+        }
+    }
 }
 
 /// Deploy any in-tree file a page links to whose extension is in [`SKIP_EXT`] — the
@@ -1137,7 +1199,7 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
 fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
     let boundary = taliesin_core::includes::repo_boundary(base);
-    for r in local_refs(html) {
+    for (r, _) in local_refs(html) {
         // Decode through the shared resolution step (T3): a `%20`-spelled link must
         // find the on-disk file with the space, and the DECODED name is what a static
         // host resolves the emitted href to. Decoding before the escape checks keeps an
@@ -1317,8 +1379,14 @@ fn normalize_rel(dir: &str, spec: &str) -> Option<String> {
 /// `src=`/`href=` scan can't see. Resolves against the doc `base`, copies to the same
 /// relative path under `dest`, and follows the chain through copied `.js`/`.mjs` modules
 /// (each specifier resolved against its own dir). Remote (`https://…`) and bare specifiers
-/// are ignored; tree-escaping ones warn. Returns the count copied.
-fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
+/// are ignored; tree-escaping ones warn. Returns the count copied; a different file already
+/// at a destination is refused into `problems` exactly as [`copy_local_assets`] refuses one.
+fn copy_js_imports(
+    html: &str,
+    base: &Path,
+    dest: &Path,
+    problems: &mut Vec<taliesin_core::render::Warning>,
+) -> usize {
     let mut copied = 0usize;
     let mut visited = std::collections::HashSet::new();
     let mut queue: Vec<String> = Vec::new();
@@ -1343,13 +1411,11 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
         }
         let to = dest.join(&rel);
         if !same_file(&from, &to) {
-            if let Some(parent) = to.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            match std::fs::copy(&from, &to) {
-                Ok(_) => copied += 1,
-                Err(e) => {
-                    log::warn(&format!("cannot copy {}: {e}", from.display()));
+            match bundle_file(&from, &to, &rel) {
+                Ok(true) => copied += 1,
+                Ok(false) => continue,
+                Err(w) => {
+                    problems.push(w);
                     continue;
                 }
             }
@@ -2642,16 +2708,19 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
 /// click-to-source `data-tali-src="…"` — which *contains* `src="` — from publishing every
 /// post's own source, and it is now also what keeps a code sample and an inlined script
 /// from doing the same (Fable audit FA13).
-fn local_refs(html: &str) -> Vec<String> {
+///
+/// Each value comes with the byte offset of its first occurrence, which is what locates a
+/// refused reference at the block that carries it ([`sourcepos_line_before`]).
+fn local_refs(html: &str) -> Vec<(String, usize)> {
     const HARVESTED: &[&str] = &["src", "href", "poster"];
-    let mut out: Vec<String> = Vec::new();
+    let mut out: Vec<(String, usize)> = Vec::new();
     for tag in taliesin_core::render::tags(html) {
         for a in taliesin_core::render::attrs(&tag) {
             if !HARVESTED.iter().any(|n| a.name.eq_ignore_ascii_case(n)) {
                 continue;
             }
-            if is_local_ref(a.value) && !out.iter().any(|v| v == a.value) {
-                out.push(a.value.to_string());
+            if is_local_ref(a.value) && !out.iter().any(|(v, _)| v == a.value) {
+                out.push((a.value.to_string(), a.at));
             }
         }
     }
@@ -3136,12 +3205,17 @@ mod mirror_tests {
         assert!(ms.starts_with("  ·  "), "{ms}");
     }
 
+    /// The harvested values alone, for the tests that are about WHICH values are read.
+    fn local_urls(html: &str) -> Vec<String> {
+        local_refs(html).into_iter().map(|(v, _)| v).collect()
+    }
+
     #[test]
     fn local_refs_matches_whole_attributes_not_substrings() {
         // `data-tali-src="…"` (the click-to-source attribute on listing cards) *contains*
         // the substring `src="`, so a bare search harvested each post's `.tmd` and
         // `deploy_referenced_sources` published the sources into `_site/`.
-        let refs = local_refs(
+        let refs = local_urls(
             r#"<a class="card" data-tali-src="posts/a/index.tmd" href="posts/a/index.html">
                  <img src="posts/a/thumb.png" alt="">
                </a>
@@ -3169,7 +3243,7 @@ mod mirror_tests {
     /// the same treatment.
     #[test]
     fn local_refs_reads_tags_not_prose_that_merely_shows_an_attribute() {
-        let refs = local_refs(
+        let refs = local_urls(
             "<p>Write <code>&lt;a href=\"draft.md\"&gt;</code> to link a source.</p>\
              <p><a href=\"real.md\">the real link</a></p>",
         );
@@ -3186,7 +3260,7 @@ mod mirror_tests {
     /// with no notion of raw text harvests JS syntax as if it were a file.
     #[test]
     fn local_refs_ignores_html_built_inside_an_inlined_script() {
-        let refs = local_refs(
+        let refs = local_urls(
             "<script>var t = '<a href=\"'+e+'\">' + '<img src=\"pic.png\">';</script>\
              <img src=\"real.png\">",
         );
@@ -3203,7 +3277,7 @@ mod mirror_tests {
         fs::create_dir_all(&out).unwrap();
         fs::write(dir.join("pic.png"), "x").unwrap();
 
-        let copied = copy_local_assets("<img src='pic.png' alt='a'>", &dir, &out);
+        let copied = copy_local_assets("<img src='pic.png' alt='a'>", &dir, &out).copied;
 
         assert!(out.join("pic.png").is_file(), "a single-quoted src bundles");
         assert_eq!(copied, 1);
@@ -3221,13 +3295,70 @@ mod mirror_tests {
         fs::create_dir_all(&out).unwrap();
         fs::write(dir.join("my image.png"), "x").unwrap();
 
-        let copied = copy_local_assets("<img src=\"my%20image.png\" alt=\"a\">", &dir, &out);
+        let copied = copy_local_assets("<img src=\"my%20image.png\" alt=\"a\">", &dir, &out).copied;
 
         assert_eq!(copied, 1);
         assert!(
             out.join("my image.png").is_file(),
             "the decoded file is what a static host resolves the emitted src to"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `build post.tmd elsewhere/p.html` copies each local image beside the output, and a
+    /// bare `fs::copy` replaced whatever was already there: two posts built into one folder
+    /// clobbered each other's `figures/plot.png`, and an unrelated file of the author's was
+    /// overwritten, with nothing printed. A DIFFERENT file at the destination is refused,
+    /// named and located at the block that references it; the same bytes (a rebuild into the
+    /// same folder) are not a conflict and count as bundled.
+    #[test]
+    fn copy_local_assets_never_overwrites_a_different_file() {
+        let dir = tmp_dir("no-clobber");
+        let (post, desk) = (dir.join("post"), dir.join("desk"));
+        fs::create_dir_all(post.join("img")).unwrap();
+        fs::create_dir_all(desk.join("img")).unwrap();
+        fs::write(post.join("img/a.png"), "POST FIGURE").unwrap();
+        fs::write(desk.join("img/a.png"), "USER FILE").unwrap();
+        let html = r#"<p data-sourcepos="5:1-5:24"><img src="img/a.png" alt="A square."></p>"#;
+
+        let got = copy_local_assets(html, &post, &desk);
+
+        assert_eq!(
+            fs::read_to_string(desk.join("img/a.png")).unwrap(),
+            "USER FILE",
+            "a file already at the destination must survive"
+        );
+        assert_eq!(got.copied, 0);
+        let [w] = &got.problems[..] else {
+            panic!("one refusal expected, got {:?}", got.problems);
+        };
+        assert_eq!(w.severity, taliesin_core::Severity::Error, "{w:?}");
+        assert_eq!(w.line, Some(5), "located at the referencing block: {w:?}");
+        assert!(w.message.contains("img/a.png"), "names the file: {w:?}");
+
+        // The same bytes are what a rebuild into the same folder finds: not a conflict.
+        fs::write(desk.join("img/a.png"), "POST FIGURE").unwrap();
+        let again = copy_local_assets(html, &post, &desk);
+        assert!(again.problems.is_empty(), "{:?}", again.problems);
+        assert_eq!(again.copied, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Two spellings of one file are one asset. The `--out` summary counted each distinct
+    /// attribute VALUE, so a page naming `my pic.png` as `my%20pic.png` and `<my pic.png>`
+    /// reported more assets than the folder held.
+    #[test]
+    fn copy_local_assets_counts_two_spellings_of_one_file_once() {
+        let dir = tmp_dir("two-spellings");
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(dir.join("my pic.png"), "x").unwrap();
+
+        let html = r#"<img src="my%20pic.png"><img src="my pic.png"><img src="./my pic.png">"#;
+        let got = copy_local_assets(html, &dir, &out);
+
+        assert!(out.join("my pic.png").is_file());
+        assert_eq!(got.copied, 1, "one file, however it is spelled");
         let _ = fs::remove_dir_all(&dir);
     }
 
@@ -3465,7 +3596,7 @@ mod mirror_tests {
         fs::write(base.join("util.js"), "export const z = 1;\n").unwrap();
         fs::write(base.join("secret.js"), "export const s = 0;\n").unwrap(); // not referenced
 
-        let copied = copy_local_assets(html, &base, &out);
+        let copied = copy_local_assets(html, &base, &out).copied;
 
         assert!(
             out.join("helper.js").exists(),
@@ -3500,7 +3631,7 @@ mod mirror_tests {
         // `pic.png` / `doc.pdf` (a static host ignores the ?query / #fragment).
         let html = "<img src=\"pic.png?v=2\"><a href=\"doc.pdf#page=3\">x</a>";
 
-        let copied = copy_local_assets(html, &base, &out);
+        let copied = copy_local_assets(html, &base, &out).copied;
 
         assert!(
             out.join("pic.png").exists(),
@@ -3536,7 +3667,7 @@ mod mirror_tests {
         let html = "<video src=\"clip.mp4\" poster=\"still.png\"></video>\
                     <video src=\"clip.mp4\" poster=\"still.png\"></video>";
 
-        let copied = copy_local_assets(html, &base, &out);
+        let copied = copy_local_assets(html, &base, &out).copied;
 
         for f in ["clip.mp4", "still.png"] {
             assert!(
@@ -3572,7 +3703,7 @@ mod mirror_tests {
         let html = "<a data-tali-src=\"post.tmd\">card</a>\
                     <video src=\"clip.mp4\"></video>";
 
-        let copied = copy_local_assets(html, &base, &out);
+        let copied = copy_local_assets(html, &base, &out).copied;
 
         assert!(out.join("clip.mp4").exists(), "real media src is bundled");
         assert!(
@@ -4058,7 +4189,7 @@ mod symlink_containment_tests {
         let dest = dir.join("bundle");
         fs::create_dir_all(&dest).unwrap();
         let html = r#"<img src="leak.png"><img src="shared.png">"#;
-        let copied = copy_local_assets(html, &repo.join("doc"), &dest);
+        let copied = copy_local_assets(html, &repo.join("doc"), &dest).copied;
 
         assert!(
             !dest.join("leak.png").exists(),

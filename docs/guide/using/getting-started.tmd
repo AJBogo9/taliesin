@@ -105,7 +105,7 @@ When you're happy, `build` produces output (executing code cells against the
 kernel, so the HTML carries the computed figures):
 
 ```sh
-taliesin build hello.tmd                 # -> hello.html (one self-contained file)
+taliesin build hello.tmd                 # -> hello.html (one file; local images stay beside it)
 taliesin build hello.tmd --out dist      # -> dist/index.html + copied local assets
 ```
 
@@ -121,8 +121,8 @@ taliesin build docs/         # -> docs/_book/  (a book, if _site.yml says so)
 
 | You build | Taliesin writes |
 |---|---|
-| `build doc.tmd` | `doc.html` next to the source: one self-contained file |
-| `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html` |
+| `build doc.tmd` | `doc.html` next to the source, one file that refers to the local images beside it |
+| `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html`, with the local files it references copied beside it |
 | `build doc.tmd --out dist` | `dist/index.html` plus the document's referenced local assets, a portable folder |
 | `build site/` | `site/_site/` (a website) or `site/_book/` (a book, when `_site.yml` declares `chapters:`) |
 | `build site/ --out public` | the same site, into `public/` instead of the default |

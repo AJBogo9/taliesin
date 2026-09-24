@@ -31,7 +31,7 @@ and the [Gallery](https://gallery.taliesin.sh/) shows one-page demos you can ope
 
 ```sh
 taliesin preview post.tmd 4321   # live preview, updating as you save
-taliesin build post.tmd          # one self-contained HTML file, code cells executed
+taliesin build post.tmd          # post.html beside the source, code cells executed
 taliesin preview blog/           # a directory instead: a whole multi-page site
 ```
 
