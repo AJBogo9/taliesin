@@ -1002,7 +1002,8 @@ impl Kernel {
         //
         // A streaming runaway (`while True: print(x)`) never goes silent, so it is NOT
         // caught here: it is caught by the output caps, which interrupt as soon as one
-        // fires. That is why dropping the wall-clock default loses no protection.
+        // fires. One that only redraws a line with `\r` is caught by neither, on purpose:
+        // it retains one line, like a long job's progress bar (see [`Outputs`]).
         let wall = self.cell_cap;
         let silence = self.silence_cap;
         let started = Instant::now();

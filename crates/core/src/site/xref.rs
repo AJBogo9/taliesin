@@ -595,6 +595,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// An anchor is a target only where the render gives it an id. A heading, figure or
+    /// equation inside a block quote, a list item or a footnote keeps its `{#…}` as text and
+    /// gets no id, yet the scan registered it, so a cross-page `@sec-q` linked to a missing
+    /// anchor and a same-page one read as resolved (audit 2026-09-24, WP13 leftover). The scan
+    /// and the render must name the same anchors.
+    #[test]
+    fn the_scan_finds_exactly_the_anchors_the_render_gives_an_id() {
+        let src = "# P\n\n> ## Quoted {#sec-q}\n>\n> ![q](a.png){#fig-q}\n\n\
+                   - ## Listed {#sec-l}\n\n- ![l](a.png){#fig-l}\n\n\
+                   Ref[^n].\n\n[^n]: A note {#sec-n}\n\n\
+                   ## Top {#sec-top}\n\n![t](a.png){#fig-top}\n\n\
+                   ::: {.column-page}\n## In a div {#sec-div}\n:::\n";
+        let scanned: Vec<String> = scan_page_anchors(src).into_iter().map(|a| a.id).collect();
+        let rendered: Vec<String> = crate::render_document(src)
+            .blocks
+            .iter()
+            .flat_map(|b| {
+                crate::render::attr_values(&b.html, "id")
+                    .filter(|v| is_ref_anchor(v))
+                    .map(|v| v.into_owned())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert_eq!(
+            rendered,
+            ["sec-top", "fig-top", "sec-div"],
+            "the render's ids"
+        );
+        assert_eq!(scanned, rendered);
+    }
+
     #[test]
     fn brace_id_reads_an_id_in_a_later_brace_block() {
         // split-brace heading: `## Setup {.unnumbered} {#sec-setup}` — the id lives in
@@ -880,14 +911,10 @@ mod tests {
     /// the markup cite nothing, and an anchor is read decoded.
     #[test]
     fn xref_anchors_in_reads_elements_not_text() {
-        // The tag is spelled in two pieces because `tests/token_contract.rs` reads any
-        // source file holding the whole word as browser code.
         let blocks = [
-            block(concat!(
-                r##"<div class="cell tali-js"><"##,
-                r##"script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</"##,
-                r##"script></div>"##
-            )),
+            block(
+                r##"<div class="cell tali-js"><script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</script></div>"##,
+            ),
             block(r##"<!-- <a href="#sec-commented" class="tali-xref">Section</a> -->"##),
             block(r##"<p><a class='tali-xref' href='other.html#sec-single'>Section</a></p>"##),
         ];

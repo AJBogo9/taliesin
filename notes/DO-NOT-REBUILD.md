@@ -355,8 +355,12 @@ wave 2), debug mode (cut wave 3, 2026-08-08), the `TAL-*` diagnostic codes (cut 
   rule stay out.
 - **2026-07-30 long-running cells** (175a + 175b): a cell is capped on **silence**
   (`TALIESIN_CELL_SILENCE`, default 600 s) instead of wall-clock, and a running cell **streams its
-  output**. **Do not re-add a wall-clock default** on the theory that runaways are unguarded — a
-  streaming runaway never goes silent and is caught by the output caps. Consecutive chunks of one
+  output**. **Do not re-add a wall-clock default** on the theory that runaways are unguarded: a
+  streaming runaway never goes silent, and one that keeps printing new output is caught by the
+  output caps. One that only redraws a line with `\r` is caught by neither, by design since
+  2026-09-24: the caps count what the page keeps, and a progress bar that must run to completion
+  keeps one line. It runs until the author stops it or sets `TALIESIN_CELL_TIMEOUT`, the same
+  bargain as a long job that reports progress. Consecutive chunks of one
   stream now merge into a single output (measured: zero drift across the whole corpus).
 - **2026-07-30 image optimization** (169): the build derives AVIF rungs behind a `_freeze/img/` cache
   and wraps the byte-identical `<img>` in a `<picture>`. **Do not re-file the WebP half** —

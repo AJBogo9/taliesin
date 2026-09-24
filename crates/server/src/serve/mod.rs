@@ -1074,13 +1074,10 @@ mod protocol_contract {
     /// never see, and the suite is green either way.
     ///
     /// **The rule has TWO halves and only the level window was pinned here.** The other is
-    /// WHICH headings are candidates at all: `toc_items` iterates the block list, so a
-    /// heading folded into a `:::` container block (one block whose html happens to contain
-    /// headings) is not a candidate, while the client's `querySelectorAll` descended into it
-    /// and listed it. Measured 2026-08-13: a `## Inside a width escape` inside a
-    /// `.column-page` gave the preview 4 entries against the build's 3. The client now takes
-    /// `root`'s element children, which IS the block list (`<main id="tali-root">{blocks}
-    /// </main>`, and every op appends/replaces at that level).
+    /// WHICH headings are candidates at all: the headings the render emitted as blocks,
+    /// which carry a `data-block-id`, a heading folded into a `:::` container included
+    /// (`toc_items`). Measured 2026-08-13, the client listed a `## Inside a width escape`
+    /// the build then left out; since 2026-09-24 both list it, because a book numbers it.
     ///
     /// Pinned as a needle pair, not as an equivalence test: `buildToc` closes over `root` and
     /// `tocEl` inside client.js's single IIFE, so it cannot be called from Node without
@@ -1102,9 +1099,9 @@ mod protocol_contract {
             "…which needs every heading level a candidate in the first place"
         );
         assert!(
-            CLIENT_JS.contains("[...root.children]"),
-            "and TOP-LEVEL blocks only, or a heading inside a `:::` container is in the \
-             preview's TOC and absent from the build's"
+            CLIENT_JS.contains("root.querySelectorAll(\"[data-block-id]\")"),
+            "and the headings emitted as blocks only, or a heading in a quote or in cell \
+             output is in the preview's TOC and absent from the build's"
         );
     }
 

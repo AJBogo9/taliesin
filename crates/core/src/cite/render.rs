@@ -171,7 +171,7 @@ pub fn process(
                                 l,
                                 end.unwrap_or(l),
                                 &format!("@{key}"),
-                                super::is_cite_key_char,
+                                super::Token::CiteKey,
                             ) {
                                 Some((tl, col, end_col)) => w.at(None, tl).span(col, end_col),
                                 None => w.at(None, l),
@@ -245,11 +245,15 @@ fn bare_key_warning(
         "`@{key}` is not a citation, so it renders as literal text (did you mean `[@{key}]`?)"
     ))
     .severity(Severity::Error);
-    // A key's own characters bound it, except the sentence-final `.` it so often has.
-    let boundary = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
     match (line, file.is_none(), src) {
         (Some(l), true, Some(s)) => {
-            let at = super::token_span(s, l, end.unwrap_or(l), &format!("@{key}"), boundary);
+            let at = super::token_span(
+                s,
+                l,
+                end.unwrap_or(l),
+                &format!("@{key}"),
+                super::Token::CiteKey,
+            );
             w.at(None, at.map_or(l, |(tl, _, _)| tl))
         }
         (Some(l), _, _) => w.at(file, l),
@@ -336,15 +340,7 @@ fn transform_html(
             // sitting in an attribute value was rewritten into markup inside markup.
             let end = crate::render::tag_end(rest).map_or(rest.len(), |e| e + 1);
             let tag = &rest[..end];
-            // Borrowed, not collected: this runs once per tag of every page, and the name
-            // is only ever compared against `SKIP`.
-            let after = tag.trim_start_matches(['<', '/']);
-            let name_len = after
-                .as_bytes()
-                .iter()
-                .position(|b| !b.is_ascii_alphanumeric())
-                .unwrap_or(after.len());
-            let name = &after[..name_len];
+            let name = tag_name(tag);
             if SKIP.iter().any(|s| name.eq_ignore_ascii_case(s)) {
                 if tag.starts_with("</") {
                     skip_depth = skip_depth.saturating_sub(1);
@@ -355,14 +351,121 @@ fn transform_html(
             out.push_str(tag);
             rest = &rest[end..];
         } else {
-            let end = rest.find('<').unwrap_or(rest.len());
+            let mut end = rest.find('<').unwrap_or(rest.len());
+            if skip_depth == 0 && cites == CiteMode::Resolve {
+                end = group_end(rest, end);
+            }
             let text = &rest[..end];
             if skip_depth == 0 {
-                out.push_str(&rewrite_text(text, cite_key, bare_key, xrefs, cites));
+                out.push_str(&rewrite_run(text, cite_key, bare_key, xrefs, cites));
             } else {
                 out.push_str(text);
             }
             rest = &rest[end..];
+        }
+    }
+    out
+}
+
+/// A tag's element name (`em` for `<em>` and `</em>`). Borrowed, not collected: this runs
+/// once per tag of every page, and the name is only ever compared.
+fn tag_name(tag: &str) -> &str {
+    let after = tag.trim_start_matches(['<', '/']);
+    let len = after
+        .as_bytes()
+        .iter()
+        .position(|b| !b.is_ascii_alphanumeric())
+        .unwrap_or(after.len());
+    &after[..len]
+}
+
+/// The inline elements a citation group reads across, so its locator can carry markup
+/// (`[@k, *p. 5*]`). Anything else (a link, code, math, a line break) ends the group's run.
+const PHRASING: [&str; 13] = [
+    "em", "strong", "i", "b", "u", "s", "del", "ins", "mark", "sub", "sup", "span", "small",
+];
+
+/// Stands in for each tag of a run [`group_end`] extended while [`rewrite_text`] reads it,
+/// so the group reads as one string and no tag is taken for prose.
+const TAG_MARK: char = '\u{FFFC}';
+
+/// Where the text run at the head of `html` ends for the citation scan: at `end`, its first
+/// `<`, unless it leaves a citation group open (its last `[` has an `@` after it and no `]`).
+/// Then the group is read on across [`PHRASING`] tags to the end of the text run that holds
+/// its `]`, and on again if that run leaves another group open. The editor reads a group from
+/// the source, where emphasis does not split it, so this is what makes the two agree.
+fn group_end(html: &str, end: usize) -> usize {
+    let (mut from, mut to) = (0, end);
+    loop {
+        let run = &html[from..to];
+        match run.rfind('[') {
+            Some(o) if !run[o..].contains(']') && run[o..].contains('@') => {}
+            _ => break,
+        }
+        let mut at = to;
+        let closed = loop {
+            let Some(len) = html[at..]
+                .starts_with('<')
+                .then(|| crate::render::tag_end(&html[at..]))
+                .flatten()
+            else {
+                break None;
+            };
+            let tag = &html[at..=at + len];
+            if !PHRASING
+                .iter()
+                .any(|p| tag_name(tag).eq_ignore_ascii_case(p))
+            {
+                break None;
+            }
+            at += len + 1;
+            let run_end = html[at..].find('<').map_or(html.len(), |i| at + i);
+            if html[at..run_end].contains(']') {
+                break Some(run_end);
+            }
+            at = run_end;
+        };
+        match closed {
+            Some(run_end) => (from, to) = (to, run_end),
+            None => break,
+        }
+    }
+    // An author's own U+FFFC would be taken for a tag's place: read that run unextended.
+    if to > end && html[..to].contains(TAG_MARK) {
+        return end;
+    }
+    to
+}
+
+/// [`rewrite_text`] over a run [`group_end`] may have extended across tags: each tag is read
+/// as one [`TAG_MARK`] and put back where it stood.
+fn rewrite_run(
+    run: &str,
+    cite_key: &mut impl FnMut(&str) -> usize,
+    bare_key: &mut impl FnMut(&str) -> bool,
+    xrefs: &HashMap<String, String>,
+    cites: CiteMode,
+) -> String {
+    if !run.contains('<') {
+        return rewrite_text(run, cite_key, bare_key, xrefs, cites);
+    }
+    let mut tags = Vec::new();
+    let mut text = String::with_capacity(run.len());
+    let mut rest = run;
+    while let Some(lt) = rest.find('<') {
+        text.push_str(&rest[..lt]);
+        let len = crate::render::tag_end(&rest[lt..]).map_or(rest.len() - lt, |e| e + 1);
+        tags.push(&rest[lt..lt + len]);
+        text.push(TAG_MARK);
+        rest = &rest[lt + len..];
+    }
+    text.push_str(rest);
+    let mut tags = tags.into_iter();
+    let mut out = String::with_capacity(run.len());
+    for c in rewrite_text(&text, cite_key, bare_key, xrefs, cites).chars() {
+        match c {
+            TAG_MARK => out.push_str(tags.next().unwrap_or_default()),
+            c => out.push(c),
         }
     }
     out
@@ -598,7 +701,13 @@ fn group_items(inner: &str) -> Option<Vec<(std::ops::Range<usize>, &str)>> {
             return None;
         }
         let start = at + (item.len() - after.len());
-        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
+        // What `key_prefix` trimmed off the key's run (the `:` of `@knuth:1984: a note`) is
+        // the separator, as a comma is, so the locator starts after it.
+        let locator = after[key.len()..]
+            .trim_start_matches(is_cite_key_char)
+            .trim()
+            .trim_start_matches(',')
+            .trim();
         items.push((start..start + key.len(), locator));
     }
     (!items.is_empty()).then_some(items)

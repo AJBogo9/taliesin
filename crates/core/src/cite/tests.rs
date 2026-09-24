@@ -918,6 +918,39 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A key followed by the punctuation that separates its locator is still columned to the
+/// key: the span used to require a non-key character after it, and `:` is a key character,
+/// so `[@knuth1985: a note]` fell back to the whole line (audit 2026-09-24, WP10 leftover).
+/// The match is where the renderer reads exactly this key, so a longer key that merely
+/// starts the same way (`@knuth1985:2`) is still passed over.
+#[test]
+fn a_broken_citation_before_its_separator_is_columned_to_its_key() {
+    let dir = std::env::temp_dir().join(format!("tali-cite-sep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{knuth1985:2,\n title={Literate Programming},\n year={1984}\n}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
+               See [@knuth1985:2] and [@knuth1985: a note] here.\n";
+    let doc = crate::render_document_with_includes(src, &dir);
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("broken citation: @knuth1985 "))
+        .unwrap_or_else(|| panic!("no broken-citation warning: {:?}", doc.warnings));
+    let line = src.lines().nth(5).expect("line 6");
+    let (col, end_col) = (w.col.expect("a column"), w.end_col.expect("an end column"));
+    assert_eq!(
+        (&line[col as usize - 1..end_col as usize - 1], col as usize),
+        ("@knuth1985", line.rfind("@knuth1985").unwrap() + 1),
+        "the span must cover exactly the second key, in line {line:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An entry whose closing `}` was lost ends where the next entry starts, and says so.
 ///
 /// It used to swallow that next entry whole: the field loop read `@article{smith2020` as a
@@ -1559,6 +1592,50 @@ fn a_key_ends_at_its_last_letter_digit_or_underscore() {
         b.format("snake_").is_some(),
         "a trailing `_` is part of a key"
     );
+}
+
+/// The punctuation a key's run ends with is the separator before its locator, so it is
+/// part of neither: once the key stopped before the colon, `[@knuth:1984: a note]` printed
+/// "[1, : a note]" (audit 2026-09-24, WP10 leftover). It reads like the comma form.
+#[test]
+fn a_locator_drops_the_separator_its_key_ended_with() {
+    let b = parse_bib("@misc{knuth:1984, title={K}}\n@misc{smith.2020, title={S}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@knuth:1984: a note]. B [@smith.2020. p. 3]. C [@knuth:1984, ch. 2].</p>",
+    )];
+    process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    for want in [
+        "[<a href=\"#ref-knuth:1984\">1</a>, a note]",
+        "[<a href=\"#ref-smith.2020\">2</a>, p. 3]",
+        "[<a href=\"#ref-knuth:1984\">1</a>, ch. 2]",
+    ] {
+        assert!(html.contains(want), "{want} in {html}");
+    }
+}
+
+/// A locator may carry inline markup. `[@knuth:1984, *p. 5*]` is a citation group to the
+/// editor, which reads the source, but the page read groups one HTML text run at a time
+/// and the emphasis splits the run: the bracket was published as text and the key failed
+/// the gate as a bare `@key` (audit 2026-09-24, WP10 leftover). A group now reads on across
+/// the phrasing tags inside it, and the markup stays on its locator.
+#[test]
+fn a_citation_group_reads_across_the_inline_markup_in_its_locator() {
+    let b = parse_bib("@misc{knuth:1984, title={K}}\n@misc{j, title={J}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@knuth:1984, <em>p. 5</em>] and [@j, <strong>ch. 2</strong>; @knuth:1984]. \
+         B [see <em>this</em>] stays.</p>",
+    )];
+    let w = process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    for want in [
+        "A [<a href=\"#ref-knuth:1984\">1</a>, <em>p. 5</em>] and",
+        "[<a href=\"#ref-j\">2</a>, <strong>ch. 2</strong>, <a href=\"#ref-knuth:1984\">1</a>].",
+        "B [see <em>this</em>] stays.",
+    ] {
+        assert!(html.contains(want), "{want} in {html}");
+    }
+    assert!(w.is_empty(), "{w:?}");
 }
 
 /// The key under a cursor, read by the render's own group grammar (audit 2026-09-24,

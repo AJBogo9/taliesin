@@ -18,9 +18,10 @@ use super::*;
 ///
 /// `sections` holds the block ids of the page's section headings, the top-level heading
 /// nodes the render's walk emitted (so a heading inside a `:::` div counts, and one in a
-/// block quote or list item, raw `<h2>` HTML and cell output do not). Read from the page
-/// as FOLDED, through the one tag walker, so a heading a callout consumed for its title is
-/// gone: it shows no number, takes none, and its `@sec-` reads a bare "Section".
+/// block quote or list item, one marked `.unnumbered`, raw `<h2>` HTML and cell output do
+/// not). Read from the page as FOLDED, through the one tag walker, so a heading a callout
+/// consumed for its title is gone: it shows no number, takes none, and its `@sec-` reads a
+/// bare "Section".
 ///
 /// `has_title_block`: the render emits a front-matter title block, which carries the
 /// chapter number itself and demotes every body heading one level.
@@ -235,6 +236,9 @@ mod tests {
                 "::: {.column-page}\n## In a div\n:::\n",
                 "1.3",
             ),
+            // `.unnumbered` is the class a book chapter's own H1 already reads: on a section
+            // it takes no number and advances no counter (audit 2026-09-24, WP13 leftover).
+            ("an unnumbered heading", "## Aside {.unnumbered}\n", "1.2"),
             ("a block quote", "> ## Quoted\n", "1.2"),
             ("a list item", "- ## Listed\n", "1.2"),
             ("raw html", "<h2>Raw</h2>\n", "1.2"),
