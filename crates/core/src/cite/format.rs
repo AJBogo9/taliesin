@@ -108,7 +108,7 @@ fn fmt_book(f: &Fields) -> String {
         out.push_str(&format!("<em>{}</em>", esc(&clean(t))));
     }
     if let Some(ed) = f.get("edition").filter(|s| !s.is_empty()) {
-        out.push_str(&format!(", {} ed.", ordinal(&clean(ed))));
+        out.push_str(&format!(", {} ed.", esc(&ordinal(&clean(ed)))));
     }
     // The edition already ends in a period ("ed."); don't double it.
     if !out.ends_with('.') {
@@ -148,7 +148,7 @@ fn fmt_inbook(f: &Fields) -> String {
         out.push_str(&format!("in <em>{}</em>", esc(&clean(bt))));
     }
     if let Some(ed) = f.get("edition").filter(|s| !s.is_empty()) {
-        out.push_str(&format!(", {} ed.", ordinal(&clean(ed))));
+        out.push_str(&format!(", {} ed.", esc(&ordinal(&clean(ed)))));
     }
     let publisher = match (f.get("address"), f.get("publisher")) {
         (Some(a), Some(p)) if !a.is_empty() => format!("{}: {}", clean(a), clean(p)),

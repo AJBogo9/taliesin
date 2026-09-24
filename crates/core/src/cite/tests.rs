@@ -1314,3 +1314,24 @@ fn doi_editor_crossref_and_school_are_read() {
         f("thesis")
     );
 }
+
+/// Every field reaches the page escaped; `edition` was interpolated raw, in both the book
+/// and the chapter format, so markup in it became real elements (and a `<!--` in it hid
+/// the rest of the page) (audit 2026-09-24, bibtex #18 / escaping #8e).
+#[test]
+fn the_edition_field_is_escaped() {
+    let b = parse_bib(concat!(
+        "@book{bk, title={B}, edition={<b>3</b> & more}, publisher={P}, year={2000}}\n",
+        "@incollection{ch, title={C}, booktitle={B}, edition={<i>2</i>}, publisher={P}, year={2000}}\n",
+    ));
+    let bk = b.format("bk").unwrap();
+    assert!(
+        bk.contains("&lt;b&gt;3&lt;/b&gt; &amp; more ed.") && !bk.contains("<b>"),
+        "{bk}"
+    );
+    let ch = b.format("ch").unwrap();
+    assert!(
+        ch.contains("&lt;i&gt;2&lt;/i&gt; ed.") && !ch.contains("<i>"),
+        "{ch}"
+    );
+}
