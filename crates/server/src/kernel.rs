@@ -151,8 +151,15 @@ fn cell_budget(
 /// forever, exactly the false-positive the `tali-error` check was hardened against.
 pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
 
+/// Total text bytes of *stream* output one cell may retain, after carriage returns are
+/// applied (see [`Outputs`]).
+const MAX_STREAM_BYTES: usize = 512 * 1024;
+
+/// How many outputs one cell may retain, a run of one stream counting as one.
+const MAX_OUTPUTS: usize = 4096;
+
 /// Total bytes of *rich* output (rendered `ExecuteResult`/`DisplayData`) one cell may
-/// accumulate.
+/// retain.
 ///
 /// The stream cap counts text bytes and the output cap counts item *count*, so a handful of
 /// very large rich outputs sailed under both: a few base64-encoded images are only a few
@@ -161,28 +168,6 @@ pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
 /// websocket. 8 MB is far above a legitimate figure (a detailed matplotlib PNG is a few
 /// hundred KB base64) while still bounding the blast radius.
 const MAX_RICH_BYTES: usize = 8 * 1024 * 1024;
-
-/// Append one rich output, or the truncation notice if it would cross [`MAX_RICH_BYTES`].
-///
-/// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
-/// `<table>` is broken markup. So an output that crosses the cap is dropped whole and the
-/// notice takes its place, which also keeps `is_uncacheable` honest (the truncated result is
-/// never frozen).
-fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut bool, html: String) {
-    if *rich_bytes + html.len() > MAX_RICH_BYTES {
-        outputs.push(Output::Stream {
-            stderr: true,
-            text: format!(
-                "\n{TRUNCATION_MARKER}{} MB of rich output]\n",
-                MAX_RICH_BYTES / (1024 * 1024)
-            ),
-        });
-        *capped = true;
-    } else {
-        *rich_bytes += html.len();
-        outputs.push(Output::Rich(html));
-    }
-}
 
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
@@ -927,18 +912,17 @@ impl Kernel {
         self.execute_streaming(code, |_| {}).await
     }
 
-    /// [`Kernel::execute`], but `on_output` is called with each output **as it
-    /// arrives** rather than only with the finished vector (item 175b). The returned
+    /// [`Kernel::execute`], but `on_output` is handed what the live view needs **as the
+    /// outputs arrive** rather than only the finished vector (item 175b). The returned
     /// vector is unchanged, so a caller that wants no streaming passes a no-op and
     /// sees exactly the previous behavior.
     ///
-    /// The callback fires from one watermark flush rather than from each of the
-    /// seven `outputs.push` sites, so a push added later cannot silently stop being
-    /// streamed.
+    /// The callback fires from one [`Outputs::sync`] rather than from each site that
+    /// changes the list, so a change added later cannot silently stop being streamed.
     pub async fn execute_streaming(
         &mut self,
         code: &str,
-        mut on_output: impl FnMut(&Output),
+        mut on_output: impl FnMut(LiveOp<'_>),
     ) -> io::Result<Vec<Output>> {
         // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`. What
         // happens after a cell fails is the EXECUTOR's decision — `exec.rs` keeps running the
@@ -964,24 +948,20 @@ impl Kernel {
         let msg_id = request.header.msg_id.clone();
         self.shell.send(request).await.map_err(io::Error::other)?;
 
-        let mut outputs: Vec<Output> = Vec::new();
-        // Caps so a cell that emits a huge amount of output can't hang the renderer
-        // or blow memory (the output is later cloned into the block, the freeze
-        // cache, and the warm-state record, and HTML-escaped). We keep *draining* to
-        // Idle to stay in channel sync, but stop accumulating past the caps.
-        const MAX_STREAM_BYTES: usize = 512 * 1024;
-        const MAX_OUTPUTS: usize = 4096;
-        let mut stream_bytes = 0usize;
-        let mut rich_bytes = 0usize;
-        let mut capped = false;
+        // The caps on what `outputs` retains (see [`Outputs`]) keep a cell that emits a
+        // huge amount of output from hanging the renderer or blowing memory (the output is
+        // later cloned into the block, the freeze cache, and the warm-state record, and
+        // HTML-escaped). We keep *draining* to Idle to stay in channel sync, but stop
+        // accumulating once one fires.
+        let mut outputs = Outputs::default();
         // The two liveness caps (item 175a). Silence is the primary one and is on by
         // default; wall-clock is off unless `TALIESIN_CELL_TIMEOUT` is set. On hitting
         // either we SIGINT the kernel, then drain a short grace window so the resulting
         // KeyboardInterrupt + Idle resync the channels and the *next* cell still works.
         //
         // A streaming runaway (`while True: print(x)`) never goes silent, so it is NOT
-        // caught here: it is caught by the output caps below, which interrupt as soon as
-        // `capped` trips. That is why dropping the wall-clock default loses no protection.
+        // caught here: it is caught by the output caps, which interrupt as soon as one
+        // fires. That is why dropping the wall-clock default loses no protection.
         let wall = self.cell_cap;
         let silence = self.silence_cap;
         let started = Instant::now();
@@ -993,15 +973,11 @@ impl Kernel {
         // Last time THIS cell produced output: the silence cap measures from here, so it
         // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
-        // How many outputs have been handed to `on_output`. Flushed at the top of
-        // every iteration and once after the loop, so every path that pushes and then
-        // either loops or breaks is covered without touching the push sites.
-        let mut streamed = 0usize;
+        // The live view is synced at the top of every iteration and once after the loop,
+        // so every path that changes the list and then either loops or breaks is covered
+        // without touching the sites that change it.
         loop {
-            while streamed < outputs.len() {
-                on_output(&outputs[streamed]);
-                streamed += 1;
-            }
+            outputs.sync(&mut on_output);
             let now = Instant::now();
             // Time left before this cell's REAL deadline: the post-interrupt grace window,
             // or whichever liveness cap expires first.
@@ -1027,7 +1003,7 @@ impl Kernel {
                          there. Restart the kernel, or kill that process."
                     ));
                 }
-                outputs.push(Output::interrupt_ignored());
+                outputs.note(Output::interrupt_ignored());
                 break;
             }
             // Poll on a short interval (capped at the budget) so a kernel that EXITS
@@ -1041,7 +1017,7 @@ impl Kernel {
                 Err(_) => {
                     // No output this interval. Did the kernel process die?
                     if !self.is_alive() {
-                        outputs.push(Output::kernel_died());
+                        outputs.note(Output::kernel_died());
                         break;
                     }
                     // Still alive: only act once the REAL budget (not just a poll) is spent.
@@ -1071,7 +1047,7 @@ impl Kernel {
                         CapKind::None => break,
                     };
                     self.interrupt();
-                    outputs.push(Output::timeout(note));
+                    outputs.note(Output::timeout(note));
                     grace_until = Some(Instant::now() + INTERRUPT_GRACE);
                     grace_after_cap = true;
                     continue;
@@ -1089,67 +1065,15 @@ impl Kernel {
             // one cell it exists to govern, and the silent runaway then runs forever —
             // nothing else stops it, since the wall-clock cap is off by default (FA8).
             last_msg = Instant::now();
-            // Past the item cap, stop accumulating (but keep draining): emit one
-            // marker. Only an *output-producing* message trips this — not an Error or
-            // the terminal Idle Status — so a cell that emits exactly MAX_OUTPUTS items
-            // and then finishes cleanly is not falsely marked as truncated.
-            let accumulating = matches!(
-                &msg.content,
-                JupyterMessageContent::StreamContent(_)
-                    | JupyterMessageContent::ExecuteResult(_)
-                    | JupyterMessageContent::DisplayData(_)
-            );
-            if !capped && accumulating && outputs.len() >= MAX_OUTPUTS {
-                outputs.push(Output::Stream {
-                    stderr: true,
-                    text: format!("\n{TRUNCATION_MARKER}{MAX_OUTPUTS} items]\n"),
-                });
-                capped = true;
-            }
             match msg.content {
-                JupyterMessageContent::StreamContent(s) if !capped => {
-                    let stderr = matches!(s.name, Stdio::Stderr);
-                    let remaining = MAX_STREAM_BYTES.saturating_sub(stream_bytes);
-                    if s.text.len() <= remaining {
-                        stream_bytes += s.text.len();
-                        outputs.push(Output::Stream {
-                            stderr,
-                            text: s.text,
-                        });
-                    } else {
-                        // Keep a char-boundary-safe prefix, then mark + stop.
-                        let mut cut = remaining;
-                        while cut > 0 && !s.text.is_char_boundary(cut) {
-                            cut -= 1;
-                        }
-                        if cut > 0 {
-                            outputs.push(Output::Stream {
-                                stderr,
-                                text: s.text[..cut].to_string(),
-                            });
-                        }
-                        outputs.push(Output::Stream {
-                            stderr: true,
-                            text: format!("\n{TRUNCATION_MARKER}{} KB]\n", MAX_STREAM_BYTES / 1024),
-                        });
-                        capped = true;
-                    }
+                JupyterMessageContent::StreamContent(s) => {
+                    outputs.stream(matches!(s.name, Stdio::Stderr), &s.text)
                 }
-                JupyterMessageContent::ExecuteResult(r) if !capped => push_rich(
-                    &mut outputs,
-                    &mut rich_bytes,
-                    &mut capped,
-                    render_media(&r.data),
-                ),
-                JupyterMessageContent::DisplayData(d) if !capped => push_rich(
-                    &mut outputs,
-                    &mut rich_bytes,
-                    &mut capped,
-                    render_media(&d.data),
-                ),
+                JupyterMessageContent::ExecuteResult(r) => outputs.rich(render_media(&r.data)),
+                JupyterMessageContent::DisplayData(d) => outputs.rich(render_media(&d.data)),
                 // The interpreter raising about code that ran: a real traceback, so no
                 // not-run marker. This is the ONE site that may leave it `None`.
-                JupyterMessageContent::ErrorOutput(e) => outputs.push(Output::Error {
+                JupyterMessageContent::ErrorOutput(e) => outputs.note(Output::Error {
                     ename: e.ename,
                     evalue: e.evalue,
                     traceback: e.traceback,
@@ -1166,17 +1090,14 @@ impl Kernel {
             // cell otherwise keeps streaming megabytes we'd have to read + discard,
             // and the per-message receive is super-linear). Then drain a short grace
             // window for the resulting KeyboardInterrupt + Idle and stop.
-            if capped && grace_until.is_none() {
+            if outputs.capped() && grace_until.is_none() {
                 self.interrupt();
                 grace_until = Some(Instant::now() + INTERRUPT_GRACE);
             }
         }
-        // Anything pushed on the way out (a cap's notice, `kernel_died`) still reaches
+        // Anything added on the way out (a cap's notice, `kernel_died`) still reaches
         // the client, so a cell that dies mid-run says so in the live view too.
-        while streamed < outputs.len() {
-            on_output(&outputs[streamed]);
-            streamed += 1;
-        }
+        outputs.sync(&mut on_output);
         // Drain *our* shell execute_reply so the channel stays in sync. Match on
         // msg_id: after an interrupt a previous cell's late reply can still be in the
         // queue, and consuming it here would leave every later cell one reply behind.
@@ -1196,7 +1117,7 @@ impl Kernel {
                 _ => break, // timeout or read error: give up draining
             }
         }
-        Ok(outputs)
+        Ok(outputs.into_vec())
     }
 
     /// Send SIGINT to the kernel process, stopping a runaway cell while the warm kernel
@@ -1291,8 +1212,6 @@ impl Drop for Kernel {
     }
 }
 
-/// Render outputs into an HTML fragment (the inner content of an output block),
-/// or empty if there are none. The caller wraps this in the block element.
 /// Apply terminal carriage-return semantics to one text run: `\r` returns the cursor
 /// to column 0, so what follows replaces the current line. A line already committed
 /// by `\n` is never touched.
@@ -1306,8 +1225,8 @@ impl Drop for Kernel {
 /// JupyterLab: `csv.writer`, HTTP bodies and email end every line with `\r\n`, and clearing
 /// on the `\r` erased every one of those lines. So a `\r` only clears once something other
 /// than `\n` follows it, and one still waiting at the end of the text is kept there, so the
-/// next chunk of the same stream can finish the decision ([`LiveOutputs`] re-collapses
-/// `prev + next`). The result therefore holds no `\r` except possibly one trailing, which
+/// next chunk of the same stream can finish the decision ([`append_stream_text`] re-collapses
+/// the current line with it). The result therefore holds no `\r` except possibly one trailing, which
 /// [`render_outputs`] drops.
 fn apply_carriage_returns(text: &str) -> String {
     let mut committed = String::new();
@@ -1337,94 +1256,205 @@ fn apply_carriage_returns(text: &str) -> String {
     committed
 }
 
-/// What the client should do with an arriving output.
+/// Append one chunk of a stream to the text already collapsed for it.
+///
+/// Only the current line can change: a `\r` never reaches back past a `\n`, and the text
+/// before the last `\n` holds no `\r` at all (see [`apply_carriage_returns`]). So only
+/// that line and the chunk are re-collapsed, which keeps a long log that arrives one
+/// flushed line at a time linear rather than quadratic in its length.
+fn append_stream_text(buf: &mut String, chunk: &str) {
+    let line_start = buf.rfind('\n').map_or(0, |i| i + 1);
+    let tail = apply_carriage_returns(&(buf[line_start..].to_string() + chunk));
+    buf.truncate(line_start);
+    buf.push_str(&tail);
+}
+
+/// What the client has to do to bring its live copy of a cell's outputs up to date. See
+/// [`Outputs::sync`].
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LiveOp {
-    Append(Output),
-    ReplaceLast(Output),
+pub(crate) enum LiveOp<'a> {
+    Append(&'a Output),
+    ReplaceLast(&'a Output),
+    /// Drop everything shown so far; the appends that follow rebuild the list.
+    Reset,
 }
 
-/// Accumulates outputs the way the browser does, one at a time, deciding for each
-/// whether it extends the list or redraws its last element.
+/// One cell's outputs as a notebook front end holds them: the list the page renders,
+/// built message by message, with the flood caps applied to it.
 ///
-/// **Consecutive chunks of the same stream become one output.** A cell's stdout is
-/// one stream, and where the kernel chose to cut it into messages is an artefact of
-/// the kernel, not of the document: `print` in a loop may arrive as one message or as
-/// twenty depending on buffering and timing. Rendering each as its own `<pre>` turned
-/// a log into a stack of boxes and made the emitted HTML depend on that chunking.
+/// **Consecutive chunks of the same stream become one output**, with carriage returns
+/// applied as they arrive. A cell's stdout is one stream, and where the kernel cut it
+/// into messages is an artefact of buffering and timing: rendering a `<pre>` per message
+/// turned a log into a stack of boxes, and a `\r` progress bar into a stack of frames.
+/// stdout and stderr stay apart because they are styled differently, and a rich output
+/// breaks a run so text keeps its place around a figure.
 ///
-/// This is the single definition of the rule. [`collapse_carriage_returns`] is a fold
-/// over it, so the streamed view and the authoritative block **cannot** drift apart:
-/// a divergence would have to be a divergence from itself.
+/// **The caps count what is RETAINED, not what arrived** (audit E2). They exist to bound
+/// what a runaway can make the page, the cache and every websocket hold. Counting raw
+/// iopub messages and raw stream bytes instead SIGINTed a progress bar at its 4096th
+/// redraw although the page showed one line of it, and the cells after it then ran on
+/// partial state. A runaway that keeps printing new lines still fills these caps; one
+/// that only ever redraws a single line with `\r` retains nothing and is not a flood.
+///
+/// This is the single definition of the list: the live view is synced from it
+/// ([`Outputs::sync`]) and the authoritative block is rendered from it, so the two cannot
+/// drift apart.
 #[derive(Default)]
-pub(crate) struct LiveOutputs {
-    last: Option<Output>,
+pub(crate) struct Outputs {
+    list: Vec<Output>,
+    /// Total text length of the retained streams, against [`MAX_STREAM_BYTES`].
+    stream_bytes: usize,
+    /// Total length of the retained rich outputs, against [`MAX_RICH_BYTES`].
+    rich_bytes: usize,
+    /// A cap fired: the notice is in the list, and later kernel output is dropped.
+    capped: bool,
+    /// How many entries of `list` the live view holds (see [`Outputs::sync`]).
+    shown: usize,
+    /// The live view's last entry is out of date.
+    last_stale: bool,
+    /// The live view has to be rebuilt from nothing.
+    reset: bool,
 }
 
-impl LiveOutputs {
-    pub(crate) fn push(&mut self, next: Output) -> LiveOp {
-        // Same stream (stdout with stdout, stderr with stderr) merges; anything else
-        // starts a new output. stdout and stderr stay apart because they are styled
-        // differently and interleaving them would attribute one to the other.
-        let merge = matches!(
-            (&self.last, &next),
-            (
-                Some(Output::Stream { stderr: prev, .. }),
-                Output::Stream { stderr: now, .. },
-            ) if prev == now
-        );
-        if merge {
-            let (stderr, prev) = match self.last.take() {
-                Some(Output::Stream { stderr, text }) => (stderr, text),
-                _ => unreachable!("merge is only set when the last output is a stream"),
-            };
-            let Output::Stream { text, .. } = &next else {
-                unreachable!("merge is only set when the next output is a stream")
-            };
-            let merged = Output::Stream {
-                stderr,
-                text: apply_carriage_returns(&(prev + text)),
-            };
-            self.last = Some(merged.clone());
-            return LiveOp::ReplaceLast(merged);
-        }
-        let fresh = match &next {
-            Output::Stream { stderr, text } => Output::Stream {
-                stderr: *stderr,
-                text: apply_carriage_returns(text),
-            },
-            other => other.clone(),
-        };
-        self.last = Some(fresh.clone());
-        LiveOp::Append(fresh)
+impl Outputs {
+    /// Whether a cap has fired, so the kernel should be interrupted.
+    pub(crate) fn capped(&self) -> bool {
+        self.capped
     }
-}
 
-/// Batch form of [`LiveOutputs`]: what the whole output list looks like once
-/// carriage returns have been applied. Identity for any run containing no `\r`, so
-/// documents that do not draw progress bars render exactly as they did before.
-pub(crate) fn collapse_carriage_returns(outputs: &[Output]) -> Vec<Output> {
-    let mut acc: Vec<Output> = Vec::with_capacity(outputs.len());
-    let mut live = LiveOutputs::default();
-    for o in outputs {
-        match live.push(o.clone()) {
-            LiveOp::Append(o) => acc.push(o),
-            LiveOp::ReplaceLast(o) => {
-                acc.pop();
-                acc.push(o);
+    /// The finished list, as the page renders it.
+    pub(crate) fn into_vec(self) -> Vec<Output> {
+        self.list
+    }
+
+    /// A stream chunk from the kernel.
+    pub(crate) fn stream(&mut self, stderr: bool, text: &str) {
+        if self.capped {
+            return;
+        }
+        self.push_stream(stderr, text);
+        if self.stream_bytes > MAX_STREAM_BYTES {
+            // Keep a char-boundary-safe prefix of the stream that crossed the line.
+            let over = self.stream_bytes - MAX_STREAM_BYTES;
+            let last = self.list.len() - 1;
+            if let Some(Output::Stream { text, .. }) = self.list.get_mut(last) {
+                let mut cut = text.len().saturating_sub(over);
+                while cut > 0 && !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                self.stream_bytes -= text.len() - cut;
+                text.truncate(cut);
+            }
+            self.touched(last);
+            self.cap(format!("{} KB", MAX_STREAM_BYTES / 1024));
+        } else {
+            self.cap_items();
+        }
+    }
+
+    /// A rich output from the kernel, already rendered to HTML.
+    ///
+    /// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
+    /// `<table>` is broken markup. So one that would cross [`MAX_RICH_BYTES`] is dropped
+    /// whole and the notice takes its place.
+    pub(crate) fn rich(&mut self, html: String) {
+        if self.capped {
+            return;
+        }
+        if self.rich_bytes + html.len() > MAX_RICH_BYTES {
+            self.cap(format!(
+                "{} MB of rich output",
+                MAX_RICH_BYTES / (1024 * 1024)
+            ));
+            return;
+        }
+        self.rich_bytes += html.len();
+        self.list.push(Output::Rich(html));
+        self.cap_items();
+    }
+
+    /// An output nothing may drop: a traceback the kernel raised, or a notice the
+    /// executor itself writes (a cap expiring, the kernel dying). Never counted against the
+    /// caps, so the reason a cell stopped always reaches the page.
+    pub(crate) fn note(&mut self, o: Output) {
+        match o {
+            Output::Stream { stderr, text } => self.push_stream(stderr, &text),
+            other => self.list.push(other),
+        }
+    }
+
+    fn push_stream(&mut self, stderr: bool, chunk: &str) {
+        let last = self.list.len().wrapping_sub(1);
+        match self.list.last_mut() {
+            Some(Output::Stream { stderr: s, text }) if *s == stderr => {
+                let before = text.len();
+                append_stream_text(text, chunk);
+                self.stream_bytes = self.stream_bytes - before + text.len();
+                self.touched(last);
+            }
+            _ => {
+                let text = apply_carriage_returns(chunk);
+                self.stream_bytes += text.len();
+                self.list.push(Output::Stream { stderr, text });
             }
         }
     }
-    acc
+
+    /// Past [`MAX_OUTPUTS`] entries, the one just added gives way to the notice.
+    fn cap_items(&mut self) {
+        if self.list.len() <= MAX_OUTPUTS {
+            return;
+        }
+        match self.list.pop() {
+            Some(Output::Stream { text, .. }) => self.stream_bytes -= text.len(),
+            Some(Output::Rich(html)) => self.rich_bytes -= html.len(),
+            _ => {}
+        }
+        self.cap(format!("{MAX_OUTPUTS} items"));
+    }
+
+    fn cap(&mut self, what: String) {
+        self.note(Output::Stream {
+            stderr: true,
+            text: format!("\n{TRUNCATION_MARKER}{what}]\n"),
+        });
+        self.capped = true;
+    }
+
+    /// Entry `i` changed in place.
+    fn touched(&mut self, i: usize) {
+        if i + 1 == self.shown {
+            self.last_stale = true;
+        } else if i < self.shown {
+            self.reset = true;
+            self.shown = 0;
+        }
+    }
+
+    /// Hand `emit` what the live view needs to match the list: a `Reset` when it has to be
+    /// rebuilt, a `ReplaceLast` when its last entry changed in place, then an `Append` per
+    /// entry it does not hold yet. The live view is thereby a function of the list, not of
+    /// the history of messages that built it.
+    pub(crate) fn sync(&mut self, mut emit: impl FnMut(LiveOp<'_>)) {
+        if std::mem::take(&mut self.reset) {
+            emit(LiveOp::Reset);
+        } else if std::mem::take(&mut self.last_stale) && self.shown > 0 {
+            emit(LiveOp::ReplaceLast(&self.list[self.shown - 1]));
+        }
+        for o in &self.list[self.shown..] {
+            emit(LiveOp::Append(o));
+        }
+        self.shown = self.list.len();
+        self.last_stale = false;
+    }
 }
 
+/// Render a cell's outputs (as [`Outputs`] built them) into the HTML fragment that is the
+/// inner content of its output block, or empty if there are none. The caller wraps this in
+/// the block element.
 pub fn render_outputs(outputs: &[Output]) -> String {
     let mut s = String::new();
-    // Carriage returns are resolved here rather than at capture time, so the cached
-    // and replayed paths get the same treatment as a fresh run and a progress bar
-    // never renders as a stack of frames. Identity when no `\r` is present.
-    let collapsed = collapse_carriage_returns(outputs);
-    for o in &collapsed {
+    for o in outputs {
         match o {
             Output::Stream { stderr, text } => {
                 let class = if *stderr {
@@ -1687,17 +1717,28 @@ mod tests {
         }
     }
 
+    /// Feed raw outputs, one message each, through [`Outputs`] the way the receive loop
+    /// does, and return the list the page renders.
+    fn collapse(raw: &[Output]) -> Vec<Output> {
+        let mut acc = Outputs::default();
+        for o in raw {
+            match o {
+                Output::Stream { stderr, text } => acc.stream(*stderr, text),
+                Output::Rich(html) => acc.rich(html.clone()),
+                other => acc.note(other.clone()),
+            }
+        }
+        acc.into_vec()
+    }
+
     #[test]
     fn a_carriage_return_overwrites_the_current_line() {
         // Terminal semantics: `\r` returns the cursor to column 0, so what follows
         // replaces the line. This is how a progress bar redraws itself in place.
-        assert_eq!(
-            collapse_carriage_returns(&[out("10%\r20%\r30%\n")]),
-            vec![out("30%\n")]
-        );
+        assert_eq!(collapse(&[out("10%\r20%\r30%\n")]), vec![out("30%\n")]);
         // A committed line (one ended by `\n`) is never touched by a later `\r`.
         assert_eq!(
-            collapse_carriage_returns(&[out("done\nbar 1\rbar 2")]),
+            collapse(&[out("done\nbar 1\rbar 2")]),
             vec![out("done\nbar 2")]
         );
     }
@@ -1710,7 +1751,7 @@ mod tests {
         // stack of boxes rather than a log). Verified against the whole corpus when
         // this landed: merging changed no existing document's output.
         assert_eq!(
-            collapse_carriage_returns(&[out("first\n"), out("second\n"), out("third\n")]),
+            collapse(&[out("first\n"), out("second\n"), out("third\n")]),
             vec![out("first\nsecond\nthird\n")]
         );
 
@@ -1721,7 +1762,7 @@ mod tests {
             text: t.into(),
         };
         assert_eq!(
-            collapse_carriage_returns(&[out("out 1\n"), err("warn\n"), out("out 2\n")]),
+            collapse(&[out("out 1\n"), err("warn\n"), out("out 2\n")]),
             vec![out("out 1\n"), err("warn\n"), out("out 2\n")],
             "stdout and stderr must stay separate outputs"
         );
@@ -1729,7 +1770,7 @@ mod tests {
         // A rich output (a figure) also breaks a run, so text keeps its position
         // relative to the image it was printed around.
         assert_eq!(
-            collapse_carriage_returns(&[
+            collapse(&[
                 out("before\n"),
                 Output::Rich("<img>".into()),
                 out("after\n"),
@@ -1751,7 +1792,7 @@ mod tests {
             .map(|c| out(c))
             .collect();
         assert_eq!(
-            collapse_carriage_returns(&chunks),
+            collapse(&chunks),
             vec![out("100%|####|\n")],
             "a 3-frame bar must render as one line, not three stacked ones"
         );
@@ -1764,13 +1805,13 @@ mod tests {
         // written-out expectation catches it, which is how the first version of these
         // tests let a mutant live through exactly this case.
         assert_eq!(
-            collapse_carriage_returns(&[out("\rbar 1"), out(" done\n"), out("next\n")]),
+            collapse(&[out("\rbar 1"), out(" done\n"), out("next\n")]),
             vec![out("bar 1 done\nnext\n")],
             "a redrawing run must keep absorbing plain chunks until something breaks it"
         );
         let mixed = vec![out("\rbar"), Output::Rich("<img>".into()), out("\rbar2")];
         assert_eq!(
-            collapse_carriage_returns(&mixed),
+            collapse(&mixed),
             vec![out("bar"), Output::Rich("<img>".into()), out("bar2")]
         );
     }
@@ -1782,25 +1823,72 @@ mod tests {
     /// the next character before it decides anything.
     #[test]
     fn a_crlf_line_ending_is_a_newline_not_a_line_clear() {
+        assert_eq!(collapse(&[out("a,b\r\n1,2\r\n")]), vec![out("a,b\n1,2\n")]);
         assert_eq!(
-            collapse_carriage_returns(&[out("a,b\r\n1,2\r\n")]),
-            vec![out("a,b\n1,2\n")]
-        );
-        assert_eq!(
-            collapse_carriage_returns(&[out("x,y\r"), out("\n3,4\r"), out("\n")]),
+            collapse(&[out("x,y\r"), out("\n3,4\r"), out("\n")]),
             vec![out("x,y\n3,4\n")],
             "a `\\r\\n` split across two messages is still one newline"
         );
         // A `\r` followed by anything else still redraws, across the boundary too.
-        assert_eq!(
-            collapse_carriage_returns(&[out("10%\r"), out("20%\n")]),
-            vec![out("20%\n")]
-        );
+        assert_eq!(collapse(&[out("10%\r"), out("20%\n")]), vec![out("20%\n")]);
         // A stream that ENDS on `\r` shows the line it drew, and the `\r` itself (which the
         // HTML parser would turn into a line break) never reaches the page.
         assert_eq!(
             render_outputs(&[out("50%\r")]),
             "<pre class=\"tali-stream\">50%</pre>"
+        );
+    }
+
+    /// E2: the flood caps count what the page would hold, not what arrived. A progress
+    /// bar redrawn 10,000 times is one line of ~100 bytes, so it must not trip the item cap
+    /// (4096) or the stream byte cap (512 KB) that its raw messages cross; before, it was
+    /// interrupted at its 4096th redraw. A runaway still fills them: new lines fill the
+    /// byte cap, new items fill the item cap.
+    #[test]
+    fn the_flood_caps_count_what_is_retained_not_what_arrived() {
+        let mut bar = Outputs::default();
+        for i in 1..=10_000 {
+            bar.stream(false, &format!("\r{i:>5}/10000 {}", "#".repeat(90)));
+        }
+        assert!(!bar.capped(), "a redrawing bar tripped a flood cap");
+        let bar = bar.into_vec();
+        assert_eq!(bar.len(), 1, "one line of bar, one output: {bar:?}");
+        assert!(matches!(&bar[0], Output::Stream { text, .. } if text.starts_with("10000/10000")));
+
+        let mut log = Outputs::default();
+        let mut lines = 0;
+        while !log.capped() && lines < 100_000 {
+            log.stream(false, &format!("line {lines} {}\n", "x".repeat(40)));
+            lines += 1;
+        }
+        assert!(log.capped(), "a log flood never tripped the byte cap");
+        let log = render_outputs(&log.into_vec());
+        assert!(
+            log.contains(&format!("{TRUNCATION_MARKER}512 KB]")),
+            "{}",
+            &log[log.len() - 200..]
+        );
+        assert!(
+            log.len() < MAX_STREAM_BYTES + 4096,
+            "retained {} bytes",
+            log.len()
+        );
+
+        let mut items = Outputs::default();
+        for i in 0..MAX_OUTPUTS {
+            items.rich(format!("<b>{i}</b>"));
+        }
+        assert!(!items.capped(), "exactly MAX_OUTPUTS items is not a flood");
+        items.rich("<b>one more</b>".into());
+        assert!(items.capped(), "the item past the cap must trip it");
+        let items = items.into_vec();
+        assert_eq!(
+            items.len(),
+            MAX_OUTPUTS + 1,
+            "the notice replaces the extra item"
+        );
+        assert!(
+            matches!(items.last(), Some(Output::Stream { text, .. }) if text.contains(TRUNCATION_MARKER))
         );
     }
 
@@ -1824,28 +1912,30 @@ mod tests {
             },
         ];
 
-        // Replay the wire ops into the list a client would hold.
+        // Replay the wire ops into the list a client would hold, syncing after every
+        // message as the receive loop does.
         let mut client: Vec<Output> = Vec::new();
-        let mut state = LiveOutputs::default();
+        let mut acc = Outputs::default();
         for o in &raw {
-            match state.push(o.clone()) {
-                LiveOp::Append(o) => client.push(o),
+            match o {
+                Output::Stream { stderr, text } => acc.stream(*stderr, text),
+                Output::Rich(html) => acc.rich(html.clone()),
+                other => acc.note(other.clone()),
+            }
+            acc.sync(|op| match op {
+                LiveOp::Append(o) => client.push(o.clone()),
                 LiveOp::ReplaceLast(o) => {
                     client.pop();
-                    client.push(o);
+                    client.push(o.clone());
                 }
-            }
+                LiveOp::Reset => client.clear(),
+            });
         }
 
         assert_eq!(
             client,
-            collapse_carriage_returns(&raw),
-            "the replayed live view diverged from the batch collapse"
-        );
-        assert_eq!(
-            render_outputs(&client),
-            render_outputs(&raw),
-            "the live HTML diverged from the authoritative block HTML"
+            acc.into_vec(),
+            "the replayed live view diverged from the list the page renders"
         );
     }
 

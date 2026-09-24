@@ -269,8 +269,12 @@ A *streaming* runaway (a `while True: print(...)` that keeps the channel busy, a
 never trips the silence cap) is caught instead by the **output caps**: once
 `MAX_STREAM_BYTES` (512 KB of stream text) or `MAX_OUTPUTS` (4096 items) trips, `execute`
 interrupts immediately, so a cell printing megabytes of output is stopped instead of
-having all of it read and discarded. That is why removing the wall-clock default costs
-no protection.
+having all of it read and discarded. The caps count what the page would keep, after
+consecutive chunks of one stream are merged and carriage returns applied (`Outputs` in
+`kernel.rs`), not the messages that arrived: a progress bar redrawn ten thousand times
+is one line of it, so it runs to completion, while a loop that keeps printing new lines
+fills the byte cap. A loop that only ever redraws one line with `\r` is therefore not
+stopped by these caps, which is the same case as a long job reporting progress.
 
 On any such hit `execute` SIGINTs the kernel (the `interrupt_mode: signal` path, which
 raises a `KeyboardInterrupt` inside the cell) and drains a short **grace window**

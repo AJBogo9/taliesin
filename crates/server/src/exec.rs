@@ -954,7 +954,7 @@ impl Executor {
                         t0
                     });
                     let out = self
-                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref())
+                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref(), t0)
                         .await;
                     if let Some(t0) = t0 {
                         let state = if is_uncacheable(&out) {
@@ -1280,15 +1280,17 @@ impl Executor {
 
     /// Run one cell, streaming its output to the client as it arrives (item 175b).
     ///
-    /// `cell_id` and `page` only address the live messages; they do not affect the
-    /// returned HTML, which is still the authoritative render of the whole output
-    /// vector and is what gets cached and diffed into the block.
+    /// `cell_id`, `page` and `started_ms` (the cell's `running` stamp) only address the
+    /// live messages; they do not affect the returned HTML, which is still the
+    /// authoritative render of the whole output vector and is what gets cached and diffed
+    /// into the block.
     async fn exec_cell(
         &mut self,
         lang: &'static str,
         code: &str,
         cell_id: &str,
         page: Option<&str>,
+        started_ms: Option<u64>,
     ) -> String {
         // Cloned before the kernel borrow so the callback can emit while `self` is
         // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
@@ -1313,18 +1315,31 @@ impl Executor {
         if let (Some(h), Some(pid)) = (&interrupt, kernel.running_pid()) {
             h.store(pid, std::sync::atomic::Ordering::SeqCst);
         }
-        // Mirrors the list the browser is building, so each arriving output becomes
-        // either a new element or a redraw of the last one. Same rule the final
-        // `render_outputs` applies, by construction: both go through `LiveOutputs`.
-        let mut live = crate::kernel::LiveOutputs::default();
+        // Each op brings the browser's live copy up to the list the kernel module is
+        // building, the same list the final `render_outputs` renders, so the two cannot
+        // disagree. A reset (the list changed somewhere the browser cannot patch) re-sends
+        // the cell's `running` state, which is what makes the client empty the output
+        // block it streams into; the appends that follow rebuild it.
         let result = kernel
-            .execute_streaming(code, |o| {
+            .execute_streaming(code, |op| {
                 if sink.is_none() {
                     return; // a build has no websocket; skip the render entirely
                 }
-                let (op, shown) = match live.push(o.clone()) {
+                let (op, shown) = match op {
                     crate::kernel::LiveOp::Append(o) => ("append", o),
                     crate::kernel::LiveOp::ReplaceLast(o) => ("replace_last", o),
+                    crate::kernel::LiveOp::Reset => {
+                        let running = crate::protocol::cell_state(
+                            page.as_deref(),
+                            &cell_id,
+                            "running",
+                            started_ms,
+                            None,
+                            None,
+                        );
+                        emit(&sink, running);
+                        return;
+                    }
                 };
                 emit(
                     &sink,
@@ -1332,7 +1347,7 @@ impl Executor {
                         page.as_deref(),
                         &cell_id,
                         op,
-                        &render_outputs(std::slice::from_ref(&shown)),
+                        &render_outputs(std::slice::from_ref(shown)),
                     ),
                 );
             })
