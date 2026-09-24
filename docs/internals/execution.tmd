@@ -300,10 +300,17 @@ mapping is small and explicit:
 - **`stream`** becomes a `<pre class="tali-stream">` (with `tali-stderr` added for the
   stderr channel), HTML-escaped.
 - **`execute_result`** and **`display_data`** are both "rich" outputs; rendering picks
-  the richest representation the kernel offered, preferring `text/html`, then
-  `image/png` (wrapped as an inline `data:` `<img>`), then SVG, then JPEG, then
-  `text/plain` (as a `<pre>`). The cell's `text/plain` fallback is only used when
-  nothing richer exists.
+  the richest representation the kernel offered, in a notebook's order: `text/html`,
+  then `text/markdown` (through the document's own renderer, so `$x$` is KaTeX), then
+  `text/latex` (KaTeX in display mode), then `image/png` (wrapped as an inline `data:`
+  `<img>`, sized by the `width`/`height` an `Image(...)` puts in its metadata), then
+  SVG, then JPEG, then `application/json` (pretty-printed), then `text/plain` (as a
+  `<pre>`). The `text/plain` fallback is only used when nothing richer exists, since for
+  `display(Markdown(...))` it is the object's repr.
+- **`update_display_data`** replaces, in place, every output the cell displayed under the
+  same `display_id` (a display handle's `update()`); one that names another cell's
+  display is ignored, since that output is already final.
+- **`clear_output`** drops what the cell has shown (see the kernel section above).
 - **`error`** becomes a `<pre class="tali-error">` holding the traceback with its ANSI
   colour codes stripped (IPython colourises tracebacks for a terminal). It is the only
   class the freeze cache does not store, so an error is never restored from disk.

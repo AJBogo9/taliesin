@@ -49,9 +49,9 @@ use cell_extract::{
     is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
-pub use cell_numbered::caption_label;
 pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
+pub use cell_numbered::{caption_label, markdown_fragment};
 mod client_lang;
 pub use client_lang::{
     ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,

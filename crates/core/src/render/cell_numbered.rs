@@ -31,6 +31,22 @@ fn caption_inline_html(caption: &str) -> String {
     html_escape(caption)
 }
 
+/// Render markdown that did not come from the document (an executed cell's
+/// `text/markdown` output, `display(Markdown(...))`) to an HTML fragment, through the same
+/// parse options and emitter the document's own blocks use, so `$...$` math, emphasis and
+/// code render as they do in prose. No block ids or source positions: the fragment sits
+/// inside the cell's output block, not beside it as a block of its own.
+pub fn markdown_fragment(md: &str) -> String {
+    let arena = Arena::new();
+    let options = parse_options();
+    let root = parse_document(&arena, md, &options);
+    let mut out = String::new();
+    for child in root.children() {
+        emit(child, "", &mut out);
+    }
+    out
+}
+
 /// The generated half of a caption — `Figure 3`, `Table 2`, `Listing 7` — wrapped so CSS can
 /// address it separately from the sentence beside it.
 ///

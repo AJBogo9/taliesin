@@ -1069,8 +1069,19 @@ impl Kernel {
                 JupyterMessageContent::StreamContent(s) => {
                     outputs.stream(matches!(s.name, Stdio::Stderr), &s.text)
                 }
-                JupyterMessageContent::ExecuteResult(r) => outputs.rich(render_media(&r.data)),
-                JupyterMessageContent::DisplayData(d) => outputs.rich(render_media(&d.data)),
+                JupyterMessageContent::ExecuteResult(r) => outputs.rich(
+                    render_media(&r.data, &r.metadata),
+                    display_id(r.transient.as_ref()),
+                ),
+                JupyterMessageContent::DisplayData(d) => outputs.rich(
+                    render_media(&d.data, &d.metadata),
+                    display_id(d.transient.as_ref()),
+                ),
+                JupyterMessageContent::UpdateDisplayData(u) => {
+                    if let Some(id) = display_id(Some(&u.transient)) {
+                        outputs.update(id, render_media(&u.data, &u.metadata));
+                    }
+                }
                 JupyterMessageContent::ClearOutput(c) => outputs.clear(c.wait),
                 // The interpreter raising about code that ran: a real traceback, so no
                 // not-run marker. This is the ONE site that may leave it `None`.
@@ -1311,6 +1322,9 @@ pub(crate) struct Outputs {
     capped: bool,
     /// A `clear_output(wait=True)` waiting for the next output from the kernel.
     clear_next: bool,
+    /// `(display_id, index)` for every rich output displayed under an id, so
+    /// `update_display_data` can replace it in place.
+    displays: Vec<(String, usize)>,
     /// How many entries of `list` the live view holds (see [`Outputs::sync`]).
     shown: usize,
     /// The live view's last entry is out of date.
@@ -1361,21 +1375,55 @@ impl Outputs {
     /// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
     /// `<table>` is broken markup. So one that would cross [`MAX_RICH_BYTES`] is dropped
     /// whole and the notice takes its place.
-    pub(crate) fn rich(&mut self, html: String) {
+    pub(crate) fn rich(&mut self, html: String, display_id: Option<&str>) {
         if self.capped {
             return;
         }
         self.take_clear();
         if self.rich_bytes + html.len() > MAX_RICH_BYTES {
-            self.cap(format!(
-                "{} MB of rich output",
-                MAX_RICH_BYTES / (1024 * 1024)
-            ));
+            self.cap_rich();
             return;
         }
         self.rich_bytes += html.len();
+        if let Some(id) = display_id {
+            self.displays.push((id.to_string(), self.list.len()));
+        }
         self.list.push(Output::Rich(html));
         self.cap_items();
+    }
+
+    /// `update_display_data`: replace, in place, every output this cell displayed under
+    /// `display_id` (a handle's `update()`). An id this cell never displayed is ignored:
+    /// the display it names belongs to an earlier cell, whose output is already final.
+    pub(crate) fn update(&mut self, display_id: &str, html: String) {
+        if self.capped {
+            return;
+        }
+        let at: Vec<usize> = self
+            .displays
+            .iter()
+            .filter(|(id, _)| id == display_id)
+            .map(|&(_, i)| i)
+            .collect();
+        for i in at {
+            let Some(Output::Rich(old)) = self.list.get(i) else {
+                continue;
+            };
+            if self.rich_bytes - old.len() + html.len() > MAX_RICH_BYTES {
+                self.cap_rich();
+                return;
+            }
+            self.rich_bytes = self.rich_bytes - old.len() + html.len();
+            self.list[i] = Output::Rich(html.clone());
+            self.touched(i);
+        }
+    }
+
+    fn cap_rich(&mut self) {
+        self.cap(format!(
+            "{} MB of rich output",
+            MAX_RICH_BYTES / (1024 * 1024)
+        ));
     }
 
     /// A traceback the kernel raised. Like any output from the kernel it completes a pending
@@ -1411,6 +1459,7 @@ impl Outputs {
     fn clear_now(&mut self) {
         self.clear_next = false;
         self.list.clear();
+        self.displays.clear();
         self.stream_bytes = 0;
         self.rich_bytes = 0;
         if self.shown > 0 {
@@ -1457,6 +1506,8 @@ impl Outputs {
             Some(Output::Rich(html)) => self.rich_bytes -= html.len(),
             _ => {}
         }
+        let gone = self.list.len();
+        self.displays.retain(|&(_, i)| i != gone);
         self.cap(format!("{MAX_OUTPUTS} items"));
     }
 
@@ -1549,8 +1600,23 @@ pub fn render_outputs(outputs: &[Output]) -> String {
     s
 }
 
+/// The `display_id` a rich output was published under, if any.
+fn display_id(transient: Option<&jupyter_protocol::Transient>) -> Option<&str> {
+    transient.and_then(|t| t.display_id.as_deref())
+}
+
 /// Pick the richest available representation of a rich output and render it.
-fn render_media(media: &Media) -> String {
+///
+/// In a notebook front end's order of preference: HTML, then Markdown and LaTeX, then an
+/// image, then JSON, then plain text. `display(Markdown(...))`, `Latex`, `Math` and `JSON`
+/// all also offer a `text/plain` repr, which is how the page used to publish
+/// `<IPython.core.display.Markdown object>`. Markdown goes through the document's own
+/// renderer ([`taliesin_core::render::markdown_fragment`]) and LaTeX through KaTeX in
+/// display mode, as a `$$...$$` block in prose would.
+///
+/// `metadata` carries per-type display hints; `Image(width=, height=)` puts them under the
+/// image's mime type, and they size the `<img>`.
+fn render_media(media: &Media, metadata: &serde_json::Map<String, serde_json::Value>) -> String {
     let c = &media.content;
     let pick = |f: &dyn Fn(&MediaType) -> Option<String>| c.iter().find_map(f);
 
@@ -1560,21 +1626,47 @@ fn render_media(media: &Media) -> String {
     }) {
         return h;
     }
-    if let Some(b) = pick(&|t| match t {
-        MediaType::Png(b) => Some(b.clone()),
+    if let Some(md) = pick(&|t| match t {
+        MediaType::Markdown(m) => Some(m.clone()),
         _ => None,
     }) {
+        return taliesin_core::render::markdown_fragment(&md);
+    }
+    if let Some(tex) = pick(&|t| match t {
+        MediaType::Latex(l) => Some(l.clone()),
+        _ => None,
+    }) {
+        return taliesin_core::math::render(strip_math_delimiters(&tex), true);
+    }
+    // The `<img>` an image mime type becomes, sized by its metadata when the cell asked.
+    let img = |mime: &str, b64: &str| {
+        let dim = |k: &str| {
+            metadata
+                .get(mime)
+                .and_then(|m| m.get(k))
+                .and_then(serde_json::Value::as_u64)
+                .map(|n| format!(" {k}=\"{n}\""))
+                .unwrap_or_default()
+        };
         // `alt=""`, not `alt="output"` (item 41). An executed cell's image is spliced into
         // a captioned `<figure>`, so the caption is already the accessible description;
         // a second one reading "output" is noise a screen reader says out loud before it
         // gets to the sentence that means something. Empty alt marks it presentational,
         // which is the correct role for an image whose description sits beside it. The
         // matplotlib twin-render path has always emitted `alt=""`; this is the same
-        // treatment for every other inline image (R figures, PIL, anything else).
-        return format!(
-            "<img alt=\"\" src=\"data:image/png;base64,{}\" />",
-            b.trim()
-        );
+        // treatment for every other inline image (PIL, anything else).
+        format!(
+            "<img alt=\"\"{}{} src=\"data:{mime};base64,{}\" />",
+            dim("width"),
+            dim("height"),
+            b64.trim()
+        )
+    };
+    if let Some(b) = pick(&|t| match t {
+        MediaType::Png(b) => Some(b.clone()),
+        _ => None,
+    }) {
+        return img("image/png", &b);
     }
     if let Some(s) = pick(&|t| match t {
         MediaType::Svg(s) => Some(s.clone()),
@@ -1586,10 +1678,13 @@ fn render_media(media: &Media) -> String {
         MediaType::Jpeg(b) => Some(b.clone()),
         _ => None,
     }) {
-        return format!(
-            "<img alt=\"\" src=\"data:image/jpeg;base64,{}\" />",
-            b.trim()
-        );
+        return img("image/jpeg", &b);
+    }
+    if let Some(j) = pick(&|t| match t {
+        MediaType::Json(j) => serde_json::to_string_pretty(j).ok(),
+        _ => None,
+    }) {
+        return format!("<pre>{}</pre>", esc(&j));
     }
     if let Some(t) = pick(&|t| match t {
         MediaType::Plain(t) => Some(t.clone()),
@@ -1598,6 +1693,21 @@ fn render_media(media: &Media) -> String {
         return format!("<pre>{}</pre>", esc(&t));
     }
     String::new()
+}
+
+/// A `text/latex` output's body without the delimiters around it: IPython's `Latex` and
+/// `Math` and sympy's printer write `$$...$$`, `$...$`, `\[...\]` or `\(...\)`, which
+/// KaTeX would otherwise read as literal dollars. A bare environment passes through.
+fn strip_math_delimiters(tex: &str) -> &str {
+    let t = tex.trim();
+    for (open, close) in [("$$", "$$"), ("\\[", "\\]"), ("\\(", "\\)"), ("$", "$")] {
+        if let Some(inner) = t.strip_prefix(open).and_then(|r| r.strip_suffix(close))
+            && t.len() >= open.len() + close.len()
+        {
+            return inner.trim();
+        }
+    }
+    t
 }
 
 /// Replace a Jupyter cell's non-deterministic source path with a stable `<cell>` marker.
@@ -1771,7 +1881,7 @@ mod tests {
         for o in raw {
             match o {
                 Output::Stream { stderr, text } => acc.stream(*stderr, text),
-                Output::Rich(html) => acc.rich(html.clone()),
+                Output::Rich(html) => acc.rich(html.clone(), None),
                 other => acc.note(other.clone()),
             }
         }
@@ -1923,10 +2033,10 @@ mod tests {
 
         let mut items = Outputs::default();
         for i in 0..MAX_OUTPUTS {
-            items.rich(format!("<b>{i}</b>"));
+            items.rich(format!("<b>{i}</b>"), None);
         }
         assert!(!items.capped(), "exactly MAX_OUTPUTS items is not a flood");
-        items.rich("<b>one more</b>".into());
+        items.rich("<b>one more</b>".into(), None);
         assert!(items.capped(), "the item past the cap must trip it");
         let items = items.into_vec();
         assert_eq!(
@@ -1950,7 +2060,7 @@ mod tests {
         let mut resets = 0;
         for i in 0..12 {
             acc.clear(true);
-            acc.rich(format!("<b>frame {i}</b>{}", "x".repeat(1024 * 1024)));
+            acc.rich(format!("<b>frame {i}</b>{}", "x".repeat(1024 * 1024)), None);
             acc.sync(|op| match op {
                 LiveOp::Append(o) => client.push(o.clone()),
                 LiveOp::ReplaceLast(o) => {
@@ -1988,7 +2098,7 @@ mod tests {
         );
         acc.clear(false);
         assert!(acc.list.is_empty(), "a bare clear empties at once");
-        acc.rich("x".repeat(MAX_RICH_BYTES + 1));
+        acc.rich("x".repeat(MAX_RICH_BYTES + 1), None);
         assert!(acc.capped());
         acc.clear(false);
         assert!(
@@ -2024,7 +2134,7 @@ mod tests {
         for o in &raw {
             match o {
                 Output::Stream { stderr, text } => acc.stream(*stderr, text),
-                Output::Rich(html) => acc.rich(html.clone()),
+                Output::Rich(html) => acc.rich(html.clone(), None),
                 other => acc.note(other.clone()),
             }
             acc.sync(|op| match op {
@@ -2337,6 +2447,86 @@ mod tests {
             assert!(
                 now.contains("kept") && !now.contains("gone"),
                 "an immediate clear_output() did not clear: {now}"
+            );
+        });
+    }
+
+    /// The delimiters a `text/latex` output arrives in are not part of the math: KaTeX
+    /// would print `$$` literally. A bare environment, and a lone `$`, pass through.
+    #[test]
+    fn a_latex_output_loses_its_delimiters_before_katex() {
+        assert_eq!(strip_math_delimiters("$$\\frac{a}{b}$$"), "\\frac{a}{b}");
+        assert_eq!(
+            strip_math_delimiters(" $\\displaystyle x^2$ "),
+            "\\displaystyle x^2"
+        );
+        assert_eq!(strip_math_delimiters("\\[ a+b \\]"), "a+b");
+        assert_eq!(strip_math_delimiters("\\(c\\)"), "c");
+        let env = "\\begin{aligned}a&=b\\end{aligned}";
+        assert_eq!(strip_math_delimiters(env), env);
+        assert_eq!(strip_math_delimiters("$"), "$");
+    }
+
+    // E5: three parts of the display protocol that published the wrong thing. An updated
+    // display kept its first value; `display(Markdown/Latex/JSON)` published the object's
+    // repr (`<IPython.core.display.Markdown object>`), because only `text/plain` was
+    // understood of what they offer; and `Image(width=)` was published at natural size.
+    #[test]
+    fn the_display_protocol_publishes_what_the_cell_displayed() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise display().");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            let html = render_outputs(
+                &k.execute(
+                    "import base64\n\
+                     from IPython.display import HTML, JSON, Image, Latex, Markdown, display\n\
+                     h = display(HTML('<b>initial-disp</b>'), display_id=True)\n\
+                     h.update(HTML('<b>updated-disp</b>'))\n\
+                     display(Markdown('some **bold** text and $x^2$'))\n\
+                     display(Latex(r'$$\\frac{a}{b}$$'))\n\
+                     display(JSON({'answer': 42}))\n\
+                     px = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==')\n\
+                     display(Image(data=px, format='png', width=200, height=120))",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                html.contains("updated-disp") && !html.contains("initial-disp"),
+                "update_display kept the first value: {html}"
+            );
+            assert!(
+                !html.contains("IPython.core.display"),
+                "a display object published its repr instead of its content: {html}"
+            );
+            assert!(
+                html.contains("<strong>bold</strong>"),
+                "text/markdown was not rendered: {html}"
+            );
+            assert!(
+                html.matches("class=\"katex").count() >= 2,
+                "the markdown math and the text/latex output did not reach KaTeX: {html}"
+            );
+            assert!(
+                !html.contains("$$"),
+                "the text/latex delimiters reached KaTeX as literal dollars: {html}"
+            );
+            assert!(html.contains("42"), "application/json was not shown: {html}");
+            assert!(
+                html.contains("width=\"200\"") && html.contains("height=\"120\""),
+                "Image(width=, height=) was ignored: {html}"
             );
         });
     }
