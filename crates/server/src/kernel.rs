@@ -1060,7 +1060,15 @@ impl Kernel {
             // instead of blocking the full budget and then mislabeling the crash as
             // "Timeout" (and interrupting a corpse). A healthy long cell just re-polls.
             let poll = budget.min(Duration::from_secs(1));
-            let msg = match timeout(poll, self.iopub.read()).await {
+            // `unconstrained` turns tokio's cooperative budget off for this read (audit
+            // 2026-09-24). A read that finds data waiting 128 times in a row (about 1 MB, which a
+            // full-speed flood keeps queued) spends the budget; tokio then answers `Pending` and
+            // wakes the reader at once where no scheduler can defer the wake, as on the thread
+            // `build <file>` blocks on. zeromq 0.6's fair queue takes that wake for new data and
+            // polls the socket again inside the same poll, forever, so neither this timeout nor
+            // any cap could fire. The shell read below needs no wrapper: it reads one reply per
+            // request, and with this read unconstrained nothing else in the loop spends the budget.
+            let msg = match timeout(poll, tokio::task::unconstrained(self.iopub.read())).await {
                 Ok(Ok(msg)) => msg,
                 // One message this side cannot decode (a lone surrogate from a non-UTF-8
                 // filename reaches the wire as invalid UTF-8; a raw display whose
@@ -2980,6 +2988,73 @@ mod tests {
                 &out[out.len().saturating_sub(400)..]
             );
         });
+    }
+
+    // A cell printing long lines with no pause at all never finished a single-file build
+    // (found in the 2026-09-24 audit round): the output caps never fired, and neither could
+    // the liveness caps, because the receive never returned. The flood test above sleeps
+    // every 100 prints, which is why it passed. The runtime is driven by `block_on` on a
+    // thread that is not one of its workers, as `build <file>` drives it: that is where the
+    // receive spun. It spun inside one poll, so no `await`-based timeout could stop it
+    // either; the bound is a deadline on a channel, outside the runtime.
+    #[test]
+    fn a_full_speed_flood_is_capped_and_the_next_cell_runs() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the flood cap.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let (pid_tx, pid_rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                    .await
+                    .expect("kernel should start");
+                k.cell_cap = None;
+                k.silence_cap = None;
+                let _ = pid_tx.send(k.running_pid());
+                let flood = k
+                    .execute_streaming("while True:\n    print('x' * 1000)", |_| {})
+                    .await
+                    .unwrap();
+                let next = render_outputs(&k.execute("print('after', 6 * 7)").await.unwrap());
+                let _ = tx.send((flood.capped(), render_outputs(flood.list()), next));
+            });
+        });
+        let (capped, out, next) = match rx.recv_timeout(Duration::from_secs(60)) {
+            Ok(r) => r,
+            Err(e) => {
+                // The spinning thread cannot be stopped from here; its kernel can.
+                if let Ok(Some(pid)) = pid_rx.try_recv() {
+                    kill_pid(pid);
+                }
+                panic!(
+                    "a full-speed flood never finished its cell: {e:?} (Timeout is 60s; \
+                     Disconnected means the runtime thread panicked)"
+                );
+            }
+        };
+        assert!(
+            capped && out.contains(TRUNCATION_MARKER),
+            "the flood cap did not fire: {}",
+            &out[out.len().saturating_sub(400)..]
+        );
+        assert!(
+            out.contains("KeyboardInterrupt"),
+            "the flood was not stopped by its interrupt: {}",
+            &out[out.len().saturating_sub(400)..]
+        );
+        assert!(
+            next.contains("after 42"),
+            "the cell after the flood did not run in the same kernel: {next}"
+        );
     }
 
     // FA27: the startup preambles are ~270 lines of version-sensitive Python run against
