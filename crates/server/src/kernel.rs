@@ -1013,6 +1013,23 @@ impl Kernel {
             let poll = budget.min(Duration::from_secs(1));
             let msg = match timeout(poll, self.iopub.read()).await {
                 Ok(Ok(msg)) => msg,
+                // One message this side cannot decode (a lone surrogate from a non-UTF-8
+                // filename reaches the wire as invalid UTF-8; a raw display whose
+                // `text/plain` is not a string fails the typed parse) is that message
+                // lost, not the cell: the channel is intact and the cell is still running.
+                // Its parent header is unreadable too, so it is said where it most likely
+                // belongs, in the running cell.
+                Ok(Err(e)) if undecodable(&e) => {
+                    crate::log::warn(&format!("dropped an undecodable kernel message: {e}"));
+                    outputs.note(Output::Stream {
+                        stderr: true,
+                        text: format!(
+                            "[taliesin: an output from the kernel could not be decoded and \
+                             was dropped: {e}]\n"
+                        ),
+                    });
+                    continue;
+                }
                 Ok(Err(e)) => return Err(io::Error::other(e)),
                 Err(_) => {
                     // No output this interval. Did the kernel process die?
@@ -1154,6 +1171,22 @@ impl Kernel {
     pub(crate) fn running_pid(&self) -> Option<u32> {
         self.proc.id()
     }
+}
+
+/// Whether an iopub read failed on ONE message's content rather than on the channel, so the
+/// loop can drop that message and keep reading. A socket error is not in this set: reading
+/// on after one would only spin.
+fn undecodable(e: &jupyter_zmq_client::RuntimeError) -> bool {
+    use jupyter_zmq_client::RuntimeError as E;
+    matches!(
+        e,
+        E::ParseError { .. }
+            | E::SerdeError(_)
+            | E::DecodeError(_)
+            | E::InsufficientMessageParts(_)
+            | E::MissingDelimiter
+            | E::MissingHmac
+    )
 }
 
 /// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
@@ -2527,6 +2560,53 @@ mod tests {
             assert!(
                 html.contains("width=\"200\"") && html.contains("height=\"120\""),
                 "Image(width=, height=) was ignored: {html}"
+            );
+        });
+    }
+
+    // exec #15: one iopub message this side cannot decode used to end the cell's capture
+    // with "execution error", discarding everything else the cell printed while it kept
+    // running in the kernel. A lone surrogate (a non-UTF-8 filename from `os.listdir`)
+    // reaches the wire as invalid UTF-8, and a raw display with a non-string `text/plain`
+    // fails the typed parse; both are one message, not a broken channel.
+    #[test]
+    fn an_undecodable_message_costs_that_message_not_the_cell() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise decoding.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            let outs = k
+                .execute(
+                    "from IPython.display import display\n\
+                     print('before', flush=True)\n\
+                     print('sur-\\udcff', flush=True)\n\
+                     display({'text/plain': 5}, raw=True)\n\
+                     print('after', flush=True)",
+                )
+                .await;
+            let html = render_outputs(
+                &outs
+                    .expect("one undecodable message ended the whole cell's capture with an error"),
+            );
+            assert!(
+                html.contains("before") && html.contains("after"),
+                "the cell's decodable output was lost: {html}"
+            );
+            assert_eq!(
+                html.matches("could not be decoded").count(),
+                2,
+                "each dropped message must say so on the page: {html}"
             );
         });
     }
