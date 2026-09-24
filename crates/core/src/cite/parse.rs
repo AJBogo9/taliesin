@@ -190,6 +190,7 @@ pub(crate) fn read_into(
                 "duplicate bibliography key \u{201c}{key}\u{201d} (using the last definition)"
             ));
         }
+        biblatex_names(&mut fields);
         entries.insert(key, Entry { kind, fields });
     }
     for (at, name) in undefined {
@@ -199,6 +200,28 @@ pub(crate) fn read_into(
         ));
     }
     warnings
+}
+
+/// Read BibLaTeX's names for three fields the formatter reads by their BibTeX names:
+/// `journaltitle` (journal), `location` (address) and `date` (its leading year). Zotero's
+/// BibLaTeX exports write only these, so without the read every article lost its
+/// journal and year. The BibTeX name wins when an entry carries both.
+fn biblatex_names(fields: &mut HashMap<String, String>) {
+    for (biblatex, bibtex) in [("journaltitle", "journal"), ("location", "address")] {
+        if !fields.contains_key(bibtex)
+            && let Some(v) = fields.get(biblatex).cloned()
+        {
+            fields.insert(bibtex.to_string(), v);
+        }
+    }
+    if !fields.contains_key("year")
+        && let Some(date) = fields.get("date")
+    {
+        let year: String = date.chars().take_while(char::is_ascii_digit).collect();
+        if year.len() == 4 {
+            fields.insert("year".to_string(), year);
+        }
+    }
 }
 
 /// BibTeX's predefined month macros (`month = jan`), as `plain.bst` defines them. Every

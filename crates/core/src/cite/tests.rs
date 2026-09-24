@@ -1231,3 +1231,31 @@ fn ieee_punctuation_follows_the_title_and_the_page_count() {
         f("p7")
     );
 }
+
+/// Zotero's "Better BibLaTeX" and built-in BibLaTeX exports name three fields differently:
+/// `journaltitle`, `date` and `location`. Only the BibTeX names were read, so every article
+/// lost its journal and year and every `@online` its year, silently (audit 2026-09-24 G6,
+/// bibtex #7).
+#[test]
+fn a_biblatex_export_keeps_its_journal_year_and_place() {
+    let b = parse_bib(concat!(
+        "@article{bl, title = {Deep Learning for {{DNA}} Sequencing: {{A}} Review},\n",
+        "  author = {Smith, John and Müller, Hans}, date = {2020-01},\n",
+        "  journaltitle = {Nature Methods}, volume = {17}, number = {3}, pages = {123--145}}\n",
+        "@online{web, title = {Some {{Web Page}}}, author = {{Mozilla Contributors}},\n",
+        "  date = {2021-03-04}, url = {https://developer.mozilla.org/en-US/docs/Web},\n",
+        "  organization = {{MDN Web Docs}}}\n",
+        "@book{bk, title = {A Book}, date = {1999}, publisher = {OUP}, location = {Oxford}}\n",
+        // The BibTeX name wins when both are present.
+        "@article{both, title = {T}, journal = {BibTeX J}, journaltitle = {BibLaTeX J}, year = {2001}, date = {2002}}\n",
+    ));
+    let bl = b.format("bl").unwrap();
+    assert!(
+        bl.ends_with("<em>Nature Methods</em>, vol. 17, no. 3, pp. 123\u{2013}145, 2020."),
+        "{bl}"
+    );
+    assert!(b.format("web").unwrap().contains("MDN Web Docs, 2021."));
+    assert!(b.format("bk").unwrap().contains("Oxford: OUP, 1999."));
+    let both = b.format("both").unwrap();
+    assert!(both.contains("BibTeX J") && both.contains("2001"), "{both}");
+}
