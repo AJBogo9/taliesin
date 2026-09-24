@@ -149,7 +149,9 @@ Every top-level element carries `data-block-id` (a content hash), `data-sourcepo
 With a `bibliography:` in the front matter, `[@key]` citations become numbered
 links to an auto-generated References section, formatted from the BibTeX file.
 This page cites the *TeXbook* [@knuth1984] and the FFT paper [@cooley1965], and
-groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Cross-references
+groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Every item in a
+group starts with its `@key`, so a word like "see" goes before the bracket; a bracket
+holding anything else is left as text, and a key in it is reported. Cross-references
 resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-` and `@lst-`,
 carrying the resolved number when known (as `@eq-dft` and
 `@fig-scree` above do). They also resolve across chapters, so a `@fig-` in one chapter
