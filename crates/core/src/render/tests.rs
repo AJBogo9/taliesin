@@ -1775,6 +1775,27 @@ fn only_a_fig_label_makes_a_numbered_figure_and_its_image_is_not_read_twice() {
     );
 }
 
+/// Images #13 leads: a labelled figure with no caption showed a dangling "Figure 1: ", and
+/// an inline image's alt text glued the words either side of a line break ("a smallfit"),
+/// since the alt collector dropped soft breaks instead of reading them as spaces.
+#[test]
+fn a_captionless_figure_has_no_dangling_colon_and_alt_keeps_its_line_breaks() {
+    let fig = render_document("![](plot.png){#fig-nocap}\n");
+    let h = &fig.blocks[0].html;
+    assert!(
+        h.contains(
+            "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span></figcaption>"
+        ),
+        "a captionless figure's label must stand alone: {h}"
+    );
+    let inline = render_document("A bare image: ![a small\nfit](f.png) in a sentence.\n");
+    let h = &inline.blocks[0].html;
+    assert!(
+        h.contains("alt=\"a small fit\""),
+        "a line break in alt text must read as a space: {h}"
+    );
+}
+
 #[test]
 fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
     // A `dark=` source ships a light + dark <img> pair (like `{{< video dark= >}}`); CSS
