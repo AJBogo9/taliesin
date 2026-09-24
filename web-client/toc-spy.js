@@ -38,8 +38,14 @@
     entries = [];
     if (!toc) return;
     toc.querySelectorAll("a[href^='#']").forEach(function (link) {
-      var id = decodeURIComponent((link.getAttribute("href") || "").slice(1));
-      var h = id && document.getElementById(id);
+      var raw = (link.getAttribute("href") || "").slice(1);
+      // An id may hold a bare `%` (`{#fifty%off}`), which is no escape at all: decoding it
+      // threw, so no entry on the page ever lit up. Such an href IS the id.
+      var id = raw;
+      try {
+        id = decodeURIComponent(raw);
+      } catch (e) {}
+      var h = id && (document.getElementById(id) || document.getElementById(raw));
       if (h) entries.push({ link: link, heading: h });
     });
     sampleLine();

@@ -881,12 +881,25 @@
 
   // Rebuild the TOC and (re)highlight + add copy buttons to code blocks after any DOM
   // change (each is a no-op when not applicable).
+  //
+  // Each step runs on its own, the way the enhancer registry runs each enhancer: one that
+  // threw (the scrollspy on a heading id with a bare `%`, on every edit) used to skip every
+  // step after it, so no block patched for the rest of the session got a copy button, a
+  // rendered diagram or a running `{js}` cell.
   const afterChange = () => {
-    buildToc();
-    if (window.taliInitTocSpy) window.taliInitTocSpy(); // re-collect against the fresh nav
-    updateWordCount();
-    if (window.taliEnhanceCode) window.taliEnhanceCode(root);
-    scanCellErrors();
+    for (const step of [
+      buildToc,
+      () => window.taliInitTocSpy && window.taliInitTocSpy(), // re-collect against the fresh nav
+      updateWordCount,
+      () => window.taliEnhanceCode && window.taliEnhanceCode(root),
+      scanCellErrors,
+    ]) {
+      try {
+        step();
+      } catch (e) {
+        console.error("taliesin: an after-change step failed", e);
+      }
+    }
   };
 
   // A single save emits a BURST of block ops (each its own websocket message).
