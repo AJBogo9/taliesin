@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 
 /// The retired token, assembled at runtime so this file can hunt for it without
 /// containing it as a literal (which would make the guard flag itself).
@@ -305,7 +305,7 @@ fn no_q_prefixed_identifier_ships_in_emitted_markup() {
     // directive as literal text and every needle below passes vacuously.
     let dir = corpus_dir().join("reactive");
     let src = std::fs::read_to_string(dir.join("inputs.tmd")).unwrap();
-    let h = taliesin_core::render_document_with_includes(&src, &dir).body_html();
+    let h = taliesin_core::render_document_scoped_with_site(&src, &dir, None, None).body_html();
     assert!(
         h.contains("tali-in-k"),
         "fixture is wrong: the control id should be name-derived, got {h}"
@@ -425,10 +425,12 @@ fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
     // out of the same bootstrap on 2026-08-03, which is exactly why this is checked against
     // real page output: a fragment-level test cannot see either half.
     let doc = taliesin_core::render::render_document("hello\n");
-    let html = taliesin_core::render::render_doc_to_page(
+    let html = taliesin_core::render_doc_to_page(
         &doc,
         "t",
-        taliesin_core::render::OutputMode::Build,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     for needle in ["taliSetTheme", "tali-theme"] {
         assert!(

@@ -5,73 +5,6 @@
 use super::*;
 use std::sync::LazyLock;
 
-pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_from_doc(doc, fallback_title, mode)
-}
-
-/// Render an already-built [`RenderedDoc`] into a standalone HTML page (no site
-/// chrome). Lets the `build` CLI run code cells first and then emit the page from
-/// the executed blocks; the in-process [`render_html_page`] path stays unchanged.
-/// `mode` decides how much optional machinery ships (see [`OutputMode`]).
-pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    page_from_doc(doc, fallback_title, mode)
-}
-
-/// `build <file.tmd>`'s page: [`render_doc_to_page`] in [`OutputMode::Build`], carrying the
-/// document's own Cmd-K index inline. `search_index` is the script body
-/// `Site::inline_search_index` returns, the index `preview <file.tmd>` serves; a
-/// single-file page has no `search-index.js` beside it to load one from, and the palette
-/// used to build its own out of the DOM instead, which indexed raw TeX, `<script>` bodies
-/// and a 1500-character cut of each section the preview's index does not.
-///
-/// A non-empty `mermaid_src` fetches the vendored mermaid library from that href beside the
-/// page instead of inlining it. **The caller owns the href and has undertaken to write that
-/// file**, the same contract [`render_doc_to_page_external`] has for `_assets/`. That is
-/// `build <file.tmd> --out <dir>`, whose contract is a folder rather than a file. The
-/// library was the one inlined blob paying for a guarantee that mode never needed: measured
-/// 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B. Everything
-/// else stays inline there, because this is about mermaid's size and not about
-/// externalizing the framework. Plain `build <file.tmd>` passes `""` and keeps inlining,
-/// since one self-contained file is its whole point.
-pub fn render_single_doc_page(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    mermaid_src: &str,
-    search_index: &str,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        search_index,
-        OutputMode::Build,
-        AssetMode::Inline { mermaid_src },
-    )
-}
-
-/// Like [`render_doc_to_page`] but links the shared `_assets/` files instead of inlining the
-/// framework. For a chrome-less page emitted *inside* a multi-page build — today only
-/// `404.html`, which is not one of the site's pages and so never passes through
-/// [`html_page_from_doc_in_site_external`].
-///
-/// The caller owns the href form. Every other page in a build gets depth-relative hrefs;
-/// this one must be handed **root-absolute** ones, because a static host serves it for any
-/// unknown path at any depth and a `../` prefix would resolve against the wrong directory.
-pub fn render_doc_to_page_external(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    assets: ExternalAssets,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        "",
-        OutputMode::Build,
-        AssetMode::External(assets),
-    )
-}
-
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
 /// footer, and post prev/next HTML. Built by `taliesin_core::site` and injected
 /// around the page body. Empty fields render nothing.
@@ -162,7 +95,7 @@ impl SiteCtx {
 /// index) and any page already titled exactly the site name stay bare — never "Name ·
 /// Name", never a suffix on an empty title or a standalone (no-site) doc. `title` is the
 /// already-resolved page `<title>`; the returned string is still unescaped. Shared by the
-/// static build (`html_page_inner`) and the live site preview so both tabs agree.
+/// static build (`render_doc_to_page`) and the live site preview so both tabs agree.
 pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> String {
     let name = site_name.trim();
     if name.is_empty() || is_home || title.is_empty() || title == name {
@@ -350,7 +283,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
                 String::new()
             };
             // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
-            // enhancer itself rides in code_scripts().
+            // enhancer itself rides in the framework scripts below.
             let js_head_html = if needs_js_libs(p.body, p.mode) {
                 js_cell_head()
             } else {
@@ -490,57 +423,6 @@ const SPECULATION_RULES: &str = r#"<script type="speculationrules">{"prefetch":[
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
 
-fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        None,
-        "",
-        mode,
-        AssetMode::Inline { mermaid_src: "" },
-    )
-}
-
-/// Like `html_page_from_doc`, but wraps the page body in the site chrome
-/// (navbar above, prev/next + footer below) and ships the site CSS. The
-/// single-page path (`html_page_from_doc`) is unchanged (`site == None`).
-///
-/// Every caller is a static-build context (the `build` CLI, the 404 page, mounted
-/// sub-site serving, the lint pass's discard); the live site preview assembles its own
-/// `PageParts` directly. So this content-gates enhancers like any other build.
-pub fn html_page_from_doc_in_site(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    site: &SiteCtx,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        Some(site),
-        "",
-        OutputMode::Build,
-        AssetMode::Inline { mermaid_src: "" },
-    )
-}
-
-/// Like [`html_page_from_doc_in_site`] but links the shared `_assets/` files instead of
-/// inlining the framework CSS/JS. Used by the multi-page `build <dir>` path.
-pub fn html_page_from_doc_in_site_external(
-    doc: &RenderedDoc,
-    fallback_title: &str,
-    site: &SiteCtx,
-    assets: ExternalAssets,
-) -> String {
-    html_page_inner(
-        doc,
-        fallback_title,
-        Some(site),
-        "",
-        OutputMode::Build,
-        AssetMode::External(assets),
-    )
-}
-
 /// Resolve the `<title>` text, in order of how deliberately the author chose it:
 ///
 /// 1. the document's own front-matter `title:`;
@@ -576,7 +458,7 @@ pub(super) fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bo
 
 /// The display-ready `<title>` for a page in a site: [`resolve_title`]'s ranking, then the
 /// site-name suffix ([`title_with_site_suffix`]). The whole title policy behind one call,
-/// because it has three consumers that MUST agree — the static build (`html_page_inner`),
+/// because it has three consumers that MUST agree — the static build (`render_doc_to_page`),
 /// the live preview's server-rendered `<title>`, and the `full_render` websocket message,
 /// which the client assigns straight to `document.title`.
 ///
@@ -599,14 +481,33 @@ pub(crate) fn site_page_title(
     title_with_site_suffix(&resolved, site_name, is_home)
 }
 
-fn html_page_inner(
+/// Render a finished [`RenderedDoc`] into a complete HTML page: **the one page assembler**
+/// every built page goes through, in [`OutputMode::Build`]. (The live preview assembles
+/// its own [`PageParts`], because its body is a websocket-driven mount, not a document.)
+///
+/// - `site`: the page's chrome inside a project (`Site::page_chrome`), or `None` for a
+///   standalone document: the single-file build and both 404 pages.
+/// - `search_index`: a standalone page's own Cmd-K index, the script body
+///   `Site::inline_search_index` returns, the index `preview <file.tmd>` serves. A
+///   single-file page has no `search-index.js` beside it to load one from. A site page's
+///   index comes from `site.search_index` instead, so a site caller passes `""`.
+/// - `assets`: [`AssetMode::Inline`] bakes the framework into the page (the single-file
+///   build, the preview's 404); [`AssetMode::External`] links the shared `_assets/` files
+///   (the site build, the build's 404, whose caller must hand it **root-absolute** hrefs:
+///   a static host serves it for any unknown path at any depth).
+///
+/// An inline page with a non-empty `mermaid_src` fetches the vendored mermaid library from
+/// that href beside the page instead of inlining it. **The caller owns the href and has
+/// undertaken to write that file**, the same contract `_assets/` has. That is
+/// `build <file.tmd> --out <dir>`, whose contract is a folder rather than a file: measured
+/// 2026-08-09, a 2-node diagram took that page from 230,751 B to 3,803,736 B. Plain
+/// `build <file.tmd>` passes `""` and keeps inlining, since one self-contained file is its
+/// whole point.
+pub fn render_doc_to_page(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: Option<&SiteCtx>,
-    // The JS that inlines a standalone page's own index ([`render_single_doc_page`]); a
-    // site page's comes from `site.search_index` instead.
     search_index: &str,
-    mode: OutputMode,
     assets: AssetMode,
 ) -> String {
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
@@ -740,7 +641,7 @@ fn html_page_inner(
         _ => default_favicon(),
     };
     assemble_html_page(&PageParts {
-        mode,
+        mode: OutputMode::Build,
         title: &t,
         favicon: &favicon,
         with_site_css: site.is_some(),

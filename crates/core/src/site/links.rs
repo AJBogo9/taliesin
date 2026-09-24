@@ -95,7 +95,7 @@ pub fn rewrite_tmd_links(html: &str) -> String {
 /// file; the difference is the page a host serves for an unknown nested path, where the
 /// browser resolves a relative URL against the directory the reader mistyped.
 ///
-/// For the author's own `404.html` only ([`Site::render_page_doc_external`]): every other
+/// For the author's own `404.html` only ([`Site::page_html_external`]): every other
 /// page keeps relative URLs, which the portable `file://` build depends on. It makes the
 /// same root-deploy assumption as the generated 404 ([`Site::not_found_doc`]).
 pub(super) fn root_absolute_urls(html: &str) -> String {

@@ -13,6 +13,57 @@ pub fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
 }
 
+/// Where [`RenderPage::render_page`] links the shared bundle: the site build's `_assets/`
+/// (a test reads the markup, never these hrefs' depth).
+pub const TEST_ASSETS: taliesin_core::ExternalAssets<'static> = taliesin_core::ExternalAssets {
+    app_css: "_assets/app.css",
+    katex_css: "_assets/katex.css",
+    app_js: "_assets/app.js",
+    mermaid_js: "_assets/mermaid.js",
+    jslibs_js: "_assets/jslibs.js",
+    font_preload: "",
+};
+
+/// A project's pages as the site build writes them.
+pub trait RenderPage {
+    /// One page (by rel-path or URL) rendered, finished and wrapped in its chrome linking
+    /// `_assets/` (`Site::page_html_external`). `None` when it is no page of the site.
+    fn render_page(&self, rel_or_url: &str) -> Option<String>;
+
+    /// The build's last two steps for a rendered `doc`: `Site::finish_blocks`, then the page
+    /// in its chrome. Returns the page with the render's and the finish's warnings.
+    fn finish_page(
+        &self,
+        page: &taliesin_core::Page,
+        doc: taliesin_core::RenderedDoc,
+    ) -> (String, Vec<taliesin_core::render::Warning>);
+}
+
+impl RenderPage for taliesin_core::Site {
+    fn render_page(&self, rel_or_url: &str) -> Option<String> {
+        let page = self.page(rel_or_url)?;
+        let src = taliesin_core::includes::read_source(&page.input).ok()?;
+        let base = page.input.parent().unwrap_or(&self.root);
+        let doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            self.chapter_for(page),
+            Some(&self.render_defaults()),
+        );
+        Some(self.finish_page(page, doc).0)
+    }
+
+    fn finish_page(
+        &self,
+        page: &taliesin_core::Page,
+        mut doc: taliesin_core::RenderedDoc,
+    ) -> (String, Vec<taliesin_core::render::Warning>) {
+        let mut warnings = std::mem::take(&mut doc.warnings);
+        doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+        (self.page_html_external(page, &doc, TEST_ASSETS), warnings)
+    }
+}
+
 /// A rendered page with the *contents* of every `<script>` and `<style>` blanked, for
 /// assertions about the page's own markup.
 ///

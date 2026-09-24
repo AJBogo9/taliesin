@@ -262,7 +262,8 @@ fn census() -> BTreeSet<String> {
         let src =
             std::fs::read_to_string(f).unwrap_or_else(|e| panic!("read {}: {e}", f.display()));
         // `_with_includes` so blocks pulled in via `{{< include >}}` are censused too.
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         for block in &doc.blocks {
             scan_data_attrs(&block.html, Scan::Html, &mut attrs);
         }

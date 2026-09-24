@@ -24,7 +24,7 @@ use taliesin_core::render::{
 };
 
 fn render(src: &str) -> taliesin_core::RenderedDoc {
-    taliesin_core::render_document_with_includes(src, std::path::Path::new("."))
+    taliesin_core::render_document_scoped_with_site(src, std::path::Path::new("."), None, None)
 }
 
 const CHART: &str = "```{js}\nreturn document.createElement(\"p\");\n```\n";

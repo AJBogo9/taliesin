@@ -194,7 +194,8 @@ fn every_block_in_every_real_document_has_exactly_one_root() {
     for f in &files {
         let label = f.strip_prefix(&repo).unwrap_or(f).display().to_string();
         let src = fs::read_to_string(f).unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         for b in &doc.blocks {
             let n = root_count(&b.html);
             let where_ = format!(
@@ -239,9 +240,9 @@ fn every_block_in_every_real_document_has_exactly_one_root() {
 #[test]
 fn a_multi_root_construct_round_trips_through_a_live_swap() {
     // `render_document` leaves shortcodes literal — expansion is part of the
-    // includes pass, so this must go through `render_document_with_includes`.
-    use taliesin_core::{BlockOp, diff_blocks, render_document_with_includes};
-    let render = |src: &str| render_document_with_includes(src, Path::new("."));
+    // includes pass, so this must go through `render_document_scoped_with_site`.
+    use taliesin_core::{BlockOp, diff_blocks, render_document_scoped_with_site};
+    let render = |src: &str| render_document_scoped_with_site(src, Path::new("."), None, None);
 
     // Three consecutive `{{< input >}}` controls are one HTML block in the source
     // (this is the shape shipped in `corpus/descent/index.tmd`). Editing one of

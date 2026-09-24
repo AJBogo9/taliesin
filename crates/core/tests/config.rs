@@ -4,7 +4,7 @@
 use taliesin_core::Site;
 
 mod common;
-use common::TempProj;
+use common::{RenderPage, TempProj};
 
 /// A throwaway site project: `_site.yml` = `config`, plus a minimal `index.tmd`
 /// (so `Site::discover` always has a home page).

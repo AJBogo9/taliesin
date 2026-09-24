@@ -1,5 +1,5 @@
 //! Measure taliesin's live-edit moat through the real core seam
-//! (`render_document_with_includes` -> `diff_blocks`): cold render, a warm
+//! (`render_document_scoped_with_site` -> `diff_blocks`): cold render, a warm
 //! edit-above render+diff, the emitted `BlockOp` payload vs the full page HTML, and
 //! DOM preservation at the diff level (a `<details>` / cell block below the edit gets
 //! a `SetMeta`, not an `Update`). Pure measurement: it edits an in-memory copy of the
@@ -7,7 +7,7 @@
 
 use std::path::Path;
 use std::time::Instant;
-use taliesin_core::{BlockOp, diff_blocks, render_document_with_includes};
+use taliesin_core::{BlockOp, diff_blocks, render_document_scoped_with_site};
 
 pub mod e2e;
 
@@ -64,13 +64,13 @@ pub fn measure_live_edit(
     edit: impl Fn(&str) -> String,
 ) -> LiveEditMetrics {
     let t = Instant::now();
-    let cold = render_document_with_includes(src, base);
+    let cold = render_document_scoped_with_site(src, base, None, None);
     let cold_render_ns = t.elapsed().as_nanos();
     let full_html_bytes = cold.body_html().len();
 
     let edited = edit(src);
     let t = Instant::now();
-    let new_doc = render_document_with_includes(&edited, base);
+    let new_doc = render_document_scoped_with_site(&edited, base, None, None);
     let render_ns = t.elapsed().as_nanos();
 
     let t = Instant::now();

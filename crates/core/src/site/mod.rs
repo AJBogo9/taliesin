@@ -13,7 +13,7 @@
 //! Per the project's config decision there is **no `_metadata.yml` cascade**: the
 //! root config is the single source of project-wide defaults and a page's own
 //! front matter overrides it. Both `build` (static) and `serve` (live preview)
-//! drive the site through [`Site::discover`] + [`Site::render_page`].
+//! drive the site through [`Site::discover`] + [`Site::page_chrome`].
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -568,7 +568,7 @@ impl Site {
     /// sidebar, the social/JSON-LD meta and a `PageIncludes` clone, and the preview would
     /// throw all of it away to read two scalars — under the site lock, which page serving
     /// and `/search-index.js` also wait on. Resolves identically to the static build
-    /// (`render_page_doc_warned`), which reaches the same helper through `SiteCtx`.
+    /// (`page_html_external`), which reaches the same helper through `SiteCtx`.
     pub fn page_title(&self, page: &Page, doc: &render::RenderedDoc) -> String {
         render::site_page_title(
             doc,
@@ -658,64 +658,6 @@ impl Site {
         }
     }
 
-    /// Render a single page (by rel-path or URL) into a full HTML document with
-    /// the site chrome (navbar, footer, prev/next) and intra-site links rewritten
-    /// to their `.html` targets. Returns `None` if the page isn't part of the site.
-    pub fn render_page(&self, rel_or_url: &str) -> Option<String> {
-        let page = self.page(rel_or_url)?;
-        let src = crate::includes::read_source(&page.input).ok()?;
-        let base = page.input.parent().unwrap_or(&self.root);
-        // A numbered book chapter scopes its theorems to its chapter number
-        // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
-        let doc = render::render_document_scoped_with_site(
-            &src,
-            base,
-            self.chapter_for(page),
-            Some(&self.render_defaults()),
-        );
-        Some(self.render_page_doc(page, doc))
-    }
-
-    /// Finish a page whose `doc.blocks` are already produced — and possibly
-    /// code-executed (the static build runs cells, then calls this): apply the
-    /// site front-matter expansion (`listing:`), wrap in chrome, and
-    /// rewrite intra-site `.tmd` links. Shared by `render_page` (no execution) and
-    /// the executing `build` path so both emit identical chrome + links.
-    pub fn render_page_doc(&self, page: &Page, doc: render::RenderedDoc) -> String {
-        self.render_page_doc_warned(page, doc).0
-    }
-
-    /// Like [`render_page_doc`](Self::render_page_doc) but also returns the page's
-    /// warnings (render warnings + broken cross-refs from `finish_blocks`), so the
-    /// static `build` can print them to stderr instead of letting a broken site
-    /// deploy silently.
-    pub fn render_page_doc_warned(
-        &self,
-        page: &Page,
-        mut doc: render::RenderedDoc,
-    ) -> (String, Vec<Warning>) {
-        let mut warnings = std::mem::take(&mut doc.warnings);
-        doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
-        // Inline single-file page build: no `_assets/`, and no book archive alongside it.
-        let ctx = self.page_chrome(page);
-        let fallback = page.title.as_deref().unwrap_or("");
-        let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
-        (rewrite_tmd_links(&html), warnings)
-    }
-
-    /// Render a page linking the shared `_assets/` bundle (the multi-page build path).
-    /// Identical to [`Self::render_page_doc_warned`] except for the asset delivery.
-    pub fn render_page_doc_external(
-        &self,
-        page: &Page,
-        mut doc: render::RenderedDoc,
-        assets: render::ExternalAssets,
-    ) -> (String, Vec<Warning>) {
-        let mut warnings = std::mem::take(&mut doc.warnings);
-        doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
-        (self.page_html_external(page, &doc, assets), warnings)
-    }
-
     /// The page HTML for a page whose blocks are already FINISHED ([`Self::finish_blocks`]),
     /// wrapped in its chrome and linking the shared `_assets/` bundle: what the site build
     /// writes once the page pass is done with the page.
@@ -727,7 +669,13 @@ impl Site {
     ) -> String {
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
-        let html = render::html_page_from_doc_in_site_external(doc, fallback, &ctx, assets);
+        let html = render::render_doc_to_page(
+            doc,
+            fallback,
+            Some(&ctx),
+            "",
+            render::AssetMode::External(assets),
+        );
         let html = rewrite_tmd_links(&html);
         // The host serves the author's 404 for any unknown path, at any depth, so its
         // depth-relative URLs (assets, navbar, favicon, the author's own links) would
@@ -834,7 +782,7 @@ impl Site {
     /// buffer, which has no file to read.
     fn page_link_facts_from_src(&self, page: &Page, src: &str) -> Option<PageLinkFacts> {
         let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_with_includes(src, base);
+        let doc = render::render_document_scoped_with_site(src, base, None, None);
         let mut ids = std::collections::HashSet::new();
         let mut links = Vec::new();
         for b in &doc.blocks {
@@ -1060,9 +1008,9 @@ impl Site {
 
     /// Finish a page's blocks in place: site-wide cross-ref resolution (+ broken-ref
     /// warnings), and site front-matter expansion
-    /// (`listing:`). The single block-finishing step shared by the static
-    /// build, `render_page_doc`, and the live preview, so all three produce identical
-    /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
+    /// (`listing:`). The single block-finishing step shared by the page pass every
+    /// verb runs and the live preview, so both produce identical blocks (the preview
+    /// used to skip `validate_xrefs`). `page_toc` is computed by
     /// the caller (it reads blocks but doesn't mutate them).
     /// `src` is the page's own source text when the caller holds it, used only to narrow a
     /// broken-cross-reference warning from the whole line to the `@anchor` itself. `None` is
@@ -1154,7 +1102,9 @@ impl Site {
         render::render_doc_to_page(
             &self.not_found_doc(),
             "Page not found",
-            render::OutputMode::Build,
+            None,
+            "",
+            render::AssetMode::Inline { mermaid_src: "" },
         )
     }
 
@@ -1170,7 +1120,13 @@ impl Site {
     /// merely mislinking. The page keeps its own `<style>` block inline either way, so the
     /// layout survives even if the stylesheet does not resolve.
     pub fn render_404_page_external(&self, assets: render::ExternalAssets) -> String {
-        render::render_doc_to_page_external(&self.not_found_doc(), "Page not found", assets)
+        render::render_doc_to_page(
+            &self.not_found_doc(),
+            "Page not found",
+            None,
+            "",
+            render::AssetMode::External(assets),
+        )
     }
 
     /// Whether a page shows a table of contents: its own front-matter `toc:` wins (an
@@ -1814,6 +1770,57 @@ pub(super) fn content_lines_numbered(src: &str) -> impl Iterator<Item = (usize, 
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    /// Where [`Site::render_page`] links the shared bundle: the site build's `_assets/`, at
+    /// the root depth (a test reads the markup, never these hrefs' depth).
+    pub(crate) const TEST_ASSETS: render::ExternalAssets<'static> = render::ExternalAssets {
+        app_css: "_assets/app.css",
+        katex_css: "_assets/katex.css",
+        app_js: "_assets/app.js",
+        mermaid_js: "_assets/mermaid.js",
+        jslibs_js: "_assets/jslibs.js",
+        font_preload: "",
+    };
+
+    impl Site {
+        /// Test convenience: one page (by rel-path or URL) as the site build writes it,
+        /// rendered, finished and wrapped in its chrome linking `_assets/`. `None` when it is
+        /// no page of this site.
+        pub(crate) fn render_page(&self, rel_or_url: &str) -> Option<String> {
+            self.render_page_warned(rel_or_url).map(|(html, _)| html)
+        }
+
+        /// [`Self::render_page`] with the page's warnings (the render's and the finish's).
+        pub(crate) fn render_page_warned(
+            &self,
+            rel_or_url: &str,
+        ) -> Option<(String, Vec<Warning>)> {
+            let page = self.page(rel_or_url)?;
+            let src = crate::includes::read_source(&page.input).ok()?;
+            let base = page.input.parent().unwrap_or(&self.root);
+            let doc = render::render_document_scoped_with_site(
+                &src,
+                base,
+                self.chapter_for(page),
+                Some(&self.render_defaults()),
+            );
+            Some(self.finish_page(page, doc, TEST_ASSETS))
+        }
+
+        /// The site build's last two steps for a rendered `doc`: [`Site::finish_blocks`],
+        /// then [`Site::page_html_external`] linking `assets`.
+        pub(crate) fn finish_page(
+            &self,
+            page: &Page,
+            mut doc: render::RenderedDoc,
+            assets: render::ExternalAssets,
+        ) -> (String, Vec<Warning>) {
+            let mut warnings = std::mem::take(&mut doc.warnings);
+            doc.toc =
+                self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+            (self.page_html_external(page, &doc, assets), warnings)
+        }
+    }
 
     #[test]
     fn content_lines_skips_front_matter_and_fenced_code() {
@@ -2609,7 +2616,7 @@ pub(crate) mod tests {
                 site.chapter_for(page),
                 Some(&site.render_defaults()),
             );
-            site.render_page_doc_external(page, doc, ext()).0
+            site.finish_page(page, doc, ext()).0
         };
         let urls = |html: &str| {
             let mut out = Vec::new();
@@ -3030,10 +3037,7 @@ pub(crate) mod tests {
 
     /// Render `rel` in `site` and return (html, render-warnings).
     fn render_page(site: &Site, rel: &str) -> (String, Vec<Warning>) {
-        let page = site.pages.iter().find(|p| p.rel == rel).unwrap();
-        let src = std::fs::read_to_string(&page.input).unwrap();
-        let doc = crate::render::render_document_with_includes(&src, &site.root);
-        site.render_page_doc_warned(page, doc)
+        site.render_page_warned(rel).expect("a page of the site")
     }
 
     #[test]
@@ -3055,7 +3059,7 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
         let src = std::fs::read_to_string(&page.input).unwrap();
-        let doc = crate::render::render_document_with_includes(&src, &site.root);
+        let doc = crate::render::render_document_scoped_with_site(&src, &site.root, None, None);
         let ext = render::ExternalAssets {
             app_css: "_assets/app.a.css",
             katex_css: "_assets/katex.b.css",
@@ -3064,7 +3068,7 @@ pub(crate) mod tests {
             jslibs_js: "_assets/jslibs.e.js",
             font_preload: "",
         };
-        let (html, _w) = site.render_page_doc_external(page, doc, ext);
+        let (html, _w) = site.finish_page(page, doc, ext);
         // app.js is linked (carries the toc/search code now).
         assert!(
             html.contains("src=\"_assets/app.c.js\" defer"),
@@ -3299,7 +3303,8 @@ pub(crate) mod tests {
             let site = Site::discover(root);
             let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
             let src = std::fs::read_to_string(&page.input).unwrap();
-            let mut doc = crate::render::render_document_with_includes(&src, &site.root);
+            let mut doc =
+                crate::render::render_document_scoped_with_site(&src, &site.root, None, None);
             let mut warnings = Vec::new();
             site.finish_blocks(page, &mut doc.blocks, &mut warnings, Some(&src), None);
             doc.blocks
@@ -3421,7 +3426,7 @@ pub(crate) mod tests {
             .find(|p| p.rel == "posts/one.tmd")
             .unwrap();
         let src = std::fs::read_to_string(&page.input).unwrap();
-        let mut doc = crate::render::render_document_with_includes(&src, &site.root);
+        let mut doc = crate::render::render_document_scoped_with_site(&src, &site.root, None, None);
         site.finish_blocks(page, &mut doc.blocks, &mut Vec::new(), None, None);
         assert_eq!(
             doc.blocks.first().map(|b| b.id.as_str()),

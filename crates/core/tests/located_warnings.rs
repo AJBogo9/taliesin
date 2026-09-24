@@ -6,9 +6,11 @@ use common::TempProj;
 #[test]
 fn broken_crossref_warning_is_located() {
     let proj = TempProj::new();
-    let doc = taliesin_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_scoped_with_site(
         "# Title\n\nIntro.\n\nSee @fig-nope for details.\n",
         &proj.0,
+        None,
+        None,
     );
     // Standalone docs surface broken xrefs via `validate_xrefs` (the server runs it
     // after site-wide resolution); exercise that path directly here.
@@ -27,9 +29,11 @@ fn broken_crossref_warning_is_located() {
 #[test]
 fn unknown_shortcode_warning_is_located() {
     let proj = TempProj::new();
-    let doc = taliesin_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_scoped_with_site(
         "# Title\n\nIntro.\n\n{{< videoo clip.mp4 >}}\n",
         &proj.0,
+        None,
+        None,
     );
     let w = doc
         .warnings
@@ -48,9 +52,11 @@ fn broken_citation_warning_is_located() {
         "refs.bib",
         "@article{real, title={Real}, author={A}, year={2020}, journal={J}}\n",
     );
-    let doc = taliesin_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_scoped_with_site(
         "---\nbibliography: refs.bib\n---\n\n# Title\n\nFirst para.\n\nSee [@missingkey] here.\n",
         &proj.0,
+        None,
+        None,
     );
     let w = doc
         .warnings

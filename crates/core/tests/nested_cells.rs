@@ -21,7 +21,7 @@ fn fixture() -> taliesin_core::RenderedDoc {
     let base = corpus_dir();
     let path = base.join("nested-cells.tmd");
     let src = std::fs::read_to_string(&path).expect("corpus/nested-cells.tmd");
-    taliesin_core::render_document_with_includes(&src, &base)
+    taliesin_core::render_document_scoped_with_site(&src, &base, None, None)
 }
 
 /// Every block that folded a cell away, with its nested cells.

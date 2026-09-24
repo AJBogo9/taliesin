@@ -6,8 +6,8 @@ description: "Text to block list: the parse stages, the block contract every emi
 Rendering is where `post.tmd` stops being text and becomes the **block list**
 everything else keys off: its heading, its paragraph, and its code cell, each a
 separate block with its own identity. The entry point is
-`render_document_with_includes(src, base_dir)` in `render/mod.rs`; it runs a fixed
-sequence of stages, each a small, testable function.
+`render_document_scoped_with_site(src, base_dir, chapter, site)` in `render/mod.rs`; it
+runs a fixed sequence of stages, each a small, testable function.
 
 ```{mermaid}
 flowchart TB

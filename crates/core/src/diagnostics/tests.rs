@@ -1,5 +1,5 @@
 use super::*;
-use crate::render::{Warning, render_document, render_document_with_includes};
+use crate::render::{Warning, render_document, render_document_scoped_with_site};
 use std::path::Path;
 
 /// A throwaway directory under the system temp dir, removed on drop.
@@ -192,10 +192,12 @@ fn js_reactive_graph_did_you_mean_over_defines() {
 fn js_reactive_graph_input_shortcode_define_clears_dangling() {
     // A declarative `{{< input name="k" >}}` defines `k`, so a cell consuming it is clean.
     let dir = Tmp::new("js-input");
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         "{{< input name=\"k\" type=\"slider\" min=\"0\" max=\"10\" >}}\n\n\
          ```{js}\n//| input: k\nreturn k;\n```\n",
         &dir.0,
+        None,
+        None,
     );
     let m = msgs(&validate_js_reactive_graph(&doc.blocks));
     assert!(m.is_empty(), "shortcode-defined input must resolve: {m:?}");
@@ -476,7 +478,7 @@ fn a_page_inheriting_the_project_bibliography_is_not_told_none_is_declared() {
 #[test]
 fn the_asset_check_reads_tags_not_a_substring_scan() {
     let dir = Tmp::new("assets-walker");
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "---\ntitle: T\n---\n\n",
             "![control](control-missing.png)\n\n",
@@ -490,6 +492,8 @@ fn the_asset_check_reads_tags_not_a_substring_scan() {
             "<script>\nfunction card(e) { return '<img src=\"' + e + '\">'; }\n</script>\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
     assert_eq!(m.len(), 3, "exactly the three real broken images: {m:?}");
@@ -520,7 +524,7 @@ fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
     let dir = Tmp::new("assets-pct");
     std::fs::write(dir.0.join("my image.png"), "x").unwrap();
     std::fs::write(dir.0.join("50%.png"), "x").unwrap();
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "---\ntitle: T\n---\n\n",
             "![spaced](my%20image.png)\n\n",
@@ -529,6 +533,8 @@ fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
             "![gone](still%20missing.png)\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
     assert_eq!(m.len(), 1, "only the truly missing file: {m:?}");
@@ -570,7 +576,7 @@ fn the_asset_check_refuses_what_the_build_cannot_publish() {
         std::fs::write(f, "x").unwrap();
     }
     std::os::unix::fs::symlink(elsewhere.0.join("secret.png"), page.join("leak.png")).unwrap();
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "![Above the project.](../../../outside.png)\n\n",
             "![In a dot folder.](../../.hidden/a.png)\n\n",
@@ -578,6 +584,8 @@ fn the_asset_check_refuses_what_the_build_cannot_publish() {
             "![Referenced, so it ships.](../../_images/hero.png)\n",
         ),
         &page,
+        None,
+        None,
     );
     let ws = validate_local_assets(&doc.blocks, &page);
     let m = msgs(&ws);
@@ -603,13 +611,15 @@ fn the_asset_check_refuses_what_the_build_cannot_publish() {
 fn the_asset_check_reads_every_srcset_candidate() {
     let dir = Tmp::new("assets-srcset");
     std::fs::write(dir.0.join("fig.png"), "x").unwrap();
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "<img src=\"fig.png\" srcset=\"fig.png 1x, missing-2x.png 2x\" alt=\"A.\">\n\n",
             "<picture><source srcset=\"missing-dark.png\" media=\"(prefers-color-scheme: dark)\">",
             "<img src=\"fig.png\" alt=\"B.\"></picture>\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
     assert_eq!(m.len(), 2, "exactly the two missing candidates: {m:?}");
@@ -675,7 +685,7 @@ fn the_asset_and_link_checks_resolve_an_ampersand_in_a_file_name() {
     std::fs::create_dir_all(dir.0.join("img")).unwrap();
     std::fs::write(dir.0.join("img/R&D.png"), "x").unwrap();
     std::fs::write(dir.0.join("Q&A data.csv"), "x").unwrap();
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "---\ntitle: T\n---\n\n",
             "![Chart of spend](img/R&D.png)\n\n",
@@ -683,6 +693,8 @@ fn the_asset_and_link_checks_resolve_an_ampersand_in_a_file_name() {
             "![gone](img/X&Y.png)\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let assets = msgs(&validate_local_assets(&doc.blocks, &dir.0));
     assert_eq!(assets.len(), 1, "only the truly missing image: {assets:?}");
@@ -699,7 +711,7 @@ fn the_asset_and_link_checks_resolve_an_ampersand_in_a_file_name() {
 fn the_link_and_anchor_checks_percent_decode_like_a_browser() {
     let dir = Tmp::new("pct-links");
     std::fs::write(dir.0.join("my file.txt"), "x").unwrap();
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "---\ntitle: T\n---\n\n",
             "## Über {#über}\n\n",
@@ -707,6 +719,8 @@ fn the_link_and_anchor_checks_percent_decode_like_a_browser() {
              [x](#%C3%BCbex)\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let links = msgs(&validate_local_links(&doc.blocks, &dir.0));
     assert_eq!(links.len(), 1, "only the missing file: {links:?}");
@@ -720,13 +734,15 @@ fn the_link_and_anchor_checks_percent_decode_like_a_browser() {
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {
     let dir = Tmp::new("links-walker");
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         concat!(
             "---\ntitle: T\n---\n\n",
             "<script>\nvar h = '<a href=\"' + e + '.md\">x</a>';\n</script>\n\n",
             "<a href='gone.tmd'>single-quoted</a>\n",
         ),
         &dir.0,
+        None,
+        None,
     );
     let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
     assert_eq!(m.len(), 1, "the real broken link only: {m:?}");

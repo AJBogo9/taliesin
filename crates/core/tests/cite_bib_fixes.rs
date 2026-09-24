@@ -11,7 +11,7 @@
 
 use std::fs;
 
-use taliesin_core::render_document_with_includes;
+use taliesin_core::render_document_scoped_with_site;
 
 mod common;
 use common::corpus_dir;
@@ -21,7 +21,7 @@ fn render_post(rel: &str) -> String {
     let path = corpus_dir().join(rel);
     let base = path.parent().unwrap();
     let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-    render_document_with_includes(&src, base).body_html()
+    render_document_scoped_with_site(&src, base, None, None).body_html()
 }
 
 /// Slice out the single `<section class="tali-references">…</section>` block.

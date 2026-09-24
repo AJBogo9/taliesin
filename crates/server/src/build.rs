@@ -868,7 +868,13 @@ fn single_doc_page(
     mermaid_src: &str,
     search_index: &str,
 ) -> String {
-    let html = taliesin_core::render_single_doc_page(doc, stem, mermaid_src, search_index);
+    let html = taliesin_core::render_doc_to_page(
+        doc,
+        stem,
+        None,
+        search_index,
+        taliesin_core::AssetMode::Inline { mermaid_src },
+    );
     taliesin_core::site::rewrite_tmd_links(&html)
 }
 

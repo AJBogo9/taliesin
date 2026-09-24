@@ -209,9 +209,11 @@ fn a_withdrawn_theorem_prefix_is_no_longer_read_at_all() {
             !crate::cite::is_xref_anchor(&format!("{prefix}-a")),
             "`{prefix}-a` must no longer be a cross-reference anchor shape"
         );
-        let doc = crate::render_document_with_includes(
+        let doc = crate::render_document_scoped_with_site(
             &format!("---\ntitle: T\n---\n\nSee @{prefix}-a.\n"),
             std::path::Path::new("."),
+            None,
+            None,
         );
         let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
         assert!(
@@ -228,9 +230,11 @@ fn a_withdrawn_theorem_prefix_is_no_longer_read_at_all() {
     }
     // Positive control: a LIVE prefix with no target still errors, so the silence above is
     // about the prefix being unknown and not about the check having stopped running.
-    let live = crate::render_document_with_includes(
+    let live = crate::render_document_scoped_with_site(
         "---\ntitle: T\n---\n\nSee @fig-nope.\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     let w = validate_xrefs(&live.blocks, None);
     assert!(
@@ -882,7 +886,7 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     .unwrap();
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
                A paragraph that runs on\nand cites [@knuth1985] here.\n";
-    let doc = crate::render_document_with_includes(src, &dir);
+    let doc = crate::render_document_scoped_with_site(src, &dir, None, None);
     let w = doc
         .warnings
         .iter()
@@ -1431,7 +1435,7 @@ fn bare_key_errors(tag: &str, body: &str) -> Vec<Warning> {
     )
     .unwrap();
     let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
-    let doc = crate::render_document_with_includes(&src, &dir);
+    let doc = crate::render_document_scoped_with_site(&src, &dir, None, None);
     let mut w = doc.warnings.clone();
     let _ = std::fs::remove_dir_all(&dir);
     w.retain(|w| w.message.contains("is not a citation"));

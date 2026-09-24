@@ -3,7 +3,17 @@
 //! updated by the pre-paint theme script (reusing its `BG` map, so no hex is duplicated), so it
 //! follows the in-page toggle, not only the OS scheme.
 
-use taliesin_core::render_html_page;
+/// The page `build <file.tmd>` writes for `src`.
+fn render_html_page(src: &str, fallback_title: &str) -> String {
+    let doc = taliesin_core::render_document(src);
+    taliesin_core::render_doc_to_page(
+        &doc,
+        fallback_title,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    )
+}
 
 #[test]
 fn head_advertises_the_generator() {

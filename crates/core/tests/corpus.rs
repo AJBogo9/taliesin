@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod common;
-use common::{corpus_dir, markup_only};
+use common::{RenderPage, corpus_dir, markup_only};
 
 fn collect_tmd(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap() {
@@ -78,7 +78,7 @@ fn every_corpus_doc_emits_no_unknown_key_warnings() {
         }
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_scoped_with_site(&src, base, None, None);
         for w in doc
             .warnings
             .iter()
@@ -287,20 +287,31 @@ fn no_built_page_fetches_anything_off_origin() {
             .display()
             .to_string();
         let src = fs::read_to_string(f).unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         let stem = f.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
         // BOTH shipping modes. `Build` is what gets published; `Preview` ships every
         // enhancer unconditionally (it cannot content-gate against a live edit), so it is
         // the larger surface and the one where a new bundled asset would first appear.
-        for mode in [
-            taliesin_core::OutputMode::Build,
-            taliesin_core::OutputMode::Preview,
-        ] {
-            let page = taliesin_core::render_doc_to_page(&doc, stem, mode);
+        let body = doc.body_html();
+        let built = taliesin_core::render_doc_to_page(
+            &doc,
+            stem,
+            None,
+            "",
+            taliesin_core::AssetMode::Inline { mermaid_src: "" },
+        );
+        let previewed = taliesin_core::assemble_html_page(&taliesin_core::PageParts {
+            mode: taliesin_core::OutputMode::Preview,
+            ship_katex: true,
+            body: &body,
+            ..taliesin_core::PageParts::defaults()
+        });
+        for (mode, page) in [("Build", built), ("Preview", previewed)] {
             let hits = offsite_refs(&page);
             assert!(
                 hits.is_empty(),
-                "{label} ({mode:?}): a built page must fetch nothing off-origin, found {hits:?}"
+                "{label} ({mode}): a built page must fetch nothing off-origin, found {hits:?}"
             );
             // The scanner has to be looking at something. A page that hands it zero URLs
             // would pass with the assertion disabled, so count the pages that actually
@@ -371,7 +382,7 @@ fn every_corpus_doc_renders_with_invariants() {
             .to_string();
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_scoped_with_site(&src, base, None, None);
 
         assert!(!doc.blocks.is_empty(), "{label}: produced no blocks");
 
@@ -440,7 +451,7 @@ fn includes_are_resolved_with_origin_files() {
     let dir = corpus_dir().join("tech-blog/posts/pca-geometry");
     let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
     // The entry point the commands use, not the library-only one. Rendering via
-    // `render_document_with_includes` here asserted something true of the library and
+    // `render_document_scoped_with_site` here asserted something true of the library and
     // false of the product: `build <this page>` dropped the include and warned while this
     // test stayed green (PP-3).
     let doc = taliesin_core::render_single_doc(&src, &dir);
@@ -485,7 +496,7 @@ fn includes_are_resolved_with_origin_files() {
     // the single-page report pulls in subsections; every subsection contributes blocks
     let book = corpus_dir().join("single-page-report");
     let bsrc = fs::read_to_string(book.join("index.tmd")).unwrap();
-    let bdoc = taliesin_core::render_document_with_includes(&bsrc, &book);
+    let bdoc = taliesin_core::render_document_scoped_with_site(&bsrc, &book, None, None);
     assert!(!bdoc.body_html().contains("{{< include"));
     let included_files: HashSet<_> = bdoc
         .blocks
@@ -698,7 +709,9 @@ fn a11y_chrome_emits_landmarks_and_a_skip_link() {
             "---\ntitle: \"T\"\ntoc: true\n---\n\n# One\n\nbody\n\n## Two\n\nmore\n",
         ),
         "fallback",
-        taliesin_core::OutputMode::Build,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
     ));
     // Skip-to-content link is the first thing in the body, before JS runs.
     assert!(
@@ -736,7 +749,9 @@ fn a11y_chrome_emits_landmarks_and_a_skip_link() {
     let no_toc = markup_only(&taliesin_core::render_doc_to_page(
         &taliesin_core::render_document("---\ntitle: \"T\"\n---\n\nbody only\n"),
         "fallback",
-        taliesin_core::OutputMode::Build,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
     ));
     assert!(
         no_toc.contains("href=\"#tali-main\""),
@@ -755,7 +770,14 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
     // heading anchors, and document-order figure numbering on that one page.
     let dir = corpus_dir().join("single-page-report");
     let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
-    let page = taliesin_core::render_html_page_with_includes(&src, &dir, "report");
+    let doc = taliesin_core::render_document_scoped_with_site(&src, &dir, None, None);
+    let page = taliesin_core::render_doc_to_page(
+        &doc,
+        "report",
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    );
 
     // toc: true -> a TOC nav + the sidebar layout, with anchor-linked entries.
     assert!(
@@ -829,7 +851,7 @@ fn reverse_sync_sourcepos_is_total() {
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_scoped_with_site(&src, base, None, None);
         // Scan EVERY data-sourcepos="..." in the emitted HTML (what highlightAtLine sees),
         // not just top-level blocks — nested elements inside containers carry their own.
         let html = doc.body_html();
@@ -875,7 +897,8 @@ fn footnote_sidenotes_are_locatable() {
     let mut offenders = Vec::new();
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         let html = doc.body_html();
         for (i, _) in html.match_indices("<span class=\"tali-sidenote\"") {
             let tag = &html[i..i + html[i..].find('>').unwrap_or(0)];
@@ -919,7 +942,8 @@ fn gathered_sections_stay_unlocatable() {
     let mut offenders = Vec::new();
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
         // The block model's own view: the generated sections carry an empty sourcepos.
         for b in &doc.blocks {
@@ -1131,8 +1155,13 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     let doc = taliesin_core::render_document(
         "---\ntitle: \"T\"\ndescription: \"D\"\n---\n\n# Hi\n\nbody\n",
     );
-    let page =
-        taliesin_core::render_doc_to_page(&doc, "fallback", taliesin_core::OutputMode::Build);
+    let page = taliesin_core::render_doc_to_page(
+        &doc,
+        "fallback",
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    );
     assert!(
         page.contains("property=\"og:title\" content=\"T\""),
         "og:title"
@@ -1155,8 +1184,13 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     // A dated doc (a post) IS an article.
     let dated =
         taliesin_core::render_document("---\ntitle: \"T\"\ndate: \"2026-01-01\"\n---\n\nbody\n");
-    let dated_page =
-        taliesin_core::render_doc_to_page(&dated, "fallback", taliesin_core::OutputMode::Build);
+    let dated_page = taliesin_core::render_doc_to_page(
+        &dated,
+        "fallback",
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
+    );
     assert!(
         dated_page.contains("property=\"og:type\" content=\"article\""),
         "a dated standalone doc is og:type=article"
@@ -1166,7 +1200,9 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     let bare = taliesin_core::render_doc_to_page(
         &taliesin_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
         "fb",
-        taliesin_core::OutputMode::Build,
+        None,
+        "",
+        taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(bare.contains("property=\"og:title\" content=\"Only\""));
     assert!(
@@ -1477,9 +1513,13 @@ fn a_site_page_prefers_its_authored_title_then_its_leading_h1() {
             .unwrap_or_else(|| panic!("no page {rel}"));
         let src = fs::read_to_string(&page.input).unwrap();
         let base = page.input.parent().unwrap();
-        let doc =
-            taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
-        let (html, _) = site.render_page_doc_warned(page, doc);
+        let doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            site.chapter_for(page),
+            None,
+        );
+        let (html, _) = site.finish_page(page, doc);
         html.split("<title>")
             .nth(1)
             .and_then(|s| s.split("</title>").next())
@@ -1511,7 +1551,8 @@ fn every_titled_post_emits_exactly_one_h1() {
     );
     for f in &posts {
         let src = fs::read_to_string(f).unwrap();
-        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let doc =
+            taliesin_core::render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
         let n = doc.body_html().matches("<h1").count();
         let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
         assert_eq!(n, 1, "{label} should emit exactly one <h1>, found {n}");

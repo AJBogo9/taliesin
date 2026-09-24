@@ -15,7 +15,7 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use taliesin_core::render_document_with_includes;
+use taliesin_core::render_document_scoped_with_site;
 
 /// A throwaway dir under the system temp, unique per test name + process.
 fn tmp(name: &str) -> PathBuf {
@@ -52,7 +52,8 @@ fn an_escaping_symlink_is_refused_when_the_doc_is_addressed_by_bare_filename() {
 
     let prev = std::env::current_dir().unwrap();
     std::env::set_current_dir(&proj).unwrap();
-    let doc = render_document_with_includes("{{< include leak.tmd >}}\n", Path::new(""));
+    let doc =
+        render_document_scoped_with_site("{{< include leak.tmd >}}\n", Path::new(""), None, None);
     std::env::set_current_dir(prev).unwrap();
 
     assert!(
@@ -91,7 +92,7 @@ fn a_bibliography_symlinked_to_a_sibling_inside_the_repo_resolves() {
     symlink("../paper/references.bib", repo.join("book/references.bib")).unwrap();
 
     let src = "---\ntitle: T\nbibliography: references.bib\n---\n\nSee [@Fiedler1973].\n";
-    let doc = render_document_with_includes(src, &repo.join("book"));
+    let doc = render_document_scoped_with_site(src, &repo.join("book"), None, None);
 
     let bib_warnings: Vec<&str> = doc
         .warnings
@@ -234,7 +235,7 @@ fn a_bibliography_symlinked_outside_the_repo_is_refused_and_says_why() {
     symlink(&outside, repo.join("references.bib")).unwrap();
 
     let src = "---\ntitle: T\nbibliography: references.bib\n---\n\nSee [@X].\n";
-    let doc = render_document_with_includes(src, &repo);
+    let doc = render_document_scoped_with_site(src, &repo, None, None);
 
     assert!(
         !html(&doc).contains("Out Of Tree"),

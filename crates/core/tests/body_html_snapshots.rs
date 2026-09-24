@@ -55,7 +55,8 @@ fn first_divergence(actual: &str, expected: &str) -> Option<(usize, String, Stri
 fn assert_snapshot(name: &str, rel: &str) {
     let path = corpus_dir().join(rel);
     let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
-    let doc = taliesin_core::render_document_with_includes(&src, path.parent().unwrap());
+    let doc =
+        taliesin_core::render_document_scoped_with_site(&src, path.parent().unwrap(), None, None);
     let actual = doc.body_html();
     let snap = snapshot_path(name);
 

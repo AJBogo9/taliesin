@@ -76,7 +76,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      `tali:themechange` fires on every page when the OS scheme flips
                      (mermaid.js re-renders on it)
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
-                     favicon): RenderedDoc → standalone page for build + in-process render
+                     favicon): `render_doc_to_page`, the one RenderedDoc → page every
+                     build writes (the preview calls `assemble_html_page` itself)
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)

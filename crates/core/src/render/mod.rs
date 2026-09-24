@@ -41,7 +41,7 @@ pub(crate) fn parse_options() -> Options<'static> {
 }
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
-/// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
+/// Does not resolve `{{< include >}}` (use [`render_document_scoped_with_site`]).
 mod fm_extract;
 use fm_extract::DocFront;
 #[cfg(test)]
@@ -112,11 +112,9 @@ mod theme;
 mod workers;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
-use page::page_from_doc;
 pub use page::{
-    PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    html_page_from_doc_in_site_external, render_doc_to_page, render_doc_to_page_external,
-    render_single_doc_page, title_with_site_suffix,
+    PageParts, SiteCtx, assemble_html_page, favicon_link, render_doc_to_page,
+    title_with_site_suffix,
 };
 // Crate-internal: `Site::page_title` is the entry point for resolving a page's tab title.
 pub(crate) use page::site_page_title;
@@ -197,29 +195,13 @@ pub fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
     }
 }
 
-/// Like [`render_document`], but first expands `{{< include >}}` shortcodes
-/// relative to `base_dir`, mapping each block back to its origin file, and
-/// resolves citations/cross-references against the doc's bibliography.
-pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
-    render_document_with_includes_scoped(src, base_dir, None)
-}
-
-/// Like [`render_document_with_includes`] but with an optional book chapter number, so a
-/// numbered chapter renders "Figure 2.3" / "Table 2.1". Only the site book path passes
-/// `Some(n)`; everything else is `None` (continuous numbering).
-pub fn render_document_with_includes_scoped(
-    src: &str,
-    base_dir: &Path,
-    chapter: Option<u32>,
-) -> RenderedDoc {
-    render_doc_with_includes_impl(src, base_dir, chapter, None, None, false)
-}
-
-/// Like [`render_document_with_includes_scoped`] but carrying what the page inherits from
-/// its project's `_site.yml` ([`SiteDefaults`]): the project-wide `bibliography:` laid under
-/// the page's own. Everything else passes `None` and is byte-identical to
-/// [`render_document_with_includes_scoped`]. Public so the server's site build + live
-/// preview render each page with the project's policies.
+/// Like [`render_document`], but first expands `{{< include >}}` shortcodes relative to
+/// `base_dir`, mapping each block back to its origin file, and resolves citations and
+/// cross-references against the doc's bibliography. `chapter` is a numbered book chapter's
+/// number, so it renders "Figure 2.3" / "Table 2.1" (`None`: continuous numbering). `site`
+/// carries what the page inherits from its project's `_site.yml` ([`SiteDefaults`]): the
+/// project-wide `bibliography:` laid under the page's own (`None`: no project). What the
+/// site build, the live preview and the project's passes render each page with.
 pub fn render_document_scoped_with_site(
     src: &str,
     base_dir: &Path,
@@ -1900,30 +1882,6 @@ fn map_span(
     (file, start_line, map_origin(origins, last).1)
 }
 
-/// Render a complete, viewable HTML page (used by the one-shot CLI). The
-/// front-matter `title:` becomes the document `<title>`; `fallback_title` is
-/// used when the source declares none.
-///
-/// ```
-/// let html = taliesin_core::render_html_page("---\ntitle: Demo\n---\n\nHi.\n", "fallback");
-/// assert!(html.contains("<title>Demo</title>"));
-/// assert!(html.contains("Hi."));
-/// ```
-pub fn render_html_page(src: &str, fallback_title: &str) -> String {
-    // The in-process full-page API ships everything (like a preview); the static
-    // `build`/`render` CLI opts into content-gating via `render_doc_to_page`.
-    page_from_doc(&render_document(src), fallback_title, OutputMode::Preview)
-}
-
-/// Like [`render_html_page`], resolving `{{< include >}}` relative to `base_dir`.
-pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title: &str) -> String {
-    page_from_doc(
-        &render_document_with_includes(src, base_dir),
-        fallback_title,
-        OutputMode::Preview,
-    )
-}
-
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
@@ -2198,16 +2156,6 @@ fn mermaid_url_for(mode: OutputMode, sidecar: &str) -> String {
     }
 }
 
-/// The client enhancers: the `window.taliEnhancers` registry + built-ins (copy
-/// buttons) in code-enhance.js, then the
-/// self-registering mermaid module (which lazy-loads the mermaid library on first
-/// use). Emitted after the registry so it is defined when mermaid registers.
-/// Syntax highlighting arrives already done from the server. Callers invoke
-/// `window.taliEnhanceCode(root)` after (re)mounting; it is idempotent.
-pub fn code_scripts() -> String {
-    code_scripts_for("", OutputMode::Preview)
-}
-
 /// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
 /// (copy buttons + the whole reader menu + skip-link and
 /// keyboard a11y) rides on every page, since every page benefits. The
@@ -2289,7 +2237,7 @@ pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
 // cells draw with. The small enhancer (`tali-js.js`) ships unconditionally in
-// `code_scripts()` (it registers and no-ops without cells, like mermaid); these heavy libs
+// every page's enhancer scripts (it registers and no-ops without cells, like mermaid); these heavy libs
 // are gated on `has_js_cells` in a static BUILD only, and ride unconditionally in a
 // preview — see `page::needs_js_libs`.
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
@@ -4032,7 +3980,7 @@ pub use html_escape as escape_attr;
 
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see
-/// [`html_page_from_doc_in_site`]); all of it is driven by `--tali-*` vars so a
+/// [`render_doc_to_page`]); all of it is driven by `--tali-*` vars so a
 /// theme extension restyles it for free. Deliberately leaner than a full
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");

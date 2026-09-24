@@ -14,7 +14,7 @@ use taliesin_core::diagnostics;
 /// counts as level 1: it is `blocks[0]` and its `<h1 class="title">` is the page's only
 /// `<h1>`, so an outline that ignores it is not the outline a reader navigates.
 fn outline(src: &str) -> Vec<u8> {
-    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_scoped_with_site(src, Path::new("."), None, None);
     doc.blocks
         .iter()
         .filter_map(|b| {
@@ -28,7 +28,7 @@ fn outline(src: &str) -> Vec<u8> {
 }
 
 fn skips(src: &str) -> Vec<String> {
-    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_scoped_with_site(src, Path::new("."), None, None);
     diagnostics::validate_a11y(&doc.blocks)
         .into_iter()
         .filter(|w| w.message.contains("heading level skips"))
@@ -114,9 +114,11 @@ fn the_heading_rule_counts_the_title_block_as_the_pages_h1() {
     // stayed 0 through the one comparison that mattered, and the rule reported nothing on
     // 37 pages that skipped. With the title block counted, a regression in demotion is a
     // `check` failure instead of a silent one.
-    let doc = taliesin_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_scoped_with_site(
         &format!("{FM}## One\n\nText.\n"),
         Path::new("."),
+        None,
+        None,
     );
     let title = doc.blocks[0].clone();
     assert!(
@@ -177,9 +179,11 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
                     }
                 } else if p.extension().is_some_and(|x| x == "tmd") {
                     let src = std::fs::read_to_string(&p).unwrap();
-                    let doc = taliesin_core::render_document_with_includes(
+                    let doc = taliesin_core::render_document_scoped_with_site(
                         &src,
                         p.parent().unwrap_or(&dir),
+                        None,
+                        None,
                     );
                     pages += 1;
                     let ws: Vec<String> = diagnostics::validate_a11y(&doc.blocks)

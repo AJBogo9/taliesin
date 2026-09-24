@@ -3111,8 +3111,9 @@ mod project_tests {
         // use. Measured on a two-page preview,
         // a cell-free page's prose edit landed in 0.11 s alone and 12.15 s (110x) when an
         // unrelated page was 1.2 s into a 12 s `{python}` cell.
-        let render =
-            |src: &str| taliesin_core::render_document_with_includes(src, Path::new(".")).blocks;
+        let render = |src: &str| {
+            taliesin_core::render_document_scoped_with_site(src, Path::new("."), None, None).blocks
+        };
         assert!(is_cell_free(&render("---\ntitle: T\n---\n\nJust prose.\n")));
         assert!(!is_cell_free(&render(
             "---\ntitle: T\n---\n\n```{python}\nprint(1)\n```\n"
@@ -3241,6 +3242,33 @@ mod project_tests {
         site_page_html(&project, &page)
     }
 
+    /// One page of `site` as `build <dir>` writes it: rendered from `base`, finished, and
+    /// wrapped in its chrome linking the shared `_assets/` (`Site::page_html_external`).
+    fn built_site_page(
+        site: &taliesin_core::site::Site,
+        page: &taliesin_core::site::Page,
+        base: &Path,
+    ) -> String {
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let mut doc = taliesin_core::render_document_scoped_with_site(
+            &src,
+            base,
+            None,
+            Some(&site.render_defaults()),
+        );
+        let mut warnings = Vec::new();
+        doc.toc = site.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+        let assets = taliesin_core::ExternalAssets {
+            app_css: "_assets/app.css",
+            katex_css: "_assets/katex.css",
+            app_js: "_assets/app.js",
+            mermaid_js: "_assets/mermaid.js",
+            jslibs_js: "_assets/jslibs.js",
+            font_preload: "",
+        };
+        site.page_html_external(page, &doc, assets)
+    }
+
     #[test]
     fn a_book_chapter_preview_gets_no_toc_rail() {
         // A book chapter has no rail at all (item 76), however long it is — the preview's
@@ -3312,16 +3340,7 @@ mod project_tests {
                 .join(project);
             let site = taliesin_core::site::Site::discover(&dir);
             let page = site.page(rel).expect("corpus page").clone();
-            let built = {
-                let src = std::fs::read_to_string(&page.input).unwrap();
-                let doc = taliesin_core::render_document_scoped_with_site(
-                    &src,
-                    &dir,
-                    None,
-                    Some(&site.render_defaults()),
-                );
-                site.render_page_doc_warned(&page, doc).0
-            };
+            let built = built_site_page(&site, &page, &dir);
             let preview = corpus_preview_page(project, rel);
 
             let (want, got) = (chrome_skeleton(&built), chrome_skeleton(&preview));
@@ -3389,17 +3408,7 @@ mod project_tests {
             &preview[..preview.len().min(400)]
         );
 
-        let built = {
-            let site = project.site.lock();
-            let src = std::fs::read_to_string(&page.input).unwrap();
-            let doc = taliesin_core::render_document_scoped_with_site(
-                &src,
-                &dir,
-                None,
-                Some(&site.render_defaults()),
-            );
-            site.render_page_doc_warned(&page, doc).0
-        };
+        let built = built_site_page(&project.site.lock(), &page, &dir);
         assert!(
             built.contains(r#"<html lang="en""#) && !built.contains(r#"lang="fi""#),
             "the build must paint the same baseline, from the same const: {}",

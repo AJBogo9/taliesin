@@ -91,7 +91,7 @@ fn unresolvable_include_warns_instead_of_silently_dropping() {
 
     let src = std::fs::read_to_string(proj.0.join("post/index.tmd")).unwrap();
     let base = proj.0.join("post");
-    let doc = taliesin_core::render_document_with_includes(&src, &base);
+    let doc = taliesin_core::render_document_scoped_with_site(&src, &base, None, None);
 
     let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
     // The escaping path is refused, located, and reported (not silently dropped).

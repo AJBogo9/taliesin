@@ -10,7 +10,7 @@
 //! in the browser, not here; this test pins the *static* structure those rely on.
 
 mod common;
-use common::corpus_dir;
+use common::{RenderPage, corpus_dir};
 use taliesin_core::Site;
 
 fn page() -> String {

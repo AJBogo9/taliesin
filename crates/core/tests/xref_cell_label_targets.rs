@@ -15,7 +15,7 @@
 use taliesin_core::Site;
 
 mod common;
-use common::{TempProj, corpus_dir};
+use common::{RenderPage, TempProj, corpus_dir};
 
 #[test]
 fn cross_page_ref_to_a_cell_labelled_figure_resolves_to_its_page_and_number() {

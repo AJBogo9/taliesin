@@ -3,6 +3,22 @@
 
 use super::*;
 
+/// The page `build <file.tmd>` writes for a finished doc: standalone, everything inline.
+fn built_page(doc: &RenderedDoc, fallback_title: &str) -> String {
+    render_doc_to_page(
+        doc,
+        fallback_title,
+        None,
+        "",
+        AssetMode::Inline { mermaid_src: "" },
+    )
+}
+
+/// [`built_page`] for a source string.
+fn render_html_page(src: &str, fallback_title: &str) -> String {
+    built_page(&render_document(src), fallback_title)
+}
+
 #[test]
 fn humanize_date_formats_iso_and_passes_through_everything_else() {
     assert_eq!(humanize_date("2026-04-14"), "14 April 2026"); // day un-padded
@@ -987,7 +1003,7 @@ fn page_payload_gates_read_markup_and_not_text_that_shows_it() {
          a cell ships as `<script type=\"application/tali-js\">`, and the rail is \
          `<nav id=\"TOC\">`.\n",
     );
-    let page = super::render_doc_to_page(&shows, "docs", crate::OutputMode::Build);
+    let page = built_page(&shows, "docs");
     let skip_to_toc =
         |page: &str| tags(page).any(|t| attr_value(&t, "href").as_deref() == Some("#TOC"));
     assert!(!page.contains(&KATEX_CSS[..400]), "KaTeX shipped for text");
@@ -1010,7 +1026,7 @@ fn page_payload_gates_read_markup_and_not_text_that_shows_it() {
          ```mermaid\nflowchart LR\n  A --> B\n```\n\n## Three\n\n\
          ```{js}\nconst x = 1;\n```\n",
     );
-    let page = super::render_doc_to_page(&real, "real", crate::OutputMode::Build);
+    let page = built_page(&real, "real");
     assert!(page.contains(&KATEX_CSS[..400]), "real math ships KaTeX");
     assert!(page.contains("__esbuild_esm_mermaid"), "a real diagram");
     assert!(page.contains("d3js.org"), "a real cell ships d3");
@@ -1026,13 +1042,21 @@ fn page_payload_gates_read_markup_and_not_text_that_shows_it() {
 #[test]
 fn a_named_mermaid_file_is_linked_instead_of_inlined() {
     let doc = render_document("```mermaid\nflowchart LR\n  A --> B\n```\n");
-    let inlined = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    let inlined = built_page(&doc, "stem");
     assert!(
         inlined.contains("__esbuild_esm_mermaid"),
         "the single-file build still inlines"
     );
 
-    let linked = super::render_single_doc_page(&doc, "stem", "mermaid.min.js", "");
+    let linked = render_doc_to_page(
+        &doc,
+        "stem",
+        None,
+        "",
+        AssetMode::Inline {
+            mermaid_src: "mermaid.min.js",
+        },
+    );
     assert!(
         !linked.contains("__esbuild_esm_mermaid"),
         "a named sibling file must replace the inlined library, not accompany it"
@@ -2367,7 +2391,7 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     }
     // `requestFullscreen` gets its own needle rather than joining the loop above, so it is
     // asserted where the content gating is real: a
-    // Build-mode page, not `render_html_page`'s Preview bundle, which ships every core
+    // Build-mode page, not the preview's bundle, which ships every core
     // enhancer unconditionally so a live-diff edit can gain any construct without a
     // reload.
     //
@@ -2377,11 +2401,7 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
     // inline bootstrap, or in `tali-js.js` would sail straight past it. A Build-mode
     // assembled prose page contains zero `requestFullscreen`, measured, so the strong form
     // is available and is what runs here.
-    let built_prose = page_from_doc(
-        &render_document("# Title\n\nProse to read.\n"),
-        "doc",
-        OutputMode::Build,
-    );
+    let built_prose = render_html_page("# Title\n\nProse to read.\n", "doc");
     assert!(
         !built_prose.contains("requestFullscreen"),
         "a built page that is not a deck must not ship requestFullscreen: {built_prose}"
@@ -2396,10 +2416,9 @@ fn assembled_page_ships_neither_focus_mode_nor_fullscreen() {
 /// simply never pointed at it, so it produced the worse artifact.
 #[test]
 fn a_standalone_page_minifies_the_css_it_inlines() {
-    let page = page_from_doc(
-        &render_document("---\ntitle: Prose\n---\n\nJust prose: no math, no cells.\n"),
+    let page = render_html_page(
+        "---\ntitle: Prose\n---\n\nJust prose: no math, no cells.\n",
         "doc",
-        OutputMode::Build,
     );
     // The largest `<style>` block, not the first: a page with a `theme:` emits its own
     // small one, and which lands first is a template-ordering detail this test does not own.
@@ -2668,9 +2687,11 @@ fn missing_bibliography_file_warns() {
     // A named `.bib` that can't be read is reported on the doc's `warnings` (the core's
     // non-fatal error channel), not silently dropped. The `theme: gone.css` half of this
     // test went with the key on 2026-08-17.
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         "---\ntitle: X\nbibliography: nope.bib\n---\n\nSee [@k].\n",
         std::path::Path::new("/taliesin-nonexistent-dir"),
+        None,
+        None,
     );
     assert!(
         doc.warnings
@@ -2977,9 +2998,11 @@ fn a_dated_post_wraps_its_reading_content_in_an_article_landmark() {
 
 #[test]
 fn input_slider_shortcode_emits_reactive_control() {
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         "{{< input name=\"k\" type=\"slider\" min=\"1\" max=\"10\" value=\"3\" label=\"k\" >}}\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     let h = doc.body_html();
     assert!(h.contains("class=\"tali-input\""), "wrapper: {h}");
@@ -3004,9 +3027,14 @@ fn tali_input_block_id(h: &str) -> String {
 fn input_control_id_is_position_independent() {
     let p = std::path::Path::new(".");
     let input = "{{< input name=\"rate\" type=\"slider\" min=\"0\" max=\"20\" value=\"8\" >}}\n";
-    let top = render_document_with_includes(input, p).body_html();
-    let shifted =
-        render_document_with_includes(&format!("A leading paragraph.\n\n{input}"), p).body_html();
+    let top = render_document_scoped_with_site(input, p, None, None).body_html();
+    let shifted = render_document_scoped_with_site(
+        &format!("A leading paragraph.\n\n{input}"),
+        p,
+        None,
+        None,
+    )
+    .body_html();
     // The control id is derived from the reactive name, not the source line, so it is the
     // same whether the input sits at the top or is shifted down by an edit above.
     assert!(
@@ -3029,9 +3057,9 @@ fn input_control_id_is_position_independent() {
 #[test]
 fn duplicate_input_names_get_deduped_control_ids() {
     let p = std::path::Path::new(".");
-    let h = render_document_with_includes(
+    let h = render_document_scoped_with_site(
         "{{< input name=\"rate\" type=\"slider\" >}}\n\n{{< input name=\"rate\" type=\"slider\" >}}\n",
-        p,
+        p, None, None,
     )
     .body_html();
     // Two controls can bind the same reactive name (e.g. the same control on two slides);
@@ -3046,18 +3074,24 @@ fn duplicate_input_names_get_deduped_control_ids() {
 #[test]
 fn input_shortcode_other_types_emit_their_native_control() {
     let p = std::path::Path::new(".");
-    let num =
-        render_document_with_includes("{{< input name=\"n\" type=\"number\" step=\"0.1\" >}}\n", p)
-            .body_html();
+    let num = render_document_scoped_with_site(
+        "{{< input name=\"n\" type=\"number\" step=\"0.1\" >}}\n",
+        p,
+        None,
+        None,
+    )
+    .body_html();
     assert!(num.contains("type=\"number\"") && num.contains("step=\"0.1\""));
     assert!(
         !num.contains("data-tali-out"),
         "no readout on number: {num}"
     );
 
-    let cb = render_document_with_includes(
+    let cb = render_document_scoped_with_site(
         "{{< input name=\"on\" type=\"checkbox\" value=\"true\" >}}\n",
         p,
+        None,
+        None,
     )
     .body_html();
     assert!(
@@ -3065,14 +3099,20 @@ fn input_shortcode_other_types_emit_their_native_control() {
         "checked: {cb}"
     );
 
-    let tx =
-        render_document_with_includes("{{< input name=\"q\" type=\"text\" value=\"hi\" >}}\n", p)
-            .body_html();
+    let tx = render_document_scoped_with_site(
+        "{{< input name=\"q\" type=\"text\" value=\"hi\" >}}\n",
+        p,
+        None,
+        None,
+    )
+    .body_html();
     assert!(tx.contains("type=\"text\"") && tx.contains("value=\"hi\""));
 
-    let sel = render_document_with_includes(
+    let sel = render_document_scoped_with_site(
         "{{< input name=\"c\" type=\"select\" options=\"a,b,c\" value=\"b\" >}}\n",
         p,
+        None,
+        None,
     )
     .body_html();
     assert!(sel.contains("<select"), "select: {sel}");
@@ -3354,20 +3394,41 @@ fn build_mode_content_gates_separate_enhancers() {
 
 #[test]
 fn site_build_path_content_gates_enhancers() {
-    // The in-site page builder hardcodes OutputMode::Build, so a site/book build
-    // content-gates the separate enhancers just like a single-doc build (this pins
-    // the spec's "site builds get Phase-1 gating too" claim). Each marker is that
-    // script's own distinctive comment rather than its filename, so a string that also
-    // occurs in base.css cannot make the negative assertion pass for the wrong reason.
-    let doc = render_document("# A chapter\n\nProse only — no mermaid diagram.\n");
-    let page = html_page_from_doc_in_site(&doc, "chapter", &SiteCtx::default());
+    // A site page is assembled in `OutputMode::Build` like a single-doc build, linking the
+    // shared bundle, so the separate enhancers are content-gated (this pins the spec's "site
+    // builds get Phase-1 gating too" claim): mermaid's library is linked only where a diagram
+    // is. Needles are whole `src` attributes, so no mention in an inline script can pass them.
+    let page = |src: &str| {
+        let assets = ExternalAssets {
+            app_css: "app.css",
+            katex_css: "katex.css",
+            app_js: "app.js",
+            mermaid_js: "mermaid.js",
+            jslibs_js: "jslibs.js",
+            font_preload: "",
+        };
+        let doc = render_document(src);
+        render_doc_to_page(
+            &doc,
+            "chapter",
+            Some(&SiteCtx::default()),
+            "",
+            AssetMode::External(assets),
+        )
+    };
+    let prose = page("# A chapter\n\nProse only, no diagram.\n");
     assert!(
-        page.contains("function taliCopyText"),
-        "a site page still ships code-enhance.js (the copy buttons + a11y layer)"
+        prose.contains("<script src=\"app.js\" defer>"),
+        "a site page links app.js (code-enhance.js: the copy buttons + a11y layer)"
     );
     assert!(
-        !page.contains("self-contained enhancer module"),
-        "no mermaid.js on a prose site page"
+        !prose.contains("src=\"mermaid.js\""),
+        "no mermaid on a prose site page"
+    );
+    let diagram = page("```{mermaid}\ngraph TD; A-->B\n```\n");
+    assert!(
+        diagram.contains("<script src=\"mermaid.js\" defer>"),
+        "a diagram page links mermaid"
     );
 }
 
@@ -3551,10 +3612,11 @@ fn sepia_is_gone_from_every_theme_surface() {
 /// rule via the same helper.
 #[test]
 fn book_chapter_scopes_figure_numbers() {
-    let doc = render_document_with_includes_scoped(
+    let doc = render_document_scoped_with_site(
         "![A fit.](fit.png){#fig-fit}\n\n![A second.](b.png){#fig-two}\n\nSee @fig-fit.\n",
         std::path::Path::new("."),
         Some(2),
+        None,
     );
     let body = doc.body_html();
     assert!(
@@ -3575,13 +3637,14 @@ fn book_chapter_scopes_figure_numbers() {
 /// chapter's first equation/listing/table reads "2.1", never a flat "1".
 #[test]
 fn book_chapter_scopes_equation_listing_and_table_numbers() {
-    let doc = render_document_with_includes_scoped(
+    let doc = render_document_scoped_with_site(
         "$$ x = 1 $$ {#eq-one}\n\n\
          ```{python}\n#| label: lst-demo\n#| lst-cap: My listing\nx = 1\n```\n\n\
          | a | b |\n|---|---|\n| 1 | 2 |\n\n: My caption {#tbl-data}\n\n\
          See @eq-one, @lst-demo and @tbl-data.\n",
         std::path::Path::new("."),
         Some(2),
+        None,
     );
     let body = doc.body_html();
     assert!(
@@ -3614,9 +3677,10 @@ fn book_chapter_scopes_equation_listing_and_table_numbers() {
 /// to scope to, so floats keep flat numbering: "Figure 1" never becomes "Figure .1".
 #[test]
 fn floats_stay_flat_outside_a_book_chapter() {
-    let doc = render_document_with_includes_scoped(
+    let doc = render_document_scoped_with_site(
         "![A fit.](fit.png){#fig-fit}\n\n$$ x = 1 $$ {#eq-one}\n\nSee @fig-fit and @eq-one.\n",
         std::path::Path::new("."),
+        None,
         None,
     );
     let body = doc.body_html();
@@ -5518,7 +5582,7 @@ fn same_page_sec_ref_uses_hierarchical_number_in_a_chapter() {
     use std::path::Path;
     let src =
         "See @sec-y.\n\n## First\n\n## Second {#sec-y}\n\n### Deep {#sec-z}\n\nAlso @sec-z.\n";
-    let doc = render_document_with_includes_scoped(src, Path::new("."), Some(2));
+    let doc = render_document_scoped_with_site(src, Path::new("."), Some(2), None);
     let body = doc.body_html();
     // `## Second` is the 2nd h2 of chapter 2 -> 2.2; `### Deep` is its first h3 -> 2.2.1.
     assert!(
@@ -5603,7 +5667,7 @@ fn same_page_sec_ref_stays_flat_without_a_chapter() {
     // numbering — it has no hierarchical chapter to scope to.
     use std::path::Path;
     let src = "See @sec-a and @sec-b.\n\n## One {#sec-a}\n\n## Two {#sec-b}\n";
-    let doc = render_document_with_includes_scoped(src, Path::new("."), None);
+    let doc = render_document_scoped_with_site(src, Path::new("."), None, None);
     let body = doc.body_html();
     assert!(
         body.contains("class=\"tali-xref\">Section&nbsp;1</a>")
@@ -5622,7 +5686,7 @@ fn a_leading_h1_titles_a_standalone_page_instead_of_the_file_stem() {
     // `RenderedDoc::title` still means "the front-matter title", so a site can prefer its
     // own authored page title over the heading.
     assert_eq!(doc.title, None);
-    let html = super::render_doc_to_page(&doc, "the-file-stem", crate::OutputMode::Build);
+    let html = built_page(&doc, "the-file-stem");
     assert!(
         html.contains("<title>My Great Post</title>"),
         "the leading h1 must beat the file stem"
@@ -5632,7 +5696,7 @@ fn a_leading_h1_titles_a_standalone_page_instead_of_the_file_stem() {
 #[test]
 fn front_matter_title_always_wins_over_a_leading_h1() {
     let doc = super::render_document("---\ntitle: Real Title\n---\n\n# Something Else\n\nBody.\n");
-    let html = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    let html = built_page(&doc, "stem");
     assert!(
         html.contains("<title>Real Title</title>"),
         "front matter wins"
@@ -5641,13 +5705,7 @@ fn front_matter_title_always_wins_over_a_leading_h1() {
 
 #[test]
 fn only_a_leading_h1_is_promoted_never_a_later_or_deeper_heading() {
-    let page = |src: &str| {
-        super::render_doc_to_page(
-            &super::render_document(src),
-            "stem",
-            crate::OutputMode::Build,
-        )
-    };
+    let page = |src: &str| render_html_page(src, "stem");
     // An h2 first: a section, not the document's name.
     assert!(page("## A section\n\n# A late h1\n").contains("<title>stem</title>"));
     // Prose before the first h1: the h1 is not the document's name either.
@@ -5661,7 +5719,7 @@ fn a_promoted_h1_title_is_plain_text_not_html() {
     // The block's html carries an anchor id, inline markup and entities. `<title>` escapes
     // its input, so the promoted value must be decoded plain text or `&` ships as `&amp;amp;`.
     let doc = super::render_document("# `code` & *emphasis* <br> end\n");
-    let html = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    let html = built_page(&doc, "stem");
     assert!(
         html.contains("<title>code &amp; emphasis  end</title>"),
         "expected decoded-then-escaped title, got: {:?}",
@@ -5922,7 +5980,7 @@ fn a_demoted_post_still_lists_all_its_sections_in_the_toc() {
 #[test]
 fn body_uses_the_inlined_literata_face() {
     let doc = render_document("Body prose.\n");
-    let page = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    let page = built_page(&doc, "stem");
     // Two real @font-face rules for the owned body face, family "Literata".
     assert!(page.contains("@font-face"), "no @font-face in page head");
     assert!(
@@ -6695,7 +6753,7 @@ fn a_warning_after_an_include_carries_the_authors_own_line_not_the_buffer_line()
         Some("## Dup {#same}"),
         "line 9 is the duplicate"
     );
-    let doc = render_document_with_includes(src, &d);
+    let doc = render_document_scoped_with_site(src, &d, None, None);
     let dup = doc
         .warnings
         .iter()
@@ -6714,7 +6772,7 @@ fn a_warning_after_an_include_carries_the_authors_own_line_not_the_buffer_line()
     let part = "Partial one.\n\n## Dup {#same}\n\n## Dup {#same}\n";
     std::fs::write(d2.join("part.tmd"), part).unwrap();
     let src2 = "---\ntitle: X\n---\n\nlead\n\nmore\n\nmore\n\nmore\n\n{{< include part.tmd >}}\n";
-    let doc2 = render_document_with_includes(src2, &d2);
+    let doc2 = render_document_scoped_with_site(src2, &d2, None, None);
     let dup2 = doc2
         .warnings
         .iter()
@@ -6755,7 +6813,7 @@ fn a_shortcode_warning_after_an_include_carries_the_authors_own_line() {
         Some("{{< sidebar x >}}"),
         "line 7 is the typo'd shortcode"
     );
-    let doc = render_document_with_includes(src, &d);
+    let doc = render_document_scoped_with_site(src, &d, None, None);
     let w = doc
         .warnings
         .iter()
@@ -6774,7 +6832,7 @@ fn a_shortcode_warning_after_an_include_carries_the_authors_own_line() {
     let part = "Partial one.\n\n{{< sidebar x >}}\n";
     std::fs::write(d2.join("part.tmd"), part).unwrap();
     let src2 = "---\ntitle: X\n---\n\nlead\n\nmore\n\nmore\n\nmore\n\n{{< include part.tmd >}}\n";
-    let doc2 = render_document_with_includes(src2, &d2);
+    let doc2 = render_document_scoped_with_site(src2, &d2, None, None);
     let w2 = doc2
         .warnings
         .iter()
@@ -6791,7 +6849,7 @@ fn a_shortcode_warning_after_an_include_carries_the_authors_own_line() {
     let d3 = source_map_tmpdir("shortcode-input");
     std::fs::write(d3.join("part.tmd"), "one\n\ntwo\n\nthree\n").unwrap();
     let src3 = "---\ntitle: X\n---\n\n{{< include part.tmd >}}\n\n{{< input type=\"nope\" name=\"k\" >}}\n";
-    let doc3 = render_document_with_includes(src3, &d3);
+    let doc3 = render_document_scoped_with_site(src3, &d3, None, None);
     for w in doc3.warnings.iter().filter(|w| w.file.is_none()) {
         assert!(
             w.line.is_none_or(|l| l <= src3.lines().count() as u32),
@@ -6819,9 +6877,11 @@ fn a_block_straddling_an_include_boundary_stays_inside_one_files_line_numbering(
     std::fs::write(d.join("part.tmd"), &part).unwrap();
     // The include sits at parent line 5 and the parent's own tail at line 6, with no blank
     // between: comrak merges partial:39-40 with parent:6 into one paragraph.
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         "---\ntitle: X\n---\n\n{{< include part.tmd >}}\nparent tail line\n",
         &d,
+        None,
+        None,
     );
     let straddler = doc
         .blocks
@@ -6873,13 +6933,15 @@ fn a_repeated_explicit_id_is_deduped_and_reported_wherever_it_is_written() {
     // `<figure id="fig-shared">`. The ruling is RENAME, not refuse: the first definition
     // keeps the author's spelling so their links still resolve, and the duplicate is an
     // error-severity, located diagnostic rather than silently invalid HTML.
-    let doc = render_document_with_includes(
+    let doc = render_document_scoped_with_site(
         "---\ntitle: X\n---\n\n\
          ![Cap](a.png){#fig-shared}\n\n\
          ![Cap](a.png){#fig-shared}\n\n\
          ::: {#dup-div}\nbody\n:::\n\n\
          ::: {#dup-div}\nbody two\n:::\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     let ids: Vec<&str> = doc
         .blocks
@@ -6915,10 +6977,12 @@ fn a_repeated_explicit_id_is_deduped_and_reported_wherever_it_is_written() {
     assert!(dups[1].message.contains("dup-div-1"), "{:?}", dups[1]);
 
     // A hand-written `-1` already on the page must not be handed out a second time.
-    let clash = render_document_with_includes(
+    let clash = render_document_scoped_with_site(
         "---\ntitle: X\n---\n\n\
          ![A](a.png){#fig-plot-1}\n\n![B](a.png){#fig-plot}\n\n![C](a.png){#fig-plot}\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     let clash_ids: Vec<&str> = clash
         .blocks
@@ -6933,9 +6997,11 @@ fn a_repeated_explicit_id_is_deduped_and_reported_wherever_it_is_written() {
 
     // The positive control: a page with no collision is untouched and silent, so the pass
     // cannot be passing the assertions above by renaming everything it sees.
-    let clean = render_document_with_includes(
+    let clean = render_document_scoped_with_site(
         "---\ntitle: X\n---\n\n## One {#sec-one}\n\n![Cap](a.png){#fig-one}\n\n::: {#note}\nbody\n:::\n",
         std::path::Path::new("."),
+        None,
+        None,
     );
     assert!(
         clean
@@ -8070,9 +8136,11 @@ fn an_html_comment_is_one_token_whatever_it_contains() {
         "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
     )
     .unwrap();
-    let doc = crate::render_document_with_includes(
+    let doc = crate::render_document_scoped_with_site(
         "---\nbibliography: refs.bib\n---\n\nBefore <!-- don't --> after [@key].\n",
         &dir,
+        None,
+        None,
     );
     let para = &doc.blocks[0].html;
     assert!(
@@ -8454,7 +8522,7 @@ fn every_line_pass_agrees_with_comrak_about_what_is_code() {
     let mut failures = Vec::new();
     for (name, inert, body) in cases {
         let src = format!("{body}{AFTER}");
-        let doc = render_document_with_includes(&src, &d);
+        let doc = render_document_scoped_with_site(&src, &d, None, None);
         let html = doc.body_html();
         let (expanded, _) = crate::includes::resolve(&src, &d);
         let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded)
@@ -8582,7 +8650,7 @@ fn a_sample_in_a_four_space_list_item_is_not_rewritten() {
     let d = source_map_tmpdir("list4");
     let src = "1.  Add a control:\n\n    ```markdown\n    {{< input name=\"k\" type=\"slider\" >}}\n\n    \
 ::: {.callout-note}\n    Note.\n    :::\n    ```\n";
-    let doc = render_document_with_includes(src, &d);
+    let doc = render_document_scoped_with_site(src, &d, None, None);
     let _ = std::fs::remove_dir_all(&d);
     let text = strip_tags(&doc.body_html());
     assert!(text.contains("::: {.callout-note}"), "{text}");
@@ -8600,7 +8668,7 @@ fn a_shortcode_in_the_front_matter_is_left_as_written() {
     std::fs::write(d.join("_x.md"), "INJECTED\n").unwrap();
     let src = "---\ntitle: \"How {{< input name=k >}} works\"\ndescription: |\n  \
 {{< include _x.md >}}\n---\n\nBody.\n";
-    let doc = render_document_with_includes(src, &d);
+    let doc = render_document_scoped_with_site(src, &d, None, None);
     let (expanded, _) = crate::includes::resolve(src, &d);
     let _ = std::fs::remove_dir_all(&d);
     assert_eq!(doc.title.as_deref(), Some("How {{< input name=k >}} works"));
