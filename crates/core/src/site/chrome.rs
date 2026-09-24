@@ -303,10 +303,12 @@ impl Site {
             if path.is_empty() {
                 continue;
             }
+            // `%XX` decoded, as the browser requests it: `my%20notes.tmd` is `my notes.tmd`.
+            let path = crate::render::percent_decode(path);
             // A site-absolute `/about.tmd` and a relative `about.tmd` name the same page:
             // chrome hrefs are written from the site root, and `resolve_href` supplies each
             // page's own `../` climb.
-            let rooted = path.strip_prefix('/').unwrap_or(path);
+            let rooted = path.strip_prefix('/').unwrap_or(&path);
             let Some(target) = self.link_target_url("index.html", rooted) else {
                 continue; // climbs above the root; unresolvable offline, as for body links
             };

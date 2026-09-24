@@ -299,7 +299,12 @@ pub(super) fn manual_local_links(html: &str) -> Vec<(String, Option<String>)> {
         // checker (`diagnostics::validate_local_links`).
         let path = &path[..path.find('?').unwrap_or(path.len())];
         if !path.is_empty() {
-            out.push((path.to_string(), frag.map(str::to_string)));
+            // `%XX` decoded: the file the browser requests (`my%20notes.tmd` is the page
+            // `my notes.tmd`). The fragment stays as written; the anchor check tries both.
+            out.push((
+                crate::render::percent_decode(path),
+                frag.map(str::to_string),
+            ));
         }
     }
     out

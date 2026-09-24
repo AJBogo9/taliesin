@@ -43,7 +43,11 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
         for frag in same_page_manual_fragments(&b.html) {
-            if ids.contains(frag.as_str()) {
+            // Matched the way the browser matches a fragment: as written, then
+            // percent-decoded, so `#%C3%BCber` finds `id="über"`.
+            if ids.contains(frag.as_str())
+                || ids.contains(crate::render::percent_decode(&frag).as_str())
+            {
                 continue;
             }
             let w = Warning::new(format!(

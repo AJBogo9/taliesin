@@ -878,6 +878,7 @@ impl Site {
                 // Anchor existence: only when the link carries a fragment, the target
                 // page does not run cells (a cell can emit the id at runtime), and the
                 // anchor is missing.
+                // The fragment matches as written or percent-decoded, the browser's two tries.
                 if let Some(frag) = frag
                     && !frag.is_empty()
                     && !cells_by_url
@@ -885,6 +886,7 @@ impl Site {
                         .copied()
                         .unwrap_or(false)
                     && !target_ids.contains(frag)
+                    && !target_ids.contains(&render::percent_decode(frag))
                 {
                     let w = Warning::new(format!(
                         "broken link anchor: `#{frag}` is no element id on `{target_url}`"
@@ -1856,6 +1858,49 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(msgs.len(), 1, "only the missing anchor: {msgs:?}");
         assert!(msgs[0].contains("`#nope&x`"), "{msgs:?}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A `%20` in a link is how a file name with a space is spelled in a URL, and the
+    /// browser decodes it; a fragment matches an id as written or percent-decoded. The
+    /// cross-page check and the nav check compared the encoded text, so every link below
+    /// failed the publish gate while working in the browser.
+    #[test]
+    fn a_percent_encoded_link_resolves_like_the_browser_resolves_it() {
+        let root = write_site(
+            "pct-link",
+            &[
+                (
+                    "_site.yml",
+                    "title: S\nnav:\n  left:\n    - text: Notes\n      href: my%20notes.tmd\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[file](my%20file.txt) [notes](my%20notes.tmd) \
+                     [uber](my%20notes.tmd#%C3%BCber) [gone](my%20notes.tmd#nope)\n",
+                ),
+                (
+                    "my notes.tmd",
+                    "---\ntitle: N\n---\n\n## Über {#über}\n\nx\n",
+                ),
+                ("my file.txt", "x\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert_eq!(msgs.len(), 1, "only the missing anchor: {msgs:?}");
+        assert!(msgs[0].contains("`#nope`"), "{msgs:?}");
+        let nav: Vec<String> = site
+            .validate_chrome_links()
+            .into_iter()
+            .map(|w| w.message)
+            .collect();
+        assert!(nav.is_empty(), "the nav link works: {nav:?}");
 
         let _ = std::fs::remove_dir_all(&root);
     }

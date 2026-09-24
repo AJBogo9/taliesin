@@ -1,6 +1,6 @@
 //! Static document-lint validators — the "check-superset".
 //!
-//! **What:** one read-only validator per family — headings, anchors, bibliography, assets,
+//! **What:** one read-only validator per family — anchors, bibliography, assets,
 //! links, reactive graph, a11y, retired cell languages — each takes the rendered
 //! block model (and, where needed, the doc base dir) and returns located [`Warning`]s on the
 //! same click-to-source channel as render-time diagnostics, so a green run means the document
@@ -25,7 +25,6 @@ mod a11y;
 mod anchors;
 mod assets;
 mod bibliography;
-mod headings;
 mod helpers;
 mod links;
 mod reactive;
@@ -37,7 +36,6 @@ pub use a11y::validate_a11y;
 pub use anchors::validate_internal_anchors;
 pub use assets::validate_local_assets;
 pub use bibliography::{bare_citation_key_not_rendered, citations_without_bibliography};
-pub use headings::validate_duplicate_heading_ids;
 pub use helpers::extract_suggestion;
 pub use links::validate_local_links;
 pub use reactive::validate_js_reactive_graph;

@@ -72,7 +72,11 @@ pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
         for val in local_link_refs(&b.html) {
-            let path = &val[..val.find(['?', '#']).unwrap_or(val.len())];
+            // The file the browser requests: query and fragment dropped, `%XX` decoded
+            // (`render::asset_fs_path`, the step the asset check shares), so a working
+            // `[f](my%20file.txt)` is not reported missing.
+            let path = crate::render::asset_fs_path(&val);
+            let path = path.as_str();
             if path.is_empty() || path.starts_with('/') || link_target_exists(base, path) {
                 continue;
             }
