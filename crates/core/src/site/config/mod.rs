@@ -240,9 +240,35 @@ const CHAPTER_ITEM_KEYS: &[&str] = &["file", "text", "part", "chapters"];
 /// - one mapping carrying `file:` **and** `part:`/`chapters:`. `push_chapter_entry` matches
 ///   the `file:` first and returns `true`, so `push_group` never reads the rest of that
 ///   mapping. A forgotten `- ` before `part:` writes exactly this.
+///
+/// And one that loses nothing but numbers wrong: a chapter listed twice is built twice,
+/// in the drawer twice under two numbers.
 fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
-    fn walk(list: &[serde_yaml::Value], warnings: &mut Vec<String>, src: ConfigSource<'_>) {
+    fn walk(
+        list: &[serde_yaml::Value],
+        warnings: &mut Vec<String>,
+        src: ConfigSource<'_>,
+        seen: &mut std::collections::HashSet<String>,
+    ) {
         for item in list {
+            // The file this entry names, spelled as `book::push_chapter` spells it, so
+            // `./a.tmd` and `a.tmd` are one chapter.
+            let file = item
+                .as_str()
+                .map(|f| (None, f))
+                .or_else(|| Some((Some("file"), item.get("file")?.as_str()?)));
+            if let Some((key, file)) = file {
+                let rel = crate::includes::normalize(std::path::Path::new(file))
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if !seen.insert(rel.clone()) {
+                    warnings.push(format!(
+                        "{} `{rel}` is listed in `chapters:` more than once, so the book \
+                         shows it twice, under two chapter numbers: list it once",
+                        src.at_value(key, file)
+                    ));
+                }
+            }
             // A bare path string is the common form and always well-formed.
             let Some(map) = item.as_mapping() else {
                 continue;
@@ -296,7 +322,7 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
             }
             if let Some(inner) = map.get("chapters") {
                 match inner.as_sequence() {
-                    Some(seq) => walk(seq, warnings, src),
+                    Some(seq) => walk(seq, warnings, src, seen),
                     // A part whose `chapters:` is empty loses nothing (and `push_group`
                     // pops the now-empty header), so only a *value* that is not a list
                     // reports: that one is a chapter the author wrote and will not get.
@@ -321,7 +347,7 @@ fn validate_chapters(value: &serde_yaml::Value, warnings: &mut Vec<String>, src:
     }
     if let Some(chapters) = value.get("chapters") {
         match chapters.as_sequence() {
-            Some(list) => walk(list, warnings, src),
+            Some(list) => walk(list, warnings, src, &mut Default::default()),
             // `chapters: []` / a bare `chapters:` is a book with no chapters yet, which is
             // what an author writing one starts from. Nothing is lost, so nothing reports.
             None if chapters.is_null() => {}
@@ -796,6 +822,28 @@ mod config_tests {
                 w.iter().any(|m| m.contains("DROPPED")),
                 "the diagnostic must say the part is lost, not just that the entry is odd: {w:?}"
             );
+        }
+    }
+
+    /// A chapter listed twice is built as two chapters: it is in the drawer twice, takes
+    /// two numbers, and the pager around each copy points at the other chapter's
+    /// neighbours. Nothing said so (audit 2026-09-24, leads `book.rs:16`). The same file is
+    /// the same chapter however its path is spelled and in whichever part it is listed.
+    #[test]
+    fn a_chapter_listed_twice_is_diagnosed() {
+        for yaml in [
+            "title: X\nchapters:\n  - index.tmd\n  - a.tmd\n  - b.tmd\n  - a.tmd\n",
+            "title: X\nchapters:\n  - a.tmd\n  - part: P\n    chapters:\n      - { file: ./a.tmd }\n",
+        ] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+            parse_native(&v, &mut w, ConfigSource(Some(yaml)));
+            assert!(
+                w.iter()
+                    .any(|m| m.contains("`a.tmd`") && m.contains("more than once")),
+                "expected a duplicate-chapter diagnostic for:\n{yaml}\ngot: {w:?}"
+            );
+            assert_eq!(w.len(), 1, "one diagnostic, for the one chapter: {w:?}");
         }
     }
 
