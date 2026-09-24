@@ -199,6 +199,8 @@ fn is_not_found_page(page: &Page) -> bool {
 }
 
 mod links;
+#[cfg(test)]
+mod poison_tests;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
