@@ -96,8 +96,10 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     } else {
         format!(" style=\"{dims}\"")
     };
-    // `alt` is the caption's plain text (tags stripped, references decoded), escaped once.
-    let alt = escape_attr(&unescape_html(&strip_tags(&fig.caption)));
+    // `alt` is left empty here and filled from the rendered `<figcaption>` after the
+    // citation pass (`figure_alts_from_captions`): the caption's `[@key]` and `@fig-x` are
+    // still source at this point, and the alt is what a screen reader announces.
+    let alt = "";
     let img = |src: &str, class: &str| {
         let cls = if class.is_empty() {
             String::new()

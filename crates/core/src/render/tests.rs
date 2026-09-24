@@ -7637,6 +7637,41 @@ fn an_html_comment_is_one_token_whatever_it_contains() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A figure's `alt` is its caption as a reader hears it: citations and cross-references
+/// rendered, as they are in the `<figcaption>` beside it. The emitter built the alt from
+/// the caption before the citation pass ran, so a screen reader announced the source
+/// `[@key]` and `@fig-b` where a sighted reader saw "[1]" and "Figure 2".
+#[test]
+fn a_figure_alt_reads_its_caption_as_rendered() {
+    let dir = source_map_tmpdir("figure-alt");
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
+    )
+    .unwrap();
+    let doc = crate::render_document_with_includes(
+        "---\nbibliography: refs.bib\n---\n\n\
+         ![Chart after [@key] and @fig-b](a.png){#fig-a}\n\n![Second & last](b.png){#fig-b}\n",
+        &dir,
+    );
+    let alts: Vec<String> = doc
+        .blocks
+        .iter()
+        .flat_map(|b| {
+            attr_values(&b.html, "alt")
+                .map(|a| a.into_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        alts,
+        vec!["Chart after [1] and Figure\u{a0}2", "Second & last"],
+        "{:?}",
+        doc.blocks.iter().map(|b| &b.html).collect::<Vec<_>>()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A tag the author never closed, and a raw-text element the author never closed, each end
 /// the walk instead of wedging it or reading the rest of the document as attributes.
 #[test]
