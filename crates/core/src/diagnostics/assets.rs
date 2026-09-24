@@ -33,11 +33,20 @@ fn local_img_refs(html: &str) -> Vec<&str> {
     out
 }
 
-/// Local `<img src>` references (`![](img.png)`, raw `<img>`) whose target file does not
-/// exist under the doc base dir — a broken image that ships silently today. Absolute
-/// (`/...`) and external refs are out of scope; audio/video are skipped (see
-/// [`local_img_refs`]: a static check cannot resolve generated/streamed media).
+/// Local `<img src>` references (`![](img.png)`, raw `<img>`) that the published page will
+/// not have: a missing file, or one the build cannot publish. Absolute (`/...`) and
+/// external refs are out of scope; audio/video are skipped (see [`local_img_refs`]: a
+/// static check cannot resolve generated/streamed media).
+///
+/// "Can be published" is the build's own rule, [`crate::includes::publishable`], judged
+/// against the project the page is published from (its nearest `_site.yml`, else its own
+/// directory: the root the site build copies from and the preview serves). The gate
+/// accepted any file that merely existed until the 2026-09-24 audit, so `../outside.png`,
+/// an image symlinked out of the checkout and one in a dot-folder passed `--strict` and
+/// shipped broken. An image a page references in an `_images/` folder is published.
 pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
+    use crate::includes::{Reach, Unpublishable, publishable};
+    let root = crate::includes::single_doc_root(base);
     let mut out = Vec::new();
     for b in blocks {
         let line = start_line(&b.sourcepos);
@@ -48,13 +57,33 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
             // (the spelling VS Code drag-inserts) is not reported missing while the
             // preview serves it.
             let path = crate::render::asset_fs_path(val);
-            if path.is_empty() || path.starts_with('/') || base.join(&path).is_file() {
+            if path.is_empty() || path.starts_with('/') {
                 continue;
             }
-            let w = Warning::new(format!(
-                "local asset not found: `{path}` (no such file under the document directory)"
-            ))
-            .severity(Severity::Error);
+            let message = match publishable(&root, base, Path::new(&path), Reach::Referenced) {
+                Ok(below) if root.join(&below).is_file() => continue,
+                Ok(_) => format!(
+                    "local asset not found: `{path}` (no such file under the document directory)"
+                ),
+                Err(Unpublishable::Outside) => format!(
+                    "local asset outside the project: `{path}` is not under {}, so the build \
+                     does not publish it",
+                    if root.join("_site.yml").is_file() {
+                        "the folder holding `_site.yml`"
+                    } else {
+                        "the document's own folder"
+                    }
+                ),
+                Err(Unpublishable::OutsideRepo) => format!(
+                    "local asset outside the repository: `{path}` is a symlink out of the \
+                     checkout, so the build does not publish it"
+                ),
+                Err(Unpublishable::Private) => format!(
+                    "local asset in a private path: `{path}` has a `.`-prefixed component, \
+                     which the build never publishes"
+                ),
+            };
+            let w = Warning::new(message).severity(Severity::Error);
             out.push(match line {
                 Some(l) => w.at(b.source_file.clone(), l),
                 None => w,

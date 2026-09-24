@@ -506,6 +506,64 @@ fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
     );
 }
 
+/// The gate applies the build's publication rule (`includes::publishable`). It accepted any
+/// file that existed, so `![x](../outside.png)`, an image symlinked out of the checkout and
+/// one in a dot-folder all passed `--check-only --strict` while the site build never
+/// shipped them: a broken image in the deploy behind a clean gate. Each is a located error
+/// that says why; an image a page references in an `_images/` folder ships, so it passes.
+#[test]
+#[cfg(unix)]
+fn the_asset_check_refuses_what_the_build_cannot_publish() {
+    //   <dir>/.git                     the checkout
+    //   <dir>/outside.png              in the checkout, above the project
+    //   <dir>/proj/_site.yml           the project root
+    //   <dir>/proj/.hidden/a.png       private
+    //   <dir>/proj/_images/hero.png    referenced from an underscore folder
+    //   <dir>/proj/posts/p/leak.png -> <elsewhere>/secret.png   out of the checkout
+    let dir = Tmp::new("assets-publish");
+    let elsewhere = Tmp::new("assets-publish-elsewhere");
+    let root = dir.0.join("proj");
+    let page = root.join("posts/p");
+    for d in [".hidden", "_images", "posts/p"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(dir.0.join(".git"), "").unwrap();
+    std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+    for f in [
+        dir.0.join("outside.png"),
+        root.join(".hidden/a.png"),
+        root.join("_images/hero.png"),
+        elsewhere.0.join("secret.png"),
+    ] {
+        std::fs::write(f, "x").unwrap();
+    }
+    std::os::unix::fs::symlink(elsewhere.0.join("secret.png"), page.join("leak.png")).unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "![Above the project.](../../../outside.png)\n\n",
+            "![In a dot folder.](../../.hidden/a.png)\n\n",
+            "![Out of the checkout.](leak.png)\n\n",
+            "![Referenced, so it ships.](../../_images/hero.png)\n",
+        ),
+        &page,
+    );
+    let ws = validate_local_assets(&doc.blocks, &page);
+    let m = msgs(&ws);
+    assert_eq!(ws.len(), 3, "exactly the three unpublishable images: {m:?}");
+    for (w, (file, line)) in
+        ws.iter()
+            .zip([("outside.png", 1), (".hidden/a.png", 3), ("leak.png", 5)])
+    {
+        assert!(w.message.contains(file), "{file} missed: {m:?}");
+        assert_eq!(w.severity, crate::render::Severity::Error, "{w:?}");
+        assert_eq!(w.line, Some(line), "located at its own line: {w:?}");
+    }
+    assert!(
+        !m.iter().any(|s| s.contains("hero.png")),
+        "a referenced `_images/` file is published: {m:?}"
+    );
+}
+
 /// The same rule on the link and alt-text checks, which shared the scan.
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {

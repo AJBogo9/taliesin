@@ -145,7 +145,7 @@ Everything the lint looks at, grouped by what it protects:
 | **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names, YAML parse errors |
 | **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:`, a bare `@key` that renders as literal text |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
-| **Local media** | Missing local images (`src`/`href`) |
+| **Local media** | A local image (`<img src>`) that is missing, or that the build cannot publish: outside the project, a symlink out of the checkout, or under a `.`-prefixed folder |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
 | **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), and a `bibliography:` path that does not resolve |
