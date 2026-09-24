@@ -698,7 +698,8 @@ fn render_internal_impl(
     // The block ids of the page's SECTION headings: the top-level heading nodes the walk
     // below emits (a heading inside a `:::` div is one too, since the markers are blanked
     // before the parse). A book chapter numbers exactly these, once the divs are folded
-    // (`number_sections`); a heading quoted or in a list item is not a section.
+    // (`number_sections`); a heading quoted or in a list item is not a section, and one
+    // marked `.unnumbered` takes no number.
     let mut section_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     let top_heading_levels: Vec<usize> = root
         .children()
@@ -910,7 +911,7 @@ fn render_internal_impl(
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
         let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
-        if heading_level.is_some() {
+        if heading_level.is_some() && !heading_is_unnumbered(&block_src) {
             section_ids.insert(id.clone());
         }
         // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N": a
@@ -2662,17 +2663,27 @@ pub(crate) fn leading_h1(src: &str) -> Option<(String, bool)> {
     let unnumbered = match parse_heading_attr(&block_src) {
         Some(_) => {
             html = strip_heading_attr(&html);
-            let line = heading_attr_line(&block_src);
-            line.rfind('{').is_some_and(|open| {
-                parse_attrs(&line[open + 1..line.len() - 1])
-                    .classes
-                    .iter()
-                    .any(|c| c == "unnumbered")
-            })
+            heading_is_unnumbered(&block_src)
         }
         None => false,
     };
     Some((indexable_text(&html), unnumbered))
+}
+
+/// Whether a heading's trailing attribute block, the one [`parse_heading_attr`] reads,
+/// carries `.unnumbered`: a chapter's own H1 unnumbers the chapter, a section heading takes
+/// no section number.
+fn heading_is_unnumbered(block_src: &str) -> bool {
+    if parse_heading_attr(block_src).is_none() {
+        return false;
+    }
+    let line = heading_attr_line(block_src);
+    line.rfind('{').is_some_and(|open| {
+        parse_attrs(&line[open + 1..line.len() - 1])
+            .classes
+            .iter()
+            .any(|c| c == "unnumbered")
+    })
 }
 
 /// A trailing Pandoc attribute on a heading line (`## Title {#id .class}`).
