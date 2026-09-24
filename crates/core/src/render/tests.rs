@@ -8697,3 +8697,184 @@ fn sequential_renders_reuse_a_parked_render_thread() {
         "twenty sequential renders spawned {spawned} render threads; a parked worker must be reused"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Every emitted block has exactly one root element.
+//
+// The preview client mounts an incoming block with `template.content.firstElementChild`
+// (`web-client/client.js`), so a block whose html has two or more roots is only
+// half-mounted: `update` swaps in the first root and drops the rest, `insert` inserts only
+// the first, and `remove` strands the extra roots in the page forever. The block id still
+// changes, so the op *looks* applied while the DOM keeps the old content, and the preview
+// disagrees with what `build` publishes. Counted by the emitter's own scanner
+// (`emit::top_level`), the one that decides whether a raw HTML block gets wrapped.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn top_level_counts_what_the_client_would_mount() {
+    // What `emit::top_level` counts is what the client would mount: it stops at 2, which is
+    // all a block needs to know. A probe whose every row is negative is a broken probe:
+    // these are the known-positive rows. Each pair is (html, roots the client would see).
+    let cases: &[(&str, usize)] = &[
+        ("<p>one</p>", 1),
+        ("<p>one</p>\n<p>two</p>", 2),
+        ("<div><p>nested</p><p>still one root</p></div>", 1),
+        ("<img src=\"a.png\">", 1),
+        ("<img src=\"a.png\"><img src=\"b.png\">", 2),
+        ("<div class=\"a\"><img alt=\"a > b\" src=\"x\"></div>", 1),
+        // raw text: the `<` in the script body is not a tag
+        ("<div><script>if (a < b) { x(); }</script></div>", 1),
+        ("<script>a < b</script><p>after</p>", 2),
+        // the shape of a `{js}` figure cell: a sibling AFTER a raw-text element,
+        // inside a wrapper. Counting this as 2 is the scanner bug that made 15
+        // correct corpus figures look like defects.
+        (
+            "<figure><script>a < b</script><figcaption>c</figcaption></figure>",
+            1,
+        ),
+        (
+            "<div><style>p > a { color: red }</style><p>after</p></div>",
+            1,
+        ),
+        // a top-level text node is dropped by firstElementChild just as surely
+        ("text before<div>x</div>", 2),
+        ("<!-- comment --><div>x</div>", 1),
+        ("<svg viewBox=\"0 0 1 1\"><path d=\"M0 0 L1 1\"/></svg>", 1),
+        ("  <div>x</div>\n  ", 1),
+    ];
+    for (html, want) in cases {
+        assert_eq!(
+            super::emit::top_level(html).roots,
+            *want,
+            "top_level({html:?})"
+        );
+    }
+}
+
+#[test]
+fn every_block_in_every_real_document_has_exactly_one_root() {
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files = Vec::new();
+    collect_tmd(&repo.join("corpus"), &mut files);
+    collect_tmd(&repo.join("docs"), &mut files);
+    files.sort();
+    assert!(
+        files.len() >= 100,
+        "expected the corpus + docs documents, found {}",
+        files.len()
+    );
+
+    let mut offenders = Vec::new();
+    let mut unaddressable = Vec::new();
+    for f in &files {
+        let label = f.strip_prefix(&repo).unwrap_or(f).display().to_string();
+        let src = std::fs::read_to_string(f).unwrap();
+        let doc = render_document_scoped_with_site(&src, f.parent().unwrap(), None, None);
+        for b in &doc.blocks {
+            let n = super::emit::top_level(&b.html).roots;
+            let where_ = format!(
+                "{label} block {} at {}: {}",
+                b.id,
+                b.sourcepos,
+                b.html.chars().take(160).collect::<String>()
+            );
+            if !b.html.contains(&format!("data-block-id=\"{}\"", b.id)) {
+                // Nothing in the DOM claims this block's id, so an op aimed at it cannot land
+                // on an element: `diff::needs_remount` re-mounts the page for one instead.
+                // `emit_html_block` documents the only shapes this is allowed to be:
+                // an HTML comment or a stray closing tag (an author closing a `<div>`
+                // they opened in an earlier block). Real content must never land here —
+                // it would be invisible to click-to-source and to every incremental op.
+                let lead = b.html.trim_start();
+                if !(lead.starts_with("<!--") || lead.starts_with("</")) {
+                    unaddressable.push(where_);
+                }
+                continue;
+            }
+            if n != 1 {
+                offenders.push(format!("{where_} — has {n} roots"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "{} id-carrying blocks are not single-root, so the preview client would mount \
+         only part of each:\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+    assert!(
+        unaddressable.is_empty(),
+        "{} blocks carry no `data-block-id`, and are not the comment/closing-tag \
+         fragments that are allowed to:\n{}",
+        unaddressable.len(),
+        unaddressable.join("\n")
+    );
+}
+
+#[test]
+fn a_multi_root_construct_round_trips_through_a_live_swap() {
+    // `render_document` leaves shortcodes literal — expansion is part of the
+    // includes pass, so this must go through `render_document_scoped_with_site`.
+    use crate::{BlockOp, diff_blocks};
+    let render =
+        |src: &str| render_document_scoped_with_site(src, std::path::Path::new("."), None, None);
+
+    // Three consecutive `{{< input >}}` controls are one HTML block in the source
+    // (this is the shape shipped in `corpus/descent/index.tmd`). Editing one of
+    // them must produce an Update whose html the client can mount whole.
+    let doc = |max: &str| {
+        format!(
+            "# Playground\n\n\
+             {{{{< input name=\"lr\" type=\"slider\" min=\"0.01\" max=\"{max}\" step=\"0.01\" value=\"0.12\" label=\"step size\" >}}}}\n\
+             {{{{< input name=\"beta\" type=\"slider\" min=\"0\" max=\"0.9\" step=\"0.05\" value=\"0\" label=\"momentum\" >}}}}\n\
+             {{{{< input name=\"steps\" type=\"slider\" min=\"1\" max=\"60\" step=\"1\" value=\"25\" label=\"steps\" >}}}}\n\
+             \nAfter.\n"
+        )
+    };
+    let v1 = render(&doc("0.35"));
+    let v2 = render(&doc("0.75"));
+
+    let controls = v1
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("tali-input"))
+        .expect("the three controls render");
+    assert_eq!(
+        super::emit::top_level(&controls.html).roots,
+        1,
+        "the three controls must arrive as one mountable element: {}",
+        controls.html
+    );
+    assert_eq!(
+        controls.html.matches("data-tali-input").count(),
+        3,
+        "all three controls must survive inside that one root: {}",
+        controls.html
+    );
+
+    let ops = diff_blocks(&v1.blocks, &v2.blocks);
+    let updated = ops
+        .iter()
+        .find_map(|op| match op {
+            BlockOp::Update { target_id, html } if *target_id == controls.id => Some(html),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("editing a slider must update its block in place: {ops:?}"));
+    // The op the client applies: one root (so `fragment()` mounts all of it) and
+    // the edited value actually inside it.
+    assert_eq!(
+        super::emit::top_level(updated).roots,
+        1,
+        "the swapped-in html: {updated}"
+    );
+    assert!(
+        updated.contains("max=\"0.75\""),
+        "the edit must be in the swapped html: {updated}"
+    );
+    assert_eq!(
+        updated.matches("data-tali-input").count(),
+        3,
+        "a swap must carry every control, not just the first: {updated}"
+    );
+}
