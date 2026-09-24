@@ -20,9 +20,12 @@ use std::process::Command;
 fn extract(name: &str) -> String {
     let src = include_str!("../assets/js/tali-js.js");
     let head = format!("function {name}(");
-    let start = src
+    let mut start = src
         .find(&head)
         .unwrap_or_else(|| panic!("tali-js.js defines {name}"));
+    if src[..start].ends_with("async ") {
+        start -= "async ".len();
+    }
     let end = src[start..]
         .find("\n  }\n")
         .unwrap_or_else(|| panic!("{name} closes at two-space indent"))
@@ -31,21 +34,41 @@ fn extract(name: &str) -> String {
     src[start..end].to_string()
 }
 
-#[test]
-fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
+/// Run `script` in node and return its stdout, or `None` when node is absent (which
+/// `TALIESIN_REQUIRE_NODE` turns into a failure).
+fn node(script: &str) -> Option<String> {
     let require = std::env::var_os("TALIESIN_REQUIRE_NODE").is_some();
     let have_node =
         matches!(Command::new("node").arg("--version").output(), Ok(o) if o.status.success());
     if !have_node {
         assert!(
             !require,
-            "TALIESIN_REQUIRE_NODE=1 but `node` is unavailable: the downstream-staleness rule \
-             cannot run, and skipping it is how this coverage silently dies"
+            "TALIESIN_REQUIRE_NODE=1 but `node` is unavailable: the reactive runtime rules \
+             cannot run, and skipping them is how this coverage silently dies"
         );
         eprintln!("skipping reactive_downstream: node unavailable");
-        return;
+        return None;
     }
+    let out = Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .expect("launch node");
+    assert!(
+        out.status.success(),
+        "node failed running the extracted rule:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Some(
+        String::from_utf8(out.stdout)
+            .expect("utf-8")
+            .trim()
+            .to_string(),
+    )
+}
 
+#[test]
+fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
     // Stand-in cells: `buildGraph` reads `inputs`, `defines` and `container` (null, so the
     // cycle diagnostic never reaches `document`), and the two downstream passes only ever
     // compare cells by identity.
@@ -89,20 +112,9 @@ fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
         extract("staleAfterMount"),
     );
 
-    let out = Command::new("node")
-        .arg("-e")
-        .arg(&script)
-        .output()
-        .expect("launch node");
-    assert!(
-        out.status.success(),
-        "node failed running the extracted rule:\n{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let got = String::from_utf8(out.stdout)
-        .expect("utf-8")
-        .trim()
-        .to_string();
+    let Some(got) = node(&script) else {
+        return;
+    };
 
     // THE BUG. Editing the `//| name: squared` producer's body re-mounts that block alone;
     // the sink consuming `squared` is not fresh, so nothing else re-ran it.
@@ -165,5 +177,72 @@ fn the_mount_actually_runs_the_stale_pass_after_the_fresh_one() {
             "runSequentially(runnable).then(function () { return runSequentially(stale); });"
         ),
         "the stale pass must be chained after the fresh one, not raced against it"
+    );
+}
+
+/// The runtime a real cell mounts into, reduced to what `setupCell` touches: one output
+/// container that records what was painted into it, and a `{js}`-shaped language whose run
+/// resolves after `ms` with the cell's source as its value.
+fn cell_harness() -> String {
+    let fns: String = [
+        "rt",
+        "readValue",
+        "registerInput",
+        "makeApi",
+        "markLiveIfTextual",
+        "showCellError",
+        "setupCell",
+        "runSequentially",
+        "buildGraph",
+        "downstreamInOrder",
+        "scheduleFrom",
+    ]
+    .iter()
+    .map(|f| extract(f))
+    .collect();
+    format!(
+        "{fns}\n\
+         globalThis.window = globalThis;\n\
+         globalThis.Node = function () {{}};\n\
+         var painted = [];\n\
+         var box = {{ replaceChildren: function (n) {{ painted.push(n); }},\n\
+           getAttribute: function () {{ return null; }}, querySelector: function () {{ return null; }} }};\n\
+         globalThis.document = {{ getElementById: function () {{ return box; }},\n\
+           createElement: function () {{ return {{}}; }} }};\n\
+         var languages = {{ slow: function (src) {{ return {{ run: function () {{\n\
+           var v = src === 'NODE' ? Object.assign(new Node(), {{ value: 7 }}) : src;\n\
+           return new Promise(function (r) {{ setTimeout(function () {{ r(v); }}, 30); }}); }} }}; }} }};\n\
+         function script(name, src) {{\n\
+           var a = {{ type: 'slow', 'data-target': 't', 'data-name': name }};\n\
+           return {{ textContent: src, getAttribute: function (k) {{ return a[k] || null; }},\n\
+             setAttribute: function (k, v) {{ a[k] = v; }} }};\n\
+         }}\n"
+    )
+}
+
+/// Audit 2026-09-24 D3. A cell whose block is replaced while its async run is still
+/// awaiting must not publish when that run resolves: a slow first save's value landed
+/// after the fast second save's, won the shared scope for good (a producer with no inputs
+/// never re-runs), and an async `viewof` registered a detached control so the visible
+/// slider drove nothing.
+#[test]
+fn a_disposed_cell_publishes_nothing_when_its_run_resolves() {
+    let script = format!(
+        "{}\n\
+         var cells = [setupCell(script('data', 'V1')), setupCell(script('el', 'NODE'))];\n\
+         var pending = cells.map(function (c) {{ return c.run(); }});\n\
+         cells.forEach(function (c) {{ c.dispose(); }});\n\
+         Promise.all(pending).then(function () {{\n\
+           var s = window.__talijs.scope;\n\
+           console.log(JSON.stringify({{ scope: Object.keys(s).filter(function (k) {{ return s[k] !== undefined; }}), painted: painted.length }}));\n\
+         }});",
+        cell_harness()
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(
+        got, r#"{"scope":[],"painted":0}"#,
+        "a disposed cell's late value must reach neither the scope nor the page"
     );
 }

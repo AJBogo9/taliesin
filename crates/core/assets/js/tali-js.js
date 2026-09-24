@@ -329,10 +329,18 @@
     // `run` is async and AWAITED by the processing loops, so a `//| name:` helper's
     // value is in the shared scope before a later cell reads it via tali.get() — the
     // cross-cell contract OJS got from its module graph, without a reactive engine.
+    //
+    // `disposed` is set when the cell's block is edited away. A run still awaiting then
+    // must not publish: a slow first save's value used to land after the fast second
+    // save's and win the shared scope for good, and an async `viewof` registered a
+    // detached control, so the slider on screen drove nothing.
+    var disposed = false;
     async function run() {
+      if (disposed) return;
       freshInv();
       try {
         var node = await impl.run();
+        if (disposed) return;
         // The returned value is arbitrary author output; `na` reads its duck-typed
         // `.value` / `.querySelector` (an input control, a wrapper, or neither).
         var na = /** @type {any} */ (node);
@@ -350,6 +358,7 @@
         }
         if (kind === "sink") { markLiveIfTextual(container); }
       } catch (e) {
+        if (disposed) return;
         console.error("tali-js cell error:", e);
         showCellError(/** @type {HTMLElement} */ (container), e);
       } finally {
@@ -381,6 +390,7 @@
       // context held by an `import()`ed three.js renderer). Idempotent: nulls the resolver
       // so a later dispose is a no-op.
       dispose: function () {
+        disposed = true;
         if (resolveInv) { resolveInv(); resolveInv = null; }
         if (impl.dispose) impl.dispose();
       },
