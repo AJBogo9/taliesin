@@ -1146,15 +1146,22 @@ fn bundle_file(
 /// of the project or a symlink out of the repository never ships. `shipped` holds every
 /// out-relative path this build has already written (pages, the mirror's copies, earlier
 /// pages' references), so each file is copied and counted once. Returns the count copied.
+///
+/// `judged` holds each reference already judged, as its page's folder joined with its
+/// spelling: the same spelling from the same folder gets the same answer, so it is judged
+/// once. Every page of a book links every chapter and judging costs two canonicalizations,
+/// so a 500-page book made 250,000 of them, 8 million `readlink`s and over half its build.
 fn deploy_referenced_sources(
     html: &str,
     root: &Path,
     page_dir: &Path,
     out: &Path,
     shipped: &mut std::collections::HashSet<PathBuf>,
+    judged: &mut std::collections::HashSet<PathBuf>,
 ) -> usize {
     local_refs(html)
         .into_iter()
+        .filter(|(r, _)| judged.insert(page_dir.join(r)))
         .filter(|(r, _)| ship_referenced(r, root, page_dir, out, shipped))
         .count()
 }
@@ -1208,6 +1215,7 @@ fn deploy_referenced_sources_for_site(
         root: &Path,
         out: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
+        judged: &mut std::collections::HashSet<PathBuf>,
         shipped: &mut std::collections::HashSet<PathBuf>,
         copied: &mut usize,
     ) {
@@ -1227,7 +1235,7 @@ fn deploy_referenced_sources_for_site(
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_dir() {
-                walk(&p, root, out, seen, shipped, copied);
+                walk(&p, root, out, seen, judged, shipped, copied);
             } else if p.extension().and_then(|s| s.to_str()) == Some("html") {
                 let Ok(html) = std::fs::read_to_string(&p) else {
                     continue;
@@ -1237,7 +1245,7 @@ fn deploy_referenced_sources_for_site(
                     .ok()
                     .and_then(Path::parent)
                     .unwrap_or(Path::new(""));
-                *copied += deploy_referenced_sources(&html, root, rel_dir, out, shipped);
+                *copied += deploy_referenced_sources(&html, root, rel_dir, out, shipped, judged);
             }
         }
     }
@@ -1246,6 +1254,7 @@ fn deploy_referenced_sources_for_site(
         out,
         root,
         out,
+        &mut std::collections::HashSet::new(),
         &mut std::collections::HashSet::new(),
         shipped,
         &mut copied,
@@ -3364,8 +3373,14 @@ mod mirror_tests {
 
         let html = r#"<a data-tali-src="index.tmd" href="index.html">card</a>
                       <a href="notes.md">the source</a>"#;
-        let copied =
-            deploy_referenced_sources(html, &dir, Path::new(""), &out, &mut Default::default());
+        let copied = deploy_referenced_sources(
+            html,
+            &dir,
+            Path::new(""),
+            &out,
+            &mut Default::default(),
+            &mut Default::default(),
+        );
 
         assert!(
             out.join("notes.md").is_file(),
@@ -3595,8 +3610,14 @@ mod mirror_tests {
         fs::write(root.join("theme.scss"), b"x").unwrap();
         let html = r#"<a href="notes.md">notes</a> <link href="theme.scss">"#;
 
-        let copied =
-            deploy_referenced_sources(html, &root, Path::new(""), &out, &mut Default::default());
+        let copied = deploy_referenced_sources(
+            html,
+            &root,
+            Path::new(""),
+            &out,
+            &mut Default::default(),
+            &mut Default::default(),
+        );
 
         assert!(out.join("notes.md").is_file(), "a linked .md must deploy");
         assert!(
@@ -4241,6 +4262,7 @@ mod symlink_containment_tests {
             &repo,
             Path::new(""),
             &dest,
+            &mut Default::default(),
             &mut Default::default(),
         );
 
