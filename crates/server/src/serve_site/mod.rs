@@ -895,10 +895,22 @@ async fn page_or_asset(
     let asset = serve_asset(&project.dir, &lookup);
     if asset.status() == axum::http::StatusCode::NOT_FOUND {
         let html = { project.site.lock().render_404_page() };
+        let html = format!("{html}{RECHECK_404_JS}");
         return (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response();
     }
     asset
 }
+
+/// What the preview adds to the build's 404 page: a check, once a second, whether the page
+/// it stands for exists now, reloading onto it when it does.
+///
+/// A tab lands on the 404 page when the page it was open on vanishes (renamed, deleted, or
+/// deleted and written again in two saves, as `git` and some editors do), and the 404 page
+/// carries no live client, so the tab stayed there after the page came back (audit
+/// 2026-09-24 invalidation #13). A `HEAD` of the tab's own URL is the whole question, and it
+/// keeps working across a restart of the preview.
+const RECHECK_404_JS: &str = "<script>setInterval(()=>fetch(location.href,{method:'HEAD',\
+    cache:'no-store'}).then(r=>{if(r.ok)location.reload()},()=>{}),1000);</script>\n";
 
 /// Serve a file under `root`, with path-traversal protection.
 fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
@@ -4401,6 +4413,43 @@ mod project_tests {
         *project.site.lock() = project.rediscover();
         repoint(&mut pool, &project, &app.interrupt);
         assert_eq!(pool.python(), Some(Path::new("/opt/py/bin/python")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 invalidation #13. A tab whose page vanishes reloads onto the 404
+    /// page, which carries no live client: when the page came back (deleted and written
+    /// again in two saves, as `git` and some editors do, or restored by hand) the tab stayed
+    /// on the 404. The preview's 404 page asks again, once a second, whether the page it
+    /// stands for is there, and reloads onto it when it is.
+    #[test]
+    fn the_previews_404_page_rechecks_the_page_it_stands_for() {
+        let dir = scratch("404");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        let (_project, app, _b, _f) = project_and_app(&dir);
+        let app = Arc::new(app);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (status, body) = rt.block_on(async {
+            let res = page_or_asset(State(app.clone()), "/gone.html".parse().unwrap()).await;
+            let status = res.status();
+            let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            (status, String::from_utf8_lossy(&bytes).into_owned())
+        });
+        assert_eq!(status, axum::http::StatusCode::NOT_FOUND);
+        let script = taliesin_core::render::tags(&body)
+            .filter(|t| t.name.eq_ignore_ascii_case("script"))
+            .map(|t| {
+                let rest = &body[t.at + t.text.len()..];
+                rest[..rest.find("</script>").unwrap_or(rest.len())].to_string()
+            })
+            .find(|js| js.contains("location.reload"));
+        let script = script.expect("the 404 page carries a check that reloads it");
+        assert!(
+            script.contains("fetch(location.href"),
+            "it asks about the page it stands for: {script}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
