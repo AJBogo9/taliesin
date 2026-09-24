@@ -113,7 +113,8 @@ pre-processing.
 ![A training loss curve falling from 1.0 to near zero over forty iterations.](figures/loss.png){#fig-loss-png}
 
 **Its box is reserved before it loads.** @fig-loss-png above is emitted with the
-intrinsic `width` and `height` read from the file itself, so the prose below it never
+intrinsic `width` and `height` read from the file itself (a phone photo's EXIF rotation
+included), so the prose below it never
 jumps as the image arrives. The preview does the same, so what you see while an image
 loads matches the built page.
 

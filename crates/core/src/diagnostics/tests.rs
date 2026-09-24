@@ -344,6 +344,22 @@ fn a11y_flags_placeholder_alt_but_not_descriptive() {
     );
 }
 
+/// The filename echo is judged against the FILE's name, so `my%20pic.png` (the spelling VS
+/// Code inserts for `my pic.png`) is echoed by `my pic` exactly as `<my pic.png>` is. The
+/// check compared against the undecoded `my%20pic`, and let that one spelling through.
+#[test]
+fn a11y_hears_a_filename_echo_through_percent_encoding() {
+    let doc = render_document("![my pic](my%20pic.png)\n\n![my pic](<my pic.png>)\n");
+    let m = msgs(&validate_a11y(&doc.blocks));
+    assert_eq!(
+        m.iter()
+            .filter(|s| s.contains("looks like a placeholder"))
+            .count(),
+        2,
+        "both spellings echo the file name: {m:?}"
+    );
+}
+
 #[test]
 fn a11y_clean_document_is_silent() {
     // Markdown headings stepping by one, a markdown image (auto-alt), and a text link:

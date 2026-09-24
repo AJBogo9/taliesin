@@ -104,20 +104,38 @@ impl ImageAnnotator {
 /// build's asset scanner skips it for the same reason); a non-raster extension has no
 /// intrinsic pixel size to state.
 fn intrinsic_size(src: &str, base: &Path) -> Option<(u32, u32)> {
+    use image::ImageDecoder;
+    use image::metadata::Orientation::{Rotate90, Rotate90FlipH, Rotate270, Rotate270FlipH};
     if src.is_empty() || src.starts_with('/') || src.contains("://") || src.starts_with("data:") {
         return None;
     }
-    // A query or fragment is addressing, not path.
-    let path = &src[..src.find(['?', '#']).unwrap_or(src.len())];
-    let ext = Path::new(path)
+    // The shared resolution step (`asset_fs_path`): a query or fragment is addressing, not
+    // path, and `%XX` is decoded, so `my%20pic.png` is measured as the file the preview
+    // serves for it rather than left without a box.
+    let path = super::asset_fs_path(src);
+    let ext = Path::new(&path)
         .extension()
         .and_then(|s| s.to_str())?
         .to_ascii_lowercase();
     if !RASTER_EXT.contains(&ext.as_str()) {
         return None;
     }
-    // Header read only: no decode, measured in microseconds.
-    image::image_dimensions(base.join(path)).ok()
+    // Header read only: no decode, measured in microseconds. The decoder is chosen from the
+    // bytes, so a JPEG saved as `.png` is still measured, and the EXIF orientation is read
+    // with the header: a phone photo stores its pixels sideways and asks to be shown rotated
+    // a quarter turn (orientations 5 to 8), so the box the reader sees is the header's
+    // transposed. Reserving the header's box was a 373 px layout shift on a portrait photo.
+    let mut decoder = image::ImageReader::open(base.join(&path))
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .into_decoder()
+        .ok()?;
+    let (w, h) = decoder.dimensions();
+    Some(match decoder.orientation() {
+        Ok(Rotate90 | Rotate270 | Rotate90FlipH | Rotate270FlipH) => (h, w),
+        _ => (w, h),
+    })
 }
 
 #[cfg(test)]
@@ -278,5 +296,59 @@ mod tests {
         fixture(&d, "a.png", 12, 34);
         let got = ImageAnnotator::new().annotate(r#"<img src="a.png?v=2" />"#, &d);
         assert!(got.contains(r#"width="12""#), "{got}");
+    }
+
+    /// `my%20pic.png` is the spelling VS Code inserts for `my pic.png`, and the preview, the
+    /// gate and the copiers all decode it; the size read did not, so that image alone got
+    /// no box reserved and the text below it jumped when it loaded.
+    #[test]
+    fn a_percent_encoded_src_still_reserves_its_box() {
+        let d = tmp("pct");
+        fixture(&d, "my pic.png", 64, 32);
+        let got = ImageAnnotator::new().annotate(r#"<img src="my%20pic.png" />"#, &d);
+        assert!(got.contains(r#"width="64" height="32""#), "{got}");
+    }
+
+    /// A JPEG from a phone stores its pixels sideways and an EXIF orientation that tells
+    /// the browser to rotate them, so the image a reader sees is portrait while its header
+    /// says landscape. The header's width/height reserved the transposed box (a 373 px
+    /// layout shift in the audit). Orientations 5 to 8 swap the two. And the decoder is
+    /// chosen from the bytes, so a JPEG saved as `.png` is still measured.
+    #[test]
+    fn an_exif_rotated_or_misnamed_image_reserves_the_box_the_reader_sees() {
+        use image::ImageEncoder;
+        let d = tmp("exif");
+        let pixels = image::RgbImage::from_pixel(80, 60, image::Rgb([10, 20, 30]));
+        let jpeg = |orientation: u16| {
+            // A little-endian TIFF block with one IFD entry: 0x0112 Orientation, SHORT.
+            let mut exif = vec![
+                0x49, 0x49, 0x2A, 0, 8, 0, 0, 0, 1, 0, 0x12, 0x01, 3, 0, 1, 0,
+            ];
+            exif.extend_from_slice(&[0, 0]);
+            exif.extend_from_slice(&orientation.to_le_bytes());
+            exif.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+            let mut buf = Vec::new();
+            let mut enc = image::codecs::jpeg::JpegEncoder::new(&mut buf);
+            enc.set_exif_metadata(exif).unwrap();
+            enc.write_image(&pixels, 80, 60, image::ExtendedColorType::Rgb8)
+                .unwrap();
+            buf
+        };
+        std::fs::write(d.join("upright.jpg"), jpeg(1)).unwrap();
+        std::fs::write(d.join("phone.jpg"), jpeg(6)).unwrap();
+        std::fs::write(d.join("misnamed.png"), jpeg(1)).unwrap();
+        let size = |src: &str| ImageAnnotator::new().annotate(&format!("<img src=\"{src}\">"), &d);
+
+        assert!(size("upright.jpg").contains(r#"width="80" height="60""#));
+        assert!(
+            size("phone.jpg").contains(r#"width="60" height="80""#),
+            "orientation 6 is displayed rotated: {}",
+            size("phone.jpg")
+        );
+        assert!(
+            size("misnamed.png").contains(r#"width="80" height="60""#),
+            "a JPEG named .png is measured from its bytes: {}",
+            size("misnamed.png")
+        );
     }
 }
