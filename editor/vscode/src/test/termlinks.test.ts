@@ -32,13 +32,6 @@ test("check's unlocated form matches, with no line", () => {
   assert.strictEqual(m[2], undefined);
 });
 
-test("build's bare form matches", () => {
-  const m = DIAGNOSTIC_LINE.exec("chapters/two.tmd:7: include not resolved");
-  assert.ok(m);
-  assert.strictEqual(m[1], "chapters/two.tmd");
-  assert.strictEqual(m[2], "7");
-});
-
 test("prose that merely mentions a file is not a link", () => {
   // The `:` right after the extension is what makes a location; without it this is a sentence.
   assert.strictEqual(DIAGNOSTIC_LINE.exec("rendered posts/intro.tmd in 12ms"), null);
@@ -56,7 +49,6 @@ test("the Rust format strings this pattern was written against have not moved", 
   // The other half of the gate. If a format changes, the samples above become fiction and the
   // pattern may match nothing while every test here still passes, so pin the literals.
   const lint = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/lint.rs"), "utf8");
-  const build = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/build.rs"), "utf8");
 
   assert.ok(
     lint.includes('"{}:{}: {}: {}\\n"'),
@@ -66,15 +58,11 @@ test("the Rust format strings this pattern was written against have not moved", 
     lint.includes('"{}: {}: {}\\n"'),
     "lint.rs no longer prints the unlocated `file: severity: message`; revisit DIAGNOSTIC_LINE"
   );
-  assert.ok(
-    build.includes('"{}:{line}: {message}"'),
-    "build.rs no longer prints `file:line: message`; revisit DIAGNOSTIC_LINE"
-  );
-  // `run_print.rs` was the third producer of this shape, and the newest, until Wave 13 cut
-  // `taliesin run`. Two remain, and both are checked above.
+  // `lint.rs` is the one producer left: `build` prints its diagnostics through the shared page
+  // pass since 2026-09-24, and `run_print.rs` went with `taliesin run` in Wave 13.
   //
   // And the property the pattern depends on most: no column is printed anywhere. A `:col` group
-  // would match none of the three forms.
+  // would match neither form.
   assert.ok(
     !lint.includes('"{}:{}:{}: '),
     "lint.rs appears to print a column now; DIAGNOSTIC_LINE has no column group"

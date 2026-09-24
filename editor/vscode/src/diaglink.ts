@@ -11,13 +11,12 @@ import * as fs from "node:fs";
 /**
  * A diagnostic location at the start of a terminal line.
  *
- * Matches the three shapes the tools actually print, and **no column group**, because none of
- * them emits one:
+ * Matches the two shapes `build --check-only` prints, and **no column group**, because neither
+ * emits one:
  *
  * ```text
  * posts/intro.tmd:12: warning: unresolved @fig-a   lint.rs, located
  * posts/intro.tmd: error: bad front matter        lint.rs, unlocated
- * chapters/two.tmd:7: include not resolved        build.rs
  * ```
  *
  * Anchored at the start of the line, which makes it correct whether or not
