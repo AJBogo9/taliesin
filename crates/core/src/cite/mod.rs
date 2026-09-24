@@ -219,17 +219,20 @@ pub(crate) fn sourcepos_end_line(sourcepos: &str) -> Option<u32> {
 /// generated block, a ref inside an included file the caller does not hold), and a guessed
 /// span would be a wrong fix an agent applies mechanically.
 ///
-/// The match must be delimited, or `@fig-a` would be located inside `@fig-abc`, and the
-/// delimiter is the caller's `boundary`: the two vocabularies genuinely differ. An anchor
-/// runs on `[A-Za-z0-9_-]` (`parse_xref`), so the `.` ending "see @fig-reslts." is a
-/// sentence period; a cite key also takes `.`, `:` and `/` (`is_cite_key_char`). Reusing one
-/// predicate for both put the sentence period inside the anchor and found nothing.
+/// The match is where the renderer reads exactly this token, or `@fig-a` would be located
+/// inside `@fig-abc`, and the reading is the caller's [`Token`]: the two vocabularies
+/// genuinely differ. An anchor runs on `[A-Za-z0-9_-]` (`parse_xref`), so the `.` ending
+/// "see @fig-reslts." is a sentence period; a cite key also takes `.`, `:` and `/`
+/// (`is_cite_key_char`) but never ends in them (`key_prefix`), so the `:` of
+/// `[@knuth:1984: a note]` separates the locator. Reusing one predicate for both put the
+/// sentence period inside the anchor and found nothing, and requiring a non-key character
+/// after a key missed every key followed by its separator.
 pub(crate) fn token_span(
     src: &str,
     start: u32,
     end: u32,
     token: &str,
-    boundary: fn(char) -> bool,
+    kind: Token,
 ) -> Option<(u32, u32, u32)> {
     for (idx, line) in src.lines().enumerate() {
         let no = idx as u32 + 1;
@@ -240,19 +243,17 @@ pub(crate) fn token_span(
         while let Some(rel) = line[from..].find(token) {
             let at = from + rel;
             from = at + token.len();
-            // A following id character means this is a longer name that merely starts the
-            // same way. A preceding one means the `@` is not the start of a reference.
-            let after_ok = line[at + token.len()..]
-                .chars()
-                .next()
-                .is_none_or(|c| !boundary(c));
+            // What the renderer reads from this `@` must be the token itself, not a longer
+            // name that merely starts the same way. A preceding id character means the `@`
+            // is not the start of a reference.
+            let after_ok = kind.read(&line[at + 1..]) == &token[1..];
             // The renderer only reads an `@` that starts a word, so `bob@rem-server.com` is
             // an address and not a `rem-` anchor. Same rule here, or the span would point at
             // a token the renderer never treated as a reference.
             let before_ok = line[..at]
                 .chars()
                 .next_back()
-                .is_none_or(|c| !(c.is_alphanumeric() || boundary(c) || c == '@'));
+                .is_none_or(|c| !(c.is_alphanumeric() || kind.char(c) || c == '@'));
             if after_ok && before_ok {
                 let col = line[..at].chars().count() as u32 + 1;
                 return Some((no, col, col + token.chars().count() as u32));
@@ -260,4 +261,32 @@ pub(crate) fn token_span(
         }
     }
     None
+}
+
+/// What a reference token is read as, so [`token_span`] can match it where the renderer
+/// reads exactly it.
+#[derive(Clone, Copy)]
+pub(crate) enum Token {
+    /// A cross-reference anchor, as `parse_xref` reads one.
+    Anchor,
+    /// A citation key, as [`key_prefix`] reads one.
+    CiteKey,
+}
+
+impl Token {
+    /// Whether `c` can be part of this kind of token.
+    fn char(self, c: char) -> bool {
+        match self {
+            Token::Anchor => c.is_ascii_alphanumeric() || c == '-' || c == '_',
+            Token::CiteKey => is_cite_key_char(c),
+        }
+    }
+
+    /// The token the renderer reads from `s`, the text just after an `@`.
+    fn read(self, s: &str) -> &str {
+        match self {
+            Token::Anchor => &s[..s.find(|c| !self.char(c)).unwrap_or(s.len())],
+            Token::CiteKey => key_prefix(s),
+        }
+    }
 }

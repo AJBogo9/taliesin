@@ -1,6 +1,6 @@
 //! Static cross-reference validation: flag `data-tali-xref` markers left unresolved.
 
-use super::{sourcepos_end_line, sourcepos_start_line, token_span};
+use super::{Token, sourcepos_end_line, sourcepos_start_line, token_span};
 use crate::render::{Block, Severity, Warning};
 use std::collections::BTreeSet;
 
@@ -64,9 +64,7 @@ pub fn validate_xrefs_known_elsewhere(
             // block from an included file numbers its lines in a file `src` is not.
             match (file.is_none(), src) {
                 (true, Some(s)) => {
-                    // An anchor's own character set (`parse_xref`), not the cite key's.
-                    let anchor_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-                    match token_span(s, l, end.unwrap_or(l), &format!("@{a}"), anchor_char) {
+                    match token_span(s, l, end.unwrap_or(l), &format!("@{a}"), Token::Anchor) {
                         Some((tl, col, end_col)) => w.at(None, tl).span(col, end_col),
                         None => w.at(None, l),
                     }

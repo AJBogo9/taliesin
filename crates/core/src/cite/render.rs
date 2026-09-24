@@ -171,7 +171,7 @@ pub fn process(
                                 l,
                                 end.unwrap_or(l),
                                 &format!("@{key}"),
-                                super::is_cite_key_char,
+                                super::Token::CiteKey,
                             ) {
                                 Some((tl, col, end_col)) => w.at(None, tl).span(col, end_col),
                                 None => w.at(None, l),
@@ -245,11 +245,15 @@ fn bare_key_warning(
         "`@{key}` is not a citation, so it renders as literal text (did you mean `[@{key}]`?)"
     ))
     .severity(Severity::Error);
-    // A key's own characters bound it, except the sentence-final `.` it so often has.
-    let boundary = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
     match (line, file.is_none(), src) {
         (Some(l), true, Some(s)) => {
-            let at = super::token_span(s, l, end.unwrap_or(l), &format!("@{key}"), boundary);
+            let at = super::token_span(
+                s,
+                l,
+                end.unwrap_or(l),
+                &format!("@{key}"),
+                super::Token::CiteKey,
+            );
             w.at(None, at.map_or(l, |(tl, _, _)| tl))
         }
         (Some(l), _, _) => w.at(file, l),

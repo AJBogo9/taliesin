@@ -918,6 +918,39 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A key followed by the punctuation that separates its locator is still columned to the
+/// key: the span used to require a non-key character after it, and `:` is a key character,
+/// so `[@knuth1985: a note]` fell back to the whole line (audit 2026-09-24, WP10 leftover).
+/// The match is where the renderer reads exactly this key, so a longer key that merely
+/// starts the same way (`@knuth1985:2`) is still passed over.
+#[test]
+fn a_broken_citation_before_its_separator_is_columned_to_its_key() {
+    let dir = std::env::temp_dir().join(format!("tali-cite-sep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{knuth1985:2,\n title={Literate Programming},\n year={1984}\n}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\n\
+               See [@knuth1985:2] and [@knuth1985: a note] here.\n";
+    let doc = crate::render_document_with_includes(src, &dir);
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("broken citation: @knuth1985 "))
+        .unwrap_or_else(|| panic!("no broken-citation warning: {:?}", doc.warnings));
+    let line = src.lines().nth(5).expect("line 6");
+    let (col, end_col) = (w.col.expect("a column"), w.end_col.expect("an end column"));
+    assert_eq!(
+        (&line[col as usize - 1..end_col as usize - 1], col as usize),
+        ("@knuth1985", line.rfind("@knuth1985").unwrap() + 1),
+        "the span must cover exactly the second key, in line {line:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// An entry whose closing `}` was lost ends where the next entry starts, and says so.
 ///
 /// It used to swallow that next entry whole: the field loop read `@article{smith2020` as a
