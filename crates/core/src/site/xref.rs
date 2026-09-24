@@ -18,9 +18,9 @@ use std::collections::BTreeSet;
 pub struct XrefTarget {
     pub url: String,
     pub number: String,
-    /// The target heading's own text, for an anchor that sits on a heading line;
-    /// empty otherwise (a figure/equation anchor, or a cell label harvested from a
-    /// render). Carried so an unnumbered cross-page `@sec-` can name what it points
+    /// The text the target heading shows, read off its page's render by the harvest
+    /// ([`heading_titles`]); empty for an anchor on no heading (a figure/equation anchor,
+    /// a cell label). Carried so an unnumbered cross-page `@sec-` can name what it points
     /// at instead of rendering the bare word "Section" — see [`rewrite_one_xref`].
     pub title: String,
 }
@@ -46,7 +46,7 @@ pub(super) fn scan_xref_targets(
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        for ScannedAnchor { id, title, line } in scan_page_anchors(&src) {
+        for ScannedAnchor { id, line } in scan_page_anchors(&src) {
             match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
@@ -70,8 +70,7 @@ pub(super) fn scan_xref_targets(
                 std::collections::hash_map::Entry::Vacant(e) => {
                     e.insert(XrefTarget {
                         url: page.url.clone(),
-                        number: String::new(),
-                        title,
+                        ..XrefTarget::default()
                     });
                 }
             }
@@ -167,36 +166,42 @@ fn cell_label_anchors(src: &str) -> Vec<String> {
         .collect()
 }
 
-/// The ATX heading level of a content line (`## T` -> 2), or `None` if it is not a
-/// heading. `#` runs must be followed by a space, so a `#hashtag` is not a heading.
-fn heading_level_of(line: &str) -> Option<usize> {
-    let level = line.bytes().take_while(|&b| b == b'#').count();
-    ((1..=6).contains(&level) && line.as_bytes().get(level) == Some(&b' ')).then_some(level)
-}
-
-/// The display text of a heading line: its `#` run, its `{…}` attribute blocks and
-/// its inline `` ` ``/`*` delimiters removed. Plain text, not HTML — the caller
-/// escapes it, so a heading containing `<` or `&` cannot inject markup into the
-/// referring page's link label.
+/// The text each labelled heading on a rendered page shows, by its anchor: what a
+/// cross-page `@sec-` names its target by where there is no number to carry.
 ///
-/// Only the two delimiters that actually occur in the repo's anchored headings are
-/// stripped. `_` is deliberately left alone: it is far likelier to be a `snake_case`
-/// identifier than an emphasis marker in a heading, and mangling one is worse than
-/// leaving the other.
-fn heading_title(line: &str) -> String {
-    let after_hashes = line.trim_start_matches('#').trim_start();
-    let mut text = String::with_capacity(after_hashes.len());
-    let mut depth = 0usize;
-    for c in after_hashes.chars() {
-        match c {
-            '{' => depth += 1,
-            '}' => depth = depth.saturating_sub(1),
-            '`' | '*' if depth == 0 => {}
-            _ if depth == 0 => text.push(c),
-            _ => {}
+/// Read off the render, not the source line. A slice of the line kept an entity or a
+/// backslash escape raw (it reached the link escaped twice) and named nothing for a
+/// heading the line scan did not take for one, a setext heading or `##` then a tab. A
+/// heading a callout took for its title carries its anchor on the title element, whose
+/// text is the heading's.
+pub(super) fn heading_titles(blocks: &[Block]) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for b in blocks {
+        for tag in crate::render::tags(&b.html) {
+            let Some(id) = crate::render::attr_value(&tag, "id").filter(|id| is_ref_anchor(id))
+            else {
+                continue;
+            };
+            let is_title = crate::render::block_heading_level(tag.text).is_some()
+                || crate::render::attr_value(&tag, "class")
+                    .is_some_and(|c| c.split_whitespace().any(|c| c == "callout-title"));
+            if !is_title {
+                continue;
+            }
+            let from = tag.at + tag.text.len();
+            let to = b.html[from..]
+                .find(&format!("</{}", tag.name))
+                .map_or(b.html.len(), |n| from + n);
+            let inner = &b.html[from..to];
+            // A numbered chapter's heading opens with its number, which is not its title.
+            let inner = match inner.strip_prefix("<span class=\"tali-section-number\">") {
+                Some(rest) => rest.split_once("</span>").map_or(rest, |(_, t)| t),
+                None => inner,
+            };
+            out.insert(id.into_owned(), crate::render::indexable_text(inner));
         }
     }
-    text.trim().to_string()
+    out
 }
 
 /// One cross-referenceable anchor as the source scan sees it.
@@ -208,16 +213,15 @@ fn heading_title(line: &str) -> String {
 /// even though the walk had already computed one.
 pub struct ScannedAnchor {
     pub id: String,
-    /// The heading's own text when the anchor sits on a heading line; empty otherwise.
-    pub title: String,
     /// 1-based source line, for the duplicate-label warning.
     pub line: usize,
 }
 
-/// The `{#prefix-id}` cross-ref anchors in one page's source. It numbers nothing: a
-/// number is what the page SHOWS, which only its render knows (`number_sections`), and
-/// counting source lines here disagreed with it on setext headings, `##\t`, and a heading
-/// a callout took for its title.
+/// The `{#prefix-id}` cross-ref anchors in one page's source. It numbers and names
+/// nothing: a number or a title is what the page SHOWS, which only its render knows
+/// (`number_sections`, [`heading_titles`]), and reading them off source lines here
+/// disagreed with it on setext headings, `##\t`, entities and a heading a callout took
+/// for its title.
 ///
 /// Public so the editor's project walk uses this scanner rather than a second one: two
 /// implementations of "what defines an anchor" would let go-to-definition and the built page
@@ -226,13 +230,7 @@ pub fn scan_page_anchors(src: &str) -> Vec<ScannedAnchor> {
     let mut out = Vec::new();
     for (line, t) in content_lines_numbered(src) {
         if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            // A figure/equation anchor has no heading to name it by.
-            let title = if heading_level_of(t).is_some() {
-                heading_title(t)
-            } else {
-                String::new()
-            };
-            out.push(ScannedAnchor { id, title, line });
+            out.push(ScannedAnchor { id, line });
         }
     }
     out
@@ -590,6 +588,47 @@ mod tests {
         );
     }
 
+    /// The title a cross-page `@sec-` names its target by is the text the target heading
+    /// SHOWS. It was a slice of the source line with `` ` `` and `*` dropped (audit
+    /// 2026-09-24, B5 and escaping #3): an entity or a backslash escape reached the link
+    /// raw and was escaped a second time (`R&amp;amp;D \&lt;results\&gt;`), and a heading
+    /// the line scan did not see as one (`##` then a tab, a setext heading) named nothing.
+    #[test]
+    fn a_cross_page_sec_is_named_by_the_text_its_heading_shows() {
+        let root = crate::site::tests::write_site(
+            "xreftitles",
+            &[
+                ("_site.yml", "title: W\n"),
+                (
+                    "a.tmd",
+                    "# A\n\n## R&amp;D \\<results\\> *now* `x` {#sec-rd}\n\nT.\n\n\
+                     ##\tTabbed {#sec-tab}\n\nT.\n\nSetext {#sec-set}\n------\n\nT.\n\n\
+                     ::: {.callout-note}\n## Note title {#sec-note}\n\nBody.\n:::\n",
+                ),
+                (
+                    "b.tmd",
+                    "# B\n\nSee @sec-rd, @sec-tab, @sec-set and @sec-note.\n",
+                ),
+            ],
+        );
+        let b = Site::discover(&root).render_page("b.tmd").expect("renders");
+        let _ = std::fs::remove_dir_all(&root);
+        let label = |anchor: &str| -> String {
+            b.split(&format!("a.html#{anchor}\" class=\"tali-xref\">"))
+                .nth(1)
+                .and_then(|s| s.split("</a>").next())
+                .unwrap_or("unresolved")
+                .to_string()
+        };
+        assert_eq!(
+            label("sec-rd"),
+            "Section&nbsp;\u{201c}R&amp;D &lt;results&gt; now x\u{201d}"
+        );
+        assert_eq!(label("sec-tab"), "Section&nbsp;\u{201c}Tabbed\u{201d}");
+        assert_eq!(label("sec-set"), "Section&nbsp;\u{201c}Setext\u{201d}");
+        assert_eq!(label("sec-note"), "Section&nbsp;\u{201c}Note title\u{201d}");
+    }
+
     /// A website has no section numbering, so a cross-page `@sec-` has no number to
     /// carry. It must name its target rather than render the bare kind word.
     #[test]
@@ -693,8 +732,8 @@ mod tests {
         );
     }
 
-    /// The title is plain text from the source line, so it is escaped on the way into
-    /// the referring page — a heading may legitimately contain `&` or `<`.
+    /// The title is plain text (the heading's decoded text), so it is escaped on the way
+    /// into the referring page — a heading may legitimately contain `&` or `<`.
     #[test]
     fn a_heading_title_is_escaped_into_the_referring_page() {
         let targets = HashMap::from([(
@@ -710,31 +749,6 @@ mod tests {
         assert!(
             out.contains("Tom &amp; Jerry &lt;live&gt;") && !out.contains("<live>"),
             "the heading text must be escaped: {out}"
-        );
-    }
-
-    #[test]
-    fn heading_title_drops_the_hashes_attributes_and_inline_delimiters() {
-        assert_eq!(
-            heading_title("## Is the canary still slower? {#sec-model}"),
-            "Is the canary still slower?"
-        );
-        // The one anchored heading in the repo with inline code: the delimiters go, the
-        // identifier stays.
-        assert_eq!(
-            heading_title("### How `draft:` filtering works {#sec-draft-filtering}"),
-            "How draft: filtering works"
-        );
-        // A split-brace heading drops BOTH blocks, not only the last.
-        assert_eq!(
-            heading_title("## Setup {.unnumbered} {#sec-setup}"),
-            "Setup"
-        );
-        // `_` survives: a heading is likelier to hold a snake_case identifier than an
-        // emphasis pair.
-        assert_eq!(
-            heading_title("## The p95_ms column {#sec-p95}"),
-            "The p95_ms column"
         );
     }
 

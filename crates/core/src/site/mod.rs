@@ -1174,6 +1174,9 @@ impl Site {
     /// Reusing the render's own registry — rather than teaching the scan to parse cell
     /// options — keeps one source of truth, so the two cannot drift on which fences
     /// count as cells (the same reason `xref::brace_id` reuses `parse_attrs`).
+    /// It names them too: a target's `title` is the text its heading shows on this render
+    /// ([`xref::heading_titles`]), which is what an unnumbered cross-page `@sec-` reads.
+    ///
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
     pub fn harvest_xref_numbers(&mut self) {
@@ -1186,7 +1189,7 @@ impl Site {
         // depend on which page rendered fastest. See `fanout::map_ordered`.
         let per_page = fanout::map_ordered(&self.pages, |page| {
             let Ok(src) = crate::includes::read_source(&page.input) else {
-                return Vec::new();
+                return (Vec::new(), Vec::new());
             };
             let base = page.input.parent().unwrap_or(&self.root);
             let chapter = self.chapter_for(page);
@@ -1217,9 +1220,14 @@ impl Site {
                     mine.push((anchor, number, page.url.clone()));
                 }
             }
-            mine
+            let titles: Vec<(String, String, String)> = xref::heading_titles(&doc.blocks)
+                .into_iter()
+                .map(|(anchor, title)| (anchor, title, page.url.clone()))
+                .collect();
+            (mine, titles)
         });
-        let updates: Vec<(String, String, String)> = per_page.into_iter().flatten().collect();
+        let (updates, titles): (Vec<_>, Vec<_>) = per_page.into_iter().unzip();
+        let updates: Vec<(String, String, String)> = updates.into_iter().flatten().collect();
         // Whether a label defined on two pages is already reported. The source-scan warns
         // for the anchors IT can see, so the check below covers only the ones it can't (a
         // cell label), and re-checking the list keeps a scan-warned duplicate from being
@@ -1275,6 +1283,15 @@ impl Site {
                         title: String::new(),
                     });
                 }
+            }
+        }
+        // A title only names a target this page defines: it never creates one, and a
+        // duplicate on another page names nothing (the link goes to the first).
+        for (anchor, title, url) in titles.into_iter().flatten() {
+            if let Some(t) = self.xref_targets.get_mut(&anchor)
+                && t.url == url
+            {
+                t.title = title;
             }
         }
     }
