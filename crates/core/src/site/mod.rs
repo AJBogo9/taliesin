@@ -147,13 +147,9 @@ pub struct Site {
     config_warning_count: usize,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Assembled
-    /// from `search_sections`; the dev server rebuilds it whole whenever a cross-reference
+    /// from per-page fragments; the dev server rebuilds it whole whenever a cross-reference
     /// anchor moves, so a snippet never contradicts the page it links to.
     pub search_index_json: String,
-    /// The per-page fragments `search_index_json` is assembled from — `(page rel, that
-    /// page's JSON entries)` in page order — kept so an edited page's entries can be
-    /// re-extracted without re-rendering the whole site.
-    search_sections: Vec<(String, String)>,
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
@@ -484,7 +480,6 @@ impl Site {
             // index READS `xref_targets`, so building it here (as it used to) indexed every
             // cross-page `@fig-` before a single number had been harvested.
             search_index_json: String::new(),
-            search_sections: Vec::new(),
             excluded_drafts,
             standalone,
         }
@@ -498,13 +493,16 @@ impl Site {
     /// renumbered figure stale in the fragments of pages nobody has open, which is the
     /// exact snippet-contradicts-its-target defect this index ordering exists to prevent.
     pub fn rebuild_search_index(&mut self) {
-        self.search_sections = search::build_sections(
+        // The fragments are dropped once assembled. They were kept on `Site` for a per-page
+        // refresh nothing calls, and holding them kept each rebuild's strings alive in the
+        // allocator arenas of the threads that built them.
+        let sections = search::build_sections(
             &self.pages,
             &self.book,
             &self.xref_targets,
             Some(&self.render_defaults()),
         );
-        self.search_index_json = search::assemble(&self.search_sections);
+        self.search_index_json = search::assemble(&sections);
     }
 
     /// Whether this project is a book (`project: type: book`).
