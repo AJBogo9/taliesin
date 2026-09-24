@@ -38,6 +38,26 @@ fn editing_one_paragraph_is_a_single_in_place_update() {
 }
 
 #[test]
+fn editing_a_sections_last_block_leaves_its_headings_alone() {
+    // A heading's html must not depend on any other block. It used to carry the id of the
+    // last block of its section, so editing that block re-emitted the heading and every
+    // heading enclosing it: the preview flashed sections nobody touched and the heading
+    // lost focus and its cursor-sync highlight.
+    let v1 = render_document("## Intro\n\nAlpha.\n\n### Sub\n\nBeta.\n\n## Next\n\nGamma.\n");
+    let v2 =
+        render_document("## Intro\n\nAlpha.\n\n### Sub\n\nBeta EDITED.\n\n## Next\n\nGamma.\n");
+    let ops = diff_blocks(&v1.blocks, &v2.blocks);
+    assert_eq!(
+        ops,
+        vec![BlockOp::Update {
+            target_id: v1.blocks[3].id.clone(),
+            html: v2.blocks[3].html.clone(),
+        }],
+        "one edited paragraph is one op, whatever section it closes"
+    );
+}
+
+#[test]
 fn appending_a_paragraph_is_a_single_insert_after_the_last_block() {
     let v1 = render_document("Alpha.\n\nBeta.\n");
     let v2 = render_document("Alpha.\n\nBeta.\n\nGamma.\n");
@@ -87,6 +107,7 @@ fn structural_edit_preserves_live_blocks_below_via_metadata_only_op() {
                 target_id: v1.blocks[2].id.clone(), // Gamma, line-shifted
                 sourcepos: v2.blocks[1].sourcepos.clone(),
                 source_file: v2.blocks[1].source_file.clone(),
+                inner: Vec::new(),
             },
         ]
     );
@@ -103,4 +124,123 @@ fn re_rendering_unchanged_source_produces_no_ops() {
     let src = "# Doc\n\nStable body.\n\n## Section\n\nMore.\n";
     let ops = diff_blocks(&render_document(src).blocks, &render_document(src).blocks);
     assert!(ops.is_empty(), "a no-op edit must produce no ops: {ops:?}");
+}
+
+/// Raw HTML is where "every block is one element" stops being true: a comment or a lone
+/// closing tag emits no element, and a wrapper's unclosed opening line swallows the blocks
+/// after it once the page is parsed. A burst that aims at, anchors on or brings in such a
+/// block cannot be applied one block at a time (the insert landed above the title, the
+/// update deleted the wrapped table), so it must re-mount; one that only touches ordinary
+/// blocks, including blocks the wrapper holds, must not.
+#[test]
+fn a_burst_touching_raw_html_that_is_not_one_element_re_mounts() {
+    use taliesin_core::needs_remount;
+    let remounts = |a: &str, b: &str| {
+        let (v1, v2) = (render_document(a), render_document(b));
+        needs_remount(&v1.blocks, &v2.blocks, &diff_blocks(&v1.blocks, &v2.blocks))
+    };
+    let comment = "First.\n\n<!-- TODO -->\n\nLast.\n";
+    let details = "First.\n\n<details><summary>More</summary>\n\nHidden.\n\n</details>\n\nLast.\n";
+    let wrapper =
+        "First.\n\n<div class=\"w\">\n\n| k | n |\n|---|---|\n| a | 1 |\n\n</div>\n\nLast.\n";
+
+    for (label, before, after) in [
+        (
+            "a paragraph typed under a comment",
+            comment,
+            comment.replace("-->\n", "-->\n\nNew.\n"),
+        ),
+        (
+            "a paragraph typed after a closing tag",
+            details,
+            details.replace("</details>\n", "</details>\n\nNew.\n"),
+        ),
+        (
+            "the unclosed opening line edited",
+            details,
+            details.replace("More</summary>", "More please</summary>"),
+        ),
+        (
+            "the wrapper's opening line edited",
+            wrapper,
+            wrapper.replace("class=\"w\"", "class=\"w wide\""),
+        ),
+        (
+            "a closing tag deleted",
+            details,
+            details.replace("</details>\n\n", ""),
+        ),
+        (
+            "a paragraph turned into a comment",
+            "First.\n\nMiddle.\n\nLast.\n",
+            "First.\n\n<!-- Middle. -->\n\nLast.\n".to_string(),
+        ),
+    ] {
+        assert!(remounts(before, &after), "{label} must re-mount");
+    }
+
+    for (label, before, after) in [
+        (
+            "a paragraph edited near a comment",
+            comment,
+            comment.replace("Last.", "Last, edited."),
+        ),
+        (
+            "a block inside the wrapper edited",
+            details,
+            details.replace("Hidden.", "Hidden, edited."),
+        ),
+        (
+            "a table row inside the wrapper edited",
+            wrapper,
+            wrapper.replace("| a | 1 |", "| a | 2 |"),
+        ),
+        (
+            "lines shifted above a wrapper",
+            details,
+            details.replace("First.\n", "First.\n\nAdded above.\n"),
+        ),
+    ] {
+        assert!(!remounts(before, &after), "{label} must stay block ops");
+    }
+}
+
+/// A line-shifting edit above a `:::` container must patch its positions in place, inner
+/// blocks included, rather than re-render it: a re-render reset every slider in a
+/// `layout-ncol` grid and closed every `<details>` in a callout on each keystroke above
+/// them, while the same widgets at the top level kept their state.
+#[test]
+fn a_line_shift_above_a_container_patches_its_positions_in_place() {
+    let body = "::: {.callout-note}\nInside.\n\n<details><summary>S</summary>Open.</details>\n\n- a\n- b\n:::\n\nAfter.\n";
+    let v1 = render_document(&format!("Top.\n\n{body}"));
+    let v2 = render_document(&format!("Top.\n\nAdded above.\n\n{body}"));
+    let ops = diff_blocks(&v1.blocks, &v2.blocks);
+    let callout = &v2.blocks[2];
+    assert!(callout.html.contains("callout"), "{}", callout.html);
+    assert!(
+        !ops.iter().any(|op| matches!(op, BlockOp::Update { .. })),
+        "a shift re-renders nothing: {ops:?}"
+    );
+    // Every inner position rides along, in document order, or Ctrl-click inside the
+    // callout would open the old line.
+    let inner: Vec<String> = taliesin_core::render::tags(&callout.html)
+        .flat_map(|t| taliesin_core::render::attrs(&t).collect::<Vec<_>>())
+        .filter(|a| a.name == "data-sourcepos")
+        .skip(1)
+        .map(|a| a.value.to_string())
+        .collect();
+    assert_eq!(
+        inner.len(),
+        3,
+        "the paragraph, the details and the list: {inner:?}"
+    );
+    assert!(
+        ops.contains(&BlockOp::SetMeta {
+            target_id: callout.id.clone(),
+            sourcepos: callout.sourcepos.clone(),
+            source_file: None,
+            inner,
+        }),
+        "the container's positions are patched in place, inner ones included: {ops:?}"
+    );
 }

@@ -38,8 +38,14 @@
     entries = [];
     if (!toc) return;
     toc.querySelectorAll("a[href^='#']").forEach(function (link) {
-      var id = decodeURIComponent((link.getAttribute("href") || "").slice(1));
-      var h = id && document.getElementById(id);
+      var raw = (link.getAttribute("href") || "").slice(1);
+      // An id may hold a bare `%` (`{#fifty%off}`), which is no escape at all: decoding it
+      // threw, so no entry on the page ever lit up. Such an href IS the id.
+      var id = raw;
+      try {
+        id = decodeURIComponent(raw);
+      } catch (e) {}
+      var h = id && (document.getElementById(id) || document.getElementById(raw));
       if (h) entries.push({ link: link, heading: h });
     });
     sampleLine();
@@ -73,6 +79,9 @@
     active = cur;
     entries.forEach(function (e) {
       e.link.classList.toggle("tali-toc-active", e === cur);
+      // The highlight is visual only; this is the same fact for assistive tech.
+      if (e === cur) e.link.setAttribute("aria-current", "true");
+      else e.link.removeAttribute("aria-current");
     });
     // Collapse: expand only the active entry's branch (its <li> and ancestors), so
     // a long TOC shows top-level entries plus the current section's subsections.

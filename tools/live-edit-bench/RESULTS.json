@@ -4,13 +4,13 @@
     "diff_ns": 211753,
     "doc": "corpus/tech-blog/posts/em-algorithm/index.tmd",
     "dom_preserved": true,
-    "edit_payload_bytes": 31930,
-    "full_html_bytes": 287286,
+    "edit_payload_bytes": 3241,
+    "full_html_bytes": 287755,
     "insert_count": 1,
     "op_count": 55,
     "remove_count": 0,
-    "set_meta_count": 53,
-    "update_count": 1,
+    "set_meta_count": 54,
+    "update_count": 0,
     "warm_edit_ns": 2570809
   },
   "projects": [

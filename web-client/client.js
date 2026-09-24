@@ -20,7 +20,7 @@
  * @typedef {{ type: "update", gen?: number, target_id: string, html: string }} UpdateMsg
  * @typedef {{ type: "insert", gen?: number, after_id: ?string, html: string }} InsertMsg
  * @typedef {{ type: "remove", gen?: number, target_id: string }} RemoveMsg
- * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
+ * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string, inner: string[] }} SetMetaMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "title", title: ?string }} TitleMsg
@@ -158,8 +158,7 @@
     cellErrCount = errs.length;
     cellErrEl.textContent = "";
     cellErrEl.style.display = errs.length ? "flex" : "none";
-    errs.forEach((el, i) => {
-      if (!el.id) el.id = "tali-cellerr-" + i;
+    errs.forEach((el) => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "tali-cellerr";
@@ -659,12 +658,13 @@
   }
 
   // A `{js}` cell can error asynchronously (its async body runs after the mount);
-  // watch the content for them (debounced) so the dev-menu count stays live.
+  // watch the content for them so the dev-menu count stays live. Throttled, not
+  // debounced: a cell that repaints every 100 ms (a ticker, an animation) reset a debounce
+  // forever, and a late error never reached the badge.
   if (window.MutationObserver) {
     let t = 0;
     new MutationObserver(() => {
-      clearTimeout(t);
-      t = setTimeout(scanCellErrors, 200);
+      if (!t) t = setTimeout(() => { t = 0; scanCellErrors(); }, 200);
     }).observe(root, { childList: true, subtree: true });
   }
 
@@ -748,13 +748,47 @@
   const cssEscape = (/** @type {string} */ s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
+  // A block op names a TOP-LEVEL block (the server diffs `#tali-root`'s children), so a
+  // direct child answers first. Mid-burst, an Update of a `:::` container can bring in a
+  // nested element carrying an id a later op in the same burst still means at the top
+  // level (the container's inner paragraph now reads like a top-level one), and a
+  // first-match descendant search edited the container instead. The descendant search
+  // stays as the fallback for blocks a raw-HTML wrapper holds and for nested cell outputs.
+  const childById = (/** @type {string} */ id) =>
+    root.querySelector(`:scope > [data-block-id="${cssEscape(id)}"]`);
   const elById = (/** @type {string} */ id) =>
-    root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
+    childById(id) || root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
 
   const fragment = (/** @type {string} */ html) => {
     const t = document.createElement("template");
     t.innerHTML = html.trim();
     return t.content.firstElementChild;
+  };
+
+  // A script parsed through a `<template>` or `innerHTML` never runs, so a raw `<script>`
+  // block, or a `<script>` in a cell's HTML output (a plotting library's renderer), ran on
+  // load and in the build but not when an edit brought it in. Re-create each classic or
+  // module script so it runs as it would have on load. Data blocks (`application/tali-js`,
+  // `tali-define`, JSON) are not scripts to the browser and stay as they are, which is also
+  // why this cannot run a `{js}` cell a `--no-exec` preview withheld: that preview emits
+  // the cell as source, with no script element at all. Returns the node to mount, which is
+  // a fresh script when the block itself is one.
+  const RUNNABLE = /^(|module|(text|application)\/(x-)?(java|ecma)script)$/i;
+  const runnable = (/** @type {Element} */ el) =>
+    el instanceof HTMLScriptElement && RUNNABLE.test(el.type.trim());
+  const withLiveScripts = (/** @type {Element} */ node) => {
+    const fresh = (/** @type {Element} */ old) => {
+      const s = document.createElement("script");
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.async = false; // external scripts keep their order, as parser-inserted ones do
+      s.textContent = old.textContent;
+      return s;
+    };
+    if (runnable(node)) return fresh(node);
+    node.querySelectorAll("script").forEach((old) => {
+      if (runnable(old)) old.replaceWith(fresh(old));
+    });
+    return node;
   };
 
   // Apply a BLOCK op while leaving the reader's viewport where it was.
@@ -873,12 +907,25 @@
 
   // Rebuild the TOC and (re)highlight + add copy buttons to code blocks after any DOM
   // change (each is a no-op when not applicable).
+  //
+  // Each step runs on its own, the way the enhancer registry runs each enhancer: one that
+  // threw (the scrollspy on a heading id with a bare `%`, on every edit) used to skip every
+  // step after it, so no block patched for the rest of the session got a copy button, a
+  // rendered diagram or a running `{js}` cell.
   const afterChange = () => {
-    buildToc();
-    if (window.taliInitTocSpy) window.taliInitTocSpy(); // re-collect against the fresh nav
-    updateWordCount();
-    if (window.taliEnhanceCode) window.taliEnhanceCode(root);
-    scanCellErrors();
+    for (const step of [
+      buildToc,
+      () => window.taliInitTocSpy && window.taliInitTocSpy(), // re-collect against the fresh nav
+      updateWordCount,
+      () => window.taliEnhanceCode && window.taliEnhanceCode(root),
+      scanCellErrors,
+    ]) {
+      try {
+        step();
+      } catch (e) {
+        console.error("taliesin: an after-change step failed", e);
+      }
+    }
   };
 
   // A single save emits a BURST of block ops (each its own websocket message).
@@ -919,8 +966,23 @@
   const bootId = typeof window.TALIESIN_BOOT === "number" ? window.TALIESIN_BOOT : null;
   let mountedBoot = bootId;
 
+  // A block op whose target or anchor is not in the DOM means the page no longer mirrors
+  // the server's block list, and no op after it can be trusted to land where it should.
+  // The server sends a whole render for every burst it knows it cannot express as block
+  // ops (`needs_remount`), so this is the fallback for one it did not foresee: reload,
+  // exactly as a `reload` message does, rather than prepend the block above the title or
+  // drop the edit silently, which is what this did before.
+  let resyncing = false;
+  const resync = () => {
+    if (resyncing) return;
+    resyncing = true;
+    console.warn("taliesin: a block op missed its target; reloading to resync");
+    location.reload();
+  };
+
   /** @param {ServerMessage} msg */
   const handle = (msg) => {
+    if (resyncing) return; // the reload is on its way; later ops would land out of sync
     switch (msg.type) {
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
@@ -965,7 +1027,10 @@
           // and the tali-js runtime is rebuilt fresh, rather than re-pushing duplicate
           // cells onto a never-reset registry.
           resetJs();
-          keepScrollThroughRemount(() => { root.innerHTML = msg.body_html; });
+          keepScrollThroughRemount(() => {
+            root.innerHTML = msg.body_html;
+            withLiveScripts(root);
+          });
         }
         scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
@@ -986,54 +1051,53 @@
       case "update": {
         renderOk();
         const el = elById(msg.target_id);
-        const node = fragment(msg.html);
-        if (el && node) {
-          teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
-          keepFocus(el, () => {
-            keepScroll(() => el.replaceWith(node));
-            return node;
-          });
-          pulse(node, "tali-flash");
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        const parsed = fragment(msg.html);
+        if (!el || !parsed) return resync();
+        const node = withLiveScripts(parsed);
+        teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
+        keepFocus(el, () => {
+          keepScroll(() => el.replaceWith(node));
+          return node;
+        });
+        pulse(node, "tali-flash");
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         scheduleAfterChange();
         break;
       }
       case "insert": {
         renderOk();
-        const node = fragment(msg.html);
-        if (node) {
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-          // Block ids are unique per document, so drop any element already
-          // carrying this id before inserting. The server emits Removes before
-          // Inserts, so this is normally a no-op; it defends against a stale
-          // duplicate if ops ever arrive out of order (a reorder splits a moved
-          // block into Remove+Insert of the same id).
-          const newId = node.getAttribute && node.getAttribute("data-block-id");
-          const stale = newId && elById(newId);
-          if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
-          keepScroll(() => {
-            if (stale) stale.remove();
-            const after = msg.after_id && elById(msg.after_id);
-            if (after) after.after(node);
-            else root.prepend(node);
-          });
-          pulse(node, "tali-flash");
-        }
+        const parsed = fragment(msg.html);
+        const after = msg.after_id ? elById(msg.after_id) : null;
+        if (!parsed || (msg.after_id && !after)) return resync();
+        const node = withLiveScripts(parsed);
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
+        // Block ids are unique per document, so drop any element already
+        // carrying this id before inserting. The server emits Removes before
+        // Inserts, so this is normally a no-op; it defends against a stale
+        // duplicate if ops ever arrive out of order (a reorder splits a moved
+        // block into Remove+Insert of the same id).
+        const newId = node.getAttribute && node.getAttribute("data-block-id");
+        const stale = newId && childById(newId);
+        if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
+        keepScroll(() => {
+          if (stale) stale.remove();
+          if (after) after.after(node);
+          else root.prepend(node);
+        });
+        pulse(node, "tali-flash");
         scheduleAfterChange();
         break;
       }
       case "remove": {
         renderOk();
         const el = elById(msg.target_id);
-        if (el) {
-          teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
-          keepFocus(el, () => {
-            keepScroll(() => el.remove());
-            return null;
-          });
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        if (!el) return resync();
+        teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
+        keepFocus(el, () => {
+          keepScroll(() => el.remove());
+          return null;
+        });
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         scheduleAfterChange();
         break;
       }
@@ -1042,16 +1106,19 @@
         // content. Patch only its position attributes so click-to-source stays
         // exact — without re-rendering, so its live DOM state (video, {js} widget,
         // open <details>) survives. No afterChange(): content is unchanged.
+        // A `:::` container also sends `inner`: the new position of every element
+        // inside it that carries one, in document order.
         renderOk();
         const el = elById(msg.target_id);
-        if (el) {
-          el.setAttribute("data-sourcepos", msg.sourcepos);
-          if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
-          else el.removeAttribute("data-source-file");
-          // Recorded AFTER the patch, so the row's click-to-source uses the new position.
-          // No words move in a shift, which is the whole point of the op.
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        const inner = el && msg.inner.length ? el.querySelectorAll("[data-sourcepos]") : null;
+        if (!el || (inner && inner.length !== msg.inner.length)) return resync();
+        el.setAttribute("data-sourcepos", msg.sourcepos);
+        if (inner) inner.forEach((n, i) => n.setAttribute("data-sourcepos", msg.inner[i]));
+        if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
+        else el.removeAttribute("data-source-file");
+        // Recorded AFTER the patch, so the row's click-to-source uses the new position.
+        // No words move in a shift, which is the whole point of the op.
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         break;
       }
       case "error":

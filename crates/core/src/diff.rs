@@ -30,6 +30,9 @@ pub enum BlockOp {
         target_id: String,
         sourcepos: String,
         source_file: Option<String>,
+        /// The new `data-sourcepos` of every element INSIDE the block that carries one, in
+        /// document order: the inner blocks of a `:::` container. Empty for a leaf block.
+        inner: Vec<String>,
     },
 }
 
@@ -107,65 +110,128 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     ops
 }
 
+/// Whether the client must re-mount the whole page instead of applying `ops` one block at
+/// a time: some op aims at, anchors on, or brings in a block that is not ONE closed element
+/// carrying its own id.
+///
+/// The block model says every block is one element, and raw HTML is where that stops being
+/// true. A comment and a lone closing tag (`</details>` ending a wrapper opened two blocks
+/// up) emit no element at all, so their id is in the block list and nowhere in the DOM: an
+/// `Insert` after one found no anchor and landed ABOVE the title. An unclosed root (the
+/// wrapper's opening line) swallows the blocks after it once the page is parsed, so an
+/// `Update` of it replaced those blocks too and the wrapped table vanished from the
+/// preview. Neither can be patched correctly without knowing how the browser nested the
+/// page, and a full render is exactly that. These edits are rare (typing right after a
+/// comment or a wrapper), so re-mounting them costs little; `SetMeta` only ever moves an
+/// attribute on the element that exists, so it never needs one.
+pub fn needs_remount(old: &[Block], new: &[Block], ops: &[BlockOp]) -> bool {
+    use std::collections::HashMap;
+    fn html_by_id(blocks: &[Block]) -> HashMap<&str, &str> {
+        blocks
+            .iter()
+            .map(|b| (b.id.as_str(), b.html.as_str()))
+            .collect()
+    }
+    if ops.iter().all(|op| matches!(op, BlockOp::SetMeta { .. })) {
+        return false;
+    }
+    let (old_html, new_html) = (html_by_id(old), html_by_id(new));
+    let ok = |by_id: &HashMap<&str, &str>, id: &str| by_id.get(id).is_some_and(|h| addressable(h));
+    ops.iter().any(|op| match op {
+        BlockOp::Update { target_id, html } => !ok(&old_html, target_id) || !addressable(html),
+        BlockOp::Remove { target_id } => !ok(&old_html, target_id),
+        BlockOp::Insert { after_id, html } => {
+            after_id.as_deref().is_some_and(|a| !ok(&new_html, a)) || !addressable(html)
+        }
+        BlockOp::SetMeta { .. } => false,
+    })
+}
+
+/// One element that opens the html carrying a `data-block-id`, and closes at its end.
+fn addressable(html: &str) -> bool {
+    let lead = html.len() - html.trim_start().len();
+    crate::render::tags(html).next().is_some_and(|t| {
+        t.at == lead
+            && crate::render::attrs(&t).any(|a| a.name.eq_ignore_ascii_case("data-block-id"))
+    }) && crate::render::is_closed_single_root(html)
+}
+
 /// The op for an id-matched anchor whose html changed. If *only* the position
-/// metadata moved (same content-hashed body, just a shifted `data-sourcepos`), patch
-/// the attribute in place via `SetMeta` so the element's live DOM state survives a
+/// metadata moved (same content-hashed body, just shifted `data-sourcepos` values), patch
+/// the attributes in place via `SetMeta` so the element's live DOM state survives a
 /// structural edit elsewhere. Otherwise the content actually changed (a derived
 /// block such as a cell's output), so re-render it with a full `Update`.
+///
+/// A `:::` container carries its inner blocks' positions too, and a line shift above it
+/// moves all of them, so its `SetMeta` carries every inner value as well. It used to take a
+/// full `Update` instead (patching only the outer attribute would have left the inner ones
+/// stale), which reset every slider in a `layout-ncol` grid and closed every `<details>` in
+/// a callout on each keystroke above them.
+///
+/// **Two tiers, because this is the keystroke path.** [`diff_blocks`] asks this of every
+/// matched block whose html changed on every save, and walking tags is the expensive
+/// answer: measured on `corpus/tech-blog/posts/em-algorithm` (287 KB, 55 blocks) **in
+/// 2026-08, against that day's 11.9 ms warm edit**, walking every block moved the diff from
+/// 319 µs to 1704 µs. [`sourcepos_mentions`] is an upper bound and cheap; at most one
+/// mention on each side cannot be ambiguous, because the block model gives EVERY block its
+/// own `data-sourcepos` (`crates/core/tests/corpus.rs` enforces it), so a single mention is
+/// the outer attribute and never text. Only a block with more (a container, or prose
+/// quoting the attribute: comrak does not escape `"` inside a `<code>` span) is walked.
 fn anchor_op(old: &Block, new: &Block) -> BlockOp {
-    // SetMeta patches only the OUTER block element's `data-sourcepos`. A block whose
-    // html carries more than one `data-sourcepos` (a fenced `:::` div with inner
-    // blocks) would keep its inner sourcepos stale after a line-shifting edit above —
-    // silently sending Ctrl-click and reverse cursor-sync *inside* the div to the wrong
-    // line. For those, fall through to a full `Update`, which replaces the whole block
-    // html and refreshes every inner `data-sourcepos`. (The client already applies
-    // Update without losing block identity, keyed off the unchanged `data-block-id`.)
-    let single_sourcepos = sourcepos_count(&new.html) <= 1;
-    if single_sourcepos
-        && old.sourcepos != new.sourcepos
-        && eq_ignoring_sourcepos(&old.html, &new.html)
-    {
-        BlockOp::SetMeta {
+    let inner = if sourcepos_mentions(&old.html) <= 1 && sourcepos_mentions(&new.html) <= 1 {
+        eq_ignoring_sourcepos(&old.html, &new.html).then(Vec::new)
+    } else {
+        shifted_positions(&old.html, &new.html)
+    };
+    match inner {
+        Some(inner) => BlockOp::SetMeta {
             target_id: new.id.clone(),
             sourcepos: new.sourcepos.clone(),
             source_file: new.source_file.clone(),
-        }
-    } else {
-        BlockOp::Update {
+            inner,
+        },
+        None => BlockOp::Update {
             target_id: new.id.clone(),
             html: new.html.clone(),
-        }
+        },
     }
 }
 
-/// How many `data-sourcepos` ATTRIBUTES the html carries. A leaf block has one (on its
-/// outer element); a fenced `:::` div wraps inner blocks that each carry their own, so it
-/// has more.
-///
-/// Prose that merely *mentions* the attribute carries it in the page's visible TEXT: comrak
-/// does not escape `"` inside a `<code>` span, so a paragraph quoting
-/// `data-sourcepos="5:1-5:9"` counted two and lost `SetMeta`. It then took a destructive
-/// `Update` on every line-number shift above it — replacing the element, and with it any
-/// live DOM state (an open `<details>`, a playing video, a `{js}` widget) that `SetMeta`
-/// exists to preserve. `docs/internals/block-model.tmd`, the page that documents `SetMeta`,
-/// mentions the attribute ten times.
-///
-/// **Two tiers, because this is the keystroke path.** [`diff_blocks`] asks this of every
-/// matched block on every save, so answering it by walking each block's tags walks the whole
-/// page: measured on `corpus/tech-blog/posts/em-algorithm` (287 KB, 55 blocks) **in 2026-08,
-/// against that day's 11.9 ms warm edit**, the diff went from 319 µs to 1704 µs and the warm
-/// edit from 11.9 ms to 13.4 ms. Those absolutes are historical — the warm edit is 2.6 ms
-/// since 1.1.0, so the rejected walk would cost proportionally far more of it now, which
-/// only strengthens the conclusion. The walk therefore runs
-/// only where the ambiguity is real. [`sourcepos_mentions`] is an upper bound and cheap; at
-/// most one mention cannot be ambiguous, because the block model gives EVERY block its own
-/// `data-sourcepos` (`crates/core/tests/corpus.rs` enforces it), so a single mention is that
-/// attribute and never text.
-fn sourcepos_count(html: &str) -> usize {
-    match sourcepos_mentions(html) {
-        n @ (0 | 1) => n,
-        _ => crate::render::attr_values(html, "data-sourcepos").count(),
+/// When `old` and `new` differ in nothing but their `data-sourcepos` ATTRIBUTE values
+/// (read through the tag walker, so a value quoted in the page's text is content and must
+/// match), the new values of every attribute after the outer one. `None` when anything else
+/// differs, and when inner values exist but the block is not one closed element: the
+/// client patches the element's own descendants, and an unclosed root's DOM descendants
+/// are not its html's.
+fn shifted_positions(old: &str, new: &str) -> Option<Vec<String>> {
+    fn spans(html: &str) -> Vec<(usize, usize)> {
+        crate::render::tags(html)
+            .flat_map(|t| crate::render::attrs(&t).collect::<Vec<_>>())
+            .filter(|a| a.name.eq_ignore_ascii_case("data-sourcepos"))
+            .map(|a| (a.value_at, a.value_at + a.value.len()))
+            .collect()
     }
+    let (sa, sb) = (spans(old), spans(new));
+    if sa.len() != sb.len() {
+        return None;
+    }
+    // The text between (and around) the values must be byte-identical.
+    let (mut ia, mut ib) = (0, 0);
+    for (&(a0, a1), &(b0, b1)) in sa.iter().zip(&sb) {
+        if old[ia..a0] != new[ib..b0] {
+            return None;
+        }
+        (ia, ib) = (a1, b1);
+    }
+    if old[ia..] != new[ib..] {
+        return None;
+    }
+    let inner: Vec<String> = sb
+        .iter()
+        .skip(1)
+        .map(|&(b0, b1)| new[b0..b1].to_string())
+        .collect();
+    (inner.is_empty() || crate::render::is_closed_single_root(new)).then_some(inner)
 }
 
 /// How many times the emitted spelling of the attribute appears anywhere in `html`, as
@@ -186,8 +252,8 @@ const SOURCEPOS_KEY: &str = "data-sourcepos=\"";
 /// and nothing else — so anything further along, an inner block's attribute or a `<code>`
 /// span quoting the name, has to survive the comparison verbatim. Blanking *every* value
 /// instead (which is what this did) could call two blocks equal because their inner
-/// sourcepos differences had been masked away, and only [`sourcepos_count`]'s separate
-/// nested-block guard stopped that becoming a `SetMeta` that left those inner values stale.
+/// sourcepos differences had been masked away. A block with inner values goes through
+/// [`shifted_positions`] instead, which carries them.
 ///
 /// Allocation-free: two `memcmp`s on slices of the originals. Building the masked copies
 /// meant allocating and copying a whole block's html twice per compared pair, for every
@@ -364,38 +430,44 @@ mod tests {
 
     /// A model of the preview client's apply semantics (web-client/client.js), over a
     /// list of block ids standing in for the DOM:
-    ///  - `update`: the FIRST element matching `target_id` (document order, as
-    ///    `elById`'s `querySelector` resolves it) is replaced by the html's own id; a
-    ///    missing target is a silent no-op.
+    ///  - `update`: the FIRST element matching `target_id` (document order among the
+    ///    root's children, which `elById` asks before any descendant) is replaced by the
+    ///    html's own id.
     ///  - `insert`: the stale-duplicate defense first removes the FIRST element already
     ///    carrying the incoming id, then the node lands after `after_id` (first match),
-    ///    or is prepended when `after_id` is None or missing.
+    ///    or is prepended when `after_id` is None.
     ///  - `remove`: the first match is removed.
     ///  - `set_meta`: attribute-only, no structural change.
+    ///
+    /// A missing target or anchor makes the client reload (`resync`), which no burst the
+    /// diff emits may ever need, so the model panics there instead of guessing.
     fn replay_client(old: &[Block], ops: &[BlockOp]) -> Vec<String> {
         let mut dom: Vec<String> = old.iter().map(|b| b.id.clone()).collect();
+        let find = |dom: &[String], id: &str| {
+            dom.iter()
+                .position(|d| d == id)
+                .unwrap_or_else(|| panic!("client resync: {id} is not in the DOM {dom:?}"))
+        };
         for op in ops {
             match op {
                 BlockOp::Update { target_id, html } => {
-                    if let Some(i) = dom.iter().position(|id| id == target_id) {
-                        dom[i] = html_id(html);
-                    }
+                    let i = find(&dom, target_id);
+                    dom[i] = html_id(html);
                 }
                 BlockOp::Insert { after_id, html } => {
                     let id = html_id(html);
+                    if let Some(a) = after_id {
+                        find(&dom, a); // the client resolves the anchor before anything moves
+                    }
                     if let Some(stale) = dom.iter().position(|d| *d == id) {
                         dom.remove(stale);
                     }
-                    let at = after_id
-                        .as_ref()
-                        .and_then(|a| dom.iter().position(|d| d == a).map(|i| i + 1))
-                        .unwrap_or(0);
+                    let at = after_id.as_ref().map_or(0, |a| find(&dom, a) + 1);
                     dom.insert(at, id);
                 }
                 BlockOp::Remove { target_id } => {
-                    if let Some(i) = dom.iter().position(|id| id == target_id) {
-                        dom.remove(i);
-                    }
+                    let i = find(&dom, target_id);
+                    dom.remove(i);
                 }
                 BlockOp::SetMeta { .. } => {}
             }
@@ -607,16 +679,21 @@ mod tests {
     /// Pin the behaviors the model encodes, so a change to the client's apply loop
     /// fails HERE and forces the model (and diff_blocks' ordering contract) to be
     /// re-derived: first-match id lookup, the insert-time stale-duplicate defense,
-    /// update-in-place by target id, and prepend as the missing-anchor fallback.
+    /// update-in-place by target id, prepend for a null anchor, and a reload for a
+    /// missing target or anchor.
     #[test]
     fn replay_client_matches_the_real_clients_apply_semantics() {
         let client_js = include_str!("../../../web-client/client.js");
         for needle in [
             "const elById",
-            "root.querySelector(`[data-block-id=",
-            "const stale = newId && elById(newId);",
+            "root.querySelector(`:scope > [data-block-id=",
+            "childById(id) || root.querySelector(`[data-block-id=",
+            "const stale = newId && childById(newId);",
             "if (stale) stale.remove();",
             "const el = elById(msg.target_id);",
+            "if (!el || !parsed) return resync();",
+            "if (!parsed || (msg.after_id && !after)) return resync();",
+            "if (!el) return resync();",
             "else root.prepend(node);",
         ] {
             assert!(
@@ -720,17 +797,18 @@ mod tests {
                 target_id: "a".into(),
                 sourcepos: "3:1-3:6".into(),
                 source_file: None,
+                inner: Vec::new(),
             }]
         );
     }
 
     #[test]
-    fn nested_div_sourcepos_shift_is_a_full_update_not_setmeta() {
+    fn nested_div_sourcepos_shift_patches_every_inner_position() {
         // A fenced `:::` div carries its OWN data-sourcepos plus an inner block's. A
-        // line-shifting edit above moves BOTH. SetMeta would patch only the outer one,
-        // leaving the inner block's sourcepos stale (Ctrl-click + reverse cursor-sync
-        // inside the div would jump to the wrong line). So the op must be a full
-        // Update, which refreshes every inner data-sourcepos.
+        // line-shifting edit above moves BOTH. The patch must carry the inner value too
+        // (patching only the outer one would send Ctrl-click and reverse cursor-sync
+        // inside the div to the wrong line), and must not re-render the div (which reset
+        // every widget inside it).
         let old = Block {
             id: "d".into(),
             sourcepos: "5:1-7:3".into(),
@@ -750,12 +828,32 @@ mod tests {
         };
         assert_eq!(
             diff_blocks(std::slice::from_ref(&old), std::slice::from_ref(&new)),
-            vec![BlockOp::Update {
+            vec![BlockOp::SetMeta {
                 target_id: "d".into(),
-                html: new.html,
+                sourcepos: "3:1-5:3".into(),
+                source_file: None,
+                inner: vec!["4:1-4:5".into()],
             }],
-            "a multi-sourcepos block must full-Update so inner sourcepos refresh"
         );
+        // An inner CONTENT change is still a re-render, and so is a shift in a div that
+        // does not close (the client patches the element's own descendants, which for an
+        // unclosed root are the blocks it swallowed).
+        let edited = Block {
+            html: new.html.replace("Inner.", "Changed."),
+            ..new.clone()
+        };
+        assert!(matches!(
+            diff_blocks(std::slice::from_ref(&old), std::slice::from_ref(&edited)).as_slice(),
+            [BlockOp::Update { .. }]
+        ));
+        let unclosed = |b: &Block| Block {
+            html: b.html.trim_end_matches("</div>").to_string(),
+            ..b.clone()
+        };
+        assert!(matches!(
+            diff_blocks(&[unclosed(&old)], &[unclosed(&new)]).as_slice(),
+            [BlockOp::Update { .. }]
+        ));
     }
 
     #[test]
@@ -789,7 +887,7 @@ mod tests {
     /// its line numbers move.
     ///
     /// comrak does not escape `"` inside a `<code>` span, so the attribute name appears
-    /// verbatim in the page's visible TEXT. `sourcepos_count` matched the string, counted
+    /// verbatim in the page's visible TEXT. The attribute count matched the string, counted
     /// two, and concluded the block wrapped inner blocks — so every line-number shift above
     /// such a paragraph took a destructive `Update` that replaces the element and discards
     /// whatever live DOM state it held. Reproduced in a browser against
@@ -818,8 +916,7 @@ mod tests {
         );
 
         // The narrowing must not go too far: a real `:::` div wrapping inner blocks that
-        // each carry their own sourcepos still has more than one, and still takes an
-        // `Update` — the whole reason the count exists.
+        // each carry their own sourcepos has more than one, and its patch carries them.
         let wrapper = |pos: &str| {
             let mut b = block_html(
                 "w",
@@ -834,9 +931,9 @@ mod tests {
         assert!(
             matches!(
                 diff_blocks(&[wrapper("1:1-2:9")], &[wrapper("3:1-4:9")]).as_slice(),
-                [BlockOp::Update { .. }]
+                [BlockOp::SetMeta { inner, .. }] if *inner == ["3:1-4:9"]
             ),
-            "a div wrapping its own sourcepos-bearing children must still take an Update"
+            "a div wrapping its own sourcepos-bearing children must patch the inner one too"
         );
     }
 

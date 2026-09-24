@@ -137,15 +137,21 @@ const THEME_HEAD_SCRIPT: &str = r#"<script>
   // cannot reach them. (The diagnostic boxes are now token-derived, so the reset DOES reach
   // them; the syntax scopes are what still force the swap.) Drop the whole document to the
   // light theme for the duration of the print job and restore afterwards. `apply()`
-  // restores colour-scheme, canvas, and mermaid.
+  // restores colour-scheme, canvas, and mermaid. A diagram cannot be re-rendered light in
+  // time (mermaid renders asynchronously), so `tali-print-from-dark` lets the print
+  // stylesheet lighten the dark render instead.
   try {
     window.addEventListener("beforeprint", function(){
       var el = document.documentElement;
+      el.classList.toggle("tali-print-from-dark", el.getAttribute("data-theme") === "dark");
       el.setAttribute("data-theme", "light");
       el.style.colorScheme = "light";
       el.style.background = BG.light;
     });
-    window.addEventListener("afterprint", apply);
+    window.addEventListener("afterprint", function(){
+      document.documentElement.classList.remove("tali-print-from-dark");
+      apply();
+    });
   } catch(e) {}
 })();
 </script>"#;

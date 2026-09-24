@@ -37,9 +37,6 @@
     0%, 45% { --tali-search-flash: rgba(234, 231, 224, .16); } /* body 9.9:1 */
     100% { --tali-search-flash: transparent; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    html.tali-search-flashing { animation-duration: .01ms; }
-  }
 
   /* Reactive input controls ({{< input ... >}}). A labeled native control feeding the
      {js} reactive graph; native controls inherit color-scheme so dark just works. */
@@ -1016,6 +1013,9 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
       transition-duration: .001ms !important; scroll-behavior: auto !important; }
+    /* Except a search hit's highlight: a colour fade, not motion, and collapsing it lands on
+       its transparent end keyframe, so the hit was never marked at all. */
+    html.tali-search-flashing, mark.tali-search-mark { animation-duration: 1.5s !important; }
   }
   /* Cross-document view transitions: a crossfade on same-origin navigation, so moving
      between the pages of a site or the chapters of a book reads as one document instead
@@ -1093,7 +1093,13 @@
       --tali-bg: #fff; --tali-fg: #111; --tali-muted: #555; --tali-border: #ccc;
       --tali-code-bg: #f5f5f5; --tali-link: var(--tali-fg); --tali-accent: var(--tali-fg);
     }
-    #tali-controls, #tali-diagnostics, .tali-copy { display: none !important; }
+    /* The site navbar and the book's top bar are chrome: on paper their menu, search and
+       chapter buttons are dead controls and their links dead words. */
+    #tali-controls, #tali-diagnostics, .tali-copy, .tali-site-nav, .tali-book-topbar {
+      display: none !important; }
+    /* A diagram rendered in the dark theme keeps its baked-in colours on paper, since
+       mermaid cannot re-render in the print job's time; invert it back to light. */
+    html.tali-print-from-dark pre.mermaid svg { filter: invert(1) hue-rotate(180deg); }
     body { max-width: none !important; margin: 0 !important; }
     body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
     body.has-toc > #TOC {

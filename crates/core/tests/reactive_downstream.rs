@@ -20,9 +20,12 @@ use std::process::Command;
 fn extract(name: &str) -> String {
     let src = include_str!("../assets/js/tali-js.js");
     let head = format!("function {name}(");
-    let start = src
+    let mut start = src
         .find(&head)
         .unwrap_or_else(|| panic!("tali-js.js defines {name}"));
+    if src[..start].ends_with("async ") {
+        start -= "async ".len();
+    }
     let end = src[start..]
         .find("\n  }\n")
         .unwrap_or_else(|| panic!("{name} closes at two-space indent"))
@@ -31,21 +34,41 @@ fn extract(name: &str) -> String {
     src[start..end].to_string()
 }
 
-#[test]
-fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
+/// Run `script` in node and return its stdout, or `None` when node is absent (which
+/// `TALIESIN_REQUIRE_NODE` turns into a failure).
+fn node(script: &str) -> Option<String> {
     let require = std::env::var_os("TALIESIN_REQUIRE_NODE").is_some();
     let have_node =
         matches!(Command::new("node").arg("--version").output(), Ok(o) if o.status.success());
     if !have_node {
         assert!(
             !require,
-            "TALIESIN_REQUIRE_NODE=1 but `node` is unavailable: the downstream-staleness rule \
-             cannot run, and skipping it is how this coverage silently dies"
+            "TALIESIN_REQUIRE_NODE=1 but `node` is unavailable: the reactive runtime rules \
+             cannot run, and skipping them is how this coverage silently dies"
         );
         eprintln!("skipping reactive_downstream: node unavailable");
-        return;
+        return None;
     }
+    let out = Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .expect("launch node");
+    assert!(
+        out.status.success(),
+        "node failed running the extracted rule:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    Some(
+        String::from_utf8(out.stdout)
+            .expect("utf-8")
+            .trim()
+            .to_string(),
+    )
+}
 
+#[test]
+fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
     // Stand-in cells: `buildGraph` reads `inputs`, `defines` and `container` (null, so the
     // cycle diagnostic never reaches `document`), and the two downstream passes only ever
     // compare cells by identity.
@@ -89,20 +112,9 @@ fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
         extract("staleAfterMount"),
     );
 
-    let out = Command::new("node")
-        .arg("-e")
-        .arg(&script)
-        .output()
-        .expect("launch node");
-    assert!(
-        out.status.success(),
-        "node failed running the extracted rule:\n{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let got = String::from_utf8(out.stdout)
-        .expect("utf-8")
-        .trim()
-        .to_string();
+    let Some(got) = node(&script) else {
+        return;
+    };
 
     // THE BUG. Editing the `//| name: squared` producer's body re-mounts that block alone;
     // the sink consuming `squared` is not fresh, so nothing else re-ran it.
@@ -150,20 +162,206 @@ fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
 
 #[test]
 fn the_mount_actually_runs_the_stale_pass_after_the_fresh_one() {
-    // `staleAfterMount` being right is worth nothing if `enhance` does not call it, and no
-    // node harness can reach `enhance` (it is DOM-wide). Pin the two lines that wire it: the
-    // stale set is read off the graph BEFORE anything runs, and the two passes are CHAINED,
-    // because a stale consumer reads its producer's value out of the shared scope and must
-    // not start before that producer's `run()` has resolved.
+    // `mountPlan` being right is worth nothing if `enhance` does not call it, and no
+    // node harness can reach `enhance` (it is DOM-wide). Pin the lines that wire it: the
+    // plan is read off the graph BEFORE anything runs, it is seeded with the controls this
+    // mount bound and the names a teardown dropped, and the passes are CHAINED (after a
+    // define's pass over the cells already mounted), because a stale consumer reads its
+    // producer's value out of the shared scope and must not start before that producer's
+    // `run()` has resolved.
     let js = include_str!("../assets/js/tali-js.js");
+    for (needle, why) in [
+        (
+            "var plan = mountPlan(r, fresh, bound.concat(r.dropped.splice(0)));",
+            "enhance no longer plans its passes from the graph and the changed names",
+        ),
+        (
+            "Promise.resolve(defined)\n      .then(function () { return runSequentially(plan.fresh); })\n      .then(function () { return runSequentially(plan.stale); });",
+            "the fresh and stale passes must be chained after the define pass, not raced",
+        ),
+        (
+            "return changed ? runSequentially((r.graph || buildGraph(r)).order) : null;",
+            "a define's re-run must go in dependency order and be handed to enhance",
+        ),
+    ] {
+        assert!(js.contains(needle), "{why}: `{needle}` is gone");
+    }
+}
+
+/// Audit 2026-09-24 D4 and liveops #6. What a mount runs, decided on stand-in cells.
+#[test]
+fn a_mount_runs_fresh_cells_in_dependency_order_and_seeds_changed_names() {
+    let script = format!(
+        "{}{}{}{}\n\
+         function cell(id, defines, inputs) {{\n\
+           return {{ id: id, defines: defines, inputs: inputs, container: null }};\n\
+         }}\n\
+         function ids(list) {{ return list.map(function (c) {{ return c.id; }}); }}\n\
+         // corpus order a reader can write: the sink ABOVE the producer it reads.\n\
+         var n = cell('n', 'n', []);\n\
+         var sink = cell('sink', null, ['squared']);\n\
+         var sq = cell('squared', 'squared', ['n']);\n\
+         var r = {{ cells: [n, sink, sq] }};\n\
+         var cold = mountPlan(r, r.cells, []);\n\
+         var out = {{ coldFresh: ids(cold.fresh), coldStale: ids(cold.stale) }};\n\
+         // An {{{{< input >}}}} control re-bound by an edit, and one a teardown dropped:\n\
+         // their consumers were not re-mounted, so they are stale.\n\
+         var kSink = cell('k-sink', null, ['k']);\n\
+         var r2 = {{ cells: [kSink] }};\n\
+         out.rebound = ids(mountPlan(r2, [], ['k']).stale);\n\
+         out.coldBound = ids(mountPlan(r2, [kSink], ['k']).stale);\n\
+         // No edge between them: authoring order, the earliest ready cell first.\n\
+         var p1 = cell('p1', 'x', []), s1 = cell('s1', null, ['x']), p2 = cell('p2', 'y', []);\n\
+         var r3 = {{ cells: [p1, s1, p2] }};\n\
+         out.tieBreak = ids(buildGraph(r3).order);\n\
+         console.log(JSON.stringify(out));",
+        extract("buildGraph"),
+        extract("downstreamInOrder"),
+        extract("staleAfterMount"),
+        extract("mountPlan"),
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
     assert!(
-        js.contains("var stale = staleAfterMount(r, runnable);"),
-        "enhance no longer computes the stale set; a producer edit re-runs nothing downstream"
+        got.contains(r#""coldFresh":["n","squared","sink"]"#),
+        "a consumer above its producer must run after it on a cold load: {got}"
     );
     assert!(
-        js.contains(
-            "runSequentially(runnable).then(function () { return runSequentially(stale); });"
-        ),
-        "the stale pass must be chained after the fresh one, not raced against it"
+        got.contains(r#""coldStale":[]"#) && got.contains(r#""coldBound":[]"#),
+        "a cold mount schedules nothing on top of its own pass: {got}"
+    );
+    assert!(
+        got.contains(r#""rebound":["k-sink"]"#),
+        "a re-bound control's consumers re-run: {got}"
+    );
+    assert!(
+        got.contains(r#""tieBreak":["p1","s1","p2"]"#),
+        "authoring order holds where no edge decides: {got}"
+    );
+}
+
+/// liveops #7. A define landing after a live edit re-ran `r.cells` in MOUNT order, which
+/// an edit reshuffles (the re-mounted producer moves to the end), so the sink ran before
+/// the producer it reads and kept the old product; the cyclic cells re-ran too.
+#[test]
+fn a_define_re_runs_the_mounted_cells_in_dependency_order() {
+    let script = format!(
+        "{}{}{}\n\
+         var ran = [];\n\
+         function cell(id, defines, inputs) {{\n\
+           return {{ id: id, defines: defines, inputs: inputs, container: null,\n\
+             run: function () {{ ran.push(id); return Promise.resolve(); }} }};\n\
+         }}\n\
+         var blob = {{ textContent: '{{\"z\": 7}}', setAttribute: function () {{}} }};\n\
+         globalThis.document = {{ querySelectorAll: function () {{ return [blob]; }} }};\n\
+         globalThis.window = globalThis;\n\
+         // Mount order after the producer `prod` was edited: it re-registered last.\n\
+         window.__talijs = {{ scope: {{}}, inputs: {{}}, defines: {{}}, listeners: {{}}, dropped: [],\n\
+           cells: [cell('n', 'n', []), cell('sink', null, ['prod']), cell('a', 'a', ['b']),\n\
+                   cell('b', 'b', ['a']), cell('prod', 'prod', ['n'])] }};\n\
+         function rt() {{ return window.__talijs; }}\n\
+         bindDefines().then(function () {{ console.log(JSON.stringify(ran)); }});",
+        extract("bindDefines"),
+        extract("buildGraph"),
+        extract("runSequentially"),
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(
+        got, r#"["n","prod","sink"]"#,
+        "producer before sink, and the cyclic pair left to its diagnostic"
+    );
+}
+
+/// liveops #6. A `{{< input >}}` control is not a cell, so teardown never unregistered
+/// one: a deleted control stayed in `r.inputs`, detached, and its consumers kept reading
+/// its last value.
+#[test]
+fn tearing_down_a_block_unregisters_the_controls_inside_it() {
+    let script = format!(
+        "{}\n\
+         var ctl = {{ getAttribute: function () {{ return 'k'; }} }};\n\
+         var other = {{ getAttribute: function () {{ return 'm'; }} }};\n\
+         var block = {{ querySelectorAll: function () {{ return [ctl]; }}, contains: function () {{ return false; }} }};\n\
+         globalThis.window = globalThis;\n\
+         window.__talijs = {{ scope: {{}}, inputs: {{ k: ctl, m: other }}, defines: {{}}, listeners: {{}},\n\
+           cells: [], dropped: [] }};\n\
+         teardownIn(block);\n\
+         console.log(JSON.stringify({{ inputs: Object.keys(window.__talijs.inputs), dropped: window.__talijs.dropped }}));",
+        extract("teardownIn"),
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(got, r#"{"inputs":["m"],"dropped":["k"]}"#);
+}
+
+/// The runtime a real cell mounts into, reduced to what `setupCell` touches: one output
+/// container that records what was painted into it, and a `{js}`-shaped language whose run
+/// resolves after `ms` with the cell's source as its value.
+fn cell_harness() -> String {
+    let fns: String = [
+        "rt",
+        "readValue",
+        "registerInput",
+        "makeApi",
+        "markLiveIfTextual",
+        "showCellError",
+        "setupCell",
+        "runSequentially",
+        "buildGraph",
+        "downstreamInOrder",
+        "scheduleFrom",
+    ]
+    .iter()
+    .map(|f| extract(f))
+    .collect();
+    format!(
+        "{fns}\n\
+         globalThis.window = globalThis;\n\
+         globalThis.Node = function () {{}};\n\
+         var painted = [];\n\
+         var box = {{ replaceChildren: function (n) {{ painted.push(n); }},\n\
+           getAttribute: function () {{ return null; }}, querySelector: function () {{ return null; }},\n\
+           compareDocumentPosition: function () {{ return 0; }} }};\n\
+         globalThis.document = {{ getElementById: function () {{ return box; }},\n\
+           createElement: function () {{ return {{}}; }} }};\n\
+         var languages = {{ slow: function (src) {{ return {{ run: function () {{\n\
+           var v = src === 'NODE' ? Object.assign(new Node(), {{ value: 7 }}) : src;\n\
+           return new Promise(function (r) {{ setTimeout(function () {{ r(v); }}, 30); }}); }} }}; }} }};\n\
+         function script(name, src) {{\n\
+           var a = {{ type: 'slow', 'data-target': 't', 'data-name': name }};\n\
+           return {{ textContent: src, getAttribute: function (k) {{ return a[k] || null; }},\n\
+             setAttribute: function (k, v) {{ a[k] = v; }} }};\n\
+         }}\n"
+    )
+}
+
+/// Audit 2026-09-24 D3. A cell whose block is replaced while its async run is still
+/// awaiting must not publish when that run resolves: a slow first save's value landed
+/// after the fast second save's, won the shared scope for good (a producer with no inputs
+/// never re-runs), and an async `viewof` registered a detached control so the visible
+/// slider drove nothing.
+#[test]
+fn a_disposed_cell_publishes_nothing_when_its_run_resolves() {
+    let script = format!(
+        "{}\n\
+         var cells = [setupCell(script('data', 'V1')), setupCell(script('el', 'NODE'))];\n\
+         var pending = cells.map(function (c) {{ return c.run(); }});\n\
+         cells.forEach(function (c) {{ c.dispose(); }});\n\
+         Promise.all(pending).then(function () {{\n\
+           var s = window.__talijs.scope;\n\
+           console.log(JSON.stringify({{ scope: Object.keys(s).filter(function (k) {{ return s[k] !== undefined; }}), painted: painted.length }}));\n\
+         }});",
+        cell_harness()
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(
+        got, r#"{"scope":[],"painted":0}"#,
+        "a disposed cell's late value must reach neither the scope nor the page"
     );
 }

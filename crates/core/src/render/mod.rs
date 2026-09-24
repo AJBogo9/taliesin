@@ -82,6 +82,7 @@ mod emit;
 use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
 pub(crate) use emit::emit_children;
+pub(crate) use emit::is_closed_single_root;
 pub(crate) use emit::safe_url;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
@@ -1320,9 +1321,6 @@ fn render_internal_impl(
             nested: Vec::new(),
         });
     }
-    // LAST over the block list: every block that will ever be in the document is in it
-    // by now (References, footnotes, the title block), so a section's end is final.
-    mark_section_extents(&mut blocks);
     RenderedDoc {
         title,
         subtitle,
@@ -2985,71 +2983,6 @@ fn make_id(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
 fn heading_shift_for(levels: &[usize]) -> Option<i8> {
     let base = levels.iter().copied().min()? as i8;
     (base != 2).then_some(2 - base)
-}
-
-/// Record where each heading's section **ends**, as `data-section-end="<block-id>"` on
-/// the heading block: the id of the last block the section covers, the heading itself
-/// included. The DOM otherwise has no idea where a section stops — blocks are flat
-/// siblings of one root, and nothing wraps a heading-to-next-heading run — so anything
-/// wanting to *enumerate* a section (per-section length, section-scoped read state or
-/// change marks, a JS-driven fold) had to re-derive the boundaries from tag names.
-///
-/// **Extents nest.** A section ends at the next heading of the same level or shallower,
-/// so an `##` section contains its `###` subsections. That direction keeps information:
-/// the flat heading-to-next-heading run is recoverable from the next heading, the
-/// nesting is not.
-///
-/// A heading always covers at least itself, so an empty section (a heading immediately
-/// followed by a sibling heading, or one ending the document) points at its own id and
-/// no consumer needs a missing-value case.
-///
-/// **Generated trailing blocks belong to no section.** References and the footnotes
-/// block are appended after the body and carry no sourcepos; the last section would
-/// otherwise swallow them, claiming document furniture as its own content.
-///
-/// One consequence worth stating rather than discovering: this makes a heading block's
-/// HTML depend on the id of the last block of its section, so editing that last block
-/// re-emits its enclosing headings as `Update` ops. That is a handful of extra ops on
-/// edits at a section boundary, and it is the cheaper of the two couplings available —
-/// marking each *body* block with its heading instead would re-emit an entire section
-/// every time its heading's text changed.
-fn mark_section_extents(blocks: &mut [Block]) {
-    let heads: Vec<(usize, u8)> = blocks
-        .iter()
-        .enumerate()
-        .filter_map(|(i, b)| block_heading_level(&b.html).map(|l| (i, l)))
-        .collect();
-    if heads.is_empty() {
-        return;
-    }
-    let body_end = blocks
-        .iter()
-        .rposition(|b| !b.sourcepos.is_empty())
-        .unwrap_or(blocks.len() - 1);
-    for (n, &(i, level)) in heads.iter().enumerate() {
-        let end = heads[n + 1..]
-            .iter()
-            .find(|&&(_, l)| l <= level)
-            .map_or(blocks.len() - 1, |&(j, _)| j - 1)
-            .min(body_end)
-            // A floor, not a behaviour: no input reaches it today (a heading parsed from
-            // source carries a sourcepos, so `body_end >= i` for every real heading, and
-            // the next-heading branch cannot land below `i` either). Kept, and marked as
-            // unreachable rather than pinned by a test that could only pass vacuously, so
-            // that a future *generated* heading block appended past the body produces a
-            // degenerate self-extent instead of a silently backwards one.
-            .max(i);
-        let id = blocks[end].id.clone();
-        let html = &mut blocks[i].html;
-        // Append to the opening tag rather than inserting after `<hN`: `id`,
-        // `data-block-id` and `data-sourcepos` lead a heading tag in a fixed order that
-        // tests and the client both read, and a new attribute has no business splitting
-        // it. `tag_end` is quote-aware, so a `>` inside an authored attribute value
-        // cannot be mistaken for the end of the tag.
-        if let Some(at) = tag_end(html) {
-            html.insert_str(at, &format!(" data-section-end=\"{}\"", escape_attr(&id)));
-        }
-    }
 }
 
 /// Move a heading block's visible tag by `shift` levels (`<hN>` -> `<h{N+shift}>`, clamped

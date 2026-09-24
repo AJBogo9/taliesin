@@ -68,29 +68,28 @@ id in both lists, so the algorithm is an **LCS over the id sequences**:
 3. A matched anchor is normally left untouched. When its HTML *does* differ,
    `anchor_op` chooses between two outcomes by comparing the bodies with the
    source-position attributes masked out:
-   - if only `data-sourcepos` / `data-source-file` moved (an edit *above* shifted the
-     block's line numbers, but its content is byte-identical), it emits a **`SetMeta`**:
-     patch those two attributes in place, with no re-render, so the live element keeps
-     its DOM state;
+   - if only `data-sourcepos` moved (an edit *above* shifted the block's line numbers,
+     but its content is byte-identical), it emits a **`SetMeta`**: patch the positions in
+     place, with no re-render, so the live element keeps its DOM state;
    - if the body itself changed, it emits an **`Update`**. This is the path a
      **derived** block whose id isn't a pure content hash (a code cell's output block,
      keyed to the cell id) takes when an upstream cell re-runs.
 
 ### How `SetMeta` vs `Update` is decided
 
-The "with the source-position attributes masked out" step is `eq_ignoring_sourcepos`, a
-precise string comparison: `mask_sourcepos` rewrites every `data-sourcepos="…"` in
-both htmls to an empty `data-sourcepos=""` (the value dropped, the attribute and
-quotes kept), and the two are then compared byte for byte. `data-sourcepos` is the
-only thing masked, so a block that kept its content but moved to a *different file*
-does not read as equal, and takes `Update`.
+The "with the source-position attributes masked out" step compares the two htmls with
+every `data-sourcepos` *attribute value* blanked and everything else required to match byte
+for byte. A `data-source-file` that changed is therefore a real difference, and takes
+`Update`.
 
-Two guards run before the mask, though, and the second decides the expensive case.
-`anchor_op` is reached only when the two htmls differ, and it begins by counting the
-`data-sourcepos` attributes in the new html (`sourcepos_count`).
-A block carrying more than one, which is any `:::` div, whose inner blocks each carry
-their own, is never eligible for `SetMeta` however the mask compares: patching the outer
-attribute would leave every inner one stale, so it falls through to a full `Update`.
+A leaf block carries one position, on its own element, so the common case is a cheap
+string comparison with the first value blanked. A `:::` div carries its inner blocks'
+positions too, and a line shift above it moves all of them, so its `SetMeta` also carries
+`inner`: the new value of every position inside it, in document order, which the client
+writes onto the div's own descendants. Those values are read through the tag walker, so
+prose that merely quotes `data-sourcepos="…"` inside a `<code>` span is content and must
+match. A div that does not close is re-rendered instead, because the browser has moved the
+blocks after it inside it and its descendants are no longer its own html's.
 
 The whole decision is mechanical once the anchors are known (@fig-diff):
 
@@ -133,16 +132,13 @@ heading and the paragraph, their content hashes unchanged, never move.
 
 A real warm edit also shows the cost in bytes. Typing one new paragraph above an
 already-open collapse callout, benchmarked by `tools/live-edit-bench`, emits 55 operations:
-53 of them (every shifted paragraph, heading, figure and code cell below the edit) are
-`SetMeta` patches like the one above, so anything live in those blocks keeps running;
-together with the one `insert` for the new paragraph itself, those 53 weigh about 3.2 KB.
-The remaining 29 KB is a single `Update`: the open
-`::: {.callout-note collapse="true"}` div, whose inner blocks each carry their own source
-position and so must fully re-render to keep Ctrl-click accurate. One block shape costs
-90% of the payload; every other block's cost depends only on its own line number. That
-full `Update` is an accepted tradeoff, and its one visible cost is that a collapse callout
-you have opened closes again when an edit lands above it. (See [Choosing
-Taliesin](https://guide.taliesin.sh/using/choosing.html#sec-speed) for the full measurement.)
+54 of them (every shifted paragraph, heading, figure and code cell below the edit, and the
+open `::: {.callout-note collapse="true"}` div with the positions of its inner blocks) are
+`SetMeta` patches like the one above, so anything live in those blocks keeps running and
+the callout stays open. Together with the one `insert` for the new paragraph itself they
+weigh about 3.2 KB, and each block's cost depends only on how many positions it carries.
+(See [Choosing Taliesin](https://guide.taliesin.sh/using/choosing.html#sec-speed) for the
+full measurement.)
 
 ::: {.callout-note}
 ## No Move op
@@ -173,7 +169,10 @@ unambiguous. Removes are positionally independent (each names a concrete
 
 On connect, the server sends a `full_render`; on each save it diffs the new block
 list against the old one (an LCS over block ids) and broadcasts only the
-differences.
+differences. The exception is raw HTML the page does not hold as one element of its own:
+a comment and a lone closing tag emit no element, and a wrapper's unclosed opening line
+swallows the blocks after it. A save whose ops aim at, anchor on or bring in such a block
+is sent as a `full_render` instead (`needs_remount` in `diff.rs`).
 
 | Direction | Message | Payload |
 |---|---|---|
@@ -181,7 +180,7 @@ differences.
 | server → client | `update` | `target_id`, `html`, `gen` |
 | server → client | `insert` | `after_id`, `html`, `gen` |
 | server → client | `remove` | `target_id`, `gen` |
-| server → client | `set_meta` | `target_id`, `sourcepos`, `source_file`, `gen` (patch a shifted block's source mapping in place) |
+| server → client | `set_meta` | `target_id`, `sourcepos`, `source_file`, `inner`, `gen` (patch a shifted block's source mapping in place; `inner` holds a `:::` div's inner positions) |
 | server → client | `title` | `title` (retitle the tab with no re-mount, when the front matter's title changed but the body did not) |
 | server → client | `build-state` | `page`, `phase`, `ran`, `total`, `lang` (document-level execution progress, k of N) |
 | server → client | `cell-state` | `page`, `cell_id`, `state`, `started_ms`, `duration_ms`, `source` (`"cache"` or `"fresh"`: the queued / running / done badges, and the `⚡ cached` one that answers "why didn't my cell re-run?") |
@@ -206,10 +205,14 @@ For the exact JSON shape of every message and when each is sent, read
 The browser side (`web-client/client.js`) is thin: each op is one small DOM
 mutation, and the diff above keeps that set small.
 
-- **`update`** finds the target by id and `replaceWith`s the new HTML; **`insert`**
+- **`update`** finds the target by id (a child of `#tali-root` first, since ops name
+  top-level blocks) and `replaceWith`s the new HTML; **`insert`**
   builds a fragment and places it after `after_id` (or `prepend`s it when there is
   none); **`remove`** drops the element; **`set_meta`** patches only `data-sourcepos` /
-  `data-source-file` on the existing element and does not re-render.
+  `data-source-file` on the existing element (and the inner positions of a `:::` div on
+  its descendants) and does not re-render. An op whose target or anchor is not in the
+  page reloads it rather than guess, and a `<script>` an op brings in is re-created so it
+  runs, as it would have on load.
 - Every mutation runs inside **`keepScroll`**, which pins `window.scrollY` across the
   change (instantly, never animated), and is followed by **`afterChange`**, which
   rebuilds the TOC, re-runs the code enhancers, and re-scans for

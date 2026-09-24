@@ -229,13 +229,13 @@ impl Site {
         // width, keeping the navbar from shifting when the active item bolds. An
         // icon link has no text to bold (and for `{ icon, href }` the `label` is the
         // URL), so it gets an empty `data-label` (no width reservation) + an
-        // accessible name from the icon name.
+        // accessible name: its `text:` when written, else the icon name, as the footer does.
         let (data_label, name_attr) = match &icon {
             Some(_) => (
                 String::new(),
                 format!(
                     " aria-label=\"{}\"",
-                    esc(it.icon.as_deref().unwrap_or("link"))
+                    esc(it.text.as_deref().or(it.icon.as_deref()).unwrap_or("link"))
                 ),
             ),
             None => (esc(label), String::new()),

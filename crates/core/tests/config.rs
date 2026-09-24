@@ -40,6 +40,36 @@ fn native_flat_config_parses_nav_footer_and_icon() {
     );
 }
 
+/// An icon link's accessible name is its `text:` when the author wrote one, in the navbar as
+/// in the footer. The navbar used to name it by the icon alone, so one item read "github" in
+/// the header and "Source code on GitHub" in the footer.
+#[test]
+fn an_icon_link_is_named_by_its_text_in_the_navbar_and_the_footer() {
+    let item = "{ icon: github, text: \"Source code on GitHub\", href: \"https://github.com/x\" }";
+    let d = site(&format!(
+        "title: T\nnav:\n  right:\n    - {item}\nfooter:\n  right:\n    - {item}\n"
+    ));
+    let site = Site::discover(&d.0);
+    let html = site.render_page("index.tmd").expect("renders");
+    let names: Vec<String> = taliesin_core::render::tags(&html)
+        .filter(|t| t.name.eq_ignore_ascii_case("a"))
+        .filter(|t| {
+            taliesin_core::render::attrs(t)
+                .any(|a| a.name == "href" && a.value == "https://github.com/x")
+        })
+        .map(|t| {
+            taliesin_core::render::attrs(&t)
+                .find(|a| a.name == "aria-label")
+                .map_or_else(String::new, |a| a.value.to_string())
+        })
+        .collect();
+    assert_eq!(
+        names,
+        ["Source code on GitHub", "Source code on GitHub"],
+        "the navbar and footer links carry one name"
+    );
+}
+
 /// The raw-injection family is gone entirely: **inert and diagnosed**, all three of them.
 /// `body-start:`/`body-end:` went on 2026-08-02 and `head:`, the last one, on 2026-08-18 at
 /// still-zero adoption. An author who leaves any of them in a `_site.yml` must not be left
