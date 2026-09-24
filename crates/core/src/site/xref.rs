@@ -911,14 +911,10 @@ mod tests {
     /// the markup cite nothing, and an anchor is read decoded.
     #[test]
     fn xref_anchors_in_reads_elements_not_text() {
-        // The tag is spelled in two pieces because `tests/token_contract.rs` reads any
-        // source file holding the whole word as browser code.
         let blocks = [
-            block(concat!(
-                r##"<div class="cell tali-js"><"##,
-                r##"script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</"##,
-                r##"script></div>"##
-            )),
+            block(
+                r##"<div class="cell tali-js"><script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</script></div>"##,
+            ),
             block(r##"<!-- <a href="#sec-commented" class="tali-xref">Section</a> -->"##),
             block(r##"<p><a class='tali-xref' href='other.html#sec-single'>Section</a></p>"##),
         ];

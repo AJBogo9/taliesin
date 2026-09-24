@@ -2547,11 +2547,7 @@ mod tests {
                 panic!("({pass}) the hidden cell's define blob was dropped: {html}")
             });
             assert!(
-                // Assembled, not literal: an opening script tag in this file would pull it
-                // into `token_contract`'s browser-attribute census as phantom vocabulary.
-                bridge
-                    .html
-                    .contains(&format!("<{} type=\"tali-define\">", "script"))
+                bridge.html.contains("<script type=\"tali-define\">")
                     && bridge.html.contains("\"x\"")
                     && bridge.html.contains(" hidden"),
                 "({pass}) the bridge block must carry the blob and stay hidden: {}",

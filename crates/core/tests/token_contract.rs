@@ -64,7 +64,9 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-src",
     "data-state",
     "data-tali-bound",
-    "data-tali-cell",
+    // `data-tali-cell` went on 2026-09-24, when the census stopped reading whole Rust files
+    // for one `<script` mention: `emit.rs` writes it on an executed cell's source listing,
+    // and names `<script` only in a comment. No browser code selects on it.
     "data-tali-cell-source",
     "data-tali-cell-state",
     "data-tali-done",
@@ -395,13 +397,92 @@ fn runtime_sources() -> String {
     }
     rs.sort();
     for p in rs {
-        let text = std::fs::read_to_string(&p).unwrap_or_default();
-        if text.contains("<script") {
-            buf.push_str(&strip_comment_lines(&text));
-            buf.push('\n');
+        let name = p.file_name().unwrap_or_default().to_string_lossy();
+        if name == "tests.rs" || name.ends_with("_tests.rs") {
+            continue;
         }
+        let text = std::fs::read_to_string(&p).unwrap_or_default();
+        buf.push_str(&rust_browser_code(&text));
+        buf.push('\n');
     }
     buf
+}
+
+/// What of one Rust source file the browser runs: the bodies of the `<script>` and `<style>`
+/// elements it writes inline, outside comments and `#[cfg(test)]` modules. A test-only file
+/// (`tests.rs`, `*_tests.rs`) is skipped by its caller's name check.
+fn rust_browser_code(text: &str) -> String {
+    let code = strip_comment_lines(&drop_test_modules(text));
+    let mut out = String::new();
+    for (open, close) in [("<script", "</script>"), ("<style", "</style>")] {
+        let mut rest = code.as_str();
+        while let Some(at) = rest.find(open) {
+            let body = &rest[at..];
+            // A bare needle (`find("<script")` in a scanner) closes nothing: not a body.
+            let Some(end) = body.find(close) else {
+                rest = &body[open.len()..];
+                continue;
+            };
+            out.push_str(&body[..end]);
+            out.push('\n');
+            rest = &body[end..];
+        }
+    }
+    out
+}
+
+/// `text` less its `#[cfg(test)] mod … { … }` blocks. rustfmt closes a module at column 0,
+/// so the block ends at the first line that is exactly `}`.
+fn drop_test_modules(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut lines = text.lines().peekable();
+    while let Some(line) = lines.next() {
+        let opens_module = |l: &&str| {
+            let l = l
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ");
+            l.starts_with("mod ") && l.ends_with('{')
+        };
+        if line.trim() == "#[cfg(test)]" && lines.peek().is_some_and(opens_module) {
+            for inner in lines.by_ref() {
+                if inner == "}" {
+                    break;
+                }
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// A Rust file counts as browser code for what it SHIPS inline, nothing more. The whole
+/// file used to count as soon as `<script` appeared anywhere in it, a comment or a test
+/// fixture included, so three packages spelled the tag in pieces to keep a test out of the
+/// census, and an emitter's own attribute (`data-tali-cell`, which no browser code selects
+/// on) stood in the browser-selected pin because `emit.rs` mentions `<script` in a comment
+/// (audit 2026-09-24, WP13 leftover).
+#[test]
+fn only_what_a_rust_file_ships_inline_counts_as_browser_code() {
+    let src = concat!(
+        "// Emits the <script> element for a cell.\n",
+        "fn emit() -> String {\n",
+        "    format!(\"<pre data-emitted-only>\")\n",
+        "}\n",
+        "const JS: &str = \"<script>el.dataset.realConsumer = 1; q('[data-real-selector]')</script>\";\n",
+        "const CSS: &str = \"<style>[data-styled] { color: red }</style>\";\n",
+        "#[cfg(test)]\n",
+        "mod tests {\n",
+        "    const FIXTURE: &str = \"<script>q('[data-test-fixture]')</script>\";\n",
+        "}\n",
+    );
+    let mut attrs = BTreeSet::new();
+    scan_data_attrs(&rust_browser_code(src), Scan::Source, &mut attrs);
+    assert_eq!(
+        attrs.into_iter().collect::<Vec<_>>(),
+        ["data-real-consumer", "data-real-selector", "data-styled"]
+    );
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {

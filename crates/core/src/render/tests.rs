@@ -2285,17 +2285,8 @@ fn a_built_page_ships_no_reader_facing_theme_control() {
     // one self-gated on a global `theme_head` ships in every page, so it was offered on
     // every static build, and removing only the gear would have left it standing.
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
-    // The gear's attribute is JOINED from parts that are not themselves attribute names.
-    // `token_contract.rs`'s browser census scans every Rust source containing `<script`,
-    // which includes this file, so any `data-…` literal here lands back in the
-    // browser-selected set — on a test whose whole point is that the attribute is gone.
-    // Interpolating the last segment into a prefix is NOT enough, and that mistake is why
-    // this comment spells nothing out: the scanner keeps a trailing `-` on purpose, to
-    // catch exactly that kind of concatenation-built name, so the prefix alone registers.
-    // Every segment here is therefore inert on its own.
-    let gear = ["data", "tali", "settings"].join("-");
     for gone in [
-        gear.as_str(),
+        "data-tali-settings",
         "tali-rmenu",
         "taliInitReaderMenu",
         "taliInitReaderPrefs",
@@ -6167,14 +6158,8 @@ fn preview_ships_the_js_libs_before_the_page_has_a_js_cell() {
 
     // …and a Build page that DOES have a cell still gets them, so the gate still works.
     //
-    // The body comes from a REAL render, not a hand-written marker. `token_contract.rs`'s
-    // browser-selected census scans every Rust source containing `<script` — this file
-    // among them — and it reads raw text, so writing one of those attribute names in a
-    // fixture (or even naming the family in a comment) enters it into the vocabulary the
-    // browser is pinned against and fails a census that has nothing to do with `{js}`
-    // assets. Same trap as `gate_script.rs`'s scan of the interpreter-gate names.
-    // Rendering the cell also tests the marker the emitter really produces rather than
-    // this test's guess at it.
+    // The body comes from a REAL render, not a hand-written marker: rendering the cell tests
+    // the marker the emitter really produces rather than this test's guess at it.
     let cell_body = render_document("```{js}\nreturn 1;\n```\n").body_html();
     assert!(
         has_js_cells(&cell_body),
