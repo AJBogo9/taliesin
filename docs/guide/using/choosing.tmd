@@ -60,16 +60,17 @@ misleading.
 | Whole-project build, this guide (16 pages) | **0.21 s** | Including executed cells replayed from `_freeze/` |
 | Whole-project build, `corpus/tech-blog` (17 pages) | **0.35 s** | 20.7 ms/page, the heaviest project in the tree |
 | `preview` time-to-ready, single document | **≈40 ms** | Process spawn to the first HTTP 200; ≈0.3 s for a highlight-dense document |
-| `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
+| `preview` time-to-ready, 16-page book | **≈110 ms** | Discovery, nav, cross-reference registry, first render |
 | Warm edit: diff only | **0.45 ms** | The block diff for one keystroke-sized edit |
 | Warm edit: re-render + diff | **2.9 ms** | One document, against a 107 ms cold render of it |
 | Warm-edit payload | **3.2 KB** | Versus a 288 KB full page a reload would refetch |
 | Save to the open tab, `corpus/tech-blog` (17 pages) | **≈35 ms** | End to end: the watcher, the cross-reference refresh, re-render, diff, websocket |
 | Cross-reference refresh, this guide (16 pages) | **3.0 ms** | Added to every save in a *site* preview |
 
-*(Every figure re-measured 2026-09-24, release build, on a 16-core machine with no other
-build running. Each build figure is the duration the build prints for itself, best of
-three with a warm `_freeze/` cache, and each page count is the one it reports
+*(Every figure re-measured 2026-09-24, the 16-page time-to-ready 2026-09-25, release build,
+on a 16-core machine with no other build running. Each build figure is the duration the
+build prints for itself, best of three with a warm `_freeze/` cache, and each page count
+is the one it reports
 (`find … -name '*.html'` is not the page count, since a project may ship its own
 `404.html` and `_`-prefixed files are never pages). The ready rows are the median of five
 runs: wall time from spawning `taliesin preview <target> <port>` to the first HTTP 200
