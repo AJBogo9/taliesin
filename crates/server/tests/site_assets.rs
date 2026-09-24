@@ -96,3 +96,67 @@ fn a_referenced_file_in_an_underscore_folder_is_deployed() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A draft's text stayed out of a build, but its folder went live: the figure and data
+/// beside a `draft: true` post were mirrored wholesale. So were an editor's backups and a
+/// merge's leftovers, `index.tmd~`, `#index.tmd#` and `index.tmd.orig`, each a full copy of
+/// a page's source under a name the source-extension rule did not recognise. A folder whose
+/// only pages are drafts is not mirrored, and residue never is; a file a published page
+/// references still ships from either.
+#[test]
+fn a_site_build_leaves_out_draft_folders_and_editor_residue() {
+    let dir = tmp_dir("residue");
+    let root = dir.join("site");
+    fs::create_dir_all(root.join("posts/draft")).unwrap();
+    fs::create_dir_all(root.join("posts/live")).unwrap();
+    fs::write(root.join("_site.yml"), "title: S\n").unwrap();
+    let page = "---\ntitle: Home\n---\n\n![Shared.](posts/draft/shared.png)\n";
+    for (f, body) in [
+        ("index.tmd", page),
+        ("index.tmd~", page),
+        ("#index.tmd#", page),
+        ("index.tmd.orig", page),
+        ("patch.rej", "x"),
+        (
+            "posts/live/index.tmd",
+            "---\ntitle: Live\n---\n\n![Fig.](fig.png)\n",
+        ),
+        ("posts/live/fig.png", "live"),
+        (
+            "posts/draft/index.tmd",
+            "---\ntitle: WIP\ndraft: true\n---\n\nWIP.\n",
+        ),
+        ("posts/draft/wip-figure.png", "wip"),
+        ("posts/draft/data.csv", "wip"),
+        ("posts/draft/shared.png", "shared"),
+    ] {
+        fs::write(root.join(f), body).unwrap();
+    }
+    let out = dir.join("out");
+
+    let (ok, err) = build(&root, &out, &[]);
+
+    assert!(ok, "{err}");
+    for residue in [
+        "index.tmd~",
+        "#index.tmd#",
+        "index.tmd.orig",
+        "patch.rej",
+        "posts/draft/wip-figure.png",
+        "posts/draft/data.csv",
+    ] {
+        assert!(
+            !out.join(residue).exists(),
+            "`{residue}` must not be published"
+        );
+    }
+    assert!(
+        out.join("posts/live/fig.png").is_file(),
+        "a live post's folder ships"
+    );
+    assert!(
+        out.join("posts/draft/shared.png").is_file(),
+        "a file a published page references ships from a draft's folder too"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

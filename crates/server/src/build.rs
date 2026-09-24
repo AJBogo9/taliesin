@@ -2162,7 +2162,18 @@ async fn build_site_async(
     let freeze_dir = root.join("_freeze");
 
     // 1. Mirror non-source assets (images, etc.) preserving the tree.
-    let (asset_paths, skipped_residue) = mirror_assets(root, &out);
+    // A folder whose pages are all drafts is the drafts' own: its figures and data are as
+    // unpublished as its text. A folder that also holds (or sits above) a published page is
+    // not held back, and the site root never is.
+    let held_back: Vec<PathBuf> = site
+        .excluded_drafts
+        .iter()
+        .filter_map(|d| Path::new(d).parent())
+        .filter(|d| !d.as_os_str().is_empty())
+        .filter(|d| !site.pages.iter().any(|p| Path::new(&p.rel).starts_with(d)))
+        .map(Path::to_path_buf)
+        .collect();
+    let (asset_paths, skipped_residue) = mirror_assets(root, &out, &held_back);
     if !skipped_residue.is_empty() {
         log::warn(&format!(
             "skipped {} build-cache dir(s) (not deployed): {}",
@@ -2498,14 +2509,26 @@ async fn build_site_async(
 /// `.sass` (stylesheet sources — output references the compiled `.css`). Keeping these
 /// out of `_site/` is publish hygiene: a stray `notes.md` or `theme.scss` in the source
 /// tree never leaks onto the live site. (To deploy a private *binary* asset selectively,
-/// the `_`/`.`-prefix convention still applies; these are excluded by kind.)
-const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
+/// the `_`/`.`-prefix convention still applies; these are excluded by kind.) `.orig` and
+/// `.rej` are a merge's and a patch's leftovers, each a copy of a source file (see
+/// [`is_editor_residue`]).
+const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass", "orig", "rej"];
+
+/// An editor's backup (`index.tmd~`) or autosave (`#index.tmd#`): a full copy of the page's
+/// source under a name [`SKIP_EXT`] does not recognise, so it published the source the
+/// extension rule exists to keep out (and a draft's, whose page is held back).
+fn is_editor_residue(name: &str) -> bool {
+    name.ends_with('~') || (name.len() > 1 && name.starts_with('#') && name.ends_with('#'))
+}
 
 /// Copy every non-source file under `root` into `out`, mirroring the directory tree.
 /// Skips: source-only extensions ([`SKIP_EXT`]: `.tmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
-/// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
-/// build-tool cache/artifact dirs (`*_cache/`, `*_files/`, knitr/RMarkdown
-/// residue), and the output dir itself.
+/// `.sass`, and merge residue), editor residue ([`is_editor_residue`]), `_`-prefixed and
+/// dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …), build-tool cache/artifact
+/// dirs (`*_cache/`, `*_files/`, knitr/RMarkdown residue), the output dir itself, and the
+/// `held_back` folders (root-relative): a folder whose only pages are drafts, whose figures
+/// and data are as unpublished as its text. A file a published page REFERENCES from any of
+/// these still ships, through [`deploy_referenced_sources`].
 /// Returns `(out-relative paths copied, names of skipped cache dirs)` so the caller can
 /// report residue it dropped rather than silently omitting it, and knows which output
 /// files this build owns (for the stale-file sweep).
@@ -2518,11 +2541,13 @@ const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 /// to a sibling directory of the same checkout is first-party authoring, while `vendor ->
 /// ../.git` (an ordinary name, referenced by no page) published `.git/config` and every
 /// object until the 2026-09-24 audit, because only the link's own name was tested.
-fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
+fn mirror_assets(root: &Path, out: &Path, held_back: &[PathBuf]) -> (Vec<PathBuf>, Vec<String>) {
+    #[allow(clippy::too_many_arguments)]
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
+        held_back: &[PathBuf],
         seen: &mut std::collections::HashSet<PathBuf>,
         copied: &mut Vec<PathBuf>,
         skipped: &mut Vec<String>,
@@ -2550,6 +2575,8 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
                 taliesin_core::includes::Reach::Wholesale,
             )
             .is_err()
+                || held_back.iter().any(|d| rel == d)
+                || is_editor_residue(name)
             {
                 continue;
             }
@@ -2564,7 +2591,7 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
                     skipped.push(name.to_string());
                     continue;
                 }
-                walk(&p, root, out, seen, copied, skipped);
+                walk(&p, root, out, held_back, seen, copied, skipped);
             } else if !SKIP_EXT.contains(&p.extension().and_then(|s| s.to_str()).unwrap_or("")) {
                 let dest = out.join(rel);
                 if let Some(parent) = dest.parent() {
@@ -2582,6 +2609,7 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
         root,
         root,
         out,
+        held_back,
         &mut std::collections::HashSet::new(),
         &mut copied,
         &mut skipped,
@@ -3585,7 +3613,7 @@ mod mirror_tests {
         }
         fs::write(root.join(".RData"), b"x").unwrap(); // dotfile -> skipped
 
-        let (copied, skipped) = mirror_assets(&root, &out);
+        let (copied, skipped) = mirror_assets(&root, &out, &[]);
 
         assert!(out.join("keep.png").exists(), "plain asset should copy");
         assert!(
@@ -4228,7 +4256,7 @@ mod symlink_containment_tests {
 
         let out = dir.join("out");
         fs::create_dir_all(&out).unwrap();
-        let (copied, _skipped) = mirror_assets(&book, &out);
+        let (copied, _skipped) = mirror_assets(&book, &out, &[]);
 
         assert!(
             !out.join("private/secret.png").exists(),
@@ -4280,7 +4308,7 @@ mod symlink_containment_tests {
 
         let out = dir.join("out");
         fs::create_dir_all(&out).unwrap();
-        let (copied, _skipped) = mirror_assets(&blog, &out);
+        let (copied, _skipped) = mirror_assets(&blog, &out, &[]);
 
         for leaked in ["vendor/config", "vendor/objects/ab/cdef", "data.txt"] {
             assert!(

@@ -129,11 +129,12 @@ taliesin build docs/         # -> docs/_book/  (a book, if _site.yml says so)
 
 A site/book build (and the `--out` form) copies the local files your pages
 *reference* (images, audio, videos, vendored scripts) next to the HTML and leaves
-behind what isn't deliverable (the source files nothing links to, and anything
-whose name starts with `_` or `.`, so `_freeze/` stays out), so the output folder
-is self-contained and you can copy or `rsync` it as-is. A file a page references
-is copied even from an `_`-prefixed folder such as `_images/`; one under a
-`.`-prefixed folder never is. A built-in `404.html` is
+behind what isn't deliverable (the source files nothing links to, editor and merge
+leftovers such as `index.tmd~`, `#index.tmd#` and `.orig`, a folder whose only pages
+are drafts, and anything whose name starts with `_` or `.`, so `_freeze/` stays out),
+so the output folder is self-contained and you can copy or `rsync` it as-is. A file
+a page references is copied even from an `_`-prefixed folder such as `_images/` or a
+draft's folder; one under a `.`-prefixed folder never is. A built-in `404.html` is
 emitted unless you supply your own `404.tmd`. The full set of flags is in the
 [CLI reference](../reference/cli.tmd); common build-and-deploy patterns live in
 [Recipes](recipes.tmd).
