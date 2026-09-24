@@ -2399,6 +2399,43 @@ fn missing_bibliography_file_warns() {
     );
 }
 
+/// A `#|` option value is YAML, so a `#` after whitespace starts a comment. The comment
+/// used to be part of the value: `#| echo: false  # hide setup` was not the word `false`,
+/// so the hidden cell's code was published, and a commented `label:` named no figure.
+#[test]
+fn a_trailing_yaml_comment_on_a_cell_option_is_a_comment() {
+    assert!(!cell_flag_or(
+        "#| echo: false  # hide setup\n1",
+        "echo",
+        true
+    ));
+    assert!(!cell_flag_or("#| include: no # x\n1", "include", true));
+    assert_eq!(
+        cell_option("#| label: fig-a  # the scatter\n1", "label"),
+        Some("fig-a")
+    );
+    assert_eq!(
+        cell_option("#| fig-cap: \"Plot #1\"  # a note\n1", "fig-cap"),
+        Some("Plot #1"),
+        "a `#` inside quotes is text, the one after the closing quote a comment"
+    );
+    assert_eq!(
+        cell_option("#| fig-cap: \"a # b\"\n1", "fig-cap"),
+        Some("a # b")
+    );
+    assert_eq!(
+        cell_option("#| fig-cap: Issue#42 fixed\n1", "fig-cap"),
+        Some("Issue#42 fixed"),
+        "a `#` with no whitespace before it is text"
+    );
+    let doc = render_document("```{python}\n#| echo: false  # hide setup\nSECRET = 1\n```\n");
+    assert!(
+        !doc.blocks.iter().any(|b| b.html.contains("SECRET")),
+        "a hidden cell's code is not published: {:?}",
+        doc.blocks
+    );
+}
+
 #[test]
 fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
     // `#| echo: no` / `execute: {echo: off}` are STRINGS in YAML 1.2; without
