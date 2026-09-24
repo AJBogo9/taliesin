@@ -565,7 +565,7 @@ impl Site {
     ///
     /// Exists so the live preview can resolve a tab title on every rebuild WITHOUT building
     /// the page chrome: `page_chrome` renders the navbar, footer, an O(chapters) book
-    /// sidebar, the social/JSON-LD meta and a `PageIncludes` clone, and the preview would
+    /// sidebar and the social/JSON-LD meta, and the preview would
     /// throw all of it away to read two scalars — under the site lock, which page serving
     /// and `/search-index.js` also wait on. Resolves identically to the static build
     /// (`page_html_external`), which reaches the same helper through `SiteCtx`.
@@ -590,23 +590,19 @@ impl Site {
             _ => String::new(),
         };
         let book = self.is_book();
-        // `PageIncludes` is now purely the chrome's own carrier for markup that belongs in
-        // the `<head>` or at the top of the body — per-page OpenGraph / Twitter-card / SEO
-        // meta so a shared link renders a rich preview, the feed links, the draft banner.
-        // It had one AUTHOR-configured source, `_site.yml`'s `head:`, cut 2026-08-18 at zero
-        // adoption; nothing an author writes reaches this any more.
-        let mut includes = render::PageIncludes::default();
+        // The chrome's own markup for the `<head>`: per-page OpenGraph / Twitter-card / SEO
+        // meta so a shared link renders a rich preview, then the feed links. Nothing an
+        // author writes reaches it since `_site.yml`'s `head:` was cut on 2026-08-18.
+        let head = format!("{}{}", meta::social_head(self, page), meta::feed_head(self));
         // A draft page (only reachable in preview — a built page is never `draft`) gets a
         // quiet top-of-body banner so the author knows it won't publish. Read-only view
         // affordance; no source write-back.
-        if page.draft {
-            includes.before_body.insert_str(
-                0,
-                "<div class=\"tali-draft-banner\" role=\"status\">Draft: not published</div>",
-            );
-        }
-        includes.in_header.push_str(&meta::social_head(self, page));
-        includes.in_header.push_str(&meta::feed_head(self));
+        let banner = if page.draft {
+            "<div class=\"tali-draft-banner\" role=\"status\">Draft: not published</div>"
+                .to_string()
+        } else {
+            String::new()
+        };
         // The cross-page search index (+ how to resolve a result's page URL from
         // this page's depth). Empty when there are no entries; injected only where
         // the search palette also rides along (TOC pages).
@@ -649,7 +645,8 @@ impl Site {
             // top of the page (`expand_page`), not chrome under it.
             post_nav_html: self.book_nav_html(page, depth),
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
-            includes,
+            head,
+            banner,
             favicon,
             search_index,
             // The `<title>` suffix names the site on inner tabs; the root index stays bare.
@@ -1084,7 +1081,7 @@ impl Site {
         // data-URI favicon), then swap in the one hand-built block.
         let mut doc = render::render_document("");
         doc.title = Some("Page not found".to_string());
-        doc.includes.in_header.push_str(NOT_FOUND_STYLE);
+        doc.head.push_str(NOT_FOUND_STYLE);
         doc.blocks = vec![Block {
             id: "tali-404".to_string(),
             sourcepos: "1:1-1:1".to_string(),

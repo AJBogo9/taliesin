@@ -423,10 +423,6 @@ struct PageDoc {
     /// different title in reach is how the first one drifted.
     tab_title: String,
     toc: bool,
-    /// The chrome's own markup for this page (SEO meta, feed links, the draft banner).
-    /// No longer anything the AUTHOR wrote: the front-matter `include-*`/`css` family went
-    /// on 2026-08-02 and `_site.yml`'s `head:` on 2026-08-18, so nothing merges here.
-    includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     errored: bool,
@@ -955,7 +951,6 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
         tab_title: site.page_title(page, &pass.doc),
         toc: pass.toc,
-        includes: pass.doc.includes,
         blocks: pass.doc.blocks,
         diagnostics: pass.diags,
         errored: false,
@@ -994,7 +989,6 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
                 tab_title: ps.doc.tab_title.clone(),
                 toc: ps.doc.toc,
                 body: ps.doc.body_html(),
-                includes: ps.doc.includes.clone(),
                 generation: ps.doc.generation,
             })
             .unwrap_or_default()
@@ -1041,7 +1035,6 @@ struct LivePage {
     tab_title: String,
     toc: bool,
     body: String,
-    includes: taliesin_core::render::PageIncludes,
     generation: u64,
 }
 
@@ -1057,7 +1050,6 @@ struct LivePage {
 fn shell_digest(site: &Site, dir: &Path, page: &Page, doc: &PageDoc) -> u64 {
     let live = LivePage {
         toc: doc.toc,
-        includes: doc.includes.clone(),
         ..LivePage::default()
     };
     let html = live_page_html(&SiteFrame::of(site, page), dir, page, &live);
@@ -1073,14 +1065,10 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         tab_title,
         toc,
         body,
-        includes: page_includes,
         generation,
     } = live;
     let (toc, generation) = (*toc, *generation);
     let chrome = &frame.chrome;
-    // Site-level `format: html:` includes first, then this page's own front matter.
-    let mut includes = chrome.includes.clone();
-    includes.merge(page_includes);
 
     // The TOC rail is an empty landmark the client fills once it has the headings; the
     // wrapper class that reserves the column for it is `SiteCtx::layout`'s business, not
@@ -1163,12 +1151,11 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         ship_katex: true,
         extra_head: &extra_head,
         body_class: &body_class,
-        include_in_header: &includes.in_header,
-        include_before_body: &includes.before_body,
+        head: &chrome.head,
+        before_body: &chrome.banner,
         body: &body,
         scripts_pre: &scripts_pre,
         scripts_post: &scripts_post,
-        include_after_body: &includes.after_body,
         ..taliesin_core::PageParts::defaults()
     })
 }
@@ -1833,7 +1820,6 @@ async fn build_page(
     let title_changed = ps.doc.tab_title != tab_title;
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
-    ps.doc.includes = doc.includes;
     // Bump the render generation only on a real body change (see serve::rebuild), so a
     // client that server-rendered this page pre-exec re-mounts to pick up the outputs.
     if !ops.is_empty() {
@@ -2310,7 +2296,6 @@ fn shell_digests(project: &Project, open: &[String]) -> HashMap<String, u64> {
                 let ps = pages.get(rel)?;
                 let doc = PageDoc {
                     toc: ps.doc.toc,
-                    includes: ps.doc.includes.clone(),
                     ..PageDoc::default()
                 };
                 Some((rel.clone(), doc))

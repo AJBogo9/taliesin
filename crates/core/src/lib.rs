@@ -17,8 +17,8 @@
 //!
 //! There is no longer any AUTHOR-CONFIGURED raw injection: the
 //! `include-in-header`/`-before-body`/`-after-body`/`css` family went on 2026-08-02 and
-//! `_site.yml`'s `head:` on 2026-08-18, so [`render::PageIncludes`] now carries only the
-//! chrome's own markup (SEO meta, feed links, the draft banner).
+//! `_site.yml`'s `head:` on 2026-08-18, so a page's head and banner markup
+//! ([`render::SiteCtx`]) is only the chrome's own (SEO meta, feed links, the draft banner).
 //!
 //! Code cells are likewise *executed* against a live kernel. None of this is a
 //! vulnerability under the intended use, but it means taliesin must **not** be

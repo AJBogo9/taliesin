@@ -52,7 +52,7 @@ command, not a preview gesture.
 crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model → render
   src/render/      block model + emission (a module dir):
     mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
-    model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
+    model.rs         the block-model data types (Cell, Block, RenderedDoc, SiteDefaults)
     tests.rs         render unit + corpus-invariant tests
     emit.rs          per-block HTML (server-side highlighting, the `code-fold` <details>)
     divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)

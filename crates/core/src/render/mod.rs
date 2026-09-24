@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 
 mod model;
 pub use model::{
-    AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode,
-    PageIncludes, RenderedDoc, Severity, SiteDefaults, Warning,
+    AssetMode, Block, Cell, CellFigure, CellTable, ExternalAssets, JsOpts, OutputMode, RenderedDoc,
+    Severity, SiteDefaults, Warning,
 };
 pub(crate) use model::{BufLine, CellRole, CodeFold};
 
@@ -573,10 +573,6 @@ fn render_internal_impl(
     // but skips the visible `<h1>` header (nav landing pages don't need it).
     let hide_title_block = front.title_block_hidden();
     let bib_paths = front.bibliography();
-    // Populated only by a project's `_site.yml head:` (merged in by `site::page_chrome`) and
-    // by the chrome's own draft banner; a document's front matter has had no include keys
-    // since the raw-injection family was retired on 2026-08-02.
-    let includes = PageIncludes::default();
     // Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<Warning> = Vec::new();
@@ -1415,7 +1411,7 @@ fn render_internal_impl(
         // path overrides this via `page_toc` using `toc_explicit`.
         toc: toc_explicit.unwrap_or(false),
         toc_explicit,
-        includes,
+        head: String::new(),
         warnings,
         xref_numbers: xref_registry,
         blocks,

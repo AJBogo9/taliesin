@@ -18,9 +18,11 @@ pub struct SiteCtx {
     /// reading column instead of the website layout (navbar on top). (Field name kept for
     /// stability; it no longer holds a left sidebar.)
     pub book_sidebar: Option<String>,
-    /// Site-level `format: html:` includes (header/body/css from `_site.yml`),
-    /// merged ahead of each page's own front-matter includes.
-    pub includes: PageIncludes,
+    /// The chrome's own `<head>` markup for this page: its OpenGraph/SEO meta and the feed
+    /// links. Nothing an author writes reaches it.
+    pub head: String,
+    /// Markup at the top of the `<body>`: the draft banner on a draft page, else empty.
+    pub banner: String,
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
     /// none configured), emitted as `<link rel="icon">`.
     pub favicon: String,
@@ -137,8 +139,10 @@ pub struct PageParts<'a> {
     /// A `<body>` attribute string including its leading space (e.g. ` class="…"`),
     /// or `""`.
     pub body_class: &'a str,
-    pub include_in_header: &'a str,
-    pub include_before_body: &'a str,
+    /// Markup appended to the `<head>`: the page's meta (see [`SiteCtx::head`]).
+    pub head: &'a str,
+    /// Markup at the top of the `<body>`, ahead of the chrome (see [`SiteCtx::banner`]).
+    pub before_body: &'a str,
     /// The body region: chrome + content (build/site) or the live `#tali-root`.
     pub body: &'a str,
     /// Scripts emitted *before* the shared enhancer registry (the static
@@ -147,7 +151,6 @@ pub struct PageParts<'a> {
     /// Scripts emitted *after* it (the static `taliEnhanceCode` call + TOC scripts,
     /// or the live websocket client).
     pub scripts_post: &'a str,
-    pub include_after_body: &'a str,
     /// How framework CSS/JS is delivered (inline blobs, or links to `_assets/`).
     pub assets: AssetMode<'a>,
 }
@@ -167,12 +170,11 @@ impl<'a> PageParts<'a> {
             ship_katex: false,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body: "",
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::Inline { mermaid_src: "" },
         }
     }
@@ -251,7 +253,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     // The head CSS block + framework script tags differ by asset mode; the body frame,
     // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
-    // The enhancer registry, emitted in <head> AHEAD of `{include_in_header}`.
+    // The enhancer registry, emitted in <head> AHEAD of `{head}`.
     //
     // `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`, and the documented
     // way to ship an extension enhancer is a `<script>` in the project's `_site.yml` `head:`
@@ -374,15 +376,15 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {theme_init}
 {style_block}{katex_block}
 {js_head}
-{enhancer_registry}{include_in_header}
+{enhancer_registry}{head}
 {extra_head}</head>
 <body{body_class}>
-{skip_link}{include_before_body}
+{skip_link}{before_body}
 {body}
 {scripts_pre}
 {code_scripts}
 {scripts_post}
-{include_after_body}
+
 </body>
 </html>
 "#,
@@ -394,15 +396,14 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         katex_block = katex_block,
         js_head = js_head_html,
         enhancer_registry = enhancer_registry,
-        include_in_header = p.include_in_header,
+        head = p.head,
         extra_head = p.extra_head,
         body_class = p.body_class,
-        include_before_body = p.include_before_body,
+        before_body = p.before_body,
         body = p.body,
         scripts_pre = scripts_pre,
         code_scripts = framework_scripts,
         scripts_post = scripts_post,
-        include_after_body = p.include_after_body,
     )
 }
 
@@ -614,26 +615,19 @@ pub fn render_doc_to_page(
         }
         None => content,
     };
-    // Site-level `format: html:` includes (from `_site.yml`) apply to every page
-    // first; the page's own front-matter includes follow.
-    let mut includes = match site {
-        Some(s) => {
-            let mut merged = s.includes.clone();
-            merged.merge(&doc.includes);
-            merged
+    // The `<head>` additions: a site page's chrome meta, then the doc's own; a standalone
+    // doc has no chrome, so its OpenGraph/SEO meta comes from its own front matter.
+    let (head, banner) = match site {
+        Some(s) => (format!("{}{}", s.head, doc.head), s.banner.as_str()),
+        None => {
+            let meta = social_meta_head(
+                doc.title.as_deref(),
+                doc.description.as_deref(),
+                doc.is_article,
+            );
+            (format!("{}{meta}", doc.head), "")
         }
-        None => doc.includes.clone(),
     };
-    // A standalone doc has no site chrome, so emit its OpenGraph/SEO meta here from
-    // its own front matter. Site pages already carry richer per-page meta via the
-    // chrome includes, so this only runs off-site (`site` is `None`).
-    if site.is_none() {
-        includes.in_header.push_str(&social_meta_head(
-            doc.title.as_deref(),
-            doc.description.as_deref(),
-            doc.is_article,
-        ));
-    }
     let favicon = match site {
         Some(s) if !s.favicon.is_empty() => favicon_link(&s.favicon),
         // No configured favicon (a book, or any project that sets none): fall back
@@ -647,8 +641,8 @@ pub fn render_doc_to_page(
         with_site_css: site.is_some(),
         ship_katex,
         body_class: &body_class,
-        include_in_header: &includes.in_header,
-        include_before_body: &includes.before_body,
+        head: &head,
+        before_body: banner,
         body: &body_content,
         // A static page is a read-only view with no editor bridge, so it ships no
         // click-to-source handler (that would draw a dead `.tali-hl` outline on every
@@ -656,7 +650,6 @@ pub fn render_doc_to_page(
         // live-preview-only feature (client.js wires it to the editor).
         scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
-        include_after_body: &includes.after_body,
         assets,
         ..PageParts::defaults()
     })
@@ -736,12 +729,11 @@ mod tests {
                 ship_katex: false,
                 extra_head: "",
                 body_class: "",
-                include_in_header: "",
-                include_before_body: "",
+                head: "",
+                before_body: "",
                 body,
                 scripts_pre: "",
                 scripts_post: "",
-                include_after_body: "",
                 assets: AssetMode::External(ext),
             })
         };
@@ -802,12 +794,11 @@ mod tests {
             ship_katex: true,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body,
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::External(ext),
         });
         // Links, not inlined framework CSS.
@@ -842,12 +833,11 @@ mod tests {
             ship_katex: false,
             extra_head: "",
             body_class: "",
-            include_in_header: "",
-            include_before_body: "",
+            head: "",
+            before_body: "",
             body: "<main id=\"tali-main\"><p>prose only</p></main>",
             scripts_pre: "",
             scripts_post: "",
-            include_after_body: "",
             assets: AssetMode::External(ext),
         });
         assert!(html.contains("href=\"a.css\""), "app.css always linked");
