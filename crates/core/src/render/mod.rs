@@ -3700,7 +3700,15 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             .take_while(|c| c.is_ascii_alphanumeric())
             .flat_map(|c| c.to_lowercase())
             .collect();
-        let is_code = name == "pre" || name == "code";
+        // A diagram's source: mermaid.js replaces this `<pre>` with the drawing, so its
+        // text is never on the page (the caption, in the `<figcaption>`, is).
+        let diagram = !is_close
+            && name == "pre"
+            && tags(&html[lt..])
+                .next()
+                .and_then(|t| attr_value(&t, "class"))
+                .is_some_and(|c| c.split_ascii_whitespace().any(|c| c == "mermaid"));
+        let is_code = (name == "pre" && !diagram) || name == "code";
         if is_code && is_close {
             code = code.saturating_sub(1);
         }
@@ -3728,7 +3736,7 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
                 skip_math += 1;
             }
         } else if !is_close
-            && RAW_TEXT_ELEMENTS.contains(&name.as_str())
+            && (RAW_TEXT_ELEMENTS.contains(&name.as_str()) || diagram)
             && !tag.trim_end().ends_with('/')
         {
             // A `<script>`/`<style>` body is not visible text — same reason `<math>`
@@ -3742,7 +3750,8 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             // is text, and a counter would take it for an open tag and silently drop
             // the whole rest of the page from the index. This is the HTML raw-text
             // rule ([`raw_text_end`], the walker's), which is also why
-            // `emit_client_cell` escapes `</script` in the source it ships.
+            // `emit_client_cell` escapes `</script` in the source it ships. A diagram's
+            // `<pre>` holds escaped text only, so its first `</pre` is its own.
             let close = raw_text_end(html, i, &name);
             // Swallow the close tag too (`>` or ` foo>`).
             i = html[close..]

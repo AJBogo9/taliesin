@@ -395,6 +395,31 @@ mod tests {
         );
     }
 
+    /// A diagram's source is not on the page: mermaid.js replaces the `<pre>` with the
+    /// drawing. Indexed, it put `flowchart LR BR["Browser preview<br/>…` into snippets.
+    /// The caption is the diagram's text the reader sees, so it stays searchable.
+    #[test]
+    fn mermaid_source_is_not_indexed_but_its_caption_is() {
+        let doc = crate::render::render_document(
+            "Before.\n\n```{mermaid}\nflowchart LR\n  Alpha --> Beta\n```\n\n\
+             ```{mermaid}\n%%| label: fig-flow\n%%| fig-cap: The flowcaption.\n\
+             sequenceDiagram\n  A->>B: hi\n```\n\nAfter.\n",
+        );
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(html.matches("class=\"mermaid\"").count() == 2, "{html}");
+        let text = section_text(&html);
+        for gone in ["flowchart", "Alpha", "Beta", "sequenceDiagram", "hi"] {
+            assert!(
+                !text.contains(gone),
+                "diagram source {gone:?} indexed: {text}"
+            );
+        }
+        assert!(
+            text.starts_with("Before. Figure 1") && text.ends_with("The flowcaption. After."),
+            "{text}"
+        );
+    }
+
     /// A commented-out heading is not on the page, so it is not a result. It was found by a
     /// bare `find("<h")`, which cannot tell a comment from markup: the palette offered
     /// "Old section title" pointing at an id no element carries, and it took the visible
