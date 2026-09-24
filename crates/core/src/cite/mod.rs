@@ -75,6 +75,11 @@ impl Bibliography {
         self.entries.is_empty()
     }
 
+    /// Whether `key` names an entry.
+    pub(crate) fn contains(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
     /// Every parsed entry key, for the broken-citation did-you-mean.
     pub(crate) fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)

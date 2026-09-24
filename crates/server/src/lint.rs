@@ -265,7 +265,6 @@ pub(crate) fn page_static_diagnostics(
     out.extend(dx::validate_js_reactive_graph(blocks));
     out.extend(dx::validate_a11y(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
-    out.extend(dx::bare_citation_key_not_rendered(src, blocks, base));
     // No `csl:` rule here: it lives on the render path (`frontmatter::validate_front_matter`),
     // so it reaches the preview too and arrives with the rendered doc's warnings. Calling it
     // here as well would report it twice.

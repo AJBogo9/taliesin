@@ -1437,3 +1437,90 @@ fn a_bracket_is_a_citation_only_when_every_item_starts_with_at() {
     assert!(!refs.contains("example.com"), "{refs}");
     assert!(broken(&w).is_empty(), "{w:?}");
 }
+
+/// The bare-citation errors a page draws: a `@key` that names a bibliography entry but
+/// shipped as literal text. Rendered with a one-entry `.bib` beside the page.
+fn bare_key_errors(tag: &str, body: &str) -> Vec<Warning> {
+    let dir = std::env::temp_dir().join(format!("tali-bare-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{knuth84, title={Literate Programming}, author={Knuth, D.}, year={1984}}\n",
+    )
+    .unwrap();
+    let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
+    let doc = crate::render_document_with_includes(&src, &dir);
+    let mut w = doc.warnings.clone();
+    let _ = std::fs::remove_dir_all(&dir);
+    w.retain(|w| w.message.contains("is not a citation"));
+    w
+}
+
+/// A correct citation in a figure caption renders correctly, and must not fail the gate:
+/// the old check substring-scanned the finished HTML, so the caption's raw text in the
+/// image's `alt` read as a bare `@key` and `build --check-only` exited 1 on a valid page
+/// (audit 2026-09-24 G4).
+#[test]
+fn a_citation_in_a_figure_caption_is_not_a_bare_key() {
+    let w = bare_key_errors("fig", "![Adapted from [@knuth84]](img.png){#fig-a}\n");
+    assert!(w.is_empty(), "{w:?}");
+}
+
+/// Code and comments are not prose, wherever they sit (audit 2026-09-24 G4, and the
+/// scanners lens's #7): inline code, a code block nested in a list item or a callout,
+/// and an HTML comment. Only a top-level `<pre>` block used to be skipped.
+#[test]
+fn a_key_in_code_or_a_comment_is_not_a_bare_key() {
+    for (tag, body) in [
+        ("block", "```\n@knuth84\n```\n"),
+        ("inline", "Write `[@knuth84]` to cite.\n"),
+        ("list", "- An item:\n\n  ```\n  see @knuth84\n  ```\n"),
+        (
+            "callout",
+            "::: {.callout-note}\n```\nsee @knuth84\n```\n:::\n",
+        ),
+        ("comment", "Prose.\n\n<!-- cite [@knuth84] here -->\n"),
+    ] {
+        let w = bare_key_errors(tag, body);
+        assert!(w.is_empty(), "{tag}: {w:?}");
+    }
+}
+
+/// The real defect is still caught, once, located, with the bracketed form offered; and
+/// a key left in a bracket that is not a citation group (text before its `@`) is caught
+/// too, instead of being dropped in silence.
+#[test]
+fn a_bare_key_in_prose_is_still_an_error() {
+    let w = bare_key_errors("prose", "As shown by @knuth84.\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].message.contains("[@knuth84]"), "{}", w[0].message);
+    assert_eq!(w[0].severity, crate::render::Severity::Error);
+    assert_eq!(w[0].line, Some(6));
+    let w = bare_key_errors("bracket", "Read it [see @knuth84, p. 3].\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    // A real citation is clean.
+    assert!(bare_key_errors("cited", "As shown [@knuth84].\n").is_empty());
+    // Membership gating is what makes the rule safe: `is_cite_key_char` admits `/ . : +`,
+    // so without it `@media`, `@types/node` and addresses would all fire.
+    let w = bare_key_errors(
+        "noise",
+        "Use @media queries, install @types/node, mail bob@knuth84.com or ping \
+         @knuth84XYZ today.\n",
+    );
+    assert!(w.is_empty(), "{w:?}");
+}
+
+/// No bibliography, nothing to match: every `@word` is prose.
+#[test]
+fn a_page_without_a_bibliography_draws_no_bare_key_error() {
+    let src = "---\ntitle: T\n---\n\nPlease refer to @knuth84.\n";
+    let doc = crate::render_document(src);
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("is not a citation")),
+        "{:?}",
+        doc.warnings
+    );
+}

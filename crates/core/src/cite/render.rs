@@ -4,7 +4,7 @@
 //! sourcepos is untouched.
 
 use super::{Bibliography, sourcepos_start_line};
-use crate::render::{Block, Warning, escape_attr as esc};
+use crate::render::{Block, Severity, Warning, escape_attr as esc};
 use std::collections::HashMap;
 
 /// Cross-reference kind prefixes -> display label, in canonical order. The single source
@@ -93,6 +93,19 @@ pub fn process(
             .or_insert_with(|| cur_loc.borrow().clone());
         n
     };
+    // A `@key` the bibliography holds but the text left bare, once per key per block.
+    let bare: std::cell::RefCell<Vec<(String, KeyLoc)>> = std::cell::RefCell::new(Vec::new());
+    let mut bare_key = |key: &str| -> bool {
+        if !bib.contains(key) {
+            return false;
+        }
+        let loc = cur_loc.borrow().clone();
+        let mut bare = bare.borrow_mut();
+        if !bare.iter().any(|(k, l)| k == key && *l == loc) {
+            bare.push((key.to_string(), loc));
+        }
+        true
+    };
 
     for b in blocks.iter_mut() {
         *cur_loc.borrow_mut() = (
@@ -100,11 +113,20 @@ pub fn process(
             sourcepos_start_line(&b.sourcepos),
             super::sourcepos_end_line(&b.sourcepos),
         );
-        b.html = transform_html(&b.html, &mut cite_key, xrefs, CiteMode::Resolve);
+        b.html = transform_html(
+            &b.html,
+            &mut cite_key,
+            &mut bare_key,
+            xrefs,
+            CiteMode::Resolve,
+        );
     }
     let key_loc = key_loc.into_inner();
 
     let mut warnings: Vec<Warning> = Vec::new();
+    for (key, (file, line, end)) in bare.into_inner() {
+        warnings.push(bare_key_warning(&key, file, line, end, src));
+    }
 
     if order.is_empty() {
         return warnings;
@@ -197,6 +219,44 @@ pub fn process(
     warnings
 }
 
+/// A bare `@key` that names a bibliography entry but shipped as literal text.
+///
+/// Only the bracketed `[@key]` is a citation (Pandoc's bare form is declined; see
+/// `notes/DO-NOT-REBUILD.md`), so a bare one falls through to text, and nothing else would
+/// say so: a document whose every citation is bare renders an empty reference list. That is
+/// how `corpus/tech-blog/posts/a-star` once shipped. It is found here, by the walk that
+/// already knows what prose is (a text run outside tags, code, `<pre>`, scripts and math),
+/// so a key in an `alt` attribute, a nested code block or a comment is never read as one.
+/// The check that did this before substring-scanned the finished HTML and failed the gate
+/// on a correct citation in a figure caption (audit 2026-09-24 G4).
+///
+/// Gated on bibliography membership, which is what makes the rule safe: `@media`,
+/// `@types/node` and addresses are never keys. Located to the line holding the key, but
+/// never given a column span, so the offered `[@key]` stays a hint and not a one-click
+/// fix: inside a bracket that is not a citation group it would nest one in another.
+fn bare_key_warning(
+    key: &str,
+    file: Option<String>,
+    line: Option<u32>,
+    end: Option<u32>,
+    src: Option<&str>,
+) -> Warning {
+    let w = Warning::new(format!(
+        "`@{key}` is not a citation, so it renders as literal text (did you mean `[@{key}]`?)"
+    ))
+    .severity(Severity::Error);
+    // A key's own characters bound it, except the sentence-final `.` it so often has.
+    let boundary = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+    match (line, file.is_none(), src) {
+        (Some(l), true, Some(s)) => {
+            let at = super::token_span(s, l, end.unwrap_or(l), &format!("@{key}"), boundary);
+            w.at(None, at.map_or(l, |(tl, _, _)| tl))
+        }
+        (Some(l), _, _) => w.at(file, l),
+        (None, _, _) => w,
+    }
+}
+
 /// Whether a block is a manual heading (`<h1>`…`<h6>`) whose visible text is exactly
 /// "References" or "Bibliography" (case-insensitive). Such a heading means the author
 /// is placing the reference list themselves, so the auto section drops its own
@@ -240,7 +300,7 @@ fn is_manual_references_heading(html: &str) -> bool {
 /// stays literal rather than silently claiming a number nothing lists.
 pub fn link_xrefs_in_fragment(html: &str) -> String {
     let empty = HashMap::new();
-    transform_html(html, &mut |_| 0, &empty, CiteMode::Skip)
+    transform_html(html, &mut |_| 0, &mut |_| false, &empty, CiteMode::Skip)
 }
 
 /// Whether [`transform_html`] may rewrite `[@key]` citation groups. A fragment
@@ -254,9 +314,12 @@ enum CiteMode {
 
 /// Walk HTML, transforming only plain-text runs (never inside tags or inside
 /// `pre`/`code`/`script`/`style`/`annotation` elements).
+/// `bare_key` is offered each bare `@word` in prose that is not a cross-reference, and
+/// answers whether it named a bibliography entry (and recorded it).
 fn transform_html(
     html: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
+    bare_key: &mut impl FnMut(&str) -> bool,
     xrefs: &HashMap<String, String>,
     cites: CiteMode,
 ) -> String {
@@ -294,7 +357,7 @@ fn transform_html(
             let end = rest.find('<').unwrap_or(rest.len());
             let text = &rest[..end];
             if skip_depth == 0 {
-                out.push_str(&rewrite_text(text, cite_key, xrefs, cites));
+                out.push_str(&rewrite_text(text, cite_key, bare_key, xrefs, cites));
             } else {
                 out.push_str(text);
             }
@@ -308,6 +371,7 @@ fn transform_html(
 fn rewrite_text(
     text: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
+    bare_key: &mut impl FnMut(&str) -> bool,
     xrefs: &HashMap<String, String>,
     cites: CiteMode,
 ) -> String {
@@ -341,17 +405,32 @@ fn rewrite_text(
                 }
                 None => no_close = true,
             }
-        } else if chars[i] == '@'
-            && at_word_boundary(&chars, i)
-            && let Some((label, anchor, len)) = parse_xref(&chars[i..])
-        {
-            // A locally-resolved number renders "Figure&nbsp;3". An anchor not in
-            // this document's registry may live on another page: emit it with a
-            // `data-tali-xref` marker so a site can resolve it to that page (and its
-            // number); if nothing resolves it, it degrades to a bare-label link.
-            out.push_str(&xref_anchor_link(&anchor, label, xrefs));
-            i += len;
-            continue;
+        } else if chars[i] == '@' && at_word_boundary(&chars, i) {
+            if let Some((label, anchor, len)) = parse_xref(&chars[i..]) {
+                // A locally-resolved number renders "Figure&nbsp;3". An anchor not in
+                // this document's registry may live on another page: emit it with a
+                // `data-tali-xref` marker so a site can resolve it to that page (and its
+                // number); if nothing resolves it, it degrades to a bare-label link.
+                out.push_str(&xref_anchor_link(&anchor, label, xrefs));
+                i += len;
+                continue;
+            }
+            if cites == CiteMode::Resolve {
+                // Offer the key, then the key without its trailing punctuation: the
+                // sentence-final `@key.` is the commonest way to write a bare citation, and
+                // `.` is a key character.
+                let run: String = chars[i + 1..]
+                    .iter()
+                    .take_while(|&&c| is_cite_key_char(c))
+                    .collect();
+                let mut key = run.as_str();
+                while !key.is_empty() && !bare_key(key) {
+                    match key.char_indices().last() {
+                        Some((at, c)) if !c.is_alphanumeric() => key = &key[..at],
+                        _ => break,
+                    }
+                }
+            }
         }
         out.push(chars[i]);
         i += 1;
@@ -493,18 +572,31 @@ mod tests {
         // A run of '[' with no closing ']' is emitted verbatim (this is also the
         // O(n^2)-pathological input the scan must not choke on).
         assert_eq!(
-            rewrite_text("[[[[ no close here", &mut key, &xrefs, CiteMode::Resolve),
+            rewrite_text(
+                "[[[[ no close here",
+                &mut key,
+                &mut |_| false,
+                &xrefs,
+                CiteMode::Resolve
+            ),
             "[[[[ no close here"
         );
         // A bracket group without '@' is not a citation; the brackets stay.
         assert_eq!(
-            rewrite_text("see [ref 12] here", &mut key, &xrefs, CiteMode::Resolve),
+            rewrite_text(
+                "see [ref 12] here",
+                &mut key,
+                &mut |_| false,
+                &xrefs,
+                CiteMode::Resolve
+            ),
             "see [ref 12] here"
         );
         // A real citation is still rewritten.
         let out = rewrite_text(
             "see [@bishop2006pattern]",
             &mut key,
+            &mut |_| false,
             &xrefs,
             CiteMode::Resolve,
         );
@@ -526,13 +618,20 @@ mod tests {
         let out = rewrite_text(
             "mail bob@rem-server.com today",
             &mut key,
+            &mut |_| false,
             &xrefs,
             CiteMode::Resolve,
         );
         assert_eq!(out, "mail bob@rem-server.com today");
 
         // The same anchor still resolves when `@` starts a word.
-        let out = rewrite_text("see @fig-x for this", &mut key, &xrefs, CiteMode::Resolve);
+        let out = rewrite_text(
+            "see @fig-x for this",
+            &mut key,
+            &mut |_| false,
+            &xrefs,
+            CiteMode::Resolve,
+        );
         assert!(
             out.contains("href=\"#fig-x\"") && out.contains("Figure"),
             "@fig-x at a word boundary must still resolve: {out}"
@@ -540,9 +639,21 @@ mod tests {
 
         // Boundary forms that must keep working: start-of-string, after `(`, and a
         // trailing `.` after the anchor.
-        let after_paren = rewrite_text("(@fig-x)", &mut key, &xrefs, CiteMode::Resolve);
+        let after_paren = rewrite_text(
+            "(@fig-x)",
+            &mut key,
+            &mut |_| false,
+            &xrefs,
+            CiteMode::Resolve,
+        );
         assert!(after_paren.contains("href=\"#fig-x\""), "{after_paren}");
-        let at_start = rewrite_text("@fig-x.", &mut key, &xrefs, CiteMode::Resolve);
+        let at_start = rewrite_text(
+            "@fig-x.",
+            &mut key,
+            &mut |_| false,
+            &xrefs,
+            CiteMode::Resolve,
+        );
         assert!(
             at_start.contains("href=\"#fig-x\""),
             "start-of-string @fig-x must resolve: {at_start}"
