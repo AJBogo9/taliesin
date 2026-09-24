@@ -2129,6 +2129,55 @@ pub(crate) mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// A `draft:` value that is neither a bool nor one of YAML 1.1's bool words (`1`, `y`,
+    /// `x`, `[true]`) fell back to "not a draft", so the page was published, listed and put
+    /// in the feed with no diagnostic. It is held back now (a flag the tool cannot read must
+    /// fail safe) and reported; a null `draft:` is simply unset.
+    #[test]
+    fn an_unreadable_draft_flag_holds_the_page_back_and_warns() {
+        let root = write_site(
+            "draftunreadable",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHome.\n"),
+                ("one.tmd", "---\ntitle: One\ndraft: 1\n---\n\nx\n"),
+                ("y.tmd", "---\ntitle: Y\ndraft: y\n---\n\nx\n"),
+                ("list.tmd", "---\ntitle: L\ndraft: [true]\n---\n\nx\n"),
+                ("null.tmd", "---\ntitle: N\ndraft: ~\n---\n\nx\n"),
+                ("no.tmd", "---\ntitle: No\ndraft: false\n---\n\nx\n"),
+            ],
+        );
+        let mut warnings = Vec::new();
+        let rels: Vec<String> =
+            website_pages(&root, DraftMode::Exclude, &mut warnings, &mut Vec::new())
+                .iter()
+                .map(|p| p.rel.clone())
+                .collect();
+        for held in ["one.tmd", "y.tmd", "list.tmd"] {
+            assert!(
+                !rels.contains(&held.to_string()),
+                "{held} held back: {rels:?}"
+            );
+            assert!(
+                warnings
+                    .iter()
+                    .any(|w| w.starts_with(held) && w.contains("not a boolean")),
+                "{held} reported: {warnings:?}"
+            );
+        }
+        for kept in ["null.tmd", "no.tmd"] {
+            assert!(
+                rels.contains(&kept.to_string()),
+                "{kept} published: {rels:?}"
+            );
+            assert!(
+                !warnings.iter().any(|w| w.starts_with(kept)),
+                "{kept} is not reported: {warnings:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A file whose lines end in a lone CR (a classic-Mac tool, pasted terminal output) is
     /// one line to `str::lines`, while comrak and the render path split it. Discovery read
     /// such a file raw, found no front matter, and PUBLISHED a `draft: true` page, listed it

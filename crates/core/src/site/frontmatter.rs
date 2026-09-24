@@ -59,23 +59,23 @@ pub(crate) fn parse_front_matter(
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing"), label, warnings),
         hero: parse_hero(val.get("hero")),
-        draft: bool_field(&val, "draft", false, label, warnings),
+        draft: draft_flag(&val, label, warnings),
     }
 }
 
-/// A boolean front-matter field that also catches the YAML-1.1 words serde_yaml
-/// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off`. Without
-/// this, `draft: yes` is a string, `as_bool()` is `None`, and the draft silently
-/// PUBLISHES. Coerce them fail-safe and warn to use canonical `true`/`false`.
-fn bool_field(
-    val: &serde_yaml::Value,
-    key: &str,
-    default: bool,
-    label: &str,
-    warnings: &mut Vec<String>,
-) -> bool {
-    let Some(v) = val.get(key) else {
-        return default;
+/// The `draft:` flag. Also catches the YAML-1.1 words serde_yaml (which follows YAML 1.2)
+/// reads as plain STRINGS (`yes`/`no`/`on`/`off`): without this, `draft: yes` is a string,
+/// `as_bool()` is `None`, and the draft silently PUBLISHES. They are coerced with a warning
+/// to use canonical `true`/`false`.
+///
+/// Any other value (`draft: 1`, `y`, `x`, a list) says the author meant *something*, and
+/// the tool cannot tell what, so it fails SAFE: the page is held back as a draft and the
+/// value is reported. It used to fall back to "not a draft", which published the page,
+/// listed it and put it in the feed with no diagnostic. A null `draft:` is unset.
+fn draft_flag(val: &serde_yaml::Value, label: &str, warnings: &mut Vec<String>) -> bool {
+    let v = match val.get("draft") {
+        None | Some(serde_yaml::Value::Null) => return false,
+        Some(v) => v,
     };
     if let Some(b) = v.as_bool() {
         return b;
@@ -84,11 +84,19 @@ fn bool_field(
         && let Some(b) = crate::frontmatter::yaml_bool_word(s)
     {
         warnings.push(format!(
-            "{label}: `{key}: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `{key}: {b}`"
+            "{label}: `draft: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `draft: {b}`"
         ));
         return b;
     }
-    default
+    let what = match scalar(Some(v)) {
+        Some(s) => format!("`draft: {s}` is not a boolean"),
+        None => "`draft:` holds a list or a mapping, not a boolean".to_string(),
+    };
+    warnings.push(format!(
+        "{label}: {what}, so the page is held back as a draft \u{2014} write `draft: true` \
+         or `draft: false`"
+    ));
+    true
 }
 
 pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
