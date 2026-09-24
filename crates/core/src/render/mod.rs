@@ -187,7 +187,7 @@ pub fn executes_to_kernel(lang: &str) -> bool {
 /// (`{python}`, not the display-only `{.python}`) whose leading option block names one.
 /// The site's name-only anchor scan reads cell labels through this, so it cannot call a
 /// display sample a cross-reference target the page never anchors.
-pub(crate) fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
+pub fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
     if is_executable_fence(info) && code_lang(info).is_some() {
         cell_option(literal, "label")
     } else {

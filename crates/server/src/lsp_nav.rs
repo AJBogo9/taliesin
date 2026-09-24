@@ -44,9 +44,6 @@ fn is_word(c: char) -> bool {
 fn is_xref_id_char(c: char) -> bool {
     is_word(c) || c == '-'
 }
-fn is_ws(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c')
-}
 /// Inclusive of both ends, so a cursor just past the last char still hovers the token
 /// (matches the editor's word-range behaviour).
 fn covers(s: usize, e: usize, ch: usize) -> bool {
@@ -326,48 +323,76 @@ fn nested_parent_of(lines: &[&str], line: usize, indent: usize) -> Option<String
     None
 }
 
-fn offset_to_line_col(chars: &[char], idx: usize) -> (u32, u32) {
-    let mut line = 0u32;
-    let mut col = 0u32;
-    for &c in &chars[..idx] {
-        if c == '\n' {
-            line += 1;
-            col = 0;
+/// Every cross-reference anchor `text` defines, in document order, as `(id, 0-based line,
+/// scalar column of the id)`: what core reads as a definition, so go-to-definition, the
+/// project walk and xref completion agree with the built page. That is the `{#id}` of an
+/// attribute block on a markdown line (`site::scan_page_anchors`, over core's classifier: no
+/// sample, comment, indented code or front matter), and the `#| label:` in the leading option
+/// block of a top-level executable cell (`render::cell_label`, the render's own reading).
+pub(crate) fn anchor_sites(text: &str) -> Vec<(String, u32, u32)> {
+    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
+    // Where `id` sits on line `at`, as the last occurrence that is not the start of a longer
+    // id: the attribute block closes a line, and a `(#id)` link may come before it.
+    let column = |at: usize, id: &str| -> u32 {
+        let line = lines.get(at).copied().unwrap_or("");
+        line.match_indices(id)
+            .filter(|(i, _)| !line[i + id.len()..].starts_with(is_xref_id_char))
+            .last()
+            .map_or(0, |(i, _)| line[..i].chars().count() as u32)
+    };
+    let mut out: Vec<(String, u32, u32)> = taliesin_core::site::scan_page_anchors(text, None)
+        .into_iter()
+        .map(|a| {
+            let at = a.line.saturating_sub(1);
+            let col = column(at, &format!("#{}", a.id)) + 1;
+            (a.id, at as u32, col)
+        })
+        .collect();
+    let class = taliesin_core::render::rendered_lines(text);
+    for fence in class
+        .fences
+        .iter()
+        .filter(|f| class.line(f.open).depth == 0)
+    {
+        let end = if fence.closed {
+            fence.end
         } else {
-            col += 1;
+            fence.end + 1
         }
+        .min(lines.len());
+        let body = lines
+            .get(fence.open + 1..end)
+            .unwrap_or_default()
+            .join("\n");
+        let Some(id) = taliesin_core::render::cell_label(&fence.info, &body)
+            .filter(|id| taliesin_core::cite::is_xref_anchor(id))
+        else {
+            continue;
+        };
+        // The line of the leading option that names it.
+        let Some(at) = (fence.open + 1..end)
+            .map_while(|i| Some((i, taliesin_core::render::option_directive(lines[i])?)))
+            .find(|(_, opt)| {
+                opt.split_once(':')
+                    .is_some_and(|(k, _)| k.trim() == "label")
+            })
+            .map(|(i, _)| i)
+        else {
+            continue;
+        };
+        out.push((id.to_string(), at as u32, column(at, id)));
     }
-    (line, col)
+    out.sort_by_key(|&(_, line, col)| (line, col));
+    out
 }
 
-/// The 0-based (line, col) where cross-reference `id` is DEFINED in `text`: the first
-/// occurrence preceded by `#` (a `{#id}` attribute) or `label:` (a `#| label: id` cell),
-/// never `@id` (a reference). None when the id is not defined here.
+/// The 0-based (line, col) where cross-reference `id` is DEFINED in `text` (see
+/// [`anchor_sites`]); `None` when the id is not defined here.
 pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
-    let chars: Vec<char> = text.chars().collect();
-    let idc: Vec<char> = id.chars().collect();
-    let (n, m) = (chars.len(), idc.len());
-    if m == 0 {
-        return None;
-    }
-    let mut i = 0;
-    while i + m <= n {
-        if chars[i..i + m] == idc[..] {
-            let after_ok = i + m >= n || !is_xref_id_char(chars[i + m]);
-            let prefix_ok = (i > 0 && chars[i - 1] == '#') || {
-                let mut j = i;
-                while j > 0 && is_ws(chars[j - 1]) {
-                    j -= 1;
-                }
-                j >= 6 && chars[j - 6..j].iter().collect::<String>() == "label:"
-            };
-            if after_ok && prefix_ok {
-                return Some(offset_to_line_col(&chars, i));
-            }
-        }
-        i += 1;
-    }
-    None
+    anchor_sites(text)
+        .into_iter()
+        .find(|(a, _, _)| a == id)
+        .map(|(_, line, col)| (line, col))
 }
 
 /// The `.bib` files a citation in the buffer at `uri` resolves against: the page's own and
@@ -503,21 +528,50 @@ mod tests {
         assert_eq!(classify_target("---\ntitle: Hi\n---\n", 1, 8), Target::None);
     }
 
+    /// Where an id is DEFINED, as core reads a definition (audit 2026-09-24, scanners #6b):
+    /// the `{#id}` of an attribute block on a markdown line, or the `#| label:` in the leading
+    /// option block of a top-level executable cell. The first `#id` or `label: id` anywhere
+    /// in the buffer used to win, so F12 on `@sec-method` landed on a `(#sec-method)` link or
+    /// on a code sample showing the syntax.
     #[test]
-    fn definition_site_finds_attribute_and_label_forms_but_not_a_reference() {
+    fn definition_site_reads_only_what_the_page_defines() {
+        let text = [
+            "Read [the method](#sec-method) and @sec-method.",
+            "",
+            "```markdown",
+            "## Method {#sec-method}",
+            "#| label: fig-shown",
+            "```",
+            "",
+            "<!-- ## Old {#sec-method} -->",
+            "",
+            "    ## Indented {#sec-method}",
+            "",
+            "## Method {#sec-method}",
+            "",
+            "```{python}",
+            "#| echo: false",
+            "#| label: fig-plot",
+            "x = 1",
+            "#| label: fig-late",
+            "```",
+            "",
+            "![A plot](p.png){#fig-img}",
+        ]
+        .join("\n");
+        assert_eq!(definition_site(&text, "sec-method"), Some((11, 12)));
+        assert_eq!(definition_site(&text, "fig-plot"), Some((15, 10)));
+        assert_eq!(definition_site(&text, "fig-img"), Some((20, 18)));
+        assert_eq!(definition_site(&text, "fig-shown"), None, "a sample");
         assert_eq!(
-            definition_site("# Title {#fig-1}\n\nsee @fig-1", "fig-1"),
-            Some((0, 10))
+            definition_site(&text, "fig-late"),
+            None,
+            "below the cell's code"
         );
-        assert_eq!(
-            definition_site("#| label: fig-2\ncode", "fig-2"),
-            Some((0, 10))
-        );
-        // Only a reference present: no definition here.
+        // Only a reference present, or only a longer id: no definition here.
         assert_eq!(definition_site("see @fig-1 only", "fig-1"), None);
-        assert_eq!(definition_site("nothing", "fig-1"), None);
-        // A longer id must not match on a prefix.
         assert_eq!(definition_site("{#fig-10}", "fig-1"), None);
+        assert_eq!(definition_site("{#fig-1}", "fig-1"), Some((0, 2)));
     }
 
     /// One fixture line for the cursor walk. `span` is the **inclusive** `[first, last]` cursor
@@ -823,19 +877,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// The anchor scanner walks backwards from a match, so its edge is the *start of the text*
-    /// rather than a span boundary. Every fixture here is one the mutation round showed nothing
-    /// reached: an id at offset 0, an id preceded only by whitespace, and `label:` with no space.
-    #[test]
-    fn the_anchor_scanner_is_pinned_at_the_start_of_the_text() {
-        // At offset 0 there is no sigil to inspect, and looking for one must not read backwards.
-        assert_eq!(definition_site("fig-1 is here", "fig-1"), None);
-        // Preceded only by whitespace: the `label:` look-back walks to offset 0 and stops.
-        assert_eq!(definition_site("  fig-1", "fig-1"), None);
-        assert_eq!(definition_site("{#fig-1}", "fig-1"), Some((0, 2)));
-        assert_eq!(definition_site("#| label: fig-1", "fig-1"), Some((0, 10)));
     }
 
     /// `{{< include >}}` is navigable and every *other* shortcode is not: accepting anything

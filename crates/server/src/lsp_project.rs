@@ -27,8 +27,6 @@ pub(crate) struct ProjectAnchor {
     pub path: PathBuf,
     /// 0-based line of the defining site, in `path`'s own numbering (see [`origin_of`]).
     pub line: u32,
-    /// The rendered section number for a numbered chapter heading; empty otherwise.
-    pub number: String,
 }
 
 /// One walk's result.
@@ -212,24 +210,23 @@ fn walk(root: &Path) -> ProjectScan {
             continue;
         };
         let base = input.parent().unwrap_or_else(|| Path::new("."));
-        // The source map is kept, not discarded: `scan_page_anchors` counts lines in the
+        // The source map is kept, not discarded: `anchor_sites` counts lines in the
         // EXPANDED buffer, which is the page's own numbering only until the first
         // `{{< include >}}` shifts everything below it.
         let (src, origins) = taliesin_core::includes::resolve(&raw, base);
 
-        for a in taliesin_core::site::scan_page_anchors(&src, None) {
+        for (id, buffer_line, _) in crate::lsp_nav::anchor_sites(&src) {
             // First definition wins project-wide, matching `scan_xref_targets`. Two owners of
             // "which page defines `fig-x`" that disagreed would send F12 somewhere the built
             // page does not link to.
-            if seen.insert(a.id.clone(), ()).is_none() {
-                let (path, line) = origin_of(&input, base, &origins, a.line);
+            if seen.insert(id.clone(), ()).is_none() {
+                let (path, line) = origin_of(&input, base, &origins, buffer_line as usize + 1);
                 anchors.push(ProjectAnchor {
-                    id: a.id,
+                    id,
                     path,
                     // The source map reports a 1-based line; everything on the LSP wire
                     // is 0-based.
                     line: line.saturating_sub(1) as u32,
-                    number: a.number,
                 });
             }
         }
@@ -439,8 +436,9 @@ mod tests {
     /// records must actually be written at the file and line it names.
     ///
     /// `corpus/single-page-report` is the shape that motivated this — seven
-    /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial — so a
-    /// regression through any other route than the one above still fails here.
+    /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial, and cells
+    /// labelled `#| label: fig-…` inside partials too — so a regression through any other
+    /// route than the one above still fails here.
     #[test]
     fn every_recorded_anchor_is_written_where_the_walk_says_it_is() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -453,8 +451,11 @@ mod tests {
         for a in &scan.anchors {
             let body = std::fs::read_to_string(&a.path).unwrap_or_default();
             let line = body.lines().nth(a.line as usize).unwrap_or("");
+            let label = taliesin_core::render::option_directive(line)
+                .and_then(|o| o.split_once(':'))
+                .is_some_and(|(k, v)| k.trim() == "label" && v.trim() == a.id);
             assert!(
-                line.contains(&format!("{{#{}", a.id)),
+                line.contains(&format!("{{#{}", a.id)) || label,
                 "`{}` is recorded at {}:{} , which reads {line:?}",
                 a.id,
                 a.path.display(),
@@ -463,6 +464,48 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 0, "no anchor in the report to check");
+    }
+
+    /// The walk takes what defines an anchor on the built page (audit 2026-09-24, scanners
+    /// #6c): a cell's `#| label:` too, which the diagnostics already resolved across pages
+    /// while F12 found nothing, and never an anchor shown in a sample, commented out or in
+    /// indented code.
+    #[test]
+    fn the_walk_takes_cell_labels_and_skips_what_the_page_does_not_define() {
+        let root = scratch("defines");
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(
+            root.join("two.tmd"),
+            [
+                "# Two {#sec-two}",
+                "",
+                "<!-- ## Old {#sec-old} -->",
+                "",
+                "    ## Indented {#sec-indented}",
+                "",
+                "```markdown",
+                "#| label: fig-shown",
+                "```",
+                "",
+                "```{python}",
+                "#| label: fig-cell",
+                "x = 1",
+                "```",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        std::fs::write(root.join("one.tmd"), "See @fig-cell.\n").unwrap();
+        let mut cache = ProjectCache::new();
+        let scan = cache.get(&root.join("one.tmd")).unwrap();
+        let mut got: Vec<(&str, u32)> = scan
+            .anchors
+            .iter()
+            .map(|a| (a.id.as_str(), a.line))
+            .collect();
+        got.sort_unstable();
+        assert_eq!(got, [("fig-cell", 11), ("sec-two", 0)]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -879,28 +879,14 @@ fn is_frontmatter_key_line(line_prefix: &str) -> bool {
     !t.starts_with('-') && !t.starts_with('.') && t.chars().all(is_id_char)
 }
 
-/// Harvest `{#id}` anchors (heading ids + figure/table labels) from the buffer, deduplicated
-/// and sorted. Suggestion-only; the provider filters by the typed prefix. `/\{#([\w-]+)\}/g`.
+/// The cross-reference anchors the buffer defines (`lsp_nav::anchor_sites`), deduplicated
+/// and sorted. Suggestion-only; the provider filters by the typed prefix.
 pub(crate) fn harvest_anchor_ids(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let n = chars.len();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut i = 0;
-    while i + 1 < n {
-        if chars[i] == '{' && chars[i + 1] == '#' {
-            let mut j = i + 2;
-            while j < n && is_id_char(chars[j]) {
-                j += 1;
-            }
-            if j > i + 2 && j < n && chars[j] == '}' {
-                seen.insert(chars[i + 2..j].iter().collect::<String>());
-                i = j + 1;
-                continue;
-            }
-        }
-        i += 1;
-    }
-    seen.into_iter().collect()
+    let ids: std::collections::BTreeSet<String> = crate::lsp_nav::anchor_sites(text)
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    ids.into_iter().collect()
 }
 
 /// One directory entry the caller read from disk (name + whether it is a directory).
@@ -1685,14 +1671,14 @@ mod tests {
         );
     }
 
+    /// The anchors offered after `@` are the ones the page defines (audit 2026-09-24,
+    /// scanners #6): a cell's label too, and never one shown in a code sample.
     #[test]
-    fn harvest_anchor_ids_finds_brace_anchors_only() {
-        assert_eq!(
-            harvest_anchor_ids("# A {#sec-a}\n\n![x](i.png){#fig-1}\n\nsee @fig-1"),
-            vec!["fig-1".to_string(), "sec-a".to_string()]
-        );
-        // A `{.theorem #x}` is not a `{#id}` anchor form.
-        assert!(harvest_anchor_ids("::: {.theorem #pyth}\n:::").is_empty());
+    fn harvest_anchor_ids_offers_what_the_page_defines() {
+        let text = "# A {#sec-a}\n\n```markdown\n## S {#sec-sample}\n```\n\n\
+                    ```{python}\n#| label: fig-cell\nx = 1\n```\n\n![x](i.png){#fig-1}\n\n\
+                    ## Again {#sec-a}\n";
+        assert_eq!(harvest_anchor_ids(text), ["fig-1", "fig-cell", "sec-a"]);
     }
 
     /// Every trigger in `detect_context` is decided from the *end* of the line prefix, so its
@@ -1881,28 +1867,6 @@ mod tests {
                 "line prefix {line_prefix:?} (doc {doc_prefix:?})"
             );
         }
-    }
-
-    /// Same story for `harvest_anchor_ids` (10 survivors): the fixtures above never put an anchor
-    /// at offset 0, never put two of them back to back, and never truncated one at EOF.
-    #[test]
-    fn harvest_anchor_ids_is_pinned_at_the_text_edges() {
-        // At the very start, and as the entire text.
-        assert_eq!(harvest_anchor_ids("{#a}"), vec!["a".to_string()]);
-        // Back to back: the scan must resume after the `}`, not inside it.
-        assert_eq!(
-            harvest_anchor_ids("{#a}{#b}"),
-            vec!["a".to_string(), "b".to_string()]
-        );
-        // Empty id, truncated at EOF, and a space where an id char must be.
-        assert!(harvest_anchor_ids("{#}").is_empty());
-        assert!(harvest_anchor_ids("x{#a").is_empty());
-        assert!(harvest_anchor_ids("{# a}").is_empty());
-        assert!(harvest_anchor_ids("{#a b}").is_empty());
-        // A trailing `{` as the final character: the scan must not look at the character after it.
-        assert_eq!(harvest_anchor_ids("{#a}{"), vec!["a".to_string()]);
-        // Deduplicated.
-        assert_eq!(harvest_anchor_ids("{#a}\n{#a}"), vec!["a".to_string()]);
     }
 
     #[test]
