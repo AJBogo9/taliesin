@@ -1097,6 +1097,9 @@
        chapter buttons are dead controls and their links dead words. */
     #tali-controls, #tali-diagnostics, .tali-copy, .tali-site-nav, .tali-book-topbar {
       display: none !important; }
+    /* A diagram rendered in the dark theme keeps its baked-in colours on paper, since
+       mermaid cannot re-render in the print job's time; invert it back to light. */
+    html.tali-print-from-dark pre.mermaid svg { filter: invert(1) hue-rotate(180deg); }
     body { max-width: none !important; margin: 0 !important; }
     body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
     body.has-toc > #TOC {

@@ -4857,6 +4857,26 @@ fn printing_forces_the_light_theme_even_from_dark() {
 }
 
 #[test]
+fn printing_from_dark_prints_diagrams_light() {
+    // Mermaid bakes its colours into the SVG when it renders, and it renders asynchronously,
+    // so the print job's synchronous switch to light cannot re-render it in time (starting a
+    // re-render would put the diagram's SOURCE on paper). A diagram drawn in the dark theme
+    // printed as dark boxes with near-white edges on white paper, verified by printing to
+    // PDF. The head script marks a print that started from dark, and the print stylesheet
+    // turns those diagrams light with a filter, which is synchronous.
+    let head = theme_head();
+    assert!(
+        head.contains("classList.toggle(\"tali-print-from-dark\""),
+        "beforeprint must record that the page was dark"
+    );
+    let print_block = &BASE_CSS[BASE_CSS.rfind("@media print").expect("the print block")..];
+    assert!(
+        print_block.contains("html.tali-print-from-dark pre.mermaid svg"),
+        "the print stylesheet must lighten a diagram rendered dark"
+    );
+}
+
+#[test]
 fn syntax_comment_token_meets_wcag_aa() {
     // Batch 3b: the comment token was sub-AA (light 4.17) on its code background. Pin
     // >= 4.5:1 against the actual code-block backgrounds so a future palette edit can't
