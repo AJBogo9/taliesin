@@ -230,14 +230,7 @@ fn read_accent_arg(chars: &[char], j: usize) -> (Option<String>, usize) {
                 k += 1;
             }
             let macro_src: String = chars[j..k].iter().collect();
-            // `\i`/`\j` are dotless ONLY so an accent can sit on them; when they are
-            // the base of an accent, the precomposed letter uses the DOTTED i/j (e.g.
-            // `\"\i` -> ï = U+00EF, not the decomposed ı + diaeresis).
-            let resolved = match macro_src.as_str() {
-                r"\i" => "i".to_string(),
-                r"\j" => "j".to_string(),
-                _ => latex_accents(&macro_src),
-            };
+            let resolved = latex_accents(&macro_src);
             // A macro-terminating space after a control WORD is swallowed.
             if k < chars.len()
                 && chars[k] == ' '
@@ -258,10 +251,19 @@ fn read_accent_arg(chars: &[char], j: usize) -> (Option<String>, usize) {
 /// Combine a base string with a combining diacritic, preferring a precomposed
 /// character. Only the first scalar of `base` carries the accent (the common case
 /// is a single letter; a multi-char base keeps its tail verbatim).
+///
+/// `\i`/`\j` are dotless ONLY so an accent can sit on them, so an accented dotless i/j
+/// is the DOTTED letter's precomposed form (`\"\i` and DBLP's `{\'{\i}}` -> ï, í), not
+/// the decomposed ı + mark, which is not NFC and which search then misses.
 fn compose(base: String, combining: char) -> String {
     let mut it = base.chars();
     let Some(first) = it.next() else {
         return String::new();
+    };
+    let first = match first {
+        '\u{131}' => 'i',
+        '\u{237}' => 'j',
+        c => c,
     };
     let rest: String = it.collect();
     let combined = match precomposed(first, combining) {

@@ -1146,3 +1146,19 @@ fn unknown_control_words_and_math_are_kept_not_deleted() {
         assert_eq!(clean(raw), want, "{raw}");
     }
 }
+
+/// DBLP writes an accented i as `{\'{\i}}`: the accent's argument is a BRACED dotless i.
+/// Only the bare `\'\i` form was mapped to the dotted letter, so this one published a
+/// dotless ı plus a combining acute, which looks close but is not NFC: Ctrl-F and the
+/// search index miss "Martínez" (audit 2026-09-24, bibtex #17).
+#[test]
+fn an_accent_on_a_braced_dotless_i_is_the_precomposed_letter() {
+    for (raw, want) in [
+        (r"Mart{\'{\i}}nez", "Mart\u{ed}nez"),
+        (r"Rodr\'{\i}guez", "Rodr\u{ed}guez"),
+        (r"Garc{\'\i}a", "Garc\u{ed}a"),
+        (r#"Na{\"{\i}}ve"#, "Na\u{ef}ve"),
+    ] {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+}
