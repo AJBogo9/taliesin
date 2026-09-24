@@ -121,16 +121,11 @@ fn emit(sink: &ProgressSink, msg: String) {
 /// or it died mid-run before reaching them. Those cells were already announced
 /// `queued`; without this terminal `error` they'd stay `queued` and spin forever in
 /// the client. Pure observation — never changes what executes or caches.
-fn emit_cell_errors(
-    sink: &ProgressSink,
-    page: Option<&str>,
-    cells: &[CellRef],
-    range: std::ops::Range<usize>,
-) {
+fn emit_cell_errors(sink: &ProgressSink, cells: &[CellRef], range: std::ops::Range<usize>) {
     for cell in &cells[range] {
         emit(
             sink,
-            crate::protocol::cell_state(page, &cell.id, "error", None, None, None),
+            crate::protocol::cell_state(&cell.id, "error", None, None, None),
         );
     }
 }
@@ -431,9 +426,8 @@ pub struct Executor {
     /// `None` on the headless `build` path. Side-effect-free: never changes what
     /// runs or caches.
     sink: ProgressSink,
-    /// The source rel-path this executor builds (the site server's page key), tagged
-    /// onto each `build-state` so a multi-page client knows which page it's about.
-    /// `None` for the single-doc server.
+    /// The source rel-path this executor builds (the page key), for the console lines
+    /// (`cell k/n`, the cache tally) a concurrent build prints for several pages at once.
     page: Option<String>,
     /// The OS pid of the kernel running the CURRENT cell, or `0` when no cell is
     /// executing. Written here around each cell, read by whoever else holds the `Arc` —
@@ -513,10 +507,10 @@ impl Executor {
     }
 
     /// Stream this executor's per-build progress (`build-state` messages) through
-    /// `sink`, tagged with the page rel-path `page` (the site server's page key;
-    /// `None` for the single-doc server). The server sets this once after creating the
-    /// executor. The site `build` path passes a `None` sink (there is no client) but still
-    /// sets `page`, so its concurrent per-page `cell k/n` lines can be attributed.
+    /// `sink`, and name its console lines after `page` (the page key). The server sets
+    /// this once after creating the executor. The site `build` path passes a `None` sink
+    /// (there is no client) but still sets `page`, so its concurrent per-page `cell k/n`
+    /// lines can be attributed.
     /// Emission never changes what executes or caches, so freeze determinism is preserved
     /// regardless of the sink. A `&mut self` setter (not a consuming builder) so it can be
     /// applied to a pooled `&mut Executor`.
@@ -917,14 +911,7 @@ impl Executor {
             };
             emit(
                 &self.sink,
-                crate::protocol::cell_state(
-                    self.page.as_deref(),
-                    &cell.id,
-                    state,
-                    None,
-                    None,
-                    source,
-                ),
+                crate::protocol::cell_state(&cell.id, state, None, None, source),
             );
         }
 
@@ -955,9 +942,9 @@ impl Executor {
         if boot_failed {
             emit(
                 &self.sink,
-                crate::protocol::build_state(self.page.as_deref(), "error", 0, to_run as u32, lang),
+                crate::protocol::build_state("error", 0, to_run as u32, lang),
             );
-            emit_cell_errors(&self.sink, self.page.as_deref(), cells, shared..run_end);
+            emit_cell_errors(&self.sink, cells, shared..run_end);
         }
 
         // Outputs already known without running, pulled out before the execute loop
@@ -1031,14 +1018,7 @@ impl Executor {
                     // (This mid-run dead-kernel path is production-only; toy runs rarely hit it.)
                     emit(
                         &sink,
-                        crate::protocol::cell_state(
-                            page.as_deref(),
-                            &cell.id,
-                            "error",
-                            None,
-                            None,
-                            None,
-                        ),
+                        crate::protocol::cell_state(&cell.id, "error", None, None, None),
                     );
                     outputs.push(CellOut::failed(
                         KERNEL_DIED_HTML.to_string(),
@@ -1053,7 +1033,6 @@ impl Executor {
                         emit(
                             &sink,
                             crate::protocol::build_state(
-                                page.as_deref(),
                                 "executing",
                                 ran_count as u32,
                                 to_run as u32,
@@ -1069,20 +1048,11 @@ impl Executor {
                         let t0 = now_ms();
                         emit(
                             &sink,
-                            crate::protocol::cell_state(
-                                page.as_deref(),
-                                &cell.id,
-                                "running",
-                                Some(t0),
-                                None,
-                                None,
-                            ),
+                            crate::protocol::cell_state(&cell.id, "running", Some(t0), None, None),
                         );
                         t0
                     });
-                    let out = self
-                        .exec_cell(&cell.code, &cell.id, page.as_deref(), t0)
-                        .await;
+                    let out = self.exec_cell(&cell.code, &cell.id, t0).await;
                     if let Some(t0) = t0 {
                         let state = if out.failure.is_some() {
                             "error"
@@ -1096,7 +1066,6 @@ impl Executor {
                         emit(
                             &sink,
                             crate::protocol::cell_state(
-                                page.as_deref(),
                                 &cell.id,
                                 state,
                                 Some(t0),
@@ -1221,13 +1190,7 @@ impl Executor {
         if !boot_failed {
             emit(
                 &sink,
-                crate::protocol::build_state(
-                    page.as_deref(),
-                    "idle",
-                    to_run as u32,
-                    to_run as u32,
-                    lang,
-                ),
+                crate::protocol::build_state("idle", to_run as u32, to_run as u32, lang),
             );
         }
         // Cache legibility (DX9): the warm prefix `[0, shared)` and the disk tail
@@ -1358,13 +1321,7 @@ impl Executor {
         // that presents `warming-kernel`, so the signal is honest.
         emit(
             &self.sink,
-            crate::protocol::build_state(
-                self.page.as_deref(),
-                "warming-kernel",
-                0,
-                to_run as u32,
-                lang,
-            ),
+            crate::protocol::build_state("warming-kernel", 0, to_run as u32, lang),
         );
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
         // Retry a transient start failure with a fresh port allocation. That re-roll now
@@ -1407,24 +1364,17 @@ impl Executor {
 
     /// Run one cell, streaming its output to the client as it arrives (item 175b).
     ///
-    /// `cell_id`, `page` and `started_ms` (the cell's `running` stamp) only address the
+    /// `cell_id` and `started_ms` (the cell's `running` stamp) only address the
     /// live messages; they do not affect the returned HTML, which is still the
     /// authoritative render of the whole output vector and is what gets cached and diffed
     /// into the block.
-    async fn exec_cell(
-        &mut self,
-        code: &str,
-        cell_id: &str,
-        page: Option<&str>,
-        started_ms: Option<u64>,
-    ) -> CellOut {
+    async fn exec_cell(&mut self, code: &str, cell_id: &str, started_ms: Option<u64>) -> CellOut {
         // Cloned before the kernel borrow so the callback can emit while `self` is
         // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
         // same reason: it is read back after the borrow ends.
         let sink = self.sink.clone();
         let interrupt = self.interrupt.clone();
         let paths = self.paths.clone();
-        let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
         let state = &mut self.state;
         let Some(kernel) = state.kernel.as_mut() else {
@@ -1455,12 +1405,7 @@ impl Executor {
                     crate::kernel::LiveOp::ReplaceLast(o) => ("replace_last", o),
                     crate::kernel::LiveOp::Reset => {
                         let running = crate::protocol::cell_state(
-                            page.as_deref(),
-                            &cell_id,
-                            "running",
-                            started_ms,
-                            None,
-                            None,
+                            &cell_id, "running", started_ms, None, None,
                         );
                         emit(&sink, running);
                         return;
@@ -1469,7 +1414,6 @@ impl Executor {
                 emit(
                     &sink,
                     crate::protocol::cell_output_append(
-                        page.as_deref(),
                         &cell_id,
                         op,
                         &render_outputs(&[paths.apply(shown)]),
@@ -2799,11 +2743,10 @@ mod tests {
         );
 
         let msgs = captured.lock().unwrap();
-        // Every `build-state` is well-formed for this page. (The same sink now also
-        // carries `cell-state` messages — covered by the cell-state tests below — so
-        // this is scoped to build-state rather than asserting over every message.)
+        // Every `build-state` is well-formed. (The same sink now also carries
+        // `cell-state` messages — covered by the cell-state tests below — so this is
+        // scoped to build-state rather than asserting over every message.)
         for v in msgs.iter().filter(|v| v["type"] == "build-state") {
-            assert_eq!(v["page"], "ch1.tmd");
             assert_eq!(v["lang"], "python");
         }
         // The "executing" `ran` values climb 1, 2, 3 (one per cell), each ≤ total.
@@ -2891,10 +2834,6 @@ mod tests {
         }
 
         let msgs = captured.lock().unwrap();
-        // Every cell-state is well-formed and tagged with this page.
-        for v in msgs.iter().filter(|v| v["type"] == "cell-state") {
-            assert_eq!(v["page"], "ch1.tmd", "cell-state page wrong: {v}");
-        }
         // The two clean cells go queued → running → done, in that order.
         for id in ["b-1", "b-2"] {
             assert_eq!(
@@ -2980,10 +2919,6 @@ mod tests {
             appends.len()
         );
         for (_, v) in &appends {
-            assert_eq!(
-                v["page"], "ch1.tmd",
-                "append is not tagged with its page: {v}"
-            );
             assert!(
                 v["html"].as_str().unwrap().contains("tali-stream"),
                 "append must carry rendered HTML: {v}"
@@ -3521,7 +3456,7 @@ mod tests {
         // the run-range → error mapping is exactly the cells in the half-open range.
         let (sink, captured) = capturing_sink();
         let cells = vec![cell("b-0"), cell("b-1"), cell("b-2"), cell("b-3")];
-        emit_cell_errors(&sink, Some("ch1.tmd"), &cells, 1..3);
+        emit_cell_errors(&sink, &cells, 1..3);
         let msgs = captured.lock().unwrap();
         let errored: Vec<&str> = msgs
             .iter()
@@ -3533,10 +3468,7 @@ mod tests {
             vec!["b-1", "b-2"],
             "exactly the half-open run range must be marked `error`",
         );
-        // Page is carried; out-of-range cells emit nothing here.
-        for v in msgs.iter() {
-            assert_eq!(v["page"], "ch1.tmd");
-        }
+        // Out-of-range cells emit nothing here.
         assert_eq!(msgs.len(), 2, "only the two in-range cells emit: {msgs:?}");
     }
 

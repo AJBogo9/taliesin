@@ -1349,12 +1349,6 @@ fn full_render_json(d: &PageDoc) -> String {
     )
 }
 
-/// Like the single-doc server's `op_json`, but rewrites any author `.tmd` links
-/// in the block HTML to their `.html` targets before it goes over the wire.
-fn op_json(op: &BlockOp, generation: u64) -> String {
-    protocol::op(op, generation, taliesin_core::site::rewrite_tmd_links)
-}
-
 // --- build worker -------------------------------------------------------
 
 fn spawn_builder(project: Arc<Project>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
@@ -1570,7 +1564,7 @@ fn publish_edited_cells(
     ps.doc.generation = ps.doc.generation.wrapping_add(1);
     let generation = ps.doc.generation;
     for op in &ops {
-        let _ = ps.tx.send(op_json(op, generation));
+        let _ = ps.tx.send(protocol::op(op, generation));
     }
 }
 
@@ -1840,7 +1834,7 @@ async fn build_page(
     }
     .messages(
         || full_render_json(&ps.doc),
-        |op| op_json(op, generation),
+        |op| protocol::op(op, generation),
         || protocol::title(Some(&ps.doc.tab_title)),
         || protocol::diagnostics(&ps.doc.diagnostics),
     );
@@ -2316,14 +2310,14 @@ mod protocol_contract {
     //! Locks the websocket message/op shapes the preview client consumes
     //! (web-client/client.js `@typedef` block). If a field name or `type` tag
     //! changes here, update the client's typedefs too — these are the two halves
-    //! of one contract. The `serve.rs` producers are covered by a sibling test.
+    //! of one contract.
     use super::*;
     use crate::testutil::parse;
     use taliesin_core::{BlockOp, render_document};
 
     #[test]
     fn op_messages_match_client_contract() {
-        let up = parse(op_json(
+        let up = parse(protocol::op(
             &BlockOp::Update {
                 target_id: "b1".into(),
                 html: "<p>x</p>".into(),
@@ -2337,7 +2331,7 @@ mod protocol_contract {
         // and skip a destructive re-mount on a byte-identical reconnect.
         assert_eq!(up["gen"], 7);
 
-        let ins = parse(op_json(
+        let ins = parse(protocol::op(
             &BlockOp::Insert {
                 after_id: Some("b1".into()),
                 html: "<p>y</p>".into(),
@@ -2349,7 +2343,7 @@ mod protocol_contract {
         assert!(ins.get("html").is_some());
         assert_eq!(ins["gen"], 7);
 
-        let rm = parse(op_json(
+        let rm = parse(protocol::op(
             &BlockOp::Remove {
                 target_id: "b2".into(),
             },
@@ -2368,7 +2362,7 @@ mod protocol_contract {
         // whole suite AND `tsc`, and silently degraded Ctrl-click to "opens at line 1"
         // for every line-shifted block. The client reads exactly these keys
         // (client.js `case "set_meta"`); they are the two halves of one contract.
-        let sm = parse(op_json(
+        let sm = parse(protocol::op(
             &BlockOp::SetMeta {
                 target_id: "b3".into(),
                 sourcepos: "12:1-14:9".into(),
@@ -2393,7 +2387,7 @@ mod protocol_contract {
         // A non-included block must emit source_file as JSON null (the client's
         // `if (msg.source_file)` is falsy for it and removes the attribute), not omit
         // the key and not emit the string "null".
-        let plain = parse(op_json(
+        let plain = parse(protocol::op(
             &BlockOp::SetMeta {
                 target_id: "b4".into(),
                 sourcepos: "3:1-3:5".into(),
@@ -2407,8 +2401,8 @@ mod protocol_contract {
     }
 
     #[test]
-    fn op_json_rewrites_tmd_links_in_block_html() {
-        let up = parse(op_json(
+    fn an_op_rewrites_tmd_links_in_block_html() {
+        let up = parse(protocol::op(
             &BlockOp::Update {
                 target_id: "b1".into(),
                 html: "<a href=\"blog.tmd\">b</a>".into(),
@@ -2423,13 +2417,13 @@ mod protocol_contract {
         // The full chain a previewing client receives: render two versions of a
         // page, diff them, and serialize. `tests/incremental.rs` covers render->
         // diff in core; this proves the serve-side serialization (incl. the
-        // .tmd->.html rewrite that happens *in* op_json, not at render time).
+        // .tmd->.html rewrite that happens *in* `protocol::op`, not at render time).
         let v1 = render_document("Intro.\n\nSee [post](other.tmd).\n");
         let v2 = render_document("Intro.\n\nSee [the post](other.tmd) now.\n");
         let ops = diff_blocks(&v1.blocks, &v2.blocks);
         assert_eq!(ops.len(), 1, "one paragraph edit -> one op: {ops:?}");
 
-        let msg = parse(op_json(&ops[0], 1));
+        let msg = parse(protocol::op(&ops[0], 1));
         assert_eq!(msg["type"], "update");
         assert_eq!(
             msg["target_id"].as_str().unwrap(),

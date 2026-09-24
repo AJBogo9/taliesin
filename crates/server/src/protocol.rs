@@ -117,12 +117,11 @@ pub fn error(message: &str) -> String {
 }
 
 /// `build-state`: document-level execution phase + a deterministic k-of-N count.
-/// `phase` is one of "warming-kernel" | "executing" | "idle" | "error". `page` is
-/// the source rel-path for the multi-page server, `None` for the single-doc server.
-pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: &str) -> String {
+/// `phase` is one of "warming-kernel" | "executing" | "idle" | "error". It names no page:
+/// each page has its own socket.
+pub fn build_state(phase: &str, ran: u32, total: u32, lang: &str) -> String {
     serde_json::json!({
-        "type": "build-state", "page": page,
-        "phase": phase, "ran": ran, "total": total, "lang": lang
+        "type": "build-state", "phase": phase, "ran": ran, "total": total, "lang": lang
     })
     .to_string()
 }
@@ -131,8 +130,7 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 /// "queued" | "running" | "done" | "error". `started_ms`/`duration_ms` are epoch
 /// millis / elapsed millis when known; the client ticks the live timer itself.
 /// `cell_id` is the cell's own id (the same id the output block is built from as
-/// `{cell_id}-out`), so the client can target that block. `page` is the source
-/// rel-path for the multi-page server, `None` for the single-doc server.
+/// `{cell_id}-out`), so the client can target that block.
 ///
 /// `source` is how a `done` cell reached its output (DX9): `"cache"` = restored
 /// without running (the warm in-memory prefix or the disk `_freeze` tail), `"fresh"`
@@ -140,7 +138,6 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 /// `⚡ cached` badge for a cache restore instead of the blank `✓` it showed before,
 /// so "why didn't my cell re-run?" is answered in the margin.
 pub fn cell_state(
-    page: Option<&str>,
     cell_id: &str,
     state: &str,
     started_ms: Option<u64>,
@@ -148,7 +145,7 @@ pub fn cell_state(
     source: Option<&str>,
 ) -> String {
     serde_json::json!({
-        "type": "cell-state", "page": page, "cell_id": cell_id,
+        "type": "cell-state", "cell_id": cell_id,
         "state": state, "started_ms": started_ms, "duration_ms": duration_ms,
         "source": source
     })
@@ -167,24 +164,24 @@ pub fn cell_state(
 /// arrives afterwards as a normal block `update` through the diff, and only that is
 /// cached in `_freeze`. A client that ignores this message entirely still ends up
 /// with the right document, which is why `build` (no websocket) emits nothing here.
-pub fn cell_output_append(page: Option<&str>, cell_id: &str, op: &str, html: &str) -> String {
+pub fn cell_output_append(cell_id: &str, op: &str, html: &str) -> String {
     serde_json::json!({
-        "type": "cell-output-append", "page": page, "cell_id": cell_id,
-        "op": op, "html": html
+        "type": "cell-output-append", "cell_id": cell_id, "op": op, "html": html
     })
     .to_string()
 }
 
-/// A single incremental block op. `rewrite_html` is applied to the block HTML of
-/// `Update`/`Insert` before it goes over the wire: identity for the single-doc
-/// server, and `.tmd`→`.html` link rewriting for the site server.
+/// A single incremental block op. The block HTML of `Update`/`Insert` has its author
+/// `.tmd` links rewritten to their `.html` targets before it goes over the wire, as the
+/// page's first paint has.
 ///
 /// Every op carries `generation` (wire key `gen`): the render generation the document
 /// reaches AFTER this op's burst is applied (all ops in one rebuild share it). The
 /// client tracks it so a websocket reconnect on a byte-identical doc (gen unchanged)
 /// can skip the wholesale re-mount that would otherwise destroy live block state
 /// (WebGL/`{js}` widgets, playing video, open `<details>`). See [`full_render`].
-pub fn op(op: &BlockOp, generation: u64, rewrite_html: impl Fn(&str) -> String) -> String {
+pub fn op(op: &BlockOp, generation: u64) -> String {
+    let rewrite_html = taliesin_core::site::rewrite_tmd_links;
     match op {
         BlockOp::Update { target_id, html } => serde_json::json!({
             "type": "update", "gen": generation, "target_id": target_id, "html": rewrite_html(html)
@@ -209,12 +206,10 @@ pub fn op(op: &BlockOp, generation: u64, rewrite_html: impl Fn(&str) -> String) 
 }
 
 /// One rebuild's diff outcome: the block ops plus which whole-message updates the
-/// rebuild also needs. Both dev servers build one of these and turn it into the
-/// ordered broadcast burst via [`Broadcast::messages`], so the single-doc
-/// [`crate::serve`] and multi-page [`crate::serve_site`] servers can't drift on the
-/// block-level incremental invariant. The remount trigger and the gen-bump stay
-/// caller-side: only the single-doc server folds deck restructure/title flags into
-/// `remount`, and the bump must land before the lazy `full_render` reads it.
+/// rebuild also needs. The preview builds one per rebuild and turns it into the ordered
+/// broadcast burst via [`Broadcast::messages`], which is where the block-level incremental
+/// invariant lives. The remount trigger and the gen-bump stay caller-side: the bump must
+/// land before the lazy `full_render` reads it.
 pub struct Broadcast<'a> {
     /// The block ops from `diff_blocks`, applied one message each on the incremental path.
     pub ops: &'a [BlockOp],
@@ -241,17 +236,16 @@ impl Broadcast<'_> {
     ///
     /// The diagnostics message rides *after* the body — including on the `remount` path —
     /// or an update would be lost under a fresh `full_render`. This after-the-body ordering
-    /// is the load-bearing contract that was previously copy-pasted in both servers.
+    /// is the load-bearing contract.
     ///
     /// `title` is suppressed on `remount` because `full_render` carries a `title` field of
     /// its own and has already retitled the tab; sending it twice would be dead weight.
     /// (A `style` message rode here too until `theme:` was cut on 2026-08-17 — a page has
     /// no author CSS to hot-swap now, so there is nothing after the body but diagnostics.)
     ///
-    /// The message builders are closures because each server reads its own just-updated
-    /// state and the `op`/`full_render` bodies differ by link-rewrite (identity for the
-    /// single doc, `.tmd`→`.html` for the site). `full_render` stays lazy so the hot
-    /// incremental path never serializes the whole body just to discard it.
+    /// The message builders are closures so `full_render` stays lazy (the hot incremental
+    /// path never serializes the whole body just to discard it), and so the ordering is
+    /// testable with stub messages.
     pub fn messages(
         &self,
         full_render: impl FnOnce() -> String,
@@ -401,10 +395,9 @@ mod tests {
 
     #[test]
     fn build_state_serializes_phase_and_counts() {
-        let s = super::build_state(Some("ch1.tmd"), "executing", 3, 8, "python");
+        let s = super::build_state("executing", 3, 8, "python");
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "build-state");
-        assert_eq!(v["page"], "ch1.tmd");
         assert_eq!(v["phase"], "executing");
         assert_eq!(v["ran"], 3);
         assert_eq!(v["total"], 8);
@@ -413,7 +406,7 @@ mod tests {
 
     #[test]
     fn cell_state_includes_state_and_optional_timing() {
-        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None, None);
+        let s = super::cell_state("abc", "running", Some(1000), None, None);
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "cell-state");
         assert_eq!(v["cell_id"], "abc");
@@ -428,10 +421,10 @@ mod tests {
     fn cell_state_carries_cache_provenance_for_done_cells() {
         // DX9: a cache-restored `done` cell is tagged so the client can render "⚡ cached"
         // instead of the blank "✓" that made a replay indistinguishable from a 0ms run.
-        let cached = super::cell_state(None, "c1", "done", None, None, Some("cache"));
+        let cached = super::cell_state("c1", "done", None, None, Some("cache"));
         let v: serde_json::Value = serde_json::from_str(&cached).unwrap();
         assert_eq!(v["source"], "cache");
-        let fresh = super::cell_state(None, "c2", "done", Some(1), Some(1200), Some("fresh"));
+        let fresh = super::cell_state("c2", "done", Some(1), Some(1200), Some("fresh"));
         let v: serde_json::Value = serde_json::from_str(&fresh).unwrap();
         assert_eq!(v["source"], "fresh");
         assert_eq!(v["duration_ms"], 1200);
@@ -443,14 +436,12 @@ mod tests {
         // from a redraw of the last one (a `\r` progress bar), which is the whole
         // difference between one moving bar and a stack of frames.
         let appended = super::cell_output_append(
-            Some("ch1.tmd"),
             "abc",
             "append",
             "<pre class=\"tali-stream\">epoch 1\n</pre>",
         );
         let v: serde_json::Value = serde_json::from_str(&appended).unwrap();
         assert_eq!(v["type"], "cell-output-append");
-        assert_eq!(v["page"], "ch1.tmd");
         assert_eq!(v["cell_id"], "abc");
         assert_eq!(v["op"], "append");
         assert!(
@@ -458,10 +449,8 @@ mod tests {
             "the fragment must travel as rendered HTML, not raw text: {v}"
         );
 
-        // The single-doc server sends no page, exactly as `cell-state` does.
-        let redraw = super::cell_output_append(None, "abc", "replace_last", "<pre>100%</pre>");
+        let redraw = super::cell_output_append("abc", "replace_last", "<pre>100%</pre>");
         let v: serde_json::Value = serde_json::from_str(&redraw).unwrap();
-        assert!(v["page"].is_null());
         assert_eq!(v["op"], "replace_last");
     }
 }

@@ -24,9 +24,9 @@
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "title", title: ?string }} TitleMsg
- * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
- * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
- * @typedef {{ type: "cell-output-append", page: ?string, cell_id: string, op: "append"|"replace_last", html: string }} CellOutputAppendMsg
+ * @typedef {{ type: "build-state", phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
+ * @typedef {{ type: "cell-state", cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
+ * @typedef {{ type: "cell-output-append", cell_id: string, op: "append"|"replace_last", html: string }} CellOutputAppendMsg
  * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|BuildStateMsg|CellStateMsg|CellOutputAppendMsg} ServerMessage
  */
 (() => {
