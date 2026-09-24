@@ -289,7 +289,7 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
 /// (`cite::render::xref_anchor_link`), and the site-level rewrite
 /// ([`rewrite_one_xref`]) only ever changes the PREFIX before `#` (to
 /// `{page}.html#{anchor}`, once a cross-page target resolves) — it never touches the
-/// anchor itself. So this one needle recovers the full reference, whether it stayed
+/// anchor itself. So this one read recovers the full reference, whether it stayed
 /// same-page, resolved cross-page, or is still an unresolved marker, from blocks a page
 /// already carries — no re-render, no project-wide reverse index.
 ///
@@ -297,28 +297,21 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
 /// `serve_site::rebuild_project`): when a cross-reference target moves, this tells it
 /// which of the OPEN pages actually cite the moved anchor, rather than rebuilding every
 /// open tab or reviving the deleted `backlinks` reverse index.
+///
+/// Read through the one tag walker, so only an `<a>` ELEMENT counts: a `{js}` cell's
+/// source in its script element, or a comment, that shows the markup cites nothing.
 pub fn xref_anchors_in(blocks: &[Block]) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     for b in blocks {
-        let mut rest = b.html.as_str();
-        while let Some(i) = rest.find("<a ") {
-            rest = &rest[i..];
-            let Some(tag_end) = rest.find('>') else {
-                break;
-            };
-            let tag = &rest[..tag_end];
-            if tag.contains("class=\"tali-xref\"")
-                && let Some(hs) = tag.find("href=\"")
+        for tag in crate::render::tags(&b.html) {
+            let is_xref = tag.name.eq_ignore_ascii_case("a")
+                && crate::render::attr_value(&tag, "class")
+                    .is_some_and(|c| c.split_whitespace().any(|c| c == "tali-xref"));
+            if let Some(href) = crate::render::attr_value(&tag, "href").filter(|_| is_xref)
+                && let Some((_, anchor)) = href.rsplit_once('#')
             {
-                let val_start = hs + "href=\"".len();
-                if let Some(hend) = tag[val_start..].find('"') {
-                    let href = &tag[val_start..val_start + hend];
-                    if let Some(hash) = href.rfind('#') {
-                        out.insert(href[hash + 1..].to_string());
-                    }
-                }
+                out.insert(anchor.to_string());
             }
-            rest = &rest[tag_end + 1..];
         }
     }
     out
@@ -826,6 +819,28 @@ mod tests {
         assert_eq!(
             xref_anchors_in(&blocks),
             std::collections::HashSet::from(["tbl-kl".to_string()])
+        );
+    }
+
+    /// Only an `<a>` ELEMENT is a citation, read through the one tag walker (audit
+    /// 2026-09-24, B3): a `{js}` cell's source in its script element and a comment that show
+    /// the markup cite nothing, and an anchor is read decoded.
+    #[test]
+    fn xref_anchors_in_reads_elements_not_text() {
+        // The tag is spelled in two pieces because `tests/token_contract.rs` reads any
+        // source file holding the whole word as browser code.
+        let blocks = [
+            block(concat!(
+                r##"<div class="cell tali-js"><"##,
+                r##"script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</"##,
+                r##"script></div>"##
+            )),
+            block(r##"<!-- <a href="#sec-commented" class="tali-xref">Section</a> -->"##),
+            block(r##"<p><a class='tali-xref' href='other.html#sec-single'>Section</a></p>"##),
+        ];
+        assert_eq!(
+            xref_anchors_in(&blocks),
+            std::collections::HashSet::from(["sec-single".to_string()])
         );
     }
 
