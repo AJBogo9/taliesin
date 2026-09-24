@@ -24,7 +24,6 @@
 //! unknown config key.
 
 use super::*;
-use serde::Deserialize;
 
 /// The resolved project config — the single internal model every downstream
 /// consumer reads.
@@ -64,33 +63,25 @@ pub struct SiteConfig {
     pub bibliography: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Navbar {
-    #[serde(default)]
     pub left: Vec<NavItem>,
-    #[serde(default)]
     pub right: Vec<NavItem>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Footer {
-    #[serde(default)]
     pub left: Vec<NavItem>,
-    #[serde(default)]
     pub center: Vec<NavItem>,
-    #[serde(default)]
     pub right: Vec<NavItem>,
 }
 
 /// A navbar/footer entry. `text` is the label; `href` the link; `icon` a bundled
 /// social glyph name (github / linkedin / rss / …) rendered as an inline SVG.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct NavItem {
-    #[serde(default)]
     pub text: Option<String>,
-    #[serde(default)]
     pub href: Option<String>,
-    #[serde(default)]
     pub icon: Option<String>,
 }
 
@@ -150,10 +141,21 @@ pub const MALFORMED_CONFIG_PREFIX: &str = "_site.yml is not valid YAML";
 /// stable (see `crates/server/src/check.rs`).
 pub const MISSING_CONFIG_PREFIX: &str = "no _site.yml at";
 
+/// `_site.yml`'s text, a leading byte-order mark stripped: the one reader of the file
+/// (the project load below, and `bibliography::shared_for_single_doc`). YAML takes a BOM
+/// as the start of a second document, so the whole config used to be rejected with "more
+/// than one document", and every setting silently defaulted.
+pub(super) fn read_site_yml(root: &Path) -> std::io::Result<String> {
+    let text = std::fs::read_to_string(root.join("_site.yml"))?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => text,
+    })
+}
+
 /// Load + parse `_site.yml` at `root` into the native flat schema.
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
-    let path = root.join("_site.yml");
-    let Ok(text) = std::fs::read_to_string(&path) else {
+    let Ok(text) = read_site_yml(root) else {
         // A directory still holding the pre-rename `_quarto.yml` is NOT the bare-directory
         // case: it has a config and every setting in it is being ignored, so the project
         // builds with its `title:` and everything else silently defaulted. Reporting it as
@@ -341,7 +343,9 @@ fn parse_native(
     validate_keys(value, warnings, src);
     validate_url(value, warnings);
     validate_chapters(value, warnings, src);
-    let str_of = |k: &str| value.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    // Through `scalar`, like a page's front matter: a number or bool where text is expected
+    // (`title: 2026`) is read as its text rather than dropped.
+    let str_of = |k: &str| scalar(value.get(k));
     let chapters = value
         .get("chapters")
         .and_then(|v| v.as_sequence())
@@ -382,7 +386,33 @@ impl ConfigSource<'_> {
     /// filename when the key cannot be located — a warning without a line still beats a
     /// wrong one.
     fn at(&self, key: &str) -> String {
-        match self.0.and_then(|t| key_line(t, key)) {
+        Self::prefix(self.0.and_then(|t| key_line(t, key)))
+    }
+
+    /// Like [`Self::at`], for the line where `key` holds `value` (`None`: a bare list item
+    /// `- value`). Nav and footer items share their keys, so the first `text:` in the file
+    /// is usually some other item's: the line that also carries the value is the one meant.
+    fn at_value(&self, key: Option<&str>, value: &str) -> String {
+        let unquote = |v: &str| v.trim().trim_matches(['"', '\'']).to_string();
+        let found = self.0.and_then(|t| {
+            t.lines().position(|l| {
+                let l = l.trim_start().trim_start_matches("- ");
+                match key {
+                    None => unquote(l) == value,
+                    Some(k) => l.split([',', '{', '}']).any(|part| {
+                        part.trim()
+                            .strip_prefix(k)
+                            .and_then(|rest| rest.strip_prefix(':'))
+                            .is_some_and(|v| unquote(v) == value)
+                    }),
+                }
+            })
+        });
+        Self::prefix(found.map(|i| i + 1))
+    }
+
+    fn prefix(line: Option<usize>) -> String {
+        match line {
             Some(line) => format!("_site.yml:{line}:"),
             None => "_site.yml:".to_string(),
         }
@@ -413,6 +443,14 @@ fn key_line(text: &str, key: &str) -> Option<usize> {
 /// warning is prefixed `_site.yml` so it is file-located rather than an anonymous string.
 fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>, src: ConfigSource<'_>) {
     let Some(map) = value.as_mapping() else {
+        // An empty file is an empty config; anything else names no key at all.
+        if !value.is_null() {
+            warnings.push(
+                "_site.yml: its top level is not a mapping of `key: value` settings, so \
+                 every setting in it is ignored"
+                    .to_string(),
+            );
+        }
         return;
     };
     let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
@@ -464,13 +502,15 @@ fn validate_nav_like(
                 }
             }
         }
-        serde_yaml::Value::Sequence(_) => validate_items(v, ctx, warnings, src),
-        _ => {}
+        _ => validate_items(v, ctx, warnings, src),
     }
 }
 
 /// Validate one or a list of nav/footer items: each mapping's keys against
-/// [`NAV_ITEM_KEYS`] (a bare string item is a plain label, nothing to check).
+/// [`NAV_ITEM_KEYS`], its `icon:` against the bundled glyphs, and, in `nav:`, that it has an
+/// `href:`. The navbar renders only a link, so a nav item with no `href:` (a bare
+/// `- a.tmd` entry included) is dropped from it; a footer item with none is a plain text
+/// label (a copyright line), which is why that rule is the navbar's alone.
 fn validate_items(
     v: &serde_yaml::Value,
     ctx: &str,
@@ -482,16 +522,50 @@ fn validate_items(
         other => vec![other],
     };
     for item in items {
-        if let serde_yaml::Value::Mapping(m) = item {
-            for k in m.keys().filter_map(|k| k.as_str()) {
-                if !NAV_ITEM_KEYS.contains(&k) {
+        match item {
+            serde_yaml::Value::Mapping(m) => {
+                for k in m.keys().filter_map(|k| k.as_str()) {
+                    if !NAV_ITEM_KEYS.contains(&k) {
+                        warnings.push(format!(
+                            "{} unknown {ctx} item key `{k}`{}",
+                            src.at(k),
+                            did_you_mean(k, NAV_ITEM_KEYS)
+                        ));
+                    }
+                }
+                let icon = scalar(m.get("icon"));
+                if let Some(name) = icon.as_deref()
+                    && super::chrome::social_icon(name).is_none()
+                {
                     warnings.push(format!(
-                        "{} unknown {ctx} item key `{k}`{}",
-                        src.at(k),
-                        did_you_mean(k, NAV_ITEM_KEYS)
+                        "{} unknown {ctx} icon `{name}`: no bundled icon has that name, so \
+                         the link shows its text or URL instead",
+                        src.at_value(Some("icon"), name)
+                    ));
+                }
+                if ctx == "nav" && !m.contains_key("href") {
+                    let (key, name) = match (scalar(m.get("text")), icon) {
+                        (Some(text), _) => ("text", text),
+                        (None, Some(icon)) => ("icon", icon),
+                        (None, None) => ("", String::new()),
+                    };
+                    warnings.push(format!(
+                        "{} a `nav:` item (`{name}`) has no `href:`, so it is dropped from the \
+                         navbar",
+                        src.at_value(Some(key), &name)
                     ));
                 }
             }
+            scalar_item if ctx == "nav" => {
+                if let Some(name) = scalar(Some(scalar_item)) {
+                    warnings.push(format!(
+                        "{} a bare `nav:` entry (`{name}`) has no `href:`, so it is dropped \
+                         from the navbar: write it as `{{ text: …, href: {name} }}`",
+                        src.at_value(None, &name)
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -528,9 +602,8 @@ fn footer_from(v: Option<&serde_yaml::Value>) -> Option<Footer> {
     }
 }
 
-/// Coerce a value into a list of [`NavItem`]: a string → one text item, a single
-/// `{…}` → one item, a list → many. Bare strings *inside* a list are handled too
-/// (they would otherwise fail to deserialize into a struct and be silently dropped).
+/// Coerce a value into a list of [`NavItem`]: a scalar → one text item, a single
+/// `{…}` → one item, a list → many.
 fn items(v: Option<&serde_yaml::Value>) -> Vec<NavItem> {
     match v {
         None => Vec::new(),
@@ -539,15 +612,21 @@ fn items(v: Option<&serde_yaml::Value>) -> Vec<NavItem> {
     }
 }
 
-/// One nav/footer entry from a YAML value: a bare string becomes a text label; a
-/// `{…}` mapping deserializes into a [`NavItem`].
+/// One nav/footer entry from a YAML value: a bare scalar becomes a text label; a `{…}`
+/// mapping's fields are read through `scalar`, like every other config value. It used to
+/// deserialize into [`NavItem`]'s `Option<String>`s and discard the error, so a number
+/// anywhere in the item (`text: 2025`) made the whole item vanish.
 fn nav_item(v: &serde_yaml::Value) -> Option<NavItem> {
     match v {
-        serde_yaml::Value::String(s) => Some(NavItem {
-            text: Some(s.clone()),
+        serde_yaml::Value::Mapping(_) => Some(NavItem {
+            text: scalar(v.get("text")),
+            href: scalar(v.get("href")),
+            icon: scalar(v.get("icon")),
+        }),
+        other => scalar(Some(other)).map(|text| NavItem {
+            text: Some(text),
             ..NavItem::default()
         }),
-        other => serde_yaml::from_value(other.clone()).ok(),
     }
 }
 
@@ -1030,5 +1109,137 @@ mod config_tests {
             "a valid config is not malformed: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A YAML number or bool where the config expects text has an obvious text form, so it
+    /// is read as that text. Every scalar went through `as_str()` (or a `Deserialize` into
+    /// `Option<String>` whose error `.ok()` discarded), so `title: 2026` built a site with no
+    /// title, `python: 3.12` was ignored while `doctor` called the config valid, a nav item
+    /// `{ text: 2025, href: … }` vanished whole, and `footer: left: 2026` rendered nothing,
+    /// all with zero diagnostics.
+    #[test]
+    fn a_number_where_text_is_expected_is_read_as_its_text() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "title: 2026\npython: 3.12\nnav:\n  - { text: 2025, href: y2025.tmd }\n  \
+             - { text: On, href: on.tmd, icon: true }\nfooter:\n  left: 2026\n",
+        )
+        .unwrap();
+        let cfg = parse_native(&v, &mut w, ConfigSource(None));
+        assert_eq!(cfg.title.as_deref(), Some("2026"));
+        assert_eq!(cfg.python.as_deref(), Some("3.12"));
+        let nav = &cfg.nav.left;
+        assert_eq!(nav.len(), 2, "no nav item vanishes: {nav:?}");
+        assert_eq!(nav[0].text.as_deref(), Some("2025"));
+        assert_eq!(nav[0].href.as_deref(), Some("y2025.tmd"));
+        assert_eq!(nav[1].icon.as_deref(), Some("true"));
+        let footer = cfg.footer.expect("a footer");
+        assert_eq!(footer.left.len(), 1);
+        assert_eq!(footer.left[0].text.as_deref(), Some("2026"));
+    }
+
+    /// A `nav:` entry with no `href:` links nowhere, so the navbar drops it; that drop was
+    /// silent, including for a bare `- a.tmd` written the way `chapters:` entries are. A
+    /// footer entry with no `href:` is a plain text item (a copyright line) and stays silent.
+    #[test]
+    fn a_nav_entry_without_an_href_is_diagnosed() {
+        let text = "nav:\n  - { text: Home, href: index.tmd }\n  - a.tmd\n  - { text: Blog }\n\
+                    footer:\n  left:\n    - text: (c) 2026\n";
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        let dropped: Vec<&String> = w.iter().filter(|m| m.contains("no `href:`")).collect();
+        assert_eq!(dropped.len(), 2, "{w:?}");
+        assert!(
+            dropped[0].starts_with("_site.yml:3:") && dropped[0].contains("`a.tmd`"),
+            "{w:?}"
+        );
+        assert!(
+            dropped[1].starts_with("_site.yml:4:") && dropped[1].contains("`Blog`"),
+            "{w:?}"
+        );
+    }
+
+    /// An `icon:` name with no bundled glyph rendered the link's raw URL as its text, in
+    /// silence.
+    #[test]
+    fn an_unknown_icon_name_is_diagnosed() {
+        let text = "nav:\n  - { icon: github, href: \"https://a\" }\n  - { icon: githb, href: \"https://b\" }\n";
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(
+            w[0].starts_with("_site.yml:3:") && w[0].contains("unknown nav icon `githb`"),
+            "{w:?}"
+        );
+    }
+
+    /// A UTF-8 byte-order mark (which some Windows editors write) rejected the whole config
+    /// with "more than one document", and the project built with every setting defaulted.
+    /// Front matter already stripped one; both `_site.yml` readers now do.
+    #[test]
+    fn a_byte_order_mark_does_not_reject_the_config() {
+        let dir = tmp("bom");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "\u{feff}title: With BOM\nbibliography: refs.bib\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("refs.bib"), "@misc{k, title={T}}\n").unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert_eq!(cfg.title.as_deref(), Some("With BOM"), "{warnings:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(
+            crate::site::shared_for_single_doc(&dir).len(),
+            1,
+            "the single-document reader of `_site.yml` strips it too"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A `_site.yml` whose top level is a list or a plain value parses, but names no key, so
+    /// every setting degraded to its default in silence.
+    #[test]
+    fn a_config_that_is_not_a_mapping_is_diagnosed() {
+        for text in ["- title: X\n- nav: []\n", "just a title\n"] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+            let _ = parse_native(&v, &mut w, ConfigSource(Some(text)));
+            assert!(
+                w.iter().any(|m| m.contains("not a mapping")),
+                "{text:?}: {w:?}"
+            );
+        }
+        // An empty file is an empty config, not a mistake.
+        let mut w = Vec::new();
+        let _ = parse_native(&serde_yaml::Value::Null, &mut w, ConfigSource(Some("")));
+        assert!(w.is_empty(), "{w:?}");
+    }
+
+    /// A book's `part:` label and a chapter's `text:` label are text too.
+    #[test]
+    fn a_numeric_part_or_chapter_label_is_read_as_its_text() {
+        let root = crate::site::tests::write_site(
+            "numericpart",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - part: 2026\n    chapters:\n      \
+                     - { file: a.tmd, text: 1999 }\n",
+                ),
+                ("index.tmd", "# Home\n"),
+                ("a.tmd", "# A\n"),
+            ],
+        );
+        let site = crate::site::Site::discover(&root);
+        let entries = &site.book.as_ref().unwrap().entries;
+        assert!(
+            entries.iter().any(|e| e.part.as_deref() == Some("2026")),
+            "{entries:?}"
+        );
+        assert!(entries.iter().any(|e| e.title == "1999"), "{entries:?}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

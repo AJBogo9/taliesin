@@ -72,7 +72,7 @@ pub(super) fn resolve_shared(
 /// project-level mistake belonging to a project-level check; surfacing it as a warning on
 /// whichever page happens to be open would attribute it to the wrong file.
 pub(crate) fn shared_for_single_doc(root: &Path) -> Vec<PathBuf> {
-    let Ok(text) = std::fs::read_to_string(root.join("_site.yml")) else {
+    let Ok(text) = super::config::read_site_yml(root) else {
         return Vec::new();
     };
     let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {

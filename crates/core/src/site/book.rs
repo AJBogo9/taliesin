@@ -105,11 +105,7 @@ fn push_group(
         }
         // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner entries.
         if let Some(map) = ch.as_mapping() {
-            let part = map
-                .get("part")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let part = scalar(map.get("part")).unwrap_or_default();
             let header_idx = entries.len();
             entries.push(BookEntry {
                 part: Some(part),
@@ -157,8 +153,8 @@ fn push_chapter_entry(
     if let Some(map) = value.as_mapping()
         && let Some(file) = map.get("file").and_then(|v| v.as_str())
     {
-        let label = map.get("text").and_then(|v| v.as_str());
-        push_chapter(root, file, label, entries, num, mode, excluded);
+        let label = scalar(map.get("text"));
+        push_chapter(root, file, label.as_deref(), entries, num, mode, excluded);
         return true;
     }
     false
