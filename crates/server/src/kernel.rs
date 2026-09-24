@@ -1743,6 +1743,92 @@ fn strip_math_delimiters(tex: &str) -> &str {
     t
 }
 
+/// Where a published warning or traceback may not point: into the author's home.
+///
+/// A library warning names the file that raised it, absolutely
+/// (`/home/<user>/…/proj/helper.py:4: UserWarning`), and a traceback frame does too, in
+/// the `~/…` form IPython shortens `$HOME` to. Both put the author's home layout into a
+/// published page and make a build differ by machine (audit exec #14). So paths inside the
+/// project print relative to it, and the rest of `$HOME` as `~`.
+///
+/// Only stderr and tracebacks, which is where those paths come from: what a cell prints on
+/// stdout is what the author asked to print.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PathScrub {
+    /// `(prefix, replacement)`, most specific first; each prefix ends in `/`.
+    rules: Vec<(String, &'static str)>,
+}
+
+impl PathScrub {
+    /// The rules for a project at `root` (a lone document's own directory), with `$HOME`
+    /// read from the environment. `None` scrubs `$HOME` alone.
+    pub(crate) fn new(root: Option<&Path>) -> Self {
+        let forms = |p: &Path| -> Vec<PathBuf> {
+            let mut v = vec![p.to_path_buf()];
+            if let Ok(c) = p.canonicalize()
+                && c != p
+            {
+                v.push(c);
+            }
+            v
+        };
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|h| h.is_absolute() && h.parent().is_some());
+        let mut rules = Vec::new();
+        if let Some(root) = root.filter(|r| r.is_absolute()) {
+            for r in forms(root) {
+                rules.push((format!("{}/", r.display()), ""));
+                for h in home.iter().flat_map(|h| forms(h)) {
+                    if let Ok(rel) = r.strip_prefix(&h) {
+                        let tilde = match rel.as_os_str().is_empty() {
+                            true => "~/".to_string(),
+                            false => format!("~/{}/", rel.display()),
+                        };
+                        rules.push((tilde, ""));
+                    }
+                }
+            }
+        }
+        for h in home.iter().flat_map(|h| forms(h)) {
+            rules.push((format!("{}/", h.display()), "~/"));
+        }
+        PathScrub { rules }
+    }
+
+    fn text(&self, s: &str) -> String {
+        let mut out = s.to_string();
+        for (from, to) in &self.rules {
+            if out.contains(from.as_str()) {
+                out = out.replace(from.as_str(), to);
+            }
+        }
+        out
+    }
+
+    /// `o` as it may be published.
+    pub(crate) fn apply(&self, o: &Output) -> Output {
+        match o {
+            Output::Stream { stderr: true, text } => Output::Stream {
+                stderr: true,
+                text: self.text(text),
+            },
+            Output::Error {
+                ename,
+                evalue,
+                traceback,
+                not_run,
+            } => Output::Error {
+                ename: ename.clone(),
+                evalue: self.text(evalue),
+                traceback: traceback.iter().map(|l| self.text(l)).collect(),
+                not_run: *not_run,
+            },
+            other => other.clone(),
+        }
+    }
+}
+
 /// Replace a Jupyter cell's non-deterministic source path with a stable `<cell>` marker.
 /// An executed cell's stream — matplotlib's Agg `UserWarning`, any `warnings.warn`, or a
 /// `print(__file__)` — cites the kernel's per-process temp file
@@ -2867,6 +2953,56 @@ mod tests {
     // cold/CI/cross-machine builds non-reproducible AND leak a local absolute path into the
     // published HTML. Scrub it to a stable `<cell>` marker (the IPython traceback arm already
     // reads `Cell In[N]`). Captured verbatim from a real ipykernel-7 build.
+    /// exec #14, the rule itself: inside the project a path goes relative, in either the
+    /// absolute form a warning prints or the `~/` form IPython gives a traceback frame;
+    /// elsewhere under `$HOME` it becomes `~/`; stdout is the author's and is left alone.
+    #[test]
+    fn a_published_path_is_relative_to_the_project_or_under_tilde() {
+        let paths = PathScrub {
+            rules: vec![
+                ("/home/u/proj/".into(), ""),
+                ("~/proj/".into(), ""),
+                ("/home/u/".into(), "~/"),
+            ],
+        };
+        let err = |t: &str| Output::Stream {
+            stderr: true,
+            text: t.into(),
+        };
+        assert_eq!(
+            paths.apply(&err("/home/u/proj/.venv/lib/x.py:3: RuntimeWarning\n")),
+            err(".venv/lib/x.py:3: RuntimeWarning\n")
+        );
+        assert_eq!(
+            paths.apply(&err("/home/u/other/y.py:1: UserWarning\n")),
+            err("~/other/y.py:1: UserWarning\n")
+        );
+        let tb = paths.apply(&Output::Error {
+            ename: "E".into(),
+            evalue: "no /home/u/proj/data.csv".into(),
+            traceback: vec!["File ~/proj/helper.py:5, in boom()".into()],
+            not_run: None,
+        });
+        assert_eq!(
+            tb,
+            Output::Error {
+                ename: "E".into(),
+                evalue: "no data.csv".into(),
+                traceback: vec!["File helper.py:5, in boom()".into()],
+                not_run: None,
+            }
+        );
+        let printed = out("/home/u/proj/results.csv\n");
+        assert_eq!(paths.apply(&printed), printed, "stdout is left as printed");
+        // Built from a root and a home, the rules come out most specific first.
+        let home = std::env::temp_dir().join(format!("tali-scrub-{}", std::process::id()));
+        let root = home.join("proj");
+        std::fs::create_dir_all(&root).unwrap();
+        let built = PathScrub::new(Some(&root));
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(built.rules[0], (format!("{}/", root.display()), ""));
+    }
+
     #[test]
     fn render_outputs_scrubs_nondeterministic_kernel_paths() {
         let out = render_outputs(&[Output::Stream {

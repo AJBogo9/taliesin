@@ -873,7 +873,9 @@ fn build_page_executing(
             }
             None => (freeze::page_path(&base.join("_freeze"), stem), base),
         };
-        let mut ex = exec::Executor::with_freeze(freeze_file).in_dir(base);
+        let mut ex = exec::Executor::with_freeze(freeze_file)
+            .in_dir(base)
+            .in_project(interp_dir);
         // The project's `python:` moves with the root, for the same reason the root itself
         // does. Passing `None` here read the pin as "not set" and fell through to
         // `<root>/.venv` / `TALIESIN_PYTHON` / `python3` — so the author got an interpreter
@@ -1489,8 +1491,9 @@ async fn build_one_page(
         warnings.push((w.severity, locate(w, &page.rel)));
         diagnostics.push(crate::lint::diag_from(w, &page.rel));
     }
-    let mut exec =
-        exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
+    let mut exec = exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel))
+        .in_dir(base)
+        .in_project(root);
     // No progress sink (a build has no client), but name the page: a cold site build runs
     // pages concurrently, so bare interleaved `cell 2/4` lines belong to nobody.
     exec.set_progress(None, Some(page.rel.clone()));

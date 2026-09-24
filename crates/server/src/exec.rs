@@ -357,6 +357,9 @@ pub struct Executor {
     /// cell's relative writes land beside the source instead of in the server's
     /// launch dir. `None` inherits the server's cwd (the default; used by tests).
     work_dir: Option<PathBuf>,
+    /// How a warning or traceback is published without the author's home path: relative to
+    /// the project set by [`Executor::in_project`], `~` for the rest of `$HOME`.
+    paths: crate::kernel::PathScrub,
     /// Where to push `build-state` progress (set by a dev server before a build);
     /// `None` on the headless `build` path. Side-effect-free: never changes what
     /// runs or caches.
@@ -406,6 +409,15 @@ impl Executor {
         self
     }
 
+    /// The project this document belongs to (a lone document's own directory), so a
+    /// warning or traceback from a file inside it publishes a path relative to it rather
+    /// than the author's absolute one. See [`crate::kernel::PathScrub`].
+    pub fn in_project(mut self, root: &Path) -> Self {
+        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        self.paths = crate::kernel::PathScrub::new(Some(&root));
+        self
+    }
+
     fn build(freeze: FreezeCache) -> Self {
         // Delegated, never re-implemented. This used to read `TALIESIN_PYTHON` and fall
         // back to `python3` inline — a second copy of a policy `interpreter.rs` owns,
@@ -421,6 +433,7 @@ impl Executor {
             force_next: false,
             no_exec: exec_disabled(),
             work_dir: None,
+            paths: crate::kernel::PathScrub::new(None),
             sink: None,
             page: None,
             interrupt: None,
@@ -1297,6 +1310,7 @@ impl Executor {
         // same reason: it is read back after the borrow ends.
         let sink = self.sink.clone();
         let interrupt = self.interrupt.clone();
+        let paths = self.paths.clone();
         let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
         let Some(state) = self.langs.get_mut(lang) else {
@@ -1347,7 +1361,7 @@ impl Executor {
                         page.as_deref(),
                         &cell_id,
                         op,
-                        &render_outputs(std::slice::from_ref(shown)),
+                        &render_outputs(&[paths.apply(shown)]),
                     ),
                 );
             })
@@ -1356,7 +1370,7 @@ impl Executor {
             h.store(0, std::sync::atomic::Ordering::SeqCst);
         }
         match result {
-            Ok(outs) => render_outputs(&outs),
+            Ok(outs) => render_outputs(&outs.iter().map(|o| paths.apply(o)).collect::<Vec<_>>()),
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
                 execution_error_html(&e.to_string())
