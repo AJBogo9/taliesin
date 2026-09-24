@@ -625,99 +625,78 @@ fn warn_nonstrict_problems(problems: usize) {
     ));
 }
 
-/// Count the executed output blocks that are uncaught runtime errors (their HTML
-/// A block is a crashed *cell output* only when it is an actual executed-cell output
-/// wrapper (`<div class="tali-output" …>`, produced by the executor) that carries the
-/// `tali-error` marker. Keying on the wrapper as well as the marker avoids a false
-/// positive on ordinary prose that merely *documents* the class in an inline `<code>`
-/// span (HTML text content doesn't escape `"`, so `class="tali-error"` appears verbatim
-/// in the rendered paragraph — e.g. the internals book's execution chapter).
-fn is_cell_error_output(html: &str) -> bool {
-    html.trim_start().starts_with("<div class=\"tali-output\"")
-        && html.contains("class=\"tali-error\"")
-}
-
-/// carries the `tali-error` marker), logging a located warning per failing cell so a
-/// crashing cell isn't baked into the build silently. Returns the count.
-fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usize {
-    let mut n = 0;
-    for b in blocks {
-        if is_cell_error_output(&b.html) {
-            n += 1;
-            log::warn(&cell_error_message(page_label, b));
-        }
+/// Log a located warning per cell the run saw fail, so a crashing cell isn't baked into
+/// the build silently, and return the count. The executor says which cells failed
+/// ([`exec::Executor::take_failures`]); reading it back out of the HTML was spoofable by a
+/// cell that merely printed the error markup (audit exec #11).
+fn report_cell_errors(failures: &[exec::CellFailure], page_label: &str) -> usize {
+    for f in failures {
+        log::warn(&cell_error_message(page_label, f));
     }
-    n
+    failures.len()
 }
 
-/// The located "cell error" message for a failed cell output — one string shape shared by
+/// The located "cell error" message for a failed cell — one string shape shared by
 /// the single-doc and site build paths (and their structured-diagnostic mirror).
 ///
 /// Two different things land here and they must not be described the same way: a cell that
 /// RAN and raised (its traceback is baked into the page, and the fix is in the author's
 /// code), and a cell that never ran at all because the executor could not reach a kernel
-/// (the fix is `TALIESIN_PYTHON` or the environment). The executor marks the
-/// diagnostics it writes itself with [`crate::exec::NOT_RUN_ATTR`]; asking that marker is
-/// the source of truth, since the two share an HTML shape on purpose.
-fn cell_error_message(page_label: &str, b: &taliesin_core::Block) -> String {
-    let where_ = b
+/// (the fix is `TALIESIN_PYTHON` or the environment).
+fn cell_error_message(page_label: &str, f: &exec::CellFailure) -> String {
+    let where_ = f
         .source_file
         .as_deref()
-        .map(|f| format!("{f} "))
+        .map(|file| format!("{file} "))
         .unwrap_or_default();
-    let what = not_run_reason(&b.html).unwrap_or(
-        "code cell raised an uncaught exception; its traceback is baked into the output",
-    );
     format!(
-        "cell error in {page_label} ({where_}@ {}): {what}",
-        b.sourcepos
+        "cell error in {page_label} ({where_}@ {}): {}",
+        f.sourcepos,
+        failure_reason(f.failure)
     )
 }
 
-/// Why a `tali-error` output is there, when the **executor** wrote it about a cell that
-/// never ran rather than the interpreter raising about code that did. `None` for a genuine
-/// traceback, the only case that may be called an exception.
-///
-/// Reads the marker's *kind* rather than the diagnostic's own prose, because that prose is
-/// not reliably reachable: a `#| label: fig-x` cell wraps the block in a `<figure>`, which
-/// is enough to make `classify_exec_output` report a figure rather than an error.
-fn not_run_reason(html: &str) -> Option<&'static str> {
-    use crate::exec;
-    let is = |kind: &str| html.contains(&format!("{}=\"{}\"", exec::NOT_RUN_ATTR, kind));
-    if is(exec::NOT_RUN_UNAVAILABLE) {
+/// What a failed cell's console line says about why.
+fn failure_reason(failure: exec::Failure) -> &'static str {
+    use crate::exec::{Failure, NOT_RUN_DIED, NOT_RUN_REQUEST, NOT_RUN_TIMEOUT};
+    match failure {
+        Failure::Raised => {
+            "code cell raised an uncaught exception; its traceback is baked into the output"
+        }
         // The executor logs the full "which interpreter, and why it could not launch"
         // diagnostic separately, once per language, so this line does not repeat it.
-        Some("code cell did not run: no kernel was available for its language")
-    } else if is(exec::NOT_RUN_DIED) {
-        Some("code cell did not run: the kernel exited first; it re-runs on the next save")
-    } else if is(exec::NOT_RUN_REQUEST) {
-        Some("code cell did not complete: the execution request failed")
-    } else if is(exec::NOT_RUN_TIMEOUT) {
-        Some(
+        Failure::NotRun(NOT_RUN_DIED) => {
+            "code cell did not run: the kernel exited first; it re-runs on the next save"
+        }
+        Failure::NotRun(NOT_RUN_REQUEST) => {
+            "code cell did not complete: the execution request failed"
+        }
+        Failure::NotRun(NOT_RUN_TIMEOUT) => {
             "code cell did not complete: it hit a liveness cap and was interrupted \
              (a cell producing no output for TALIESIN_CELL_SILENCE seconds, default 600; \
              or TALIESIN_CELL_TIMEOUT if you set a wall-clock cap). Printing progress \
-             from a long cell keeps it alive; 0 disables either cap",
-        )
-    } else {
-        None
+             from a long cell keeps it alive; 0 disables either cap"
+        }
+        Failure::NotRun(_) => "code cell did not run: no kernel was available for its language",
+        Failure::Truncated => {
+            "code cell's output was cut at an output cap, so the page shows only part of it"
+        }
     }
 }
 
 /// Structured "cell error" diagnostics (build-only additions over `check`'s superset), in
-/// block order, for `--format json`.
+/// document order, for `--format json`.
 fn cell_error_diagnostics(
-    blocks: &[taliesin_core::Block],
+    failures: &[exec::CellFailure],
     page_label: &str,
 ) -> Vec<crate::lint::Diagnostic> {
-    blocks
+    failures
         .iter()
-        .filter(|b| is_cell_error_output(&b.html))
-        .map(|b| {
+        .map(|f| {
             crate::lint::Diagnostic::new(
                 page_label.to_string(),
                 None,
-                cell_error_message(page_label, b),
+                cell_error_message(page_label, f),
             )
         })
         .collect()
@@ -914,8 +893,9 @@ fn build_page_executing(
         // a different surface, not a duplicate.
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
-        problems += report_cell_errors(&doc.blocks, label);
-        diagnostics.extend(cell_error_diagnostics(&doc.blocks, label));
+        let failures = ex.take_failures();
+        problems += report_cell_errors(&failures, label);
+        diagnostics.extend(cell_error_diagnostics(&failures, label));
         // Exec-phase defects (an empty-output labelled float): into the structured
         // channel, so `--format json` sees what the console sees — the executor already
         // printed the terminal warn line at the cell, so no re-log here. Never counted
@@ -1516,17 +1496,15 @@ async fn build_one_page(
     }
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
-    for b in &doc.blocks {
-        if is_cell_error_output(&b.html) {
-            problems += 1;
-            let msg = cell_error_message(&page.rel, b);
-            diagnostics.push(crate::lint::Diagnostic::new(
-                page.rel.clone(),
-                None,
-                msg.clone(),
-            ));
-            warnings.push((taliesin_core::Severity::Warning, msg));
-        }
+    for f in &exec.take_failures() {
+        problems += 1;
+        let msg = cell_error_message(&page.rel, f);
+        diagnostics.push(crate::lint::Diagnostic::new(
+            page.rel.clone(),
+            None,
+            msg.clone(),
+        ));
+        warnings.push((taliesin_core::Severity::Warning, msg));
     }
     // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
     // silently (these previously only showed in the preview dev menu). Every page links
@@ -3592,65 +3570,23 @@ mod mirror_tests {
 #[cfg(test)]
 mod build_diag_tests {
     use super::*;
-    use taliesin_core::Block;
     use taliesin_core::render::{Cell, JsOpts};
-
-    /// A block standing in for an executed cell output, with the given inner HTML.
-    fn output_block(html: &str) -> Block {
-        Block {
-            id: "c-out".into(),
-            sourcepos: "7:1-9:3".into(),
-            source_file: None,
-            html: html.into(),
-            cell: None,
-            nested: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn report_cell_errors_counts_only_tali_error_outputs() {
-        let blocks = vec![
-            output_block("<div class=\"tali-output\"><pre class=\"tali-error\">boom</pre></div>"),
-            output_block("<div class=\"tali-output\"><pre>ok</pre></div>"),
-            // A *successful* cell that merely prints the text "tali-error" must not count
-            // (we match the class attribute, not the bare substring).
-            output_block("<div class=\"tali-output\"><pre>printed tali-error here</pre></div>"),
-        ];
-        assert_eq!(report_cell_errors(&blocks, "page"), 1);
-    }
-
-    #[test]
-    fn report_cell_errors_ignores_prose_that_merely_documents_the_class() {
-        // Ordinary prose describing the tali-error class in an inline <code> span (e.g.
-        // the internals book's execution chapter) is not wrapped in the tali-output cell
-        // marker, so it must not be miscounted as a crashed cell: `class="tali-error"`
-        // appears unescaped in the block's HTML (HTML doesn't escape `"` in text content),
-        // but there is no real cell output here.
-        let blocks = vec![output_block(
-            "<p>anything carrying <code>class=\"tali-error\"</code>: an exception</p>",
-        )];
-        assert_eq!(report_cell_errors(&blocks, "page"), 0);
-    }
 
     #[test]
     fn a_cell_that_never_ran_is_not_reported_as_an_author_exception() {
         // AP11-1. With a bogus `TALIESIN_PYTHON` the build logged "code cell raised an
         // uncaught exception; its traceback is baked into the output". Both halves were
         // false: no kernel ever launched, so no cell ran and no traceback exists — the most
-        // likely setup failure there is, reported as a bug in the author's code. The cause
-        // was classification by HTML SHAPE: the executor's own "did not run" diagnostic is
-        // a `tali-error` pre inside a `tali-output` div (deliberately, so it is styled as an
-        // error and never cached), which is exactly the shape a real traceback has. So the
-        // executor now marks what it wrote itself, and the message asks the marker.
-        // The `<figure>` wrapper is load-bearing here, not decoration: a `#| label: fig-x`
-        // cell wraps its output that way, which is exactly the case where reading the
-        // diagnostic's prose back out of the HTML fails (`classify_exec_output` reports a
-        // figure, not an error). The marker's kind survives it.
-        let unavailable = output_block(&format!(
-            "<div class=\"tali-output\"><figure id=\"fig-x\"><pre class=\"tali-error\"{}>python \
-             kernel unavailable; this cell did not execute (No such file or directory (os error \
-             2))</pre><figcaption>Figure&nbsp;1: Sales</figcaption></figure></div>",
-            crate::exec::not_run_mark(crate::exec::NOT_RUN_UNAVAILABLE)
+        // likely setup failure there is, reported as a bug in the author's code. The kind of
+        // failure now travels from the executor as data (`exec::Failure`), so the wording is
+        // chosen from what happened rather than from the shape of the output HTML.
+        let failure = |f| crate::exec::CellFailure {
+            sourcepos: "7:1-9:3".into(),
+            source_file: None,
+            failure: f,
+        };
+        let unavailable = failure(crate::exec::Failure::NotRun(
+            crate::exec::NOT_RUN_UNAVAILABLE,
         ));
         let msg = cell_error_message("p.tmd", &unavailable);
         assert!(
@@ -3661,13 +3597,17 @@ mod build_diag_tests {
             msg.contains("did not run") && msg.contains("no kernel was available"),
             "the message must say what actually happened, and why: {msg}"
         );
+        for kind in [
+            crate::exec::NOT_RUN_DIED,
+            crate::exec::NOT_RUN_REQUEST,
+            crate::exec::NOT_RUN_TIMEOUT,
+        ] {
+            let msg = cell_error_message("p.tmd", &failure(crate::exec::Failure::NotRun(kind)));
+            assert!(!msg.contains("exception"), "{kind}: {msg}");
+        }
 
-        // The real thing still reads as the real thing: an interpreter traceback carries no
-        // marker, so it keeps the exception wording (and the summary line names it).
-        let raised = output_block(
-            "<div class=\"tali-output\"><pre class=\"tali-error\">Traceback (most recent call \
-             last)\nValueError: bad value</pre></div>",
-        );
+        // The real thing still reads as the real thing.
+        let raised = failure(crate::exec::Failure::Raised);
         let msg = cell_error_message("p.tmd", &raised);
         assert!(
             msg.contains("uncaught exception") && msg.contains("traceback"),
@@ -3676,48 +3616,9 @@ mod build_diag_tests {
 
         // Both are still *problems*: they count toward `--strict` and reach `--format json`,
         // which is what AP11 verified as correct. Only the wording was wrong.
-        let blocks = vec![unavailable, raised];
-        assert_eq!(report_cell_errors(&blocks, "p.tmd"), 2);
-        assert_eq!(cell_error_diagnostics(&blocks, "p.tmd").len(), 2);
-    }
-
-    #[test]
-    fn every_executor_authored_error_block_carries_the_not_run_marker() {
-        // The marker is only as good as its coverage: each of these is written by the
-        // EXECUTOR about a cell that did not complete, not by the interpreter about code
-        // that ran. Asserted against the real emitters rather than copies of their strings,
-        // so a fourth one added without the marker fails here rather than silently
-        // regressing into "raised an uncaught exception".
-        //
-        // The last two are the LIVE path and are why this list grew: a timeout-killed or
-        // mid-cell-death output is not built by any `*_html` helper here — it is an
-        // `Output::Error` rendered by `kernel::render_outputs`, which carried no marker at
-        // all, so this test passed while the thing it names shipped broken. Constructed via
-        // the real constructors the kernel loop calls, not copies of their strings.
-        for html in [
-            crate::exec::kernel_unavailable_html("python", Some("No such file or directory")),
-            crate::exec::kernel_unavailable_html("r", None),
-            crate::exec::KERNEL_DIED_HTML.to_string(),
-            crate::exec::execution_error_html("timed out"),
-            crate::kernel::render_outputs(&[crate::kernel::Output::timeout(
-                "cell exceeded 120s; sent interrupt".into(),
-            )]),
-            crate::kernel::render_outputs(&[crate::kernel::Output::kernel_died()]),
-        ] {
-            assert!(
-                html.contains("class=\"tali-error\""),
-                "still styled + uncacheable as an error: {html}"
-            );
-            let b = output_block(&format!("<div class=\"tali-output\">{html}</div>"));
-            assert!(
-                not_run_reason(&b.html).is_some(),
-                "executor-authored, so it must carry a known not-run kind: {html}"
-            );
-            assert!(
-                !cell_error_message("p.tmd", &b).contains("exception"),
-                "{html}"
-            );
-        }
+        let failures = vec![unavailable, raised];
+        assert_eq!(report_cell_errors(&failures, "p.tmd"), 2);
+        assert_eq!(cell_error_diagnostics(&failures, "p.tmd").len(), 2);
     }
 
     /// `render` must flag kernel-executed cells — but not `{js}` cells,

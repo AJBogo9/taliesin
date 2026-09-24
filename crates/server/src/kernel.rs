@@ -141,14 +141,9 @@ fn cell_budget(
 }
 
 /// The prefix of every notice this module appends when a cell's output hits a cap
-/// (`… at 4096 items]`, `… at 512 KB]`, `… at 8 MB of rich output]`). Defined once here,
-/// beside the emitters, because `exec::is_uncacheable` matches on it to keep a truncated
-/// output out of the freeze cache: two copies of the literal could drift apart silently and
-/// the only symptom would be a silently-cached truncated result.
-///
-/// Matched in this **bracketed** form on purpose. A bare `taliesin: output truncated` also
-/// matches a cell that merely *prints* the phrase, which refuses that cell the cache
-/// forever, exactly the false-positive the `tali-error` check was hardened against.
+/// (`… at 4096 items]`, `… at 512 KB]`, `… at 8 MB of rich output]`). Only written, never
+/// read back: a truncated output is kept out of the freeze cache by [`Outputs::capped`],
+/// because a cell that merely prints this text is not truncated.
 pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
 
 /// Total text bytes of *stream* output one cell may retain, after carriage returns are
@@ -909,13 +904,15 @@ impl Kernel {
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).
     pub async fn execute(&mut self, code: &str) -> io::Result<Vec<Output>> {
-        self.execute_streaming(code, |_| {}).await
+        self.execute_streaming(code, |_| {})
+            .await
+            .map(Outputs::into_vec)
     }
 
     /// [`Kernel::execute`], but `on_output` is handed what the live view needs **as the
-    /// outputs arrive** rather than only the finished vector (item 175b). The returned
-    /// vector is unchanged, so a caller that wants no streaming passes a no-op and
-    /// sees exactly the previous behavior.
+    /// outputs arrive** rather than only the finished list (item 175b). The list comes
+    /// back as the [`Outputs`] that built it, so the caller can also ask whether a cap cut
+    /// it.
     ///
     /// The callback fires from one [`Outputs::sync`] rather than from each site that
     /// changes the list, so a change added later cannot silently stop being streamed.
@@ -923,7 +920,7 @@ impl Kernel {
         &mut self,
         code: &str,
         mut on_output: impl FnMut(LiveOp<'_>),
-    ) -> io::Result<Vec<Output>> {
+    ) -> io::Result<Outputs> {
         // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`. What
         // happens after a cell fails is the EXECUTOR's decision — `exec.rs` keeps running the
         // document and refuses to persist anything downstream (`failed_at`) — and a kernel
@@ -1146,7 +1143,7 @@ impl Kernel {
                 _ => break, // timeout or read error: give up draining
             }
         }
-        Ok(outputs.into_vec())
+        Ok(outputs)
     }
 
     /// Send SIGINT to the kernel process, stopping a runaway cell while the warm kernel
@@ -1375,6 +1372,11 @@ impl Outputs {
     /// The finished list, as the page renders it.
     pub(crate) fn into_vec(self) -> Vec<Output> {
         self.list
+    }
+
+    /// The list so far.
+    pub(crate) fn list(&self) -> &[Output] {
+        &self.list
     }
 
     /// A stream chunk from the kernel.
@@ -1606,7 +1608,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 ename,
                 evalue,
                 traceback,
-                not_run,
+                not_run: _,
             } => {
                 let tb: String = traceback
                     .iter()
@@ -1618,15 +1620,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     tb
                 };
-                // An executor-authored error is the same HTML shape as a traceback on
-                // purpose (styled as an error, never cached), so the marker is what tells
-                // the console apart — without it a timeout-killed cell was reported as
-                // "raised an uncaught exception", which is false twice over.
-                let mark = not_run.map(crate::exec::not_run_mark).unwrap_or_default();
-                s.push_str(&format!(
-                    "<pre class=\"tali-error\"{mark}>{}</pre>",
-                    esc(&body)
-                ));
+                s.push_str(&format!("<pre class=\"tali-error\">{}</pre>", esc(&body)));
             }
         }
     }

@@ -191,12 +191,12 @@ The format has these properties:
 The planner keeps the following out of the cache, so a bad result is never restored
 on a later run:
 
-- **Error outputs** (anything carrying `class="tali-error"`: an exception, a timeout,
-  or the mid-run "kernel died" marker), so a transient failure re-runs next time. The
-  check matches the *class*, not a bare substring, so a cell that merely prints the
-  text "tali-error" still caches.
-- **Truncated outputs** (a result clipped at the size cap, marked
-  `taliesin: output truncated`), so a clipped result is never frozen as if complete.
+- **Failed cells**: an exception, a timeout, a cell that never ran or whose kernel died
+  under it, and an output cut at a size cap. Whether a cell failed travels from the
+  executor as data (`exec::Failure`) beside its HTML and is never read back out of the
+  markup, so a cell that merely prints `<pre class="tali-error">` or the truncation
+  notice still caches. A transient failure re-runs next time, and a clipped result is
+  never frozen as if complete. The same record is what a build counts as a cell error.
 - **`#| cache: false` cells**, which always re-execute by contract, **and everything
   downstream of one** (`first_uncacheable`, the single definition `plan`'s run range and
   the persist loop share): the key below such a cell records its upstream's code, never
@@ -312,11 +312,12 @@ mapping is small and explicit:
   display is ignored, since that output is already final.
 - **`clear_output`** drops what the cell has shown (see the kernel section above).
 - **`error`** becomes a `<pre class="tali-error">` holding the traceback with its ANSI
-  colour codes stripped (IPython colourises tracebacks for a terminal). In a traceback
-  and on stderr, a path inside the project prints relative to it and any other path under
-  `$HOME` as `~/`, so a library warning does not publish the author's home directory
-  (`PathScrub`, set per executor by `in_project`). It is the only
-  class the freeze cache does not store, so an error is never restored from disk.
+  colour codes stripped (IPython colourises tracebacks for a terminal). A cell with one
+  is never stored in the freeze cache, so an error is never restored from disk.
+
+In a traceback and on stderr, a path inside the project prints relative to it and any
+other path under `$HOME` as `~/`, so a library warning does not publish the author's home
+directory (`PathScrub`, set per executor by `in_project`).
 
 ### Why matplotlib figures render twice
 

@@ -42,20 +42,11 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
-/// Marks a `tali-error` block **the executor wrote itself**, about a cell that never ran
-/// (or never finished), as opposed to a traceback the interpreter raised about code that
-/// did. The two are deliberately the same HTML shape — a `tali-error` pre inside a
-/// `tali-output` div, so both are styled as errors and neither is ever cached — which left
-/// the only classifier keying on shape and reporting a missing interpreter to the console
-/// as "code cell raised an uncaught exception; its traceback is baked into the output"
-/// (AP11-1: both claims false). An extra attribute rather than an extra class, because
-/// several checks here and in `build.rs` match `class="tali-error"` literally, and
-/// uncacheability rides on one of them.
-///
-/// The value carries WHICH of the three (see the `NOT_RUN_*` consts) so the console can be
-/// specific without parsing the diagnostic's prose back out of the HTML — which is not
-/// reachable anyway once a `#| label:` cell wraps the block in a `<figure>`.
-pub(crate) const NOT_RUN_ATTR: &str = "data-tali-not-run";
+/// The kinds of [`Failure::NotRun`]: an error the **executor** wrote about a cell that never
+/// ran (or never finished), as opposed to a traceback the interpreter raised about code that
+/// did. The two share an HTML shape on purpose (a `tali-error` pre, styled as an error), so
+/// the kind travels as data beside the output rather than in it, and the console can say
+/// "did not run" instead of "raised an uncaught exception" (AP11-1).
 /// No kernel could be started for the cell's language (a missing/bad interpreter, a failed
 /// boot). The most likely setup failure there is.
 pub(crate) const NOT_RUN_UNAVAILABLE: &str = "kernel-unavailable";
@@ -69,11 +60,6 @@ pub(crate) const NOT_RUN_REQUEST: &str = "request-failed";
 /// Distinct from [`NOT_RUN_REQUEST`] because the fix is different and knowable: raise the
 /// cap or shorten the cell, not repair the transport.
 pub(crate) const NOT_RUN_TIMEOUT: &str = "timeout";
-
-/// The `data-tali-not-run="<kind>"` attribute text, leading space included.
-pub(crate) fn not_run_mark(kind: &str) -> String {
-    format!(" {NOT_RUN_ATTR}=\"{kind}\"")
-}
 
 /// Console warnings already emitted this process, so a fact that cannot change between
 /// pages is stated once. Keyed on the whole message, which already carries the language,
@@ -108,7 +94,7 @@ pub(crate) fn reset_announcements() {
 
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
-pub(crate) const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\" data-tali-not-run=\"kernel-died\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+pub(crate) const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
 
 /// A callback the server hands the executor to stream build progress
 /// (`build-state` messages) to the previewing client: each call receives a
@@ -269,7 +255,54 @@ impl CellRef {}
 /// "what state does the live kernel hold" record the [`plan`]ner diffs against.
 struct Ran {
     hash: String,
-    output: String, // inner output HTML (may be empty)
+    output: CellOut,
+}
+
+/// Why a cell's output is not its code's answer, so it must never be cached and a build
+/// must report it. Carried beside the HTML from the moment the kernel returns, because
+/// reading it back out of the markup is spoofable: the text escaper leaves `"` alone, so a
+/// cell that merely PRINTS `<pre class="tali-error">` spelled the marker in its own output
+/// and was reported as a crash and never cached (audit exec #11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Failure {
+    /// The interpreter raised about code that ran: a real traceback.
+    Raised,
+    /// The executor wrote the output about a cell that did not run or finish: one of the
+    /// `NOT_RUN_*` kinds.
+    NotRun(&'static str),
+    /// The output hit a flood cap and was cut, so it is not the whole answer.
+    Truncated,
+}
+
+/// One cell's rendered output and whether it failed.
+#[derive(Clone, Debug, Default)]
+struct CellOut {
+    html: String,
+    failure: Option<Failure>,
+}
+
+impl CellOut {
+    fn ok(html: String) -> Self {
+        CellOut {
+            html,
+            failure: None,
+        }
+    }
+
+    fn failed(html: String, failure: Failure) -> Self {
+        CellOut {
+            html,
+            failure: Some(failure),
+        }
+    }
+}
+
+/// A cell of the last run that failed, located, for the build to report and count.
+#[derive(Clone, Debug)]
+pub(crate) struct CellFailure {
+    pub sourcepos: String,
+    pub source_file: Option<String>,
+    pub failure: Failure,
 }
 
 /// How one run split between replay and re-execution, summed across languages so the
@@ -378,6 +411,9 @@ pub struct Executor {
     /// run and drained by [`Executor::take_warnings`], so the caller can merge them into
     /// the same per-page diagnostics channel the static validators feed.
     warnings: Vec<render::Warning>,
+    /// The cells of the LAST run that failed, in document order, drained by
+    /// [`Executor::take_failures`].
+    failures: Vec<CellFailure>,
 }
 
 impl Executor {
@@ -438,6 +474,7 @@ impl Executor {
             page: None,
             interrupt: None,
             warnings: Vec::new(),
+            failures: Vec::new(),
         }
     }
 
@@ -518,6 +555,12 @@ impl Executor {
     /// run's warnings the caller's to report exactly once.
     pub fn take_warnings(&mut self) -> Vec<render::Warning> {
         std::mem::take(&mut self.warnings)
+    }
+
+    /// Drain the cells the last [`Executor::run`] saw fail (see [`Failure`]), in document
+    /// order. This, not the output HTML, is what a build counts as a cell error.
+    pub(crate) fn take_failures(&mut self) -> Vec<CellFailure> {
+        std::mem::take(&mut self.failures)
     }
 
     /// The build-fatal report: this document had cells to execute, a kernel start was
@@ -613,9 +656,10 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
-        // Each run reports its own execution warnings: the last run's would otherwise
-        // outlive the edit that fixed them.
+        // Each run reports its own execution warnings and failures: the last run's would
+        // otherwise outlive the edit that fixed them.
         self.warnings.clear();
+        self.failures.clear();
         // `--no-exec`: never touch a kernel. The cells are already rendered as source
         // in `blocks`; returning them unchanged is exactly "preview as source".
         if self.no_exec {
@@ -661,7 +705,15 @@ impl Executor {
         for (lang, cells) in &by_lang {
             let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
             tally += lang_tally;
-            for (cell, inner) in cells.iter().zip(&outputs) {
+            for (cell, out) in cells.iter().zip(&outputs) {
+                if let Some(failure) = out.failure {
+                    self.failures.push(CellFailure {
+                        sourcepos: cell.sourcepos.clone(),
+                        source_file: cell.source_file.clone(),
+                        failure,
+                    });
+                }
+                let inner = &out.html;
                 // `include: false` cells run (above) for their kernel-state side
                 // effects but contribute no visible output block.
                 if inner.trim().is_empty() || !cell.include {
@@ -730,7 +782,7 @@ impl Executor {
         &mut self,
         lang: &'static str,
         cells: &[CellRef],
-    ) -> (Vec<String>, CacheTally) {
+    ) -> (Vec<CellOut>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
@@ -854,7 +906,7 @@ impl Executor {
         // Outputs already known without running, pulled out before the execute loop
         // so they don't hold a borrow on `self` across `exec_cell`: the warm prefix
         // from the live kernel's in-memory record, the tail from the disk cache.
-        let warm: Vec<String> = self
+        let warm: Vec<CellOut> = self
             .langs
             .get(lang)
             .map(|s| {
@@ -865,8 +917,8 @@ impl Executor {
                     .collect()
             })
             .unwrap_or_default();
-        let tail: Vec<String> = (run_end..cells.len())
-            .map(|i| self.freeze.get(&hashes[i]).unwrap_or_default().to_string())
+        let tail: Vec<CellOut> = (run_end..cells.len())
+            .map(|i| CellOut::ok(self.freeze.get(&hashes[i]).unwrap_or_default().to_string()))
             .collect();
 
         // Cloned out of `self` so the execute loop can still borrow `self` mutably
@@ -900,12 +952,16 @@ impl Executor {
                     } else {
                         None
                     };
-                    outputs.push(cached.unwrap_or_else(|| {
-                        kernel_unavailable_html(
-                            lang,
-                            self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
-                        )
-                    }));
+                    outputs.push(match cached {
+                        Some(html) => CellOut::ok(html),
+                        None => CellOut::failed(
+                            kernel_unavailable_html(
+                                lang,
+                                self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
+                            ),
+                            Failure::NotRun(NOT_RUN_UNAVAILABLE),
+                        ),
+                    });
                 } else if !self.kernel_alive(lang) {
                     // The kernel was up when this run started but has since exited (an
                     // earlier cell crashed it). Don't run the rest: each `execute`
@@ -929,7 +985,10 @@ impl Executor {
                             None,
                         ),
                     );
-                    outputs.push(KERNEL_DIED_HTML.to_string());
+                    outputs.push(CellOut::failed(
+                        KERNEL_DIED_HTML.to_string(),
+                        Failure::NotRun(NOT_RUN_DIED),
+                    ));
                 } else {
                     // Progress only when the kernel is up; otherwise cells are instant
                     // no-ops and a "cell k/n" line would be misleading.
@@ -970,7 +1029,7 @@ impl Executor {
                         .exec_cell(lang, &cell.code, &cell.id, page.as_deref(), t0)
                         .await;
                     if let Some(t0) = t0 {
-                        let state = if is_uncacheable(&out) {
+                        let state = if out.failure.is_some() {
                             "error"
                         } else {
                             "done"
@@ -1018,7 +1077,7 @@ impl Executor {
         // signal landed. Every cell after it therefore ran against state that does not
         // follow from the upstream code, while its key says it does — and the entry outlives
         // the failure, because a re-run reaching the same code hits it. The upstream cell
-        // itself is never persisted (`is_uncacheable`), so it re-runs every time; if its
+        // itself is never persisted (it carries a `Failure`), so it re-runs every time; if its
         // failure is transient (a file that appears, a flaky fetch, an interrupt the author
         // does not repeat) the success case then restores the output computed while it was
         // still failing. Same shape as `first_uncacheable`, one range instead of two rules.
@@ -1031,7 +1090,7 @@ impl Executor {
         // `run_end` still bounds the scan because the disk-restored tail past it was never
         // produced by this run and is never re-persisted.
         let failed_at = (0..run_end)
-            .find(|&i| is_uncacheable(&outputs[i]))
+            .find(|&i| outputs[i].failure.is_some())
             .unwrap_or(run_end);
         // The digest on record BEFORE this run stamps its own. Read here, not at the
         // warning below, because `stamp_packages` overwrites it in between: the warning
@@ -1053,8 +1112,8 @@ impl Executor {
                 if i > uncacheable_at || i > failed_at {
                     continue;
                 }
-                if cells[i].cache && !is_uncacheable(&outputs[i]) {
-                    self.freeze.put(hashes[i].clone(), outputs[i].clone());
+                if cells[i].cache && outputs[i].failure.is_none() {
+                    self.freeze.put(hashes[i].clone(), outputs[i].html.clone());
                 }
             }
             // What these outputs were produced under. Only after a real execution: a pure
@@ -1304,7 +1363,7 @@ impl Executor {
         cell_id: &str,
         page: Option<&str>,
         started_ms: Option<u64>,
-    ) -> String {
+    ) -> CellOut {
         // Cloned before the kernel borrow so the callback can emit while `self` is
         // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
         // same reason: it is read back after the borrow ends.
@@ -1314,10 +1373,10 @@ impl Executor {
         let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
         let Some(state) = self.langs.get_mut(lang) else {
-            return String::new(); // kernel unavailable: cell renders as source
+            return CellOut::default(); // kernel unavailable: cell renders as source
         };
         let Some(kernel) = state.kernel.as_mut() else {
-            return String::new();
+            return CellOut::default();
         };
         // Counted before the send: a cell that errors, is interrupted or never replies has
         // still been handed to the kernel and may have changed its state.
@@ -1370,10 +1429,20 @@ impl Executor {
             h.store(0, std::sync::atomic::Ordering::SeqCst);
         }
         match result {
-            Ok(outs) => render_outputs(&outs.iter().map(|o| paths.apply(o)).collect::<Vec<_>>()),
+            Ok(outs) => {
+                let failure = failure_of(&outs);
+                let outs: Vec<_> = outs.into_vec().iter().map(|o| paths.apply(o)).collect();
+                CellOut {
+                    html: render_outputs(&outs),
+                    failure,
+                }
+            }
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
-                execution_error_html(&e.to_string())
+                CellOut::failed(
+                    execution_error_html(&e.to_string()),
+                    Failure::NotRun(NOT_RUN_REQUEST),
+                )
             }
         }
     }
@@ -1459,20 +1528,33 @@ pub(crate) fn exec_disabled() -> bool {
     taliesin_core::render::no_exec_in_force()
 }
 
-/// Whether an output must not be cached: any execution error (a cell error, a
-/// timeout, or the mid-run kernel-died marker — all rendered as a `tali-error` block),
-/// so a transient failure is never replayed and the cell re-runs next time. Matches
-/// the emitted `class="tali-error"` rather than a bare substring, so a *successful*
-/// cell whose output merely prints the text "tali-error" still caches. Also refuses to
-/// cache an output the kernel *truncated* at the size cap: if the cell completes
-/// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
-/// and replayed silently. The marker text comes from `kernel.rs`'s output caps, and is
-/// matched in its **bracketed emitted form** (`[taliesin: output truncated at …`) for the
-/// same reason as the `tali-error` half beside it: a cell that merely *prints* the phrase
-/// (a doc about this feature, a log line) was otherwise refused the cache forever and
-/// re-ran on every single build.
-fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"tali-error\"") || output.contains(crate::kernel::TRUNCATION_MARKER)
+/// Whether a finished cell failed, from the outputs the kernel module built, never from
+/// their HTML. A cell whose output list holds an executor-written error did not run or
+/// finish (the most specific kind wins, in the order the console explains them); one with
+/// only interpreter errors raised; one a flood cap cut short is truncated.
+fn failure_of(outs: &crate::kernel::Outputs) -> Option<Failure> {
+    let kinds: Vec<Option<&'static str>> = outs
+        .list()
+        .iter()
+        .filter_map(|o| match o {
+            crate::kernel::Output::Error { not_run, .. } => Some(*not_run),
+            _ => None,
+        })
+        .collect();
+    let not_run = [
+        NOT_RUN_UNAVAILABLE,
+        NOT_RUN_DIED,
+        NOT_RUN_REQUEST,
+        NOT_RUN_TIMEOUT,
+    ]
+    .into_iter()
+    .find(|k| kinds.contains(&Some(*k)));
+    match not_run {
+        Some(k) => Some(Failure::NotRun(k)),
+        None if !kinds.is_empty() => Some(Failure::Raised),
+        None if outs.capped() => Some(Failure::Truncated),
+        None => None,
+    }
 }
 
 /// How long `<program> --version` may take before the probe gives up. This sits
@@ -1567,8 +1649,7 @@ pub(crate) fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> S
         _ => String::new(),
     };
     format!(
-        "<pre class=\"tali-error\"{}>{} kernel unavailable; this cell did not execute{detail}</pre>",
-        not_run_mark(NOT_RUN_UNAVAILABLE),
+        "<pre class=\"tali-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
         esc(lang)
     )
 }
@@ -1578,8 +1659,7 @@ pub(crate) fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> S
 /// reporting, not the author's code raising.
 pub(crate) fn execution_error_html(err: &str) -> String {
     format!(
-        "<pre class=\"tali-error\"{}>execution error: {}</pre>",
-        not_run_mark(NOT_RUN_REQUEST),
+        "<pre class=\"tali-error\">execution error: {}</pre>",
         esc(err)
     )
 }
@@ -1759,35 +1839,56 @@ mod tests {
     use super::*;
     use taliesin_core::render::Cell;
 
-    // AP4-3: `is_uncacheable` must match the *emitted* truncation notice, not the bare
-    // phrase. A cell that merely prints the phrase (a doc about output caps, a log line
-    // quoting one) was refused the cache forever and re-ran on every single build — the
-    // same false-positive the `tali-error` half was deliberately hardened against.
+    /// Whether a cell failed is read from the outputs the kernel module built, never from
+    /// their HTML (audit exec #11): an executor-written error is `NotRun` with its kind
+    /// (the most specific wins), an interpreter traceback is `Raised`, a capped list is
+    /// `Truncated`, and output that merely CONTAINS the error markup or the truncation
+    /// notice's words is no failure at all.
     #[test]
-    fn only_a_real_truncation_notice_blocks_caching() {
-        // What `kernel.rs` actually emits when a cap fires.
-        let items = format!(
-            "<pre>\n{}4096 items]\n</pre>",
-            crate::kernel::TRUNCATION_MARKER
+    fn a_failure_is_read_from_the_outputs_not_their_html() {
+        use crate::kernel::{Output, Outputs};
+        let of = |outs: Vec<Output>| {
+            let mut acc = Outputs::default();
+            for o in outs {
+                acc.note(o);
+            }
+            failure_of(&acc)
+        };
+        let traceback = Output::Error {
+            ename: "ValueError".into(),
+            evalue: "bad".into(),
+            traceback: vec![],
+            not_run: None,
+        };
+        assert_eq!(of(vec![traceback.clone()]), Some(Failure::Raised));
+        // A timeout note followed by the KeyboardInterrupt it provoked is the timeout.
+        assert_eq!(
+            of(vec![Output::timeout("capped".into()), traceback]),
+            Some(Failure::NotRun(NOT_RUN_TIMEOUT))
         );
-        let bytes = format!("<pre>\n{}512 KB]\n</pre>", crate::kernel::TRUNCATION_MARKER);
-        assert!(is_uncacheable(&items), "the item cap must block caching");
-        assert!(is_uncacheable(&bytes), "the byte cap must block caching");
-        assert!(
-            is_uncacheable(r#"<div class="tali-error">boom</div>"#),
-            "an execution error must block caching"
+        assert_eq!(
+            of(vec![Output::kernel_died()]),
+            Some(Failure::NotRun(NOT_RUN_DIED))
         );
-
-        // A successful cell whose output merely *talks about* truncation still caches.
-        assert!(
-            !is_uncacheable("<pre>taliesin: output truncated is the message it prints</pre>"),
-            "printing the phrase is not a truncation"
+        assert_eq!(
+            of(vec![Output::interrupt_ignored()]),
+            Some(Failure::NotRun(NOT_RUN_TIMEOUT))
         );
-        assert!(
-            !is_uncacheable("<pre>see the tali-error class for details</pre>"),
-            "printing the class name is not an error"
+        let spoof = Output::Stream {
+            stderr: false,
+            text: format!(
+                "<pre class=\"tali-error\">x</pre> {}4096 items]\n",
+                crate::kernel::TRUNCATION_MARKER
+            ),
+        };
+        assert_eq!(
+            of(vec![spoof]),
+            None,
+            "printing the markup is not a failure"
         );
-        assert!(!is_uncacheable("<pre>42</pre>"), "ordinary output caches");
+        let mut capped = Outputs::default();
+        capped.rich("x".repeat(9 * 1024 * 1024), None);
+        assert_eq!(failure_of(&capped), Some(Failure::Truncated));
     }
 
     #[test]
@@ -2620,7 +2721,7 @@ mod tests {
         // executed range — so an errored cell that had since slid into the WARM PREFIX was
         // invisible to it, and the cell after it was written to `_freeze` as if it followed
         // a clean upstream. That is the one entry this cache is designed never to hold:
-        // B is never persisted (`is_uncacheable`), so a later cold start re-runs it, and
+        // B is never persisted (it failed), so a later cold start re-runs it, and
         // if the failure was transient (the flaky fetch succeeds) C restores an output
         // computed while B was still raising — permanently, since a re-run reaching the
         // same code hits the same key.
@@ -3065,7 +3166,7 @@ mod tests {
             "both cells are the fresh kernel's warm record"
         );
         assert!(
-            ran.iter().all(|r| !r.output.trim().is_empty()),
+            ran.iter().all(|r| !r.output.html.trim().is_empty()),
             "an empty output must never be recorded as warm after an idle kernel death"
         );
     }

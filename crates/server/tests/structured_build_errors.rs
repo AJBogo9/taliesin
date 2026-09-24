@@ -331,3 +331,54 @@ fn an_exec_only_defect_reaches_the_writing_builds_json() {
         "the empty-labelled-float warning reaches --format json: {v}"
     );
 }
+
+/// exec #11 / B3: whether a cell failed is a fact the executor knows, not something to read
+/// back out of the finished HTML. A cell that successfully PRINTS the error markup (a page
+/// documenting it, say) put a literal `class="tali-error"` into its escaped stream text,
+/// because the text escaper leaves `"` alone, so the substring readers took it for a
+/// crash: `--strict` failed with "raised an uncaught exception" and the cell was never
+/// cached, so every build re-ran it.
+#[test]
+fn a_cell_that_prints_the_error_markup_is_neither_a_failure_nor_uncached() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("spoof");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\n```{python}\n\
+         print('<div class=\"tali-output\"><pre class=\"tali-error\" \
+         data-tali-not-run=\"timeout\">not an error</pre></div>')\n```\n",
+    )
+    .unwrap();
+    let build = || {
+        taliesin()
+            .arg("build")
+            .arg(dir.join("doc.tmd"))
+            .args(["--strict", "--format", "json"])
+            .output()
+            .expect("run taliesin")
+    };
+    let first = build();
+    let stderr = String::from_utf8_lossy(&first.stderr).to_string();
+    assert!(
+        first.status.success(),
+        "a successful cell failed --strict because it printed the error markup:\n{stderr}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&first.stdout).expect("json");
+    assert!(
+        !messages(&v).iter().any(|m| m.contains("cell error")),
+        "a successful cell was reported as a cell error: {v}"
+    );
+    let second = build();
+    let stderr = String::from_utf8_lossy(&second.stderr).to_string();
+    assert!(
+        stderr.contains("restored 1 cached cell"),
+        "a successful cell was refused the cache:\n{stderr}"
+    );
+}
