@@ -283,6 +283,10 @@ pub(crate) enum Failure {
 #[derive(Clone, Debug, Default)]
 struct CellOut {
     html: String,
+    /// The cell's `define(...)` blobs alone ([`crate::kernel::Output::Bridge`]), rendered.
+    /// Part of `html` too; kept apart because it is the one part of the output that
+    /// `#| include: false` keeps, since it is a side channel to `{js}` cells, not output.
+    bridge: String,
     failure: Option<Failure>,
     /// The interpreter's `ename: evalue` when the cell raised, for the one place that has
     /// to say it in words: a hidden cell's diagnostic, since its traceback is not on the page.
@@ -301,8 +305,39 @@ impl CellOut {
         CellOut {
             html,
             failure: Some(failure),
-            raised: None,
+            ..CellOut::default()
         }
+    }
+
+    /// What a cell restored from `_freeze` holds. A hidden (`include: false`) cell stores
+    /// only its bridge (see [`freeze_key`]), which is the only part of its output it shows.
+    fn restored(cell: &CellRef, value: String) -> Self {
+        match cell.include {
+            true => CellOut::ok(value),
+            false => CellOut {
+                bridge: value,
+                ..CellOut::default()
+            },
+        }
+    }
+
+    /// What a cell stores in `_freeze`: its output, or for a hidden cell only its bridge.
+    fn stored(&self, cell: &CellRef) -> String {
+        match cell.include {
+            true => self.html.clone(),
+            false => self.bridge.clone(),
+        }
+    }
+}
+
+/// The `_freeze` key a cell's output is stored under: its cumulative key, suffixed for a
+/// hidden (`#| include: false`) cell, which stores only its define bridge. The suffix keeps
+/// the two shapes apart, since the cumulative key strips cell options: toggling `include`
+/// on unchanged code would otherwise restore one shape where the other is expected.
+fn freeze_key(cell: &CellRef, hash: &str) -> String {
+    match cell.include {
+        true => hash.to_string(),
+        false => format!("{hash}:hidden"),
     }
 }
 
@@ -766,8 +801,24 @@ impl Executor {
                 }
                 let inner = &out.html;
                 // `include: false` cells run (above) for their kernel-state side
-                // effects but contribute no visible output block.
-                if inner.trim().is_empty() || !cell.include {
+                // effects but contribute no visible output. Their define bridge is not
+                // output, so it goes out in a `hidden` block (or the container's slot).
+                if !cell.include {
+                    if !out.bridge.is_empty() {
+                        match &cell.out {
+                            OutTarget::Sibling => {
+                                output_blocks
+                                    .insert(cell.block_index, bridge_block(cell, &out.bridge));
+                            }
+                            OutTarget::Slot(id) => slot_fills
+                                .entry(cell.block_index)
+                                .or_default()
+                                .push((id.clone(), out.bridge.clone())),
+                        }
+                    }
+                    continue;
+                }
+                if inner.trim().is_empty() {
                     // A labelled figure/table cell that ran but emitted nothing left a
                     // dead `@fig-`/`@tbl-` anchor render already committed to — only
                     // knowable now, so warn (it can't be un-burned post-execution).
@@ -866,7 +917,14 @@ impl Executor {
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
         // re-run (Restart kernel) treats everything as unknown.
         let force = self.force_next;
-        let known = |i: usize| !force && cells[i].cache && self.freeze.get(&hashes[i]).is_some();
+        let known = |i: usize| {
+            !force
+                && cells[i].cache
+                && self
+                    .freeze
+                    .get(&freeze_key(&cells[i], &hashes[i]))
+                    .is_some()
+        };
         let ran: Vec<String> = self
             .langs
             .get(lang)
@@ -969,7 +1027,10 @@ impl Executor {
             })
             .unwrap_or_default();
         let tail: Vec<CellOut> = (run_end..cells.len())
-            .map(|i| CellOut::ok(self.freeze.get(&hashes[i]).unwrap_or_default().to_string()))
+            .map(|i| {
+                let value = self.freeze.get(&freeze_key(&cells[i], &hashes[i]));
+                CellOut::restored(&cells[i], value.unwrap_or_default().to_string())
+            })
             .collect();
 
         // Cloned out of `self` so the execute loop can still borrow `self` mutably
@@ -999,12 +1060,14 @@ impl Executor {
                     // still honestly signals it did not run fresh. (`tali-error` => styled
                     // as an error AND uncacheable, so the diagnostic is never persisted.)
                     let cached = if !force && cell.cache {
-                        self.freeze.get(&hashes[i]).map(str::to_string)
+                        self.freeze
+                            .get(&freeze_key(cell, &hashes[i]))
+                            .map(str::to_string)
                     } else {
                         None
                     };
                     outputs.push(match cached {
-                        Some(html) => CellOut::ok(html),
+                        Some(value) => CellOut::restored(cell, value),
                         None => CellOut::failed(
                             kernel_unavailable_html(
                                 lang,
@@ -1164,7 +1227,10 @@ impl Executor {
                     continue;
                 }
                 if cells[i].cache && outputs[i].failure.is_none() {
-                    self.freeze.put(hashes[i].clone(), outputs[i].html.clone());
+                    self.freeze.put(
+                        freeze_key(&cells[i], &hashes[i]),
+                        outputs[i].stored(&cells[i]),
+                    );
                 }
             }
             // What these outputs were produced under. Only after a real execution: a pure
@@ -1486,6 +1552,12 @@ impl Executor {
         match result {
             Ok(outs) => {
                 let failure = failure_of(&outs);
+                let bridge: Vec<_> = outs
+                    .list()
+                    .iter()
+                    .filter(|o| matches!(o, crate::kernel::Output::Bridge(_)))
+                    .cloned()
+                    .collect();
                 let raised = outs.list().iter().find_map(|o| match o {
                     crate::kernel::Output::Error {
                         ename,
@@ -1498,6 +1570,7 @@ impl Executor {
                 let outs: Vec<_> = outs.into_vec().iter().map(|o| paths.apply(o)).collect();
                 CellOut {
                     html: render_outputs(&outs),
+                    bridge: render_outputs(&bridge),
                     failure,
                     raised,
                 }
@@ -1787,14 +1860,23 @@ fn output_inner(cell: &CellRef, inner: &str) -> String {
 }
 
 fn output_block(cell: &CellRef, inner: &str) -> Block {
+    wrapped_output(cell, &output_inner(cell, inner), "")
+}
+
+/// The block a hidden (`#| include: false`) cell's define bridge goes out in: `hidden`, so
+/// it shows nothing, while `{js}` cells still find its `tali-define` script element.
+fn bridge_block(cell: &CellRef, bridge: &str) -> Block {
+    wrapped_output(cell, bridge, " hidden")
+}
+
+fn wrapped_output(cell: &CellRef, inner: &str, extra: &str) -> Block {
     let id = format!("{}-out", cell.id);
     let source_file_attr = match &cell.source_file {
         Some(f) => format!(" data-source-file=\"{}\"", esc(f)),
         None => String::new(),
     };
-    let inner = output_inner(cell, inner);
     let html = format!(
-        "<div class=\"tali-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
+        "<div class=\"tali-output\"{extra} data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
         cell.sourcepos
     );
     Block {
@@ -2351,6 +2433,64 @@ mod tests {
             after,
             "the restarted kernel's output was stamped with the pre-install digest"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `#| include: false` hides a cell's output, but the `define(...)` bridge is not output:
+    /// it is how Python state reaches `{js}` cells, and the guide recommends `include: false`
+    /// for exactly such setup cells. The whole output used to be dropped, blob included, so
+    /// a hidden `define(x=1)` left every `{js}` cell reading `x` with `undefined`. The blob
+    /// now survives in a `hidden` output block, the cell's visible output does not, and the
+    /// same holds when the cell is restored from `_freeze` instead of run.
+    #[test]
+    fn a_hidden_cells_define_bridge_survives_include_false() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the define bridge; this run did not."
+            );
+            return;
+        }
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-hiddendefine-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let mut hidden = python_cell_block_with("h-1", "print('SECRET' + '-SETUP')\ndefine(x=41)");
+        if let Some(c) = hidden.cell.as_mut() {
+            c.include = false;
+        }
+        let blocks = vec![hidden, python_cell_block_with("h-2", "print('after')")];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for pass in ["executed", "restored from _freeze"] {
+            let mut ex = Executor::with_freeze(page.clone());
+            let out = rt.block_on(ex.run(blocks.clone()));
+            if ex.diagnostic().is_some() {
+                let _ = std::fs::remove_dir_all(&dir);
+                return; // no working python kernel here
+            }
+            let html: String = out.iter().map(|b| b.html.as_str()).collect();
+            let bridge = out.iter().find(|b| b.id == "h-1-out").unwrap_or_else(|| {
+                panic!("({pass}) the hidden cell's define blob was dropped: {html}")
+            });
+            assert!(
+                // Assembled, not literal: an opening script tag in this file would pull it
+                // into `token_contract`'s browser-attribute census as phantom vocabulary.
+                bridge
+                    .html
+                    .contains(&format!("<{} type=\"tali-define\">", "script"))
+                    && bridge.html.contains("\"x\"")
+                    && bridge.html.contains(" hidden"),
+                "({pass}) the bridge block must carry the blob and stay hidden: {}",
+                bridge.html
+            );
+            assert!(
+                !html.contains("SECRET-SETUP"),
+                "({pass}) include: false published the cell's visible output: {html}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

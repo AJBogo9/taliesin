@@ -578,6 +578,10 @@ pub enum Output {
     },
     /// Rich output (execute_result / display_data) rendered to HTML.
     Rich(String),
+    /// A `define(...)` blob, the Python -> `{js}` bridge (`OJS_DEFINE_PREAMBLE` marks its
+    /// display with `tali_define` metadata). Markup like [`Output::Rich`], but a side
+    /// channel rather than output, so `#| include: false` keeps it (see `exec::CellOut`).
+    Bridge(String),
     Error {
         ename: String,
         evalue: String,
@@ -1126,6 +1130,14 @@ impl Kernel {
                     render_media(&r.data, &r.metadata),
                     display_id(r.transient.as_ref()),
                 ),
+                JupyterMessageContent::DisplayData(d)
+                    if d.metadata
+                        .get("tali_define")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true) =>
+                {
+                    outputs.bridge(render_media(&d.data, &d.metadata))
+                }
                 JupyterMessageContent::DisplayData(d) => outputs.rich(
                     render_media(&d.data, &d.metadata),
                     display_id(d.transient.as_ref()),
@@ -1463,10 +1475,22 @@ impl Outputs {
     /// `<table>` is broken markup. So one that would cross [`MAX_RICH_BYTES`] is dropped
     /// whole and the notice takes its place.
     pub(crate) fn rich(&mut self, html: String, display_id: Option<&str>) {
+        self.push_rich(Output::Rich(html), display_id);
+    }
+
+    /// A `define(...)` blob from the kernel ([`Output::Bridge`]), counted like rich output.
+    pub(crate) fn bridge(&mut self, html: String) {
+        self.push_rich(Output::Bridge(html), None);
+    }
+
+    fn push_rich(&mut self, o: Output, display_id: Option<&str>) {
         if self.capped {
             return;
         }
         self.take_clear();
+        let (Output::Rich(html) | Output::Bridge(html)) = &o else {
+            return;
+        };
         if self.rich_bytes + html.len() > MAX_RICH_BYTES {
             self.cap_rich();
             return;
@@ -1475,7 +1499,7 @@ impl Outputs {
         if let Some(id) = display_id {
             self.displays.push((id.to_string(), self.list.len()));
         }
-        self.list.push(Output::Rich(html));
+        self.list.push(o);
         self.cap_items();
     }
 
@@ -1590,7 +1614,7 @@ impl Outputs {
         }
         match self.list.pop() {
             Some(Output::Stream { text, .. }) => self.stream_bytes -= text.len(),
-            Some(Output::Rich(html)) => self.rich_bytes -= html.len(),
+            Some(Output::Rich(html) | Output::Bridge(html)) => self.rich_bytes -= html.len(),
             _ => {}
         }
         let gone = self.list.len();
@@ -1655,7 +1679,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                     esc(&scrub_kernel_paths(&strip_ansi(text)))
                 ));
             }
-            Output::Rich(html) => s.push_str(html),
+            Output::Rich(html) | Output::Bridge(html) => s.push_str(html),
             Output::Error {
                 ename,
                 evalue,
