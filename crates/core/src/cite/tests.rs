@@ -1382,3 +1382,58 @@ fn a_citation_group_is_parsed_on_text_not_on_escaped_html() {
     assert!(html.contains("[Q&amp;A @ noon]"), "{html}");
     assert!(!html.contains("&amp;amp;"), "escaped twice: {html}");
 }
+
+/// A bracket is a citation group only when every item in it starts with `@` (after an
+/// optional `-`); anything else is left as the text it is (audit 2026-09-24, bibtex #12).
+///
+/// The item's `@` used to be found anywhere in it and the text before it thrown away, so
+/// `[see @a, p. 3; also @b]` published "[1, p. 3, 2]" with "see" and "also" silently gone,
+/// `[x < y @a]` published "[1]", `[by mail at bob@smith.2020]` cited `smith.2020`, and
+/// `[bob@example.com]` cited a key `example.com`. Left literal, a bare `@key` in the text is
+/// then reported by the bare-citation check rather than lost.
+#[test]
+fn a_bracket_is_a_citation_only_when_every_item_starts_with_at() {
+    let b =
+        parse_bib("@misc{smith.2020, title={S}}\n@misc{doe+roe, title={D}}\n@misc{a, title={A}}\n");
+    let mut xrefs = HashMap::new();
+    xrefs.insert("fig-x".to_string(), "3".to_string());
+    let mut blocks = vec![
+        block("<p>A [see @smith.2020, pp. 33–35; also @doe+roe, sec. 2].</p>"),
+        block("<p>B Contact us [by mail at bob@smith.2020].</p>"),
+        block("<p>C Email [bob@example.com] for details.</p>"),
+        block("<p>D [x &lt; y @a].</p>"),
+        block("<p>E [see @fig-x].</p>"),
+        block("<p>F [@smith.2020; -@doe+roe, p. 2].</p>"),
+    ];
+    let w = process(&mut blocks, &b, &xrefs, None);
+    let html = |i: usize| blocks[i].html.clone();
+    assert!(
+        html(0).contains("[see @smith.2020, pp. 33–35; also @doe+roe, sec. 2]"),
+        "{}",
+        html(0)
+    );
+    assert!(
+        html(1).contains("[by mail at bob@smith.2020]"),
+        "{}",
+        html(1)
+    );
+    assert!(html(2).contains("[bob@example.com]"), "{}", html(2));
+    assert!(html(3).contains("[x &lt; y @a]"), "{}", html(3));
+    // A bare cross-reference inside a literal bracket still links.
+    assert!(
+        html(4).contains("[see <a href=\"#fig-x\" class=\"tali-xref\">Figure&nbsp;3</a>]"),
+        "{}",
+        html(4)
+    );
+    // A real group still renders, and only its keys are numbered.
+    assert!(
+        html(5)
+            .contains("[<a href=\"#ref-smith.2020\">1</a>, <a href=\"#ref-doe+roe\">2</a>, p. 2]"),
+        "{}",
+        html(5)
+    );
+    let refs = &blocks.last().unwrap().html;
+    assert_eq!(refs.matches("class=\"csl-entry\"").count(), 2, "{refs}");
+    assert!(!refs.contains("example.com"), "{refs}");
+    assert!(broken(&w).is_empty(), "{w:?}");
+}

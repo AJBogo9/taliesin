@@ -330,9 +330,13 @@ fn rewrite_text(
                     let inner = &chars[i + 1..i + 1 + close];
                     if inner.contains(&'@') {
                         let inner: String = inner.iter().collect();
-                        out.push_str(&render_citation_group(&inner, cite_key, xrefs));
-                        i += close + 2;
-                        continue;
+                        // Not a citation group: the `[` is text, and the scan goes on
+                        // inside it (a bare `@fig-x` there still links).
+                        if let Some(group) = render_citation_group(&inner, cite_key, xrefs) {
+                            out.push_str(&group);
+                            i += close + 2;
+                            continue;
+                        }
                     }
                 }
                 None => no_close = true,
@@ -431,6 +435,11 @@ fn parse_xref(chars: &[char]) -> Option<(&'static str, String, usize)> {
 /// cross-reference key inside the brackets (`[@fig-x]`) renders as a cross-ref link,
 /// not a citation.
 ///
+/// `None` unless EVERY item starts with `@` and a key (after an optional `-`): the
+/// bracket is then text. The `@` used to be found anywhere in an item and the text before
+/// it discarded, so `[see @a]` lost "see", `[x < y @a]` became "[1]" and
+/// `[bob@example.com]` cited `example.com`, all silently.
+///
 /// `inner` is escaped HTML, as the text run it came from. It is decoded before it is
 /// parsed and escaped once on the way out: split as it was, the `;` of an `&amp;` split
 /// the group, and the text was escaped a second time.
@@ -438,23 +447,31 @@ fn render_citation_group(
     inner: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
     xrefs: &HashMap<String, String>,
-) -> String {
+) -> Option<String> {
     let inner = crate::render::unescape_html(inner);
-    let mut rendered: Vec<String> = Vec::new();
-    for item in inner.split(';') {
-        let item = item.trim().trim_start_matches('-'); // `-@key` suppresses author (n/a for numeric)
-        let Some(at) = item.find('@') else { continue };
-        let after = &item[at + 1..];
+    // Every item is read before any is numbered, so a bracket that turns out not to be a
+    // group has registered nothing.
+    let mut items: Vec<(String, &str)> = Vec::new();
+    for item in inner.split(';').map(str::trim).filter(|i| !i.is_empty()) {
+        // `-@key` suppresses the author, which a numeric style never prints.
+        let after = item.trim_start_matches('-').strip_prefix('@')?;
         let key: String = after.chars().take_while(|&c| is_cite_key_char(c)).collect();
         if key.is_empty() {
-            continue;
+            return None;
         }
+        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
+        items.push((key, locator));
+    }
+    if items.is_empty() {
+        return None;
+    }
+    let mut rendered: Vec<String> = Vec::new();
+    for (key, locator) in items {
         // A cross-reference key (`fig-`, `tbl-`, …) is a cross-ref, not a citation.
         if let Some(link) = xref_link(&key, xrefs) {
             rendered.push(link);
             continue;
         }
-        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
         let n = cite_key(&key);
         let mut piece = format!("<a href=\"#ref-{}\">{}</a>", esc(&key), n);
         if !locator.is_empty() {
@@ -462,11 +479,7 @@ fn render_citation_group(
         }
         rendered.push(piece);
     }
-    if rendered.is_empty() {
-        format!("[{}]", esc(&inner))
-    } else {
-        format!("[{}]", rendered.join(", "))
-    }
+    Some(format!("[{}]", rendered.join(", ")))
 }
 
 #[cfg(test)]
