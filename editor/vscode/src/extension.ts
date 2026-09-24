@@ -14,6 +14,7 @@ import {
 } from "./paths";
 import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
+import { removeShadowDir } from "./embedded";
 import { registerTerminalLinks } from "./termlinks";
 import { LivePreview, PreviewRegistry, previewKey } from "./previews";
 
@@ -25,8 +26,11 @@ const previews = new PreviewRegistry();
 //
 //   1. Language intelligence: completion, hover, go-to-definition, symbols, folding,
 //      code lenses, diagnostics and quick fixes. All of it lives in `taliesin lsp`
-//      (Rust), and `client.ts` is the whole client. Adding a feature means adding it in
-//      the engine, where the vocabulary already is, and every other editor gets it too.
+//      (Rust), and `client.ts` plus `embedded.ts` are the whole client. `embedded.ts`
+//      routes completion, hover, signature help and go-to-definition inside a code cell to
+//      that language's own provider, because LSP cannot hand a range to another server.
+//      Adding a feature means adding it in the engine, where the vocabulary already is,
+//      and every other editor gets it too.
 //
 //   2. The live preview + bidirectional source sync, below. This cannot be an LSP concept:
 //      it owns a webview, spawns `taliesin preview`, and bridges click-to-source. It stays
@@ -286,4 +290,6 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
   );
 }
 
-export function deactivate() {}
+export function deactivate() {
+  removeShadowDir();
+}

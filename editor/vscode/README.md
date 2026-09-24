@@ -43,7 +43,10 @@ grammar is AGPL-3.0 and is not used.
 The extension implements no language features of its own. Completion, hover,
 go-to-definition, the outline, folding, diagnostics and quick fixes all
 come from `taliesin lsp`, the offline, kernel-free LSP server built into the binary
-(`crates/server/src/lsp*.rs`), over stdio. `src/client.ts` is the whole client.
+(`crates/server/src/lsp*.rs`), over stdio. `src/client.ts` plus `src/embedded.ts` are the
+whole client: `embedded.ts` routes completion, hover, signature help and go-to-definition
+inside a code cell to that language's own provider (Pylance, the TypeScript server), because
+LSP cannot hand a range to another server.
 
 Earlier, every one of those was re-implemented here in TypeScript, shelling
 out to `taliesin`'s own CLI verbs, while the Rust server that already did all of it

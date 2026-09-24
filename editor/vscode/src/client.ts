@@ -6,7 +6,13 @@ import {
   TransportKind,
   State,
 } from "vscode-languageclient/node";
-import { disposeShadowsFor, embeddedCompletions } from "./embedded";
+import {
+  disposeShadowsFor,
+  embeddedCompletions,
+  embeddedDefinitions,
+  embeddedHover,
+  embeddedSignatureHelp,
+} from "./embedded";
 import { serialize } from "./serial";
 
 // The language-intelligence half of the companion: a thin client over `taliesin lsp`.
@@ -44,6 +50,12 @@ export function languageClient(): LanguageClient | undefined {
   return client;
 }
 
+/** The documents the server answers for, and so the ones the cell forwards answer for too. */
+const SELECTOR = [
+  { scheme: "file", language: "taliesin" },
+  { scheme: "untitled", language: "taliesin" },
+];
+
 function binaryPath(): string {
   return vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 }
@@ -74,22 +86,20 @@ async function startNow(
     // paths, document links) — but front matter, cell options, div classes, math commands,
     // the outline, rename and every diagnostic need no path at all, and a `file`-only
     // selector silently withheld all of them from a buffer you had not saved yet.
-    documentSelector: [
-      { scheme: "file", language: "taliesin" },
-      { scheme: "untitled", language: "taliesin" },
-    ],
+    documentSelector: SELECTOR,
     outputChannel: output,
     // The one watcher `registerLanguageClient` made (see there).
     synchronize: { fileEvents },
     // Completion inside a `{python}` / `{js}` cell is forwarded to whoever owns that
     // language and merged with ours. Ours still answers in a cell (that is where `#|` cell
-    // options live), so this adds rather than replaces. See embedded.ts for why this one
-    // feature cannot live in the server.
+    // options live), so this adds rather than replaces. Hover, signature help and
+    // go-to-definition are forwarded too, as providers of their own (see
+    // `registerLanguageClient`). See embedded.ts for why none of this can live in the server.
     middleware: {
       provideCompletionItem: async (document, position, context, token, next) => {
         const [ours, theirs] = await Promise.all([
           next(document, position, context, token),
-          embeddedCompletions(client, document, position, context),
+          embeddedCompletions(client, document, position, context, token),
         ]);
         if (!theirs || theirs.length === 0) return ours;
         const mine = Array.isArray(ours) ? ours : (ours?.items ?? []);
@@ -172,6 +182,28 @@ export function registerLanguageClient(context: vscode.ExtensionContext): void {
     // A closed document's shadow can never be asked for again; keeping it would pin the
     // projection of a buffer that no longer exists.
     vscode.workspace.onDidCloseTextDocument((doc) => disposeShadowsFor(doc.uri)),
+    // Hover, signature help and go-to-definition inside a code cell, from the cell's own
+    // language (embedded.ts). Providers beside the server's rather than middleware: VS Code
+    // merges every provider's answer and isolates a failing one, so an `@fig-x` in a code
+    // comment still gets Taliesin's hover. Registered once; each reads `client` when asked.
+    vscode.languages.registerHoverProvider(SELECTOR, {
+      provideHover: (document, position, token) =>
+        embeddedHover(client, document, position, token),
+    }),
+    vscode.languages.registerDefinitionProvider(SELECTOR, {
+      provideDefinition: (document, position, token) =>
+        embeddedDefinitions(client, document, position, token),
+    }),
+    // `(` opens it and `,` moves to the next parameter.
+    vscode.languages.registerSignatureHelpProvider(
+      SELECTOR,
+      {
+        provideSignatureHelp: (document, position, token, context) =>
+          embeddedSignatureHelp(client, document, position, token, context),
+      },
+      "(",
+      ","
+    ),
     // Pointing at a different binary means a different server: restart rather than keep
     // answering from the old one, which would silently serve a stale vocabulary.
     vscode.workspace.onDidChangeConfiguration((e) => {

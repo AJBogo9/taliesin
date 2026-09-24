@@ -855,8 +855,8 @@ fn resolve_definition(
 }
 
 /// The custom request a client calls to learn where a document's code cells are, so it can
-/// route completion inside one to whoever owns that language. Namespaced, because it is not
-/// an LSP method and must never collide with one.
+/// route completion, hover, signature help and go-to-definition inside one to whoever owns
+/// that language. Namespaced, because it is not an LSP method and must never collide with one.
 pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
 
 /// Where each of a project's pages is served, so the companion can open the preview webview

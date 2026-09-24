@@ -157,8 +157,11 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
 editor/vscode/   the VS Code companion: NO language features (`src/client.ts` is a
                  language client over `taliesin lsp`), only what LSP has no concept of:
                  the preview webview + source sync, editor commands, and `src/embedded.ts`
-                 (completion inside a cell, located by `taliesin/cellRegions`, never a
-                 fence scan in TS). **Add an editor feature in Rust, not here.**
+                 (completion, hover, signature help and go-to-definition inside a cell,
+                 routed to that language's own provider; cells located by
+                 `taliesin/cellRegions`, never a fence scan in TS; `src/shadowlinks.ts`
+                 moves a definition out of the hidden shadow back onto the `.tmd`).
+                 **Add an editor feature in Rust, not here.**
 web-client/      browser scripts: client.js is the preview client (never ships in a
                  build); search.js (Cmd-K) and toc-spy.js ship in built pages too
 docs/            the manual, TWO sibling book projects in .tmd: docs/guide/ (User Guide)

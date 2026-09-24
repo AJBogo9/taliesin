@@ -108,8 +108,8 @@ was cut at zero adoption.
 An editor gets everything from `taliesin lsp`, an offline kernel-free language server
 over stdio, so `cmd = { "taliesin", "lsp" }` is the entire setup in any LSP editor. The
 VS Code companion in `editor/vscode/` implements no language features of its own; it
-adds only what the protocol has no concept of, which is the preview webview and the
-source sync.
+adds only what the protocol has no concept of, which is the preview webview, the
+source sync and the code-cell routing described below.
 
 It answers six read-only capabilities:
 
@@ -124,9 +124,23 @@ It answers six read-only capabilities:
 
 plus `publishDiagnostics`, pushed live as you type. Two more requests are Taliesin's
 own, namespaced so they can never collide with the protocol: `taliesin/cellRegions`
-tells an editor which language owns a code cell's range, so it can route completion
-there, and `taliesin/siteMap` resolves a page's served URL (what lets a chapter
-preview open at the right page).
+tells an editor which language owns a code cell's range, so it can route completion,
+hover, signature help and go-to-definition there, and `taliesin/siteMap` resolves a
+page's served URL (what lets a chapter preview open at the right page).
+
+The VS Code companion does that routing in `src/embedded.ts`, because LSP has no way for
+one server to hand a range to another. It mirrors the `.tmd` into a file of the cell's
+language, every line outside that language's cells blanked so positions match one for
+one, and asks that language's own provider (Pylance, the TypeScript server) against it.
+The file lives in a private temp directory and is only ever written on disk, never edited
+as a buffer, so VS Code never sees it as unsaved and never shows it as a tab (an untitled
+buffer, the first design, surfaced as a background `Untitled-N` tab). A definition that
+lands in that file is moved back onto the `.tmd`, so go-to-definition never takes the
+author into it. Every `{js}` cell runs as its own function, but the file joins them into
+one script, so a name declared in another `{js}`
+cell resolves although it is out of scope at run time, and a name declared in several
+resolves to all of them. Plain display fences (a bare `python` or `js` info string) are
+kept too, although they never run, so a definition can land on a display sample.
 
 ## Byte-identity for refactors
 
