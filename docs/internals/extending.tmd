@@ -26,14 +26,15 @@ extension point below.
   hash) + `data-sourcepos` (and `data-source-file` for includes). Source mapping, the
   diff, and live-state preservation all key off it.
 - **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
-  `.rs`, and `.githooks/pre-push` gates any push that includes `main` on
-  `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
-  warnings`, `cargo test --workspace`, `build docs/{guide,internals} --check-only` and
-  `tools/publish.sh --check`. That hook is the only gate that runs
-  automatically today, and it does not exist in a fresh clone. Run
-  `./tools/gates.sh` for the rest: `cargo audit`, `cargo deny check`, the `tsc`
-  type-checks and the live-kernel suite, because those skip silently without their
-  interpreter and the script reports success only if each one ran.
+  `.rs`. CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull
+  request: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D
+  warnings`, `cargo test --workspace`, the live-kernel suite, both `tsc` type-checks, the
+  companion's tests, `cargo audit`, `cargo deny check`,
+  `build docs/{guide,internals} --check-only` and `tools/publish.sh --check`.
+  `.githooks/pre-push` runs the fmt, clippy, test, document and publish steps locally
+  before a push that includes `main`; it does not exist in a fresh clone. Locally,
+  `./tools/gates.sh` runs every gate in one process and reports success only if each one
+  ran, because several skip silently without their interpreter.
 
 ## The one extension point
 
