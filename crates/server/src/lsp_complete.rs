@@ -229,8 +229,7 @@ fn region(doc_prefix: &str, class: &taliesin_core::lines::Lines) -> Region {
                 .iter()
                 .find(|f| f.open < at && at <= f.end)
                 .filter(|f| {
-                    class.line(f.open).depth == 0
-                        && taliesin_core::render::is_executable_fence(&f.info)
+                    crate::lsp_cells::is_rendered_cell(class, f)
                         && above[f.open + 1..at]
                             .iter()
                             .all(|l| taliesin_core::render::option_directive(l).is_some())

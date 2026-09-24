@@ -42,6 +42,18 @@ pub(crate) struct CellWrap {
 /// the page renders from), and the language is the render's reading of the info string
 /// (`render::code_lang`): a fence shown inside a longer one, in an HTML comment or in
 /// indented code is not a fence, and one in a block quote is.
+/// Whether the render runs `fence` as a cell (and so reads its leading options): top level,
+/// braced (`{lang}`, not `{.lang}`), with a language. The one statement of that rule in the
+/// server; `cell_regions` wraps such a `{js}` cell, and completion offers options in one.
+pub(crate) fn is_rendered_cell(
+    class: &taliesin_core::lines::Lines,
+    fence: &taliesin_core::lines::Fence,
+) -> bool {
+    class.line(fence.open).depth == 0
+        && taliesin_core::render::is_executable_fence(&fence.info)
+        && taliesin_core::render::code_lang(&fence.info).is_some()
+}
+
 pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let class = taliesin_core::render::rendered_lines(text);
@@ -69,8 +81,7 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
                 start += 1;
             }
             // A `{js}` cell the render runs: top level, braced, the browser's language.
-            let wrap = (class.line(fence.open).depth == 0
-                && taliesin_core::render::is_executable_fence(&fence.info)
+            let wrap = (is_rendered_cell(&class, fence)
                 && taliesin_core::render::is_client_lang(&language))
             .then(|| CellWrap {
                 open: format!(
