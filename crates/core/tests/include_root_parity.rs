@@ -18,7 +18,10 @@
 //!
 //! These tests pin all three edges of that rule, on the product entry point rather than on
 //! the library one the corpus test used (an include assertion that is true of the library
-//! and false of the command is the vacuous-test shape one level up).
+//! and false of the command is the vacuous-test shape one level up). That the preview of a
+//! document outside any project calls this entry point at all is pinned on the preview's own
+//! path, in `serve_site`'s `a_loose_document_preview_resolves_includes_as_its_build_does`:
+//! until 2026-09-24 it did not, and every test here passed.
 
 mod common;
 use common::TempProj;

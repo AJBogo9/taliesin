@@ -735,6 +735,31 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
     site_page_html(project, page)
 }
 
+/// Render a page's source the way `build` renders the same page, before execution: a page
+/// of a project through the project path (its `chapter` number, the project's shared
+/// `bibliography:` in `defaults`, the containment root its `_site.yml` declares), and a
+/// document outside any project through [`taliesin_core::render_single_doc`], confined to
+/// its own folder. The preview rendered the second kind through the project path too,
+/// whose missing root is inferred from the nearest `.git`, so it resolved an include or a
+/// `bibliography:` the build refuses (PT-2 reopened in the preview alone).
+///
+/// `root` is the project directory. One previewed as a project always holds `_site.yml`
+/// (`resolve_target` refuses one that does not), so its absence marks a single document's
+/// own project. Takes the site's answers rather than the site, so a caller holding the site
+/// lock can release it before the render.
+fn render_page_source(
+    root: &Path,
+    chapter: Option<u32>,
+    defaults: &taliesin_core::render::SiteDefaults,
+    src: &str,
+    base: &Path,
+) -> taliesin_core::RenderedDoc {
+    if !root.join("_site.yml").is_file() {
+        return taliesin_core::render_single_doc(src, base);
+    }
+    taliesin_core::render_document_scoped_with_site(src, base, chapter, Some(defaults))
+}
+
 /// A first-paint render without code execution (the worker fills outputs after).
 /// Listing cards are expanded here so the blog index paints with its posts.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
@@ -745,11 +770,12 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         };
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
-    let mut doc = taliesin_core::render_document_scoped_with_site(
+    let mut doc = render_page_source(
+        &site.root,
+        site.chapter_for(page),
+        &site.render_defaults(),
         &src,
         base,
-        site.chapter_for(page),
-        Some(&site.render_defaults()),
     );
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
     // listing/about expansion, post decoration) so preview matches the build. It owns the
@@ -1332,8 +1358,7 @@ async fn build_page(
         let site = project.site.lock();
         (site.chapter_for(&page), site.render_defaults())
     };
-    let mut doc =
-        taliesin_core::render_document_scoped_with_site(&src, &base, chapter, Some(&site_defaults));
+    let mut doc = render_page_source(&project.dir, chapter, &site_defaults, &src, &base);
 
     // Which lane this page actually belongs on, decided from the rendered blocks rather
     // than a guess about the source: exactly the cells the executor would run.
@@ -2532,6 +2557,58 @@ mod project_tests {
         assert!(is_cell_free(&render(
             "---\ntitle: T\n---\n\n::: {.callout-note}\n\n```{js}\nreturn 1;\n```\n\n:::\n"
         )));
+    }
+
+    /// PT-2 on the preview's own path. `build notes/a.tmd` confines a document outside any
+    /// project to its own folder (`render_single_doc`), refusing an include or a
+    /// `bibliography:` that climbs to a sibling of the checkout. The preview rendered the
+    /// same document through the project path with no root, which infers one from the
+    /// nearest `.git`, so it showed the sibling's text the build drops and let an untrusted
+    /// document read repo-local files through the preview. `include_root_parity.rs` pins
+    /// the rule on `render_single_doc`; this pins that the preview calls it.
+    #[test]
+    fn a_loose_document_preview_resolves_includes_as_its_build_does() {
+        let dir = std::env::temp_dir().join(format!("tali-loose-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("notes")).unwrap();
+        std::fs::write(dir.join(".git"), "").unwrap();
+        std::fs::write(dir.join("sibling.tmd"), "SIBLING_SENTINEL\n").unwrap();
+        let src = "---\ntitle: A\n---\n\n{{< include ../sibling.tmd >}}\n";
+        std::fs::write(dir.join("notes/a.tmd"), src).unwrap();
+        let file = dir.join("notes/a.tmd").canonicalize().unwrap();
+
+        let site = taliesin_core::site::Site::discover_single(&file);
+        let page = site
+            .pages
+            .first()
+            .expect("the document is its own page")
+            .clone();
+        let preview = render_markdown_only(&site, &page);
+        let body: String = preview
+            .blocks
+            .iter()
+            .map(|b| format!("{}\n", b.html))
+            .collect();
+        let built = taliesin_core::render_single_doc(src, file.parent().unwrap());
+
+        assert!(
+            !body.contains("SIBLING_SENTINEL"),
+            "the preview must refuse the climb the build refuses: {body}"
+        );
+        assert_eq!(body, built.body_html(), "one document, one render");
+        assert!(
+            preview
+                .diagnostics
+                .iter()
+                .any(|d| d.message.contains("include not resolved")),
+            "and say so: {:?}",
+            preview
+                .diagnostics
+                .iter()
+                .map(|d| &d.message)
+                .collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The site-preview shell for one page of a corpus project, assembled the way the live
