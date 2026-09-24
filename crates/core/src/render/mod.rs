@@ -42,6 +42,7 @@ fn parse_options() -> Options<'static> {
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 mod fm_extract;
 use fm_extract::DocFront;
+#[cfg(test)]
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
 mod cell_extract;

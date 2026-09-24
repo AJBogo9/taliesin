@@ -97,7 +97,9 @@ pub(crate) fn emits_title_block(front_matter: &str) -> bool {
     DocFront(parse_front_matter_block(front_matter).unwrap_or_default()).emits_title_block()
 }
 
-/// [`DocFront::bibliography`] for a front-matter BLOCK (fences already split off).
+/// [`DocFront::bibliography`] for a front-matter BLOCK (fences already split off). Test-only:
+/// the render path reads [`DocFront`] directly.
+#[cfg(test)]
 pub(crate) fn bibliography_paths(front_matter: &str) -> Vec<String> {
     DocFront(parse_front_matter_block(front_matter).unwrap_or_default()).bibliography()
 }
