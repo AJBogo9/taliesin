@@ -67,9 +67,9 @@ fn the_same_cell_label_on_two_pages_warns_like_a_duplicate_brace_id() {
     assert!(
         site.warnings
             .iter()
-            .any(|w| w.contains("duplicate cross-reference label")
-                && w.contains("fig-dup")
-                && w.contains("a.html")),
+            .any(|w| w.message.contains("duplicate cross-reference label")
+                && w.message.contains("fig-dup")
+                && w.message.contains("a.html")),
         "a cell label defined on two pages should warn and keep the first, got: {:?}",
         site.warnings
     );
@@ -77,8 +77,8 @@ fn the_same_cell_label_on_two_pages_warns_like_a_duplicate_brace_id() {
 
 #[test]
 fn a_source_anchor_duplicated_across_pages_warns_with_a_located_line() {
-    // The source-scan duplicate used to carry no location (backlog item 5). It is now a
-    // `file:line:` linter line at the redefining anchor, and still names the winning page.
+    // The source-scan duplicate used to carry no location (backlog item 5). It is now
+    // located at the redefining anchor, and still names the winning page.
     let proj = TempProj::new();
     proj.file("_site.yml", "title: \"Dup\"\n")
         .file("a.tmd", "---\ntitle: \"A\"\n---\n\n## First {#sec-dup}\n")
@@ -90,18 +90,18 @@ fn a_source_anchor_duplicated_across_pages_warns_with_a_located_line() {
     let w = site
         .warnings
         .iter()
-        .find(|w| w.contains("duplicate cross-reference label") && w.contains("sec-dup"))
+        .find(|w| {
+            w.message.contains("duplicate cross-reference label") && w.message.contains("sec-dup")
+        })
         .unwrap_or_else(|| panic!("expected a dup warning, got: {:?}", site.warnings));
-    // A `file.tmd:line:` located prefix (the fix), plus the winning page named for context.
-    let (file, rest) = w.split_once(':').expect("located file:line: prefix");
-    assert!(file.ends_with(".tmd"), "located at a source file: {w}");
-    assert!(
-        rest.chars()
-            .take_while(|c| *c != ':')
-            .all(|c| c.is_ascii_digit()),
-        "a line number follows the file: {w}"
+    // Located at the redefining anchor (the fix), plus the winning page named for context.
+    assert_eq!(
+        w.file.as_deref(),
+        Some("b.tmd"),
+        "located at a source file: {w:?}"
     );
-    assert!(w.contains(".html"), "names the winning page: {w}");
+    assert_eq!(w.line, Some(7), "at the redefining heading's line: {w:?}");
+    assert!(w.message.contains(".html"), "names the winning page: {w:?}");
 }
 
 #[test]
@@ -166,7 +166,9 @@ fn a_duplicate_label_is_reported_exactly_once_for_either_anchor_shape() {
         let n = site
             .warnings
             .iter()
-            .filter(|w| w.contains("duplicate cross-reference label") && w.contains(&quoted))
+            .filter(|w| {
+                w.message.contains("duplicate cross-reference label") && w.message.contains(&quoted)
+            })
             .count();
         assert_eq!(
             n, 1,

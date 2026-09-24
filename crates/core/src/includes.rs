@@ -676,16 +676,6 @@ pub fn single_doc_root(doc_dir: &Path) -> PathBuf {
     }
 }
 
-/// The canonical repository boundary for `dir` (see [`symlink_root`]), for callers that
-/// walk the filesystem themselves instead of resolving a path through [`try_join_in`].
-/// Page discovery and the build's asset mirror are those callers: they read directories
-/// directly, so each has to apply this boundary by hand or it applies none at all.
-pub fn repo_boundary(dir: &Path) -> PathBuf {
-    let abs = absolutize(dir);
-    let root = symlink_root(&abs, &abs);
-    root.canonicalize().unwrap_or(root)
-}
-
 /// How a file reaches the published output, which decides how much of the `_` convention
 /// applies to it (see [`publishable`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

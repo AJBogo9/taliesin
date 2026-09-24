@@ -15,7 +15,7 @@
 //! Both read the files through `cite::read_bib_files`, the one `.bib` reader.
 
 use super::Site;
-use crate::render::Warning;
+use crate::render::{Severity, Warning};
 use std::path::{Path, PathBuf};
 
 /// Resolve `_site.yml`'s `bibliography:` entries against the site root, dropping (with a
@@ -24,19 +24,31 @@ use std::path::{Path, PathBuf};
 ///
 /// The messages match `render::load_bibliography`'s word for word: one bad `.bib` path
 /// should read the same whether it was written in a page or in the project config.
+///
+/// Each warning is located at `_site.yml`'s `bibliography:` key.
 pub(super) fn resolve_shared(
     root: &Path,
     declared: &[String],
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
+    let mut warn = |message: String| {
+        let line = super::config::read_site_yml(root)
+            .ok()
+            .and_then(|text| super::config::key_line(&text, "bibliography"));
+        warnings.push(super::config::config_warning(
+            line,
+            Severity::Warning,
+            message,
+        ));
+    };
     for path in declared {
         let path = path.trim();
         if path.is_empty() {
             continue;
         }
         if !path.ends_with(".bib") {
-            warnings.push(format!(
+            warn(format!(
                 "bibliography `{path}` ignored: only BibTeX (`.bib`) is supported"
             ));
             continue;
@@ -46,11 +58,11 @@ pub(super) fn resolve_shared(
         // may not point outside the project.
         match crate::includes::try_join_in(root, path, Some(root)) {
             Ok(p) if p.is_file() => out.push(p),
-            Ok(_) => warnings.push(format!("bibliography file not found: {path}")),
-            Err(crate::includes::Refused::OutsideRoot) => warnings.push(format!(
+            Ok(_) => warn(format!("bibliography file not found: {path}")),
+            Err(crate::includes::Refused::OutsideRoot) => warn(format!(
                 "bibliography `{path}` is outside the project root and was not read"
             )),
-            Err(crate::includes::Refused::SymlinkOutsideRepo) => warnings.push(format!(
+            Err(crate::includes::Refused::SymlinkOutsideRepo) => warn(format!(
                 "bibliography `{path}` is a symlink whose target is outside the project \
                  repository and was not read"
             )),
@@ -316,9 +328,10 @@ mod tests {
         );
         let site = Site::discover(&root);
         assert!(site.bibliography.is_empty(), "none of the three resolves");
-        let w: Vec<&String> = site
+        let w: Vec<&str> = site
             .warnings
             .iter()
+            .map(|m| m.message.as_str())
             .filter(|m| m.contains("bibliography"))
             .collect();
         // Three declarations, three diagnostics — and each exactly once, not once per page,

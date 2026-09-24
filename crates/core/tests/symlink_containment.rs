@@ -159,6 +159,34 @@ fn site_discovery_refuses_a_page_symlinked_out_of_the_repository() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A symlinked folder with an ordinary name that leads into a `.`-prefixed path publishes
+/// no page from it: page discovery asks the one publication rule
+/// (`includes::publishable`), which judges what a link REACHES, not only its name. It
+/// tested the link's own name, so `vendor -> ../.private` published every page under it
+/// (audit 2026-09-24, WP1 residual).
+#[test]
+fn site_discovery_refuses_a_folder_symlinked_into_a_private_path() {
+    let dir = tmp("private-folder");
+    let book = dir.join("book");
+    fs::create_dir_all(&book).unwrap();
+    fs::create_dir_all(dir.join(".private")).unwrap();
+    fs::write(dir.join(".git"), b"").unwrap();
+    fs::write(dir.join(".private/secret.tmd"), "# Secret\n").unwrap();
+    fs::write(book.join("_site.yml"), b"title: Book\n").unwrap();
+    fs::write(book.join("index.tmd"), "# Home\n").unwrap();
+    symlink("../.private", book.join("vendor")).unwrap();
+
+    let site = taliesin_core::site::Site::discover(&book);
+    let rels: Vec<&str> = site.pages.iter().map(|p| p.rel.as_str()).collect();
+    assert_eq!(
+        rels,
+        ["index.tmd"],
+        "no page is published from a private path"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn site_discovery_terminates_on_a_symlink_loop() {
     // An in-repo symlink pointing back at an ancestor is allowed by the boundary above,

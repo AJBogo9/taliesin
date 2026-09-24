@@ -702,3 +702,218 @@ fn strict_site_build_fails_on_a_missing_image_alone() {
     assert!(err.contains("index.tmd:5:"), "located to its line: {err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A `_site.yml` that silently drops a book part must fail `build --strict`, exactly as it
+/// fails `--check-only`. The config's diagnostics used to be plain strings that only the
+/// lint turned into problems: the writing build logged them as advice, so `--strict` exited
+/// 0 over a book with a chapter missing (audit 2026-09-24 NEW-B).
+#[test]
+fn a_book_part_the_config_drops_fails_a_strict_build() {
+    let dir = tmp_dir("dropped-part");
+    fs::write(
+        dir.join("_site.yml"),
+        "title: B\nchapters:\n  - index.tmd\n  - file: a.tmd\n    part: Two\n    chapters:\n      - b.tmd\n",
+    )
+    .unwrap();
+    for n in ["index", "a", "b"] {
+        fs::write(dir.join(format!("{n}.tmd")), format!("# {n}\n\nBody.\n")).unwrap();
+    }
+    let strict = taliesin()
+        .args(["build"])
+        .arg(&dir)
+        .arg("--out")
+        .arg(dir.join("_out"))
+        .arg("--strict")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&strict.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !strict.status.success(),
+        "a book missing a chapter must not build green under --strict:\n{err}"
+    );
+    assert!(err.contains("DROPPED"), "names what went missing:\n{err}");
+}
+
+/// The single-file gate predicts the single-file build of the same argument: a cross-page
+/// reference is dead in the one page `build <file>` writes, so `--check-only` on that file
+/// reports it too. It used to lint the page as part of its project and pass, then the
+/// build failed (audit 2026-09-24 B4, config-seam #6).
+#[test]
+fn the_single_file_gate_fails_what_the_single_file_build_fails() {
+    let dir = tmp_dir("single-gate");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(
+        dir.join("other.tmd"),
+        "---\ntitle: Other\n---\n\n## The other section {#sec-other}\n\nBody.\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("posts")).unwrap();
+    let page = dir.join("posts/p.tmd");
+    fs::write(&page, "---\ntitle: P\n---\n\nSee @sec-other.\n").unwrap();
+
+    let check = taliesin()
+        .arg("build")
+        .arg(&page)
+        .args(["--check-only", "--strict"])
+        .output()
+        .unwrap();
+    let build = taliesin()
+        .arg("build")
+        .arg(&page)
+        .args(["--stdout", "--no-exec", "--strict"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let (check_err, build_err) = (
+        String::from_utf8_lossy(&check.stderr),
+        String::from_utf8_lossy(&build.stderr),
+    );
+    assert!(
+        !build.status.success() && build_err.contains("@sec-other"),
+        "precondition: the single-file build fails on the dead reference:\n{build_err}"
+    );
+    assert!(
+        !check.status.success(),
+        "--check-only on the same file must fail too:\n{check_err}"
+    );
+    assert!(
+        check_err.contains("@sec-other"),
+        "and name it:\n{check_err}"
+    );
+}
+
+/// A `{js}` import the portable folder cannot hold is an error that `--strict` counts, like
+/// every other file the copier cannot place. It was an uncounted notice, so a `--strict`
+/// build shipped a folder whose cell failed to load (audit 2026-09-24, WP1 residual).
+#[test]
+fn a_js_import_the_folder_cannot_hold_fails_strict() {
+    let dir = tmp_dir("js-escape");
+    fs::create_dir_all(dir.join("sub")).unwrap();
+    fs::write(dir.join("lib.js"), "export const x = 1;\n").unwrap();
+    let doc = dir.join("sub/doc.tmd");
+    fs::write(
+        &doc,
+        "---\ntitle: J\n---\n\n```{js}\nconst m = await import(\"../lib.js\");\nm.x\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--strict")
+        .env_remove("TALIESIN_NO_EXEC")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !out.status.success(),
+        "a folder whose cell cannot load its import must fail --strict:\n{err}"
+    );
+    assert!(
+        err.lines()
+            .any(|l| l.contains("error") && l.contains("../lib.js")),
+        "reported as a located error naming the import:\n{err}"
+    );
+}
+
+/// One defect, one diagnostic: an image in a `.`-prefixed folder is reported by the asset
+/// validator, and the copier refusing the same file said it a second time.
+#[test]
+fn a_private_image_in_an_out_build_is_reported_once() {
+    let dir = tmp_dir("dot-image");
+    fs::create_dir_all(dir.join(".hidden")).unwrap();
+    fs::write(dir.join(".hidden/i.png"), "PNG").unwrap();
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, "---\ntitle: D\n---\n\n![an image](.hidden/i.png)\n").unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--no-exec")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    let reports = err.lines().filter(|l| l.contains(".hidden/i.png")).count();
+    assert_eq!(reports, 1, "reported exactly once:\n{err}");
+}
+
+/// A document with no project is a project of one page: its link to a sibling `.tmd` is
+/// written as that page's `.html` URL by `build` exactly as by `preview`, and both gates
+/// report it, because the single-file build publishes no such page. The build wrote a link
+/// to the raw source and `--check-only` passed it (audit 2026-09-24, config-seam #15).
+#[test]
+fn a_link_to_a_sibling_source_is_one_answer_and_reported() {
+    let dir = tmp_dir("sibling-link");
+    let doc = dir.join("a.tmd");
+    fs::write(&doc, "---\ntitle: A\n---\n\nSee [b](b.tmd).\n").unwrap();
+    fs::write(dir.join("b.tmd"), "---\ntitle: B\n---\n\nB.\n").unwrap();
+    let check = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--check-only")
+        .output()
+        .unwrap();
+    let page = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .args(["--stdout", "--no-exec"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let check_err = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        !check.status.success() && check_err.contains("b.tmd"),
+        "the gate reports the dead link:\n{check_err}"
+    );
+    let html = String::from_utf8_lossy(&page.stdout);
+    let hrefs: Vec<String> = taliesin_core::render::tags(&html)
+        .filter(|t| t.name.eq_ignore_ascii_case("a"))
+        .flat_map(|t| {
+            taliesin_core::render::attrs(&t)
+                .filter(|a| a.name == "href")
+                .map(|a| a.value.to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|h| h.starts_with('b'))
+        .collect();
+    assert_eq!(hrefs, ["b.html"], "the same href the preview writes");
+}
+
+/// A lone-CR document is read through the one normalizing reader, so its front matter is
+/// front matter to the gate and the build as it is to the renderer: a broken block is
+/// reported and fails the build. The server read the raw bytes, found no block, and
+/// passed it (audit 2026-09-24, WP7 residual).
+#[test]
+fn a_lone_cr_document_s_broken_front_matter_fails_the_build() {
+    let dir = tmp_dir("lone-cr");
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, "---\rtitle: [unclosed\r---\r\rBody.\r").unwrap();
+    let check = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--check-only")
+        .output()
+        .unwrap();
+    let build = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .args(["--stdout", "--no-exec"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let check_err = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        !check.status.success() && check_err.contains("not valid YAML"),
+        "the gate reports the broken block:\n{check_err}"
+    );
+    assert!(
+        !build.status.success(),
+        "and the build fails on it:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+}

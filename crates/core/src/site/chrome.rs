@@ -312,7 +312,10 @@ impl Site {
             {
                 continue;
             }
-            let path = href.split('#').next().unwrap_or(href);
+            // The page a browser requests: fragment and `?query` dropped, as a body link's are
+            // (`manual_local_links`). With the query kept, `wip.tmd?v=1` named no file, fell to
+            // the raw-file arm, and passed a nav entry to a draft the deploy does not have.
+            let path = href.split(['#', '?']).next().unwrap_or(href);
             if path.is_empty() {
                 continue;
             }

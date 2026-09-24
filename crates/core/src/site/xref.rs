@@ -31,7 +31,7 @@ pub struct XrefTarget {
 /// ([`super::Site::harvest_xref_numbers`]). First definition wins.
 pub(super) fn scan_xref_targets(
     pages: &[Page],
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> HashMap<String, XrefTarget> {
     let mut map: HashMap<String, XrefTarget> = HashMap::new();
     let mut warned: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -45,7 +45,7 @@ pub(super) fn scan_xref_targets(
             .input
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let (src, _) = crate::includes::resolve(&raw, base);
+        let (src, origins) = crate::includes::resolve(&raw, base);
         for ScannedAnchor { id, line } in scan_page_anchors(&src) {
             match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
@@ -56,15 +56,28 @@ pub(super) fn scan_xref_targets(
                     // Warn once per label (a page can define it twice, which would
                     // otherwise push the identical warning repeatedly). The message is
                     // located at the SECOND (redefining) anchor — the actionable one to
-                    // remove/rename — in `file:line:` linter form, and names the first
+                    // remove/rename — and names the first
                     // (winning) page so both sides of the collision are visible.
                     if e.get().url != page.url && warned.insert(e.key().clone()) {
-                        warnings.push(format!(
-                            "{}:{line}: duplicate cross-reference label \u{201c}{}\u{201d} \u{2014} already defined on {}; this page's anchor is ignored (the first definition wins)",
-                            page.rel,
+                        let mut w = Warning::new(format!(
+                            "duplicate cross-reference label \u{201c}{}\u{201d} \u{2014} already defined on {}; this page's anchor is ignored (the first definition wins)",
                             e.key(),
                             e.get().url
-                        ));
+                        ))
+                        .severity(Severity::Error);
+                        // `line` counts the INCLUDE-EXPANDED buffer: map it back to the file
+                        // and line the author wrote, a partial's joined onto the page's folder
+                        // so it stays relative to the site root like every site warning.
+                        let origin = origins.get(line.saturating_sub(1));
+                        let dir = Path::new(&page.rel).parent().unwrap_or(Path::new(""));
+                        w.file = Some(match origin.and_then(|o| o.file.as_deref()) {
+                            Some(f) => crate::includes::normalize(&dir.join(f))
+                                .to_string_lossy()
+                                .replace('\\', "/"),
+                            None => page.rel.clone(),
+                        });
+                        w.line = Some(origin.map_or(line, |o| o.line) as u32);
+                        warnings.push(w);
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(e) => {
@@ -122,6 +135,31 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
         out.extend(cell_label_anchors(&src));
     }
     out
+}
+
+/// Register each page's executable-cell labels (`#| label: fig-x`) as a target of that
+/// page, where no earlier page already defines the label. [`scan_xref_targets`] reads
+/// headings only, because the harvest render registers cell labels with their numbers; a
+/// registry that skips the render (the language server's) needs them from the source, or a
+/// valid `@fig-` to a plotted figure on another page reads as broken. No warnings: a
+/// duplicate is reported by the passes that own the numbers.
+pub(super) fn add_cell_label_targets(pages: &[Page], map: &mut HashMap<String, XrefTarget>) {
+    for page in pages {
+        let Ok(raw) = crate::includes::read_source(&page.input) else {
+            continue;
+        };
+        let base = page
+            .input
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let (src, _) = crate::includes::resolve(&raw, base);
+        for id in cell_label_anchors(&src) {
+            map.entry(id).or_insert_with(|| XrefTarget {
+                url: page.url.clone(),
+                ..XrefTarget::default()
+            });
+        }
+    }
 }
 
 /// The nearest ancestor directory of `page` holding a `_site.yml`, or `None`. Starts at

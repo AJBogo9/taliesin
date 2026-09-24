@@ -484,3 +484,166 @@ fn the_cell_that_crashed_the_kernel_is_named_as_the_one() {
         "a headless build has no save to wait for:\n{stderr}"
     );
 }
+
+/// `(file, line)` of the first diagnostic whose message contains `needle`.
+fn located(v: &serde_json::Value, needle: &str) -> (String, Option<u64>) {
+    let d = v["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .find(|d| d["message"].as_str().unwrap_or("").contains(needle))
+        .unwrap_or_else(|| panic!("no diagnostic mentions `{needle}`: {v}"));
+    (
+        d["file"].as_str().unwrap_or("").to_string(),
+        d["line"].as_u64(),
+    )
+}
+
+/// A project's own diagnostics (its `_site.yml`, a page's front matter as discovery reads
+/// it) are located at the file and line that wrote them, and every verb reports them the
+/// same way. They were strings: `--check-only` pinned all of them on `_site.yml` with no
+/// line, a page's `draft:` included, and a writing build's `--format json` carried none
+/// of them (audit 2026-09-24 NEW-A, config-seam #10).
+#[test]
+fn project_diagnostics_are_located_and_reach_every_json_channel() {
+    let dir = tmp_dir("site-warnings");
+    fs::write(dir.join("_site.yml"), "title: S\ntitel: oops\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    fs::create_dir_all(dir.join("posts")).unwrap();
+    fs::write(
+        dir.join("posts/p.tmd"),
+        "---\ntitle: P\ndraft: maybe\n---\n\nBody.\n",
+    )
+    .unwrap();
+
+    let check =
+        stdout_json(
+            taliesin()
+                .arg("build")
+                .arg(&dir)
+                .args(["--check-only", "--format", "json"]),
+        );
+    let build = stdout_json(
+        taliesin()
+            .arg("build")
+            .arg(&dir)
+            .arg("--out")
+            .arg(dir.join("_out"))
+            .args(["--no-exec", "--format", "json"]),
+    );
+    let _ = fs::remove_dir_all(&dir);
+    for v in [&check, &build] {
+        assert_eq!(
+            located(v, "unknown config key"),
+            ("_site.yml".to_string(), Some(2)),
+            "a config key is located in _site.yml: {v}"
+        );
+        assert_eq!(
+            located(v, "draft: maybe"),
+            ("posts/p.tmd".to_string(), Some(3)),
+            "a page's front matter is located in that page: {v}"
+        );
+    }
+}
+
+/// A diagnostic located in an `{{< include >}}`d partial names the partial by a path that
+/// opens from where the command ran. It named it relative to the including page's folder
+/// and printed that as if it were relative to the project, a file that does not exist
+/// (audit 2026-09-24, images #7).
+#[test]
+fn an_include_located_diagnostic_names_the_partial_by_its_real_path() {
+    let dir = tmp_dir("include-path");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    fs::create_dir_all(dir.join("posts/one")).unwrap();
+    fs::write(
+        dir.join("posts/one/index.tmd"),
+        "---\ntitle: One\n---\n\n{{< include _part.tmd >}}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("posts/one/_part.tmd"),
+        "Part.\n\n![a missing chart](gone.png)\n",
+    )
+    .unwrap();
+
+    let project =
+        stdout_json(
+            taliesin()
+                .arg("build")
+                .arg(&dir)
+                .args(["--check-only", "--format", "json"]),
+        );
+    let site_build = stdout_json(
+        taliesin()
+            .arg("build")
+            .arg(&dir)
+            .arg("--out")
+            .arg(dir.join("_out"))
+            .args(["--no-exec", "--format", "json"]),
+    );
+    // A single file, named from the project root as a user would type it.
+    let single = stdout_json(taliesin().current_dir(&dir).args([
+        "build",
+        "posts/one/index.tmd",
+        "--check-only",
+        "--format",
+        "json",
+    ]));
+    let _ = fs::remove_dir_all(&dir);
+    for v in [&project, &site_build, &single] {
+        assert_eq!(
+            located(v, "gone.png"),
+            ("posts/one/_part.tmd".to_string(), Some(3)),
+            "{v}"
+        );
+    }
+}
+
+/// A figure a cell writes to disk is no missing asset: the build checks a page's local
+/// files after its cells ran, so `savefig("gen.png")` then `![…](gen.png)` builds clean
+/// the first time. The check ran before execution and reported the file the next line
+/// was about to write (audit 2026-09-24, WP3 residual).
+#[test]
+fn a_file_a_cell_writes_is_not_a_missing_asset() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("cell-writes");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    let page = "---\ntitle: T\n---\n\n\
+        ```{python}\n#| echo: false\nopen('gen.png', 'wb').write(b'\\x89PNG\\r\\n\\x1a\\n')\n```\n\n\
+        ![A generated chart](gen.png)\n";
+    fs::write(dir.join("index.tmd"), page).unwrap();
+    let single = taliesin()
+        .arg("build")
+        .arg(dir.join("index.tmd"))
+        .args(["--stdout", "--strict"])
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run taliesin");
+    let _ = fs::remove_file(dir.join("gen.png"));
+    let site = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--out")
+        .arg(dir.join("_out"))
+        .arg("--strict")
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run taliesin");
+    let _ = fs::remove_dir_all(&dir);
+    for out in [&single, &site] {
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !err.contains("gen.png"),
+            "the file the cell wrote is not reported:\n{err}"
+        );
+        assert!(out.status.success(), "the build is clean:\n{err}");
+    }
+}

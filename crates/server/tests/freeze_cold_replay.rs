@@ -296,6 +296,53 @@ fn building_one_page_of_a_project_by_path_replays_the_projects_cache() {
     );
 }
 
+/// A symlinked page is the page its LINK is in the project, for the single-file build as for
+/// the site build: both use `<project>/_freeze/posts/link.json`. The single-file build
+/// canonicalized the file first, which resolved the link out of the project, and keyed a
+/// second cache at `<project>/_freeze/link.json` that the site build never reads (audit
+/// 2026-09-24, config-seam #14).
+#[cfg(unix)]
+#[test]
+fn a_symlinked_page_built_alone_shares_its_projects_cache() {
+    let Some(real_py) = python_or_skip() else {
+        return;
+    };
+    let tmp = tmp_dir("symlinked-page");
+    let log = tmp.join("launches.log");
+    let py = recording_python(&tmp, &real_py, &log);
+    fs::write(tmp.join(".git"), "").unwrap();
+    let proj = tmp.join("proj");
+    fs::create_dir_all(proj.join("posts")).unwrap();
+    fs::create_dir_all(tmp.join("shared")).unwrap();
+    fs::write(proj.join("_site.yml"), "title: P\n").unwrap();
+    fs::write(proj.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+    fs::write(
+        tmp.join("shared/real.tmd"),
+        "---\ntitle: Real\n---\n\n```{python}\nprint(4104)\n```\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("../../shared/real.tmd", proj.join("posts/link.tmd")).unwrap();
+
+    build_project(&proj, &tmp.join("site-out"), &py);
+    assert!(
+        proj.join("_freeze/posts/link.json").is_file(),
+        "precondition: the project build keys the page by its link's place in the project"
+    );
+    let after_project = launches(&log);
+    let html = build(&proj.join("posts/link.tmd"), &tmp.join("link.html"), &py);
+    assert!(String::from_utf8_lossy(&html).contains("4104"));
+    assert_eq!(
+        launches(&log),
+        after_project,
+        "the single-file build of the linked page re-executed instead of replaying the \
+         project's cache"
+    );
+    assert!(
+        !proj.join("_freeze/link.json").exists(),
+        "a second cache was keyed by the link target's name"
+    );
+}
+
 /// Editing an **upstream** cell busts the cells below it, whose own source never changed.
 ///
 /// This is the property the cumulative hash exists for, and the one a per-cell cache would

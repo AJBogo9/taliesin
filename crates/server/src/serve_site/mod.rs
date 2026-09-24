@@ -27,7 +27,8 @@ use std::time::Duration;
 use taliesin_core::{Block, BlockOp, Page, Site, diff_blocks, needs_remount};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::protocol::{self, Diagnostic};
+use crate::lint::{Diagnostic, diag_from};
+use crate::protocol;
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, open_in_browser, percent_decode,
     with_host_guard, with_identity, ws_origin_ok,
@@ -148,7 +149,7 @@ impl Project {
     /// Re-discover this project the same way it was discovered, scope included.
     fn rediscover(&self) -> Site {
         match &self.scope {
-            Some(file) => Site::discover_single(file),
+            Some(file) => Site::discover_document(file),
             None => Site::discover_with(&self.dir, taliesin_core::DraftMode::Include),
         }
     }
@@ -397,15 +398,15 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
             // A missing document gets the one "cannot read" message every front door prints,
             // with its did-you-mean for a near-miss sibling (`build` answers the same typo
             // the same way).
-            let file = match file.canonicalize() {
-                Ok(file) => file,
-                Err(e) => {
-                    return Err(std::io::Error::new(
-                        e.kind(),
-                        crate::lint::cannot_read(&typed, &e),
-                    ));
-                }
-            };
+            if let Err(e) = file.canonicalize() {
+                return Err(std::io::Error::new(
+                    e.kind(),
+                    crate::lint::cannot_read(&typed, &e),
+                ));
+            }
+            // Named by its canonical FOLDER, not resolved through a symlink: a linked page
+            // belongs to the project its link sits in, where the site build publishes it.
+            let file = taliesin_core::site::document_path(&file);
             if !file.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -422,17 +423,16 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
                     crate::serve::not_a_source_error(&typed, "preview"),
                 ));
             }
-            match taliesin_core::site::enclosing_site_root(&file) {
+            let dir = file
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            match taliesin_core::site::enclosing_site_root(&dir) {
                 // In a project: serve the project, open at this page.
                 Some(root) => (root, Some(file)),
                 // Not in a project: a project of exactly this document, rooted at its
                 // directory so relative images/includes/assets resolve as they always did.
-                None => (
-                    file.parent()
-                        .unwrap_or(std::path::Path::new("."))
-                        .to_path_buf(),
-                    Some(file),
-                ),
+                None => (dir, Some(file)),
             }
         }
     };
@@ -457,10 +457,14 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
     // this routing exists to prevent.
     let scoped = scope
         .as_deref()
-        .filter(|f| taliesin_core::site::enclosing_site_root(f).is_none())
+        .filter(|f| {
+            f.parent()
+                .and_then(taliesin_core::site::enclosing_site_root)
+                .is_none()
+        })
         .map(|f| f.to_path_buf());
     let site = match &scoped {
-        Some(file) => Site::discover_single(file),
+        Some(file) => Site::discover_document(file),
         None => Site::discover_with(&root, taliesin_core::DraftMode::Include),
     };
     Ok(Resolved {
@@ -526,7 +530,9 @@ struct Resolved {
 /// The URL a scoped document lives at. Used both to open the browser at it and to answer
 /// the project root with it.
 fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
-    let same = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) == file;
+    let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let file = canon(file);
+    let same = |p: &std::path::Path| canon(p) == file;
     site.pages
         .iter()
         .find(|p| same(&p.input))
@@ -561,15 +567,8 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     // Where to point the browser: a document target opens at its own page rather than at
     // the project's home, so `preview chapter-7.tmd` shows chapter 7.
     let focus = doc.as_deref().and_then(|f| focus_url(&site, f));
-    for w in &site.warnings {
-        // "no _site.yml at …" is a finding about a *project*. When the author asked to see
-        // one document, its absence is the expected case — it is precisely what put us on
-        // the single-document path — so reporting it reads as a fault where there is none.
-        if scoped.is_some() && taliesin_core::site::is_missing_config_warning(w) {
-            continue;
-        }
-        crate::log::warn(w);
-    }
+    // Printed after the banner, below: the banner opens with a screen clear.
+    let startup: Vec<taliesin_core::render::Warning> = site.warnings.clone();
     let page_count = site.pages.len();
     // A project with nothing to serve: `build <dir> --check-only` already exits 1 here,
     // while `preview` used to bind a port, 404 `/`, and boot a kernel for nothing. The two
@@ -616,6 +615,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let (listener, addr) = bind_with_fallback(port, &session_key)
         .await
         .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
+    let requested = port;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
 
@@ -628,8 +628,16 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         &root.display().to_string(),
         &format!("site, {page_count} pages"),
     );
-    // After the banner rather than with the site warnings above, which the soft clear
-    // pushes up into the scrollback: this one is about the thing the author just asked for.
+    // After the banner, never before it: the soft clear pushes whatever came first up into
+    // the scrollback, where the project's own diagnostics and the port fallback used to go
+    // (audit 2026-09-24, WP2 residual).
+    // (Port 0 asks for any free port, so the one bound is not a fallback.)
+    if requested != 0 && port != requested {
+        crate::log::warn(&format!("port {requested} in use; using {port}"));
+    }
+    for w in &startup {
+        crate::build::log_located(w, "_site.yml");
+    }
     if let Some(w) = &unpublished {
         crate::log::warn(w);
     }
@@ -790,79 +798,26 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
     site_page_html(project, page)
 }
 
-/// Render a page's source the way `build` renders the same page, before execution: a page
-/// of a project through the project path (its `chapter` number, the project's shared
-/// `bibliography:` in `defaults`, the containment root its `_site.yml` declares), and a
-/// document outside any project through [`taliesin_core::render_single_doc`], confined to
-/// its own folder. The preview rendered the second kind through the project path too,
-/// whose missing root is inferred from the nearest `.git`, so it resolved an include or a
-/// `bibliography:` the build refuses (PT-2 reopened in the preview alone).
-///
-/// `root` is the project directory. One previewed as a project always holds `_site.yml`
-/// (`resolve_target` refuses one that does not), so its absence marks a single document's
-/// own project. Takes the site's answers rather than the site, so a caller holding the site
-/// lock can release it before the render.
-fn render_page_source(
-    root: &Path,
-    chapter: Option<u32>,
-    defaults: &taliesin_core::render::SiteDefaults,
-    src: &str,
-    base: &Path,
-) -> taliesin_core::RenderedDoc {
-    if !root.join("_site.yml").is_file() {
-        return taliesin_core::render_single_doc(src, base);
-    }
-    taliesin_core::render_document_scoped_with_site(src, base, chapter, Some(defaults))
-}
-
-/// A first-paint render without code execution (the worker fills outputs after).
-/// Listing cards are expanded here so the blog index paints with its posts.
+/// A first-paint render without code execution (the worker fills outputs after): the one
+/// page pass ([`crate::lint::PagePass`]) with no executor, so the page paints finished
+/// exactly as the build finishes it (numbering, cross-references, `listing:` cards). The
+/// caller holds the site lock across it.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
-    let Ok(src) = std::fs::read_to_string(&page.input) else {
+    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
         return PageDoc {
             errored: true,
             ..Default::default()
         };
     };
-    let base = page.input.parent().unwrap_or(Path::new("."));
-    let mut doc = render_page_source(
-        &site.root,
-        site.chapter_for(page),
-        &site.render_defaults(),
-        &src,
-        base,
-    );
-    // One shared finishing step (numbering, cross-refs + broken-ref warnings,
-    // listing/about expansion, post decoration) so preview matches the build. It owns the
-    // `toc` decision too, so the four callers cannot compute it at four different points.
-    let mut warnings = std::mem::take(&mut doc.warnings);
-    let toc = site.finish_blocks(
-        page,
-        &mut doc.blocks,
-        &mut warnings,
-        Some(&src),
-        doc.toc_explicit,
-    );
-    // Resolved off the *finished* doc, exactly as the static build resolves it
-    // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
-    // `_site/` cannot name one tab three ways.
-    let tab_title = site.page_title(page, &doc);
-    let diagnostics = warnings
-        .iter()
-        .map(|w| {
-            let mut d = Diagnostic::warn(&w.message);
-            if let Some(line) = w.line {
-                d = d.at(w.file.clone(), line);
-            }
-            d
-        })
-        .collect();
+    let pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
     PageDoc {
-        tab_title,
-        toc,
-        includes: doc.includes,
-        blocks: doc.blocks,
-        diagnostics,
+        // Resolved off the *finished* doc, exactly as the static build resolves it, so the
+        // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
+        tab_title: site.page_title(page, &pass.doc),
+        toc: pass.toc,
+        includes: pass.doc.includes,
+        blocks: pass.doc.blocks,
+        diagnostics: pass.diags,
         errored: false,
         generation: 0, // first paint; the exec pass bumps it when it splices outputs
         // The first-paint render never runs cells, so it learns nothing about this page's
@@ -1503,7 +1458,7 @@ async fn build_page(
     let Some(page) = page else {
         return BuildOutcome::Done;
     };
-    let Ok(src) = std::fs::read_to_string(&page.input) else {
+    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
         let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
@@ -1515,15 +1470,18 @@ async fn build_page(
         return BuildOutcome::Done;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let (chapter, site_defaults) = {
+    let label = page_label(&page);
+    // THE page pass every verb runs. What it needs of the site is taken under the lock and
+    // the lock released before the render; the cells run with no lock held.
+    let render = {
         let site = project.site.lock();
-        (site.chapter_for(&page), site.render_defaults())
+        crate::lint::PageRender::of(&site, &page)
     };
-    let mut doc = render_page_source(&project.dir, chapter, &site_defaults, &src, &base);
+    let mut pass = crate::lint::PagePass::begin(&render, &page, src, &label);
 
     // Which lane this page actually belongs on, decided from the rendered blocks rather
     // than a guess about the source: exactly the cells the executor would run.
-    let cell_free = is_cell_free(&doc.blocks);
+    let cell_free = is_cell_free(&pass.doc.blocks);
     if pool.is_none() && !cell_free {
         // The bypass lane picked this page up (its last build had no cells) and the edit
         // has just added one. Publish nothing — the exec lane redoes this pass with a
@@ -1548,69 +1506,51 @@ async fn build_page(
         exec.set_progress(sink, Some(rel.to_string()));
         exec
     });
-    // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
-    // cross-page check below covers those). Collected now, pushed after `diags` is built.
-    let static_diags = crate::preview_diag::static_diagnostics(
-        &src,
-        &doc.blocks,
-        &base,
-        crate::lint::Scope::InSite,
-    );
     let mut exec = exec;
-    // Exec-phase defects (an empty-output labelled figure/table cell) are only knowable
-    // after execution; carried out of the run so they merge into the same per-page
-    // `Warning -> Diagnostic` mapping the render and finish warnings take below, and the
-    // dev-menu panel shows them located instead of terminal-only.
-    let mut exec_warnings = Vec::new();
     if let Some(exec) = exec.as_mut() {
-        publish_pre_exec_body(project, rel, &page, &doc.blocks);
-        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
-        exec_warnings = exec.take_warnings();
+        publish_pre_exec_body(project, rel, &page, &pass.doc.blocks);
+        // A failed cell is not repeated among the diagnostics: the dev menu lists each one
+        // from the page itself, clickable to the cell.
+        let _ = pass.execute(exec).await;
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
     // whole site, so it needs the site lock.
-    let mut warnings = doc.warnings.clone();
-    warnings.append(&mut exec_warnings);
-    let (toc, tab_title) = {
+    let tab_title = {
         let site = project.site.lock();
-        let toc = site.finish_blocks(
-            &page,
-            &mut doc.blocks,
-            &mut warnings,
-            Some(&src),
-            doc.toc_explicit,
-        );
-        (
-            toc,
-            // Re-resolved every build: an edit can add, change, or remove the front-matter
-            // title or the leading `# H1` that names the tab.
-            site.page_title(&page, &doc),
-        )
+        pass.finish(&site, &page);
+        // Re-resolved every build: an edit can add, change, or remove the front-matter
+        // title or the leading `# H1` that names the tab.
+        site.page_title(&page, &pass.doc)
     };
-    let mut diags = page_diagnostics(&page.input, exec.as_deref());
+    let toc = pass.toc;
+    let mut diags = std::mem::take(&mut pass.diags);
+    // The kernel's availability, which the dev menu shows and the build does not repeat
+    // (it reports a missing kernel as its own failure).
+    if let Some(message) = exec.as_deref().and_then(|e| e.diagnostic()) {
+        let notice = taliesin_core::render::Warning::new(message);
+        diags.push(diag_from(&notice, &label));
+    }
     // A cell of this page's may have been SIGINTed to let another page's kernel restart
     // through (A17). Read AFTER `exec.run`, which is what the interrupt aborts, so this is
     // the very build that shows the traceback — and the page says where it came from
     // instead of just showing one.
     if let Some(by) = project.exec_lane.lock().take_interrupt_for(rel) {
-        diags.push(Diagnostic::warn(interrupted_notice(&by)));
+        let notice = taliesin_core::render::Warning::new(interrupted_notice(&by));
+        diags.push(diag_from(&notice, &label));
     }
-    diags.extend(static_diags);
-    // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
-    // re-renders the whole site (~27 ms), so scope the site lock tightly.
+    // Cross-page links (this page only, and the pages it links to: the whole-site pass would
+    // render every page on every save, PERF-1) and the project's own diagnostics, located
+    // for this page: the client resolves a `file` from the page's own folder, so they climb
+    // to the site root first. Scoped tightly under the site lock.
     {
         let site = project.site.lock();
-        diags.extend(crate::preview_diag::cross_page_diagnostics(&site, rel));
-        diags.extend(crate::preview_diag::site_config_diagnostics(&site));
+        let cross = site.validate_cross_page_links_for(rel);
+        diags.extend(cross.iter().map(|w| diag_from(w, &label)));
+        let config = format!("{}_site.yml", "../".repeat(rel.matches('/').count()));
+        diags.extend(crate::lint::project_diagnostics(&site, &config));
     }
-    for w in &warnings {
-        let mut d = Diagnostic::warn(&w.message);
-        if let Some(line) = w.line {
-            d = d.at(w.file.clone(), line);
-        }
-        diags.push(d);
-    }
+    let doc = pass.doc;
 
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
@@ -1666,32 +1606,13 @@ async fn build_page(
     BuildOutcome::Done
 }
 
-/// Per-page diagnostics: a framed front-matter parse error + kernel availability.
-///
-/// A missing `{{< include >}}` is deliberately *not* checked here. The render pass already
-/// emits a located `IncludeWarning` on the directive's own line, which reaches this same
-/// channel through `doc.warnings`; checking again produced two diagnostics for one defect,
-/// and the extra one had no line to click.
-/// `exec` is `None` on the bypass lane (AP3-1), which has no executor — and needs none:
-/// the only thing it contributes is the kernel-availability notice, which is about cells
-/// this page does not have.
-fn page_diagnostics(input: &Path, exec: Option<&crate::exec::Executor>) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    if let Ok(src) = std::fs::read_to_string(input) {
-        // Broken front matter: a located, framed error (same as the single-doc server).
-        // (Front-matter key warnings now arrive via `doc.warnings` from the render pass.)
-        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-            diags.push(
-                Diagnostic::error(message)
-                    .at(None, line)
-                    .with_frame(crate::serve::code_frame(&src, line)),
-            );
-        }
-    }
-    if let Some(message) = exec.and_then(|e| e.diagnostic()) {
-        diags.push(Diagnostic::warn(message));
-    }
-    diags
+/// The name the dev menu locates a page's own diagnostics by: its file name, which the
+/// client resolves against the page's directory like every other diagnostic `file`.
+fn page_label(page: &Page) -> String {
+    page.input
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| page.rel.clone())
 }
 
 // --- file watching ------------------------------------------------------
@@ -2330,7 +2251,10 @@ mod protocol_contract {
         );
         assert!(fr["diagnostics"].is_array());
 
-        let dg = parse(protocol::diagnostics(&[Diagnostic::warn("x")]));
+        let dg = parse(protocol::diagnostics(&[diag_from(
+            &taliesin_core::render::Warning::new("x"),
+            "p.tmd",
+        )]));
         assert_eq!(dg["type"], "diagnostics");
         assert_eq!(dg["messages"][0]["level"], "warning");
         assert_eq!(dg["messages"][0]["message"], "x");
@@ -2949,7 +2873,7 @@ mod project_tests {
         std::fs::write(dir.join("notes/a.tmd"), src).unwrap();
         let file = dir.join("notes/a.tmd").canonicalize().unwrap();
 
-        let site = taliesin_core::site::Site::discover_single(&file);
+        let site = taliesin_core::site::Site::discover_document(&file);
         let page = site
             .pages
             .first()
@@ -3534,6 +3458,80 @@ mod project_tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Build one cell-free page of `files` on the bypass lane and return the dev menu's
+    /// diagnostics exactly as the websocket carries them.
+    fn wire_diagnostics(tag: &str, files: &[(&str, &str)], rel: &str) -> Vec<serde_json::Value> {
+        let dir = std::env::temp_dir().join(format!("tali-wirediag-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (name, body) in files {
+            let p = dir.join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        let site =
+            taliesin_core::site::Site::discover_with(&dir, taliesin_core::DraftMode::Include);
+        let project = Arc::new(Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+            front_matter: Mutex::new(HashMap::new()),
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, rel, None));
+        let wire = protocol::diagnostics(&project.pages.lock()[rel].doc.diagnostics);
+        let _ = std::fs::remove_dir_all(&dir);
+        let v: serde_json::Value = serde_json::from_str(&wire).unwrap();
+        v["messages"].as_array().cloned().unwrap_or_default()
+    }
+
+    /// The dev menu shows a defect at the severity its validator gave it. Every preview
+    /// diagnostic was built with `Diagnostic::warn`, so a missing image the gate fails on
+    /// arrived amber and the status dot never went red (audit 2026-09-24 B4, vestigial #4).
+    #[test]
+    fn an_error_reaches_the_dev_menu_as_an_error() {
+        let msgs = wire_diagnostics(
+            "severity",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n![a chart](nope.png)\n",
+                ),
+            ],
+            "index.tmd",
+        );
+        let missing = msgs
+            .iter()
+            .find(|m| m["message"].as_str().unwrap_or("").contains("nope.png"))
+            .unwrap_or_else(|| panic!("the missing image is reported: {msgs:?}"));
+        assert_eq!(missing["level"], "error", "{missing}");
+    }
+
+    /// A project diagnostic in the dev menu is located, so the row is clickable, and its
+    /// file resolves from the page's own folder (the client joins it onto `baseDir`). It
+    /// was pinned on `_site.yml` with no line, so a config typo could not be clicked and
+    /// a nested page would have resolved it in the wrong folder.
+    #[test]
+    fn a_project_diagnostic_is_clickable_from_a_nested_page() {
+        let msgs = wire_diagnostics(
+            "located",
+            &[
+                ("_site.yml", "title: T\ntitel: oops\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("posts/p.tmd", "---\ntitle: P\n---\n\nBody.\n"),
+            ],
+            "posts/p.tmd",
+        );
+        let typo = msgs
+            .iter()
+            .find(|m| m["message"].as_str().unwrap_or("").contains("titel"))
+            .unwrap_or_else(|| panic!("the config typo is reported: {msgs:?}"));
+        assert_eq!(typo["file"], "../_site.yml", "{typo}");
+        assert_eq!(typo["line"], 2, "{typo}");
+    }
 }
 
 #[cfg(test)]
@@ -3664,6 +3662,42 @@ mod session_key_tests {
         assert_eq!(listed.unpublished_doc_warning(), None);
         let whole = resolve_target(Target::at(dir.clone())).unwrap();
         assert_eq!(whole.unpublished_doc_warning(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A symlinked page belongs to the project its link sits in, for every verb: the site
+    /// build publishes it there, so the preview opens it there. The preview resolved the
+    /// link to its target first and served the target's folder as a project of one
+    /// document, with no nav, while the page's own URL answered 404 (audit 2026-09-24,
+    /// config-seam #14).
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_page_is_previewed_in_the_project_of_its_link() {
+        let dir = tmp("symlinked");
+        std::fs::create_dir_all(dir.join("site/posts")).unwrap();
+        std::fs::create_dir_all(dir.join("shared")).unwrap();
+        std::fs::write(dir.join(".git"), "").unwrap();
+        std::fs::write(dir.join("site/_site.yml"), "title: S\n").unwrap();
+        std::fs::write(dir.join("site/index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        std::fs::write(
+            dir.join("shared/real.tmd"),
+            "---\ntitle: Real\n---\n\nBody.\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("../../shared/real.tmd", dir.join("site/posts/link.tmd"))
+            .unwrap();
+
+        let served = resolve_target(Target::at(dir.join("site/posts/link.tmd"))).unwrap();
+        assert_eq!(
+            served.root,
+            dir.join("site"),
+            "served as a page of its project"
+        );
+        assert_eq!(
+            focus_url(&served.site, served.doc.as_deref().unwrap()).as_deref(),
+            Some("posts/link.html"),
+            "and opened at the URL the build publishes it at"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

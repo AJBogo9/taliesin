@@ -6,10 +6,11 @@
 //! assets, links, reactive graph, a11y, citations, front-matter YAML). No code
 //! execution, no output written; the only IO is stat-ing referenced local files.
 //!
-//! **How to use:** it is a library with four consumers, not a verb. `build` calls
-//! [`page_static_diagnostics`] on every page it renders and counts [`blocking`] against
-//! `--strict`; `build --check-only` ([`cmd_check_only`]) is the front door that reports
-//! without writing; the preview server and `lsp` reach it through
+//! **How to use:** it is a library with four consumers, not a verb. [`PagePass`] is the one
+//! page pass every verb runs (render, the static checks, the cells when a verb runs them,
+//! the project's finish), and [`blocking`] is what `--strict` counts; `build` and the
+//! preview wrap the pass around their executors, `build --check-only` ([`cmd_check_only`])
+//! is the front door that reports without writing, and `lsp` reaches it through
 //! [`buffer_diagnostics_in_site`].
 //!
 //! Until 2026-08-08 this was `crates/server/src/check.rs`, the implementation of a `check`
@@ -27,28 +28,39 @@ use std::path::Path;
 use std::process::ExitCode;
 use taliesin_core::render::Severity;
 
-/// One located diagnostic, ready to print or serialize. Under `--format json` it is
-/// agent-grade: a `severity` and (for a "did you mean" typo) a structured `suggestion`
-/// (`{ replacement }`). (Keys serialize alphabetically: the formatters route through
-/// `serde_json::json!`, whose object is key-sorted.)
-#[derive(Debug, Clone, serde::Serialize)]
+/// One located diagnostic, ready to print or serialize: THE diagnostic type of every
+/// surface. `--check-only`, a writing build's log and `--format json`, the LSP and the
+/// preview's dev menu (`protocol::diagnostics`) all carry this one value, so a severity
+/// cannot be dropped between the validator that set it and the surface that shows it. The
+/// preview had a second type whose only constructor for a render warning was `warn`, and so
+/// showed every error-severity defect amber (audit 2026-09-24 B4).
+///
+/// Under `--format json` it is agent-grade: a `severity` and (for a "did you mean" typo) a
+/// structured `suggestion` (`{ replacement }`). (Keys serialize alphabetically: the
+/// formatters route through `serde_json::json!`, whose object is key-sorted.)
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub(crate) struct Diagnostic {
-    severity: Severity,
-    file: String,
-    line: Option<u32>,
+    pub(crate) severity: Severity,
+    pub(crate) file: String,
+    pub(crate) line: Option<u32>,
     /// 1-based `[col, end_col)` character span on `line`, present only when the underlying
     /// warning located a precise token (front-matter key typos). Omitted otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     col: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     end_col: Option<u32>,
-    message: String,
+    pub(crate) message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     suggestion: Option<Suggestion>,
+    /// A few source lines around `line`, the offending one marked, for the preview's dev
+    /// menu (`serve::code_frame`). Only the preview sets it, and only the dev menu shows it:
+    /// a terminal line already names the file and line to open.
+    #[serde(skip)]
+    pub(crate) frame: Option<String>,
 }
 
 /// A structured, applicable fix lifted from an inline "did you mean `X`?" hint.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub(crate) struct Suggestion {
     replacement: String,
 }
@@ -77,7 +89,23 @@ impl Diagnostic {
             end_col: None,
             message,
             suggestion,
+            frame: None,
         }
+    }
+
+    /// `file:line: message`, or `file: message` for an unlocated one: how a terminal line
+    /// names a finding, so an editor or a problem-matcher can open it.
+    pub(crate) fn located(&self) -> String {
+        match self.line {
+            Some(l) => format!("{}:{l}: {}", self.file, self.message),
+            None => format!("{}: {}", self.file, self.message),
+        }
+    }
+
+    /// Attach the dev menu's code frame (see [`Diagnostic::frame`]).
+    pub(crate) fn with_frame(mut self, frame: String) -> Self {
+        self.frame = Some(frame);
+        self
     }
 
     /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split by
@@ -143,16 +171,52 @@ impl Diagnostic {
     }
 }
 
-pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
-    let mut d = Diagnostic::new(
-        w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
-        w.line,
-        w.message.clone(),
-    );
+/// The one `Warning -> Diagnostic` mapping. `page` is the document the warning came from,
+/// spelled the way this surface names files: as typed (`build <file>`), relative to the
+/// project root (a project's pages, and `_site.yml` for the project's own diagnostics),
+/// absolute (the LSP), or by file name (the preview, whose client resolves a `file` against
+/// the page's folder).
+///
+/// A warning's own `file` (an `{{< include >}}`d partial) is relative to that document's
+/// FOLDER, so it is joined onto it here, once, for every surface. It was passed through as
+/// written, and every CLI line named `_part.tmd` for `posts/one/_part.tmd`: a path relative
+/// to the wrong directory, which no editor could open (audit 2026-09-24, images #7).
+pub(crate) fn diag_from(w: &taliesin_core::render::Warning, page: &str) -> Diagnostic {
+    let file = match &w.file {
+        Some(file) => beside(page, file),
+        None => page.to_string(),
+    };
+    let mut d = Diagnostic::new(file, w.line, w.message.clone());
     d.severity = w.severity;
     d.col = w.col;
     d.end_col = w.end_col;
     d
+}
+
+/// `file`, written relative to the folder of `page`, in `page`'s own coordinates: joined and
+/// lexically normalized, so `posts/one/index.tmd` + `../_shared/x.tmd` is
+/// `posts/_shared/x.tmd`. A leading `..` a relative `page` cannot absorb is kept.
+fn beside(page: &str, file: &str) -> String {
+    let joined = Path::new(page)
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(file);
+    let mut out = std::path::PathBuf::new();
+    for c in joined.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+                if matches!(
+                    out.components().next_back(),
+                    Some(std::path::Component::Normal(_))
+                ) =>
+            {
+                out.pop();
+            }
+            c => out.push(c),
+        }
+    }
+    out.to_string_lossy().into_owned()
 }
 
 /// Whether a render warning is **advice** rather than a defect, so `build --strict` reports
@@ -205,11 +269,54 @@ fn collect_diagnostics(path: &Path, kernel_cells: &mut usize) -> Result<Vec<Diag
         }
         collect_site_diagnostics(path, kernel_cells)
     } else {
-        // Site-aware when the file is a page of a project, so `--check-only` on a file and on
-        // its project answer the same question about that page.
-        let src = std::fs::read_to_string(path).map_err(|e| cannot_read(path, &e))?;
-        let site = enclosing_site_of(path);
-        collect_file_diagnostics_in_site(path, &src, site.as_ref(), kernel_cells)
+        collect_file_diagnostics(path, kernel_cells)
+    }
+}
+
+/// `--check-only` on one file: exactly what `build <file>` reports, because it is the same
+/// pass over the same discovery ([`taliesin_core::Site::discover_document`]), minus the
+/// cells. That build writes this one page, so its cross-page references and its links to
+/// other pages are judged against a project of this page alone: they are dead in the file it
+/// writes. `--check-only` on a page used to lint it as part of its project and pass a
+/// reference `build` of the same file then failed on (audit 2026-09-24, config-seam #6).
+/// Linting the project directory judges a page as part of its project.
+fn collect_file_diagnostics(
+    path: &Path,
+    kernel_cells: &mut usize,
+) -> Result<Vec<Diagnostic>, String> {
+    let src = taliesin_core::includes::read_source(path).map_err(|e| cannot_read(path, &e))?;
+    let site = taliesin_core::Site::discover_document(path);
+    let page = site
+        .pages
+        .first()
+        .ok_or_else(|| format!("no page for {}", path.display()))?;
+    let label = path.display().to_string();
+    let mut out = project_diagnostics(&site, &project_label(&label, page, &site));
+    let mut pass = PagePass::run_static(&site, page, src, &label);
+    pass.add(&site.validate_cross_page_links_for(&page.rel));
+    *kernel_cells += kernel_cell_count(&pass.doc.blocks);
+    out.append(&mut pass.diags);
+    Ok(out)
+}
+
+/// A project's own diagnostics (its `_site.yml`, a page's front matter as discovery reads
+/// it), each located relative to the site root, rebased onto `config`: the path this surface
+/// names `_site.yml` by.
+pub(crate) fn project_diagnostics(site: &taliesin_core::Site, config: &str) -> Vec<Diagnostic> {
+    site.warnings.iter().map(|w| diag_from(w, config)).collect()
+}
+
+/// How a surface that names `page` as `label` names its project's `_site.yml`: `label` with
+/// the page's own site-relative path taken off (`docs/guide/using/x.tmd` for `using/x.tmd`
+/// names `docs/guide/_site.yml`), else the absolute path.
+pub(crate) fn project_label(
+    label: &str,
+    page: &taliesin_core::site::Page,
+    site: &taliesin_core::Site,
+) -> String {
+    match label.strip_suffix(page.rel.as_str()) {
+        Some(root) if root.is_empty() || root.ends_with('/') => format!("{root}_site.yml"),
+        _ => site.root.join("_site.yml").display().to_string(),
     }
 }
 
@@ -241,8 +348,7 @@ pub(crate) enum Scope {
 ///
 /// Run it on the document **before** its code cells execute: a matplotlib figure spliced in
 /// by a cell is generated output, and linting it for alt text would report a defect the
-/// author cannot fix in the source. Do not relocate the call sites in `serve_site/mod.rs`
-/// or `build.rs` while changing this list.
+/// author cannot fix in the source: [`PagePass::begin`] is where every verb runs it.
 ///
 /// [`Scope::InSite`] omits `validate_local_links`. An intra-site `[x](other.tmd)` link
 /// rewrites to `other.html`, and only the site's page registry knows the real URLs, so on
@@ -254,10 +360,28 @@ pub(crate) fn page_static_diagnostics(
     base: &Path,
     scope: Scope,
 ) -> Vec<taliesin_core::render::Warning> {
+    let mut out = static_diagnostics_but_local_assets(src, blocks, base, scope);
+    out.extend(taliesin_core::diagnostics::validate_local_assets(
+        blocks, base,
+    ));
+    out
+}
+
+/// [`page_static_diagnostics`] without the one check a page's own cells can change: whether
+/// each local file its body references exists. A cell that writes `gen.png` for the
+/// `![…](gen.png)` below it makes that file exist, so [`PagePass`] asks this question
+/// after the cells ran whenever they run (still of the blocks the author wrote); asked
+/// before, the build reported the figure the next line was about to write as missing, on
+/// every first build (audit 2026-09-24, WP3 residual).
+fn static_diagnostics_but_local_assets(
+    src: &str,
+    blocks: &[taliesin_core::Block],
+    base: &Path,
+    scope: Scope,
+) -> Vec<taliesin_core::render::Warning> {
     use taliesin_core::diagnostics as dx;
     let mut out = Vec::new();
     out.extend(dx::validate_internal_anchors(blocks));
-    out.extend(dx::validate_local_assets(blocks, base));
     out.extend(dx::validate_front_matter_image(src, base));
     if scope == Scope::Standalone {
         out.extend(dx::validate_local_links(blocks, base));
@@ -269,6 +393,231 @@ pub(crate) fn page_static_diagnostics(
     // so it reaches the preview too and arrives with the rendered doc's warnings. Calling it
     // here as well would report it twice.
     out
+}
+
+/// What rendering a page takes from its project: whether it has one, its chapter number and
+/// the project-wide defaults. Taken apart from the render so a caller that holds the site
+/// under a lock (the preview) can release it before rendering.
+pub(crate) struct PageRender {
+    project: bool,
+    chapter: Option<u32>,
+    defaults: taliesin_core::render::SiteDefaults,
+}
+
+impl PageRender {
+    pub(crate) fn of(site: &taliesin_core::Site, page: &taliesin_core::site::Page) -> Self {
+        PageRender {
+            // A project declares itself with `_site.yml`; without one the site is a lone
+            // document's project of one page.
+            project: site.root.join("_site.yml").is_file(),
+            chapter: site.chapter_for(page),
+            defaults: site.render_defaults(),
+        }
+    }
+
+    /// Render a page's source the way every verb renders it. A page of a project renders
+    /// through the project path: its chapter number, the project's shared
+    /// `bibliography:`, and the containment root its `_site.yml` declares. A document with
+    /// no project renders through [`taliesin_core::render_single_doc`], confined to its own
+    /// folder: the project path would infer its root from the nearest `.git` and resolve an
+    /// include the build refuses (PT-2, PP-3).
+    fn render(&self, src: &str, base: &Path) -> taliesin_core::RenderedDoc {
+        if !self.project {
+            return taliesin_core::render_single_doc(src, base);
+        }
+        taliesin_core::render_document_scoped_with_site(
+            src,
+            base,
+            self.chapter,
+            Some(&self.defaults),
+        )
+    }
+}
+
+/// ONE page, rendered, checked, executed when asked and finished: THE page pass every verb
+/// runs (`build <file>`, the site build, `--check-only` on a file or a project, the preview
+/// and the editor). The verbs differ in three things and nothing else: whether cells run and
+/// on which executor (none, a fresh one, the preview's pool), where the source comes from
+/// (the file, an editor buffer), and when the findings are printed (as they come, or
+/// replayed in page order). Each wraps this sequence rather than restating it.
+///
+/// There were five sequences until the 2026-09-24 audit, and each drifted: the front-matter
+/// YAML check was written out five times, the static checks called from five places and the
+/// executor set up three times, so the single-file build dropped a `hero:` the preview
+/// rendered, and `--check-only` on a file passed a reference `build` of the same file failed.
+pub(crate) struct PagePass {
+    /// The page's source, line endings normalized: every scan below reads this one text.
+    src: String,
+    /// The page: rendered, then (after [`finish`](Self::finish)) numbered, cross-referenced
+    /// and expanded exactly as its project publishes it.
+    pub(crate) doc: taliesin_core::RenderedDoc,
+    /// Whether the page shows a table of contents (decided by [`finish`](Self::finish)).
+    pub(crate) toc: bool,
+    /// Every located finding, in one order for every verb: the front matter, the static
+    /// checks, what executing found, then the render's and the finish's warnings.
+    pub(crate) diags: Vec<Diagnostic>,
+    /// What `--strict` fails on: everything but advice, and every cell that failed.
+    pub(crate) problems: usize,
+    /// What fails a build with no `--strict`: a front matter that did not parse.
+    pub(crate) unparseable: usize,
+    /// The cells that failed, for the verbs that report them (`build`); the preview lists
+    /// them from the page itself.
+    pub(crate) failures: Vec<crate::exec::CellFailure>,
+    /// Set when the page has cells a kernel had to run and none would start.
+    pub(crate) kernel_failure: Option<String>,
+    /// The page as this surface names it (see [`diag_from`]).
+    label: String,
+    base: std::path::PathBuf,
+    /// Whether the local-file check has run: after the cells when they run, else before
+    /// the finish (see [`static_diagnostics_but_local_assets`]).
+    assets_checked: bool,
+}
+
+impl PagePass {
+    /// Render `page`'s `src` and run every check that judges the page as its author wrote
+    /// it: the front-matter parse and the static validators, over the blocks BEFORE any
+    /// cell runs (a figure a cell generates is not linted as if the author had written it).
+    pub(crate) fn begin(
+        render: &PageRender,
+        page: &taliesin_core::site::Page,
+        src: String,
+        label: &str,
+    ) -> PagePass {
+        // An editor buffer arrives as typed; a file comes through `includes::read_source`,
+        // which does the same.
+        let src = taliesin_core::includes::normalize_line_endings(&src).into_owned();
+        let base = page
+            .input
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+        let doc = render.render(&src, &base);
+        let mut pass = PagePass {
+            src,
+            doc,
+            toc: false,
+            diags: Vec::new(),
+            problems: 0,
+            unparseable: 0,
+            failures: Vec::new(),
+            kernel_failure: None,
+            label: label.to_string(),
+            base,
+            assets_checked: false,
+        };
+        // A front matter that does not parse: every key in it was dropped, so the page
+        // lost its `title:`, `bibliography:` or `listing:`. No validator is behind it to
+        // carry a severity, so the classification is made here, once.
+        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&pass.src) {
+            let frame = crate::serve::code_frame(&pass.src, line);
+            pass.diags
+                .push(Diagnostic::new(pass.label.clone(), Some(line), message).with_frame(frame));
+            pass.problems += 1;
+            pass.unparseable += 1;
+        }
+        let statics = static_diagnostics_but_local_assets(
+            &pass.src,
+            &pass.doc.blocks,
+            &pass.base,
+            Scope::InSite,
+        );
+        pass.add(&statics);
+        pass
+    }
+
+    /// Whether each local file the page's blocks (as the author wrote them) reference exists,
+    /// once.
+    fn check_local_assets(&mut self, blocks: &[taliesin_core::Block]) {
+        if !std::mem::replace(&mut self.assets_checked, true) {
+            let assets = taliesin_core::diagnostics::validate_local_assets(blocks, &self.base);
+            self.add(&assets);
+        }
+    }
+
+    /// Run the page's cells and splice their outputs in. What only execution can know is
+    /// carried out of it: an exec-phase defect (reported, never counted, like the offline
+    /// nudge), each failed cell (counted), and a kernel that would not start. Returns where
+    /// in [`diags`](Self::diags) the exec-phase defects landed: the executor has already
+    /// printed each one at its cell.
+    pub(crate) async fn execute(
+        &mut self,
+        exec: &mut crate::exec::Executor,
+    ) -> std::ops::Range<usize> {
+        let written = self.doc.blocks.clone();
+        self.doc.blocks = exec.run(std::mem::take(&mut self.doc.blocks)).await;
+        self.kernel_failure = exec.kernel_failure_report();
+        let start = self.diags.len();
+        let label = &self.label;
+        self.diags
+            .extend(exec.take_warnings().iter().map(|w| diag_from(w, label)));
+        let announced = start..self.diags.len();
+        self.failures = exec.take_failures();
+        self.problems += self.failures.len();
+        // After the cells, of the blocks as written: a file a cell wrote now exists.
+        self.check_local_assets(&written);
+        announced
+    }
+
+    /// Finish the page as its project publishes it (chapter numbering, cross-references and
+    /// the broken ones, `listing:`/`hero:` expansion, the table-of-contents gate) and report
+    /// the render's and the finish's warnings.
+    pub(crate) fn finish(&mut self, site: &taliesin_core::Site, page: &taliesin_core::site::Page) {
+        // No cells ran: the blocks are still the author's, and a listing's cards are not
+        // theirs to check against this page's folder, so ask before the finish adds them.
+        if !self.assets_checked {
+            let blocks = std::mem::take(&mut self.doc.blocks);
+            self.check_local_assets(&blocks);
+            self.doc.blocks = blocks;
+        }
+        let mut warnings = std::mem::take(&mut self.doc.warnings);
+        self.toc = site.finish_blocks(
+            page,
+            &mut self.doc.blocks,
+            &mut warnings,
+            Some(&self.src),
+            self.doc.toc_explicit,
+        );
+        self.doc.toc = self.toc;
+        self.add(&warnings);
+    }
+
+    /// Report `warnings` found on this page, counting what `--strict` fails on.
+    pub(crate) fn add(&mut self, warnings: &[taliesin_core::render::Warning]) {
+        self.problems += blocking(warnings);
+        let label = &self.label;
+        self.diags
+            .extend(warnings.iter().map(|w| diag_from(w, label)));
+    }
+
+    /// The whole pass for a caller holding the site: render and check, run the cells when
+    /// an executor is given, finish.
+    pub(crate) async fn run(
+        site: &taliesin_core::Site,
+        page: &taliesin_core::site::Page,
+        src: String,
+        label: &str,
+        exec: Option<&mut crate::exec::Executor>,
+    ) -> PagePass {
+        let mut pass = PagePass::begin(&PageRender::of(site, page), page, src, label);
+        if let Some(exec) = exec {
+            let _ = pass.execute(exec).await;
+        }
+        pass.finish(site, page);
+        pass
+    }
+
+    /// [`run`](Self::run) with no executor, for the callers that run no cells (the lint and
+    /// the editor).
+    pub(crate) fn run_static(
+        site: &taliesin_core::Site,
+        page: &taliesin_core::site::Page,
+        src: String,
+        label: &str,
+    ) -> PagePass {
+        let mut pass = PagePass::begin(&PageRender::of(site, page), page, src, label);
+        pass.finish(site, page);
+        pass
+    }
 }
 
 /// The one "cannot read <path>" message every front door prints, with a "did you mean" when
@@ -311,61 +660,63 @@ pub(crate) fn cannot_read(path: &Path, e: &std::io::Error) -> String {
     }
 }
 
-/// Lint an already-in-hand source buffer as if it were the file at `path` — the seam the
-/// LSP uses to lint an editor buffer (unsaved edits) instead of the last-saved file.
-/// `path` supplies the base dir (relative includes/assets/links) + the reported location;
-/// the file on disk is never read. `site` names the project the page belongs to.
+/// Lint an in-memory editor buffer as if it were the file at `path`, returning the
+/// diagnostics directly: the seam `taliesin lsp` calls on every `didOpen`/`didChange`, so
+/// the squiggles describe the unsaved text on screen. `site` is the project the file sits
+/// in, from the editor's stat-validated cache, or `None`.
 ///
-/// `site` is `Some` only when this file is a published page of that project (see
-/// [`taliesin_core::Site::page_for_input`]), and it changes two things, both of which the
-/// live preview has done since DX1 while the editor did not:
-///
-/// * the scope becomes [`Scope::InSite`], which drops `validate_local_links` — a rule whose
-///   "no such file under the document directory" phrasing describes a standalone document
-///   and not a site page, whose links are `.html` urls the page registry resolves;
-/// * `validate_cross_page_links_for_src` runs, which is the site-aware counterpart and the
-///   only thing that can see a broken cross-page **anchor** at all.
-///
-/// Passing `None` keeps the standalone behaviour, which is right for a document with no
-/// project above it (or for one inside a project but deliberately not one
-/// of `site.pages`, so the site rules would remove its link check and put nothing back).
-fn collect_file_diagnostics_in_site(
+/// A page of that project is the [`PagePass`] every verb runs, over the buffer, judged as a
+/// page of its project (this is the project-aware lint; `--check-only` on one file judges
+/// what `build` of that file writes), plus its cross-page links judged from the buffer.
+/// Anything else (a document with no project, an include partial, a `draft:` the published
+/// project holds back) is linted on its own terms by [`buffer_diagnostics_standalone`].
+pub(crate) fn buffer_diagnostics_in_site(
     path: &Path,
     src: &str,
     site: Option<&taliesin_core::Site>,
-    kernel_cells: &mut usize,
-) -> Result<Vec<Diagnostic>, String> {
+) -> Vec<Diagnostic> {
+    let label = path.display().to_string();
+    let Some((site, page)) = site.and_then(|s| s.page_for_input(path).map(|p| (s, p))) else {
+        return buffer_diagnostics_standalone(path, src, site, &label);
+    };
+    let mut pass = PagePass::run_static(site, page, src.to_string(), &label);
+    // From the BUFFER, not from `page.input`: the file on disk is a different document as
+    // soon as the author types, and the squiggle has to describe what is on screen.
+    pass.add(&site.validate_cross_page_links_for_src(&page.rel, src));
+    pass.diags
+}
+
+/// The editor's lint for a file that is no page of a project: rendered as a document of its
+/// own, with the standalone link rule, and with its cross-references resolved against every
+/// anchor its project defines elsewhere (an include partial's references resolve in the page
+/// that includes it, so calling them broken would be a squiggle the project gate never
+/// reports).
+fn buffer_diagnostics_standalone(
+    path: &Path,
+    src: &str,
+    site: Option<&taliesin_core::Site>,
+    label: &str,
+) -> Vec<Diagnostic> {
+    let src = taliesin_core::includes::normalize_line_endings(src);
+    let src = src.as_ref();
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_single_doc(src, base);
-    *kernel_cells += kernel_cell_count(&doc.blocks);
-    let path_str = path.display().to_string();
-    // A document inside a site project may legitimately refer across its pages, so
-    // resolve what the project defines before calling anything broken: this path is the
-    // editor's every-keystroke validator, and it used to report every valid cross-page
-    // `@sec-`/`@fig-`/`@tbl-` as an error while the same tree linted clean as a project.
-    // Outside a project the scan is empty and nothing changes.
     let elsewhere = taliesin_core::site::anchors_defined_elsewhere_in_project(path);
     // `src` so a broken `@ref` is squiggled under the token and not across the line, and
     // so the did-you-mean it already computes can become a one-click fix (`to_lsp`
     // attaches that payload only for a precisely-columned diagnostic).
     let xref =
         taliesin_core::cite::validate_xrefs_known_elsewhere(&doc.blocks, &elsewhere, Some(src));
-    let page = site.and_then(|s| s.page_for_input(path));
-    let scope_kind = if page.is_some() {
-        Scope::InSite
-    } else {
-        Scope::Standalone
-    };
-    let mut statics = page_static_diagnostics(src, &doc.blocks, base, scope_kind);
+    let mut statics = page_static_diagnostics(src, &doc.blocks, base, Scope::Standalone);
     // An underscore-prefixed path COMPONENT marks an include partial (`Site::discover`
     // skips underscore files and directories alike, so `_includes/refs.tmd` is as much a
-    // partial as `_refs.tmd`), so opened standalone its citations resolve against the INCLUDING
-    // page's front matter: the standalone "no `bibliography:`" advice would be a permanent
-    // line-1 false alarm the project gate never reports. Only that one rule is scoped out,
-    // and only for partials. A `draft: true` chapter is different on purpose: it is a real
-    // page deliberately linted standalone (see [`enclosing_site_of`]), and its own front
-    // matter is where its bibliography belongs, so it keeps the advice. The prefix matched
-    // here is `diagnostics::citations_without_bibliography`'s one message;
+    // partial as `_refs.tmd`), so opened standalone its citations resolve against the
+    // INCLUDING page's front matter: the standalone "no `bibliography:`" advice would be a
+    // permanent line-1 false alarm the project gate never reports. Only that one rule is
+    // scoped out, and only for partials. A `draft: true` chapter is different on purpose:
+    // it is a real page linted standalone, and its own front matter is where its
+    // bibliography belongs, so it keeps the advice. The prefix matched here is
+    // `diagnostics::citations_without_bibliography`'s one message;
     // `a_citation_bearing_partial_lints_clean_without_its_parents_bibliography` fails if
     // either side is reworded alone.
     // Judged BELOW the site root when one is known (a project living under `~/_work/`
@@ -389,61 +740,17 @@ fn collect_file_diagnostics_in_site(
         });
     }
     let mut out: Vec<Diagnostic> = Vec::new();
-    // Malformed YAML front matter: the lenient line-parser silently mis-extracts
-    // fields, so surface the parse error here too (the live servers already do).
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
-        out.push(Diagnostic::new(path_str.clone(), Some(line), message));
+        out.push(Diagnostic::new(label.to_string(), Some(line), message));
     }
-    // From the BUFFER, not from `page.input`: the file on disk is a different document as
-    // soon as the author types, and the squiggle has to describe what is on screen.
-    let cross: Vec<taliesin_core::render::Warning> = match (site, page) {
-        (Some(site), Some(page)) => site.validate_cross_page_links_for_src(&page.rel, src),
-        _ => Vec::new(),
-    };
     out.extend(
         doc.warnings
             .iter()
             .chain(xref.iter())
             .chain(statics.iter())
-            .chain(cross.iter())
-            .map(|w| diag_from(w, &path_str)),
+            .map(|w| diag_from(w, label)),
     );
-    Ok(out)
-}
-
-/// The project enclosing `path`, discovered now.
-///
-/// Whether `path` is a *page* of it is a separate question, settled downstream in
-/// [`collect_file_diagnostics_in_site`] so that one place decides it: a `draft: true`
-/// chapter sits inside a project and is still linted standalone.
-///
-/// `DraftMode::Exclude`, matching a project lint rather than the preview.
-///
-/// Discovery costs a full walk, and it is paid per call — far too slow to pay per keystroke,
-/// so the language server passes a stat-validated `lsp_project::SiteCache` instead of
-/// calling this. A file outside any project costs nothing.
-fn enclosing_site_of(path: &Path) -> Option<taliesin_core::Site> {
-    let root = taliesin_core::site::enclosing_site_root_across_git(path.parent()?)?;
-    Some(taliesin_core::Site::discover(&root))
-}
-
-/// Lint an in-memory editor buffer as if it were the file at `path`, returning the
-/// diagnostics directly. Used by the `lsp` server on every `didOpen`/`didChange`. The buffer
-/// path can't fail to render, but a hypothetical error surfaces as one line-1 diagnostic
-/// rather than vanishing.
-///
-/// `site` is the enclosing project or `None`; see [`collect_file_diagnostics_in_site`].
-pub(crate) fn buffer_diagnostics_in_site(
-    path: &Path,
-    src: &str,
-    site: Option<&taliesin_core::Site>,
-) -> Vec<Diagnostic> {
-    // The LSP publishes diagnostics, not a summary line, so the cell count has no reader
-    // here and is discarded.
-    match collect_file_diagnostics_in_site(path, src, site, &mut 0) {
-        Ok(diags) => diags,
-        Err(e) => vec![Diagnostic::new(path.display().to_string(), Some(1), e)],
-    }
+    out
 }
 
 /// Every located diagnostic in a project, page by page, in `site.pages` order.
@@ -466,19 +773,13 @@ fn collect_site_diagnostics(
     if let Some(line) = crate::build::draft_report_line(&site.excluded_drafts) {
         log::info(&line);
     }
-    // No filter for the "no `_site.yml`" advisory: `collect_diagnostics` has already
-    // refused a directory that has none, so `discover` cannot raise it here. It used to be
-    // filtered out on the grounds that a bare directory of pages was a legitimate project
-    // — the pre-wave-13 stance, and the second half of why the gate passed on a tree
-    // `build` refuses.
-    let mut out: Vec<Diagnostic> = site
-        .warnings
-        .iter()
-        .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
-        .collect();
-    let defaults = site.render_defaults();
+    // The project's own diagnostics, each at the file and line that wrote it (relative to
+    // the site root, like a page's `rel`) and at the severity its validator set. They were
+    // strings, every one reported as an error in `_site.yml` with no line, a page's
+    // `draft:` included (audit 2026-09-24 NEW-A).
+    let mut out = project_diagnostics(&site, "_site.yml");
     for page in &site.pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
+        let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
             out.push(Diagnostic::new(
                 page.rel.clone(),
                 None,
@@ -486,26 +787,12 @@ fn collect_site_diagnostics(
             ));
             continue;
         };
-        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-            out.push(Diagnostic::new(page.rel.clone(), Some(line), message));
-        }
-        let base = page.input.parent().unwrap_or(root);
-        let doc = taliesin_core::render_document_scoped_with_site(
-            &src,
-            base,
-            site.chapter_for(page),
-            Some(&defaults),
-        );
-        *kernel_cells += kernel_cell_count(&doc.blocks);
-        // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
-        // below); run before `doc` is consumed.
-        for w in &page_static_diagnostics(&src, &doc.blocks, base, Scope::InSite) {
-            out.push(diag_from(w, &page.rel));
-        }
-        let (_html, warnings) = site.render_page_doc_warned(page, doc);
-        for w in &warnings {
-            out.push(diag_from(w, &page.rel));
-        }
+        // The pass the build runs, minus the cells: finished as the project publishes it,
+        // with no page assembled around it (this used to assemble a whole inline page, KaTeX
+        // included, per page, and throw the HTML away to keep its warnings).
+        let mut pass = PagePass::run_static(&site, page, src, &page.rel);
+        *kernel_cells += kernel_cell_count(&pass.doc.blocks);
+        out.append(&mut pass.diags);
     }
     // Cross-page relative-link + anchor existence, resolved against the site page
     // registry (file links here, not the single-doc `validate_local_links`: a `.tmd`
@@ -572,8 +859,8 @@ fn human_root(target: &Path) -> Option<&Path> {
     target.is_dir().then_some(target)
 }
 
-/// The severity word a human line prints.
-fn severity_word(s: Severity) -> &'static str {
+/// The severity word a human line prints, and the preview's `level`.
+pub(crate) fn severity_word(s: Severity) -> &'static str {
     match s {
         Severity::Error => "error",
         Severity::Warning => "warning",
@@ -838,7 +1125,7 @@ mod tests {
     /// `bibliography:`" advice is a permanent false alarm there: the project gate lints the
     /// assembled parent and never reports it. Only that one rule is scoped out, and only for
     /// partials. A `draft: true` chapter keeps the advice: it is a real page deliberately
-    /// linted standalone (see `enclosing_site_of`), and its own front matter is where its
+    /// linted standalone, and its own front matter is where its
     /// bibliography belongs; `collect_diagnostics_surfaces_check_superset_validators` pins
     /// the advice for ordinary files.
     #[test]
@@ -1214,6 +1501,7 @@ mod tests {
             end_col: Some(7),
             message: "unknown key `tittle`".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["---", "tittle: Hi", "---"];
         let lsp = d.to_lsp(&lines);
@@ -1243,6 +1531,7 @@ mod tests {
             end_col: Some(8),
             message: "unknown key `tittle`".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["😀tittle: Hi"];
         let lsp = d.to_lsp(&lines);
@@ -1262,6 +1551,7 @@ mod tests {
             end_col: None,
             message: "undefined".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["😀 hello"];
         let lsp = d.to_lsp(&lines);
@@ -1280,6 +1570,7 @@ mod tests {
             suggestion: Some(super::Suggestion {
                 replacement: "title".to_string(),
             }),
+            frame: None,
         };
         let lines = ["---", "tittle: Hi", "---"];
         // Columned + suggestion → the fix rides on `data`.
@@ -1298,6 +1589,7 @@ mod tests {
         // No suggestion → no fix.
         let no_sugg = super::Diagnostic {
             suggestion: None,
+            frame: None,
             ..base.clone()
         };
         assert_eq!(no_sugg.to_lsp(&lines).data, None);
@@ -1313,6 +1605,7 @@ mod tests {
             end_col: None,
             message: "undefined @fig-x".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["a", "bb", "hello world"]; // line 3 (0-based 2) has 11 chars
         let lsp = d.to_lsp(&lines);
@@ -1326,6 +1619,30 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    /// A warning located in an included file names it beside the page that included it, in
+    /// the page's own coordinates, climbs included: the partial of `posts/one/index.tmd`
+    /// is `posts/one/_part.tmd`, and a shared one two levels up is `_includes/shared.tmd`,
+    /// not the `../../_includes/shared.tmd` that resolved outside the project.
+    #[test]
+    fn an_included_file_is_named_beside_its_page() {
+        let at =
+            |file: &str| taliesin_core::render::Warning::new("m").at(Some(file.to_string()), 3);
+        let page = "posts/one/index.tmd";
+        assert_eq!(
+            diag_from(&at("_part.tmd"), page).file,
+            "posts/one/_part.tmd"
+        );
+        assert_eq!(
+            diag_from(&at("../../_includes/shared.tmd"), page).file,
+            "_includes/shared.tmd"
+        );
+        assert_eq!(
+            diag_from(&taliesin_core::render::Warning::new("m"), page).file,
+            page,
+            "the page's own warning names the page"
+        );
     }
 
     /// The human line carries the severity word and the JSON carries the severity field, and
@@ -1394,13 +1711,13 @@ mod tests {
         // and it must still locate to the real file path (for click-to-source) and resolve
         // the base dir from it (so relative includes/assets still work).
         //
-        // This pins `collect_file_diagnostics_in_site`, the seam `taliesin lsp` calls
-        // through `buffer_diagnostics` on every didOpen/didChange.
+        // This pins `buffer_diagnostics_in_site`, the seam `taliesin lsp` calls on every
+        // didOpen/didChange.
         let dir = tmp("check-buffer");
         let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: Clean\n---\n\nAll good on disk.\n").unwrap();
         let buffer = "---\ntitle: T\ntitel: oops\n---\n\nUnsaved buffer.\n";
-        let diags = collect_file_diagnostics_in_site(&f, buffer, None, &mut 0).expect("ok");
+        let diags = buffer_diagnostics_in_site(&f, buffer, None);
         assert!(
             diags.iter().any(|d| d.message.contains("titel")),
             "the buffer's front-matter typo must be linted, not the clean disk file: {diags:?}"
@@ -1502,12 +1819,17 @@ mod tests {
             "looks like a placeholder",
             "is not a citation",
         ];
+        // Every project (a directory with a `_site.yml`) is checked as a directory,
+        // mirroring `build <dir> --check-only`: a page of one checked as a FILE is judged as
+        // the one page `build <file>` writes, where its links to its sibling pages are dead.
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {
                 let p = e.unwrap().path();
                 let name = p.file_name().unwrap().to_string_lossy().into_owned();
                 if p.is_dir() {
-                    if !skip.contains(&name.as_str()) {
+                    if p.join("_site.yml").is_file() {
+                        out.push(p);
+                    } else if !skip.contains(&name.as_str()) {
                         walk(&p, skip, out);
                     }
                 } else if taliesin_core::ext::is_source_path(&p) && !name.starts_with('_') {
@@ -1515,23 +1837,9 @@ mod tests {
                 }
             }
         }
-        // projects (sites/books) are checked as dirs, mirroring `check <dir>`.
-        let mut targets: Vec<std::path::PathBuf> = ["single-page-report", "demo-book", "tech-blog"]
-            .iter()
-            .map(|s| corpus.join(s))
-            .collect();
-        // everything else is a standalone doc; diagnostics/ is deliberately tripping (exempt).
-        walk(
-            &corpus,
-            &[
-                "diagnostics",
-                "single-page-report",
-                "demo-book",
-                "tech-blog",
-                "_includes",
-            ],
-            &mut targets,
-        );
+        // Everything else is a standalone doc; diagnostics/ is deliberately tripping (exempt).
+        let mut targets: Vec<std::path::PathBuf> = Vec::new();
+        walk(&corpus, &["diagnostics", "_includes"], &mut targets);
         for t in &targets {
             let diags = collect_diagnostics(t, &mut 0).unwrap_or_default();
             for d in &diags {
@@ -1551,8 +1859,8 @@ mod tests {
     fn collect_diagnostics_surfaces_links_and_reactive_rules() {
         // One doc tripping each NEW static rule: broken relative link, dangling
         // `//| input`, and a reactive cycle. `check` must surface them all, located, while
-        // leaving an external link + an existing sibling alone. (The missing-local-video
-        // rule was the fourth until it was cut on 2026-08-20.)
+        // leaving an external link alone. (The missing-local-video rule was the fourth until
+        // it was cut on 2026-08-20.)
         let dir = tmp("check-links");
         fs::write(dir.join("real.tmd"), "x").unwrap();
         let f = dir.join("doc.tmd");
@@ -1573,10 +1881,13 @@ mod tests {
             "dangling input: {diags:?}"
         );
         assert!(has("reactive dependency cycle"), "cycle: {diags:?}");
-        // The existing sibling + external link must NOT be flagged.
+        // A sibling document that exists is still no page of this one's build: a document
+        // with no project is a project of one page, so the link is written as `real.html`
+        // (as the preview writes it) and reported, never passed as a link to the raw source
+        // (audit 2026-09-24, config-seam #15).
         assert!(
-            !has("real.tmd"),
-            "sibling that exists must be clean: {diags:?}"
+            has("`real.tmd` is not built with this document"),
+            "a sibling source is a page this build does not write: {diags:?}"
         );
         assert!(
             !has("example.com"),

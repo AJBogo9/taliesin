@@ -104,7 +104,7 @@ fn the_retired_raw_injection_slots_are_inert_and_diagnosed() {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains(&format!("`{key}`"))),
+                .any(|w| w.message.contains(&format!("`{key}`"))),
             "no diagnostic for the inert `{key}`: {:?}",
             site.warnings
         );
@@ -130,7 +130,7 @@ fn unknown_native_key_is_warned_with_a_suggestion() {
     assert!(
         site.warnings
             .iter()
-            .any(|w| w.contains("favicn") && w.contains("favicon")),
+            .any(|w| w.message.contains("favicn") && w.message.contains("favicon")),
         "expected a did-you-mean warning, got: {:?}",
         site.warnings
     );
@@ -145,7 +145,7 @@ fn logo_is_a_known_key_but_a_typo_of_it_still_warns() {
     let d = site("title: \"S\"\nlogo: brand.svg\n");
     let s = Site::discover(&d.0);
     assert!(
-        !s.warnings.iter().any(|w| w.contains("logo")),
+        !s.warnings.iter().any(|w| w.message.contains("logo")),
         "a correctly spelled `logo:` must not be diagnosed: {:?}",
         s.warnings
     );
@@ -154,7 +154,7 @@ fn logo_is_a_known_key_but_a_typo_of_it_still_warns() {
     assert!(
         s.warnings
             .iter()
-            .any(|w| w.contains("logos") && w.contains("logo")),
+            .any(|w| w.message.contains("logos") && w.message.contains("logo")),
         "expected a did-you-mean warning for `logos`, got: {:?}",
         s.warnings
     );
@@ -180,12 +180,12 @@ fn legacy_shaped_config_is_no_longer_parsed_and_warns() {
     );
     // The native typo validator flags the unrecognized top-level keys.
     assert!(
-        site.warnings.iter().any(|w| w.contains("project")),
+        site.warnings.iter().any(|w| w.message.contains("project")),
         "expected an unknown-key warning for `project`, got: {:?}",
         site.warnings
     );
     assert!(
-        site.warnings.iter().any(|w| w.contains("website")),
+        site.warnings.iter().any(|w| w.message.contains("website")),
         "expected an unknown-key warning for `website`, got: {:?}",
         site.warnings
     );

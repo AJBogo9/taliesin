@@ -299,10 +299,9 @@ pub(crate) async fn bind_with_fallback(
 
     for p in port.saturating_add(1)..=port.saturating_add(9) {
         match try_bind(host, p).await {
-            Ok(bound) => {
-                crate::log::warn(&format!("port {port} in use; using {p}"));
-                return Ok(bound);
-            }
+            // The caller says so, after its banner: printed here, it went before the screen
+            // clear and into the scrollback.
+            Ok(bound) => return Ok(bound),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
         }
@@ -939,7 +938,8 @@ mod protocol_contract {
     //! watch predicates. `style` rode here too until `theme:` was cut on 2026-08-17. The op/full_render shape contract the preview client
     //! consumes is pinned in `serve_site`, next to the producers that survived Wave 1.1.
     use super::*;
-    use crate::protocol::{self, Diagnostic};
+    use crate::lint::Diagnostic;
+    use crate::protocol;
     use crate::testutil::parse;
     use std::collections::HashSet;
 
@@ -1017,8 +1017,7 @@ mod protocol_contract {
 
     #[test]
     fn located_diagnostic_serializes_file_line_and_frame() {
-        let d = Diagnostic::error("bad yaml")
-            .at(None, 3)
+        let d = Diagnostic::new("doc.tmd".into(), Some(3), "bad yaml".into())
             .with_frame("> 3 | x\n".into());
         let m = parse(protocol::diagnostics(&[d]));
         assert_eq!(m["messages"][0]["level"], "error");

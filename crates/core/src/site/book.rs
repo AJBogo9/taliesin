@@ -226,7 +226,7 @@ pub(super) fn chapter_heading(input: &Path) -> Option<String> {
     crate::render::leading_h1(&src).map(|(text, _)| text)
 }
 /// A book's pages: one [`Page`] per chapter, in reading order.
-pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -> Vec<Page> {
+pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<Warning>) -> Vec<Page> {
     book.chapters()
         .into_iter()
         .map(|c| {

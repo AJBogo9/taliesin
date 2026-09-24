@@ -435,3 +435,50 @@ fn a_port_holder_naming_another_taliesin_process_does_not_get_it_signalled() {
         "a taliesin process that does not hold the port was sent SIGTERM on a holder's say-so"
     );
 }
+
+/// What the preview says about its start (the project's own diagnostics, and the port it
+/// fell back to) prints AFTER the banner. On a terminal the banner opens with a screen
+/// clear, which pushed every line printed before it into the scrollback, so a `_site.yml`
+/// typo and "port N in use; using M" were printed and then wiped from view (audit
+/// 2026-09-24, WP2 residual). The clear is off when stderr is a pipe, which is what makes
+/// the order visible here.
+#[test]
+fn startup_findings_print_after_the_banner() {
+    let dir = tmp_dir("startup-order");
+    fs::write(dir.join("_site.yml"), "title: Book\ntitel: typo\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+    let port = free_run(2);
+    // Something that is not a preview holds the requested port, so the preview falls back.
+    let _holder = TcpListener::bind(("127.0.0.1", port)).expect("hold the port");
+    let log = dir.join("stderr.log");
+    let child = taliesin()
+        .arg("preview")
+        .arg(&dir)
+        .arg(port.to_string())
+        .stdout(Stdio::null())
+        .stderr(fs::File::create(&log).unwrap())
+        .spawn()
+        .expect("spawn preview");
+    let server = Server(child);
+    assert!(
+        wait_until_ready(port + 1, Duration::from_secs(30)),
+        "the preview never came up on {}",
+        port + 1
+    );
+    drop(server);
+    let text = fs::read_to_string(&log).unwrap();
+    let at = |needle: &str| {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no line mentions {needle:?}:\n{text}"))
+    };
+    let banner = at("taliesin");
+    assert!(
+        at("titel") > banner,
+        "the config typo prints after the banner:\n{text}"
+    );
+    assert!(
+        at("in use") > banner,
+        "the port fallback prints after the banner:\n{text}"
+    );
+}

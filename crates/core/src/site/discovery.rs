@@ -11,18 +11,17 @@ use super::*;
 pub(super) fn website_pages(
     root: &Path,
     mode: DraftMode,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     excluded: &mut Vec<String>,
 ) -> Vec<Page> {
     let mut inputs = Vec::new();
     collect_pages(root, &mut inputs);
     inputs.sort();
+    nested_projects(root, &inputs, warnings);
     let mut pages: Vec<Page> = inputs
         .into_iter()
         .filter_map(|input| {
-            let rel = rel_str(root, &input);
-            let url = tmd_to_html(&rel);
-            let fm = parse_front_matter(&input, &rel, warnings);
+            let page = website_page(root, input, warnings);
             // `draft: true`: dropped from the published set (Exclude) — recorded so the
             // build can report it — or kept and tagged for the preview view (Include).
             // (Listings + prev/next nav derive from `self.pages`, so an Include draft
@@ -39,34 +38,71 @@ pub(super) fn website_pages(
             // omission was *silent*; `check` now names the held-back drafts (`scope_note`
             // in `check.rs`), the way `build` always has. Do not "fix" this by linting
             // drafts here — that reverses the ruling and re-opens the noise it avoids.
-            if fm.draft && mode == DraftMode::Exclude {
-                excluded.push(rel);
+            if page.draft && mode == DraftMode::Exclude {
+                excluded.push(page.rel);
                 return None;
             }
-            let card_image = card_image(&rel, fm.image);
-            // A page with no front-matter `title:` takes its leading `# H1` (as a book
-            // chapter does), so <title>, og:title, listing cards, nav, and search — all of
-            // which read `Page.title` — agree instead of falling back to the site name /
-            // rel-path. Front matter still wins when present.
-            let title = fm.title.or_else(|| chapter_heading(&input));
-            Some(Page {
-                input,
-                rel,
-                url,
-                title,
-                date: fm.date,
-                description: fm.description,
-                card_image,
-                card_image_alt: fm.image_alt,
-                categories: fm.categories,
-                listings: fm.listings,
-                hero: fm.hero,
-                draft: fm.draft,
-            })
+            Some(page)
         })
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
+}
+
+/// Report every folder under `root` holding its own `_site.yml` that `inputs` (the pages the
+/// walk found) sit in. A project never contains another (nested projects were cut): the walk
+/// publishes such a folder's pages as this project's own, under its chrome, and nothing
+/// reads the inner `_site.yml`. That was silent, so an author who dropped a project inside
+/// another got its pages under the wrong navbar and its config ignored (audit 2026-09-24,
+/// config-seam #18). Each is reported once, located at the ignored file.
+fn nested_projects(root: &Path, inputs: &[PathBuf], warnings: &mut Vec<Warning>) {
+    let mut seen = HashSet::new();
+    for input in inputs {
+        let mut dir = input.parent();
+        while let Some(d) = dir.filter(|d| *d != root && d.starts_with(root)) {
+            if seen.insert(d.to_path_buf()) && d.join("_site.yml").is_file() {
+                let rel = rel_str(root, &d.join("_site.yml"));
+                let folder = rel_str(root, d);
+                let mut w = Warning::new(format!(
+                    "`{rel}` is ignored: a project cannot contain another, so the pages under \
+                     `{folder}/` are built as this project's own pages, with its navigation \
+                     (build `{folder}` on its own to publish it as a project)"
+                ));
+                w.file = Some(rel);
+                warnings.push(w);
+            }
+            dir = d.parent();
+        }
+    }
+}
+
+/// The website [`Page`] for one `input` under `root`, from its front matter: what
+/// [`website_pages`] makes of each file it walks, and what a single-document discovery
+/// makes of the one file it was handed, without walking anything else.
+pub(super) fn website_page(root: &Path, input: PathBuf, warnings: &mut Vec<Warning>) -> Page {
+    let rel = rel_str(root, &input);
+    let url = tmd_to_html(&rel);
+    let fm = parse_front_matter(&input, &rel, warnings);
+    let card_image = card_image(&rel, fm.image);
+    // A page with no front-matter `title:` takes its leading `# H1` (as a book
+    // chapter does), so <title>, og:title, listing cards, nav, and search — all of
+    // which read `Page.title` — agree instead of falling back to the site name /
+    // rel-path. Front matter still wins when present.
+    let title = fm.title.or_else(|| chapter_heading(&input));
+    Page {
+        input,
+        rel,
+        url,
+        title,
+        date: fm.date,
+        description: fm.description,
+        card_image,
+        card_image_alt: fm.image_alt,
+        categories: fm.categories,
+        listings: fm.listings,
+        hero: fm.hero,
+        draft: fm.draft,
+    }
 }
 
 /// A page's front-matter `image:`, stored site-root-relative so a listing card on another
@@ -89,27 +125,30 @@ pub(super) fn card_image(rel: &str, image: Option<String>) -> Option<String> {
 /// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
 ///
 /// The walk reads directories directly rather than resolving paths through
-/// [`crate::includes::safe_join`], so it applies that function's symlink boundary by
-/// hand: a link is followed only while it stays inside the repository.
+/// [`crate::includes::safe_join`], so a symlink is held to the one publication rule,
+/// [`crate::includes::publishable`] (as the build's asset mirror holds every entry): it is
+/// followed only while its real path stays inside the repository and adds no `.`/`_`
+/// component to the path it shares with the project. Testing the link's own NAME let an
+/// ordinary `vendor -> ../.private` publish every page under it (audit 2026-09-24, WP1
+/// residual).
 /// Public so the editor's project walk enumerates pages exactly the way discovery does,
-/// symlink boundary included. A second walk would let the sidebar list a page the build does
+/// symlink rule included. A second walk would let the sidebar list a page the build does
 /// not publish, or miss one it does.
 pub fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
-    let boundary = crate::includes::repo_boundary(dir);
     let mut walked = HashSet::new();
     // Seed with the root itself, so a link pointing back at it is a repeat, not a
     // second copy of every page beneath it.
     if let Ok(c) = dir.canonicalize() {
         walked.insert(c);
     }
-    collect_pages_in(dir, &boundary, &mut walked, out);
+    collect_pages_in(dir, dir, &mut walked, out);
 }
 
-/// `boundary` is the repository the walk may not leave; `walked` holds the canonical
-/// directories already visited.
+/// `root` is the project the walk publishes from; `walked` holds the canonical directories
+/// already visited.
 fn collect_pages_in(
+    root: &Path,
     dir: &Path,
-    boundary: &Path,
     walked: &mut HashSet<PathBuf>,
     out: &mut Vec<PathBuf>,
 ) {
@@ -123,20 +162,22 @@ fn collect_pages_in(
             continue;
         }
         // Checking the link itself is enough: anything deeper can only leave the
-        // repository through a link that this same test already refused.
-        if entry.file_type().is_ok_and(|t| t.is_symlink())
-            && !p.canonicalize().is_ok_and(|c| c.starts_with(boundary))
-        {
-            continue;
+        // repository, or reach a private path, through a link this same test refused.
+        if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+            let rel = p.strip_prefix(root).unwrap_or(&p);
+            let reach = crate::includes::Reach::Wholesale;
+            if crate::includes::publishable(root, root, rel, reach).is_err() {
+                continue;
+            }
         }
         if p.is_dir() {
-            // A link back up the tree stays inside the repository, so the boundary above
+            // A link back up the tree stays inside the repository, so the rule above
             // permits it and only this cycle guard ends the walk. Without it the recursion
             // ran until the path outgrew `PATH_MAX`, emitting one output page per level.
             if p.canonicalize().is_ok_and(|c| !walked.insert(c)) {
                 continue;
             }
-            collect_pages_in(&p, boundary, walked, out);
+            collect_pages_in(root, &p, walked, out);
         } else if crate::ext::is_source_path(&p) {
             out.push(p);
         }

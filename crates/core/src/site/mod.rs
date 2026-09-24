@@ -133,9 +133,15 @@ pub struct Site {
     /// project that declares none. Laid **under** each page's own `bibliography:`, so a
     /// page can override a shared entry (`site::bibliography`).
     pub bibliography: Vec<PathBuf>,
-    /// Warnings gathered during discovery (bad config, etc.), surfaced by the
-    /// caller (build logs / preview diagnostics).
-    pub warnings: Vec<String>,
+    /// Diagnostics about the project itself, gathered during discovery: its `_site.yml`,
+    /// a page's front matter as discovery reads it, a label two pages define. Each is
+    /// located, relative to the site root: `file` is `_site.yml` or a page's `rel` (a
+    /// partial is joined onto its page's folder), `line` is that file's own line, and
+    /// `severity` is the validator's. Every verb reports them exactly as it reports a
+    /// page's render warnings. They were strings with the location baked into the text,
+    /// which `--check-only` pinned on `_site.yml` with no line, a writing build logged as
+    /// advice, and `--format json` dropped (audit 2026-09-24 NEW-A, NEW-B).
+    pub warnings: Vec<Warning>,
     /// How many of the leading entries in `warnings` came from parsing `_site.yml`
     /// itself, rather than from page discovery. See [`config_warnings`](Self::config_warnings).
     config_warning_count: usize,
@@ -151,20 +157,17 @@ pub struct Site {
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
-    /// True when this is a one-document project synthesized by
-    /// [`Site::discover_single`] because the file's own parent directory has no
-    /// `_site.yml`. The check is local to that one directory, not a walk up the
-    /// tree: a caller that invokes `discover_single` on a file already nested
-    /// inside a real project still gets `standalone: true` here (harmlessly, e.g.
-    /// `crates/server/src/query.rs`'s `map`, which never reads this field).
-    /// `preview`/`build` only reach `discover_single` after their own ancestor
-    /// walk ([`enclosing_site_root`]) found no `_site.yml` anywhere above the
-    /// file, which is what makes the field mean "no project at all" for them.
+    /// True when this site is discovered for ONE document ([`Site::discover_document`]): a
+    /// document with no project, or one page of a project
+    /// built on its own (`build <file>`). Either way nothing else of the project is
+    /// published beside it.
     ///
-    /// Such a document belongs to no project, so it gets no project chrome: the navbar
-    /// would brand it "Home" and link to the page you are already on, the burger would
-    /// open an empty nav, and the footer would credit a site that does not exist.
-    /// `build <file>` has never emitted any of it; this is what makes `preview` agree.
+    /// Such a document gets no project navigation: for one with no project the navbar
+    /// would brand it "Home" and link to the page you are already on, the burger would open
+    /// an empty nav, and the footer would credit a site that does not exist; for a page
+    /// built alone every link in them names a page that build does not write. And a book
+    /// chapter built alone keeps its table of contents ([`Site::page_toc`]): the book's
+    /// chapter drawer that stands in for it is not there either.
     pub standalone: bool,
 }
 
@@ -196,7 +199,7 @@ mod discovery;
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
 pub use discovery::collect_pages;
-use discovery::website_pages;
+use discovery::{website_page, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
@@ -215,6 +218,24 @@ use links::{
     join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls,
     sourcepos_start_line, tmd_to_html,
 };
+
+/// A document's path as every verb names it: its folder canonicalized, its own name kept. A
+/// symlinked page keeps the name its link has in the project, which is the page the site
+/// walker discovers; canonicalizing the whole path resolved the link and put the page in
+/// whatever folder its target happens to sit in (see [`Site::discover_document`]).
+pub fn document_path(file: &Path) -> PathBuf {
+    let dir = file
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let dir = dir
+        .canonicalize()
+        .unwrap_or_else(|_| crate::includes::absolutize(dir));
+    match file.file_name() {
+        Some(name) => dir.join(name),
+        None => dir,
+    }
+}
 
 /// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
 /// boundary or the filesystem root, so a tool handed ONE file can still find the project it
@@ -290,7 +311,7 @@ impl Site {
     /// scheme-less `url:` warning are all config defects that are not YAML parse failures.
     /// The whole-project answer is still `build <dir> --check-only`; this is only the
     /// narrower question of whether the *config file* is clean.
-    pub fn config_warnings(&self) -> &[String] {
+    pub fn config_warnings(&self) -> &[Warning] {
         &self.warnings[..self.config_warning_count]
     }
 
@@ -309,29 +330,37 @@ impl Site {
         Self::discover_scoped(root, drafts, None)
     }
 
-    /// The project for a single `.tmd` previewed on its own: its parent directory carrying
-    /// exactly that one document, plus whatever that document `{{< embed >}}`s.
+    /// The project a document named on its own belongs to, scoped to that one document:
+    /// THE discovery every verb that is handed a `.tmd` rather than a directory starts from
+    /// (`build <file>`, `build <file> --check-only`, and `preview <file>` for a document with
+    /// no project). The project is the nearest `_site.yml` above the document's folder; with
+    /// none, the folder is a project of just that document. Scoping to the one file (rather
+    /// than discovering the whole directory) is the point: a scratch note must not pull
+    /// thirty unrelated siblings into its page, and must not parse them to find that out.
     ///
-    /// This is what `taliesin preview <file.tmd>` builds when the file has no ancestor
-    /// `_site.yml`. Scoping to the one file (rather than discovering the whole parent
-    /// directory) is the point: previewing a scratch note must not pull thirty unrelated
-    /// siblings into the nav, and must not parse them to find that out.
-    pub fn discover_single(file: &Path) -> Site {
-        let root = file.parent().unwrap_or_else(|| Path::new("."));
-        Self::discover_scoped(root, DraftMode::Include, Some(file))
+    /// **The folder is canonicalized, not the file**, which is what the site walker keeps:
+    /// a symlinked page belongs to the project its link sits in, as the site build that
+    /// publishes it there says. Resolving the link first made the preview serve the TARGET's
+    /// folder as a project of one document, with no nav, while the page's own URL answered
+    /// 404 (audit 2026-09-24, config-seam #14).
+    ///
+    /// The published view of the project around it ([`DraftMode::Exclude`]): a book chapter
+    /// built alone carries the number the published book gives it, and the document itself
+    /// is its one page whatever its own `draft:` says, since it was named.
+    pub fn discover_document(file: &Path) -> Site {
+        let file = document_path(file);
+        let dir = file.parent().unwrap_or_else(|| Path::new("."));
+        let root = enclosing_site_root(dir).unwrap_or_else(|| dir.to_path_buf());
+        Self::discover_scoped(&root, DraftMode::Exclude, Some(&file))
     }
 
     /// [`discover_with`](Self::discover_with), optionally narrowed to one document
-    /// (see [`discover_single`](Self::discover_single)). The narrowing happens before
+    /// (see [`discover_document`](Self::discover_document)). The narrowing happens before
     /// cross-references and the search index are computed, so every downstream artifact is
-    /// built from the scoped page set rather than filtered afterwards.
-    ///
-    /// Public because a single-page `build` inside a project needs that project's *config*
-    /// (its `python:` pin) while building exactly one page. Reaching it through
-    /// [`discover`](Self::discover) works but pays the whole project's two render passes —
-    /// measured at +80 ms on `docs/guide`, 16 pages, release, 2026-09-02 — for a page set it
-    /// then throws away. The alternative is a second reader of `_site.yml` in the server
-    /// crate, and one policy with two readers is what put that bug there to begin with.
+    /// built from the scoped page set rather than filtered afterwards; a single-page `build`
+    /// inside a project gets that project's config (its `python:` pin) without paying the
+    /// whole project's two render passes (+80 ms on `docs/guide`, 16 pages, release,
+    /// measured 2026-09-02) for a page set it would throw away.
     pub fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
         let mut site = Self::registry(root, drafts, only);
         site.xref_targets = scan_xref_targets(&site.pages, &mut site.warnings);
@@ -350,14 +379,22 @@ impl Site {
         site
     }
 
-    /// The project at `root` as its page registry alone (published view, drafts excluded):
-    /// config, pages, book, shared bibliography and discovery warnings, with no
-    /// cross-reference scan, no render pass and no search index. For the language server,
-    /// whose buffer lint and `siteMap` read nothing else, and which rediscovers on every save
-    /// of any page: the full [`discover`](Self::discover) renders every page twice, measured
-    /// at 309 ms for a 500-page book (audit 2026-09-24, F2).
+    /// The project at `root` as its page registry (published view, drafts excluded):
+    /// config, pages, book, shared bibliography, discovery warnings and the cross-page
+    /// targets the source scan finds, with no render pass and no search index. For the
+    /// language server, whose buffer lint and `siteMap` read nothing else, and which
+    /// rediscovers on every save of any page: the full [`discover`](Self::discover) renders
+    /// every page twice, measured at 309 ms for a 500-page book (audit 2026-09-24, F2).
+    ///
+    /// The target scan stays: the buffer lint runs the page pass every verb runs, which
+    /// resolves `@sec-`/`@fig-` against `xref_targets`, so without it every valid
+    /// cross-page reference read as broken in the editor. Numbers are not needed there
+    /// (they come from the harvest render), only which targets exist.
     pub fn discover_registry(root: &Path) -> Site {
-        Self::registry(root, DraftMode::Exclude, None)
+        let mut site = Self::registry(root, DraftMode::Exclude, None);
+        site.xref_targets = scan_xref_targets(&site.pages, &mut site.warnings);
+        xref::add_cell_label_targets(&site.pages, &mut site.xref_targets);
+        site
     }
 
     /// Everything [`discover_scoped`](Self::discover_scoped) builds before its
@@ -369,29 +406,45 @@ impl Site {
         // Everything `load_config` just pushed is a diagnostic about `_site.yml` itself, and
         // it runs first, so the config warnings are exactly this prefix of `warnings`. Kept
         // as a length because a caller that wants only those (`doctor`'s `config` row) had
-        // no way to ask: filtering by message text misses `validate_url`'s scheme-less-`url:`
-        // warning, which carries no `_site.yml` prefix. See `config_warnings`.
+        // no way to ask. See `config_warnings`.
         let config_warning_count = warnings.len();
 
         // A book takes its page set + order from the explicit `chapters:` list;
         // a website discovers every `.tmd` and orders by path.
-        let (mut pages, book) = if config.is_book {
-            let book = build_book(root, &config, drafts, &mut excluded_drafts);
-            let pages = book_pages(root, &book, &mut warnings);
-            (pages, Some(book))
-        } else {
-            (
-                website_pages(root, drafts, &mut warnings, &mut excluded_drafts),
-                None,
-            )
+        //
+        // Scoped to one document, the page set is that document and nothing else is read,
+        // so xrefs and search are built from it rather than filtered after the fact, and no
+        // other page's front matter is parsed to find that out: a loose note beside 4000
+        // others parsed all 4000 and reported each one's problems against it (leads
+        // site/mod.rs:340). A book still parses its chapters (their order numbers this one)
+        // but keeps only this page's diagnostics; a file that is no chapter is a page of its
+        // own, so the one document named is always the one page.
+        let book = config
+            .is_book
+            .then(|| build_book(root, &config, drafts, &mut excluded_drafts));
+        let pages = match (only, &book) {
+            (None, Some(book)) => book_pages(root, book, &mut warnings),
+            (None, None) => website_pages(root, drafts, &mut warnings, &mut excluded_drafts),
+            (Some(only), book) => {
+                let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
+                let same =
+                    |p: &Page| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want;
+                let mut sink = Vec::new();
+                let chapter = book
+                    .as_ref()
+                    .map(|book| book_pages(root, book, &mut sink))
+                    .and_then(|pages| pages.into_iter().find(same));
+                let page = match chapter {
+                    Some(page) => {
+                        let rel = Some(page.rel.as_str());
+                        warnings.extend(sink.into_iter().filter(|w| w.file.as_deref() == rel));
+                        page
+                    }
+                    None => website_page(root, only.to_path_buf(), &mut warnings),
+                };
+                vec![page]
+            }
         };
-
-        // Scoped to one document: drop every other page BEFORE xrefs/search are computed,
-        // so they are built from the one page and not filtered after the fact.
-        if let Some(only) = only {
-            let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
-            pages.retain(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want);
-        }
 
         // A `chapters:` entry naming a file that does not exist: the chapter is silently
         // skipped (its title falls back to the file stem, its body is empty), so a typo
@@ -399,9 +452,13 @@ impl Site {
         if let Some(book) = &book {
             for c in book.chapters() {
                 if !root.join(&c.rel).exists() {
-                    warnings.push(format!(
-                        "chapter file not found: `{}` (listed in _site.yml `chapters:`)",
-                        c.rel
+                    warnings.push(config_warning(
+                        chapter_line(root, &c.rel),
+                        Severity::Error,
+                        format!(
+                            "chapter file not found: `{}` (listed in _site.yml `chapters:`)",
+                            c.rel
+                        ),
                     ));
                 }
             }
@@ -412,7 +469,7 @@ impl Site {
         // one should be reported once rather than on every page.
         let bibliography = bibliography::resolve_shared(root, &config.bibliography, &mut warnings);
 
-        let standalone = only.is_some() && !root.join("_site.yml").is_file();
+        let standalone = only.is_some();
 
         Site {
             root: root.to_path_buf(),
@@ -657,17 +714,29 @@ impl Site {
     ) -> (String, Vec<Warning>) {
         let mut warnings = std::mem::take(&mut doc.warnings);
         doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+        (self.page_html_external(page, &doc, assets), warnings)
+    }
+
+    /// The page HTML for a page whose blocks are already FINISHED ([`Self::finish_blocks`]),
+    /// wrapped in its chrome and linking the shared `_assets/` bundle: what the site build
+    /// writes once the page pass is done with the page.
+    pub fn page_html_external(
+        &self,
+        page: &Page,
+        doc: &render::RenderedDoc,
+        assets: render::ExternalAssets,
+    ) -> String {
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
-        let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
+        let html = render::html_page_from_doc_in_site_external(doc, fallback, &ctx, assets);
         let html = rewrite_tmd_links(&html);
         // The host serves the author's 404 for any unknown path, at any depth, so its
         // depth-relative URLs (assets, navbar, favicon, the author's own links) would
         // resolve against the directory the reader mistyped.
         if is_not_found_page(page) {
-            return (root_absolute_urls(&html), warnings);
+            return root_absolute_urls(&html);
         }
-        (html, warnings)
+        html
     }
 
     /// Static `check` cross-page link validation: for every page, resolve each manual
@@ -848,6 +917,23 @@ impl Site {
                 let line = lk.line;
                 let source_file = &lk.source_file;
                 let Some(target_url) = self.link_target_url(url, path) else {
+                    // Above the site root. In a project that may be a mounted sibling, so it
+                    // is left alone; a document built on its own has none, and the link names
+                    // a file beside it on disk, which is dead in its page when it is missing.
+                    let dir = Path::new(rel).parent().unwrap_or(Path::new(""));
+                    if self.standalone && !self.root.join(dir).join(path).exists() {
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` (no such file under the document directory)"
+                        ))
+                        .severity(Severity::Error);
+                        out.push((
+                            rel.clone(),
+                            match line {
+                                Some(l) => w.at(source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
+                    }
                     continue;
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
@@ -892,6 +978,11 @@ impl Site {
                     {
                         let why = if self.excluded_drafts.contains(&src) {
                             format!("`{src}` is a draft, so no page is built for it")
+                        } else if self.standalone {
+                            // A site discovered for one document builds that page alone
+                            // (`build <file>`, a lone document's own project): the target may
+                            // well be a page of the project, just not of this build.
+                            format!("`{src}` is not built with this document")
                         } else {
                             format!("this project does not publish `{src}`")
                         };
@@ -997,7 +1088,7 @@ impl Site {
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks, src));
-        self.expand_page(page, blocks, warnings);
+        self.expand_page(page, blocks, warnings, src);
         self.page_toc(page, toc_explicit, blocks)
     }
 
@@ -1104,7 +1195,9 @@ impl Site {
     /// assembler (both static builds, both previews) on one decision instead of four.
     /// What is lost is scrollspy; the ruling accepts that.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>, blocks: &[Block]) -> bool {
-        if self.is_book() {
+        // The drawer this rule leans on is a book's chrome, which a chapter built on its
+        // own does not have.
+        if self.is_book() && !self.standalone {
             return false;
         }
         doc_toc.unwrap_or_else(|| {
@@ -1249,11 +1342,11 @@ impl Site {
         // announced twice — and a third definition from announcing a fourth time.
         // Matching the curly-quoted anchor makes it exact, so `fig-a` never matches a
         // warning about `fig-abc`.
-        let dup_reported = |warnings: &[String], anchor: &str| {
+        let dup_reported = |warnings: &[Warning], anchor: &str| {
             let quoted = format!("\u{201c}{anchor}\u{201d}");
-            warnings
-                .iter()
-                .any(|w| w.contains("duplicate cross-reference label") && w.contains(&quoted))
+            warnings.iter().any(|w| {
+                w.message.contains("duplicate cross-reference label") && w.message.contains(&quoted)
+            })
         };
         for (anchor, number, url) in updates {
             match self.xref_targets.entry(anchor) {
@@ -1268,14 +1361,21 @@ impl Site {
                             // A cell-labelled anchor (`#| label:`) has no source line to point
                             // at (it's harvested from the rendered block, not the source scan),
                             // so name BOTH colliding pages instead — the first (winning) page
-                            // and the second that redefines it.
-                            self.warnings.push(format!(
+                            // and the second that redefines it — and locate it on the second.
+                            let mut w = Warning::new(format!(
                                 "duplicate cross-reference label \u{201c}{}\u{201d} defined on both {} and {}; using {}",
                                 e.key(),
                                 e.get().url,
                                 url,
                                 e.get().url
-                            ));
+                            ))
+                            .severity(Severity::Error);
+                            w.file = self
+                                .pages
+                                .iter()
+                                .find(|p| p.url == url)
+                                .map(|p| p.rel.clone());
+                            self.warnings.push(w);
                         }
                         continue;
                     }
@@ -1327,8 +1427,15 @@ impl Site {
     /// `hero:` block replaces the title block, each `listing:` expands into post cards, and
     /// a page that one listing owns opens with a link back to it. Both the static build and
     /// the live preview call this, so the results stay in the block model (mounted + diffed
-    /// like any other block).
-    pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
+    /// like any other block). `src` is the page's source when the caller holds it, which
+    /// locates a listing's diagnostics at the front-matter line that wrote them.
+    pub fn expand_page(
+        &self,
+        page: &Page,
+        blocks: &mut Vec<Block>,
+        warnings: &mut Vec<Warning>,
+        src: Option<&str>,
+    ) {
         // A `hero:` block replaces the title block (a landing-page header treatment).
         if let Some(hero) = &page.hero {
             set_title_block(blocks, self.hero_html(page, hero));
@@ -1359,12 +1466,19 @@ impl Site {
                 // only other sign.
                 None => {
                     if let Some(want) = &spec.id {
-                        warnings.push(Warning::new(format!(
+                        let mut w = Warning::new(format!(
                             "the listing on `{}` has `id: {want}`, but no element on the page \
                              has that id, so its cards were added at the end; put a \
                              `::: {{#{want}}}` block where they belong",
                             page.rel
-                        )));
+                        ));
+                        // The file line of the `id:` that names it: the block starts on the
+                        // line after the opening `---`.
+                        w.line = src
+                            .and_then(crate::frontmatter::front_matter_block)
+                            .and_then(|b| crate::frontmatter::value_line(b, Some("id"), want))
+                            .map(|l| l as u32 + 1);
+                        warnings.push(w);
                     }
                     blocks.push(listing_block(id, cards));
                 }
@@ -2302,7 +2416,7 @@ pub(crate) mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.contains("draft") && w.contains("YAML 1.2")),
+                .any(|w| w.message.contains("draft") && w.message.contains("YAML 1.2")),
             "a `draft: yes` page must warn to use `true`: {warnings:?}"
         );
         let _ = fs::remove_dir_all(&root);
@@ -2340,7 +2454,8 @@ pub(crate) mod tests {
             assert!(
                 warnings
                     .iter()
-                    .any(|w| w.starts_with(held) && w.contains("not a boolean")),
+                    .any(|w| w.file.as_deref() == Some(held)
+                        && w.message.contains("not a boolean")),
                 "{held} reported: {warnings:?}"
             );
         }
@@ -2350,7 +2465,7 @@ pub(crate) mod tests {
                 "{kept} published: {rels:?}"
             );
             assert!(
-                !warnings.iter().any(|w| w.starts_with(kept)),
+                !warnings.iter().any(|w| w.file.as_deref() == Some(kept)),
                 "{kept} is not reported: {warnings:?}"
             );
         }
@@ -2694,7 +2809,7 @@ pub(crate) mod tests {
     /// exactly that document — not its whole parent directory. Thirty unrelated notes next
     /// to it must not become nav entries (nor be parsed to discover that they are not).
     #[test]
-    fn discover_single_scopes_the_project_to_one_document() {
+    fn a_document_s_discovery_scopes_the_project_to_that_document() {
         let root = write_site(
             "single",
             &[
@@ -2706,7 +2821,7 @@ pub(crate) mod tests {
                 ),
             ],
         );
-        let site = Site::discover_single(&root.join("note.tmd"));
+        let site = Site::discover_document(&root.join("note.tmd"));
         assert_eq!(
             site.pages.iter().map(|p| &p.rel).collect::<Vec<_>>(),
             vec!["note.tmd"],
@@ -2733,7 +2848,7 @@ pub(crate) mod tests {
             "singleroot",
             &[("note.tmd", "---\ntitle: Note\n---\n\nBody.\n")],
         );
-        let site = Site::discover_single(&root.join("note.tmd"));
+        let site = Site::discover_document(&root.join("note.tmd"));
         assert_eq!(site.pages.len(), 1);
         assert_eq!(
             site.pages[0].url, "note.html",
@@ -3400,7 +3515,7 @@ pub(crate) mod tests {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains("listing") && w.contains("contents")),
+                .any(|w| w.message.contains("listing") && w.message.contains("contents")),
             "{:?}",
             site.warnings
         );
@@ -3423,7 +3538,8 @@ pub(crate) mod tests {
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
+                .any(|w| w.message.contains("missing.tmd")
+                    && w.message.contains("chapter file not found")),
             "{:?}",
             site.warnings
         );
@@ -3678,6 +3794,270 @@ pub(crate) mod tests {
         assert!(
             html.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;2.1</a>"),
             "cross-page figure ref numbered after discover: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The per-page cross-page link check the preview runs on every save judges only the
+    /// page asked about, so a broken link is reported on the page that carries it and not
+    /// on the page it points at. (It lived beside the preview's bridge module until that
+    /// module went, with the preview's second diagnostic type.)
+    #[test]
+    fn a_broken_cross_page_link_is_reported_only_on_the_linking_page() {
+        let root = write_site(
+            "xpage-for",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "# Home\n\nSee [the other page](other.tmd#nope).\n",
+                ),
+                ("other.tmd", "# Real Heading\n\nBody.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            !site.validate_cross_page_links_for("index.tmd").is_empty(),
+            "index links a nonexistent anchor"
+        );
+        assert!(
+            site.validate_cross_page_links_for("other.tmd").is_empty(),
+            "other.tmd has no broken outgoing link"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A document built on its own has no sibling book beside it to link into: a link out of
+    /// its folder names a file on disk, and a missing one is dead in the page the build
+    /// writes. The project rule skips a link above the root (it may point into a mounted
+    /// sibling), which for one document's own project would have dropped the check the
+    /// single-file gate always ran.
+    #[test]
+    fn a_lone_document_s_link_out_of_its_folder_is_checked() {
+        let root = write_site(
+            "lone-climb",
+            &[
+                (
+                    "doc/a.tmd",
+                    "# A\n\n[there](../there.pdf) and [gone](../gone.pdf)\n",
+                ),
+                ("there.pdf", "%PDF"),
+            ],
+        );
+        let site = Site::discover_document(&root.join("doc/a.tmd"));
+        let broken: Vec<String> = site
+            .validate_cross_page_links_for("a.tmd")
+            .into_iter()
+            .map(|w| w.message)
+            .collect();
+        assert_eq!(broken.len(), 1, "{broken:?}");
+        assert!(broken[0].contains("../gone.pdf"), "{broken:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A book chapter built on its own carries the number the published book gives it: a
+    /// draft chapter ahead of it is not in the book, so it does not count.
+    #[test]
+    fn a_chapter_built_alone_carries_its_published_number() {
+        let root = write_site(
+            "chapter-alone",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - a.tmd\n  - b.tmd\n",
+                ),
+                ("index.tmd", "# Preface\n"),
+                ("a.tmd", "---\ndraft: true\n---\n\n# A\n"),
+                ("b.tmd", "# B\n"),
+            ],
+        );
+        let book = Site::discover(&root);
+        let alone = Site::discover_document(&root.join("b.tmd"));
+        let number = |site: &Site| site.chapter_for(site.page("b.tmd").unwrap());
+        assert_eq!(number(&book), Some(1), "the published book skips the draft");
+        assert_eq!(number(&alone), number(&book));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project never contains another: `build <parent>` publishes a nested project's pages
+    /// as its own, under its own chrome, and ignores the nested `_site.yml`. Saying so is the
+    /// honest minimum (nested projects were cut); it was silent (config-seam #18).
+    #[test]
+    fn a_nested_project_s_config_is_reported() {
+        let root = write_site(
+            "nested",
+            &[
+                ("_site.yml", "title: Outer\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("sub/_site.yml", "title: Inner\n"),
+                ("sub/s.tmd", "---\ntitle: S\n---\n\nS.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| loc(w).contains("sub/_site.yml")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A site warning as `file:line: message`, the form every verb prints it in.
+    fn loc(w: &Warning) -> String {
+        let file = w.file.as_deref().unwrap_or("_site.yml");
+        match w.line {
+            Some(l) => format!("{file}:{l}: {}", w.message),
+            None => format!("{file}: {}", w.message),
+        }
+    }
+
+    /// Every project diagnostic is located at the file and line that wrote it: a config key
+    /// in `_site.yml`, a page's front matter in that page. They were strings with whatever
+    /// location the producer baked into the text, which is how a page's `draft:` came to be
+    /// reported against `_site.yml` with no line (audit 2026-09-24 NEW-A).
+    #[test]
+    fn site_warnings_are_located_where_they_were_written() {
+        let root = write_site(
+            "located",
+            &[
+                ("_site.yml", "title: T\ntitel: oops\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("posts/p.tmd", "---\ntitle: P\ndraft: maybe\n---\n\nBody.\n"),
+            ],
+        );
+        let site = Site::discover_with(&root, DraftMode::Include);
+        let found = |needle: &str| {
+            site.warnings
+                .iter()
+                .map(loc)
+                .find(|l| l.contains(needle))
+                .unwrap_or_else(|| panic!("no warning mentions {needle}: {:?}", site.warnings))
+        };
+        assert!(
+            found("titel").starts_with("_site.yml:2: "),
+            "{}",
+            found("titel")
+        );
+        assert!(
+            found("draft").starts_with("posts/p.tmd:3: "),
+            "{}",
+            found("draft")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A duplicate label written below an `{{< include >}}` is reported at the line the
+    /// author wrote it on. The scan counted lines of the include-expanded buffer, so it
+    /// named a line past the end of a short page (leads xref.rs:72).
+    #[test]
+    fn a_duplicate_label_below_an_include_is_located_at_its_own_line() {
+        let part: String = (1..=20).map(|i| format!("filler {i}\n\n")).collect();
+        let root = write_site(
+            "dup-after-include",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n## First {#sec-dup}\n",
+                ),
+                (
+                    "posts/one/index.tmd",
+                    "---\ntitle: One\n---\n\n{{< include _part.tmd >}}\n\n## Again {#sec-dup}\n",
+                ),
+                ("posts/one/_part.tmd", &part),
+            ],
+        );
+        let site = Site::discover(&root);
+        let dup = site
+            .warnings
+            .iter()
+            .map(loc)
+            .find(|l| l.contains("duplicate cross-reference label"))
+            .unwrap_or_else(|| panic!("the duplicate is reported: {:?}", site.warnings));
+        assert!(dup.starts_with("posts/one/index.tmd:7: "), "{dup}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Previewing or building one loose document reads that document and nothing else: a
+    /// sibling's front matter is not parsed, so a sibling's problem is not reported against
+    /// it (leads site/mod.rs:340, measured at 4000 sibling warnings for one note).
+    #[test]
+    fn a_single_document_project_reads_no_sibling() {
+        let root = write_site(
+            "no-siblings",
+            &[
+                ("note.tmd", "---\ntitle: Note\n---\n\nThe note.\n"),
+                (
+                    "other.tmd",
+                    "---\ntitle: Other\ndraft: maybe\n---\n\nUnrelated.\n",
+                ),
+            ],
+        );
+        let site = Site::discover_document(&root.join("note.tmd"));
+        assert!(
+            site.warnings.iter().all(|w| !loc(w).contains("other.tmd")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The warning for a listing whose `id:` matches nothing names the line that wrote the
+    /// `id:`, so it is clickable like every other page diagnostic (audit 2026-09-24, WP5
+    /// residual).
+    #[test]
+    fn a_listing_id_that_matches_nothing_is_located() {
+        let src = "---\ntitle: Home\nlisting:\n  - contents: posts\n    id: nowhere\n---\n\nHi.\n";
+        let root = write_site(
+            "listing-id",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", src),
+                ("posts/a.tmd", "---\ntitle: A\n---\n\nA.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let page = site.page("index.tmd").unwrap().clone();
+        let mut doc = render::render_document_scoped_with_site(
+            src,
+            &root,
+            None,
+            Some(&site.render_defaults()),
+        );
+        let mut warnings = Vec::new();
+        site.finish_blocks(&page, &mut doc.blocks, &mut warnings, Some(src), None);
+        let w = warnings
+            .iter()
+            .find(|w| w.message.contains("id: nowhere"))
+            .unwrap_or_else(|| panic!("the listing id is reported: {warnings:?}"));
+        assert_eq!(w.line, Some(5), "{w:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A chrome link carrying a `?query` is resolved without it, as a body link is: a nav
+    /// entry to a draft page is dead in the deploy however it is spelled. With the query
+    /// kept, the `.tmd` source on disk passed it as a raw file (audit 2026-09-24, WP9
+    /// residual).
+    #[test]
+    fn a_chrome_link_with_a_query_is_judged_by_its_page() {
+        let root = write_site(
+            "chrome-query",
+            &[
+                (
+                    "_site.yml",
+                    "title: T\nnav:\n  - { text: Wip, href: \"wip.tmd?v=1\" }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("wip.tmd", "---\ntitle: Wip\ndraft: true\n---\n\nNot yet.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let broken = site.validate_chrome_links();
+        assert!(
+            broken.iter().any(|w| w.message.contains("wip.tmd?v=1")),
+            "{broken:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

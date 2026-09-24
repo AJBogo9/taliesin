@@ -24,7 +24,6 @@ mod lsp_outline;
 mod lsp_pos;
 mod lsp_project;
 mod packages;
-mod preview_diag;
 mod protocol;
 mod runtime_dirs;
 mod serve;

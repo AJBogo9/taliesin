@@ -123,7 +123,7 @@ impl SiteCache {
     /// The project enclosing `page`, or `None` when no `_site.yml` sits above it.
     ///
     /// Whether `page` is a *page* of that project is settled by the caller
-    /// (`lint::collect_file_diagnostics_in_site`), so that one place decides it: an include
+    /// (`lint::buffer_diagnostics_in_site`), so that one place decides it: an include
     /// partial and a `draft: true` chapter are both inside a project and are both linted
     /// standalone.
     ///
@@ -637,12 +637,23 @@ mod tests {
         assert_eq!(rels(site), rels(&full));
         assert_eq!(site.excluded_drafts, full.excluded_drafts);
         assert_eq!(site.warnings, full.warnings);
+        // No render pass: no search index, and the targets carry no numbers (the harvest
+        // render is what numbers them). Which targets exist does come from the source, so
+        // the buffer lint can tell a valid cross-page reference from a broken one.
         assert!(
-            site.search_index_json.is_empty() && site.xref_targets.is_empty(),
-            "no render pass: search index {:?}, xref targets {:?}",
+            site.search_index_json.is_empty()
+                && site.xref_targets.values().all(|t| t.number.is_empty()),
+            "no render pass: search index {:?}, numbered targets {:?}",
             site.search_index_json,
-            site.xref_targets.keys().collect::<Vec<_>>()
+            site.xref_targets
+                .iter()
+                .filter(|(_, t)| !t.number.is_empty())
+                .map(|(k, _)| k)
+                .collect::<Vec<_>>()
         );
+        let mut ids: Vec<&String> = site.xref_targets.keys().collect();
+        ids.sort();
+        assert_eq!(ids, ["fig-one", "sec-two"], "every target the pages define");
         let _ = std::fs::remove_dir_all(&root);
     }
 
