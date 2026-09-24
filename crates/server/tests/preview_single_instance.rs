@@ -447,9 +447,19 @@ fn startup_findings_print_after_the_banner() {
     let dir = tmp_dir("startup-order");
     fs::write(dir.join("_site.yml"), "title: Book\ntitel: typo\n").unwrap();
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
-    let port = free_run(2);
     // Something that is not a preview holds the requested port, so the preview falls back.
-    let _holder = TcpListener::bind(("127.0.0.1", port)).expect("hold the port");
+    // Acquired, then its successor checked, exactly as `spawn_liar` does: a port
+    // `free_run` returns has only been peeked at, and binding it afterwards lost that race
+    // under a parallel run (AddrInUse on the holder).
+    let band_base = free_run(2);
+    let (_holder, port) = (band_base..band_base + SLOT)
+        .find_map(|p| {
+            let l = TcpListener::bind(("127.0.0.1", p)).ok()?;
+            port_is_free(p + 1).then_some((l, p))
+        })
+        .unwrap_or_else(|| {
+            panic!("no bindable port with a free successor in slot {band_base}..+{SLOT}")
+        });
     let log = dir.join("stderr.log");
     let child = taliesin()
         .arg("preview")
