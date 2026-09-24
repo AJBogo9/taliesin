@@ -104,10 +104,12 @@ impl Site {
             }) else {
                 continue; // capped teaser, or its collection already fed → no feed
             };
+            // Only an entry with a real calendar date: Atom requires one, and stamping an
+            // undatable entry with some other entry's date publishes a date nobody wrote.
             let dated: Vec<&Page> = self
                 .collection(page, spec, &mut sink)
                 .into_iter()
-                .filter(|p| p.date.is_some())
+                .filter(|p| p.day().is_some())
                 .collect();
             if dated.is_empty() {
                 continue;
@@ -211,12 +213,11 @@ impl Site {
         }
         s.push_str("  <generator>Taliesin</generator>\n");
         for p in items.iter().copied() {
+            // `feed_hosts` keeps only dated entries; never invent a date for one.
+            let Some(when) = p.date.as_deref().and_then(rfc3339) else {
+                continue;
+            };
             let link = self.abs_page_url(p).unwrap_or_default();
-            let when = p
-                .date
-                .as_deref()
-                .and_then(rfc3339)
-                .unwrap_or_else(|| updated.clone());
             s.push_str("  <entry>\n");
             s.push_str(&format!(
                 "    <title>{}</title>\n",
@@ -605,6 +606,76 @@ mod tests {
         );
         let site = Site::discover(&root);
         assert!(site.feed_index().is_empty(), "no url: → no feed index");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `date:` is read as a CALENDAR date wherever a machine orders or stamps by it. The
+    /// listing used to sort the raw strings, so an un-padded `2026-1-5` sorted above
+    /// `2026-01-20` and free text (`Spring 2026`, or an integer `20260115`) above every
+    /// real date; and the feed stamped an entry whose date it could not read with the
+    /// newest OTHER entry's date. Now the listing orders by the parsed day (unreadable
+    /// dates last), and the feed leaves out an entry it cannot date, which is what the
+    /// `date:` lint tells the author.
+    #[test]
+    fn listing_and_feed_order_and_stamp_by_the_calendar_date() {
+        let root = write_site(
+            "feeddates",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\nHi.\n",
+                ),
+                ("posts/a.tmd", "---\ntitle: A\ndate: 2026-01-20\n---\n\nx\n"),
+                ("posts/b.tmd", "---\ntitle: B\ndate: 2026-1-5\n---\n\nx\n"),
+                ("posts/c.tmd", "---\ntitle: C\ndate: 20260115\n---\n\nx\n"),
+                (
+                    "posts/d.tmd",
+                    "---\ntitle: D\ndate: Spring 2026\n---\n\nx\n",
+                ),
+                ("posts/e.tmd", "---\ntitle: E\ndate: 2026-01-10\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("blog.tmd").unwrap();
+        let mut order: Vec<&str> = crate::render::attr_values(&html, "href")
+            .filter(|h| h.starts_with("posts/"))
+            .collect();
+        order.dedup();
+        assert_eq!(
+            order,
+            [
+                "posts/a.html",
+                "posts/e.html",
+                "posts/b.html",
+                "posts/d.html",
+                "posts/c.html"
+            ],
+            "newest first by the calendar day, unreadable dates last"
+        );
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        let entries: Vec<&str> = xml
+            .split("<entry>")
+            .skip(1)
+            .map(|e| {
+                e.split("<title>")
+                    .nth(1)
+                    .unwrap()
+                    .split('<')
+                    .next()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            entries,
+            ["A", "E", "B"],
+            "an entry the feed cannot date is left out: {xml}"
+        );
+        assert!(
+            xml.contains("<updated>2026-01-05T00:00:00Z</updated>"),
+            "{xml}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

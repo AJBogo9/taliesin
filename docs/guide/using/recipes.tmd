@@ -117,8 +117,8 @@ categories: [machine learning, statistics]
 
 ::: {.callout-note}
 Listings always sort newest first, and no setting changes the order. A post with no
-`date:` still appears, but undated posts cluster at the end and ties break on file path,
-so date every post whose order matters.
+`date:`, or one that names no `YYYY-MM-DD` day, still appears, but such posts cluster at
+the end and ties break on file path, so date every post whose order matters.
 :::
 
 ## 2. A documentation book

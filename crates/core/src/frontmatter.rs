@@ -190,11 +190,6 @@ fn days_in_month(year: u32, month: u32) -> u32 {
     }
 }
 
-/// `date:` is the one front-matter value read by MACHINES (the sitemap's `<lastmod>`, the
-/// Atom feed's `<updated>`), so a value they cannot parse silently vanishes from both while
-/// the page still displays it — a green `check` certifying a half-published post. Free text
-/// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
-/// rather than calling the value wrong.
 /// PA-M13: an `image:` with no `image-alt:` emits `alt=""`, which tells a screen-reader
 /// user the image is *decorative* — but a card thumbnail or hero image carries meaning, so
 /// the empty alt is an omission rather than a choice. A body `<img>` has been linted for
@@ -230,8 +225,16 @@ fn validate_image_alt(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warn
     // instruction on the same line.
 }
 
+/// `date:` is the one front-matter value read by MACHINES (the sitemap's `<lastmod>`, the
+/// Atom feed's `<updated>`), so a value they cannot parse is lost to both while the page
+/// still displays it: the sitemap drops the page's `<lastmod>` and the feed drops the
+/// entry, and without this a green `check` certified a half-published post. Free text
+/// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
+/// rather than calling the value wrong.
 fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    let Some(val) = map.get("date").and_then(|v| v.as_str()) else {
+    // Every scalar the site reads as a date (`site::scalar`), a number included: an
+    // un-quoted `date: 20260515` is as unreadable to the sitemap and the feed as free text.
+    let Some(val) = crate::site::scalar(map.get("date")) else {
         return;
     };
     let val = val.trim().trim_matches(['"', '\'']);
@@ -240,8 +243,9 @@ fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<War
     }
     out.push(located(
         format!(
-            "`date: {val}` isn't a machine-readable date, so it is left out of the sitemap \
-             and the Atom feed (the page still shows it) — write `YYYY-MM-DD` to publish it"
+            "`date: {val}` isn't a machine-readable date, so the sitemap carries no \
+             `<lastmod>` for this page and the Atom feed leaves it out (the page still \
+             shows the date) — write `YYYY-MM-DD` to publish it"
         ),
         block_key_line(block, "date"),
     ));
@@ -794,6 +798,24 @@ mod tests {
             !msgs("---\ntitle: X\n---\n")
                 .iter()
                 .any(|w| w.contains("date"))
+        );
+    }
+
+    /// A `date:` YAML reads as a NUMBER (`date: 20260515`) is as unreadable to the sitemap
+    /// and the feed as free text, but the rule only looked at strings, so it said nothing
+    /// while the feed stamped the entry with another post's date. And the message says what
+    /// actually happens: the page stays in the sitemap without a `<lastmod>`, and the feed
+    /// leaves it out.
+    #[test]
+    fn a_numeric_date_is_linted_and_the_message_says_what_is_lost() {
+        let m = msgs("---\ntitle: X\ndate: 20260515\n---\n");
+        let w = m
+            .iter()
+            .find(|w| w.contains("20260515"))
+            .unwrap_or_else(|| panic!("a numeric date must warn: {m:?}"));
+        assert!(
+            w.contains("no `<lastmod>`") && w.contains("Atom feed leaves it out"),
+            "{w}"
         );
     }
 

@@ -41,7 +41,8 @@ pub struct Page {
     pub url: String,
     /// Front-matter title (for nav labels + prev/next + listing cards).
     pub title: Option<String>,
-    /// Front-matter `date` as written (ISO strings sort chronologically).
+    /// Front-matter `date` as written, for display. Anything that orders or stamps by it
+    /// reads [`Page::day`] instead.
     pub date: Option<String>,
     /// Front-matter `description` (shown on a listing card).
     pub description: Option<String>,
@@ -61,6 +62,18 @@ pub struct Page {
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
     pub draft: bool,
+}
+
+impl Page {
+    /// The calendar day `date:` names (`crate::frontmatter::calendar_date`), `None` when it
+    /// names none. The one reading of the date that the listing order, the Atom feed and the
+    /// sitemap's `<lastmod>` share: the raw string sorted an un-padded `2026-1-5` above
+    /// `2026-01-20`, and free text above every real date.
+    pub(crate) fn day(&self) -> Option<(u32, u32, u32)> {
+        self.date
+            .as_deref()
+            .and_then(crate::frontmatter::calendar_date)
+    }
 }
 
 /// A `hero:` front-matter block: the headline + lead + call-to-action band at the
@@ -1376,9 +1389,10 @@ impl Site {
             }
             items.push(p);
         }
-        // Order by date (string-ISO sorts chronologically), tiebreak on rel, then reverse:
-        // newest first, unconditionally.
-        items.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
+        // Order by calendar day (a page whose date names none sorts oldest), then by the
+        // date as written (a time on the same day), then by rel; then reverse: newest
+        // first, unconditionally.
+        items.sort_by(|a, b| (a.day(), &a.date, &a.rel).cmp(&(b.day(), &b.date, &b.rel)));
         items.reverse();
         if let Some(n) = spec.max_items {
             items.truncate(n);
