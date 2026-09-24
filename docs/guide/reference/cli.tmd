@@ -372,6 +372,12 @@ findings as an object for a script to read, and the exit code is narrow:
 non-zero only when an interpreter you configured is broken, because a machine with no
 project venv is a fact worth reporting, not a failure.
 
+**`doctor` runs the interpreter it finds.** Probing means running it twice, with
+`--version` and with an `import ipykernel` check, and the interpreter can be a program the
+project itself names in `python:` or ships as `.venv/bin/python`. On a project you did not
+write, running `doctor` is running that program; `build --check-only`, `--no-exec` and
+`taliesin lsp` start no interpreter.
+
 ## Inspecting a document: `build --stdout`
 
 `build --stdout` shows a document in a terminal instead of a browser, for piping,
