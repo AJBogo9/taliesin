@@ -765,6 +765,32 @@
     return t.content.firstElementChild;
   };
 
+  // A script parsed through a `<template>` or `innerHTML` never runs, so a raw `<script>`
+  // block, or a `<script>` in a cell's HTML output (a plotting library's renderer), ran on
+  // load and in the build but not when an edit brought it in. Re-create each classic or
+  // module script so it runs as it would have on load. Data blocks (`application/tali-js`,
+  // `tali-define`, JSON) are not scripts to the browser and stay as they are, which is also
+  // why this cannot run a `{js}` cell a `--no-exec` preview withheld: that preview emits
+  // the cell as source, with no script element at all. Returns the node to mount, which is
+  // a fresh script when the block itself is one.
+  const RUNNABLE = /^(|module|(text|application)\/(x-)?(java|ecma)script)$/i;
+  const runnable = (/** @type {Element} */ el) =>
+    el instanceof HTMLScriptElement && RUNNABLE.test(el.type.trim());
+  const withLiveScripts = (/** @type {Element} */ node) => {
+    const fresh = (/** @type {Element} */ old) => {
+      const s = document.createElement("script");
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.async = false; // external scripts keep their order, as parser-inserted ones do
+      s.textContent = old.textContent;
+      return s;
+    };
+    if (runnable(node)) return fresh(node);
+    node.querySelectorAll("script").forEach((old) => {
+      if (runnable(old)) old.replaceWith(fresh(old));
+    });
+    return node;
+  };
+
   // Apply a BLOCK op while leaving the reader's viewport where it was.
   //
   // The vertical offset is deliberately NOT restored, and that is the whole point of this
@@ -1001,7 +1027,10 @@
           // and the tali-js runtime is rebuilt fresh, rather than re-pushing duplicate
           // cells onto a never-reset registry.
           resetJs();
-          keepScrollThroughRemount(() => { root.innerHTML = msg.body_html; });
+          keepScrollThroughRemount(() => {
+            root.innerHTML = msg.body_html;
+            withLiveScripts(root);
+          });
         }
         scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
@@ -1022,8 +1051,9 @@
       case "update": {
         renderOk();
         const el = elById(msg.target_id);
-        const node = fragment(msg.html);
-        if (!el || !node) return resync();
+        const parsed = fragment(msg.html);
+        if (!el || !parsed) return resync();
+        const node = withLiveScripts(parsed);
         teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
         keepFocus(el, () => {
           keepScroll(() => el.replaceWith(node));
@@ -1036,9 +1066,10 @@
       }
       case "insert": {
         renderOk();
-        const node = fragment(msg.html);
+        const parsed = fragment(msg.html);
         const after = msg.after_id ? elById(msg.after_id) : null;
-        if (!node || (msg.after_id && !after)) return resync();
+        if (!parsed || (msg.after_id && !after)) return resync();
+        const node = withLiveScripts(parsed);
         if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         // Block ids are unique per document, so drop any element already
         // carrying this id before inserting. The server emits Removes before

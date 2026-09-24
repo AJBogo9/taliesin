@@ -691,8 +691,8 @@ mod tests {
             "const stale = newId && childById(newId);",
             "if (stale) stale.remove();",
             "const el = elById(msg.target_id);",
-            "if (!el || !node) return resync();",
-            "if (!node || (msg.after_id && !after)) return resync();",
+            "if (!el || !parsed) return resync();",
+            "if (!parsed || (msg.after_id && !after)) return resync();",
             "if (!el) return resync();",
             "else root.prepend(node);",
         ] {
