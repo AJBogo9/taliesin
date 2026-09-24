@@ -694,6 +694,15 @@ fn stray_closing_fence_is_ignored() {
     assert!(body.contains("A paragraph."), "got: {body}");
     assert!(!body.contains(":::"), "got: {body}");
     assert!(!body.contains("tali-div"), "got: {body}");
+    // ...and said, at the line, as an unclosed open is: an extra `:::` usually means one
+    // above closed the wrong div (lead `divs.rs:211`, audit 2026-09-24: it was silent).
+    let lines: Vec<Option<u32>> = doc.warnings.iter().map(|w| w.line).collect();
+    assert_eq!(lines, [Some(3)], "{:?}", doc.warnings);
+    assert!(
+        doc.warnings[0].message.contains("closes no open div"),
+        "{:?}",
+        doc.warnings
+    );
 }
 
 #[test]
@@ -8094,4 +8103,338 @@ fn a_link_in_a_heading_does_not_leak_its_url_into_the_anchor() {
             .as_deref(),
         Some("plain-heading-here")
     );
+}
+
+/// One context per input class of the 2026-09-24 audit's "scanner x input class" table
+/// (scanners.md, B2): a probe placed where comrak reads CODE or RAW HTML (`inert`) or
+/// PROSE, as `(name, inert, lines)`. The probe is every construct a line-reading pass acts
+/// on: a `:::` div, an `{{< input >}}`, an `{{< include >}}` and a `{#sec-}` heading.
+fn line_pass_contexts() -> Vec<(&'static str, bool, Vec<String>)> {
+    const PROBE: [&str; 5] = [
+        "::: {.probe-div}",
+        "probe body",
+        ":::",
+        "{{< input name=\"probe\" >}}",
+        "{{< include _probe.md >}}",
+    ];
+    let probe = |prefix: &str| -> Vec<String> {
+        PROBE
+            .iter()
+            .chain(["# Probe heading {#sec-probe}"].iter())
+            .map(|l| format!("{prefix}{l}"))
+            .collect()
+    };
+    let wrap = |open: &[&str], body: Vec<String>, close: &[&str]| -> Vec<String> {
+        let mut v: Vec<String> = open.iter().map(|s| s.to_string()).collect();
+        v.extend(body);
+        v.extend(close.iter().map(|s| s.to_string()));
+        v
+    };
+    vec![
+        (
+            "backtick fence",
+            true,
+            wrap(&["```text"], probe(""), &["```"]),
+        ),
+        (
+            "longer fence wrapping a shorter one",
+            true,
+            wrap(&["````text", "```python"], probe(""), &["```", "````"]),
+        ),
+        (
+            "tilde fence holding a backtick line",
+            true,
+            wrap(&["~~~text", "```"], probe(""), &["~~~"]),
+        ),
+        (
+            "backtick fence holding a tilde line",
+            true,
+            wrap(&["```text", "~~~"], probe(""), &["```"]),
+        ),
+        (
+            "closed by a longer fence",
+            true,
+            wrap(&["```text"], probe(""), &["````"]),
+        ),
+        (
+            "an info line is not a close",
+            true,
+            wrap(&["```text", "``` python"], probe(""), &["```"]),
+        ),
+        (
+            "a paragraph starting with inline code in triple backticks",
+            false,
+            wrap(&["```pip install x``` installs it.", ""], probe(""), &[]),
+        ),
+        (
+            "tilde fence with a backtick in its info",
+            true,
+            wrap(&["~~~ `weird` info"], probe(""), &["~~~"]),
+        ),
+        ("indented code", true, probe("    ")),
+        ("tab-indented code", true, probe("\t")),
+        (
+            "fence indented 4 in a list item",
+            true,
+            wrap(
+                &["1. Step:", ""],
+                ["```text".to_string()]
+                    .into_iter()
+                    .chain(probe(""))
+                    .chain(["```".to_string()])
+                    .map(|l| format!("    {l}"))
+                    .collect(),
+                &[],
+            ),
+        ),
+        (
+            "fence in a block quote",
+            true,
+            ["```text".to_string()]
+                .into_iter()
+                .chain(probe(""))
+                .chain(["```".to_string()])
+                .map(|l| format!("> {l}"))
+                .collect(),
+        ),
+        (
+            "unclosed fence in a list item, ended by the list",
+            true,
+            wrap(&["- Step:", "", "  ```text"], probe("  "), &[]),
+        ),
+        ("HTML comment", true, wrap(&["<!--"], probe(""), &["-->"])),
+        (
+            "comment holding half a fence, probe after it",
+            false,
+            wrap(&["<!--", "```{python}", "old()", "-->", ""], probe(""), &[]),
+        ),
+        ("pre block", true, wrap(&["<pre>"], probe(""), &["</pre>"])),
+        (
+            "script holding a fence line, probe after it",
+            false,
+            wrap(
+                &["<script>", "const md = `", "```", "`;", "</script>", ""],
+                probe(""),
+                &[],
+            ),
+        ),
+        (
+            "fence inside a list item (control)",
+            true,
+            wrap(
+                &["- Step:", ""],
+                ["```text".to_string()]
+                    .into_iter()
+                    .chain(probe(""))
+                    .chain(["```".to_string()])
+                    .map(|l| format!("  {l}"))
+                    .collect(),
+                &[],
+            ),
+        ),
+        (
+            "fence inside a div (control)",
+            true,
+            wrap(
+                &["::: {.callout-note}", "```text"],
+                probe(""),
+                &["```", ":::"],
+            ),
+        ),
+    ]
+}
+
+/// Every pass that reads `.tmd` source line by line agrees with comrak about what is code.
+///
+/// Audit 2026-09-24, B2: the include pass, the shortcode pass, the `:::` div scan and the
+/// site's anchor scan each tracked fences by hand, and each disagreed with comrak on a
+/// different input class. A probe inside code or raw HTML must stay inert (not a div, not a
+/// control, not an include, not an anchor), a probe in prose must be live, and the same
+/// constructs AFTER the context must always be live: that last half is what a tracker left
+/// stuck "inside code" broke silently, for the rest of the document.
+#[test]
+fn every_line_pass_agrees_with_comrak_about_what_is_code() {
+    const AFTER: &str = "\nAfter paragraph.\n\n::: {.after-div}\nAfter div body.\n:::\n\n\
+{{< input name=\"after\" >}}\n\n{{< include _after.md >}}\n\n# After heading {#sec-after}\n";
+    let d = source_map_tmpdir("line-contexts");
+    std::fs::write(d.join("_probe.md"), "PROBE-PARTIAL\n").unwrap();
+    std::fs::write(d.join("_after.md"), "AFTER-PARTIAL\n").unwrap();
+    let mut heads = vec![("---\ntitle: T\n---\n\nIntro.\n\n", "")];
+    // A fence line inside the front matter's YAML, and a `...` closer: the probe after
+    // either front matter is prose.
+    heads.push((
+        "---\ntitle: T\ndescription: |\n  Run\n  ```\n  make\n---\n\n",
+        "fm-fence",
+    ));
+    heads.push(("---\ntitle: T\n...\n\nIntro.\n\n", "fm-dots"));
+    let mut cases: Vec<(String, bool, String)> = line_pass_contexts()
+        .into_iter()
+        .map(|(name, inert, lines)| {
+            (
+                name.to_string(),
+                inert,
+                format!("{}{}\n", heads[0].0, lines.join("\n")),
+            )
+        })
+        .collect();
+    for (head, name) in &heads[1..] {
+        let probe = "::: {.probe-div}\nprobe body\n:::\n{{< input name=\"probe\" >}}\n\
+{{< include _probe.md >}}\n# Probe heading {#sec-probe}\n";
+        cases.push((name.to_string(), false, format!("{head}{probe}")));
+    }
+    let mut failures = Vec::new();
+    for (name, inert, body) in cases {
+        let src = format!("{body}{AFTER}");
+        let doc = render_document_with_includes(&src, &d);
+        let html = doc.body_html();
+        let (expanded, _) = crate::includes::resolve(&src, &d);
+        let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded, None)
+            .into_iter()
+            .map(|a| a.id)
+            .collect();
+        let live = !inert;
+        let checks = [
+            ("probe div", html.contains("class=\"probe-div\""), live),
+            ("probe control", html.contains("tali-in-probe"), live),
+            ("probe include", html.contains("PROBE-PARTIAL"), live),
+            (
+                "probe anchor",
+                anchors.iter().any(|a| a == "sec-probe"),
+                live,
+            ),
+            ("after div", html.contains("class=\"after-div\""), true),
+            ("after control", html.contains("tali-in-after"), true),
+            ("after include", html.contains("AFTER-PARTIAL"), true),
+            (
+                "after anchor",
+                anchors.iter().any(|a| a == "sec-after"),
+                true,
+            ),
+        ];
+        for (what, got, want) in checks {
+            if got != want {
+                failures.push(format!("[{name}] {what}: expected {want}, got {got}"));
+            }
+        }
+        // An inert probe draws no diagnostic about itself (no empty div, no include error).
+        if inert
+            && let Some(w) = doc
+                .warnings
+                .iter()
+                .find(|w| w.message.contains("probe") || w.message.contains(":::"))
+        {
+            failures.push(format!(
+                "[{name}] inert probe drew a warning: {}",
+                w.message
+            ));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+    assert!(
+        failures.is_empty(),
+        "{} disagreements:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+/// Audit 2026-09-24, scanners #8: a `:::` div opened inside a list item or block quote is
+/// text there, and says so once, at the opening marker. It used to lose its wrapper with
+/// an "empty `.callout-warning` block" diagnostic (the wrong cause, failing the gate) in a
+/// list item, and ship as literal text with no diagnostic at all in a block quote.
+#[test]
+fn a_div_inside_a_list_item_or_quote_is_text_with_one_located_warning() {
+    let src = "- First step.\n\n  ::: {.callout-warning}\n  Careful here.\n  :::\n\n\
+> ::: {.callout-note}\n> In a quote.\n> :::\n";
+    let doc = render_document(src);
+    let html = doc.body_html();
+    assert!(html.contains("::: {.callout-warning}"), "{html}");
+    assert!(html.contains("::: {.callout-note}"), "{html}");
+    assert!(!html.contains("class=\"callout"), "no wrapper: {html}");
+    let lines: Vec<(Option<u32>, &str)> = doc
+        .warnings
+        .iter()
+        .map(|w| (w.line, w.message.as_str()))
+        .collect();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert_eq!(lines[0].0, Some(3), "{lines:?}");
+    assert_eq!(lines[1].0, Some(7), "{lines:?}");
+    assert!(
+        lines.iter().all(|(_, m)| m.contains("not a fenced div")),
+        "{lines:?}"
+    );
+
+    // The closing marker of such a div, as the last line of its list item, is inside the
+    // item too: it must not close the div the list sits in.
+    let doc = render_document(
+        "::: {.callout-note}\n- step\n\n  ::: {.callout-warning}\n  Careful.\n  :::\n\n\
+Still in the note.\n:::\n",
+    );
+    let html = doc.body_html();
+    let note = html.find("callout-note").expect(&html);
+    let still = html.find("Still in the note.").expect(&html);
+    let end = html.rfind("</div></div>").expect(&html);
+    assert!(note < still && still < end, "{html}");
+    assert_eq!(doc.warnings.len(), 1, "{:?}", doc.warnings);
+}
+
+/// The other side of the rule above: a marker directly under a list item (no blank line)
+/// is at the top level, so it still closes the div. This is the shape of every callout
+/// that ends in a list, and of a columns layout whose columns hold lists, where the markers
+/// sit between two list items that would share one list if the markers were blank lines.
+#[test]
+fn a_marker_right_under_a_list_item_still_closes_the_div() {
+    let columns = render_document(
+        ":::: {.columns}\n::: {.column}\n- a\n:::\n::: {.column}\n- b\n:::\n::::\n",
+    );
+    assert!(
+        !columns.body_html().contains(":::"),
+        "{}",
+        columns.body_html()
+    );
+    assert!(columns.warnings.is_empty(), "{:?}", columns.warnings);
+    let doc = render_document("::: {.callout-note}\n- a\n- b\n:::\n\nAfter.\n");
+    let html = doc.body_html();
+    let callout = html.find("class=\"callout callout-note\"").expect(&html);
+    let after = html.find("After.").expect(&html);
+    assert!(callout < after, "{html}");
+    assert!(
+        !html[callout..after].contains("After."),
+        "the callout closed before `After.`: {html}"
+    );
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+}
+
+/// Audit 2026-09-24, scanners #5: a code sample in a list item written in the four-space
+/// continuation style is a sample. Its `:::` lines and its `{{< input >}}` stay as written,
+/// and nothing about them is diagnosed (the empty-callout warning failed the gate).
+#[test]
+fn a_sample_in_a_four_space_list_item_is_not_rewritten() {
+    let d = source_map_tmpdir("list4");
+    let src = "1.  Add a control:\n\n    ```markdown\n    {{< input name=\"k\" type=\"slider\" >}}\n\n    \
+::: {.callout-note}\n    Note.\n    :::\n    ```\n";
+    let doc = render_document_with_includes(src, &d);
+    let _ = std::fs::remove_dir_all(&d);
+    let text = strip_tags(&doc.body_html());
+    assert!(text.contains("::: {.callout-note}"), "{text}");
+    assert!(text.contains("{{&lt; input"), "{text}");
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+}
+
+/// Audit 2026-09-24, scanners #12d: the front matter is YAML, not markdown, so neither the
+/// include pass nor the shortcode pass touches it. A title that mentions a shortcode is text,
+/// not escaped control markup in the `<h1>` and `<title>`, and an include directive quoted
+/// in a YAML value does not splice a file into the YAML.
+#[test]
+fn a_shortcode_in_the_front_matter_is_left_as_written() {
+    let d = source_map_tmpdir("fm-shortcode");
+    std::fs::write(d.join("_x.md"), "INJECTED\n").unwrap();
+    let src = "---\ntitle: \"How {{< input name=k >}} works\"\ndescription: |\n  \
+{{< include _x.md >}}\n---\n\nBody.\n";
+    let doc = render_document_with_includes(src, &d);
+    let (expanded, _) = crate::includes::resolve(src, &d);
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(doc.title.as_deref(), Some("How {{< input name=k >}} works"));
+    assert!(!expanded.contains("INJECTED"), "{expanded}");
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
 }

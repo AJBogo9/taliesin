@@ -18,7 +18,9 @@ pub use model::{
 };
 pub(crate) use model::{BufLine, CellRole, CodeFold};
 
-fn parse_options() -> Options<'static> {
+/// The comrak options every parse of `.tmd` source uses: the render's, and
+/// [`crate::lines::classify`]'s, which must see the same structure the page renders.
+pub(crate) fn parse_options() -> Options<'static> {
     let mut options = Options::default();
     // No `front_matter_delimiter`: `frontmatter::front_matter_block` is the one splitter,
     // so a WHOLE document goes through `frontmatter::blank_front_matter` before it is
@@ -66,8 +68,9 @@ mod divs;
 pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
+pub(crate) use divs::rendered_lines;
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
-use divs::{group_divs, preprocess, scan_div_spans};
+use divs::{DivFences, group_divs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
@@ -175,6 +178,18 @@ pub fn executes_to_kernel(lang: &str) -> bool {
     lang == "python"
 }
 
+/// The `#| label:` of a fenced block the render runs as a cell: an executable fence
+/// (`{python}`, not the display-only `{.python}`) whose leading option block names one.
+/// The site's name-only anchor scan reads cell labels through this, so it cannot call a
+/// display sample a cross-reference target the page never anchors.
+pub(crate) fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
+    if is_executable_fence(info) && code_lang(info).is_some() {
+        cell_option(literal, "label")
+    } else {
+        None
+    }
+}
+
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
 /// relative to `base_dir`, mapping each block back to its origin file, and
 /// resolves citations/cross-references against the doc's bibliography.
@@ -279,11 +294,7 @@ fn render_doc_with_includes_impl(
     doc.warnings.extend(include_warnings.into_iter().map(|iw| {
         // `iw.line` is always >= 1 (constructed as `idx + 1` in includes.rs), so the
         // warning is always located on the directive line.
-        Warning::new(format!(
-            "include not resolved ({}): {{{{< include {} >}}}}",
-            iw.reason, iw.target
-        ))
-        .at(iw.file, iw.line as u32)
+        Warning::new(iw.message).at(iw.file, iw.line as u32)
     }));
     doc.warnings.extend(shortcode_warnings);
     doc
@@ -518,8 +529,9 @@ fn render_internal_impl(
     // a `--- ` fence published the YAML as a heading, or swallowed the body up to a later
     // `---` rule).
     let body = crate::frontmatter::blank_front_matter(src);
-    let (spans, unclosed_fences) = scan_div_spans(&body);
-    let processed = preprocess(&body);
+    let divs = DivFences::find(&body);
+    let (spans, unclosed_fences, stray_closes) = scan_div_spans(&divs);
+    let processed = preprocess(&body, &divs);
     let root = parse_document(&arena, &processed, &options);
 
     let lines: Vec<&str> = processed.lines().collect();
@@ -563,6 +575,27 @@ fn render_internal_impl(
     // line 1 is the right anchor for an `author:` diagnostic.
     let (authors, author_msgs) = crate::author::parse(front.get("author"));
     warnings.extend(author_msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
+    // A `:::` close with no div open is dropped; say so, since an extra close usually
+    // means one above it closed the wrong div.
+    for at in stray_closes {
+        let (file, mapped) = map_origin(origins, at);
+        warnings.push(
+            Warning::new("`:::` closes no open div: the line is dropped").at(file, mapped as u32),
+        );
+    }
+    // A `:::` div opened inside a list item or block quote is text there (a div wraps
+    // top-level blocks only). Said once, at the opening marker, rather than as the "empty
+    // div" the wrapper used to report or the silence a quoted one got.
+    for at in divs.in_container() {
+        let (file, mapped) = map_origin(origins, at);
+        warnings.push(
+            Warning::new(
+                "`:::` inside a list item or block quote is not a fenced div, so it renders \
+                 as text: a div can only wrap top-level blocks",
+            )
+            .at(file, mapped as u32),
+        );
+    }
     // The document-level `execute: cache:` default; a cell's own `#| cache` overrides it.
     // `echo`/`include` have no document-level form since 2026-08-02 — they are per-cell
     // (`#| echo:`), which is where every real document already said them.

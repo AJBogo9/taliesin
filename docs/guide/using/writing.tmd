@@ -127,7 +127,11 @@ nothing is emitted for either.
 
 ## Callouts
 
-Fenced divs become callouts, layout grids, or generic containers.
+Fenced divs become callouts, layout grids, or generic containers. A `:::` line opens or
+closes a div only at the top level of the document: inside code, an HTML comment, a list
+item or a block quote it is text, and a div opened in a list item or block quote draws a
+warning saying so. A div left open, and a `:::` that closes no open div, are reported at
+their line.
 
 ::: {.callout-tip}
 ## Tip
@@ -219,12 +223,13 @@ its identity (a `@fig-` cross-reference still resolves through one).
 ```
 
 Splices another file's contents into this one before parsing, as if you had pasted
-it in place. The directive must be alone on its line, and it is left literal inside a
-fence or an inline code span (which is why the examples on this page do not fire). The
-path is resolved relative to the file that holds the directive. A path in the partial's
-own text (an image, a link) is the including page's, because the text is spliced in
-before anything reads it: `![x](figures/a.png)` in a partial names `figures/a.png` beside
-each page that pulls it in.
+it in place. The directive must be alone on its line, and it is left literal inside
+code (a fence, an indented block or an inline code span) and inside an HTML comment,
+which is why the examples on this page do not fire and why commenting out an include
+turns it off. The path is resolved relative to the file that holds the directive. A path
+in the partial's own text (an image, a link) is the including page's, because the text is
+spliced in before anything reads it: `![x](figures/a.png)` in a partial names
+`figures/a.png` beside each page that pulls it in.
 
 Use an include to keep an author bio or a license footer in a single file and pull it
 into many pages. Because the splice happens before the
@@ -249,9 +254,14 @@ partial with a relative climb, exactly as the corpus does:
 :::
 
 An include that cannot be expanded is left visible and reported: an unsafe path
-(absolute, or one that climbs above the project root), an include cycle, and a
-missing or unreadable file each draw their own located warning instead of failing
-the build outright.
+(absolute, or one that climbs above the project root), an include cycle, a missing or
+unreadable file, and a directive that does not stand alone on its line (written inline,
+or after a list or quote marker) each draw their own located warning instead of failing
+the build outright. So does a partial that ends inside a code fence it never closed,
+since everything after the include would render inside that code block. A page stops
+expanding, with one warning, where it would pass 1,000 includes or 4 MiB of source: no
+real page comes near either, and a file that includes the next one twice at every level
+passes both within a few levels.
 
 ## Raw HTML passthrough
 

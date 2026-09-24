@@ -20,44 +20,17 @@ pub fn word_count(src: &str) -> usize {
     n
 }
 
-/// Walk `src`'s prose lines — skipping front matter, fenced code blocks, and `:::` div
-/// fences — invoking `f(1-based line, stripped)` with the [`strip_inline`]'d prose text of
-/// each remaining line. The single source of "what counts as prose"; [`word_count`] is its
-/// only caller today, and it stays a separate walk so the next prose measure cannot
-/// disagree with the reading time.
+/// Walk `src`'s prose lines — skipping front matter, code (fenced or indented), raw HTML
+/// (a comment, `<pre>`) and `:::` div fences — invoking `f(1-based line, stripped)` with
+/// the [`strip_inline`]'d prose text of each remaining line. What is code is the render's
+/// own answer ([`crate::render::rendered_lines`]). The single source of "what counts as
+/// prose"; [`word_count`] is its only caller today, and it stays a separate walk so the
+/// next prose measure cannot disagree with the reading time.
 fn for_each_prose_line(src: &str, mut f: impl FnMut(usize, &str)) {
-    let mut in_front = false;
-    let mut fence: Option<char> = None; // inside a ``` or ~~~ code block
+    let lines = crate::render::rendered_lines(src);
     for (i, raw) in src.lines().enumerate() {
-        let t = raw.trim_start();
-        // Front matter: a leading `---` (line 1 only) opens; the next `---`/`...` closes.
-        if i == 0 && t == "---" {
-            in_front = true;
-            continue;
-        }
-        if in_front {
-            if t == "---" || t == "..." {
-                in_front = false;
-            }
-            continue;
-        }
-        // Fenced code blocks: skip the fence lines and everything between.
-        if let Some(f) = fence {
-            if (f == '`' && t.starts_with("```")) || (f == '~' && t.starts_with("~~~")) {
-                fence = None;
-            }
-            continue;
-        }
-        if t.starts_with("```") {
-            fence = Some('`');
-            continue;
-        }
-        if t.starts_with("~~~") {
-            fence = Some('~');
-            continue;
-        }
         // `:::` div fence lines carry attributes, not prose.
-        if t.starts_with(":::") {
+        if !lines.line(i).kind.is_markdown() || raw.trim_start().starts_with(":::") {
             continue;
         }
         let text = strip_inline(raw);
@@ -165,6 +138,18 @@ mod tests {
 `ignored_code` $x + y$\n\n```\nfn ignored() {}\n```\n\n\
 ::: {.callout-note}\n:::\n";
         assert_eq!(word_count(src), 2, "only `Prose here.` counts");
+    }
+
+    /// Audit 2026-09-24, B2: prose is what the render reads as markdown. Indented code and a
+    /// commented-out draft are not prose, and a paragraph that starts with inline code in
+    /// triple backticks does not open a "fence" that swallows the words after it.
+    #[test]
+    fn prose_is_what_the_render_reads_as_markdown() {
+        assert_eq!(
+            word_count("One two.\n\n    not counted\n\n<!--\nnot counted\n-->\n"),
+            2
+        );
+        assert_eq!(word_count("```pip``` then\n\nthree more words\n"), 4);
     }
 
     #[test]

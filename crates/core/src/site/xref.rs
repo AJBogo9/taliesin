@@ -154,33 +154,26 @@ fn enclosing_site_root(page: &Path) -> Option<PathBuf> {
 
 /// The cross-reference anchors a page's code cells define through `#| label: fig-x`.
 /// [`scan_page_anchors`] cannot see these — a cell option lives inside a fence, which
-/// [`content_lines_numbered`] skips by design — so they are read here, from inside the
-/// fences, using the renderer's own directive primitive.
+/// [`content_lines_numbered`] skips by design — so they are read here, from the fences the
+/// render runs as cells (top-level, executable, the label in the leading option block),
+/// through the renderer's own [`crate::render::cell_label`]. A display sample that shows
+/// `#| label: fig-x`, or a label below the first line of code, defines nothing, exactly as
+/// on the built page.
 fn cell_label_anchors(src: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut in_code = false;
-    for line in src.lines() {
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if !in_code {
-            continue;
-        }
-        let Some(opt) = crate::render::option_directive(line) else {
-            continue;
-        };
-        if let Some((k, v)) = opt.split_once(':')
-            && k.trim() == "label"
-        {
-            let id = v.trim().trim_matches(['"', '\'']);
-            if is_ref_anchor(id) {
-                out.push(id.to_string());
-            }
-        }
-    }
-    out
+    let lines = crate::render::rendered_lines(src);
+    let text: Vec<&str> = crate::lines::split(src).collect();
+    lines
+        .fences
+        .iter()
+        .filter(|f| lines.line(f.open).depth == 0)
+        .filter_map(|f| {
+            let body_end = if f.closed { f.end } else { f.end + 1 };
+            let literal = text.get(f.open + 1..body_end.min(text.len()))?.join("\n");
+            crate::render::cell_label(&f.info, &literal)
+                .filter(|id| is_ref_anchor(id))
+                .map(str::to_string)
+        })
+        .collect()
 }
 
 /// The ATX heading level of a content line (`## T` -> 2), or `None` if it is not a
@@ -217,8 +210,9 @@ fn heading_title(line: &str) -> String {
 
 /// Every heading level in a page's source, in document order — the input
 /// [`ChapterNumbering`] derives its base from.
-fn heading_levels(src: &str) -> Vec<usize> {
-    content_lines_numbered(src)
+fn heading_levels(content: &[(usize, &str)]) -> Vec<usize> {
+    content
+        .iter()
         .filter_map(|(_, t)| heading_level_of(t))
         .collect()
 }
@@ -253,7 +247,8 @@ pub fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> 
     // heading shape has to be known before the first anchor is numbered: pre-scan it.
     // `emits_title_block` is the renderer's own gate, so this scan and the rendered page
     // agree on whether a leading heading is the chapter's title or its first section.
-    let levels: Vec<usize> = heading_levels(src);
+    let content: Vec<(usize, &str)> = content_lines_numbered(src).collect();
+    let levels: Vec<usize> = heading_levels(&content);
     let mut numbering = chapter.map(|ch| {
         ChapterNumbering::new(
             ch,
@@ -263,7 +258,7 @@ pub fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> 
             ),
         )
     });
-    for (line, t) in content_lines_numbered(src) {
+    for &(line, t) in &content {
         if let Some(level) = heading_level_of(t) {
             let number = numbering
                 .as_mut()
@@ -508,6 +503,22 @@ fn rewrite_one_xref(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Audit 2026-09-24, scanners #6a: the editor's cross-page anchor set read `#| label:`
+    /// from ANY fence with a naive ``` toggle, so a display sample showing a label (the guide's
+    /// own "Taliesin ignores this label" example) defined an anchor the built page never has,
+    /// and the editor and the gate disagreed about `@fig-x`. Only a cell the render runs
+    /// (top-level, executable, label in the leading option block) defines one.
+    #[test]
+    fn only_a_cell_the_render_runs_defines_a_label_anchor() {
+        let src = "```{python}\n#| label: fig-real\nx = 1\n```\n\n\
+```python\n#| label: fig-sample\n```\n\n\
+```{.python}\n#| label: fig-display\n```\n\n\
+```{python}\n#| echo: false\n\n#| label: fig-late\n```\n\n\
+- item\n\n  ```{python}\n  #| label: fig-in-list\n  ```\n\n\
+````markdown\n```{python}\n#| label: fig-nested\n```\n````\n";
+        assert_eq!(cell_label_anchors(src), ["fig-real"]);
+    }
 
     /// A scratch directory following the house idiom (no `tempfile` dependency in this crate).
     fn scratch(name: &str) -> PathBuf {

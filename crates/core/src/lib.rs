@@ -38,6 +38,7 @@ pub mod frontmatter;
 pub mod hash;
 pub mod highlight;
 pub mod includes;
+pub mod lines;
 pub mod math;
 mod math_vocab;
 pub mod minify;
