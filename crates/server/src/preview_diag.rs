@@ -1,25 +1,16 @@
 //! Bridge: run the static validators (the `build --check-only` superset) over an
-//! already-rendered preview document and convert them into `protocol::Diagnostic`s for the
-//! dev menu, so the live preview and the pre-publish gate cannot drift on what counts as a
-//! defect. (`check` was a verb until wave 9 retired it into that flag.)
+//! already-rendered preview document for the dev menu, so the live preview and the
+//! pre-publish gate cannot drift on what counts as a defect. (`check` was a verb until
+//! wave 9 retired it into that flag.)
 //!
-//! Returns `protocol::Diagnostic` (the client wire type), using the exact
-//! `Warning -> Diagnostic` mapping both serve paths already inline for render/xref
-//! warnings.
+//! Returns [`crate::lint::Diagnostic`], the one diagnostic type, through the one
+//! `Warning -> Diagnostic` mapping ([`crate::lint::diag_from`]), so each keeps the severity
+//! its validator set. `label` is the previewed page's file name: a warning with no `file`
+//! of its own is about that page, and the client resolves every `file` against the page's
+//! own directory.
 
-use crate::lint::{Scope, page_static_diagnostics};
-use crate::protocol::Diagnostic;
+use crate::lint::{Diagnostic, Scope, diag_from, page_static_diagnostics};
 use std::path::Path;
-
-/// Located (file+line) when the warning carries a location, else attributed to "the
-/// previewed document" (`file = None`, which the client resolves to the doc's path).
-fn located(w: &taliesin_core::render::Warning) -> Diagnostic {
-    let mut d = Diagnostic::warn(&w.message);
-    if let Some(line) = w.line {
-        d = d.at(w.file.clone(), line);
-    }
-    d
-}
 
 /// Static lints over an already-rendered preview doc's blocks. MUST be called on
 /// **pre-execution** blocks (before the executor runs the code cells).
@@ -28,10 +19,11 @@ pub(crate) fn static_diagnostics(
     blocks: &[taliesin_core::Block],
     base: &Path,
     scope: Scope,
+    label: &str,
 ) -> Vec<Diagnostic> {
     page_static_diagnostics(src, blocks, base, scope)
         .iter()
-        .map(located)
+        .map(|w| diag_from(w, label))
         .collect()
 }
 
@@ -47,24 +39,25 @@ pub(crate) fn static_diagnostics(
 pub(crate) fn cross_page_diagnostics(
     site: &taliesin_core::Site,
     page_rel: &str,
+    label: &str,
 ) -> Vec<Diagnostic> {
     site.validate_cross_page_links_for(page_rel)
         .iter()
-        .map(located)
+        .map(|w| diag_from(w, label))
         .collect()
 }
 
 /// `_site.yml` config warnings (unknown keys / typos), attributed to the config file.
 /// The missing-`_site.yml` advisory is dropped: a bare dir of `.tmd` is a valid project.
-/// `protocol::Diagnostic` has no "file without line" constructor, so set `file` directly.
 pub(crate) fn site_config_diagnostics(site: &taliesin_core::Site) -> Vec<Diagnostic> {
     site.warnings
         .iter()
         .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
         .map(|m| {
-            let mut d = Diagnostic::warn(m);
-            d.file = Some("_site.yml".to_string());
-            d
+            diag_from(
+                &taliesin_core::render::Warning::new(m.as_str()),
+                "_site.yml",
+            )
         })
         .collect()
 }
@@ -88,7 +81,8 @@ mod tests {
         let base = tmp_base("static-img");
         let src = "# Title\n\n![a chart](nope.png)\n";
         let doc = taliesin_core::render_single_doc(src, base.as_path());
-        let diags = static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone);
+        let diags =
+            static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone, "d.tmd");
         assert!(
             diags.iter().any(|d| d.message.contains("nope.png")),
             "expected a diagnostic naming the missing image, got: {:?}",
@@ -102,7 +96,8 @@ mod tests {
         let base = tmp_base("static-clean");
         let src = "# Title\n\nJust a paragraph of plain prose, no links or images.\n";
         let doc = taliesin_core::render_single_doc(src, base.as_path());
-        let diags = static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone);
+        let diags =
+            static_diagnostics(src, &doc.blocks, base.as_path(), Scope::Standalone, "d.tmd");
         assert!(
             diags.is_empty(),
             "clean doc should lint clean, got: {:?}",
@@ -150,12 +145,12 @@ mod tests {
             .rel
             .clone();
 
-        let on_index = cross_page_diagnostics(&site, &index_rel);
+        let on_index = cross_page_diagnostics(&site, &index_rel, "index.tmd");
         assert!(
             !on_index.is_empty(),
             "index links a nonexistent anchor; expected a diagnostic, got none"
         );
-        let on_other = cross_page_diagnostics(&site, &other_rel);
+        let on_other = cross_page_diagnostics(&site, &other_rel, "other.tmd");
         assert!(
             on_other.is_empty(),
             "other.tmd has no broken outgoing link; expected none, got: {:?}",
@@ -186,7 +181,7 @@ mod tests {
             "expected the config warning surfaced as a diagnostic"
         );
         assert!(
-            diags.iter().all(|d| d.file.as_deref() == Some("_site.yml")),
+            diags.iter().all(|d| d.file == "_site.yml"),
             "config diagnostics must be attributed to _site.yml"
         );
         let _ = std::fs::remove_dir_all(&dir);

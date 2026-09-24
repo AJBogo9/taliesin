@@ -27,7 +27,8 @@ use std::time::Duration;
 use taliesin_core::{Block, BlockOp, Page, Site, diff_blocks, needs_remount};
 use tokio::sync::{broadcast, mpsc};
 
-use crate::protocol::{self, Diagnostic};
+use crate::lint::{Diagnostic, diag_from};
+use crate::protocol;
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, open_in_browser, percent_decode,
     with_host_guard, with_identity, ws_origin_ok,
@@ -847,16 +848,8 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
     // `_site/` cannot name one tab three ways.
     let tab_title = site.page_title(page, &doc);
-    let diagnostics = warnings
-        .iter()
-        .map(|w| {
-            let mut d = Diagnostic::warn(&w.message);
-            if let Some(line) = w.line {
-                d = d.at(w.file.clone(), line);
-            }
-            d
-        })
-        .collect();
+    let label = page_label(page);
+    let diagnostics = warnings.iter().map(|w| diag_from(w, &label)).collect();
     PageDoc {
         tab_title,
         toc,
@@ -1550,11 +1543,13 @@ async fn build_page(
     });
     // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
     // cross-page check below covers those). Collected now, pushed after `diags` is built.
+    let label = page_label(&page);
     let static_diags = crate::preview_diag::static_diagnostics(
         &src,
         &doc.blocks,
         &base,
         crate::lint::Scope::InSite,
+        &label,
     );
     let mut exec = exec;
     // Exec-phase defects (an empty-output labelled figure/table cell) are only knowable
@@ -1588,29 +1583,26 @@ async fn build_page(
             site.page_title(&page, &doc),
         )
     };
-    let mut diags = page_diagnostics(&page.input, exec.as_deref());
+    let mut diags = page_diagnostics(&page.input, exec.as_deref(), &label);
     // A cell of this page's may have been SIGINTed to let another page's kernel restart
     // through (A17). Read AFTER `exec.run`, which is what the interrupt aborts, so this is
     // the very build that shows the traceback — and the page says where it came from
     // instead of just showing one.
     if let Some(by) = project.exec_lane.lock().take_interrupt_for(rel) {
-        diags.push(Diagnostic::warn(interrupted_notice(&by)));
+        let notice = taliesin_core::render::Warning::new(interrupted_notice(&by));
+        diags.push(diag_from(&notice, &label));
     }
     diags.extend(static_diags);
     // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
     // re-renders the whole site (~27 ms), so scope the site lock tightly.
     {
         let site = project.site.lock();
-        diags.extend(crate::preview_diag::cross_page_diagnostics(&site, rel));
+        diags.extend(crate::preview_diag::cross_page_diagnostics(
+            &site, rel, &label,
+        ));
         diags.extend(crate::preview_diag::site_config_diagnostics(&site));
     }
-    for w in &warnings {
-        let mut d = Diagnostic::warn(&w.message);
-        if let Some(line) = w.line {
-            d = d.at(w.file.clone(), line);
-        }
-        diags.push(d);
-    }
+    diags.extend(warnings.iter().map(|w| diag_from(w, &label)));
 
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
@@ -1675,23 +1667,38 @@ async fn build_page(
 /// `exec` is `None` on the bypass lane (AP3-1), which has no executor — and needs none:
 /// the only thing it contributes is the kernel-availability notice, which is about cells
 /// this page does not have.
-fn page_diagnostics(input: &Path, exec: Option<&crate::exec::Executor>) -> Vec<Diagnostic> {
+fn page_diagnostics(
+    input: &Path,
+    exec: Option<&crate::exec::Executor>,
+    label: &str,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
         // Broken front matter: a located, framed error (same as the single-doc server).
         // (Front-matter key warnings now arrive via `doc.warnings` from the render pass.)
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
             diags.push(
-                Diagnostic::error(message)
-                    .at(None, line)
+                Diagnostic::new(label.to_string(), Some(line), message)
                     .with_frame(crate::serve::code_frame(&src, line)),
             );
         }
     }
     if let Some(message) = exec.and_then(|e| e.diagnostic()) {
-        diags.push(Diagnostic::warn(message));
+        diags.push(diag_from(
+            &taliesin_core::render::Warning::new(message),
+            label,
+        ));
     }
     diags
+}
+
+/// The name the dev menu locates a page's own diagnostics by: its file name, which the
+/// client resolves against the page's directory like every other diagnostic `file`.
+fn page_label(page: &Page) -> String {
+    page.input
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| page.rel.clone())
 }
 
 // --- file watching ------------------------------------------------------
@@ -2330,7 +2337,10 @@ mod protocol_contract {
         );
         assert!(fr["diagnostics"].is_array());
 
-        let dg = parse(protocol::diagnostics(&[Diagnostic::warn("x")]));
+        let dg = parse(protocol::diagnostics(&[diag_from(
+            &taliesin_core::render::Warning::new("x"),
+            "p.tmd",
+        )]));
         assert_eq!(dg["type"], "diagnostics");
         assert_eq!(dg["messages"][0]["level"], "warning");
         assert_eq!(dg["messages"][0]["message"], "x");
@@ -3533,6 +3543,57 @@ mod project_tests {
              would be a second render of the same paint"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Build one cell-free page of `files` on the bypass lane and return the dev menu's
+    /// diagnostics exactly as the websocket carries them.
+    fn wire_diagnostics(tag: &str, files: &[(&str, &str)], rel: &str) -> Vec<serde_json::Value> {
+        let dir = std::env::temp_dir().join(format!("tali-wirediag-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (name, body) in files {
+            let p = dir.join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+        let site =
+            taliesin_core::site::Site::discover_with(&dir, taliesin_core::DraftMode::Include);
+        let project = Arc::new(Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(HashMap::new()),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+            front_matter: Mutex::new(HashMap::new()),
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, rel, None));
+        let wire = protocol::diagnostics(&project.pages.lock()[rel].doc.diagnostics);
+        let _ = std::fs::remove_dir_all(&dir);
+        let v: serde_json::Value = serde_json::from_str(&wire).unwrap();
+        v["messages"].as_array().cloned().unwrap_or_default()
+    }
+
+    /// The dev menu shows a defect at the severity its validator gave it. Every preview
+    /// diagnostic was built with `Diagnostic::warn`, so a missing image the gate fails on
+    /// arrived amber and the status dot never went red (audit 2026-09-24 B4, vestigial #4).
+    #[test]
+    fn an_error_reaches_the_dev_menu_as_an_error() {
+        let msgs = wire_diagnostics(
+            "severity",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n![a chart](nope.png)\n",
+                ),
+            ],
+            "index.tmd",
+        );
+        let missing = msgs
+            .iter()
+            .find(|m| m["message"].as_str().unwrap_or("").contains("nope.png"))
+            .unwrap_or_else(|| panic!("the missing image is reported: {msgs:?}"));
+        assert_eq!(missing["level"], "error", "{missing}");
     }
 }
 

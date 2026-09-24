@@ -27,28 +27,39 @@ use std::path::Path;
 use std::process::ExitCode;
 use taliesin_core::render::Severity;
 
-/// One located diagnostic, ready to print or serialize. Under `--format json` it is
-/// agent-grade: a `severity` and (for a "did you mean" typo) a structured `suggestion`
-/// (`{ replacement }`). (Keys serialize alphabetically: the formatters route through
-/// `serde_json::json!`, whose object is key-sorted.)
-#[derive(Debug, Clone, serde::Serialize)]
+/// One located diagnostic, ready to print or serialize: THE diagnostic type of every
+/// surface. `--check-only`, a writing build's log and `--format json`, the LSP and the
+/// preview's dev menu (`protocol::diagnostics`) all carry this one value, so a severity
+/// cannot be dropped between the validator that set it and the surface that shows it. The
+/// preview had a second type whose only constructor for a render warning was `warn`, and so
+/// showed every error-severity defect amber (audit 2026-09-24 B4).
+///
+/// Under `--format json` it is agent-grade: a `severity` and (for a "did you mean" typo) a
+/// structured `suggestion` (`{ replacement }`). (Keys serialize alphabetically: the
+/// formatters route through `serde_json::json!`, whose object is key-sorted.)
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub(crate) struct Diagnostic {
-    severity: Severity,
-    file: String,
-    line: Option<u32>,
+    pub(crate) severity: Severity,
+    pub(crate) file: String,
+    pub(crate) line: Option<u32>,
     /// 1-based `[col, end_col)` character span on `line`, present only when the underlying
     /// warning located a precise token (front-matter key typos). Omitted otherwise.
     #[serde(skip_serializing_if = "Option::is_none")]
     col: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     end_col: Option<u32>,
-    message: String,
+    pub(crate) message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     suggestion: Option<Suggestion>,
+    /// A few source lines around `line`, the offending one marked, for the preview's dev
+    /// menu (`serve::code_frame`). Only the preview sets it, and only the dev menu shows it:
+    /// a terminal line already names the file and line to open.
+    #[serde(skip)]
+    pub(crate) frame: Option<String>,
 }
 
 /// A structured, applicable fix lifted from an inline "did you mean `X`?" hint.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub(crate) struct Suggestion {
     replacement: String,
 }
@@ -77,7 +88,14 @@ impl Diagnostic {
             end_col: None,
             message,
             suggestion,
+            frame: None,
         }
+    }
+
+    /// Attach the dev menu's code frame (see [`Diagnostic::frame`]).
+    pub(crate) fn with_frame(mut self, frame: String) -> Self {
+        self.frame = Some(frame);
+        self
     }
 
     /// Project this diagnostic to LSP for the `lsp` server. `lines` is the buffer split by
@@ -572,8 +590,8 @@ fn human_root(target: &Path) -> Option<&Path> {
     target.is_dir().then_some(target)
 }
 
-/// The severity word a human line prints.
-fn severity_word(s: Severity) -> &'static str {
+/// The severity word a human line prints, and the preview's `level`.
+pub(crate) fn severity_word(s: Severity) -> &'static str {
     match s {
         Severity::Error => "error",
         Severity::Warning => "warning",
@@ -1214,6 +1232,7 @@ mod tests {
             end_col: Some(7),
             message: "unknown key `tittle`".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["---", "tittle: Hi", "---"];
         let lsp = d.to_lsp(&lines);
@@ -1243,6 +1262,7 @@ mod tests {
             end_col: Some(8),
             message: "unknown key `tittle`".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["😀tittle: Hi"];
         let lsp = d.to_lsp(&lines);
@@ -1262,6 +1282,7 @@ mod tests {
             end_col: None,
             message: "undefined".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["😀 hello"];
         let lsp = d.to_lsp(&lines);
@@ -1280,6 +1301,7 @@ mod tests {
             suggestion: Some(super::Suggestion {
                 replacement: "title".to_string(),
             }),
+            frame: None,
         };
         let lines = ["---", "tittle: Hi", "---"];
         // Columned + suggestion → the fix rides on `data`.
@@ -1298,6 +1320,7 @@ mod tests {
         // No suggestion → no fix.
         let no_sugg = super::Diagnostic {
             suggestion: None,
+            frame: None,
             ..base.clone()
         };
         assert_eq!(no_sugg.to_lsp(&lines).data, None);
@@ -1313,6 +1336,7 @@ mod tests {
             end_col: None,
             message: "undefined @fig-x".to_string(),
             suggestion: None,
+            frame: None,
         };
         let lines = ["a", "bb", "hello world"]; // line 3 (0-based 2) has 11 chars
         let lsp = d.to_lsp(&lines);
