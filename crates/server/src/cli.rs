@@ -92,7 +92,7 @@ fn init_files(today: &str) -> Vec<(PathBuf, String)> {
 }
 
 /// Every long flag `init` accepts, i.e. none: it drives the unknown-flag did-you-mean, and
-/// an empty set means any `-flag` gets a bare "unknown flag" (or a retirement note).
+/// an empty set means any `-flag` gets a bare "unknown flag".
 const INIT_FLAGS: &[&str] = &[];
 
 /// Parse `init [dir]` by the grammar every verb shares ([`serve::parse_args`]): no flags, and

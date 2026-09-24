@@ -191,10 +191,11 @@ pub struct Block {
     /// difference between a tab's output appearing in its own panel and every tab's
     /// output stacked below the tabset, hidden ones included.
     ///
-    /// Entries are the child blocks themselves (same id, sourcepos, source_file and
-    /// html), so the executor can ask a nested cell exactly the questions it asks a
-    /// top-level one. They are already flattened when a container folds another
-    /// container, so an entry's own `nested` is always empty.
+    /// Entries are the child blocks themselves (same id, sourcepos and source_file), so the
+    /// executor can ask a nested cell exactly the questions it asks a top-level one; their
+    /// `html` is not read, the container's own `html` being what the page shows. They are
+    /// already flattened when a container folds another container, so an entry's own
+    /// `nested` is always empty.
     pub nested: Vec<Block>,
 }
 

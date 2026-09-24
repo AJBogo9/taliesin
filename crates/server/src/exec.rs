@@ -1489,7 +1489,7 @@ impl Executor {
 ///
 /// **One definition, because two rules turn on it and they must not disagree.** [`plan`]
 /// keeps that cell and everything after it out of the warm prefix and re-runs the whole
-/// tail; the persist loop in [`Executor::execute_lang`] refuses to write any of that tail
+/// tail; the persist loop in `Executor::compute_outputs` refuses to write any of that tail
 /// to disk. The second rule was missing, so `plan`'s re-run was a runtime *mask* over disk
 /// entries that were already false when written — and deleting the directive lifted the
 /// mask and published the contradiction.

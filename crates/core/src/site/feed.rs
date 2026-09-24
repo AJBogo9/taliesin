@@ -16,15 +16,15 @@ fn nav_key(s: &str) -> &str {
 }
 
 impl Site {
-    /// Pages in nav order (with their nav label), then any remaining discovered pages
-    /// (label `None`). External nav links are skipped.
+    /// Pages in nav order, then any remaining discovered pages. External nav links are
+    /// skipped.
     ///
     /// It lived in `llms.rs` until that file was cut on 2026-08-08; `feed_hosts` was always
     /// its other caller, so it moved here rather than going with it. The order is the
     /// author's own nav order, which is why the feeds come out in the sequence a reader
     /// would expect rather than in filesystem order.
-    pub(crate) fn nav_ordered(&self) -> Vec<(&Page, Option<&str>)> {
-        let mut out: Vec<(&Page, Option<&str>)> = Vec::new();
+    pub(crate) fn nav_ordered(&self) -> Vec<&Page> {
+        let mut out: Vec<&Page> = Vec::new();
         for item in self.config.nav.left.iter().chain(&self.config.nav.right) {
             let Some(href) = item.href.as_deref() else {
                 continue;
@@ -34,17 +34,17 @@ impl Site {
             }
             let want = nav_key(href);
             if let Some(p) = self.pages.iter().find(|p| nav_key(&p.rel) == want)
-                && !out.iter().any(|(q, _)| q.rel == p.rel)
+                && !out.iter().any(|q| q.rel == p.rel)
             {
-                out.push((p, item.text.as_deref()));
+                out.push(p);
             }
         }
         for p in &self.pages {
             if p.url == "404.html" {
                 continue; // the error page is not site content
             }
-            if !out.iter().any(|(q, _)| q.rel == p.rel) {
-                out.push((p, None));
+            if !out.iter().any(|q| q.rel == p.rel) {
+                out.push(p);
             }
         }
         out
@@ -98,7 +98,7 @@ impl Site {
         let mut out = Vec::new();
         let mut sink = Vec::new(); // collection warnings are surfaced during page render
         let mut seen: HashSet<String> = HashSet::new();
-        for &(page, _) in &self.nav_ordered() {
+        for page in self.nav_ordered() {
             let Some(spec) = page.listings.iter().find(|sp| {
                 sp.max_items.is_none() && !seen.contains(&Self::listing_prefix(page, sp))
             }) else {

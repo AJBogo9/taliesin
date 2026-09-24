@@ -17,8 +17,10 @@
 //! on-ramp written before that server existed and was withdrawn with `taliesin schema` in
 //! Wave 2.
 
-/// The Draft-2020-12 JSON Schema for a project's `_site.yml`.
-pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.json");
+/// The Draft-2020-12 JSON Schema for a project's `_site.yml`, as committed: what the tests
+/// below compare the generator's output with. Nothing in the binary reads it.
+#[cfg(test)]
+const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.json");
 
 #[cfg(test)]
 mod generate {
