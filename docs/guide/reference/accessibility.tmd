@@ -84,7 +84,9 @@ or motion. Both follow preferences the reader already set on their own device:
   already set in their operating system, and could disagree with the rest of their
   screen.
 - **`prefers-reduced-motion`** is honoured for every animation and for
-  JavaScript-initiated scrolling, not only for CSS transitions.
+  JavaScript-initiated scrolling, not only for CSS transitions. The one exception is the
+  highlight on a search hit: it is a colour fade rather than motion, and collapsing it
+  would leave the hit unmarked.
 
 Taliesin ships no text-size, line-spacing, or focus-mode control, because the
 browser's own zoom and reading tools already provide them.

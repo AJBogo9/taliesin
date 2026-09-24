@@ -79,6 +79,9 @@
     active = cur;
     entries.forEach(function (e) {
       e.link.classList.toggle("tali-toc-active", e === cur);
+      // The highlight is visual only; this is the same fact for assistive tech.
+      if (e === cur) e.link.setAttribute("aria-current", "true");
+      else e.link.removeAttribute("aria-current");
     });
     // Collapse: expand only the active entry's branch (its <li> and ancestors), so
     // a long TOC shows top-level entries plus the current section's subsections.
