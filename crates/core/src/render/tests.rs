@@ -769,6 +769,38 @@ fn toc_does_not_double_escape_entities() {
     assert!(!toc.contains("&amp;lt;"), "TOC double-escaped `<`: {toc}");
 }
 
+/// ONE escaper, for text and attributes alike, and it escapes `"`. Text escaped without it
+/// can spell `name="value"` byte for byte, which is how a code sample showing
+/// `<div id="x">` was read as markup by every substring scan (FA11-FA13), and why the
+/// favicon, sitting in an attribute, could be handed the text escaper and break out of
+/// its quotes.
+#[test]
+fn text_and_attributes_share_one_escaper_that_escapes_the_quote() {
+    assert_eq!(
+        html_escape("a=\"b\" & <c>"),
+        "a=&quot;b&quot; &amp; &lt;c&gt;"
+    );
+    assert_eq!(escape_attr("a=\"b\" & <c>"), html_escape("a=\"b\" & <c>"));
+    let doc = render_document("Write `<div id=\"x\">` here.\n");
+    assert!(
+        doc.blocks[0]
+            .html
+            .contains("<code>&lt;div id=&quot;x&quot;&gt;</code>"),
+        "{}",
+        doc.blocks[0].html
+    );
+    // A figure's alt is its caption's plain text, escaped once: what the walker reads
+    // back is what the caption says, not `R&amp;D`.
+    let fig = render_document("![R&D, a < b](a.png){#fig-a}\n");
+    let img = fig
+        .blocks
+        .iter()
+        .flat_map(|b| tags(&b.html).collect::<Vec<_>>())
+        .find(|t| t.name == "img")
+        .expect("the figure's image");
+    assert_eq!(attr_value(&img, "alt").as_deref(), Some("R&D, a < b"));
+}
+
 #[test]
 fn toc_href_matches_an_explicit_heading_id_containing_an_entity() {
     // The `id` reaches `toc_html` via `extract_attr` over ALREADY-escaped heading HTML,
@@ -779,11 +811,14 @@ fn toc_href_matches_an_explicit_heading_id_containing_an_entity() {
     let doc = render_document("## R&D notes {#r&d-notes}\n\nBody.\n");
     let heading = &doc.blocks[0].html;
     let toc = toc_html(&doc.blocks);
-    // The anchor the browser resolves against, read back out of the emitted heading.
+    // The anchor the browser resolves against, and the href it follows, both read back the
+    // way the browser reads them: decoded, through the one walker.
     let anchor = extract_attr(heading, "id").expect("heading carries an explicit id");
-    assert_eq!(anchor, "r&amp;d-notes", "heading anchor changed: {heading}");
-    assert!(
-        toc.contains(&format!("href=\"#{anchor}\"")),
+    assert_eq!(anchor, "r&d-notes", "heading anchor changed: {heading}");
+    let href = extract_attr(&toc[toc.find("<a ").unwrap()..], "href").unwrap();
+    assert_eq!(
+        href,
+        format!("#{anchor}"),
         "TOC href must equal the heading's own id, got: {toc}"
     );
     assert!(
@@ -842,6 +877,90 @@ fn mermaid_library_inlined_into_build_pages_only() {
         !preview.contains("__esbuild_esm_mermaid") && preview.contains("__taliMermaidLoading"),
         "Preview keeps only the lazy loader, not the inlined library"
     );
+}
+
+/// A `{js}` cell's source rides inside a `<script>` element, where two sequences are
+/// markup whatever JS means by them, both matched case-insensitively by the parser:
+/// `</script` closes the element, and `<!--` followed by `<script` enters the state in
+/// which `</script>` closes nothing, so the rest of the page is swallowed. Only the
+/// lowercase `</script` was escaped: `"</SCRIPT><b>x</b>"` put a real `<b>` in the page
+/// and `"<!--<script>"` swallowed everything after the cell. Both are now written as
+/// escapes JS reads as the same characters in a string, template or regex literal.
+#[test]
+fn js_cell_source_can_neither_close_nor_swallow_its_script_element() {
+    let src =
+        "const a = \"</SCRIPT><b>x</b>\";\nconst b = \"<!--<script>\";\nconst c = `</Script >`;";
+    let doc = render_document(&format!("```{{js}}\n{src}\n```\n\nAfter the cell.\n"));
+    let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    let names: Vec<&str> = tags(&html).map(|t| t.name).collect();
+    assert!(
+        !names.contains(&"b"),
+        "the source wrote an element: {names:?}"
+    );
+    assert_eq!(
+        names.last(),
+        Some(&"p"),
+        "the paragraph after the cell: {names:?}"
+    );
+    // The one script element's body, up to the only `</script` (in any case) left.
+    let open = tags(&html)
+        .find(|t| attr_value(t, "type").as_deref() == Some("application/tali-js"))
+        .expect("the cell's script");
+    let body = &html[open.at + open.text.len()..];
+    let end = body.to_ascii_lowercase().find("</script").expect("closed");
+    let body = &body[..end];
+    assert!(!body.contains("<!--"), "{body}");
+    // Undoing the two escapes gives the author's source back, character for character.
+    assert_eq!(
+        body.replace("<\\/", "</").replace("\\x3C", "<"),
+        format!("{src}\n")
+    );
+}
+
+/// The page-assembly gates decide from MARKUP, never from text that merely shows it. Each
+/// read the finished body with a substring `contains`, so prose documenting the construct
+/// shipped its payload: `<span class="katex">` in inline code cost a math-free page 369 KB
+/// of KaTeX, `<pre class="mermaid">` cost 3.5 MB of mermaid, `<script
+/// type="application/tali-js">` cost d3, Plot and the cell runtime, and `<nav id="TOC">` on
+/// a `toc: false` page drew a "Skip to table of contents" link to an anchor that is not
+/// there. The last document is the control: the real constructs still ship everything.
+#[test]
+fn page_payload_gates_read_markup_and_not_text_that_shows_it() {
+    let shows = render_document(
+        "---\ntitle: Docs\ntoc: false\n---\n\n\
+         KaTeX wraps math in `<span class=\"katex\">`, mermaid reads `<pre class=\"mermaid\">`, \
+         a cell ships as `<script type=\"application/tali-js\">`, and the rail is \
+         `<nav id=\"TOC\">`.\n",
+    );
+    let page = super::render_doc_to_page(&shows, "docs", crate::OutputMode::Build);
+    let skip_to_toc =
+        |page: &str| tags(page).any(|t| attr_value(&t, "href").as_deref() == Some("#TOC"));
+    assert!(!page.contains(&KATEX_CSS[..400]), "KaTeX shipped for text");
+    assert!(
+        !page.contains("__esbuild_esm_mermaid"),
+        "mermaid shipped for text"
+    );
+    assert!(!page.contains("d3js.org"), "d3 shipped for text");
+    assert!(
+        !page.contains("tali-js cell error:"),
+        "the cell runtime shipped for text"
+    );
+    assert!(
+        !skip_to_toc(&page),
+        "a skip link to a TOC that is not there"
+    );
+
+    let real = render_document(
+        "---\ntitle: Real\ntoc: true\n---\n\n## One\n\n$x^2$\n\n## Two\n\n\
+         ```mermaid\nflowchart LR\n  A --> B\n```\n\n## Three\n\n\
+         ```{js}\nconst x = 1;\n```\n",
+    );
+    let page = super::render_doc_to_page(&real, "real", crate::OutputMode::Build);
+    assert!(page.contains(&KATEX_CSS[..400]), "real math ships KaTeX");
+    assert!(page.contains("__esbuild_esm_mermaid"), "a real diagram");
+    assert!(page.contains("d3js.org"), "a real cell ships d3");
+    assert!(page.contains("tali-js cell error:"), "and its runtime");
+    assert!(skip_to_toc(&page), "a real TOC keeps its skip link");
 }
 
 /// The third delivery, between the two above: a Build page whose caller has undertaken to
@@ -7465,7 +7584,7 @@ fn a_lone_carriage_return_does_not_break_ids_slugs_or_sourcepos() {
 /// A code sample that SHOWS a duplicate `id="…"` is text, not markup.
 ///
 /// **The defect (Fable audit FA11).** `rename_repeated_ids` scanned flat HTML for ` id="`
-/// with no tag-versus-text state, and `escape_html` does not escape `"`. A fence or an
+/// with no tag-versus-text state, and `escape_html` did not escape `"` then. A fence or an
 /// inline code span displaying `<div id="example">` twice therefore had its **visible
 /// text** rewritten to `example-1`, and the page drew two error-severity "duplicate element
 /// id" diagnostics about elements that do not exist. Fenced blocks in a *known* language
@@ -7483,8 +7602,9 @@ fn a_code_sample_showing_a_duplicate_id_is_left_alone() {
         !html.contains("example-1"),
         "a code sample's visible text was rewritten: {html}"
     );
+    // Displayed as escaped text, which the browser shows as `id="example"`.
     assert_eq!(
-        html.matches("id=\"example\"").count(),
+        html.matches("id=&quot;example&quot;").count(),
         3,
         "all three displayed ids must survive verbatim: {html}"
     );
@@ -7533,7 +7653,7 @@ fn the_tag_walker_reads_markup_and_never_text() {
     // `<p>`, `<code>` and `<img>` are real; the doctype, the comment and `</p>` are not.
     assert_eq!(names, vec!["p", "code", "script", "style", "img"]);
 
-    let values: Vec<&str> = tags(html)
+    let values: Vec<_> = tags(html)
         .flat_map(|t| attrs(&t).collect::<Vec<_>>())
         .map(|a| a.value)
         .collect();
@@ -7552,17 +7672,17 @@ fn the_attribute_reader_takes_every_value_form_and_whole_names() {
     let html = "<video src='single.mp4' poster=\"double.png\" data-tali-src=\"post.tmd\" \
                 width=640 controls></video>";
     let tag = tags(html).next().unwrap();
-    let got: Vec<(&str, &str)> = attrs(&tag).map(|a| (a.name, a.value)).collect();
-    assert_eq!(
-        got,
-        vec![
-            ("src", "single.mp4"),
-            ("poster", "double.png"),
-            ("data-tali-src", "post.tmd"),
-            ("width", "640"),
-            ("controls", ""),
-        ]
-    );
+    let got: Vec<(&str, String)> = attrs(&tag)
+        .map(|a| (a.name, a.value.into_owned()))
+        .collect();
+    let want = [
+        ("src", "single.mp4"),
+        ("poster", "double.png"),
+        ("data-tali-src", "post.tmd"),
+        ("width", "640"),
+        ("controls", ""),
+    ];
+    assert_eq!(got, want.map(|(n, v)| (n, v.to_string())));
     // Each attribute is located at its own name, which is what a caller reporting the
     // reference it just read needs.
     for a in attrs(&tag) {
@@ -7579,8 +7699,8 @@ fn every_attribute_locates_its_own_value() {
     let tag = tags(html).next().unwrap();
     for a in attrs(&tag) {
         assert_eq!(
-            &html[a.value_at..a.value_at + a.value.len()],
-            a.value,
+            &html[a.value_at..a.value_at + a.raw.len()],
+            a.raw,
             "{a:?} does not locate its own value"
         );
     }
@@ -7588,6 +7708,47 @@ fn every_attribute_locates_its_own_value() {
     // rather than a stale or out-of-range one.
     let hidden = attrs(&tag).find(|a| a.name == "hidden").unwrap();
     assert!(hidden.value.is_empty() && hidden.value_at <= html.len());
+}
+
+/// A value comes back DECODED, the way a browser reads it: `&amp;` is `&`. Every consumer
+/// resolves the value against something that is not markup (a file on disk, a page url, an
+/// id another element carries), and until 2026-09-24 each was handed the entity-encoded
+/// text instead: `![](img/R&D.png)` drew "local asset not found: `img/R&amp;D.png`" and was
+/// left out of a portable build, and a link to `R&D.tmd` drew three false broken-link
+/// errors. The raw span stays, for the one caller that writes a value back into the page.
+#[test]
+fn attribute_values_come_back_decoded_and_keep_their_raw_span() {
+    let html = "<img src=\"img/R&amp;D.png\" alt='a &quot;b&quot; &#39;c&#x27; &lt;d&gt;' \
+                title=x&amp;y name=\"&amp;#38;\" lang=\"&#38;lt;\">";
+    let tag = tags(html).next().unwrap();
+    let got: Vec<(&str, String, &str)> = attrs(&tag)
+        .map(|a| (a.name, a.value.to_string(), a.raw))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("src", "img/R&D.png".to_string(), "img/R&amp;D.png"),
+            (
+                "alt",
+                "a \"b\" 'c' <d>".to_string(),
+                "a &quot;b&quot; &#39;c&#x27; &lt;d&gt;"
+            ),
+            ("title", "x&y".to_string(), "x&amp;y"),
+            // Decoded ONCE, as HTML does: an encoded reference stays a reference.
+            ("name", "&#38;".to_string(), "&amp;#38;"),
+            ("lang", "&lt;".to_string(), "&#38;lt;"),
+        ]
+    );
+    assert_eq!(attr_value(&tag, "src").as_deref(), Some("img/R&D.png"));
+    assert_eq!(
+        attr_values(html, "title").collect::<Vec<_>>(),
+        vec!["x&y"],
+        "the page-wide reader decodes too"
+    );
+    // The rewriter hands its callback the RAW span and splices the answer back verbatim, so
+    // what it writes is still an encoded value.
+    let out = rewrite_attr_in_tags(html, "src", |v| v.replace(".png", ".webp"));
+    assert!(out.contains("src=\"img/R&amp;D.webp\""), "{out}");
 }
 
 /// The rewriter takes an attribute NAME, so it rewrites whichever quoting form the author
@@ -7636,7 +7797,7 @@ fn the_attribute_value_reader_matches_names_and_skips_text() {
     let html = "<h2 id=\"double\">h</h2><div id='single'>d</div><span id=bare>s</span>\
                 <p data-block-id=\"b-abc\">quoting <code>id=\"in-text\"</code></p>\
                 <script>var s = '<div id=\"in-script\">';</script>";
-    let got: Vec<&str> = attr_values(html, "id").collect();
+    let got: Vec<_> = attr_values(html, "id").collect();
     assert_eq!(got, vec!["double", "single", "bare"]);
     assert_eq!(
         attr_values(html, "data-block-id").collect::<Vec<_>>(),
@@ -7671,6 +7832,76 @@ fn a_srcset_splits_into_candidates_the_way_a_browser_reads_it() {
     );
     assert_eq!(attr_urls("SRC", "a b.png"), ["a b.png"]);
     assert!(attr_urls("alt", "x.png").is_empty());
+}
+
+/// An HTML comment is one token whatever it holds. `tag_end` read `<!--` as a tag and its
+/// text as attribute values, so an apostrophe (`don't`) opened a "quote" that ran to the
+/// next one on the page and a `>` (`->`) ended it early. Every reader built on it drifted:
+/// the search text dropped the prose after `<!-- don't forget -->` for the rest of its
+/// section and published a comment's tail after its `>`, and the citation walk treated the
+/// rest of a paragraph as the inside of a tag, so a `[@key]` after the comment stayed raw.
+#[test]
+fn an_html_comment_is_one_token_whatever_it_contains() {
+    let html = "<!-- don't > forget -->after";
+    assert_eq!(tag_end(html), Some(html.find("-->").unwrap() + 2));
+    assert_eq!(tag_end("<!-->x"), Some(4), "an abruptly closed comment");
+    assert_eq!(
+        indexable_text("<p>One</p><!-- don't forget -> x --><p>After it</p>"),
+        "One After it"
+    );
+    assert_eq!(strip_tags("<h2>A<!-- it's -->B</h2>"), "AB");
+
+    let dir = source_map_tmpdir("comment-cite");
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
+    )
+    .unwrap();
+    let doc = crate::render_document_with_includes(
+        "---\nbibliography: refs.bib\n---\n\nBefore <!-- don't --> after [@key].\n",
+        &dir,
+    );
+    let para = &doc.blocks[0].html;
+    assert!(
+        attr_values(para, "href").any(|h| h == "#ref-key"),
+        "the citation after the comment was rendered: {para}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A figure's `alt` is its caption as a reader hears it: citations and cross-references
+/// rendered, as they are in the `<figcaption>` beside it. The emitter built the alt from
+/// the caption before the citation pass ran, so a screen reader announced the source
+/// `[@key]` and `@fig-b` where a sighted reader saw "[1]" and "Figure 2".
+#[test]
+fn a_figure_alt_reads_its_caption_as_rendered() {
+    let dir = source_map_tmpdir("figure-alt");
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
+    )
+    .unwrap();
+    let doc = crate::render_document_with_includes(
+        "---\nbibliography: refs.bib\n---\n\n\
+         ![Chart after [@key] and @fig-b](a.png){#fig-a}\n\n![Second & last](b.png){#fig-b}\n",
+        &dir,
+    );
+    let alts: Vec<String> = doc
+        .blocks
+        .iter()
+        .flat_map(|b| {
+            attr_values(&b.html, "alt")
+                .map(|a| a.into_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(
+        alts,
+        vec!["Chart after [1] and Figure\u{a0}2", "Second & last"],
+        "{:?}",
+        doc.blocks.iter().map(|b| &b.html).collect::<Vec<_>>()
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A tag the author never closed, and a raw-text element the author never closed, each end
@@ -7796,6 +8027,27 @@ fn the_readme_does_not_advertise_withdrawn_constructs() {
         "README.md advertises constructs the tool no longer implements:\n  {}",
         found.join("\n  ")
     );
+}
+
+/// A heading's slug is built from the text the reader sees. A character reference in the
+/// source (`&amp;`, `&lt;`, `&#169;`) renders as one character, but the slug read the
+/// source spelling, so `## R&amp;D &lt;notes&gt;` was anchored `r-amp-d-lt-notes-gt`,
+/// words that appear nowhere on the page. A heading typed with the characters themselves
+/// is the control: its slug is unchanged.
+#[test]
+fn a_heading_slug_reads_character_references_as_the_characters_they_name() {
+    let id = |src: &str| {
+        render_document(src)
+            .blocks
+            .iter()
+            .find_map(|b| extract_attr(&b.html, "id"))
+    };
+    assert_eq!(
+        id("## R&amp;D &lt;notes&gt; &#169; x\n").as_deref(),
+        Some("r-d-notes-x")
+    );
+    assert_eq!(id("## R&D <notes> © x\n").as_deref(), Some("r-d-notes-x"));
+    assert_eq!(id("## Tom & Jerry\n").as_deref(), Some("tom-jerry"));
 }
 
 /// A heading that links somewhere must not put the link TARGET in its own anchor id.

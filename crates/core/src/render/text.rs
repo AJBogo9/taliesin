@@ -11,58 +11,14 @@
 
 use super::*;
 
-/// Decode already-stripped text: `&nbsp;` normalized to a space, numeric character
-/// references resolved, then the named entities the renderer emits decoded exactly once.
-/// The single home for this recipe — a caller that rewrites it by hand gets `&amp;lt;`
-/// wrong (a chained `.replace` decodes it twice, to `<`).
-///
-/// **Numeric refs are decoded BEFORE the named ones**, for the same reason `&amp;` is
-/// decoded last: a literal, double-encoded `&amp;#8217;` must survive as the text
-/// `&#8217;`, and a numeric pass that ran after `&amp;`→`&` would eat it. Author sources
-/// carry these (`&#8217;`, `&#x2019;`) wherever a typographic mark was written as an
-/// escape; leaving them raw published `it&#8217;s` into the search index.
+/// Decode already-stripped text: `&nbsp;` normalized to a space (a reader types a space),
+/// then every character reference decoded exactly once by [`unescape_html`], the one
+/// decoder. A caller that rewrites this by hand gets `&amp;lt;` wrong (a chained
+/// `.replace` decodes it twice, to `<`). Author sources carry numeric references
+/// (`&#8217;`, `&#x2019;`) wherever a typographic mark was written as an escape; leaving
+/// them raw published `it&#8217;s` into the search index.
 fn decode(stripped: &str) -> String {
-    unescape_html(&decode_numeric(&stripped.replace("&nbsp;", " ")))
-}
-
-/// Resolve `&#NNN;` / `&#xHH;` character references. An unterminated, over-long, or
-/// out-of-range reference is left exactly as written rather than guessed at.
-fn decode_numeric(s: &str) -> String {
-    if !s.contains("&#") {
-        return s.to_string();
-    }
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find("&#") {
-        out.push_str(&rest[..i]);
-        let body = &rest[i + 2..];
-        let hex = body.starts_with(['x', 'X']);
-        let digits = if hex { &body[1..] } else { body };
-        // Bounded: the longest legal code point is 7 decimal digits (0x10FFFF = 1114111).
-        let len = digits
-            .chars()
-            .take(8)
-            .take_while(|c| c.is_digit(if hex { 16 } else { 10 }))
-            .count();
-        let ch = (len > 0 && digits[len..].starts_with(';'))
-            .then(|| u32::from_str_radix(&digits[..len], if hex { 16 } else { 10 }).ok())
-            .flatten()
-            .and_then(char::from_u32);
-        match ch {
-            Some(c) => {
-                out.push(c);
-                rest = &digits[len + 1..];
-            }
-            // Not a resolvable reference: emit the `&` and rescan from the `#`, so a
-            // later valid reference in the same string is still found.
-            None => {
-                out.push('&');
-                rest = &rest[i + 1..];
-            }
-        }
-    }
-    out.push_str(rest);
-    out
+    unescape_html(&stripped.replace("&nbsp;", " "))
 }
 
 /// Visible text of a *run* of block HTML, for the cross-page search index: tags stripped

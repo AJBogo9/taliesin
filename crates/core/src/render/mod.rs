@@ -1251,6 +1251,9 @@ fn render_internal_impl(
         &xref_registry,
         unexpanded.then_some(src),
     ));
+    for b in &mut blocks {
+        b.html = figure_alts_from_captions(&b.html);
+    }
     // No gathered endnote section: each note renders beside its own reference (see the
     // splice in the walk above). Keeping a trailing list as well would put every note's
     // text in the DOM twice, which Ctrl-F and the search index would each report twice.
@@ -2082,7 +2085,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
 /// caller is writing the vendored library to that href beside the page, so the loader fetches
 /// it instead of the page carrying it. See [`AssetMode::Inline`]'s field for the measurement.
 pub(super) fn code_scripts_in(body: &str, mode: OutputMode, mermaid_src: &str) -> String {
-    let mermaid_present = body.contains("class=\"mermaid\"");
+    let mermaid_present = has_mermaid(body);
     // A static Build inlines the vendored mermaid library (it sets `globalThis.mermaid`,
     // which the loader below short-circuits on) so a diagram renders FULLY OFFLINE — no
     // CDN, no external request. Preview keeps just the lean lazy loader (dev-time network
@@ -2280,9 +2283,10 @@ pub fn js_cell_libs_js() -> String {
     format!("{D3_JS}\n;\n{PLOT_JS}")
 }
 
-/// True if a rendered body contains a mermaid diagram (gates the mermaid file link).
+/// True if a rendered body contains a mermaid diagram (gates the mermaid library, inlined
+/// or linked). An element with the class, not text that shows one ([`has_class`]).
 pub fn has_mermaid(body: &str) -> bool {
-    body.contains("class=\"mermaid\"")
+    has_class(body, |c| c == "mermaid")
 }
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
@@ -2444,9 +2448,13 @@ fn strip_link_targets_for_slug(s: &str) -> String {
 }
 
 /// The heading text `slugify` should see: markdown source with the two things that are
-/// markup rather than visible text taken out first.
+/// markup rather than visible text taken out first, then its character references
+/// decoded to the characters the reader sees (`R&amp;D` slugs as `r-d`, not `r-amp-d`).
+/// Decoded LAST, so a `&#36;` cannot become a math delimiter the pass above never saw.
 fn slug_source(block_src: &str) -> String {
-    strip_link_targets_for_slug(&strip_math_for_slug(block_src))
+    unescape_html(&strip_link_targets_for_slug(&strip_math_for_slug(
+        block_src,
+    )))
 }
 
 /// A deduped heading anchor slug; a repeated slug gets a `-N` suffix.
@@ -2804,6 +2812,45 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
     }
 }
 
+/// Give each image in a numbered `tali-figure` the `alt` its caption reads as: the text of
+/// the rendered `<figcaption>`, less its "Figure N" label. Run AFTER the citation pass,
+/// because that is where a caption's `[@key]` and `@fig-x` become "[1]" and "Figure 2"; an
+/// alt built at emission read the source aloud to a screen reader. Read through the
+/// walker, with the figure's extent the images between its open tag and its caption.
+fn figure_alts_from_captions(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0;
+    // The `alt` value spans of the current figure's images, awaiting its caption.
+    let mut pending: Vec<(usize, usize)> = Vec::new();
+    let mut in_figure = false;
+    for tag in tags(html) {
+        if tag.name.eq_ignore_ascii_case("figure") {
+            in_figure = has_class(tag.text, |c| c == "tali-figure");
+            pending.clear();
+        } else if in_figure && tag.name.eq_ignore_ascii_case("img") {
+            if let Some(a) = attrs(&tag).find(|a| a.name.eq_ignore_ascii_case("alt")) {
+                pending.push((a.value_at, a.raw.len()));
+            }
+        } else if in_figure && tag.name.eq_ignore_ascii_case("figcaption") {
+            let from = tag.at + tag.text.len();
+            let to = html[from..]
+                .find("</figcaption>")
+                .map_or(html.len(), |n| from + n);
+            let text = unescape_html(&strip_tags(&html[from..to]));
+            // The label ("Figure 2.1") never holds ": ", which separates it from the caption.
+            let alt = escape_attr(text.split_once(": ").map_or("", |(_, c)| c));
+            for (at, len) in pending.drain(..) {
+                out.push_str(&html[cursor..at]);
+                out.push_str(&alt);
+                cursor = at + len;
+            }
+            in_figure = false;
+        }
+    }
+    out.push_str(&html[cursor..]);
+    out
+}
+
 /// Rewrite each `id` attribute in `html` whose value is already in `seen`, returning the new
 /// html and one `(original, renamed)` pair per rewrite. The attribute is matched as a NAME,
 /// which is what keeps `data-block-id="…"` from false-matching, and only ever inside an
@@ -2919,16 +2966,13 @@ fn toc_html(blocks: &[Block]) -> String {
             }
         }
         out.push_str(&format!(
-            // NEITHER half may be escaped again. `text` is `strip_tags` output and `id`
-            // is `extract_attr` output: both are read back out of already-escaped heading
-            // HTML, so a second pass turns `&amp;` into `&amp;amp;`. On `text` that is a
-            // visible typo; on `id` it is a DEAD LINK in the published build, because the
-            // href stops matching the anchor the heading actually carries
-            // (`## R&D notes {#r&d-notes}` -> anchor `r&amp;d-notes`, href
-            // `#r&amp;amp;d-notes`). `escape_attr_from_html` is the attribute-context
-            // counterpart: it escapes `"` and leaves existing entities alone.
+            // `text` is `strip_tags` output, read back out of already-escaped heading HTML,
+            // so it is NOT escaped again: a second pass turns `&amp;` into a visible
+            // `&amp;amp;`. `id` is `extract_attr` output, which the walker DECODES, so it is
+            // escaped exactly once here; leaving it encoded twice was a dead TOC link in the
+            // published build (`## R&D notes {#r&d-notes}` -> href `#r&amp;amp;d-notes`).
             "<li><a href=\"#{}\">{text}</a>",
-            escape_attr_from_html(id),
+            escape_attr(id),
         ));
         open_li = true;
     }
@@ -2951,7 +2995,7 @@ fn toc_html(blocks: &[Block]) -> String {
 /// single-quoted spelling of the real thing.
 fn extract_attr(html: &str, name: &str) -> Option<String> {
     let tag = tags(html).next()?;
-    attr_value(&tag, name).map(str::to_string)
+    attr_value(&tag, name).map(std::borrow::Cow::into_owned)
 }
 
 // --- emitter -------------------------------------------------------------
@@ -3039,7 +3083,21 @@ impl DivAttrs {
 ///
 /// `pub` because the server's build-time HTML scanners need the same answer and a second
 /// hand-rolled quote-aware scan is how the two would drift.
+///
+/// A comment (`<!-- … -->`) is one token and ends at its `-->` (or at once, for the
+/// abrupt `<!-->` and `<!--->`): its text is not attributes, so an apostrophe in it
+/// (`don't`) opens no quote and a `>` in it (`->`) ends nothing. Read as a tag, a comment
+/// with one apostrophe swallowed the rest of the page for every reader that skips tags.
 pub fn tag_end(html: &str) -> Option<usize> {
+    if let Some(body) = html.strip_prefix("<!--") {
+        if body.starts_with('>') {
+            return Some(4);
+        }
+        if body.starts_with("->") {
+            return Some(5);
+        }
+        return body.find("-->").map(|n| 4 + n + 2);
+    }
     let mut quote: Option<u8> = None;
     for (i, &b) in html.as_bytes().iter().enumerate() {
         match quote {
@@ -3067,19 +3125,29 @@ pub struct Tag<'a> {
 }
 
 /// One attribute of one [`Tag`], as [`attrs`] read it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attr<'a> {
     /// The attribute name as written. Compare case-insensitively.
     pub name: &'a str,
-    /// The value without its quotes, exactly as written — still entity-escaped, since
-    /// every caller compares it against markup the same pass emitted. Empty for a
-    /// valueless attribute (`defer`).
-    pub value: &'a str,
+    /// The value without its quotes, with its character references decoded once:
+    /// `R&amp;D.png` reads `R&D.png`, which is the file, the url or the id a browser takes
+    /// it to name. Empty for a valueless attribute (`defer`).
+    ///
+    /// Decoded because every reader resolves the value against something that is not
+    /// markup: a file on disk, a page url, an id another element carries. It came back
+    /// still encoded until 2026-09-24, and each reader then compared markup with a file
+    /// name: an image `img/R&D.png` was "not found" as `img/R&amp;D.png` and left out of a
+    /// portable build, and a link to `R&D.tmd` drew three false broken-link errors.
+    pub value: std::borrow::Cow<'a, str>,
+    /// The value exactly as written, still entity-encoded: the span [`Attr::value_at`]
+    /// starts. Only a caller that writes a replacement back into the page wants it
+    /// ([`rewrite_attr_in_tags`]), because what it splices in must be encoded too.
+    pub raw: &'a str,
     /// Byte offset of the attribute NAME in the page, for a caller that has to locate the
     /// reference it just read.
     pub at: usize,
     /// Byte offset of the VALUE in the page — past the opening quote, when there is one.
-    /// With [`Attr::value`]'s length this is the exact span to splice a replacement into,
+    /// With [`Attr::raw`]'s length this is the exact span to splice a replacement into,
     /// which is what lets [`rewrite_attr_in_tags`] rewrite every quoting form in place
     /// rather than re-find a `name="` needle it can only spell one way. Points just past
     /// the name for a valueless attribute, where the empty value notionally sits.
@@ -3102,7 +3170,7 @@ const RAW_TEXT_ELEMENTS: &[&str] = &["script", "style"];
 ///
 /// **Why this exists (Fable audit FA11/FA12, then FA13).** Passes kept reading finished
 /// HTML with a bare `find("href=\"")` and no notion of tag-versus-text, and `escape_html`
-/// does not escape `"` — so a fenced or inline code sample that merely *shows*
+/// did not escape `"` until 2026-09-24 — so a fenced or inline code sample that merely *shows*
 /// `<div id="example">` had its visible text rewritten to `example-1` (stealing the real
 /// element's anchor and firing two bogus error-severity diagnostics), a sample showing
 /// `<a href="other.tmd">` was published reading `other.html`, and the build's asset
@@ -3259,7 +3327,8 @@ impl<'a> Iterator for Attrs<'a> {
                 // name, so the next loop resumes correctly.
                 return Some(Attr {
                     name,
-                    value: "",
+                    value: std::borrow::Cow::Borrowed(""),
+                    raw: "",
                     at: self.base + name_at,
                     value_at: self.base + self.i,
                 });
@@ -3288,7 +3357,12 @@ impl<'a> Iterator for Attrs<'a> {
             self.i = next;
             return Some(Attr {
                 name,
-                value,
+                value: if value.contains('&') {
+                    std::borrow::Cow::Owned(unescape_html(value))
+                } else {
+                    std::borrow::Cow::Borrowed(value)
+                },
+                raw: value,
                 at: self.base + name_at,
                 value_at: self.base + value_at,
             });
@@ -3297,8 +3371,9 @@ impl<'a> Iterator for Attrs<'a> {
 }
 
 /// The value of the attribute called `name` on `tag`, matched case-insensitively as HTML
-/// does. `None` when the tag does not carry it; `Some("")` for a valueless one.
-pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<&'a str> {
+/// does, and decoded ([`Attr::value`]). `None` when the tag does not carry it; `Some("")`
+/// for a valueless one.
+pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<std::borrow::Cow<'a, str>> {
     attrs(tag)
         .find(|a| a.name.eq_ignore_ascii_case(name))
         .map(|a| a.value)
@@ -3311,7 +3386,10 @@ pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<&'a str> {
 /// Two things a needle scan cannot do, and both are defects this tree has had: the name is
 /// matched as a NAME, so `data-block-id="…"` is not an `id`, and the value is read in
 /// whichever of HTML's three quoting forms the author wrote it in.
-pub(crate) fn attr_values<'a>(html: &'a str, name: &'a str) -> impl Iterator<Item = &'a str> {
+pub(crate) fn attr_values<'a>(
+    html: &'a str,
+    name: &'a str,
+) -> impl Iterator<Item = std::borrow::Cow<'a, str>> {
     tags(html)
         .flat_map(|t| attrs(&t))
         .filter(move |a| a.name.eq_ignore_ascii_case(name))
@@ -3370,6 +3448,15 @@ pub fn srcset_candidates(v: &str) -> Vec<(&str, &str)> {
     }
 }
 
+/// Whether any element in `html` carries a `class` token `pred` accepts, read through the
+/// one walker. The page-assembly gates (KaTeX, mermaid) ask this and never
+/// `contains("class=\"…\"")`: a substring answers for prose and code samples that merely
+/// SHOW the markup, and each such page shipped the payload for its text (369 KB of KaTeX,
+/// 3.5 MB of mermaid) until 2026-09-24.
+pub(crate) fn has_class(html: &str, pred: impl Fn(&str) -> bool) -> bool {
+    attr_values(html, "class").any(|v| v.split_ascii_whitespace().any(&pred))
+}
+
 /// Minimal percent-decoding for asset references and request paths (so `%20` etc. in
 /// filenames work).
 ///
@@ -3419,8 +3506,9 @@ pub fn asset_fs_path(r: &str) -> String {
 }
 
 /// Rewrite the value of every attribute called `name` that sits inside a real element tag,
-/// leaving the document's visible TEXT untouched. `rewrite` is handed each value and
-/// returns its replacement, which is spliced in between the delimiters the author used.
+/// leaving the document's visible TEXT untouched. `rewrite` is handed each value AS WRITTEN
+/// ([`Attr::raw`], still entity-encoded) and returns its replacement, which is spliced in
+/// verbatim between the delimiters the author used, so the replacement must be encoded too.
 ///
 /// Tag-versus-text is [`tags`]'s job — see there for the defects that made it one — and the
 /// three quoting forms are [`attrs`]'s, which is why this takes a NAME and not a `name="`
@@ -3439,12 +3527,12 @@ pub(crate) fn rewrite_attr_in_tags(
     for tag in tags(html) {
         for a in attrs(&tag) {
             // A valueless attribute has nothing to rewrite and no span to rewrite it into.
-            if a.value.is_empty() || !a.name.eq_ignore_ascii_case(name) {
+            if a.raw.is_empty() || !a.name.eq_ignore_ascii_case(name) {
                 continue;
             }
             out.push_str(&html[cursor..a.value_at]);
-            out.push_str(&rewrite(a.value));
-            cursor = a.value_at + a.value.len();
+            out.push_str(&rewrite(a.raw));
+            cursor = a.value_at + a.raw.len();
         }
     }
     out.push_str(&html[cursor..]);
@@ -3486,95 +3574,71 @@ enum Separate {
 fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
-    let mut chars = html.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '<' {
-            // Consume the tag body up to the closing `>` (quote-aware: a `>` inside a
-            // quoted attribute value does not end the tag).
-            let mut tag = String::new();
-            let mut quote: Option<char> = None;
-            for c in chars.by_ref() {
-                match quote {
-                    Some(q) => {
-                        if c == q {
-                            quote = None;
-                        }
-                        tag.push(c);
-                    }
-                    None => match c {
-                        '"' | '\'' => {
-                            quote = Some(c);
-                            tag.push(c);
-                        }
-                        '>' => break,
-                        _ => tag.push(c),
-                    },
-                }
-            }
-            // Enter/exit the KaTeX `<math>` MathML subtree (depth-tracked for safety).
-            let body = tag.trim_start();
-            let is_close = body.starts_with('/');
-            let name: String = body
-                .trim_start_matches('/')
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .flat_map(|c| c.to_lowercase())
-                .collect();
-            // Decided from the tag NAME, so it has to follow the parse above rather than
-            // precede it. Nothing else is pushed in between, so the space still lands
-            // exactly where the tag was.
-            let boundary = match separate {
-                Separate::Never => false,
-                Separate::EveryTag => true,
-            };
-            // Never double a boundary that is already there. `</span> <span>` carries a
-            // real space of its own, and pushing a second one publishes "models.  14 April".
-            if boundary && !out.ends_with(char::is_whitespace) {
-                out.push(' ');
-            }
-            if name == "math" {
-                if is_close {
-                    skip_math = skip_math.saturating_sub(1);
-                } else if !tag.trim_end().ends_with('/') {
-                    skip_math += 1;
-                }
-            } else if !is_close
-                && RAW_TEXT_ELEMENTS.contains(&name.as_str())
-                && !tag.trim_end().ends_with('/')
-            {
-                // A `<script>`/`<style>` body is not visible text — same reason `<math>`
-                // is dropped above. A `{js}`/`{glsl}` cell ships its author source in a
-                // `<script type="…">` in the page BODY, and that source was reaching the
-                // Cmd-K index, so a query for a variable name returned a snippet appearing
-                // nowhere on the page (measured live on gallery.taliesin.sh).
-                //
-                // Consumed to the matching close by NAME rather than by the depth counter
-                // math uses: a raw-text body is CDATA, so a `"<style>"` inside a JS string
-                // is text, and a counter would take it for an open tag and silently drop
-                // the whole rest of the page from the index. This is the HTML raw-text
-                // rule, which is also why `emit_client_cell` escapes `</script` in the
-                // source it ships — the close below is unambiguous.
-                let close = format!("</{name}");
-                let mut window = String::new();
-                while let Some(c) = chars.next() {
-                    window.push(c.to_ascii_lowercase());
-                    while window.len() > close.len() {
-                        window.remove(0);
-                    }
-                    if window == close {
-                        // Swallow the rest of the close tag (`>` or ` foo>`).
-                        for c in chars.by_ref() {
-                            if c == '>' {
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        } else if skip_math == 0 {
-            out.push(ch);
+    let mut i = 0;
+    while let Some(rel) = html[i..].find('<') {
+        let lt = i + rel;
+        if skip_math == 0 {
+            out.push_str(&html[i..lt]);
         }
+        // The tag body up to the `>` that closes it, through [`tag_end`]: quote-aware (a
+        // `>` inside a quoted attribute value does not end the tag), and a comment is one
+        // token, so its apostrophes and `>`s are neither quotes nor ends. Unterminated, it
+        // runs to the end of the input, as it always did.
+        let gt = tag_end(&html[lt..]).map_or(html.len(), |n| lt + n);
+        let tag = &html[lt + 1..gt.max(lt + 1)];
+        i = (gt + 1).min(html.len());
+        // Enter/exit the KaTeX `<math>` MathML subtree (depth-tracked for safety).
+        let body = tag.trim_start();
+        let is_close = body.starts_with('/');
+        let name: String = body
+            .trim_start_matches('/')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+        // Decided from the tag NAME, so it has to follow the parse above rather than
+        // precede it. Nothing else is pushed in between, so the space still lands
+        // exactly where the tag was.
+        let boundary = match separate {
+            Separate::Never => false,
+            Separate::EveryTag => true,
+        };
+        // Never double a boundary that is already there. `</span> <span>` carries a
+        // real space of its own, and pushing a second one publishes "models.  14 April".
+        if boundary && !out.ends_with(char::is_whitespace) {
+            out.push(' ');
+        }
+        if name == "math" {
+            if is_close {
+                skip_math = skip_math.saturating_sub(1);
+            } else if !tag.trim_end().ends_with('/') {
+                skip_math += 1;
+            }
+        } else if !is_close
+            && RAW_TEXT_ELEMENTS.contains(&name.as_str())
+            && !tag.trim_end().ends_with('/')
+        {
+            // A `<script>`/`<style>` body is not visible text — same reason `<math>`
+            // is dropped above. A `{js}`/`{glsl}` cell ships its author source in a
+            // `<script type="…">` in the page BODY, and that source was reaching the
+            // Cmd-K index, so a query for a variable name returned a snippet appearing
+            // nowhere on the page (measured live on gallery.taliesin.sh).
+            //
+            // Skipped to the matching close by NAME rather than by the depth counter
+            // math uses: a raw-text body is CDATA, so a `"<style>"` inside a JS string
+            // is text, and a counter would take it for an open tag and silently drop
+            // the whole rest of the page from the index. This is the HTML raw-text
+            // rule ([`raw_text_end`], the walker's), which is also why
+            // `emit_client_cell` escapes `</script` in the source it ships.
+            let close = raw_text_end(html, i, &name);
+            // Swallow the close tag too (`>` or ` foo>`).
+            i = html[close..]
+                .find('>')
+                .map_or(html.len(), |n| close + n + 1);
+        }
+    }
+    if skip_math == 0 {
+        out.push_str(&html[i..]);
     }
     out.trim().to_string()
 }
@@ -3592,9 +3656,17 @@ fn leading_h1_text(blocks: &[Block]) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-/// Reverse [`escape_html`]: decode the entities the renderer itself emits (`&amp;`,
-/// `&lt;`, `&gt;`, `&quot;`, `&#39;`). Not a general HTML entity decoder — it exists so
-/// text lifted back out of emitted HTML can be re-escaped exactly once.
+/// Reverse [`escape_html`], and the one character-reference decoder for text or an
+/// attribute value lifted back out of finished HTML ([`Attr::value`], the search index, a
+/// page title). Decodes the named references the renderer emits (`&amp;`, `&lt;`, `&gt;`,
+/// `&quot;`, `&apos;`, `&nbsp;`) and every numeric one (`&#39;`, `&#x2019;`), in ONE pass,
+/// as HTML does: a literal, double-encoded `&amp;#8217;` is the text `&#8217;`, where a
+/// numeric pass after the named one would decode it twice.
+///
+/// Any other named reference (`&eacute;`) is left as written. The renderer never emits
+/// one, so only hand-written raw HTML can carry it, and a full table is 2,000 entries for
+/// that. An unterminated, over-long or out-of-range numeric reference is left as written
+/// rather than guessed at.
 pub(crate) fn unescape_html(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
@@ -3604,20 +3676,13 @@ pub(crate) fn unescape_html(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
-        let decoded = [
-            ("&amp;", '&'),
-            ("&lt;", '<'),
-            ("&gt;", '>'),
-            ("&quot;", '"'),
-            ("&#39;", '\''),
-        ]
-        .into_iter()
-        .find(|(ent, _)| tail.starts_with(ent));
-        match decoded {
-            Some((ent, ch)) => {
+        match char_ref(tail) {
+            Some((ch, len)) => {
                 out.push(ch);
-                rest = &tail[ent.len()..];
+                rest = &tail[len..];
             }
+            // Not a reference this decodes: emit the `&` and rescan after it, so a valid
+            // reference later in the same string is still found.
             None => {
                 out.push('&');
                 rest = &tail[1..];
@@ -3628,9 +3693,44 @@ pub(crate) fn unescape_html(s: &str) -> String {
     out
 }
 
-/// Escape a string for HTML *text* content (`&`, `<`, `>`). For attribute values
-/// (which also need `"`), use [`escape_attr`]. Shared with the server crate's
-/// executor/kernel output rendering so escaping is defined once.
+/// The character the reference opening `s` (which starts with `&`) names, and the
+/// reference's length in bytes. `None` when it is not one [`unescape_html`] decodes.
+fn char_ref(s: &str) -> Option<(char, usize)> {
+    const NAMED: [(&str, char); 6] = [
+        ("&amp;", '&'),
+        ("&lt;", '<'),
+        ("&gt;", '>'),
+        ("&quot;", '"'),
+        ("&apos;", '\''),
+        ("&nbsp;", '\u{a0}'),
+    ];
+    if let Some((ent, ch)) = NAMED.iter().find(|(ent, _)| s.starts_with(ent)) {
+        return Some((*ch, ent.len()));
+    }
+    let body = s.strip_prefix("&#")?;
+    let hex = body.starts_with(['x', 'X']);
+    let digits = if hex { &body[1..] } else { body };
+    let radix = if hex { 16 } else { 10 };
+    // Bounded: the longest legal code point is 7 decimal digits (0x10FFFF = 1114111).
+    let len = digits
+        .chars()
+        .take(8)
+        .take_while(|c| c.is_digit(radix))
+        .count();
+    if len == 0 || !digits[len..].starts_with(';') {
+        return None;
+    }
+    let ch = char::from_u32(u32::from_str_radix(&digits[..len], radix).ok()?)?;
+    Some((ch, s.len() - digits.len() + len + 1))
+}
+
+/// Escape a string for HTML, text or a double-quoted attribute value alike (`&`, `<`, `>`,
+/// `"`). THE one escaper: [`escape_attr`] is the same function under the name attribute
+/// call sites use, so no site can pick a text escaper for an attribute (the favicon did,
+/// and a `"` in its path wrote a second attribute). Escaping `"` in text too means no
+/// escaped text can spell `name="value"`, which is what the finished-HTML substring scans
+/// kept mistaking for markup (FA11-FA13). Shared with the server crate's executor/kernel
+/// output rendering.
 pub fn html_escape(s: &str) -> String {
     let mut out = String::new();
     escape_html(s, &mut out);
@@ -3716,29 +3816,8 @@ fn base64_encode(data: &[u8]) -> String {
     s
 }
 
+/// [`html_escape`] appending to `out`, for the emitters that build a page in one buffer.
 fn escape_html(s: &str, out: &mut String) {
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-}
-
-/// Make already-entity-escaped HTML *text* (e.g. a rendered caption with its tags
-/// stripped via [`strip_tags`]) safe inside a double-quoted attribute. Existing
-/// entities are valid in an attribute value, so only the `"` needs escaping —
-/// running [`escape_attr`] here would double-escape `&` (`&amp;` -> `&amp;amp;`).
-pub(crate) fn escape_attr_from_html(s: &str) -> String {
-    s.replace('"', "&quot;")
-}
-
-/// Escape a string for an HTML *attribute* value (`&`, `<`, `>`, `"`). For text
-/// content, use [`html_escape`].
-pub fn escape_attr(s: &str) -> String {
-    let mut out = String::new();
     for ch in s.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
@@ -3748,8 +3827,10 @@ pub fn escape_attr(s: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out
 }
+
+/// [`html_escape`], under the name attribute call sites read best with. The same function.
+pub use html_escape as escape_attr;
 
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see

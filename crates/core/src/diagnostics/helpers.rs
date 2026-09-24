@@ -16,7 +16,7 @@ pub(crate) fn start_line(sourcepos: &str) -> Option<u32> {
 pub(crate) fn collect_attr_values<'a>(
     html: &'a str,
     name: &'a str,
-    out: &mut std::collections::HashSet<&'a str>,
+    out: &mut std::collections::HashSet<std::borrow::Cow<'a, str>>,
 ) {
     out.extend(crate::render::attr_values(html, name));
 }

@@ -88,14 +88,45 @@ pub(super) fn emit_client_cell(
             escape_attr(&js.inputs.join(","))
         ));
     }
-    // `</script` is the only sequence that can terminate the script element; escape
-    // it so author source carrying it (e.g. in a template literal) stays intact.
-    let safe_src = src.replace("</script", "<\\/script");
+    let safe_src = script_safe(src);
     let (mime, class) = (lang.mime, lang.class);
     format!(
         "<div{block_attrs} class=\"cell {class}\"><div class=\"tali-js-out\" id=\"{target}\"></div>\
          <script type=\"{mime}\"{data}>{safe_src}</script></div>"
     )
+}
+
+/// Author source made safe to sit in a `<script>` element without changing what it means
+/// as JavaScript. Two sequences are markup there whatever JS makes of them, and the parser
+/// matches both case-insensitively: `</script` ends the element, and `<!--` followed by
+/// `<script` enters the state in which `</script>` ends nothing, so the element swallows
+/// the rest of the page. Escaping only a lowercase `</script` let `"</SCRIPT><b>x</b>"`
+/// write a real `<b>` and `"<!--<script>"` swallow everything after the cell.
+///
+/// `</script` becomes `<\/script` and `<!--` becomes `\x3C!--`, the escapes the HTML spec
+/// recommends: in a string, template or regex literal (the only places either sequence can
+/// sit in working JS) they read as the same characters, and the runtime compiles the
+/// element's `textContent`, so it runs the program the author wrote.
+fn script_safe(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(i) = rest.find('<') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let b = tail.as_bytes();
+        if b.len() >= 8 && b[1] == b'/' && b[2..8].eq_ignore_ascii_case(b"script") {
+            out.push_str("<\\/");
+            rest = &tail[2..];
+        } else if tail.starts_with("<!--") {
+            out.push_str("\\x3C");
+            rest = &tail[1..];
+        } else {
+            out.push('<');
+            rest = &tail[1..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The float identity a numbered client figure carries. Bundled rather than passed

@@ -20,8 +20,8 @@ use std::path::Path;
 /// had no notion of tag-versus-text, so the `<img src="${e}">` fragments inside the inlined
 /// mermaid and Plot bundles were read as broken images and `build --check-only` exited 1 on
 /// a page whose only sin was carrying a hand-written `<script>`.
-fn local_img_refs(html: &str) -> Vec<&str> {
-    let mut out: Vec<&str> = Vec::new();
+fn local_img_refs(html: &str) -> Vec<std::borrow::Cow<'_, str>> {
+    let mut out: Vec<std::borrow::Cow<'_, str>> = Vec::new();
     for tag in crate::render::tags(html) {
         let img = tag.name.eq_ignore_ascii_case("img");
         if !img && !tag.name.eq_ignore_ascii_case("source") {
@@ -33,9 +33,9 @@ fn local_img_refs(html: &str) -> Vec<&str> {
             if !read {
                 continue;
             }
-            for val in crate::render::attr_urls(a.name, a.value) {
-                if is_local_ref(val) && !out.contains(&val) {
-                    out.push(val);
+            for val in crate::render::attr_urls(a.name, &a.value) {
+                if is_local_ref(val) && !out.iter().any(|v| v == val) {
+                    out.push(std::borrow::Cow::Owned(val.to_string()));
                 }
             }
         }
@@ -65,7 +65,7 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
             // asset copier give, so `![x](my%20image.png)` beside a real `my image.png`
             // (the spelling VS Code drag-inserts) is not reported missing while the
             // preview serves it.
-            let path = crate::render::asset_fs_path(val);
+            let path = crate::render::asset_fs_path(&val);
             if path.is_empty() || path.starts_with('/') {
                 continue;
             }

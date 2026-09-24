@@ -208,6 +208,8 @@ fn is_not_found_page(page: &Page) -> bool {
 }
 
 mod links;
+#[cfg(test)]
+mod poison_tests;
 pub use links::rewrite_tmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_tmd, is_external_or_special,
@@ -557,7 +559,7 @@ impl Site {
             format!(
                 "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\";\
                  window.TALIESIN_SEARCH_URL=\"{up}search-index.js\"",
-                page.url
+                search::json_str(&page.url)
             )
         };
         SiteCtx {
@@ -758,8 +760,8 @@ impl Site {
             let line = sourcepos_start_line(&b.sourcepos);
             for (path, frag) in manual_local_links(&b.html) {
                 links.push(LinkRef {
-                    path: path.to_string(),
-                    frag: frag.map(str::to_string),
+                    path,
+                    frag,
                     line,
                     source_file: b.source_file.clone(),
                 });
@@ -923,6 +925,7 @@ impl Site {
                 // Anchor existence: only when the link carries a fragment, the target
                 // page does not run cells (a cell can emit the id at runtime), and the
                 // anchor is missing.
+                // The fragment matches as written or percent-decoded, the browser's two tries.
                 if let Some(frag) = frag
                     && !frag.is_empty()
                     && !cells_by_url
@@ -930,6 +933,7 @@ impl Site {
                         .copied()
                         .unwrap_or(false)
                     && !target_ids.contains(frag)
+                    && !target_ids.contains(&render::percent_decode(frag))
                 {
                     let w = Warning::new(format!(
                         "broken link anchor: `#{frag}` is no element id on `{target_url}`"
@@ -1492,7 +1496,7 @@ impl Site {
     }
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
-        let href = format!("{up}{}", p.url);
+        let href = format!("{up}{}", esc(&p.url));
         // A post with an `image:` shows it; a post without simply does not. The monogram
         // placeholder that used to fill the empty slot went on 2026-08-15 with spec §9's cut
         // #12: it existed to keep a text-only post ALIGNED beside its imaged neighbours in a
@@ -1582,9 +1586,10 @@ impl Site {
                     } else {
                         "btn btn-lg"
                     };
+                    // Scheme-checked like a markdown link: `javascript:` is blanked.
                     format!(
                         "<a class=\"{cls}\" href=\"{}\">{}</a>",
-                        esc(&a.href),
+                        esc(render::safe_url(&a.href, false)),
                         esc(&a.text)
                     )
                 })
@@ -1935,6 +1940,79 @@ pub(crate) mod tests {
             !msgs.iter().any(|m| m.contains("y.pdf")),
             "a referenced `_downloads/` file ships: {msgs:?}"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An `&` in a page's file name, in an anchor and in a query is ordinary text to the
+    /// reader's browser, and the cross-page check read all three still entity-encoded: a
+    /// working link to `R&D.tmd` was reported three times as "resolves to `R&amp;D.html`,
+    /// which is no page in this site", failing the publish gate.
+    #[test]
+    fn a_link_to_a_page_with_an_ampersand_in_its_name_resolves() {
+        let root = write_site(
+            "amp-link",
+            &[
+                ("_site.yml", "title: S\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[page](R&D.tmd) [section](R&D.tmd#q&a) \
+                     [query](R&D.tmd?x=1&y=2) [gone](R&D.tmd#nope&x)\n",
+                ),
+                ("R&D.tmd", "---\ntitle: RD\n---\n\n## Q&A {#q&a}\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert_eq!(msgs.len(), 1, "only the missing anchor: {msgs:?}");
+        assert!(msgs[0].contains("`#nope&x`"), "{msgs:?}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A `%20` in a link is how a file name with a space is spelled in a URL, and the
+    /// browser decodes it; a fragment matches an id as written or percent-decoded. The
+    /// cross-page check and the nav check compared the encoded text, so every link below
+    /// failed the publish gate while working in the browser.
+    #[test]
+    fn a_percent_encoded_link_resolves_like_the_browser_resolves_it() {
+        let root = write_site(
+            "pct-link",
+            &[
+                (
+                    "_site.yml",
+                    "title: S\nnav:\n  left:\n    - text: Notes\n      href: my%20notes.tmd\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[file](my%20file.txt) [notes](my%20notes.tmd) \
+                     [uber](my%20notes.tmd#%C3%BCber) [gone](my%20notes.tmd#nope)\n",
+                ),
+                (
+                    "my notes.tmd",
+                    "---\ntitle: N\n---\n\n## Über {#über}\n\nx\n",
+                ),
+                ("my file.txt", "x\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert_eq!(msgs.len(), 1, "only the missing anchor: {msgs:?}");
+        assert!(msgs[0].contains("`#nope`"), "{msgs:?}");
+        let nav: Vec<String> = site
+            .validate_chrome_links()
+            .into_iter()
+            .map(|w| w.message)
+            .collect();
+        assert!(nav.is_empty(), "the nav link works: {nav:?}");
+
         let _ = std::fs::remove_dir_all(&root);
     }
 

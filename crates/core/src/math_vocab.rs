@@ -447,18 +447,22 @@ pub(crate) fn math_commands() -> Value {
 
 /// The LaTeX an entry actually inserts, with snippet placeholders resolved to a plain
 /// symbol — what [`tests::every_command_renders`] feeds KaTeX. `${1:cc}` keeps its default
-/// (a column spec is not interchangeable with `x`); a bare `$1` becomes `x`.
+/// (a column spec is not interchangeable with `x`); a bare `$1` becomes `x`. A snippet's
+/// own escapes (`\\`, `\$`, `\}`) insert the character they escape, as the editor does:
+/// `\left\\{` inserts `\left\{`.
 #[cfg(test)]
 fn probe(cmd: &MathCommand) -> String {
-    let src = if cmd.snippet.is_empty() {
-        cmd.name
-    } else {
-        cmd.snippet
-    };
+    let snippet = !cmd.snippet.is_empty();
+    let src = if snippet { cmd.snippet } else { cmd.name };
     let chars: Vec<char> = src.chars().collect();
     let mut out = String::new();
     let mut i = 0;
     while i < chars.len() {
+        if snippet && chars[i] == '\\' && matches!(chars.get(i + 1), Some('\\' | '$' | '}')) {
+            out.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
         if chars[i] == '$' && i + 1 < chars.len() {
             // `${n:default}` -> default; `$n` -> `x`.
             if chars[i + 1] == '{' {
@@ -485,17 +489,44 @@ fn probe(cmd: &MathCommand) -> String {
 mod tests {
     use super::*;
 
+    /// Whether KaTeX's output for one expression reports a failure. Three shapes, read
+    /// through the walker: the engine fallback (`tali-math-error`), a parse error
+    /// (`katex-error`), and an UNKNOWN command, which KaTeX with `throw_on_error` off renders
+    /// as ordinary markup whose text is the command itself in the error colour.
+    fn render_failed(html: &str) -> bool {
+        crate::render::has_class(html, |c| c == "katex-error" || c == "tali-math-error")
+            || crate::render::attr_values(html, "style")
+                .any(|s| s.replace(' ', "").contains("color:#cc0000"))
+    }
+
+    /// The detector has to be able to say no. It was `contains("tali-math-error")`, which
+    /// only the engine fallback produces, so an unknown command and a parse error both
+    /// passed and the gate below could not fail.
+    #[test]
+    fn a_failed_render_is_detected_in_every_shape_katex_gives_it() {
+        let render = |latex: &str| crate::math::render(latex, false);
+        assert!(
+            render_failed(&render("\\notacommand{x}")),
+            "unknown command"
+        );
+        assert!(render_failed(&render("\\frac{")), "parse error");
+        assert!(
+            !render_failed(&render("\\frac{a}{b} + x^2")),
+            "a good render"
+        );
+    }
+
     /// **The load-bearing test.** Every offered command must render through the SAME KaTeX
     /// the document renderer uses. Without this the list is a guess, and a guess that is
-    /// wrong ships an autocompletion whose result renders as a red `tali-math-error` span
-    /// for the reader — the tool actively teaching a mistake.
+    /// wrong ships an autocompletion whose result renders as red error text for the reader
+    /// — the tool actively teaching a mistake.
     #[test]
     fn every_command_renders() {
         let mut broken = Vec::new();
         for cmd in MATH_COMMANDS {
             let latex = probe(cmd);
             let html = crate::math::render(&latex, false);
-            if html.contains("tali-math-error") {
+            if render_failed(&html) {
                 broken.push(format!("  {} -> {latex}", cmd.name));
             }
         }

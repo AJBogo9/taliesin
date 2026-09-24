@@ -90,7 +90,7 @@ fn local_anchors(blocks: &[Block]) -> BTreeSet<String> {
         out.extend(
             crate::render::attr_values(&b.html, "id")
                 .filter(|v| super::is_xref_anchor(v))
-                .map(str::to_string),
+                .map(std::borrow::Cow::into_owned),
         );
     }
     out

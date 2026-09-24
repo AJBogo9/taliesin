@@ -2810,7 +2810,7 @@ fn local_refs(html: &str) -> Vec<(String, usize)> {
         for a in taliesin_core::render::attrs(&tag) {
             // The one list of URL attributes (`render::URL_ATTRS`) and the one reading of a
             // `srcset`, shared with the gate and the 404 rewrite.
-            for v in taliesin_core::render::attr_urls(a.name, a.value) {
+            for v in taliesin_core::render::attr_urls(a.name, &a.value) {
                 if is_local_ref(v) && !out.iter().any(|(seen, _)| seen == v) {
                     out.push((v.to_string(), a.at));
                 }
@@ -3000,7 +3000,7 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
             if !is_src && !a.name.eq_ignore_ascii_case("href") {
                 continue;
             }
-            if !is_external_fetch(a.value) {
+            if !is_external_fetch(&a.value) {
                 continue;
             }
             // `href=` fetches only on a `<link>` — an `<a>`/`<area>`/`<base>` href is not one —
@@ -3009,7 +3009,7 @@ fn external_refs(html: &str) -> Vec<ExternalRef> {
             if !is_src && !(tag.name.eq_ignore_ascii_case("link") && link_rel_fetches(&tag)) {
                 continue;
             }
-            push(a.value, a.at, &mut out);
+            push(&a.value, a.at, &mut out);
         }
     }
     // (2) remote / bare `{js}` `import()` specifiers — only inside author cell bodies, so the

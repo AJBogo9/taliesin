@@ -404,6 +404,12 @@ pub(super) fn resolve_blocks(
 /// Rewrite the `data-tali-xref`-marked links in one block's HTML: a marker whose
 /// anchor is a known cross-page target becomes a link to that page (with its
 /// number); an unknown anchor is left as the bare-label link `cite` emitted.
+///
+/// A marker is an `<a>` ELEMENT carrying the attribute, found through the one walker, and
+/// its span ends at its own `</a>` (cite's label is plain text). This found `<a href="#`
+/// in the raw string until 2026-09-24 and cut to the next `</a>`, so an author's unclosed
+/// `<a href="#top">` earlier in the paragraph was rewritten in the marker's place: it lost
+/// its href and the reference inside it was never resolved.
 pub(super) fn rewrite_cross_refs(
     html: &str,
     targets: &HashMap<String, XrefTarget>,
@@ -412,15 +418,21 @@ pub(super) fn rewrite_cross_refs(
 ) -> String {
     let mut out = String::with_capacity(html.len());
     let mut pos = 0;
-    while let Some(rel) = html[pos..].find("<a href=\"#") {
-        let start = pos + rel;
-        out.push_str(&html[pos..start]);
-        let Some(close) = html[start..].find("</a>") else {
+    for tag in crate::render::tags(html) {
+        if tag.at < pos
+            || !tag.name.eq_ignore_ascii_case("a")
+            || crate::render::attr_value(&tag, "data-tali-xref").is_none()
+        {
+            continue;
+        }
+        let open_end = tag.at + tag.text.len();
+        let Some(close) = html[open_end..].find("</a>") else {
             break;
         };
-        let end = start + close + "</a>".len();
+        let end = open_end + close + "</a>".len();
+        out.push_str(&html[pos..tag.at]);
         out.push_str(&rewrite_one_xref(
-            &html[start..end],
+            &html[tag.at..end],
             targets,
             current_url,
             up,
@@ -437,15 +449,15 @@ fn rewrite_one_xref(
     current_url: &str,
     up: &str,
 ) -> String {
-    let marker = "data-tali-xref=\"";
-    let (Some(ms), Some(gt)) = (link.find(marker), link.find('>')) else {
+    // Read through the walker: the anchor decoded (the registry is keyed by the source's
+    // own spelling), the label everything between the opening tag and `</a>`.
+    let Some(tag) = crate::render::tags(link).next() else {
         return link.to_string();
     };
-    let astart = ms + marker.len();
-    let Some(alen) = link[astart..].find('"') else {
+    let Some(anchor) = crate::render::attr_value(&tag, "data-tali-xref") else {
         return link.to_string();
     };
-    let anchor = &link[astart..astart + alen];
+    let anchor = anchor.as_ref();
     let Some(target) = targets.get(anchor) else {
         return link.to_string(); // unknown anchor → leave cite's bare-label link
     };
@@ -466,7 +478,9 @@ fn rewrite_one_xref(
     {
         "Chapter"
     } else {
-        &link[gt + 1..link.len() - "</a>".len()]
+        link[tag.text.len()..]
+            .strip_suffix("</a>")
+            .unwrap_or_default()
     };
     // What qualifies the kind word. A number when the project has one — but a website
     // has no section numbering, so a cross-page `@sec-` there had nothing to add and
@@ -484,9 +498,9 @@ fn rewrite_one_xref(
     // A same-page reference is a bare fragment: prefixing the page's own url would send
     // the reader through a fresh document load to land where they already are.
     let href = if same_page {
-        format!("#{anchor}")
+        format!("#{}", esc(anchor))
     } else {
-        format!("{up}{}#{anchor}", target.url)
+        format!("{up}{}#{}", esc(&target.url), esc(anchor))
     };
     format!("<a href=\"{href}\" class=\"tali-xref\">{label}{qualifier}</a>")
 }
@@ -658,6 +672,30 @@ mod tests {
             rewrite_one_xref(link, &targets, "index.html", ""),
             "<a href=\"#tbl-slo\" class=\"tali-xref\">Table&nbsp;1</a>",
             "a same-page target must not be prefixed with its own page url"
+        );
+    }
+
+    /// Only a real marker element is rewritten, and only its own span. The pass used to
+    /// find `<a href="#` in the raw string and cut to the next `</a>`, so an author's
+    /// unclosed `<a href="#top">` earlier in the paragraph was taken for the marker: it lost
+    /// its own href, and the reference inside it was never resolved. A code sample that
+    /// shows a marker is text and stays as written.
+    #[test]
+    fn only_the_marker_element_is_rewritten() {
+        let targets = HashMap::from([(
+            "sec-one".to_string(),
+            XrefTarget {
+                url: "a.html".to_string(),
+                number: String::new(),
+                title: "One".to_string(),
+            },
+        )]);
+        let html = r##"<p>Jump <a href="#top">here. See <a href="#sec-one" class="tali-xref" data-tali-xref="sec-one">Section</a> for more. <code>&lt;a href="#sec-one" data-tali-xref="sec-one"&gt;</code></p>"##;
+        assert_eq!(
+            rewrite_cross_refs(html, &targets, "b.html", ""),
+            "<p>Jump <a href=\"#top\">here. See <a href=\"a.html#sec-one\" class=\"tali-xref\">\
+             Section&nbsp;\u{201c}One\u{201d}</a> for more. <code>&lt;a href=\"#sec-one\" \
+             data-tali-xref=\"sec-one\"&gt;</code></p>"
         );
     }
 

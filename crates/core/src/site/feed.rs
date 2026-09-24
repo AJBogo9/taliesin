@@ -204,7 +204,8 @@ impl Site {
             "  <link rel=\"alternate\" href=\"{}\"/>\n",
             esc(&self.abs_page_url(host).unwrap_or_default())
         ));
-        s.push_str(&format!("  <updated>{updated}</updated>\n"));
+        // The time half of a `date:` is passed through (see `rfc3339`), so it is escaped.
+        s.push_str(&format!("  <updated>{}</updated>\n", esc(&updated)));
         for author in authors.iter().filter(|a| !a.is_empty()) {
             s.push_str(&format!(
                 "  <author><name>{}</name></author>\n",
@@ -228,8 +229,8 @@ impl Site {
                 "    <link rel=\"alternate\" href=\"{}\"/>\n",
                 esc(&link)
             ));
-            s.push_str(&format!("    <updated>{when}</updated>\n"));
-            s.push_str(&format!("    <published>{when}</published>\n"));
+            s.push_str(&format!("    <updated>{}</updated>\n", esc(&when)));
+            s.push_str(&format!("    <published>{}</published>\n", esc(&when)));
             for c in &p.categories {
                 s.push_str(&format!("    <category term=\"{}\"/>\n", esc(c)));
             }
@@ -638,8 +639,9 @@ mod tests {
         );
         let site = Site::discover(&root);
         let html = site.render_page("blog.tmd").unwrap();
-        let mut order: Vec<&str> = crate::render::attr_values(&html, "href")
+        let mut order: Vec<String> = crate::render::attr_values(&html, "href")
             .filter(|h| h.starts_with("posts/"))
+            .map(|h| h.into_owned())
             .collect();
         order.dedup();
         assert_eq!(

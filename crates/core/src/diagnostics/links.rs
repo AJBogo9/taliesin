@@ -9,7 +9,7 @@ use std::path::Path;
 /// (validated by `validate_xrefs`); bare in-page `#fragment` links are skipped (validated
 /// by [`super::anchors::validate_internal_anchors`]). Returns each `href` value verbatim
 /// (path + optional `#frag`), so a caller can split the path from the fragment.
-fn local_link_refs(html: &str) -> Vec<&str> {
+fn local_link_refs(html: &str) -> Vec<std::borrow::Cow<'_, str>> {
     let mut out = Vec::new();
     for tag in crate::render::tags(html) {
         if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
@@ -22,7 +22,7 @@ fn local_link_refs(html: &str) -> Vec<&str> {
         if val.starts_with('#') {
             continue;
         }
-        if is_local_ref(val) && !out.contains(&val) {
+        if is_local_ref(&val) && !out.contains(&val) {
             out.push(val);
         }
     }
@@ -72,7 +72,11 @@ pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
         for val in local_link_refs(&b.html) {
-            let path = &val[..val.find(['?', '#']).unwrap_or(val.len())];
+            // The file the browser requests: query and fragment dropped, `%XX` decoded
+            // (`render::asset_fs_path`, the step the asset check shares), so a working
+            // `[f](my%20file.txt)` is not reported missing.
+            let path = crate::render::asset_fs_path(&val);
+            let path = path.as_str();
             if path.is_empty() || path.starts_with('/') || link_target_exists(base, path) {
                 continue;
             }

@@ -287,6 +287,28 @@ fn a11y_flags_heading_level_skip_mid_document() {
     assert!(ws[0].line.is_some(), "located: {ws:?}");
 }
 
+/// The outline is every heading ELEMENT on the page, including those a `:::` container
+/// holds: a container is one block whose html carries its children, and the rule asked
+/// only about each block's root element. So an h2 -> h4 skip inside `::: {.foo}` was never
+/// reported, and an h3 in `.column-margin` was invisible, which made the h4 after it a
+/// false "skips from h2 to h4". Each skip is located at its own heading.
+#[test]
+fn a11y_walks_every_heading_a_container_holds() {
+    let doc = render_document(
+        "## Two\n\n::: {.foo}\n#### Four inside\n:::\n\n## Two again\n\n\
+         ::: {.column-margin}\n### Three in margin\n:::\n\n#### Four after\n",
+    );
+    let ws = validate_a11y(&doc.blocks);
+    let got: Vec<(String, Option<u32>)> = ws.iter().map(|w| (w.message.clone(), w.line)).collect();
+    assert_eq!(
+        got.len(),
+        1,
+        "exactly the skip inside the container: {got:?}"
+    );
+    assert!(got[0].0.contains("from h2 to h4"), "{got:?}");
+    assert_eq!(got[0].1, Some(4), "located at the heading itself: {got:?}");
+}
+
 #[test]
 fn a11y_one_level_deeper_is_fine() {
     // h2 -> h3 is a single step, not a skip; never flagged.
@@ -641,6 +663,57 @@ fn a_front_matter_image_must_name_a_file_the_build_publishes() {
 
 fn msgs_and_lines(ws: &[Warning]) -> Vec<(String, Option<u32>)> {
     ws.iter().map(|w| (w.message.clone(), w.line)).collect()
+}
+
+/// An `&` in a file name is an ordinary file name. The walker used to hand the checks the
+/// value still entity-encoded, so a present `img/R&D.png` was reported missing as
+/// `img/R&amp;D.png` and a working link to `Q&A data.csv` failed the gate. A really missing
+/// file is still reported, under the name the author wrote.
+#[test]
+fn the_asset_and_link_checks_resolve_an_ampersand_in_a_file_name() {
+    let dir = Tmp::new("amp");
+    std::fs::create_dir_all(dir.0.join("img")).unwrap();
+    std::fs::write(dir.0.join("img/R&D.png"), "x").unwrap();
+    std::fs::write(dir.0.join("Q&A data.csv"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "![Chart of spend](img/R&D.png)\n\n",
+            "Download [the data](<Q&A data.csv>).\n\n",
+            "![gone](img/X&Y.png)\n",
+        ),
+        &dir.0,
+    );
+    let assets = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(assets.len(), 1, "only the truly missing image: {assets:?}");
+    assert!(assets[0].contains("`img/X&Y.png`"), "{assets:?}");
+    let links = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert!(links.is_empty(), "the linked file exists: {links:?}");
+}
+
+/// A link resolves the way the browser resolves it: `%XX` in the path names the decoded
+/// file, and a fragment matches an id either as written or percent-decoded (the HTML
+/// spec's two tries). Both checks compared the encoded text, so a working
+/// `[f](my%20file.txt)` and a working `[u](#%C3%BCber)` each failed the publish gate.
+#[test]
+fn the_link_and_anchor_checks_percent_decode_like_a_browser() {
+    let dir = Tmp::new("pct-links");
+    std::fs::write(dir.0.join("my file.txt"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "## Über {#über}\n\n",
+            "[f](my%20file.txt) [g](gone%20file.txt) [u](#%C3%BCber) [raw](#über) \
+             [x](#%C3%BCbex)\n",
+        ),
+        &dir.0,
+    );
+    let links = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert_eq!(links.len(), 1, "only the missing file: {links:?}");
+    assert!(links[0].contains("`gone file.txt`"), "{links:?}");
+    let anchors = msgs(&validate_internal_anchors(&doc.blocks));
+    assert_eq!(anchors.len(), 1, "only the missing anchor: {anchors:?}");
+    assert!(anchors[0].contains("#%C3%BCbex"), "{anchors:?}");
 }
 
 /// The same rule on the link and alt-text checks, which shared the scan.

@@ -83,7 +83,7 @@ impl ImageAnnotator {
             return None;
         }
         let src = super::attr_value(tag, "src")?;
-        let (w, h) = intrinsic_size(src, base)?;
+        let (w, h) = intrinsic_size(&src, base)?;
         let hints = if self.seen_first {
             " loading=\"lazy\" decoding=\"async\""
         } else {
@@ -190,6 +190,20 @@ mod tests {
         assert!(
             second.contains(r#"loading="lazy""#) && second.contains(r#"decoding="async""#),
             "later images must be lazy: {second}"
+        );
+    }
+
+    /// An `&` in a file name reaches the pass entity-encoded (`R&amp;D.png`), and the file on
+    /// disk is `R&D.png`. Reading the encoded text as a path found nothing, so the image lost
+    /// its box and the LCP hint moved on to the next image.
+    #[test]
+    fn an_ampersand_in_a_file_name_still_resolves() {
+        let d = tmp("amp");
+        fixture(&d, "R&D.png", 64, 32);
+        let got = ImageAnnotator::new().annotate(r#"<img src="R&amp;D.png" alt="x" />"#, &d);
+        assert_eq!(
+            got,
+            r#"<img src="R&amp;D.png" alt="x" width="64" height="32" fetchpriority="high" />"#
         );
     }
 

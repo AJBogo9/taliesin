@@ -256,7 +256,6 @@ pub(crate) fn page_static_diagnostics(
 ) -> Vec<taliesin_core::render::Warning> {
     use taliesin_core::diagnostics as dx;
     let mut out = Vec::new();
-    out.extend(dx::validate_duplicate_heading_ids(blocks));
     out.extend(dx::validate_internal_anchors(blocks));
     out.extend(dx::validate_local_assets(blocks, base));
     out.extend(dx::validate_front_matter_image(src, base));

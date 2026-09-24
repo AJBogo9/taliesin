@@ -297,10 +297,10 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // (the `doc-toc` landmark is in the rotor); this is for keyboard-only users who are
     // not running AT, where the skip link is the only mechanism there is. Ordered after
     // "Skip to content" because reading is the common intent.
-    let skip_link = match (
-        p.body.contains("id=\"tali-main\""),
-        p.body.contains("id=\"TOC\""),
-    ) {
+    // Decided by the elements' ids through the walker: a `toc: false` page whose text SHOWS
+    // `<nav id="TOC">` used to get a skip link to an anchor that is not there.
+    let has_id = |id: &str| attr_values(p.body, "id").any(|v| v == id);
+    let skip_link = match (has_id("tali-main"), has_id("TOC")) {
         (true, true) => {
             "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n\
              <a class=\"tali-skip tali-skip-toc\" href=\"#TOC\">Skip to table of contents</a>\n"
@@ -605,9 +605,10 @@ fn html_page_inner(
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();
-    // Only ship the (large) KaTeX stylesheet when the page actually has math
-    // (computed before `body` is moved into the content layout below).
-    let ship_katex = body.contains("class=\"katex");
+    // Only ship the (large) KaTeX stylesheet when the page actually has math: an element
+    // KaTeX rendered, not prose showing one ([`has_class`]). Computed before `body` is moved
+    // into the content layout below.
+    let ship_katex = has_class(&body, |c| c.starts_with("katex"));
     // With `toc: true`, lay the content beside a sticky table of contents. Name the
     // TOC landmark so a screen reader's landmark list distinguishes it from the other
     // `<nav>`s (navbar / post-nav). `toc_html` already gives it `role="doc-toc"`; the

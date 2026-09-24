@@ -153,16 +153,10 @@ static RENDER_THREADS: LazyLock<Mutex<std::collections::HashSet<std::thread::Thr
     LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
 
 fn fallback(latex: &str) -> String {
-    let mut escaped = String::new();
-    for ch in latex.chars() {
-        match ch {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            _ => escaped.push(ch),
-        }
-    }
-    format!("<span class=\"tali-math-error\" title=\"math render failed\">{escaped}</span>")
+    format!(
+        "<span class=\"tali-math-error\" title=\"math render failed\">{}</span>",
+        crate::render::html_escape(latex)
+    )
 }
 
 #[cfg(test)]
