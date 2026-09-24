@@ -214,6 +214,12 @@ impl Ws {
     }
 }
 
+/// Whether a preview message tells the tab to reload.
+fn is_reload(message: &str) -> bool {
+    serde_json::from_str::<Value>(message)
+        .is_ok_and(|v| v.get("type").and_then(Value::as_str) == Some("reload"))
+}
+
 fn rss_kib(pid: u32) -> Option<u64> {
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
     let line = status.lines().find(|l| l.starts_with("VmRSS:"))?;
@@ -306,10 +312,20 @@ pub fn measure_preview(
             } else {
                 std::fs::write(&path, &edited)?;
             }
-            if ws.next(Duration::from_secs(60)).is_some() {
+            let first = ws.next(Duration::from_secs(60));
+            if first.is_some() {
                 slot.push(t0.elapsed().as_nanos());
             }
-            ws.drain(Duration::from_millis(350));
+            // A save that moves the page's chrome (a title the navbar or a book's drawer
+            // shows) is answered with `reload`, and the preview drops the tab's state: the
+            // browser loads the page again and reconnects, so the bench reconnects too.
+            // Kept on the old socket, every later save waited out the 60 s above unanswered.
+            if first.as_deref().is_none_or(is_reload) {
+                ws = Ws::connect(bound, page)?;
+                ws.drain(Duration::from_millis(1500));
+            } else {
+                ws.drain(Duration::from_millis(350));
+            }
             std::thread::sleep(Duration::from_millis(400));
         }
     }

@@ -408,7 +408,7 @@ pub struct Executor {
     /// `--no-exec` / `TALIESIN_NO_EXEC`: never run code cells, render them as source.
     ///
     /// **It is not a sanitizer and does not make an untrusted document safe.** It stops
-    /// `{python}`/`{r}` cells reaching a live kernel and covers `{js}`, but raw HTML in the
+    /// `{python}` cells reaching a live kernel and covers `{js}`, but raw HTML in the
     /// source still passes through verbatim (`emit.rs`), by the documented trust model in
     /// `taliesin_core`'s crate docs: the author owns their own input. There is deliberately
     /// no HTML sanitizer and no CSP (the 2026-07-03 ruling), which the user-facing docs
@@ -459,7 +459,7 @@ impl Executor {
     }
 
     /// Run this executor's kernels in `dir` (the document's directory), so a cell's
-    /// relative file writes (audio, a `ggsave`/`savefig` figure) land beside
+    /// relative file writes (audio, a `savefig` figure) land beside
     /// the source rather than wherever the server was launched. Canonicalized to an
     /// absolute path (an empty/relative `dir` resolves against the current dir); a
     /// path that can't be canonicalized is used as given.
@@ -1855,8 +1855,8 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
     )
 }
 
-/// The fallback for a `#| label: tbl-x` cell whose output holds no `<table>`: an R
-/// `kable()` string printed as text, a `data.frame`'s fixed-width repr, a cell that
+/// The fallback for a `#| label: tbl-x` cell whose output holds no `<table>`: a table
+/// printed as text, a `DataFrame`'s fixed-width repr, a cell that
 /// errored, or one that never ran because no kernel was available.
 ///
 /// The number is spent and the cross-reference is already rewritten by the time this
@@ -2704,7 +2704,7 @@ mod tests {
         );
         // PL6: the executor-state guidance routes to `doctor` and names the Jupyter kernel
         // package, not just the interpreter path (the usual real cause is a missing
-        // ipykernel/IRkernel on a perfectly good interpreter).
+        // ipykernel on a perfectly good interpreter).
         let diag = ex.diagnostic().unwrap_or_default();
         assert!(
             diag.contains("taliesin doctor") && diag.contains("Jupyter kernel"),

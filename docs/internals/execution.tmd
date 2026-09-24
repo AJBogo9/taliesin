@@ -53,12 +53,12 @@ An output block's id is derived from its cell's id, so when a cell re-runs only
 ## What runs on a rebuild
 
 `compute_outputs` gives the document notebook semantics without re-running
-everything. Per language, it decides which **contiguous range** of cells must
+everything. It decides which **contiguous range** of cells must
 execute, by sorting the cells into three zones (@fig-exec-zones):
 
 ```{mermaid}
 %%| label: fig-exec-zones
-%%| fig-cap: "Each language's cells split into three zones; only the run range boots the kernel."
+%%| fig-cap: "The cells split into three zones; only the run range boots the kernel."
 flowchart LR
   A["warm prefix<br/>the live kernel<br/>already ran it"] --> B["run range<br/>changed cell +<br/>everything downstream"] --> C["cached tail<br/>restored from<br/>_freeze/"]
 ```
@@ -81,7 +81,7 @@ that does not hold.
 
 ### The cumulative-hash chain in detail
 
-For a language's cells in document order, `cumulative_hashes(interp, codes)` folds
+For the cells in document order, `cumulative_hashes(interp, codes)` folds
 each cell's code into the running digest of everything before it:
 
 ```text
@@ -225,11 +225,11 @@ written), and "Restart kernel" forces a fresh run rather than a replay.
 
 ## The warm kernel (`kernel.rs`)
 
-`Kernel { child, shell, iopub, conn_dir }` is a spawned interpreter plus its ZMQ
+`Kernel { proc, shell, iopub, conn_dir, … }` is a spawned interpreter plus its ZMQ
 client connections. `start()`:
 
 1. picks free ports and writes a Jupyter `connection.json`,
-2. spawns the interpreter (`python -m ipykernel`) with stderr piped, and with its
+2. spawns the interpreter (`python -m ipykernel_launcher`) with stderr piped, and with its
    working directory set to the document's own directory (each `Executor` is created
    `.in_dir(...)` of its page) so a cell's relative file writes (audio from
    `scipy.io.wavfile`, a `savefig` figure) land beside the source rather than in
@@ -240,11 +240,11 @@ client connections. `start()`:
    timeout and reporting something opaque,
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
    the ZMQ slow-joiner problem before the first run), and
-5. runs each language's **startup preambles** once against the now-warm kernel: Python
-   installs the `define` Python-to-JS bridge, a matplotlib theme hook that
-   restyles inline figures to follow the page (lazily, the first time a cell uses
-   matplotlib), and makes every thread start in a copy of the context of the code that
-   started it (see the parent-header check below).
+5. runs the **startup preambles** once against the now-warm kernel: they install the
+   `define` Python-to-JS bridge and a matplotlib theme hook that restyles inline figures
+   to follow the page (lazily, the first time a cell uses matplotlib), and make every
+   thread start in a copy of the context of the code that started it (see the
+   parent-header check below).
 
 A preamble that fails is not fatal (the kernel runs cells without the bridge) but it is
 not silent either, because otherwise its failure would show up later in another cell as
@@ -367,23 +367,31 @@ build shapes do it differently:
   `render::tags` walker, never a substring scan, so a code sample that merely *shows* an
   attribute stays text; `is_local_ref` then drops external URLs, `data:` URIs and in-page
   anchors, any `?query`/`#fragment` is stripped, and each existing file is copied to the
-  same relative path beside the page. Because the scan runs after the cells ran, a figure
+  same relative path beside the page. The publication rule (`includes::publishable`, with
+  the page's folder as the boundary) decides what may be copied: a file above that folder
+  has nowhere to go and is reported as an error, and a different file already at the
+  destination is never overwritten. Because the scan runs after the cells ran, a figure
   a cell freshly wrote is picked up like any hand-placed image. A separate pass
   (`copy_js_imports`) follows a `{js}` cell's relative `import()`/`fetch()` specifiers,
   which the attribute scan cannot see. An **in-place** build (output beside the source)
   skips every self-copy.
-- **A site `build`** does not scan HTML. `mirror_assets` walks the whole source
-  tree once and mirrors every non-source file into `_site/` at the same relative path,
-  skipping `.tmd`/`.bib`/`.Rproj` sources, `_`-prefixed and dot entries, and build-cache
-  residue (`*_cache`/`*_files`). The mirror runs after the pages are built, so a figure a
-  cell writes in this build is published with it.
+- **A site `build`** mirrors, then ships what the pages reference. `mirror_assets` walks
+  the whole source tree once and mirrors every non-source file into `_site/` at the same
+  relative path, skipping `.tmd`/`.bib`/`.md` sources, `_`-prefixed and dot entries,
+  editor residue and build-cache residue (`*_cache`/`*_files`).
+  `deploy_referenced_sources` then reads each built page through the same `local_refs`
+  walk and ships a file a page references that the mirror left out, such as an
+  `_images/` picture or a linked `.md`. Both judge a file by the one publication rule,
+  `includes::publishable`, so a dot-path or a symlink out of the repository never ships.
+  Both run after the pages are built, so a figure a cell writes in this build is published
+  with it.
 
 `_freeze/` restores a cell's rendered output, never the files the cell wrote: a cell that
 replays from the cache does not run, so a generated file deleted since (a `git clean`, a
 fresh clone) stays missing until the cell runs again. Commit a file a cell writes, or
-force a run with **Restart kernel** or `TALIESIN_NO_CACHE=1`. The static checks also run
-before any cell does, so on the first build of such a file its reference is reported as a
-missing asset although the build then writes and publishes it.
+force a run with **Restart kernel** or `TALIESIN_NO_CACHE=1`. The check that a page's
+local files exist runs after its cells when they run, so a figure a cell writes on the
+first build is not reported missing.
 
 ## Resilience
 

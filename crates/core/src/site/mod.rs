@@ -1181,26 +1181,20 @@ impl Site {
     ///
     /// Whole-registry rather than per-page, which the numbers alone would allow (a float's
     /// number depends only on its own page + chapter). That is a cost decision and it is
-    /// INSTRUMENTED, not asserted: `tools/live-edit-bench` measures this pass per project and
-    /// publishes the row (re-measured 2026-08-27 — `docs/guide` 16 pages / 3.2 ms,
-    /// `docs/internals` 6 pages / 1.6 ms, `corpus/tech-blog` 17 pages / 4.6 ms; ~12x faster
-    /// than the 2026-08-18 figures this line used to carry, from the render memos and the
-    /// concurrent harvest below). Buying it back with incremental invalidation would have to
-    /// re-derive the scan's project-wide "first definition wins" ordering to know whether a
-    /// dropped anchor should fall through to another page's definition, which is not worth it
-    /// at these sizes. A page-SET change re-runs `discover` anyway.
+    /// INSTRUMENTED, not asserted: `tools/live-edit-bench` measures this pass per project, up
+    /// to a 500-page synthetic book, and publishes the rows in its `RESULTS.md`. Buying it
+    /// back with incremental invalidation would have to re-derive the scan's project-wide
+    /// "first definition wins" ordering to know whether a dropped anchor should fall through
+    /// to another page's definition, which is not worth it at these sizes. A page-SET change
+    /// re-runs `discover` anyway.
     ///
-    /// **Still O(pages) on EVERY save**, at ~0.2 ms per page — but that is now wall clock
-    /// across `available_parallelism()` workers (`fanout::map_ordered`), not per-core cost,
-    /// so the same 200-page extrapolation is ~0.2 s here against the ~2.5 s it gave before.
-    /// A single-core machine gets the memos but not the fan-out. The gate is deliberately
-    /// absent because a wall clock measures the machine — but the extrapolation is the thing
-    /// to check before assuming the published one-document warm-edit figure describes a
-    /// book-sized save.
+    /// **Still O(pages) on EVERY save**, but wall clock across `available_parallelism()`
+    /// workers (`fanout::map_ordered`), not per-core cost; a single-core machine gets the
+    /// numbers-only render but not the fan-out. The gate is deliberately absent because a
+    /// wall clock measures the machine, but the bench's per-page slope is the thing to check
+    /// before assuming the published one-document warm-edit figure describes a book-sized
+    /// save.
     ///
-    /// Deliberately does NOT rebuild the hover index (its own second render pass over the
-    /// targets): it is equally frozen today, so leaving it is no regression, and doubling
-    /// this cost for hover cards wants its own measurement.
     /// ALL-OR-NOTHING: a render panic restores the previous registry. The harvest renders
     /// EVERY page, so a panic partway leaves `xref_targets` holding the raw scan map — every
     /// float number empty, every cell-labelled anchor missing — and one bad page would

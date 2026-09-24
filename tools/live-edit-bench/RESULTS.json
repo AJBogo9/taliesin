@@ -1,110 +1,110 @@
 {
   "doc": {
-    "cold_render_ns": 126920760,
-    "diff_ns": 464176,
+    "cold_render_ns": 107352170,
+    "diff_ns": 448570,
     "doc": "corpus/tech-blog/posts/em-algorithm/index.tmd",
     "dom_preserved": true,
     "edit_payload_bytes": 3241,
-    "full_html_bytes": 287755,
+    "full_html_bytes": 287683,
     "insert_count": 1,
     "op_count": 55,
     "remove_count": 0,
     "set_meta_count": 54,
     "update_count": 0,
-    "warm_edit_ns": 2712630
+    "warm_edit_ns": 2855358
   },
   "end_to_end": [
     {
-      "atomic_ns": 113914437,
-      "body_ns": 105473674,
-      "heading_ns": 110987543,
-      "lsp_save_ns": 147649709,
+      "atomic_ns": 26748169,
+      "body_ns": 26247467,
+      "heading_ns": 29677380,
+      "lsp_save_ns": 128861555,
       "pages": 16,
-      "preview_rss_kib": 117636,
+      "preview_rss_kib": 138020,
       "project": "docs/guide",
       "rounds": 10,
-      "title_ns": 119922171
+      "title_ns": 30766829
     },
     {
-      "atomic_ns": 109980625,
-      "body_ns": 121861255,
-      "heading_ns": 108664058,
-      "lsp_save_ns": 148147559,
+      "atomic_ns": 34962710,
+      "body_ns": 35063369,
+      "heading_ns": 46655718,
+      "lsp_save_ns": 134936613,
       "pages": 17,
-      "preview_rss_kib": 142860,
+      "preview_rss_kib": 149860,
       "project": "corpus/tech-blog",
       "rounds": 10,
-      "title_ns": 108936861
+      "title_ns": 48322999
     },
     {
-      "atomic_ns": 111845127,
-      "body_ns": 94629429,
-      "heading_ns": 108976784,
-      "lsp_save_ns": 134244232,
+      "atomic_ns": 24274347,
+      "body_ns": 24874265,
+      "heading_ns": 35900556,
+      "lsp_save_ns": 127004263,
       "pages": 100,
-      "preview_rss_kib": 76600,
+      "preview_rss_kib": 90476,
       "project": "synthetic book",
       "rounds": 10,
-      "title_ns": 114116220
+      "title_ns": 40850093
     },
     {
-      "atomic_ns": 180476330,
-      "body_ns": 113292920,
-      "heading_ns": 166588109,
-      "lsp_save_ns": 149740696,
+      "atomic_ns": 44964727,
+      "body_ns": 44748927,
+      "heading_ns": 105016270,
+      "lsp_save_ns": 138344143,
       "pages": 500,
-      "preview_rss_kib": 140460,
+      "preview_rss_kib": 135484,
       "project": "synthetic book",
       "rounds": 10,
-      "title_ns": 179507877
+      "title_ns": 113729032
     }
   ],
-  "load_average_1m_before": "0.59",
+  "load_average_1m_before": "1.15",
   "projects": [
     {
-      "discover_ns": 7171839,
+      "discover_ns": 8033039,
       "pages": 16,
       "project": "docs/guide",
-      "refresh_xrefs_ns": 2684575,
-      "registry_ns": 2304776,
+      "refresh_xrefs_ns": 3042504,
+      "registry_ns": 2441868,
       "runs": 10,
-      "search_index_ns": 3470796
+      "search_index_ns": 3383889
     },
     {
-      "discover_ns": 4070437,
+      "discover_ns": 4491525,
       "pages": 6,
       "project": "docs/internals",
-      "refresh_xrefs_ns": 1473970,
-      "registry_ns": 1227992,
+      "refresh_xrefs_ns": 1622899,
+      "registry_ns": 1283197,
       "runs": 10,
-      "search_index_ns": 1775104
+      "search_index_ns": 2592199
     },
     {
-      "discover_ns": 7930985,
+      "discover_ns": 8357338,
       "pages": 17,
       "project": "corpus/tech-blog",
-      "refresh_xrefs_ns": 2019019,
-      "registry_ns": 1819892,
+      "refresh_xrefs_ns": 2156921,
+      "registry_ns": 2008823,
       "runs": 10,
-      "search_index_ns": 5313147
+      "search_index_ns": 5348717
     },
     {
-      "discover_ns": 16718706,
+      "discover_ns": 17424100,
       "pages": 100,
       "project": "synthetic book",
-      "refresh_xrefs_ns": 4333225,
-      "registry_ns": 3164816,
+      "refresh_xrefs_ns": 4604163,
+      "registry_ns": 3165268,
       "runs": 10,
-      "search_index_ns": 9596795
+      "search_index_ns": 10394543
     },
     {
-      "discover_ns": 81342907,
+      "discover_ns": 87030283,
       "pages": 500,
       "project": "synthetic book",
-      "refresh_xrefs_ns": 21009145,
-      "registry_ns": 12755690,
+      "refresh_xrefs_ns": 23548686,
+      "registry_ns": 14652380,
       "runs": 10,
-      "search_index_ns": 51984448
+      "search_index_ns": 54892973
     }
   ]
 }

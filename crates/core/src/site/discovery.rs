@@ -149,7 +149,7 @@ pub(super) fn card_image(rel: &str, image: Option<String>) -> Option<String> {
 /// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
 ///
 /// The walk reads directories directly rather than resolving paths through
-/// [`crate::includes::safe_join`], so a symlink is held to the one publication rule,
+/// `includes::safe_join_in`, so a symlink is held to the one publication rule,
 /// [`crate::includes::publishable`] (as the build's asset mirror holds every entry): it is
 /// followed only while its real path stays inside the repository and adds no `.`/`_`
 /// component to the path it shares with the project. Testing the link's own NAME let an

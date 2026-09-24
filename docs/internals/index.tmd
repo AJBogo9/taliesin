@@ -18,9 +18,9 @@ want the reasoning behind its design decisions.
 
 All of the intelligence lives in a Rust core, and every client is thin. The core parses a
 `.tmd` into a block model, renders each block to HTML, and speaks a small, stable
-websocket protocol. The browser preview, the `build` command, and the VS Code companion
-extension are all consumers of that protocol, so a new client can be added without a
-rewrite.
+websocket protocol. The browser preview is a consumer of that protocol (the VS Code
+companion hosts the same preview), and the `build` command writes the same blocks to a
+file, so a new client can be added without a rewrite.
 
 The rest of this book explains what follows from that design:
 

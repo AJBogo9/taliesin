@@ -45,7 +45,7 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
 impl Site {
     /// The whole Cmd-K index inlined as the script body of `page`, for a page that ships
     /// with no `search-index.js` beside it: `build <file.tmd>`, one self-contained file,
-    /// whose project is the one [`Site::discover_single`] builds for the preview, so both
+    /// whose project is the one [`Site::discover_document`] builds for the preview, so both
     /// verbs search the same index. It names the page too (`TALIESIN_PAGE_URL`), so a hit
     /// scrolls in place instead of navigating to a url the build may have written under
     /// another name. Empty when the index is.

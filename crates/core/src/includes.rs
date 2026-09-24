@@ -53,7 +53,7 @@ pub fn normalize_line_endings(src: &str) -> Cow<'_, str> {
 
 /// Read a `.tmd` source from disk, line endings normalized ([`normalize_line_endings`]).
 ///
-/// The one raw-source reader for every scan that does not go through [`expand`] (site
+/// The one raw-source reader for every scan that does not go through [`resolve`] (site
 /// discovery's front matter, a book chapter's title fallback). Those used to read the file
 /// raw, so a lone-CR file was one line to them while the render path split it: discovery
 /// found no front matter and published a `draft: true` page.

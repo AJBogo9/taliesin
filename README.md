@@ -33,13 +33,12 @@ at length, with its sources and method.
   families involved are existing Pandoc/Quarto vocabulary. Check it yourself with
   `python3 tools/portability-census.py`. Your writing is Markdown in your repository, and
   built pages are static HTML that needs no runtime.
-- **Speed** (figures re-measured 2026-08-27, the single-document ready time 2026-09-01,
-  on a 16-core machine). A 6-page book (`docs/internals`) builds in 0.15 s (25 ms/page);
-  `preview` is serving in ≈50 ms for a single document (spawn to first HTTP 200) and
-  ≈90 ms for a 16-page book; a warm keystroke-sized edit diffs in 0.21 ms and ships a
-  3.2 KB patch instead of a 288 KB page reload (payload regenerated 2026-09-24), and 54
-  of its 55 ops are metadata-only patches that never touch a DOM node, which is why live
-  state survives the edit. These figures
+- **Speed** (figures re-measured 2026-09-24 on a 16-core machine). A 6-page book
+  (`docs/internals`) builds in 0.16 s (26 ms/page); `preview` is serving in ≈40 ms for a
+  single document (spawn to first HTTP 200) and ≈130 ms for a 16-page book; a warm
+  keystroke-sized edit diffs in 0.45 ms and ships a 3.2 KB patch instead of a 288 KB page
+  reload, and 54 of its 55 ops are metadata-only patches that never touch a DOM node,
+  which is why live state survives the edit. These figures
   measure Taliesin's work only and are not comparable with a cold Pandoc pass by a batch
   compiler, which does different work.
 - **One maintainer, and the scope is closed.** There is no support contract or release
@@ -127,12 +126,12 @@ cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
-**Build cost** (measured 2026-08-26 on a cold build). `cargo clean` followed by
-`cargo build --release -p taliesin-server` compiles 220 crates in about 48s (16-core
-machine, cargo's default parallelism) and produces a single ~30 MB self-contained binary
-(30,296,240 bytes, re-measured 2026-08-27; it embeds KaTeX with its fonts, the
-syntax-highlighting definitions, and every bundled stylesheet and script, which is why
-rendered pages need no network). `Cargo.lock` lists 289 packages across the whole
+**Build cost** (a cold build). `cargo clean` followed by
+`cargo build --release -p taliesin-server` compiles 220 crates (re-counted 2026-09-24) in
+about 48s (measured 2026-08-26, 16-core machine, cargo's default parallelism) and produces
+a single ~31 MB self-contained binary (31,010,968 bytes, measured 2026-09-24; it embeds
+KaTeX with its fonts, the syntax-highlighting definitions, and every bundled stylesheet and
+script, which is why rendered pages need no network). `Cargo.lock` lists 289 packages across the whole
 workspace, higher than the 220 actually compiled because it also covers the separate
 benchmark tool and dev-only dependencies the shipped binary never links. Nothing is
 fetched at runtime and there is no `node_modules`. Put `target/release/taliesin` on your

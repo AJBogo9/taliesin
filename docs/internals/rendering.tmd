@@ -17,7 +17,7 @@ flowchart TB
   spans --> pre["preprocess<br/>replace ::: markers (line-preserving)"]
   pre --> ast["comrak parse_document<br/>(+ sourcepos)"]
   ast --> walk["walk top-level nodes<br/>→ FlatBlock (emit HTML, hash id)"]
-  walk --> group["group_divs<br/>rewrap into callouts/columns"]
+  walk --> group["group_divs<br/>rewrap into callouts/grids"]
   group --> cite["table captions + cite::process<br/>citations, @refs"]
   cite --> blocks["RenderedDoc { blocks, title, … }"]
 ```
@@ -26,8 +26,8 @@ flowchart TB
 
 1. **Include resolution** (`includes.rs`). `{{< include path >}}` shortcodes are
    expanded inline, and a `Vec<LineOrigin>` source map records, for every line of
-   the expanded text, which file + line it came from. Cycles are detected and left
-   in place, and a page stops expanding at a budget (1,000 includes, 4 MiB of source)
+   the expanded text, which file + line it came from. A cycle (a page that includes
+   itself too) is left literal with a warning, and a page stops expanding at a budget (1,000 includes, 4 MiB of source)
    that only a runaway include tree reaches. Click-to-source relies on this map to work
    across files.
 2. **Shortcode expansion** (`render/extension/`). The built-in `{{< input >}}` tag
@@ -83,7 +83,7 @@ include directive, a shortcode or a `:::` marker counts only on a markdown line,
 question the same way (`render::rendered_lines`).
 
 The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, subtitle, TOC
-flag, includes, the cross-reference number map, and any non-fatal `warnings`. Every
+flag, the cross-reference number map, and any non-fatal `warnings`. Every
 block in it carries the three data attributes the rest of the system keys off,
 `data-block-id` (hashed from the block's raw Markdown source by `make_id`),
 `data-sourcepos`, and `data-source-file` on included blocks. [The block

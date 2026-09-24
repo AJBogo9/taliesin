@@ -228,7 +228,7 @@ impl Block {
 }
 
 /// How a page is being emitted, which decides how much optional machinery ships.
-/// Threaded from the build CLI through the page builders onto [`PageParts`]; the
+/// Threaded from the build CLI through the page builders onto [`super::PageParts`]; the
 /// live preview always uses [`OutputMode::Preview`] so the dev loop is untouched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputMode {

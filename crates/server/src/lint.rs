@@ -635,7 +635,7 @@ impl PagePass {
     }
 }
 
-/// The one "cannot read <path>" message every front door prints, with a "did you mean" when
+/// The one `cannot read <path>` message every front door prints, with a "did you mean" when
 /// the path does not exist but a near-miss sibling does.
 ///
 /// `cannot read notes.tdm: No such file or directory (os error 2)` is technically complete

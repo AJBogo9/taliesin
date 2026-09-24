@@ -56,35 +56,34 @@ misleading.
 
 | Measurement | Value | What it covers |
 |---|---:|---|
-| Whole-project build, `docs/internals` (6 pages) | **0.15 s** | Parse, render, highlight, math, search index, assets |
-| Whole-project build, this guide (16 pages) | **0.18 s** | Including executed cells replayed from `_freeze/` |
-| Whole-project build, `corpus/tech-blog` (17 pages) | **0.33 s** | 19.1 ms/page, the heaviest project in the tree |
-| `preview` time-to-ready, single document | **≈50 ms** | Process spawn to the first HTTP 200; ≈0.5 s for a highlight-dense document |
-| `preview` time-to-ready, 16-page book | **≈90 ms** | Discovery, nav, cross-reference registry, first render |
-| Warm edit: diff only | **0.21 ms** | The block diff for one keystroke-sized edit |
-| Warm edit: re-render + diff | **2.6 ms** | One document, against a 104 ms cold render of it |
+| Whole-project build, `docs/internals` (6 pages) | **0.16 s** | Parse, render, highlight, math, search index, assets |
+| Whole-project build, this guide (16 pages) | **0.21 s** | Including executed cells replayed from `_freeze/` |
+| Whole-project build, `corpus/tech-blog` (17 pages) | **0.35 s** | 20.7 ms/page, the heaviest project in the tree |
+| `preview` time-to-ready, single document | **≈40 ms** | Process spawn to the first HTTP 200; ≈0.3 s for a highlight-dense document |
+| `preview` time-to-ready, 16-page book | **≈130 ms** | Discovery, nav, cross-reference registry, first render |
+| Warm edit: diff only | **0.45 ms** | The block diff for one keystroke-sized edit |
+| Warm edit: re-render + diff | **2.9 ms** | One document, against a 107 ms cold render of it |
 | Warm-edit payload | **3.2 KB** | Versus a 288 KB full page a reload would refetch |
-| Save to the open tab, `corpus/tech-blog` (17 pages) | **≈40 ms** | End to end: the watcher, the cross-reference refresh, re-render, diff, websocket |
-| Cross-reference refresh, this guide (16 pages) | **3.2 ms** | Added to every save in a *site* preview |
+| Save to the open tab, `corpus/tech-blog` (17 pages) | **≈35 ms** | End to end: the watcher, the cross-reference refresh, re-render, diff, websocket |
+| Cross-reference refresh, this guide (16 pages) | **3.0 ms** | Added to every save in a *site* preview |
 
-*(Build and ready figures measured 2026-08-27, best of three, release build, warm
-`_freeze/` cache. The single-document ready row was re-measured 2026-09-01, median of
-five runs, release build: wall time from spawning `taliesin preview <file> <port>` to
-the first HTTP 200 from its socket, polled every 2 ms, for a small document
-(`corpus/native-tmd.tmd`); the ≈0.5 s companion figure is `corpus/highlight.tmd`, written
-to be highlight-dense. Each build figure is the duration the build prints for itself,
-and each page count is the one it reports (`find … -name '*.html'` is not the page count,
-since a project may ship its own `404.html` and `_`-prefixed files are never pages). The
-warm-edit and cross-reference rows come from `tools/live-edit-bench`, re-measured
-2026-08-27, release build; its committed `RESULTS.md` labels them indicative (the numbers
-vary by machine). The structural rows it also records, the op counts and payload bytes,
-are deterministic and gated by a regression test; the payload row was regenerated
-2026-09-24. The save row is measured by `crates/server/tests/save_to_open_tab.rs`, run
-2026-09-24 as `cargo test --release -p taliesin-server --test save_to_open_tab --
---nocapture`: from writing the same post the warm-edit rows measure to its open tab
-receiving the change, median of nine saves in place and nine renamed over the old file,
-37 to 50 ms over three runs. Most of it is the cross-reference refresh below; the watcher
-adds 15 ms of waiting for a save's events to stop.)*
+*(Every figure re-measured 2026-09-24, release build, on a 16-core machine with no other
+build running. Each build figure is the duration the build prints for itself, best of
+three with a warm `_freeze/` cache, and each page count is the one it reports
+(`find … -name '*.html'` is not the page count, since a project may ship its own
+`404.html` and `_`-prefixed files are never pages). The ready rows are the median of five
+runs: wall time from spawning `taliesin preview <target> <port>` to the first HTTP 200
+from its socket, polled every 2 ms, for a small document (`corpus/native-tmd.tmd`); the
+≈0.3 s companion figure is `corpus/highlight.tmd`, written to be highlight-dense. The
+warm-edit and cross-reference rows come from `tools/live-edit-bench`, run as
+`cargo run --release -p live-edit-bench`; its committed `RESULTS.md` labels them
+indicative (the numbers vary by machine). The structural rows it also records, the op
+counts and payload bytes, are deterministic and gated by a regression test. The save row
+is measured by `crates/server/tests/save_to_open_tab.rs`, run as `cargo test --release -p
+taliesin-server --test save_to_open_tab -- --nocapture`: from writing the same post the
+warm-edit rows measure to its open tab receiving the change, median of nine saves in
+place and nine renamed over the old file, 35 to 44 ms over three runs. The watcher's wait
+for a save's events to stop, 15 ms of quiet, is inside it.)*
 
 Because the warm edit is a diff, its cost tracks what you changed rather than how large
 the document is. See [the block
@@ -93,13 +92,12 @@ breakdown behind that payload figure.
 
 The last row is an exception to that scaling. In a multi-page project a save also
 re-derives the cross-reference registry before the diff, and its harvest renders every
-page to recover the cross-page figure and equation numbers. That pass scales with the
-size of the *project* while the diff scales with the size of the *edit*, so it is still
-O(pages) on every save. It is about 0.2 ms per page in this guide, and that figure is
-wall-clock across every core the machine offers rather than per-core cost: a 200-page
-project of heavy pages would pay roughly 0.2 s here, against the 2.5 s the same
-extrapolation gave before 1.1.0. On a two-core laptop expect the memoization half of that
-improvement but not the concurrent half.
+page, without typesetting math or highlighting code, to recover the cross-page figure and
+equation numbers. That pass scales with the size of the *project* while the diff scales
+with the size of the *edit*, so it is still O(pages) on every save: 3.0 ms in this guide,
+and 24 ms for the synthetic 500-page book in `tools/live-edit-bench` (55 ms when the save
+moves an anchor, which also rebuilds the search index). Those figures are wall clock
+across every core the machine offers, so a two-core laptop pays more.
 
 ## What Taliesin claims, and who asked for it {#sec-claims}
 

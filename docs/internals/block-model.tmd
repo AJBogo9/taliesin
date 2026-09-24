@@ -182,10 +182,10 @@ is sent as a `full_render` instead (`needs_remount` in `diff.rs`).
 | server → client | `remove` | `target_id`, `gen` |
 | server → client | `set_meta` | `target_id`, `sourcepos`, `source_file`, `inner`, `gen` (patch a shifted block's source mapping in place; `inner` holds a `:::` div's inner positions) |
 | server → client | `title` | `title` (retitle the tab with no re-mount, when the front matter's title changed but the body did not) |
-| server → client | `build-state` | `page`, `phase`, `ran`, `total`, `lang` (document-level execution progress, k of N) |
-| server → client | `cell-state` | `page`, `cell_id`, `state`, `started_ms`, `duration_ms`, `source` (`"cache"` or `"fresh"`: the queued / running / done badges, and the `⚡ cached` one that answers "why didn't my cell re-run?") |
-| server → client | `cell-output-append` | `page`, `cell_id`, `op`, `html` (a preview of a still-running cell's output, so a long job shows its log rather than a bare `⏳`; the authoritative version still arrives as a block `update`, which is why `build` emits none of these) |
-| server → client | `diagnostics` | `messages` (non-fatal include / kernel / extension issues) |
+| server → client | `build-state` | `phase`, `ran`, `total`, `lang` (document-level execution progress, k of N; each page has its own socket, so no message names a page) |
+| server → client | `cell-state` | `cell_id`, `state`, `started_ms`, `duration_ms`, `source` (`"cache"` or `"fresh"`: the queued / running / done badges, and the `⚡ cached` one that answers "why didn't my cell re-run?") |
+| server → client | `cell-output-append` | `cell_id`, `op`, `html` (a preview of a still-running cell's output, so a long job shows its log rather than a bare `⏳`; the authoritative version still arrives as a block `update`, which is why `build` emits none of these) |
+| server → client | `diagnostics` | `messages` (the page's diagnostics, each a `level`, `message`, `file` and, when known, `line` and a code `frame`) |
 | server → client | `error` | `message` (a failed render; shown as an overlay) |
 | server → client | `reload` | *(none)*; full page reload (config change, kernel restart) |
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |

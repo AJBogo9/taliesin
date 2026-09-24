@@ -99,7 +99,7 @@ impl ImageAnnotator {
 /// handle or does not resolve to a readable image under `base`.
 ///
 /// Skipped, each for its own reason: an absolute URL and a protocol-relative `//host/x` are
-/// not ours; a `data:` URI is what an executed `{python}`/`{r}` figure is, and it already
+/// not ours; a `data:` URI is what an executed `{python}` figure is, and it already
 /// carries its pixels; a root-absolute `/x.png` has no meaning relative to `base` (the
 /// build's asset scanner skips it for the same reason); a non-raster extension has no
 /// intrinsic pixel size to state.

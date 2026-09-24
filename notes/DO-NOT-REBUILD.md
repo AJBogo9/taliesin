@@ -39,10 +39,11 @@ session to rediscover.
   question under FA31; the seven theorem prefixes that used to paper over it for seven names went
   with it. Do not re-file "an unknown `@ref` should be diagnosed".
 - **The site-preview save is O(pages) and that is accepted, with an instrument (FA23, 2026-08-18;
-  re-measured 2026-08-27).** `refresh_xrefs` re-renders every page on every non-structural save:
-  3.2 ms for `docs/guide` (16 pages), ~0.2 ms per page wall-clock across cores — so ~0.2 s at 200
-  heavy pages, down from 47.6 ms / ~2.5 s before 1.1.0 memoized `highlight` and made the harvest
-  concurrent. The remaining O(pages) term was costed again on 2026-08-27 and **cut a second
+  re-measured 2026-09-24).** `refresh_xrefs` renders every page (numbers only: no math, no
+  highlighting) on every save that does not re-discover the project (a save is classified by
+  `site::discovery_digest`, what discovery reads of a page, not by its event kind): 3.0 ms for
+  `docs/guide` (16 pages) and 24 ms for the bench's synthetic 500-page book, wall clock across
+  cores. The remaining O(pages) term was costed again on 2026-08-27 and **cut a second
   time**: content-hashing each page's harvest would make it flat, and is worth ~3 ms on the
   largest project here against a cache field on `Site` whose key must cover source, includes,
   chapter number and site defaults or it silently serves stale float numbers. Do not re-file it

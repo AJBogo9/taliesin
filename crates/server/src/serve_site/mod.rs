@@ -932,7 +932,7 @@ fn ensure_and_render_page(project: &Arc<Project>, page: &Page) -> String {
 
 /// A first-paint render without code execution (the worker fills outputs after): the one
 /// page pass ([`crate::lint::PagePass`]) with no executor, so the page paints finished
-/// exactly as the build finishes it (numbering, cross-references, `listing:` cards). The
+/// exactly as the build finishes it (cross-references, `listing:` cards). The
 /// caller holds the site lock across it.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     let (src, read) =
@@ -1479,8 +1479,8 @@ fn spawn_fast_builder(project: Arc<Project>, mut fast_rx: mpsc::UnboundedReceive
 /// the two is what turns each cell's source into its output — `build_page` bumps the render
 /// generation on that diff, which is the re-mount the client is already told to expect.
 fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks: &[Block]) {
-    // Finished exactly as the post-exec publish finishes them (numbering, cross-refs,
-    // listing expansion), so this paint is the `--no-exec` render of the page rather than a
+    // Finished exactly as the post-exec publish finishes them (cross-refs, listing
+    // expansion), so this paint is the `--no-exec` render of the page rather than a
     // half-resolved one showing raw `@fig-` text. These warnings are recomputed against the
     // executed blocks below and are discarded here.
     let finished = || {
@@ -1740,8 +1740,8 @@ async fn build_page(
         // from the page itself, clickable to the cell.
         let _ = pass.execute(exec).await;
     }
-    // Finish the executed blocks exactly as the build does (numbering, cross-refs +
-    // broken-ref warnings, listing/about expansion, post decoration). Queries the
+    // Finish the executed blocks exactly as the build does (cross-refs + broken-ref
+    // warnings, `hero:` and `listing:` expansion, a post's back link). Queries the
     // whole site, so it needs the site lock.
     let tab_title = {
         let site = project.site.lock();
@@ -2147,13 +2147,10 @@ fn rebuild_project(project: &Arc<Project>, changed: &HashSet<PathBuf>) {
     // registry, so refreshing again would just burn the pass twice.
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
-    // pages rebuilt after it MUST see the fresh registry. A re-scan plus one render per page,
-    // no code execution, so it is O(pages) on every save: 3.2ms on the largest real book
-    // (`docs/guide`, 16 pages) re-measured 2026-08-27, ~0.2ms per page wall-clock across
-    // cores, which extrapolates to ~0.2s at 200 heavy pages (it was 47.6ms / ~2.5s before
-    // 1.1.0's render memos and concurrent harvest). `tools/live-edit-bench` carries the
-    // number per project so this comment cannot drift the way its "27ms / 20 pages"
-    // predecessor did.
+    // pages rebuilt after it MUST see the fresh registry. A re-scan plus one numbers-only
+    // render per page, no code execution, so it is O(pages) on every save.
+    // `tools/live-edit-bench` measures it per project (its "project-scale save" table), so
+    // this comment keeps no figure to drift.
     // `refresh_xrefs` is all-or-nothing about a render panic, so a bad page cannot leave the
     // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
     // (unlike `build_page`) has none of its own.

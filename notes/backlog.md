@@ -22,12 +22,16 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-> **The defect queue is not in this file. It is
-> [2026-09-24-execution-verified-audit.md](2026-09-24-execution-verified-audit.md)**, whose
-> "Suggested sequence" orders it. The 2026-08-13 queue it replaces is superseded, not verified
-> empty: its register decision was mooted when the registers were cut on 2026-08-17, the flip it
-> deferred happened on 2026-08-20, and its "do not cut another feature" line was overridden by
-> the cuts that followed. An item from it comes back only if it bites.
+> **The last defect queue is done on its branch:
+> [2026-09-24-execution-verified-audit.md](2026-09-24-execution-verified-audit.md)**, Parts A
+> to K, fixed on `audit-fixes-2026-09-24` the same day, one commit per finding
+> (`git log --grep 'udit 2026-09-24' 9c5bd008..`), not yet on `main` and not released. Its
+> leads and leftovers are handled there; the few it left to the author (the 1.1.0 tag below,
+> and the decisions in its status header) are the only open ones. The 2026-08-13 queue before
+> it is superseded, not verified empty: its register decision was mooted when the registers
+> were cut on 2026-08-17, the flip it deferred happened on 2026-08-20, and its "do not cut
+> another feature" line was overridden by the cuts that followed. An item from it comes back
+> only if it bites.
 >
 > **The 2026-09-01 defect queue landed the same day it was filed:
 > [2026-09-01-product-audit-backlog.md](2026-09-01-product-audit-backlog.md)**, the
@@ -170,6 +174,10 @@ anything client-side, and **delete the item from this file when it lands.**
 > **Item 103 is CLOSED**, ruled 2026-08-20: keep the name, accept the SEO cost, and always
 > publish as "Taliesin, the `.tmd` dev server" so the disambiguator travels.
 
+**Tag 1.1.0 once `audit-fixes-2026-09-24` is on `main`** (the audit's A5). v1.0.1 still
+overwrites a `.tmd` source with HTML (fixed 2026-09-02, never released), and the round's A1
+to A4 fixes are unreleased too. The README's `VERSION=` pin moves with the tag.
+
 100. **Confirm `AJBogo9/taliesin-old` is gone, then delete this item.** It held the un-rewritten
      history that ruling D-8 forbids keeping on GitHub. On 2026-09-24 `gh repo view
      AJBogo9/taliesin-old` could not resolve it and `gh repo list AJBogo9 --visibility private`
@@ -178,8 +186,8 @@ anything client-side, and **delete the item from this file when it lands.**
 
 149. **The README's only image is the licence badge.** The four screencasts are MP4, so putting
      one in the README needs a GIF conversion or an uploaded asset URL, not a one-line embed.
-     Anything quoting the speed ratio reads `tools/live-edit-bench/RESULTS.md`'s "why the ratio is
-     9x and not 83x" section first.
+     Anything quoting the payload ratio (89x since 2026-09-24) reads
+     `tools/live-edit-bench/RESULTS.md`'s "Where the payload goes" section first.
 
 ## Product / distribution
 
