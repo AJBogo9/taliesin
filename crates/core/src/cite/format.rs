@@ -50,9 +50,10 @@ impl Bibliography {
             .filter(|s| !s.is_empty())
         {
             out.push_str(&a);
-            out.push_str(", ");
+            // An entry with nothing after its names ends there, not on a dangling comma.
+            out.push_str(if body.is_empty() { "." } else { ", " });
         }
-        out.push_str(&body);
+        out.push_str(body.trim_start());
         Some(out)
     }
 }
@@ -110,8 +111,9 @@ fn fmt_book(f: &Fields) -> String {
     if let Some(ed) = f.get("edition").filter(|s| !s.is_empty()) {
         out.push_str(&format!(", {} ed.", esc(&ordinal(&clean(ed)))));
     }
-    // The edition already ends in a period ("ed."); don't double it.
-    if !out.ends_with('.') {
+    // The edition already ends in a period ("ed."); don't double it. No title and no
+    // edition: nothing to end.
+    if !out.is_empty() && !out.ends_with('.') {
         out.push('.');
     }
     let publisher = match (f.get("address"), f.get("publisher")) {
@@ -127,7 +129,9 @@ fn fmt_book(f: &Fields) -> String {
         segs.push(esc(&clean(y)));
     }
     if !segs.is_empty() {
-        out.push(' ');
+        if !out.is_empty() {
+            out.push(' ');
+        }
         out.push_str(&segs.join(", "));
         out.push('.');
     }

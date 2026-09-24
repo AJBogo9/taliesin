@@ -1335,3 +1335,24 @@ fn the_edition_field_is_escaped() {
         "{ch}"
     );
 }
+
+/// An entry missing its title (or everything but its author) leaves no dangling
+/// punctuation: `@misc{k, author=…}` rendered "J. Smith, " and `@book{k, author=…}`
+/// "J. Smith, ." (audit 2026-09-24, bibtex #19). The gap stays visible in the page, which
+/// is where the author sees it; only the stray marks go.
+#[test]
+fn an_entry_missing_fields_leaves_no_dangling_punctuation() {
+    let b = parse_bib(concat!(
+        "@misc{m, author={Smith, John}}\n",
+        "@book{b, author={Smith, John}}\n",
+        "@book{bp, author={Smith, John}, publisher={P}, year={2000}}\n",
+        "@misc{u, author={Smith, John}, url={https://example.org/x}}\n",
+    ));
+    assert_eq!(b.format("m").unwrap(), "J. Smith.");
+    assert_eq!(b.format("b").unwrap(), "J. Smith.");
+    assert_eq!(b.format("bp").unwrap(), "J. Smith, P, 2000.");
+    assert_eq!(
+        b.format("u").unwrap(),
+        "J. Smith, [Online]. Available: <a href=\"https://example.org/x\">https://example.org/x</a>"
+    );
+}
