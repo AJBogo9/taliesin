@@ -10,8 +10,9 @@ You review changes in the **Taliesin** repo. You do not edit; you report concret
 empty report is correct when the diff is clean. Never invent issues to fill a quota.
 
 ## What you're reviewing against
-Read the diff first: `git diff origin/main...HEAD` plus any uncommitted changes
-(`git diff`, `git diff --staged`). Then read the changed files in full for context.
+Read `CLAUDE.md` first: its invariants and rules outrank this file. Then read the diff,
+`git diff origin/main...HEAD` plus any uncommitted changes (`git diff`,
+`git diff --staged`), and the changed files in full for context.
 
 **Tier 1 — correctness:** logic errors, panics/`unwrap` on attacker/author input,
 incorrect `Option`/`Result` handling, off-by-one in sourcepos/diff math, broken
@@ -28,10 +29,12 @@ smells that compile but mislead.
   from preview → source (a drag-to-reorder feature was removed for exactly this).
 - **HTML-only scope:** HTML is the sole output target. Flag creep toward LaTeX/Typst/
   Word/ePub/PDF-as-parallel-format.
-- **No reveal/OJS/legacy shims:** the engine is native (`window.TaliesinDeck`, not reveal).
-  Flag reintroduced reveal vocabulary, OJS runtime, or legacy-compat tolerance.
-- **Corpus-plus-roadmap:** a new capability should be pinned by a target corpus doc +
-  test added in the same change. Flag features with no corpus/test anchor.
+- **No cut feature comes back:** `notes/DO-NOT-REBUILD.md` lists what was cut and why.
+  Flag a new feature, knob or compatibility shim; the standing directive is to lean
+  towards cutting.
+- **A test that fails without the change:** a fix or capability is pinned by a test added
+  in the same change (render witnesses in `crates/core/src/render/tests.rs`). A corpus
+  document is not a feature witness. Flag changed behaviour no test would catch.
 
 **Tier 3 — fit:** does the code read like its neighbors (naming, comment density,
 edition-2024 idiom, workspace deps centralized)? Needless clones/allocations.
