@@ -98,22 +98,32 @@ mod tests {
         Box::leak(Box::new(Workers::new(max_idle)))
     }
 
-    /// Run a job on `pool` and wait for it, returning the thread it ran on.
+    /// Run a job on `pool` and wait for it, returning the thread it ran on, then wait for its
+    /// worker to park. A job hands its reply back a moment before its worker parks, so a next
+    /// job sent at once may find none parked and spawn another: under load that happened more
+    /// than once in twenty, and a bound on it was a bet on the scheduler.
     fn run_and_wait(pool: &'static Workers) -> ThreadId {
         let (tx, rx) = sync_channel(1);
         assert!(pool.run(Box::new(move || {
             let _ = tx.send(std::thread::current().id());
         })));
-        rx.recv().expect("the job ran")
+        let ran_on = rx.recv().expect("the job ran");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while pool.idle.lock().unwrap().is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the worker never parked after its job"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        ran_on
     }
 
     #[test]
     fn sequential_jobs_share_one_worker() {
         let pool = private(4);
         let threads: HashSet<ThreadId> = (0..20).map(|_| run_and_wait(pool)).collect();
-        // A job can hand its reply back a moment before its worker parks, so the next job
-        // may find none parked and spawn a second. Twenty spawns is a thread per job.
-        assert!(threads.len() <= 2, "{} workers for 20 jobs", threads.len());
+        assert_eq!(threads.len(), 1, "{} workers for 20 jobs", threads.len());
         assert!(!threads.contains(&std::thread::current().id()));
     }
 
