@@ -1646,7 +1646,10 @@ fn load_bibliography(
         .iter()
         .map(|p| (p.display().to_string(), p.clone()))
         .collect();
-    crate::cite::read_bib_files(&mut bib, &shared, &mut HashMap::new());
+    // One `@string` table for both layers, read shared first: a page's `.bib` may use a
+    // macro the project's defines, as `\bibliography{shared,page}` would let it.
+    let mut strings = HashMap::new();
+    crate::cite::read_bib_files(&mut bib, &shared, &mut strings);
     let Some(base) = base_dir else {
         return bib;
     };
@@ -1687,7 +1690,7 @@ fn load_bibliography(
         }
     }
     let mut page_bib = crate::cite::Bibliography::default();
-    let bib_warnings = crate::cite::read_bib_files(&mut page_bib, &files, &mut HashMap::new());
+    let bib_warnings = crate::cite::read_bib_files(&mut page_bib, &files, &mut strings);
     warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
     bib.overlay(page_bib);
     bib

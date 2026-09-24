@@ -124,3 +124,30 @@ fn an_unclosed_entry_is_confined_to_its_own_file_and_reported_there() {
     );
     assert_eq!(w.line, Some(3), "located at `bibliography:`");
 }
+
+/// An `@string` macro nothing defines is reported, located, instead of silently printing
+/// its name as the field's text (audit 2026-09-24, bibtex #20). BibTeX's predefined month
+/// macros (`month = jan`) are defined, so they draw nothing.
+#[test]
+fn an_undefined_string_macro_is_reported_at_the_bibliography_line() {
+    let dir = tmp("undefined-macro");
+    fs::write(
+        dir.join("refs.bib"),
+        "@article{k, title={T}, journal=nosuch, month=jan, year=2020}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
+    let doc = render_document_with_includes(src, &dir);
+    let hits: Vec<_> = doc
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("not defined"))
+        .collect();
+    assert_eq!(hits.len(), 1, "{:?}", doc.warnings);
+    assert!(
+        hits[0].message.contains("`nosuch`") && hits[0].message.contains("refs.bib"),
+        "{}",
+        hits[0].message
+    );
+    assert_eq!(hits[0].line, Some(3));
+}

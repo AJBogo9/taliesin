@@ -48,6 +48,8 @@ pub(crate) fn read_into(
             format!("`{file}` line {line}")
         }
     };
+    // `@string` names used in a value and defined nowhere, with where they were used.
+    let mut undefined: Vec<(usize, String)> = Vec::new();
     let mut i = 0;
     while i < chars.len() {
         if chars[i] != '@' {
@@ -92,7 +94,7 @@ pub(crate) fn read_into(
             if i < chars.len() && chars[i] == '=' {
                 i += 1;
                 skip_ws(&chars, &mut i);
-                let (value, ok) = read_value(&chars, &mut i, strings);
+                let (value, ok) = read_value(&chars, &mut i, strings, &mut undefined);
                 closed = ok;
                 if !name.is_empty() {
                     strings.insert(name, value);
@@ -149,7 +151,7 @@ pub(crate) fn read_into(
             }
             i += 1; // past '='
             skip_ws(&chars, &mut i);
-            let (value, value_closed) = read_value(&chars, &mut i, strings);
+            let (value, value_closed) = read_value(&chars, &mut i, strings, &mut undefined);
             if !name.is_empty() {
                 fields.insert(name, value);
             }
@@ -190,7 +192,33 @@ pub(crate) fn read_into(
         }
         entries.insert(key, Entry { kind, fields });
     }
+    for (at, name) in undefined {
+        warnings.push(format!(
+            "{}: `@string` macro `{name}` is not defined, so the field shows the name itself",
+            place(at)
+        ));
+    }
     warnings
+}
+
+/// BibTeX's predefined month macros (`month = jan`), as `plain.bst` defines them. Every
+/// standard style predefines these, so a `.bib` uses them without an `@string`.
+fn month(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "jan" => "January",
+        "feb" => "February",
+        "mar" => "March",
+        "apr" => "April",
+        "may" => "May",
+        "jun" => "June",
+        "jul" => "July",
+        "aug" => "August",
+        "sep" => "September",
+        "oct" => "October",
+        "nov" => "November",
+        "dec" => "December",
+        _ => return None,
+    })
 }
 
 /// Whether an entry (`@type{` or `@type(`) starts at `chars[i]`, which must be the first
@@ -267,14 +295,20 @@ fn skip_entry(chars: &[char], i: &mut usize, open: char, close: char) -> bool {
 /// Read a (possibly `#`-concatenated) field value: a sequence of `{...}`
 /// (brace-nested), `"..."`, or bare-token parts joined by `#`. A bare token is
 /// resolved against the `@string` macro table (`strings`); an unknown bare token is
-/// kept verbatim (BibTeX would error, but tolerance beats dropping content). One
+/// kept verbatim and recorded in `undefined` (BibTeX would error, but tolerance beats
+/// dropping content, and the caller reports it). One
 /// level of braces is stripped, so a double-brace value (`{{Corporate Name}}`)
 /// retains its inner braces for the author formatter to treat as a literal name.
 ///
 /// The `bool` is `false` when a `{...}` or `"..."` part never closed: it stops where the
 /// next entry starts ([`entry_starts_at`]) instead of running on through the rest of the
 /// file, and the caller reports the entry as unclosed.
-fn read_value(chars: &[char], i: &mut usize, strings: &HashMap<String, String>) -> (String, bool) {
+fn read_value(
+    chars: &[char],
+    i: &mut usize,
+    strings: &HashMap<String, String>,
+    undefined: &mut Vec<(usize, String)>,
+) -> (String, bool) {
     let mut parts: Vec<String> = Vec::new();
     let mut closed = true;
     loop {
@@ -342,17 +376,29 @@ fn read_value(chars: &[char], i: &mut usize, strings: &HashMap<String, String>) 
                 parts.push(strip_one_outer_brace_group(&inner));
             }
             _ => {
+                let at = *i;
                 let token = take_while(chars, i, |c| {
                     c != ',' && c != '}' && c != ')' && c != '#' && !c.is_whitespace()
                 });
                 if token.is_empty() {
                     break;
                 }
-                // Bare token: a number stays literal, otherwise resolve as a @string ref.
-                let resolved = strings
-                    .get(&token.to_ascii_lowercase())
-                    .cloned()
-                    .unwrap_or(token);
+                // Bare token: a number stays literal, otherwise resolve as a @string ref:
+                // the file's own and earlier files' definitions, then BibTeX's predefined
+                // month names. A name nothing defines is kept as text and reported.
+                let name = token.to_ascii_lowercase();
+                let resolved = match strings.get(&name) {
+                    Some(v) => v.clone(),
+                    None => match month(&name) {
+                        Some(m) => m.to_string(),
+                        None => {
+                            if !token.chars().all(|c| c.is_ascii_digit()) {
+                                undefined.push((at, token.clone()));
+                            }
+                            token
+                        }
+                    },
+                };
                 parts.push(resolved);
             }
         }

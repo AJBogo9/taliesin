@@ -194,6 +194,43 @@ mod tests {
         );
     }
 
+    /// A page's `.bib` can use an `@string` macro the project's shared `.bib` defines, as
+    /// `\bibliography{shared,page}` shares macros across its files (the `IEEEabrv.bib`
+    /// pattern). The two layers used to be parsed as separate texts, so the page printed the
+    /// macro's name, `jn`, as the journal (audit 2026-09-24, bibtex #20).
+    #[test]
+    fn a_page_bib_can_use_a_string_macro_the_shared_bib_defines() {
+        let root = write_site(
+            "shared-bib-macro",
+            &[
+                ("_site.yml", "title: T\nbibliography: shared.bib\n"),
+                ("shared.bib", "@string{jn = {Shared Journal}}\n"),
+                (
+                    "page.bib",
+                    "@article{p1, title={Page entry}, journal=jn, year={2005}}\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\ntitle: A\nbibliography: page.bib\n---\n\nSee [@p1].\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").expect("renders");
+        assert!(html.contains("<em>Shared Journal</em>"), "{html}");
+        // The same page opened on its own reads the same layers in the same order.
+        let src = std::fs::read_to_string(root.join("index.tmd")).unwrap();
+        let doc = crate::render_single_doc(&src, &root);
+        assert!(doc.body_html().contains("<em>Shared Journal</em>"));
+        assert!(
+            !doc.warnings
+                .iter()
+                .any(|w| w.message.contains("not defined")),
+            "{:?}",
+            doc.warnings
+        );
+    }
+
     #[test]
     fn a_project_declaring_no_bibliography_is_never_linted() {
         let root = write_site(
