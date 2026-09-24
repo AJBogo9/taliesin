@@ -919,8 +919,23 @@
   const bootId = typeof window.TALIESIN_BOOT === "number" ? window.TALIESIN_BOOT : null;
   let mountedBoot = bootId;
 
+  // A block op whose target or anchor is not in the DOM means the page no longer mirrors
+  // the server's block list, and no op after it can be trusted to land where it should.
+  // The server sends a whole render for every burst it knows it cannot express as block
+  // ops (`needs_remount`), so this is the fallback for one it did not foresee: reload,
+  // exactly as a `reload` message does, rather than prepend the block above the title or
+  // drop the edit silently, which is what this did before.
+  let resyncing = false;
+  const resync = () => {
+    if (resyncing) return;
+    resyncing = true;
+    console.warn("taliesin: a block op missed its target; reloading to resync");
+    location.reload();
+  };
+
   /** @param {ServerMessage} msg */
   const handle = (msg) => {
+    if (resyncing) return; // the reload is on its way; later ops would land out of sync
     switch (msg.type) {
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
@@ -987,53 +1002,50 @@
         renderOk();
         const el = elById(msg.target_id);
         const node = fragment(msg.html);
-        if (el && node) {
-          teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
-          keepFocus(el, () => {
-            keepScroll(() => el.replaceWith(node));
-            return node;
-          });
-          pulse(node, "tali-flash");
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        if (!el || !node) return resync();
+        teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
+        keepFocus(el, () => {
+          keepScroll(() => el.replaceWith(node));
+          return node;
+        });
+        pulse(node, "tali-flash");
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         scheduleAfterChange();
         break;
       }
       case "insert": {
         renderOk();
         const node = fragment(msg.html);
-        if (node) {
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-          // Block ids are unique per document, so drop any element already
-          // carrying this id before inserting. The server emits Removes before
-          // Inserts, so this is normally a no-op; it defends against a stale
-          // duplicate if ops ever arrive out of order (a reorder splits a moved
-          // block into Remove+Insert of the same id).
-          const newId = node.getAttribute && node.getAttribute("data-block-id");
-          const stale = newId && elById(newId);
-          if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
-          keepScroll(() => {
-            if (stale) stale.remove();
-            const after = msg.after_id && elById(msg.after_id);
-            if (after) after.after(node);
-            else root.prepend(node);
-          });
-          pulse(node, "tali-flash");
-        }
+        const after = msg.after_id ? elById(msg.after_id) : null;
+        if (!node || (msg.after_id && !after)) return resync();
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
+        // Block ids are unique per document, so drop any element already
+        // carrying this id before inserting. The server emits Removes before
+        // Inserts, so this is normally a no-op; it defends against a stale
+        // duplicate if ops ever arrive out of order (a reorder splits a moved
+        // block into Remove+Insert of the same id).
+        const newId = node.getAttribute && node.getAttribute("data-block-id");
+        const stale = newId && elById(newId);
+        if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
+        keepScroll(() => {
+          if (stale) stale.remove();
+          if (after) after.after(node);
+          else root.prepend(node);
+        });
+        pulse(node, "tali-flash");
         scheduleAfterChange();
         break;
       }
       case "remove": {
         renderOk();
         const el = elById(msg.target_id);
-        if (el) {
-          teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
-          keepFocus(el, () => {
-            keepScroll(() => el.remove());
-            return null;
-          });
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        if (!el) return resync();
+        teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
+        keepFocus(el, () => {
+          keepScroll(() => el.remove());
+          return null;
+        });
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         scheduleAfterChange();
         break;
       }
@@ -1044,14 +1056,13 @@
         // open <details>) survives. No afterChange(): content is unchanged.
         renderOk();
         const el = elById(msg.target_id);
-        if (el) {
-          el.setAttribute("data-sourcepos", msg.sourcepos);
-          if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
-          else el.removeAttribute("data-source-file");
-          // Recorded AFTER the patch, so the row's click-to-source uses the new position.
-          // No words move in a shift, which is the whole point of the op.
-          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
-        }
+        if (!el) return resync();
+        el.setAttribute("data-sourcepos", msg.sourcepos);
+        if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
+        else el.removeAttribute("data-source-file");
+        // Recorded AFTER the patch, so the row's click-to-source uses the new position.
+        // No words move in a shift, which is the whole point of the op.
+        if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         break;
       }
       case "error":

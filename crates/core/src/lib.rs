@@ -47,7 +47,7 @@ pub mod schema;
 pub mod site;
 pub mod vocab;
 
-pub use diff::{BlockOp, diff_blocks};
+pub use diff::{BlockOp, diff_blocks, needs_remount};
 pub use frontmatter::{closest, closest_of};
 pub use includes::single_doc_root;
 pub use minify::minify_css;

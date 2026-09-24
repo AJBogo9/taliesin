@@ -451,11 +451,34 @@ const RAW_TEXT_ELEMENTS: &[&str] = &["script", "style", "textarea", "title"];
 /// block and closing it in a later one, which `corpus/layout/dense-output.tmd` does)
 /// counts as one root, so that idiom keeps today's behaviour.
 fn is_single_root(literal: &str) -> bool {
+    top_level(literal).roots <= 1
+}
+
+/// Whether `html` is exactly one element that also CLOSES before the fragment ends, with
+/// no closing tag left over for an element opened elsewhere. That is what the preview
+/// client needs to apply a block op to one element: an unclosed root (the
+/// `dense-output.tmd` idiom above) swallows the blocks after it once the page is parsed,
+/// and a lone `</details>` block closes an element another block opened, so an op aimed
+/// at either one lands on the wrong DOM (see `diff::needs_remount`).
+pub(crate) fn is_closed_single_root(html: &str) -> bool {
+    let t = top_level(html);
+    t.roots == 1 && t.closed
+}
+
+/// The top-level shape [`top_level`] found: how many root nodes (it stops counting at 2),
+/// and whether every element it opened was closed without a stray closing tag.
+struct TopLevel {
+    roots: usize,
+    closed: bool,
+}
+
+fn top_level(literal: &str) -> TopLevel {
     let b = literal.as_bytes();
     let mut i = 0;
     let mut depth = 0usize;
     let mut roots = 0usize;
     let mut in_top_text = false;
+    let mut stray_close = false;
     while i < b.len() {
         if b[i] != b'<' {
             // A run of loose top-level text is a root of its own: the client takes the
@@ -511,6 +534,7 @@ fn is_single_root(literal: &str) -> bool {
         let end = (j + 1).min(b.len());
         in_top_text = false;
         if closing {
+            stray_close |= depth == 0;
             depth = depth.saturating_sub(1);
             i = end;
             continue;
@@ -518,7 +542,10 @@ fn is_single_root(literal: &str) -> bool {
         if depth == 0 {
             roots += 1;
             if roots > 1 {
-                return false;
+                return TopLevel {
+                    roots,
+                    closed: false,
+                };
             }
         }
         if VOID_ELEMENTS.contains(&name.as_str()) || self_closing {
@@ -538,7 +565,10 @@ fn is_single_root(literal: &str) -> bool {
         }
         i = end;
     }
-    roots <= 1
+    TopLevel {
+        roots,
+        closed: depth == 0 && !stray_close,
+    }
 }
 
 fn collect_text<'a>(node: &'a AstNode<'a>, out: &mut String) {

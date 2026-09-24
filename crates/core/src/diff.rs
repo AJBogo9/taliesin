@@ -107,6 +107,52 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     ops
 }
 
+/// Whether the client must re-mount the whole page instead of applying `ops` one block at
+/// a time: some op aims at, anchors on, or brings in a block that is not ONE closed element
+/// carrying its own id.
+///
+/// The block model says every block is one element, and raw HTML is where that stops being
+/// true. A comment and a lone closing tag (`</details>` ending a wrapper opened two blocks
+/// up) emit no element at all, so their id is in the block list and nowhere in the DOM: an
+/// `Insert` after one found no anchor and landed ABOVE the title. An unclosed root (the
+/// wrapper's opening line) swallows the blocks after it once the page is parsed, so an
+/// `Update` of it replaced those blocks too and the wrapped table vanished from the
+/// preview. Neither can be patched correctly without knowing how the browser nested the
+/// page, and a full render is exactly that. These edits are rare (typing right after a
+/// comment or a wrapper), so re-mounting them costs little; `SetMeta` only ever moves an
+/// attribute on the element that exists, so it never needs one.
+pub fn needs_remount(old: &[Block], new: &[Block], ops: &[BlockOp]) -> bool {
+    use std::collections::HashMap;
+    fn html_by_id(blocks: &[Block]) -> HashMap<&str, &str> {
+        blocks
+            .iter()
+            .map(|b| (b.id.as_str(), b.html.as_str()))
+            .collect()
+    }
+    if ops.iter().all(|op| matches!(op, BlockOp::SetMeta { .. })) {
+        return false;
+    }
+    let (old_html, new_html) = (html_by_id(old), html_by_id(new));
+    let ok = |by_id: &HashMap<&str, &str>, id: &str| by_id.get(id).is_some_and(|h| addressable(h));
+    ops.iter().any(|op| match op {
+        BlockOp::Update { target_id, html } => !ok(&old_html, target_id) || !addressable(html),
+        BlockOp::Remove { target_id } => !ok(&old_html, target_id),
+        BlockOp::Insert { after_id, html } => {
+            after_id.as_deref().is_some_and(|a| !ok(&new_html, a)) || !addressable(html)
+        }
+        BlockOp::SetMeta { .. } => false,
+    })
+}
+
+/// One element that opens the html carrying a `data-block-id`, and closes at its end.
+fn addressable(html: &str) -> bool {
+    let lead = html.len() - html.trim_start().len();
+    crate::render::tags(html).next().is_some_and(|t| {
+        t.at == lead
+            && crate::render::attrs(&t).any(|a| a.name.eq_ignore_ascii_case("data-block-id"))
+    }) && crate::render::is_closed_single_root(html)
+}
+
 /// The op for an id-matched anchor whose html changed. If *only* the position
 /// metadata moved (same content-hashed body, just a shifted `data-sourcepos`), patch
 /// the attribute in place via `SetMeta` so the element's live DOM state survives a
@@ -365,37 +411,42 @@ mod tests {
     /// A model of the preview client's apply semantics (web-client/client.js), over a
     /// list of block ids standing in for the DOM:
     ///  - `update`: the FIRST element matching `target_id` (document order, as
-    ///    `elById`'s `querySelector` resolves it) is replaced by the html's own id; a
-    ///    missing target is a silent no-op.
+    ///    `elById`'s `querySelector` resolves it) is replaced by the html's own id.
     ///  - `insert`: the stale-duplicate defense first removes the FIRST element already
     ///    carrying the incoming id, then the node lands after `after_id` (first match),
-    ///    or is prepended when `after_id` is None or missing.
+    ///    or is prepended when `after_id` is None.
     ///  - `remove`: the first match is removed.
     ///  - `set_meta`: attribute-only, no structural change.
+    ///
+    /// A missing target or anchor makes the client reload (`resync`), which no burst the
+    /// diff emits may ever need, so the model panics there instead of guessing.
     fn replay_client(old: &[Block], ops: &[BlockOp]) -> Vec<String> {
         let mut dom: Vec<String> = old.iter().map(|b| b.id.clone()).collect();
+        let find = |dom: &[String], id: &str| {
+            dom.iter()
+                .position(|d| d == id)
+                .unwrap_or_else(|| panic!("client resync: {id} is not in the DOM {dom:?}"))
+        };
         for op in ops {
             match op {
                 BlockOp::Update { target_id, html } => {
-                    if let Some(i) = dom.iter().position(|id| id == target_id) {
-                        dom[i] = html_id(html);
-                    }
+                    let i = find(&dom, target_id);
+                    dom[i] = html_id(html);
                 }
                 BlockOp::Insert { after_id, html } => {
                     let id = html_id(html);
+                    if let Some(a) = after_id {
+                        find(&dom, a); // the client resolves the anchor before anything moves
+                    }
                     if let Some(stale) = dom.iter().position(|d| *d == id) {
                         dom.remove(stale);
                     }
-                    let at = after_id
-                        .as_ref()
-                        .and_then(|a| dom.iter().position(|d| d == a).map(|i| i + 1))
-                        .unwrap_or(0);
+                    let at = after_id.as_ref().map_or(0, |a| find(&dom, a) + 1);
                     dom.insert(at, id);
                 }
                 BlockOp::Remove { target_id } => {
-                    if let Some(i) = dom.iter().position(|id| id == target_id) {
-                        dom.remove(i);
-                    }
+                    let i = find(&dom, target_id);
+                    dom.remove(i);
                 }
                 BlockOp::SetMeta { .. } => {}
             }
@@ -607,7 +658,8 @@ mod tests {
     /// Pin the behaviors the model encodes, so a change to the client's apply loop
     /// fails HERE and forces the model (and diff_blocks' ordering contract) to be
     /// re-derived: first-match id lookup, the insert-time stale-duplicate defense,
-    /// update-in-place by target id, and prepend as the missing-anchor fallback.
+    /// update-in-place by target id, prepend for a null anchor, and a reload for a
+    /// missing target or anchor.
     #[test]
     fn replay_client_matches_the_real_clients_apply_semantics() {
         let client_js = include_str!("../../../web-client/client.js");
@@ -617,6 +669,9 @@ mod tests {
             "const stale = newId && elById(newId);",
             "if (stale) stale.remove();",
             "const el = elById(msg.target_id);",
+            "if (!el || !node) return resync();",
+            "if (!node || (msg.after_id && !after)) return resync();",
+            "if (!el) return resync();",
             "else root.prepend(node);",
         ] {
             assert!(

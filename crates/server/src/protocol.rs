@@ -252,7 +252,7 @@ pub struct Broadcast<'a> {
     /// The block ops from `diff_blocks`, applied one message each on the incremental path.
     pub ops: &'a [BlockOp],
     /// Send a whole `full_render` (a re-mount) instead of the ops: error recovery, or a
-    /// deck restructure/title change whose slides can't be expressed as flat block ops.
+    /// burst the client cannot apply one block at a time (`taliesin_core::needs_remount`).
     pub remount: bool,
     /// The tab title changed — retitle after the body. Its own message because the title is
     /// chrome, living outside `doc.blocks`: no block op can carry it, and on a page whose

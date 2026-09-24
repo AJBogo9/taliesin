@@ -80,6 +80,7 @@ mod emit;
 use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
 pub(crate) use emit::emit_children;
+pub(crate) use emit::is_closed_single_root;
 pub(crate) use emit::safe_url;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};

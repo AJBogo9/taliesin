@@ -124,3 +124,82 @@ fn re_rendering_unchanged_source_produces_no_ops() {
     let ops = diff_blocks(&render_document(src).blocks, &render_document(src).blocks);
     assert!(ops.is_empty(), "a no-op edit must produce no ops: {ops:?}");
 }
+
+/// Raw HTML is where "every block is one element" stops being true: a comment or a lone
+/// closing tag emits no element, and a wrapper's unclosed opening line swallows the blocks
+/// after it once the page is parsed. A burst that aims at, anchors on or brings in such a
+/// block cannot be applied one block at a time (the insert landed above the title, the
+/// update deleted the wrapped table), so it must re-mount; one that only touches ordinary
+/// blocks, including blocks the wrapper holds, must not.
+#[test]
+fn a_burst_touching_raw_html_that_is_not_one_element_re_mounts() {
+    use taliesin_core::needs_remount;
+    let remounts = |a: &str, b: &str| {
+        let (v1, v2) = (render_document(a), render_document(b));
+        needs_remount(&v1.blocks, &v2.blocks, &diff_blocks(&v1.blocks, &v2.blocks))
+    };
+    let comment = "First.\n\n<!-- TODO -->\n\nLast.\n";
+    let details = "First.\n\n<details><summary>More</summary>\n\nHidden.\n\n</details>\n\nLast.\n";
+    let wrapper =
+        "First.\n\n<div class=\"w\">\n\n| k | n |\n|---|---|\n| a | 1 |\n\n</div>\n\nLast.\n";
+
+    for (label, before, after) in [
+        (
+            "a paragraph typed under a comment",
+            comment,
+            comment.replace("-->\n", "-->\n\nNew.\n"),
+        ),
+        (
+            "a paragraph typed after a closing tag",
+            details,
+            details.replace("</details>\n", "</details>\n\nNew.\n"),
+        ),
+        (
+            "the unclosed opening line edited",
+            details,
+            details.replace("More</summary>", "More please</summary>"),
+        ),
+        (
+            "the wrapper's opening line edited",
+            wrapper,
+            wrapper.replace("class=\"w\"", "class=\"w wide\""),
+        ),
+        (
+            "a closing tag deleted",
+            details,
+            details.replace("</details>\n\n", ""),
+        ),
+        (
+            "a paragraph turned into a comment",
+            "First.\n\nMiddle.\n\nLast.\n",
+            "First.\n\n<!-- Middle. -->\n\nLast.\n".to_string(),
+        ),
+    ] {
+        assert!(remounts(before, &after), "{label} must re-mount");
+    }
+
+    for (label, before, after) in [
+        (
+            "a paragraph edited near a comment",
+            comment,
+            comment.replace("Last.", "Last, edited."),
+        ),
+        (
+            "a block inside the wrapper edited",
+            details,
+            details.replace("Hidden.", "Hidden, edited."),
+        ),
+        (
+            "a table row inside the wrapper edited",
+            wrapper,
+            wrapper.replace("| a | 1 |", "| a | 2 |"),
+        ),
+        (
+            "lines shifted above a wrapper",
+            details,
+            details.replace("First.\n", "First.\n\nAdded above.\n"),
+        ),
+    ] {
+        assert!(!remounts(before, &after), "{label} must stay block ops");
+    }
+}

@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
-use taliesin_core::{Block, BlockOp, Page, Site, diff_blocks};
+use taliesin_core::{Block, BlockOp, Page, Site, diff_blocks, needs_remount};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::protocol::{self, Diagnostic};
@@ -1433,6 +1433,9 @@ async fn build_page(
     });
     let recovered = std::mem::take(&mut ps.doc.errored);
     let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
+    // A burst that aims at raw HTML the DOM does not hold as one element (a comment, a
+    // wrapper's closing tag, its unclosed opening line) goes out as a full render.
+    let remount = recovered || needs_remount(&ps.doc.blocks, &doc.blocks, &ops);
     let diags_changed = ps.doc.diagnostics != diags;
     // Compared BEFORE the assignment below overwrites it. The title is chrome, so it never
     // reaches the tab as a block op: a `title:`-only edit on a page that renders no title
@@ -1451,11 +1454,10 @@ async fn build_page(
     ps.doc.diagnostics = diags;
     // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
     // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
-    // `recovered` is the only remount trigger.
     let generation = ps.doc.generation;
     let messages = protocol::Broadcast {
         ops: &ops,
-        remount: recovered,
+        remount,
         title_changed,
         diags_changed,
     }
@@ -2422,6 +2424,50 @@ mod project_tests {
             "an include partial is not a page of the site"
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 D1. An HTML comment emits no element, so its block id is in the
+    /// block list and nowhere in the DOM. A paragraph typed right under it arrived as an
+    /// `Insert` anchored on that id; the client found no anchor and put the paragraph above
+    /// the title. Such a burst must reach the client as one `full_render`, while an ordinary
+    /// edit on the same page still travels as block ops.
+    #[test]
+    fn an_edit_anchored_on_a_comment_is_sent_as_a_full_render() {
+        let dir = scratch("comment-anchor");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        let v1 = "---\ntitle: C\n---\n\nFirst.\n\n<!-- TODO -->\n\nLast.\n";
+        std::fs::write(&page, v1).unwrap();
+        let (project, _app, _b, _f) = project_and_app(&dir);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        let mut rx = project.pages.lock()["index.tmd"].tx.subscribe();
+        let mut burst_after = |src: &str| -> Vec<String> {
+            std::fs::write(&page, src).unwrap();
+            rt.block_on(build_page(&project, "index.tmd", None));
+            std::iter::from_fn(|| rx.try_recv().ok())
+                .map(|m| {
+                    crate::testutil::parse(m)["type"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string()
+                })
+                .collect()
+        };
+
+        let typed = v1.replace("<!-- TODO -->\n", "<!-- TODO -->\n\nNew paragraph.\n");
+        let types = burst_after(&typed);
+        assert!(
+            types.iter().any(|t| t == "full_render") && !types.iter().any(|t| t == "insert"),
+            "an insert anchored on a comment must be a full render: {types:?}"
+        );
+
+        let types = burst_after(&typed.replace("Last.", "Last, edited."));
+        assert!(
+            types.iter().any(|t| t == "update") && !types.iter().any(|t| t == "full_render"),
+            "an ordinary paragraph edit stays a block op: {types:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
