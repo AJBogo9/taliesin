@@ -898,17 +898,21 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
 /// exit 0. Derived from that same constant, so the two verbs and the walker can never
 /// disagree about what a source document is.
 ///
-/// Two lines: name the file, name the accepted extension, suggest nothing else.
+/// Two lines: name the file, then the accepted extension and the rename that gets there. A
+/// `.tmd` is Markdown, so a Markdown file only needs the new name; the hint names no other
+/// tool, since Taliesin answers for its own vocabulary and nothing else.
 pub(crate) fn not_a_source_error(path: &Path, verb: &str) -> String {
-    let accepted = taliesin_core::ext::ACCEPTED_SOURCE_EXTS
+    let exts = taliesin_core::ext::ACCEPTED_SOURCE_EXTS;
+    let accepted = exts
         .iter()
         .map(|e| format!(".{e}"))
         .collect::<Vec<_>>()
         .join(", ");
     format!(
         "{shown} is not a Taliesin source document.\n\
-         taliesin {verb} takes a {accepted} file.",
-        shown = path.display()
+         taliesin {verb} takes a {accepted} file: if it is Markdown, rename it to {renamed}.",
+        shown = path.display(),
+        renamed = path.with_extension(exts[0]).display()
     )
     // Same gutter hang as `not_a_project_error`, for the same reason.
     .replace('\n', "\n          ")
@@ -1178,10 +1182,16 @@ mod protocol_contract {
                 "names the accepted extension .{ext}: {msg}"
             );
         }
+        // The fix, not only the rule: a stranger with a Markdown file was told what the
+        // tool takes and left to work out the rename (audit 2026-09-24, first-hour #13).
+        assert!(
+            msg.contains("rename it to notes/note.tmd"),
+            "names the rename that makes it a source document: {msg}"
+        );
         assert_eq!(
             msg.lines().count(),
             2,
-            "two lines, suggesting nothing else: {msg}"
+            "two lines, the refusal and its fix: {msg}"
         );
         // Same gutter-hang treatment as `not_a_project_error`, above.
         for cont in msg.lines().skip(1) {
