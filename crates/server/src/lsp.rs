@@ -1211,13 +1211,11 @@ fn resolve_completion(
         Ctx::DivAttrKey { classes, typed } => {
             // A class the renderer dispatches on. `layout-ncol` (the one attribute with an
             // empty class list) is offered ONLY where none is present: the dispatch chain
-            // tests it second, so on a `.step` or `.panel-tabset` it does not decorate the
-            // feature, it silently REPLACES it with a grid. That is a footgun, not a
-            // completion.
+            // tests it second, so on a `.column-page` it does not decorate the escape, it
+            // silently REPLACES it with a grid, and on a callout it is inert. That is a
+            // footgun, not a completion.
             let is_feature_class = |c: &str| {
                 vocab::div_classes().iter().any(|(n, _)| *n == c)
-                    || c == "columns"
-                    || c == "column"
                     || vocab::callout_kinds()
                         .iter()
                         .any(|(k, _)| format!("callout-{k}") == c)
@@ -3485,6 +3483,36 @@ mod tests {
             "`draft: t` narrows to what was typed"
         );
         assert_eq!(values(4, 8), [v("list")], "`listing: type: `");
+    }
+
+    // `.columns` and `.column` stopped being dispatched classes when their feature was cut,
+    // so on such a div the renderer reaches the `layout-ncol` arm like on any custom class.
+    // The completion kept them in its feature-class test and withheld the grid there.
+    #[test]
+    fn a_custom_class_div_offers_the_grid_and_a_feature_class_does_not() {
+        let uri = Url::parse("file:///tmp/tali-lsp-div-attrs.tmd").unwrap();
+        let lines = [
+            "::: {.columns ",
+            "::: {.column-page ",
+            "::: {.callout-note ",
+        ];
+        let text = format!("{}\n", lines.join("\n"));
+        let docs = std::collections::HashMap::from([(uri.clone(), text)]);
+        let offers_grid = |line: usize| -> bool {
+            let character = lines[line].len() as u32;
+            match resolve_completion(&docs, &complete_params(&uri, line as u32, character)) {
+                Some(lsp_types::CompletionResponse::Array(items)) => {
+                    items.iter().any(|i| i.label == "layout-ncol")
+                }
+                other => panic!("expected a completion list, got {other:?}"),
+            }
+        };
+        assert!(offers_grid(0), "`.columns` is a custom class now");
+        assert!(!offers_grid(1), "the grid would replace the width escape");
+        assert!(
+            !offers_grid(2),
+            "the callout arm wins, so the grid is inert"
+        );
     }
 
     // Stepless math completion. The author who knows the symbol is called "alpha" should not
