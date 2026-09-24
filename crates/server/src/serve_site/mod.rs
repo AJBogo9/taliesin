@@ -2235,16 +2235,23 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
             }
         }
     }
+    for rel in to_rebuild {
+        app.queue_build(rel);
+    }
     // The Cmd-K index is GLOBAL (one `search-index.js` for every tab), so a per-page
     // refresh keyed on the open tabs cannot keep it true: a renumbered figure would go stale
     // in the fragments of every page nobody happens to have open, and Cmd-K would surface a
     // snippet contradicting the page it links to. The index is rebuilt whole, and only on a
     // real anchor move; a prose edit reaches the palette on the next discovery.
+    //
+    // Last, and on a copy of the site rather than under its lock: it renders every page, and
+    // the builds queued above, the pages a reader is watching, take that lock to render, so
+    // their ops waited behind a whole-project pass. Only this task writes the `Site`, so the
+    // copy is the site in force when it is put back.
     if moved {
-        project.site.lock().rebuild_search_index();
-    }
-    for rel in to_rebuild {
-        app.queue_build(rel);
+        let mut site = project.site.lock().clone();
+        site.rebuild_search_index();
+        *project.site.lock() = site;
     }
 }
 
@@ -3892,6 +3899,11 @@ mod project_tests {
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()],
             "the page citing the renumbered figure is rebuilt"
+        );
+        let index = project.site.lock().search_index_json.clone();
+        assert!(
+            index.contains("Figure 1") && !index.contains("Figure 2"),
+            "and the search index says what the page now says: {index}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
