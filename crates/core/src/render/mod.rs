@@ -102,11 +102,11 @@ use image_meta::ImageAnnotator;
 // Text projection: a plain-text VIEW of the block model, not an output format. Named for
 // the `read` verb until wave 9 cut it, and documented as reached via a
 // `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its one live
-// consumer is `indexable_text` below.
+// consumers are `indexable_text` and `heading_text` below.
 mod text;
 // The search index's text extraction, shared with the `read`/TOC/slug path above rather
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
-pub(crate) use text::indexable_text;
+pub(crate) use text::{heading_text, indexable_text};
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
@@ -3658,6 +3658,12 @@ enum Separate {
 fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
+    // Depth of `<pre>`/`<code>` elements around the current position. Code carries every
+    // space the reader sees as text of its own (a listing's newlines, the gap between two
+    // tokens), and syntax highlighting wraps each token in a `<span>`, so a tag in there
+    // marks up a TOKEN and a boundary splits it: `np.linspace` was indexed `np . linspace`
+    // and no code on any page could be found by typing it.
+    let mut code = 0usize;
     let mut i = 0;
     while let Some(rel) = html[i..].find('<') {
         let lt = i + rel;
@@ -3680,13 +3686,22 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             .take_while(|c| c.is_ascii_alphanumeric())
             .flat_map(|c| c.to_lowercase())
             .collect();
+        let is_code = name == "pre" || name == "code";
+        if is_code && is_close {
+            code = code.saturating_sub(1);
+        }
         // Decided from the tag NAME, so it has to follow the parse above rather than
         // precede it. Nothing else is pushed in between, so the space still lands
-        // exactly where the tag was.
+        // exactly where the tag was. Never inside code, and never at a `<code>` tag
+        // itself, which is inline (`(<code>exec.rs</code>)` reads "(exec.rs)"); a
+        // `<pre>` is a block, so its own two tags still separate it from the prose.
         let boundary = match separate {
             Separate::Never => false,
-            Separate::EveryTag => true,
+            Separate::EveryTag => code == 0 && name != "code",
         };
+        if is_code && !is_close && !tag.trim_end().ends_with('/') {
+            code += 1;
+        }
         // Never double a boundary that is already there. `</span> <span>` carries a
         // real space of its own, and pushing a second one publishes "models.  14 April".
         if boundary && !out.ends_with(char::is_whitespace) {

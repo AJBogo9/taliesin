@@ -35,6 +35,17 @@ pub(crate) fn indexable_text(html: &str) -> String {
         .join(" ")
 }
 
+/// The text of ONE heading, for a search result's title: the TOC entry's own extraction
+/// ([`strip_tags`], no boundary at any tag), decoded and whitespace-collapsed like
+/// [`indexable_text`]. A heading is one run of text, so a tag inside it separates nothing:
+/// read with a boundary at each one, `$H_0$` came out `H 0` beside a TOC reading `H0`.
+pub(crate) fn heading_text(html: &str) -> String {
+    decode(&strip_tags(html))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

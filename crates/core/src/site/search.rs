@@ -204,7 +204,7 @@ pub(super) fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, u
             out.push((
                 level,
                 id,
-                section_text(&inner[..end]),
+                render::heading_text(&inner[..end]),
                 open_start,
                 close_end,
             ));
@@ -357,6 +357,53 @@ mod tests {
         );
         // The span between heading a's close and heading b's open is a's section.
         assert_eq!(section_text(&html[hs[0].4..hs[1].3]), "body of a");
+    }
+
+    /// Code is searchable as the reader sees it. A space went in at every tag, and syntax
+    /// highlighting wraps each token in a `<span>`, so the index held `matplotlib . pyplot`
+    /// and `np . linspace ( 0 , 10 )`: typing `plt.show()` or `np.linspace` found nothing
+    /// on any page. Inline code in prose read `( exec.rs )` the same way.
+    #[test]
+    fn code_is_indexed_with_its_tokens_joined() {
+        let doc = crate::render::render_document(
+            "Run it (`exec.rs`) now.\n\n```python\nimport matplotlib.pyplot as plt\n\
+             bins = np.linspace(0, 10, 12)\nplt.show()\n```\n\nAfter.\n",
+        );
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            html.contains("<span"),
+            "sanity: the fence is highlighted: {html}"
+        );
+        let text = section_text(&html);
+        for needle in [
+            "(exec.rs) now.",
+            "import matplotlib.pyplot as plt",
+            "np.linspace(0, 10, 12)",
+            "plt.show()",
+        ] {
+            assert!(
+                text.contains(needle),
+                "{needle:?} is not searchable: {text}"
+            );
+        }
+        // A code block is still its own block: its first and last words do not weld onto
+        // the prose around it.
+        assert!(text.contains("now. import") && text.ends_with("plt.show() After."));
+    }
+
+    /// A result's title is the heading's text as the TOC shows it, one extractor for both:
+    /// `(exec.rs)`, not `( exec.rs )`, and inline math once, as its glyphs, unsplit.
+    #[test]
+    fn a_result_title_reads_like_its_toc_entry() {
+        let doc = crate::render::render_document("## The executor (`exec.rs`) under $H_0$ {#ex}\n");
+        let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+        let hs = headings_with_pos(&html);
+        assert_eq!(hs.len(), 1, "{html}");
+        // KaTeX closes the glyphs with an invisible U+200B, which the TOC carries too.
+        assert_eq!(
+            hs[0].2.trim_end_matches('\u{200b}'),
+            "The executor (exec.rs) under H0"
+        );
     }
 
     /// The id a hit navigates to is the id the heading carries, read the way the browser
