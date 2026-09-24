@@ -1621,9 +1621,8 @@ fn to_document_symbol(
     // The section's prose length, shown beside its name in the editor outline — the one
     // structural measure an author can act on while writing, at the moment they can act on
     // it. Counted over the node's own markdown line extent (which `lsp_outline` computed to
-    // bound the section) via the shared `prose::word_count`, so the outline, `lint`, `map`
-    // and the page's reading-time figure can never report four different lengths. Counting
-    // rendered text instead would count fenced code and cell output as prose.
+    // bound the section) via `prose::word_count`, the one definition of what prose is.
+    // Counting rendered text instead would count fenced code and cell output as prose.
     //
     // A node's extent spans its subsections too, so for a parent this is the whole
     // section's length, not the prose directly under its own heading. That is the number
