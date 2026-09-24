@@ -10,7 +10,7 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 | `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
 | `preview <dir>` | Live multi-page site/book preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
 | `build <file.tmd> [out.html]` | Write one HTML file (default `<name>.html`); the local files it references are copied beside `out.html`, and a different file already at one of those paths is never replaced (an error names it) |
-| `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
+| `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder); a referenced file above the document's own folder has no place in it and is an error |
 | `build <file.tmd> --stdout` | Write the page to stdout instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <dir> [--out <dir>]` | Build a multi-page site/book to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write nothing: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |

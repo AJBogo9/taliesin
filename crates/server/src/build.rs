@@ -1097,10 +1097,17 @@ struct Bundled {
 
 /// Copy each referenced local asset (a relative `src=`/`href=` under `base`) to
 /// the same relative path under `dest`, so a built page's images/audio/etc. travel
-/// with it. Skips paths escaping the tree (absolute or `..`) and no-op self-copies
-/// (an in-place build, where the asset already sits next to the output). Shared by the
-/// portable `--out` folder and the single-file build (so `build doc.tmd out.html` into
-/// another directory isn't left with dangling asset references).
+/// with it. Shared by the portable `--out` folder and the single-file build (so
+/// `build doc.tmd out.html` into another directory isn't left with dangling asset
+/// references). An in-place build copies nothing: every file is already where the page
+/// points.
+///
+/// Which files it may place is the one publication rule,
+/// [`taliesin_core::includes::publishable`], with the page's own folder as the boundary:
+/// the output mirrors that folder, so a file above it (a project image a page reaches as
+/// `../img/i.png`) has nowhere to go. Each existing file it cannot place is an
+/// error-severity warning located at its reference, because the output then points at a
+/// file it does not have: a warning `--strict` ignored until the 2026-09-24 audit.
 ///
 /// **It never replaces a different file.** The destination is a directory the author
 /// chose, not one this build owns, so a file already at the target path with other bytes
@@ -1109,39 +1116,60 @@ struct Bundled {
 /// naming both paths. The same bytes are what a rebuild into the same folder finds, and
 /// count as bundled.
 fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> Bundled {
+    use taliesin_core::includes::{Reach, Unpublishable, publishable};
     let mut copied = 0usize;
     let mut problems = Vec::new();
+    // `Path::new("doc.tmd").parent()` is the empty path, which names the cwd.
+    let dir = |p: &Path| match p.as_os_str().is_empty() {
+        true => PathBuf::from("."),
+        false => p.to_path_buf(),
+    };
+    if same_file(&dir(base), &dir(dest)) {
+        return Bundled { copied, problems };
+    }
     // Destinations already accounted for, so two spellings of one file (`a.png` and
     // `./a.png`, `my%20pic.png` and `my pic.png`) are bundled and counted once.
     let mut placed = std::collections::HashSet::new();
-    let boundary = taliesin_core::includes::repo_boundary(base);
     for (r, at) in local_refs(html) {
         // The filesystem path comes from the shared resolution step (`asset_fs_path`,
         // also behind the local-asset validator and the dev server's request decode):
         // no ?query / #fragment (a static host ignores those, so `img.png?v=2` is the
         // file `img.png`) and `%XX` decoded, so `my%20image.png` is the file
         // `my image.png` — copied under its DECODED name, the one a static host
-        // resolves the emitted src to. Decoded BEFORE the escape checks below, so an
-        // encoded `..` cannot slip past them.
+        // resolves the emitted src to. Decoded BEFORE the rule is asked, so an encoded
+        // `..` cannot slip past it.
         let path = taliesin_core::render::asset_fs_path(&r);
-        if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
-            log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
-            continue;
-        }
-        let from = base.join(&path);
+        let why = match publishable(base, base, Path::new(&path), Reach::Referenced) {
+            Ok(rel) => Ok(rel),
+            // A reference that names no file (a link to a page URL, `/`) has nothing to
+            // bundle; the link validator speaks for a missing target.
+            Err(_) if !base.join(&path).is_file() => continue,
+            Err(Unpublishable::Outside) => Err("is outside the document's folder"),
+            Err(Unpublishable::OutsideRepo) => Err("is a symlink out of the checkout"),
+            Err(Unpublishable::Private) => {
+                Err("has a `.`-prefixed component, which is never published")
+            }
+        };
+        let rel = match why {
+            Ok(rel) => rel,
+            Err(why) => {
+                let mut w = taliesin_core::render::Warning::new(format!(
+                    "asset not bundled: `{path}` {why}, so the output points at a file it \
+                     does not have"
+                ))
+                .severity(taliesin_core::Severity::Error);
+                w.file = source_file_before(html, at);
+                w.line = sourcepos_line_before(html, at);
+                problems.push(w);
+                continue;
+            }
+        };
+        let from = base.join(&rel);
         if !from.is_file() {
             continue; // e.g. an href to something that isn't a local file
         }
-        if !inside_repo(&from, &boundary) {
-            log::warn(&format!(
-                "asset resolves outside the repository, not bundled: {r}"
-            ));
-            continue;
-        }
-        let to = dest.join(&path);
-        // In-place build: the asset is already where the page points, and copying a
-        // file onto itself would truncate it.
-        if same_file(&from, &to) || !placed.insert(to.clone()) {
+        let to = dest.join(&rel);
+        if !placed.insert(to.clone()) {
             continue;
         }
         match bundle_file(&from, &to, &path) {
@@ -1309,15 +1337,6 @@ fn deploy_referenced_sources_for_site(
         &mut copied,
     );
     copied
-}
-
-/// Whether a path resolved out of a page's `src=`/`href=` still lands inside the
-/// repository once symlinks are followed. The lexical rule the callers apply first
-/// (no absolute path, no `..` segment) constrains what the *page text* may ask for and
-/// says nothing about what an in-tree path resolves *to*: `<img src="fig.png">` where
-/// `fig.png` is a symlink is contained by that rule and can still leave the checkout.
-fn inside_repo(from: &Path, boundary: &Path) -> bool {
-    from.canonicalize().is_ok_and(|c| c.starts_with(boundary))
 }
 
 /// Whether two paths resolve to the same file on disk (so we don't self-copy).

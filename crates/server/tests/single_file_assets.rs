@@ -82,3 +82,46 @@ fn a_single_file_build_never_replaces_a_different_file_beside_its_output() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A page of a project may reference a project image above its own folder
+/// (`../img/i.png`), which the site build ships. Built alone into a portable folder, the
+/// copier cannot place it (the folder mirrors the page's own directory), so the folder's
+/// `index.html` pointed at a file it did not have, with a warning `--strict` ignored. That
+/// is a broken deploy: an error, located at the reference. The same page built in place
+/// is fine, because the file is where the page points.
+#[test]
+fn a_portable_folder_that_cannot_hold_a_referenced_file_is_an_error() {
+    let dir = tmp_dir("unbundled");
+    let proj = dir.join("proj");
+    fs::create_dir_all(proj.join("img")).unwrap();
+    fs::create_dir_all(proj.join("posts")).unwrap();
+    fs::write(proj.join("_site.yml"), "title: P\n").unwrap();
+    fs::write(proj.join("img/i.png"), "png").unwrap();
+    fs::write(
+        proj.join("posts/p.tmd"),
+        "---\ntitle: P\n---\n\n![A project image.](../img/i.png)\n",
+    )
+    .unwrap();
+    let page = proj.join("posts/p.tmd");
+
+    let (ok, err) = build(&[
+        page.as_os_str(),
+        "--out".as_ref(),
+        dir.join("folder").as_os_str(),
+        "--strict".as_ref(),
+    ]);
+    assert!(
+        !ok,
+        "a folder missing a referenced file fails --strict:\n{err}"
+    );
+    assert!(
+        err.contains("p.tmd:5:") && err.contains("error") && err.contains("../img/i.png"),
+        "an error located at the reference, naming it:\n{err}"
+    );
+
+    let (ok, err) = build(&[page.as_os_str(), "--strict".as_ref()]);
+    assert!(ok, "in place the file is where the page points:\n{err}");
+    assert!(!err.contains("not bundled"), "{err}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
