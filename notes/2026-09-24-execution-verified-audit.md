@@ -1,10 +1,28 @@
 # Execution-verified audit, 2026-09-24 (Opus 5.5)
 
-> **Status: findings only. Nothing is fixed.** Written at HEAD `9c5bd008` (1.1.0, unreleased).
-> Every headline finding below was reproduced by running the release binary, and the 32 marked
-> **[re-run]** were reproduced a second time, independently, by the coordinating session with
-> its own fixtures. None of those 32 failed to reproduce. The repro blocks are self-contained
-> because the auditors' scratch fixtures were session-local and are gone.
+> **Status (2026-09-24, evening): fixed on branch `audit-fixes-2026-09-24`, not yet on `main`,
+> not released.** Parts A to K were implemented the same day, one commit per fix, almost each citing
+> the finding it closes (`git log --grep 'udit 2026-09-24' 9c5bd008..`). One defect the audit
+> did not list was found while fixing it and fixed too: a cell printing long lines at full
+> speed never finished (a tokio budget livelock in the iopub read, present on `main`).
+>
+> - **Refuted while fixing, no change:** two leads from the lens reports behind this file (the
+>   companion's `server.ts:44`; a substring scan in `citations_without_bibliography`).
+> - **Left for the author:** A5 (tagging 1.1.0); whether figure attributes (`{width=}`,
+>   `{dark=}`) are vocabulary, since an alt-only image is no longer a figure and shows its
+>   attribute block literally; a footnote inside a heading; the dormant `suggestion` severity
+>   label; the "KernelDied" label a Restart kill leaves until the re-run; the References
+>   heading's missing id; the Part K items judged behaviour or UX changes (the mermaid CDN
+>   fallback, `--help` groups, `NON_HTML_OUTPUT_EXTS`, the outline word count).
+> - **Not fixed, by judgement:** a save of more than 256 ops re-mounts the page instead of
+>   patching it (the live-DOM lens report's informational item: the DOM stays correct, widget
+>   state resets); non-Linux port takeover still trusts the pid (documented).
+>
+> Original status: findings only, written at HEAD `9c5bd008` (1.1.0, unreleased). Every headline
+> finding below was reproduced by running the release binary, and the 32 marked **[re-run]**
+> were reproduced a second time, independently, by the coordinating session with its own
+> fixtures. None of those 32 failed to reproduce. The repro blocks are self-contained because
+> the auditors' scratch fixtures were session-local and are gone.
 
 ## Summary
 
