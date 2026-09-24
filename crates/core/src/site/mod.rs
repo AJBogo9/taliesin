@@ -198,7 +198,7 @@ mod discovery;
 // `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
-pub use discovery::collect_pages;
+pub use discovery::{collect_pages, discovery_digest};
 use discovery::{website_page, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.

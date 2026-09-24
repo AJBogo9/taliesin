@@ -122,27 +122,57 @@ struct Project {
     /// one-document preview into "every `.tmd` in the parent directory" — the scoping would
     /// hold until the first save and then evaporate.
     scope: Option<PathBuf>,
-    /// A digest of each page's front-matter block, as of the last discovery — the record
-    /// that says whether a `.tmd` save changed anything DISCOVERY reads.
+    /// What discovery read of each source file the preview has asked it about, as of the
+    /// discovery in force: a page's input maps to its
+    /// [`discovery_digest`](taliesin_core::site::discovery_digest) (its front-matter block
+    /// and its leading `# H1`), and a source file discovery found is no page (a partial, a
+    /// book file `chapters:` does not list) maps to `None`.
     ///
-    /// Front matter is discovery input, not render input. `title:`, `date:`,
-    /// `description:`, `image:`, `categories:`, `listing:`, `hero:` and `draft:` are parsed
-    /// once into [`Site::pages`], and every OTHER page renders its listing cards, nav
-    /// labels, prev/next and search entries out of that copy. A save that only re-renders
-    /// the edited page therefore leaves all of them stale — measured on a live preview:
-    /// editing a listed post's `title:` never reached the index, not on save and not on a
-    /// hard reload, and the preview kept contradicting what `build` produced until a file
-    /// was added or the server restarted. Five pages of the author's own sites carry a
-    /// `listing:`.
+    /// Front matter and the H1 are discovery input, not only render input. They are parsed
+    /// once into [`Site::pages`] and the book's chapters, and every OTHER page renders its
+    /// listing cards, nav labels, prev/next, drawer and chapter numbers out of that copy, so
+    /// a save that only re-renders the edited page leaves all of them stale.
     ///
-    /// Kept as a digest rather than fixed by re-discovering on every save: discovery is
-    /// ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, 10.2ms vs 3.8ms on
-    /// `corpus/tech-blog`, warm process, re-measured 2026-08-27 — the absolutes fell ~10x
-    /// with 1.1.0's render memos and concurrent harvest, the RATIO did not move), which is
-    /// real money on a keystroke path
-    /// that exists to be fast. Hashing the block of each changed file is a read and a
-    /// hash, and body edits — the overwhelming majority — leave it untouched.
-    front_matter: Mutex<HashMap<PathBuf, u64>>,
+    /// This is what classifies a save, by what it changed rather than by how the editor
+    /// wrote it ([`Project::what_moved`]): a page whose digest held is an edit in place
+    /// whether the editor wrote the file in place or renamed a temp file over it. Deciding
+    /// by event kind made every atomic save a possible page-set change (audit 2026-09-24
+    /// C1, C9): it paid a whole re-discovery, and that re-discovery reseeded this record
+    /// before anything asked whether the front matter moved, so an atomic `title:` edit
+    /// never reached the listing that shows it.
+    ///
+    /// A digest rather than a re-discovery per save: discovery renders every page twice
+    /// (the cross-reference harvest and the search index), and a body edit, nearly every
+    /// save, leaves the digest untouched.
+    records: Mutex<HashMap<PathBuf, Option<u64>>>,
+}
+
+/// What a batch of changed files moved of what discovery reads ([`Project::what_moved`]).
+#[derive(Default)]
+struct Moved {
+    /// A page's source is gone, or a source file discovery never classified exists: the
+    /// page set may have changed.
+    page_set: bool,
+    /// What discovery reads of a page that is still there changed.
+    records: bool,
+    /// The digest of every changed source file that exists, read BEFORE the re-discovery
+    /// this batch may cause, so a save that lands during it is compared against what this
+    /// batch saw rather than silently recorded as already seen.
+    digests: HashMap<PathBuf, u64>,
+}
+
+/// The key a path is recorded under: its canonical form when it exists, else the path as
+/// given (a deleted file does not canonicalize, and the watcher reports the path it had).
+fn record_key(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The [`discovery_digest`](taliesin_core::site::discovery_digest) of the source at `path`,
+/// read as discovery reads it. An unreadable file digests as an empty one, which is what
+/// discovery makes of it.
+fn digest_of(path: &Path) -> u64 {
+    let src = taliesin_core::includes::read_source(path).unwrap_or_default();
+    taliesin_core::site::discovery_digest(&src)
 }
 
 impl Project {
@@ -154,51 +184,81 @@ impl Project {
         }
     }
 
-    /// Record the front-matter digest of every page in the current `Site`. Called wherever
-    /// a fresh `Site` is adopted, so the record always describes the discovery in force.
-    fn seed_front_matter(&self) {
+    /// Record what discovery read of every page of the `Site` the server booted with.
+    fn seed_records(&self) {
         let inputs: Vec<PathBuf> = self
             .site
             .lock()
             .pages
             .iter()
-            .map(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()))
+            .map(|p| record_key(&p.input))
             .collect();
-        let mut record = self.front_matter.lock();
-        record.clear();
+        let mut records = self.records.lock();
+        records.clear();
         for input in inputs {
-            let digest = front_matter_digest(&input);
-            record.insert(input, digest);
+            let digest = digest_of(&input);
+            records.insert(input, Some(digest));
         }
     }
 
-    /// Whether any of `changed` is a page of this project whose front-matter block moved,
-    /// updating the record as it goes. A path the record does not hold is not a page of
-    /// this project — an `{{< include >}}` partial, a `.bib`, an image — and a body-only
-    /// edit leaves the digest equal, so both answer `false` and cost one read.
-    fn front_matter_moved(&self, changed: &HashSet<PathBuf>) -> bool {
-        let mut moved = false;
-        let mut record = self.front_matter.lock();
-        for path in changed {
-            let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
-            let Some(previous) = record.get(&canon).copied() else {
-                continue;
-            };
-            let digest = front_matter_digest(&canon);
-            if digest != previous {
-                record.insert(canon, digest);
-                moved = true;
+    /// What `changed` moved of what discovery reads. Reads each changed source file once;
+    /// anything else (an `{{< include >}}` partial's `.md`, a `.bib`, an image) is no page
+    /// and moves nothing here.
+    fn what_moved(&self, changed: &HashSet<PathBuf>) -> Moved {
+        let records = self.records.lock();
+        let mut moved = Moved::default();
+        for path in changed
+            .iter()
+            .filter(|p| taliesin_core::ext::is_source_path(p))
+        {
+            let key = record_key(path);
+            let exists = key.is_file();
+            let digest = exists.then(|| digest_of(&key));
+            if let Some(d) = digest {
+                moved.digests.insert(key.clone(), d);
+            }
+            match (records.get(&key), digest) {
+                // A page whose source is gone.
+                (Some(Some(_)), None) => moved.page_set = true,
+                (Some(Some(recorded)), Some(d)) => moved.records |= d != *recorded,
+                // Discovery found this is no page, and no content can make it one: that is
+                // decided by where the file is and by `chapters:`.
+                (Some(None), _) => {}
+                // A source file discovery has never classified may be a new page.
+                (None, digest) => moved.page_set |= digest.is_some(),
             }
         }
         moved
     }
-}
 
-/// A digest of one file's `---` front-matter block, or of the empty string when it has none
-/// (a page that gains or loses its whole block moves either way).
-fn front_matter_digest(path: &Path) -> u64 {
-    let src = std::fs::read_to_string(path).unwrap_or_default();
-    taliesin_core::hash::fnv1a(taliesin_core::frontmatter::front_matter_block(&src).unwrap_or(""))
+    /// Adopt a freshly discovered `site` and bring the record up to date with it. A page
+    /// takes the digest `fresh` read before the discovery, or keeps the one it has; a page
+    /// new to the record is read now; a changed source file that is no page is recorded as
+    /// none. `forget_non_pages` drops every recorded "no page", for a `_site.yml` change,
+    /// whose `chapters:` can make any file a page.
+    fn adopt(&self, site: Site, fresh: &HashMap<PathBuf, u64>, forget_non_pages: bool) {
+        let pages: HashSet<PathBuf> = site.pages.iter().map(|p| record_key(&p.input)).collect();
+        *self.site.lock() = site;
+        let mut records = self.records.lock();
+        records.retain(|key, digest| match digest {
+            Some(_) => pages.contains(key),
+            None => !forget_non_pages && !pages.contains(key),
+        });
+        for key in &pages {
+            match fresh.get(key) {
+                Some(d) => {
+                    records.insert(key.clone(), Some(*d));
+                }
+                None if !matches!(records.get(key), Some(Some(_))) => {
+                    records.insert(key.clone(), Some(digest_of(key)));
+                }
+                None => {}
+            }
+        }
+        for key in fresh.keys().filter(|key| !pages.contains(*key)) {
+            records.insert(key.clone(), None);
+        }
+    }
 }
 
 /// The project source `rel` a client's `?page=` sub-key names, or `None` when it names no
@@ -589,7 +649,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
             pages: Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: scoped,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         }),
         build_tx,
         fast_tx,
@@ -597,7 +657,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     });
     // Before the watcher can fire: the record has to describe the discovery the server
     // booted with, or the first front-matter edit of the session reads as "unchanged".
-    app.root.seed_front_matter();
+    app.root.seed_records();
 
     spawn_builder(app.clone(), build_rx);
     spawn_fast_builder(app.clone(), fast_rx);
@@ -1623,52 +1683,8 @@ fn page_label(page: &Page) -> String {
 
 // --- file watching ------------------------------------------------------
 
-/// One debounced file-change signal: the path plus whether it is *structural* (a
-/// `.tmd` created or removed, which may change the site's page set).
-struct Change {
-    path: PathBuf,
-    structural: bool,
-}
-
-fn is_tmd(p: &Path) -> bool {
-    // Native `.tmd` source docs, plus `.md` (watched for includes).
-    matches!(
-        p.extension().and_then(|e| e.to_str()),
-        Some("tmd") | Some("md")
-    )
-}
-
-/// Whether a watch event may have moved the project's PAGE SET, as opposed to editing a
-/// file in place. This is the whole of what [`Change::structural`] means, extracted out of
-/// [`spawn_watcher`]'s event loop so the classification is unit-testable without a live
-/// watcher, a debounce window or a running server.
-///
-/// A **rename** is the third member of this class and was missing until 2026-09-02. It
-/// reads as an in-place `Modify`, so `mv a.tmd b.tmd` left `structural` false and no
-/// branch of [`rebuild_project`] answered for it: the site went on listing `a.tmd`, the tab
-/// open on it was never told to reload, and `/b.html` 404ed until the server was
-/// restarted. A same-filesystem rename never creates and never removes — verified against
-/// a live `notify` 8.2 watcher, which emits `Modify(Name(From))` on the old path,
-/// `Modify(Name(To))` on the new, then a cookie-paired `Modify(Name(Both))` carrying both.
-/// The class to match is `Name(_)` rather than any particular `RenameMode`: FSEvents
-/// reports `Name(Any)` and Windows reports only the `From`/`To` pair.
-///
-/// The cost of admitting it is a `rediscover()` on an editor that saves atomically (write a
-/// temp file, rename it over the original). That is absorbed one level up by
-/// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an editor's
-/// save-via-rename of an existing one" case that guard was already written for: the page
-/// set is unchanged, so the save falls through to the ordinary per-page rebuild.
-fn may_change_page_set(kind: &notify::EventKind) -> bool {
-    matches!(
-        kind,
-        notify::EventKind::Create(_)
-            | notify::EventKind::Remove(_)
-            | notify::EventKind::Modify(notify::event::ModifyKind::Name(_))
-    )
-}
-
 fn spawn_watcher(app: Arc<SiteApp>) {
-    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
+    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<PathBuf>();
     let roots: Vec<PathBuf> = vec![app.root.dir.clone()];
 
     std::thread::spawn(move || {
@@ -1706,7 +1722,6 @@ fn spawn_watcher(app: Arc<SiteApp>) {
             ) {
                 continue;
             }
-            let structural = may_change_page_set(&ev.kind);
             for p in &ev.paths {
                 // A newly-created in-tree subdirectory needs its own non-recursive watch.
                 if matches!(ev.kind, notify::EventKind::Create(_)) {
@@ -1722,14 +1737,11 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                         }
                         // Files that already existed inside the new dir were created before
                         // its watch existed, so their events were missed. Replay them as
-                        // structural changes (a new `.tmd` may add a page) — a `git checkout`
-                        // or a new-folder-with-pages otherwise wouldn't appear until an
-                        // unrelated save.
+                        // changes (a new `.tmd` may add a page) — a `git checkout` or a
+                        // new-folder-with-pages otherwise wouldn't appear until an unrelated
+                        // save.
                         for f in crate::serve::subtree_relevant_files(p) {
-                            let _ = sig_tx.send(Change {
-                                path: f,
-                                structural: true,
-                            });
+                            let _ = sig_tx.send(f);
                         }
                     }
                 }
@@ -1738,10 +1750,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                 // root: these are absolute event paths, and a project living under a
                 // directory that happens to be called `_site` is not generated noise.
                 if roots.iter().any(|r| crate::serve::relevant_path(p, r)) {
-                    let _ = sig_tx.send(Change {
-                        path: p.clone(),
-                        structural,
-                    });
+                    let _ = sig_tx.send(p.clone());
                 }
             }
         }
@@ -1750,12 +1759,10 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     tokio::spawn(async move {
         while let Some(first) = sig_rx.recv().await {
             let mut changed: HashSet<PathBuf> = HashSet::new();
-            let mut structural = first.structural && is_tmd(&first.path);
-            changed.insert(first.path);
+            changed.insert(first);
             tokio::time::sleep(Duration::from_millis(80)).await;
-            while let Ok(c) = sig_rx.try_recv() {
-                structural |= c.structural && is_tmd(&c.path);
-                changed.insert(c.path);
+            while let Ok(path) = sig_rx.try_recv() {
+                changed.insert(path);
             }
             // Guarded, like every other task that renders on the author's behalf. This one
             // was not: `dispatch_changes` re-discovers the project, re-derives the
@@ -1764,8 +1771,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
             // page stayed served, so the preview did not visibly die — it silently stopped
             // reacting to saves, which reads as "the tool is broken" rather than "this
             // document is broken". Reporting it keeps the failure attached to the edit.
-            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed, structural))
-            {
+            if let Err(msg) = crate::serve::guarded(|| dispatch_changes(&app, &changed)) {
                 crate::log::error(&format!("rebuild failed: {msg}"));
             }
         }
@@ -1798,16 +1804,11 @@ fn pages_citing_a_moved_anchor(
 }
 
 /// Rebuild one project's affected pages from a batch of changed files (already filtered
-/// to this project by [`dispatch_changes`]): a `_site.yml` change (or a `.tmd`
-/// added/removed that changes the page set) re-discovers this project's site and reloads
-/// its open tabs; otherwise rebuild every *open* page whose source or include set touches
-/// a changed file. `structural` is set when the batch created/removed a `.tmd`.
-fn rebuild_project(
-    app: &SiteApp,
-    project: &Arc<Project>,
-    changed: &HashSet<PathBuf>,
-    structural: bool,
-) {
+/// to this project by [`dispatch_changes`]): a `_site.yml` change, or a save that moves
+/// the page set, re-discovers this project's site and reloads its open tabs; a save that
+/// moves what discovery reads of a page re-discovers and rebuilds every open page;
+/// otherwise rebuild every *open* page whose source or include set touches a changed file.
+fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<PathBuf>) {
     let changed_canon: HashSet<PathBuf> = changed
         .iter()
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
@@ -1830,57 +1831,46 @@ fn rebuild_project(
             crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
             return;
         }
-        *project.site.lock() = new;
-        project.seed_front_matter();
+        project.adopt(new, &HashMap::new(), true);
         reload_open_tabs(project);
         return;
     }
 
     // The registry as it stands BEFORE anything below re-derives it — snapshotted here
-    // because `structural` re-discovers (replacing the whole `Site`) and that is one of the
-    // two ways it moves. Both ways have to be compared against the same "before", or the
-    // rebuild selection below silently doesn't apply to one of them.
+    // because a re-discovery replaces the whole `Site` and that is one of the two ways it
+    // moves. Both ways have to be compared against the same "before", or the rebuild
+    // selection below silently doesn't apply to one of them.
     let targets_before = project.site.lock().xref_targets.clone();
 
-    // A `.tmd` was created/removed: re-discover, and if the page set actually changed
-    // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
-    // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
-    // normal per-page rebuild against the refreshed site.
-    if structural {
+    // What this batch changed of what discovery reads ([`Project::records`]), decided by
+    // content: an editor that renames a temp file over the page, or a `git checkout` that
+    // unlinks and recreates it, saved an existing page like any other editor.
+    //
+    // A page's front matter or leading `# H1` moved, so the project's view of that page
+    // did: its listing card, its nav label, the prev/next either side of it, a book's
+    // drawer label and every later chapter's number are all rendered by OTHER pages out of
+    // `Site::pages`, which only discovery writes. Re-discovering rebuilds the
+    // cross-reference registry and the search index as a side effect, so the
+    // `refresh_xrefs` below is skipped then.
+    //
+    // If the page set actually changed (a page added, renamed or deleted), open tabs reload
+    // so their nav and listings refresh; otherwise every open page is rebuilt. Discovery
+    // first, then the swap: the site lock is not held across it.
+    let moved = project.what_moved(changed);
+    let rediscovered = moved.page_set || moved.records;
+    if rediscovered {
         let new = project.rediscover();
         let set_changed = page_rels(&new) != page_rels(&project.site.lock());
-        *project.site.lock() = new;
-        project.seed_front_matter();
+        project.adopt(new, &moved.digests, false);
         if set_changed {
             reload_open_tabs(project);
             return;
         }
     }
 
-    // A page's own front matter moved, so the project's view of that page did: its listing
-    // card, its nav label, the prev/next arrows either side of it and its search entry are
-    // all rendered by OTHER pages out of `Site::pages`, which only discovery writes. See
-    // [`Project::front_matter`] for the measurement and for why this is gated rather than
-    // run every save. Re-discovering here rebuilds the cross-reference registry and the
-    // search index as a side effect, exactly as the `structural` path above does, so the
-    // `refresh_xrefs` below is skipped for the same reason.
-    //
-    // Deliberately NOT `reload_open_tabs`: the page set is unchanged, so every open tab can
-    // take this as ops on its existing DOM. A hard reload would be correct too and is what
-    // a `_site.yml` edit does, but it would throw away the live state — an open
-    // `<details>`, a playing video, a `{js}` widget — on every `title:` an author types.
-    let front_matter_moved = !structural && project.front_matter_moved(changed);
-    if front_matter_moved {
-        // Discovery first, then the swap: the lock is not held across it (the same shape as
-        // the two adoptions above, and discovery is the ~76 ms half).
-        let new = project.rediscover();
-        *project.site.lock() = new;
-        project.seed_front_matter();
-    }
-
     // Rebuild only pages a tab is watching and that depend on a change.
     let open = watched_pages(project);
-    let mut to_rebuild: Vec<String> = if front_matter_moved {
+    let mut to_rebuild: Vec<String> = if moved.records {
         // Every open page renders some part of the moved page's metadata, or could: a
         // listing card, a nav label, a prev/next arrow. The set is the pages a tab is
         // watching, so this is a handful of renders on an edit that is rare next to body
@@ -1892,7 +1882,7 @@ fn rebuild_project(
         // (`Site::render_defaults` lays it under each page's own) and is named in no page's
         // own source, so neither walk below — both of which read the PAGE — can ever see it.
         // That left a shared `.bib` save with no way in at all: it is not `_site.yml` by
-        // name, a write is not structural, it moves no front matter, it is not a `.tmd` so
+        // name, it moves no page and no front matter, it is not a `.tmd` so
         // it skips `refresh_xrefs`, and it moves no anchor. Every branch declined it, the
         // open tab kept serving the citation it had, and a browser reload served the same
         // one — `ensure_and_render_page` only re-renders a page with no live state.
@@ -1949,8 +1939,8 @@ fn rebuild_project(
     //
     // `.tmd` only: an anchor can be created or renumbered by a page source or an
     // `{{< include >}}` partial (both `.tmd`), never by a `.bib`/`.css`/image, which the
-    // dependency walk above also feeds us. `structural` already re-discovered, which rebuilds
-    // the registry, so refreshing again would just burn the pass twice.
+    // dependency walk above also feeds us. A re-discovery above already rebuilt the
+    // registry, so refreshing again would just burn the pass twice.
     //
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
     // pages rebuilt after it MUST see the fresh registry. A re-scan plus one render per page,
@@ -1964,12 +1954,12 @@ fn rebuild_project(
     // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
     // (unlike `build_page`) has none of its own.
     //
-    // NOT when `structural`: that path re-discovered above, which rebuilds the registry as a
-    // side effect, so refreshing again would burn the whole pass twice.
+    // NOT after a re-discovery above, which rebuilds the registry as a side effect, so
+    // refreshing again would burn the whole pass twice.
     let touches_source = changed
         .iter()
         .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
-    if touches_source && !structural && !front_matter_moved {
+    if touches_source && !rediscovered {
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             project.site.lock().refresh_xrefs();
         }));
@@ -1983,12 +1973,12 @@ fn rebuild_project(
     // so it is absent from `to_rebuild` and keeps serving its cached body — measured with the
     // registry provably holding "1.2" while the open tab still showed "Figure 1.1".
     //
-    // Deliberately OUTSIDE the `!structural` gate above, which is the subtler half of that
-    // same measurement. The registry moves on BOTH paths — `refresh_xrefs` here, `discover`
-    // there — so gating this on the refresh skips the reader-visible half exactly when a
-    // `.tmd` is created/removed rather than written in place. Reproduced: delete+recreate
-    // (a `git checkout`, or any editor that unlinks before writing) served "Figure 1.2" from
-    // `intro.html` while the open `methods.html` tab sat on "Figure 1.1".
+    // Deliberately OUTSIDE the gate on the refresh above, which is the subtler half of that
+    // same measurement. The registry moves on BOTH paths, `refresh_xrefs` here and a
+    // re-discovery above, so gating this on the refresh skips the reader-visible half
+    // exactly when the save re-discovered. Reproduced when a delete+recreate still
+    // re-discovered: it served "Figure 1.2" from `intro.html` while the open `methods.html`
+    // tab sat on "Figure 1.1".
     //
     // There is no project-wide reverse index anymore (the "Referenced by" backlinks it
     // drove were deleted 2026-08-04), so this diffs the registry PER ANCHOR — which
@@ -2056,9 +2046,9 @@ fn watched_pages(project: &Project) -> Vec<String> {
 }
 
 /// Rebuild the project against a batch of changed files.
-fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
+fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
     let project = app.root.clone();
-    rebuild_project(app, &project, changed, structural);
+    rebuild_project(app, &project, changed);
 }
 
 /// Reload every open tab and drop its cached block state, so the reload re-renders
@@ -2467,7 +2457,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
 
         let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2552,7 +2542,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         let rt = tokio::runtime::Runtime::new().unwrap();
         let msgs: Vec<serde_json::Value> = rt.block_on(async {
@@ -2663,62 +2653,75 @@ mod project_tests {
     /// The gate that decides whether a save touched what DISCOVERY reads.
     ///
     /// It has to answer both ways, and each answer costs something different. A missed
-    /// front-matter change is the defect this exists for: a listed post's `title:` never
-    /// reached the index listing, on save or on reload, so the preview contradicted `build`
-    /// until the server was restarted. A false positive is a re-discovery on a keystroke,
-    /// and discovery is ~2.2x `refresh_xrefs` (6.8ms vs 3.0ms on `docs/guide`, warm
-    /// process, re-measured 2026-08-27) — so a body edit, which is nearly every edit, must
+    /// change is the defect this exists for: a listed post's `title:` never reached the
+    /// index listing, on save or on reload, so the preview contradicted `build` until the
+    /// server was restarted. A false positive is a re-discovery on a keystroke, and
+    /// discovery renders every page twice, so a body edit, which is nearly every edit, must
     /// not trip it.
     #[test]
-    fn a_front_matter_edit_moves_the_record_and_a_body_edit_does_not() {
-        let dir = std::env::temp_dir().join(format!("tali-fm-record-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
+    fn a_save_moves_the_record_only_when_what_discovery_reads_moved() {
+        let dir = scratch("record");
         std::fs::create_dir_all(dir.join("posts")).unwrap();
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
         std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nBody.\n").unwrap();
         let post = dir.join("posts/first.tmd");
-        std::fs::write(&post, "---\ntitle: First\n---\n\nOriginal body.\n").unwrap();
-
-        let project = Project {
-            dir: dir.clone(),
-            site: parking_lot::Mutex::new(taliesin_core::site::Site::discover(&dir)),
-            pages: parking_lot::Mutex::new(HashMap::new()),
-            exec_lane: Mutex::new(ExecLane::default()),
-            scope: None,
-            front_matter: Mutex::new(HashMap::new()),
-        };
-        project.seed_front_matter();
+        std::fs::write(
+            &post,
+            "---\ntitle: First\n---\n\n# First\n\nOriginal body.\n",
+        )
+        .unwrap();
+        let (project, _app, _b, _f) = project_and_app(&dir);
         let changed: HashSet<PathBuf> = std::iter::once(post.clone()).collect();
+        let moved = |project: &Project, changed: &HashSet<PathBuf>| {
+            let m = project.what_moved(changed);
+            (m.page_set, m.records)
+        };
 
         // Nothing written yet: the record already describes what is on disk.
-        assert!(!project.front_matter_moved(&changed), "no edit, no move");
+        assert_eq!(
+            moved(&project, &changed),
+            (false, false),
+            "no edit, no move"
+        );
 
-        // A body edit leaves the block byte-identical.
-        std::fs::write(&post, "---\ntitle: First\n---\n\nRewritten body.\n").unwrap();
-        assert!(
-            !project.front_matter_moved(&changed),
+        // A body edit leaves what discovery reads byte-identical.
+        std::fs::write(&post, "---\ntitle: First\n---\n\n# First\n\nRewritten.\n").unwrap();
+        assert_eq!(
+            moved(&project, &changed),
+            (false, false),
             "a body edit must not cost a re-discovery"
         );
 
-        // The `title:` a listing card renders.
-        std::fs::write(&post, "---\ntitle: Renamed\n---\n\nRewritten body.\n").unwrap();
-        assert!(project.front_matter_moved(&changed), "title: moved");
-        // And the record is updated, so the same save is not reported twice.
-        assert!(!project.front_matter_moved(&changed), "record updated");
+        // The `title:` a listing card renders, and the heading a chapter is named by.
+        std::fs::write(&post, "---\ntitle: Renamed\n---\n\n# First\n\nRewritten.\n").unwrap();
+        assert_eq!(moved(&project, &changed), (false, true), "title: moved");
+        std::fs::write(&post, "---\ntitle: First\n---\n\n# Second\n\nRewritten.\n").unwrap();
+        assert_eq!(moved(&project, &changed), (false, true), "the H1 moved");
 
-        // Losing the block entirely is a move too — the page drops to its `# H1` title.
-        std::fs::write(&post, "Just a body.\n").unwrap();
-        assert!(project.front_matter_moved(&changed), "block removed");
+        // Once the re-discovery it caused is adopted, the same content is no move.
+        let m = project.what_moved(&changed);
+        project.adopt(project.rediscover(), &m.digests, false);
+        assert_eq!(moved(&project, &changed), (false, false), "record updated");
 
-        // A file this project does not publish is not tracked, so it costs nothing.
+        // A page that is gone may change the page set.
+        std::fs::remove_file(&post).unwrap();
+        assert_eq!(moved(&project, &changed), (true, false), "page deleted");
+
+        // A source file discovery has never classified may be a new page, once; after the
+        // re-discovery finds it is none, saving it costs nothing.
         let partial = dir.join("_includes/part.tmd");
         std::fs::create_dir_all(partial.parent().unwrap()).unwrap();
         std::fs::write(&partial, "---\ntitle: Not a page\n---\n\nx\n").unwrap();
-        assert!(
-            !project.front_matter_moved(&std::iter::once(partial).collect()),
+        let saved: HashSet<PathBuf> = std::iter::once(partial.clone()).collect();
+        assert_eq!(moved(&project, &saved), (true, false), "never classified");
+        let m = project.what_moved(&saved);
+        project.adopt(project.rediscover(), &m.digests, false);
+        std::fs::write(&partial, "---\ntitle: Still not a page\n---\n\ny\n").unwrap();
+        assert_eq!(
+            moved(&project, &saved),
+            (false, false),
             "an include partial is not a page of the site"
         );
-
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2783,7 +2786,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         };
 
         // A real page resolves, by source rel and by output url alike.
@@ -2952,7 +2955,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         site_page_html(&project, &page)
     }
@@ -3096,7 +3099,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(pages),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         let preview = site_page_html(&project, &page);
         assert!(
@@ -3279,9 +3282,9 @@ mod project_tests {
             pages: Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
-        project.seed_front_matter();
+        project.seed_records();
         let (build_tx, build_rx) = mpsc::unbounded_channel();
         let (fast_tx, fast_rx) = mpsc::unbounded_channel();
         let app = SiteApp {
@@ -3351,7 +3354,7 @@ mod project_tests {
         )
         .unwrap();
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed, false);
+        rebuild_project(&app, &project, &changed);
 
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
@@ -3391,7 +3394,7 @@ mod project_tests {
         }
 
         std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
-        rebuild_project(&app, &project, &std::iter::once(post).collect(), false);
+        rebuild_project(&app, &project, &std::iter::once(post).collect());
 
         assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
@@ -3424,7 +3427,7 @@ mod project_tests {
         let _tab = watch(&project, "index.tmd");
 
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
-        rebuild_project(&app, &project, &changed, false);
+        rebuild_project(&app, &project, &changed);
 
         assert!(
             queued(&mut build_rx, &mut fast_rx).is_empty(),
@@ -3433,65 +3436,152 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Finding 17, the classification half. A same-filesystem rename never creates and
-    /// never removes: on Linux/inotify `mv a.tmd b.tmd` emits exactly
-    /// `Modify(Name(From))` on the old path, `Modify(Name(To))` on the new, and then a
-    /// cookie-paired `Modify(Name(Both))` carrying both — verified against a live
-    /// `notify` 8.2 watcher while writing this. macOS (FSEvents) reports `Name(Any)` and
-    /// Windows reports the `From`/`To` pair, so the class to match is `Name(_)`, never a
-    /// particular `RenameMode`.
-    ///
-    /// A rename IS a create plus a remove as far as the page set is concerned, so it
-    /// belongs in the same class. The cost of admitting it is a `rediscover()` on an
-    /// editor that saves atomically (write temp, rename over) — absorbed one level up by
-    /// `rebuild_project`'s `set_changed` comparison, which is exactly the "not just an
-    /// editor's save-via-rename of an existing one" case that guard was already written
-    /// for.
+    /// Audit 2026-09-24 C1. An editor that saves by writing a temp file and renaming it
+    /// over the page (vim, JetBrains, gedit, `sed -i`), and a `git checkout`, deliver a
+    /// front-matter edit as a rename or an unlink plus a create. The preview read those as a
+    /// possible page-set change, re-discovered and reseeded its record before it asked
+    /// whether the front matter moved, and so never rebuilt the listing that shows the
+    /// post: the open tab kept the old card, and a fresh GET served the same stale body.
     #[test]
-    fn a_rename_is_classified_as_moving_the_page_set() {
-        use notify::EventKind::{Access, Create, Modify, Remove};
-        use notify::event::{
-            AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode,
-        };
+    fn an_atomic_save_of_a_listed_post_title_rebuilds_the_listing() {
+        let dir = scratch("atomic-title");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
 
-        for mode in [
-            RenameMode::From,
-            RenameMode::To,
-            RenameMode::Both,
-            RenameMode::Any,
-            RenameMode::Other,
-        ] {
-            assert!(
-                may_change_page_set(&Modify(ModifyKind::Name(mode))),
-                "a rename ({mode:?}) moves the page set on every platform's backend"
-            );
-        }
-        // The two that always were structural stay so.
-        assert!(may_change_page_set(&Create(CreateKind::File)));
-        assert!(may_change_page_set(&Remove(RemoveKind::File)));
-        // …and an in-place edit is still just a page rebuild. Widening `Modify(_)` whole
-        // would make every keystroke re-discover the project, at the cost `Project::
-        // front_matter` measures, which is the whole reason this classification exists.
-        assert!(!may_change_page_set(&Modify(ModifyKind::Data(
-            DataChange::Content
-        ))));
-        assert!(!may_change_page_set(&Modify(ModifyKind::Metadata(
-            MetadataKind::WriteTime
-        ))));
-        assert!(!may_change_page_set(&Access(AccessKind::Any)));
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = watch(&project, "index.tmd");
+
+        // gedit's save: a temp file beside the page, renamed over it.
+        let tmp = dir.join("posts/.goutputstream-AB12CD");
+        std::fs::write(&tmp, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        std::fs::rename(&tmp, &post).unwrap();
+        let changed: HashSet<PathBuf> = [tmp, post].into_iter().collect();
+        rebuild_project(&app, &project, &changed);
+
+        assert_eq!(
+            project
+                .site
+                .lock()
+                .page("posts/a.tmd")
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("New")
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing shows the post's title, so it must be rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Finding 17, the reader-visible half. With the rename classified structural,
-    /// `rebuild_project` re-discovers, sees the page set actually move, and reloads the
-    /// open tabs — which is the only thing that repaints a navbar, a listing and a
-    /// breadcrumb, and the only thing that gets the tab sitting on the vanished page off it.
-    ///
-    /// Before the fix this ran with `structural == false` and stopped at
-    /// `front_matter_moved`, which fires here only by accident (the old path's front-matter
-    /// digest goes to that of the empty string once the file is gone) and covers just the
-    /// `Site` swap. It never reloads, so the tab keeps its stale chrome, and for a page with
-    /// no front-matter block at all it does not even fire: nothing runs, the site goes on
-    /// listing the old page and the new URL 404s.
+    /// Audit 2026-09-24 C2. Discovery reads a page's leading `# H1` as well as its front
+    /// matter: the H1 names a book chapter in the drawer and the pager (before `title:`),
+    /// its `.unnumbered` decides every later chapter's number, and it titles a website page
+    /// that has no `title:`. The record hashed only the `---` block, so an in-place edit of
+    /// the H1 never re-discovered, and every chapter's section, figure and equation numbers
+    /// stayed wrong, in open tabs and on fresh GETs.
+    #[test]
+    fn an_in_place_edit_of_a_chapter_heading_rediscovers_the_book() {
+        let dir = scratch("h1-edit");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\nchapters:\n  - intro.tmd\n  - methods.tmd\n",
+        )
+        .unwrap();
+        let intro = dir.join("intro.tmd");
+        std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
+        std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = watch(&project, "methods.tmd");
+        let chapter = |project: &Project| {
+            let site = project.site.lock();
+            site.chapter_for(site.page("methods.tmd").unwrap())
+        };
+        assert_eq!(chapter(&project), Some(2));
+
+        std::fs::write(&intro, "# Introduction {.unnumbered}\n\nText.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(intro).collect());
+
+        assert_eq!(
+            chapter(&project),
+            Some(1),
+            "the chapter after an unnumbered one is chapter 1"
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["methods.tmd".to_string()],
+            "its numbers moved, so the open chapter is rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C9 (perf #3). Every rename-over save counted as a possible page-set
+    /// change, so an atomic save of a body edit paid a whole re-discovery (every page read
+    /// and rendered twice): 369 ms against 195 ms in place at 221 pages. A page that is
+    /// still there, with what discovery reads of it unchanged, is an edit in place, however
+    /// the editor wrote it.
+    #[test]
+    fn an_atomic_save_of_a_body_edit_does_not_rediscover() {
+        let dir = scratch("atomic-body");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\n# Home\n\nOld body.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = watch(&project, "index.tmd");
+        // A mark only this `Site` carries: a re-discovery replaces it with one without.
+        project
+            .site
+            .lock()
+            .warnings
+            .push(taliesin_core::render::Warning::new("KEPT"));
+
+        // JetBrains' safe write: temp file, original moved aside, temp renamed over it.
+        let tmp = dir.join("index.tmd___jb_tmp___");
+        let old = dir.join("index.tmd___jb_old___");
+        std::fs::write(&tmp, "---\ntitle: Home\n---\n\n# Home\n\nNew body.\n").unwrap();
+        std::fs::rename(&page, &old).unwrap();
+        std::fs::rename(&tmp, &page).unwrap();
+        std::fs::remove_file(&old).unwrap();
+        let changed: HashSet<PathBuf> = [tmp, old, page].into_iter().collect();
+        rebuild_project(&app, &project, &changed);
+
+        assert!(
+            project
+                .site
+                .lock()
+                .warnings
+                .iter()
+                .any(|w| w.message == "KEPT"),
+            "a body edit re-discovered the project"
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "and the page itself is still rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Finding 17. A same-filesystem rename never creates and never removes: on
+    /// Linux/inotify `mv a.tmd b.tmd` emits `Modify(Name(From))` on the old path,
+    /// `Modify(Name(To))` on the new, then a `Modify(Name(Both))` carrying both. Read as an
+    /// edit in place, it left the site listing the old page and 404ing the new URL until a
+    /// restart. The old path is a page that is gone and the new one a source file discovery
+    /// never classified, so `rebuild_project` re-discovers, sees the page set actually move,
+    /// and reloads the open tabs, which is the only thing that repaints a navbar, a listing
+    /// and a breadcrumb, and the only thing that gets the tab sitting on the vanished page
+    /// off it.
     #[test]
     fn renaming_a_page_reloads_the_open_tabs_onto_the_new_page_set() {
         let dir = scratch("rename");
@@ -3503,20 +3593,11 @@ mod project_tests {
         let mut tab = watch(&project, "index.tmd");
 
         std::fs::rename(dir.join("notes.tmd"), dir.join("journal.tmd")).unwrap();
-        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths,
-        // both `.tmd`, classified by the same predicate the event loop uses.
-        let structural = may_change_page_set(&notify::EventKind::Modify(
-            notify::event::ModifyKind::Name(notify::event::RenameMode::Both),
-        ));
+        // Exactly what the watcher hands `dispatch_changes` for that rename: both paths.
         let changed: HashSet<PathBuf> = [dir.join("notes.tmd"), dir.join("journal.tmd")]
             .into_iter()
             .collect();
-        rebuild_project(
-            &app,
-            &project,
-            &changed,
-            structural && is_tmd(Path::new("notes.tmd")),
-        );
+        rebuild_project(&app, &project, &changed);
 
         assert_eq!(
             tab.try_recv().as_deref().unwrap_or(""),
@@ -3585,7 +3666,7 @@ mod project_tests {
             pages: parking_lot::Mutex::new(HashMap::new()),
             exec_lane: Mutex::new(ExecLane::default()),
             scope: None,
-            front_matter: Mutex::new(HashMap::new()),
+            records: Mutex::new(HashMap::new()),
         });
         open_page(&project, rel);
         let rt = tokio::runtime::Runtime::new().unwrap();
