@@ -1005,3 +1005,37 @@ fn a_key_the_citation_syntax_cannot_name_is_reported_not_stored_truncated() {
     }
     assert!(!w.iter().any(|m| m.contains("duplicate")), "{w:?}");
 }
+
+/// A name is a literal (corporate) name only when the WHOLE name is one brace group.
+///
+/// The test used to be "the name starts with `{`", and that is exactly how every exporter
+/// writes an accent on a name's first letter: Google Scholar `{\"O}zt{\"u}rk`, DBLP
+/// `{\"{O}}zt{\"{u}}rk`, Better BibTeX `{\"O}`. Those names were published unformatted,
+/// "Öztürk, Ayşe", in the middle of an IEEE list (audit 2026-09-24 G1).
+#[test]
+fn a_name_starting_with_a_braced_accent_is_still_a_person() {
+    let cases = [
+        // Google Scholar and Better BibTeX, comma form.
+        (r#"{\"O}zt{\"u}rk, Ay{\c{s}}e"#, "A. Öztürk"),
+        (r#"{\O}rsted, Hans"#, "H. Ørsted"),
+        (r#"{\AA}ngstr{\"o}m, Anders"#, "A. Ångström"),
+        (r#"{\v{S}}koda, Emil"#, "E. Škoda"),
+        (r#"{\"O}zt{\"u}rk, {\c{S}}ule"#, "Ş. Öztürk"),
+        // DBLP's doubly braced accents.
+        (r#"{\"{O}}zt{\"{u}}rk, Ay{\c{s}}e"#, "A. Öztürk"),
+        // Better BibTeX writes the cedilla with a space inside the group, which is one
+        // word, not two initials.
+        (r#"{\"O}zt{\"u}rk, Ay{\c s}e"#, "A. Öztürk"),
+        // First-Last form, the accent on the given name.
+        (r#"{\'E}mile Durkheim"#, "É. Durkheim"),
+        (r#"{\'{A}}lvaro Garc{\'\i}a"#, "Á. García"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+    // The corporate marker still holds: one group around the whole name.
+    assert_eq!(
+        super::author::format_authors("{World Health Organization}"),
+        "World Health Organization"
+    );
+}

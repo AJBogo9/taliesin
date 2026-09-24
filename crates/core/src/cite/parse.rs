@@ -428,28 +428,30 @@ fn normalize_ws(s: &str) -> String {
 /// value arm the same single-level strip the `{...}` arm performs inline, so a
 /// whole-value brace group is peeled once (and no more) regardless of the delimiter.
 fn strip_one_outer_brace_group(s: &str) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.first() != Some(&'{') {
-        return s.to_string();
+    one_brace_group(s).unwrap_or(s).to_string()
+}
+
+/// The inside of `s` when `s` is entirely one brace group, else `None`: `{First Last}`
+/// is one, `{A} and {B}` and `{\"O}zt{\"u}rk` are not. Shared with the author formatter,
+/// for which exactly this shape is the literal (corporate) name marker.
+pub(super) fn one_brace_group(s: &str) -> Option<&str> {
+    if !s.starts_with('{') {
+        return None;
     }
     let mut depth = 0usize;
-    for (idx, &c) in chars.iter().enumerate() {
+    for (idx, c) in s.char_indices() {
         match c {
             '{' => depth += 1,
             '}' => {
                 depth -= 1;
                 if depth == 0 {
-                    // The opening brace closes here; only peel it if it wraps the WHOLE
-                    // value (`{First Last}`), not a leading group (`{A} and {B}`).
-                    return if idx == chars.len() - 1 {
-                        chars[1..idx].iter().collect()
-                    } else {
-                        s.to_string()
-                    };
+                    // The opening brace closes here; it wraps the WHOLE value only if
+                    // this is the last char (`{First Last}`), not a leading group.
+                    return (idx == s.len() - 1).then(|| &s[1..idx]);
                 }
             }
             _ => {}
         }
     }
-    s.to_string() // unbalanced: leave as-is
+    None // unbalanced
 }

@@ -76,15 +76,18 @@ fn split_on_and(raw: &str) -> Vec<&str> {
 
 /// One author -> "F. M. Surname". Handles "Surname, First Mid", "First Mid
 /// Surname", and a brace-wrapped corporate name (kept verbatim).
+///
+/// Corporate means the WHOLE name is one brace group. Starting with `{` is not enough:
+/// that is how every exporter writes an accent on the first letter (`{\"O}zt{\"u}rk`).
 fn format_one_author(name: &str) -> String {
     let name = name.trim();
-    if name.starts_with('{') {
+    if super::parse::one_brace_group(name).is_some() {
         return clean(name);
     }
     if let Some((last, first)) = name.split_once(',') {
         format!("{}{}", initials(first), clean(last.trim()))
     } else {
-        let words: Vec<&str> = name.split_whitespace().collect();
+        let words = words(name);
         match words.split_last() {
             Some((last, firsts)) if !firsts.is_empty() => {
                 format!("{}{}", initials(&firsts.join(" ")), clean(last))
@@ -98,11 +101,36 @@ fn format_one_author(name: &str) -> String {
 /// Each word is `clean`ed first so an accented initial (`{\'E}mile` -> `Émile`)
 /// initials as its Unicode letter (`É.`), not a stray brace/backslash.
 fn initials(first: &str) -> String {
-    first
-        .split_whitespace()
+    words(first)
+        .into_iter()
         .filter_map(|w| clean(w).chars().find(|c| c.is_alphabetic()))
         .map(|c| format!("{}. ", c.to_uppercase()))
         .collect()
+}
+
+/// The words of a name part, split at whitespace outside braces: a brace group is part
+/// of its word even when it holds a space, as Better BibTeX's `Ay{\c s}e` does.
+fn words(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0usize, None);
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            c if c.is_whitespace() && depth == 0 => {
+                if let Some(st) = start.take() {
+                    out.push(&s[st..i]);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        start.get_or_insert(i);
+    }
+    if let Some(st) = start {
+        out.push(&s[st..]);
+    }
+    out
 }
 
 /// Join names IEEE-style: "" / "A" / "A and B" / "A, B, and C".
