@@ -51,8 +51,8 @@ struct SiteApp {
     /// websocket task. It exists because those two tasks are not the same task: "Restart
     /// kernel" arrives while the builder is blocked awaiting the very build it means to
     /// abort, and the builder is serial, so queueing alone can never reach a running cell
-    /// (audit finding 01). Signalling is [`crate::kernel::interrupt_pid`] — SIGINT, which
-    /// ends the cell and leaves the warm kernel and every prior cell's state alive.
+    /// (audit finding 01). What is sent is [`restart_stop`]'s call: SIGKILL for the
+    /// requester's own kernel, SIGINT for a cell of another page.
     ///
     /// It is one pid for the whole pool, so the cell it names may belong to a page other
     /// than the one asking. That is deliberate and cannot be narrowed; what the page that
@@ -257,6 +257,25 @@ impl ExecLane {
 /// aborting that is precisely what restarting your kernel means.
 fn cross_page_victim(requester: &str, running: &str, pid: u32) -> Option<String> {
     (pid != 0 && !running.is_empty() && running != requester).then(|| running.to_string())
+}
+
+/// How "Restart kernel" stops the cell executing right now (`pid`), if one is.
+#[derive(Debug, PartialEq, Eq)]
+enum Stop {
+    /// SIGKILL the kernel: it is the requester's own, about to be discarded anyway.
+    Kill,
+    /// SIGINT the cell: it belongs to another page (A17), whose kernel is not being
+    /// discarded, so only its running cell is given up.
+    Interrupt,
+}
+
+/// Which [`Stop`] a restart from the page whose cross-page victim is `victim` applies to
+/// the running `pid`, or `None` when nothing is executing.
+fn restart_stop(pid: u32, victim: Option<&str>) -> Option<Stop> {
+    (pid != 0).then_some(match victim {
+        None => Stop::Kill,
+        Some(_) => Stop::Interrupt,
+    })
 }
 
 /// What the page that lost a cell to `by`'s kernel restart says about it, next to the
@@ -1031,11 +1050,13 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                 Some(Ok(Message::Text(t))) => {
                     // The dev menu's "Restart kernel" action restarts this page's kernel.
                     if is_restart_kernel(t.as_str()) {
-                        // SIGINT the running cell BEFORE queueing, or the Restart waits
+                        // Stop the running cell BEFORE queueing, or the Restart waits
                         // behind the very build it is meant to abort: the builder is
                         // serial and awaits each page to completion, so the queued message
                         // is not read until the runaway cell has already finished (audit
-                        // finding 01). A pid of 0 means nothing is executing, and the
+                        // finding 01). This page's own kernel is killed, not interrupted,
+                        // or the build runs every later cell in it first (E6; see
+                        // `restart_stop`). A pid of 0 means nothing is executing, and the
                         // queued Restart alone is then the whole action.
                         //
                         // The pid is pool-wide, so it may belong to ANOTHER page (A17).
@@ -1051,8 +1072,10 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
                             }
                             victim
                         };
-                        if pid != 0 {
-                            crate::kernel::interrupt_pid(pid);
+                        match restart_stop(pid, victim.as_deref()) {
+                            Some(Stop::Kill) => crate::kernel::kill_pid(pid),
+                            Some(Stop::Interrupt) => crate::kernel::interrupt_pid(pid),
+                            None => {}
                         }
                         if let Some(v) = victim {
                             crate::log::kernel(&format!(
@@ -2225,6 +2248,19 @@ mod project_tests {
             None,
             "the exec lane is idle: the pid is stale, not another page's"
         );
+    }
+
+    /// E6: "Restart kernel" used to SIGINT the running cell even when it was the
+    /// requester's own, whose kernel the restart discards anyway. The interrupt stopped
+    /// that one cell and the build went on to run every cell after it, in the old kernel
+    /// and against interrupted state, before the restart could start: minutes, with long
+    /// cells. The requester's own kernel is killed, so the run fails fast; another page's
+    /// cell is still only interrupted (A17), since its kernel is not being discarded.
+    #[test]
+    fn a_restart_kills_its_own_kernel_and_only_interrupts_another_pages() {
+        assert_eq!(restart_stop(4242, None), Some(Stop::Kill));
+        assert_eq!(restart_stop(4242, Some("a.tmd")), Some(Stop::Interrupt));
+        assert_eq!(restart_stop(0, None), None, "nothing is executing");
     }
 
     /// The notice has to reach the page that lost the cell, on the very build that shows

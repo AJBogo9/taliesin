@@ -2201,6 +2201,61 @@ mod tests {
         );
     }
 
+    /// E6: killing the running kernel (what "Restart kernel" now does to the requester's
+    /// own) ends the whole run at once. An interrupt stopped only the running cell, and the
+    /// run went on to execute every cell after it in the kernel about to be discarded, so
+    /// the restart waited behind all of them.
+    #[tokio::test]
+    async fn killing_the_running_kernel_ends_the_run_without_running_the_rest() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the restart kill; this run did not."
+            );
+            return;
+        }
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let marker =
+            std::env::temp_dir().join(format!("tali-restart-kill-{}-started", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let interrupt = Arc::new(AtomicU32::new(0));
+        let mut ex = Executor::new();
+        ex.set_interrupt_handle(interrupt.clone());
+        let blocks = vec![
+            python_cell_block_with(
+                "k-1",
+                &format!(
+                    "open(r'{}', 'w').close()\nimport time\ntime.sleep(120)",
+                    marker.display()
+                ),
+            ),
+            python_cell_block_with("k-2", "import time\ntime.sleep(30)\nprint('K2 RAN')"),
+        ];
+        let started = Instant::now();
+        let run = tokio::spawn(async move { ex.run(blocks).await });
+        while !marker.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let pid = interrupt.load(Ordering::SeqCst);
+        assert_ne!(pid, 0, "the executor must publish the running kernel's pid");
+        crate::kernel::kill_pid(pid);
+        let out = tokio::time::timeout(Duration::from_secs(60), run)
+            .await
+            .expect("the run must end")
+            .unwrap();
+        let _ = std::fs::remove_file(&marker);
+        let html: String = out.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            !html.contains("K2 RAN"),
+            "a cell after the killed one still ran in the doomed kernel: {html}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the run waited {:?}: the cells after the killed one were run anyway",
+            started.elapsed()
+        );
+    }
+
     fn python_cell_block_with(id: &str, code: &str) -> Block {
         let mut b = python_cell_block(id);
         if let Some(c) = b.cell.as_mut() {

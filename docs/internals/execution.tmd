@@ -284,10 +284,14 @@ raises a `KeyboardInterrupt` inside the cell) and drains a short **grace window*
 (5s) so the interrupt error and the trailing `idle` arrive and the channels resync,
 leaving the warm kernel usable for the next cell. SIGINT is only a request: a cell that
 installs its own handler, or sits in a C extension that never checks signals, outlives
-it. When the window runs out with the cell still not idle, `execute` stops waiting and
-reports it: the page gets an `InterruptIgnored` output (the cell is still running inside
-the warm kernel, and nothing short of a restart reclaims it) and the console gets that
-kernel's pid, kept out of the page so two builds of one document cannot differ by a pid.
+it. When the window runs out with the cell still not idle, `execute` kills the kernel,
+since nothing short of that stops the cell and every later cell would otherwise queue
+behind it and wait out its own caps. The page gets an `InterruptIgnored` output, the
+console gets that kernel's pid (kept out of the page so two builds of one document cannot
+differ by a pid), and the executor's dead-kernel path marks the rest of the run as not
+run; the next run starts a fresh kernel. "Restart kernel" kills the requesting page's
+running kernel for the same reason (it is being discarded anyway), and only interrupts a
+cell another page is running.
 Setting either cap to `0` disables it, and with both off a silent cell is bounded by
 nothing but the kernel's own life. `Drop` kills the child and removes the connection dir.
 

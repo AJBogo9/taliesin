@@ -561,11 +561,10 @@ impl Output {
     }
 
     /// A liveness cap interrupted the cell and the cell **did not stop**: it outlived
-    /// [`INTERRUPT_GRACE`] without reaching Idle, so it is still running inside the warm
-    /// kernel and every later cell queues behind it. SIGINT is a request (a cell may
-    /// install its own handler, or sit in a C extension that never checks signals), and
-    /// there is no second signal that stops the cell without killing the kernel — so this
-    /// says what happened instead of letting it read as a plain cap expiry.
+    /// [`INTERRUPT_GRACE`] without reaching Idle. SIGINT is a request (a cell may install
+    /// its own handler, or sit in a C extension that never checks signals), and there is no
+    /// second signal that stops the cell without killing the kernel, so the kernel is
+    /// killed and this says so instead of letting it read as a plain cap expiry.
     ///
     /// **Carries no pid**, though the pid is the one thing an operator wants: this string
     /// is rendered into the built page, and a pid there makes two builds of the same
@@ -573,8 +572,8 @@ impl Output {
     pub(crate) fn interrupt_ignored() -> Self {
         Output::Error {
             ename: "InterruptIgnored".into(),
-            evalue: "cell ignored the interrupt and is still running in the kernel; restart \
-                     the kernel to reclaim it"
+            evalue: "cell ignored the interrupt, so the kernel was stopped; the cells after it \
+                     did not run"
                 .into(),
             traceback: vec![],
             not_run: Some(crate::exec::NOT_RUN_TIMEOUT),
@@ -922,20 +921,12 @@ impl Kernel {
         code: &str,
         mut on_output: impl FnMut(LiveOp<'_>),
     ) -> io::Result<Outputs> {
-        // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`. What
-        // happens after a cell fails is the EXECUTOR's decision — `exec.rs` keeps running the
-        // document and refuses to persist anything downstream (`failed_at`) — and a kernel
-        // holding a second opinion can only contradict it. `true` tells ipykernel to abort
-        // every execute_request already queued behind the failure: it answers with
-        // `_send_abort_reply` and a bare `busy`/`idle` pair, so the loop below breaks on that
-        // Idle with ZERO outputs and the cell reaches the page as a *successful empty* one.
-        //
-        // Taliesin normally queues nothing (it waits for Idle before sending the next cell),
-        // but the abandoned-cell path ends without one: a cell that swallows its interrupt
-        // outlives the cap, `INTERRUPT_GRACE` and the shell drain, and the next cell is sent
-        // into a kernel still running it. Reading the reply's `status` instead would only let
-        // us *report* the swallowed cell — and not reliably, since the drain below gives up
-        // after 5s — where this stops the kernel from swallowing it at all.
+        // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`: what
+        // happens after a cell fails is the EXECUTOR's decision (`exec.rs` keeps running the
+        // document and refuses to persist anything downstream), and `true` would have
+        // ipykernel abort any request queued behind a failure as a successful empty cell.
+        // Nothing is queued today (a cell that ignores its interrupt has its kernel killed),
+        // so this only keeps the kernel from holding a second opinion.
         let request = JupyterMessage::new(
             JupyterMessageContent::ExecuteRequest(ExecuteRequest {
                 stop_on_error: false,
@@ -989,20 +980,25 @@ impl Kernel {
                 ),
             };
             // A cap's grace window ran out with this cell still not Idle: the interrupt was
-            // not honoured. The cell is STILL RUNNING in the warm kernel — nothing else this
-            // process can send stops it without killing the kernel — so report that and stop
-            // waiting, rather than dropping out silently as if the cap had done its job. The
-            // pid goes to the console (an operator can act on it) and not into the page (two
-            // builds of one document must not differ by a pid).
+            // not honoured, and nothing short of killing the kernel stops the cell. So the
+            // kernel is killed (E6): left running, it would hold every later cell behind the
+            // runaway, each of which would then wait out its own caps and be blamed for it.
+            // The executor's dead-kernel path fails the rest of the run fast, and the next
+            // run starts a fresh kernel. The pid goes to the console and not into the page
+            // (two builds of one document must not differ by a pid).
             if grace_after_cap && budget.is_zero() {
                 if let Some(pid) = self.running_pid() {
                     crate::log::warn(&format!(
-                        "kernel (pid {pid}) ignored the interrupt: a cell is still running \
-                         there. Restart the kernel, or kill that process."
+                        "kernel (pid {pid}) ignored the interrupt, so it was stopped; the \
+                         cells after this one did not run"
                     ));
                 }
+
+                let _ = self.proc.start_kill();
+                let _ = timeout(Duration::from_secs(5), self.proc.wait()).await;
                 outputs.note(Output::interrupt_ignored());
-                break;
+                outputs.sync(&mut on_output);
+                return Ok(outputs);
             }
             // Poll on a short interval (capped at the budget) so a kernel that EXITS
             // mid-cell is noticed within ~1s and reported as a distinct `KernelDied`,
@@ -1210,6 +1206,19 @@ pub(crate) fn interrupt_pid(pid: u32) {
     // which we ignore.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGINT);
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+/// Send `SIGKILL` to a kernel process by PID: for a kernel that is being discarded anyway
+/// (a "Restart kernel"), where [`interrupt_pid`] would stop only the running cell and let
+/// the rest of the run go on in the doomed kernel. Unix-only; a no-op elsewhere.
+pub(crate) fn kill_pid(pid: u32) {
+    #[cfg(unix)]
+    // Safety: as for `interrupt_pid`.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGKILL);
     }
     #[cfg(not(unix))]
     let _ = pid;
@@ -2774,90 +2783,23 @@ mod tests {
                 "the silence cap did not fire: {out}"
             );
             assert!(
-                out.contains("still running"),
-                "the interrupt was swallowed and the cell is still running in the kernel, \
-                 but the page says only that a cap fired (FA8): {out}"
+                out.contains("ignored the interrupt"),
+                "the interrupt was swallowed, but the page says only that a cap fired \
+                 (FA8): {out}"
             );
-            // The cap (1s) plus the grace window plus the shell drain, and no longer: the
-            // point of the escalation is that it does not wait on a cell that will not stop.
+            // E6: a kernel still running a cell that will not stop is useless to every
+            // cell after it (each would queue behind the runaway, then wait out its own
+            // caps, and be blamed for it), so it is stopped, and the executor's dead-kernel
+            // path fails the rest of the run fast.
             assert!(
-                t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(15),
+                !k.is_alive(),
+                "the kernel that ignored its interrupt was left running the runaway cell"
+            );
+            // The cap (1s) plus the grace window, and no shell drain after a kill: the point
+            // of the escalation is that it does not wait on a cell that will not stop.
+            assert!(
+                t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(5),
                 "the loop waited {:?} on a cell that ignored its interrupt",
-                t.elapsed()
-            );
-        });
-    }
-
-    // The continuation policy after a failed cell is the EXECUTOR's (`exec.rs` keeps running
-    // and blocks the persist instead), so the kernel must not hold a second opinion. It did:
-    // `ExecuteRequest::new` defaults `stop_on_error` to `true`, which tells ipykernel to
-    // abort every execute_request already queued behind one that errors.
-    //
-    // Taliesin normally has nothing queued — it waits for Idle before sending the next cell —
-    // but the one path that ends without an Idle is exactly the one that reaches this bug: a
-    // cell that swallows its interrupt outlives the cap, the grace window AND the 5s shell
-    // drain, so the loop gives up while the kernel is still running it. The next cell is then
-    // sent into a busy kernel, and when the abandoned cell finally raises, ipykernel aborts
-    // it: `_send_abort_reply` plus a `busy`/`idle` pair, and NO outputs. This loop breaks on
-    // that Idle, returns an empty vector, and the page renders a cell that never ran as a
-    // successful cell with no output.
-    #[test]
-    fn a_cell_queued_behind_a_failing_one_runs_instead_of_being_silently_aborted() {
-        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
-            assert!(
-                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
-                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
-                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
-            );
-            eprintln!(
-                "SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the abort policy."
-            );
-            return;
-        };
-        let py = PathBuf::from(py);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async move {
-            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
-                .await
-                .expect("kernel should start");
-            k.cell_cap = None;
-            k.silence_cap = Some(Duration::from_secs(1));
-
-            // Cell A swallows SIGINT and then fails on its own schedule. The sleep is sized
-            // past the 1s cap + INTERRUPT_GRACE + the 5s shell drain (~11s), so the loop has
-            // provably given up and sent cell B before A raises — which is what puts B in the
-            // kernel's queue at the moment the abort fires. A plain `raise` is used rather
-            // than the deferred `KeyboardInterrupt` this was found as: both reach ipykernel
-            // as one event (`reply.status == "error"`), and this one does not depend on which
-            // thread the OS picks to deliver a signal to.
-            let first = render_outputs(
-                &k.execute(
-                    "import signal, time\n\
-                     signal.signal(signal.SIGINT, lambda *a: None)\n\
-                     time.sleep(13)\n\
-                     raise ValueError('deferred failure')",
-                )
-                .await
-                .unwrap(),
-            );
-            // The desync this test needs really happened: the loop abandoned a cell that is
-            // still running. Without this, a green run could just mean A finished normally.
-            assert!(
-                first.contains("still running"),
-                "cell A was not abandoned mid-flight, so cell B was never queued behind it \
-                 and this test proves nothing: {first}"
-            );
-
-            // B is sent into a kernel that is still chewing on A, and must wait for it: the
-            // 1s silence cap would interrupt B before A ever reached it.
-            k.silence_cap = Some(Duration::from_secs(30));
-            let t = std::time::Instant::now();
-            let second = render_outputs(&k.execute("print('B RAN')").await.unwrap());
-            assert!(
-                second.contains("B RAN"),
-                "cell B produced nothing: ipykernel aborted it when the cell above it failed, \
-                 and an aborted cell reaches the page as a successful empty one ({:?} elapsed): \
-                 {second}",
                 t.elapsed()
             );
         });
