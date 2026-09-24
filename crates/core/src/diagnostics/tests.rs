@@ -372,72 +372,66 @@ fn a11y_clean_document_is_silent() {
     assert!(m.is_empty(), "a clean doc must be silent: {m:?}");
 }
 
-const BIB: &str = "@book{russell2022artificial,\n  title = {AIMA},\n  author = {Russell, S.},\n  year = {2022}\n}\n\n@article{smith2020,\n  title = {T},\n  author = {Smith, A.},\n  year = {2020}\n}\n";
-
-fn bare_cite_warnings(dir: &Tmp, body: &str) -> Vec<Warning> {
-    std::fs::write(dir.0.join("refs.bib"), BIB).unwrap();
-    let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
-    let doc = render_document_with_includes(&src, &dir.0);
-    bare_citation_key_not_rendered(&src, &doc.blocks, &dir.0)
-}
-
+/// A page that inherits its project's `_site.yml` `bibliography:` is never told that no
+/// `bibliography:` is declared, even when every one of its citations fails to resolve (one
+/// typo in a one-citation post): the broken-citation warning is the true one, and the
+/// advice sent the author off to declare a file the project already declares (audit
+/// 2026-09-24, bibtex #8).
 #[test]
-fn bare_key_matching_the_bibliography_is_flagged() {
-    let dir = Tmp::new("bare-cite");
-    let ws = bare_cite_warnings(&dir, "Please refer to @russell2022artificial.\n");
-    let m = msgs(&ws);
-    assert_eq!(m.len(), 1, "the dangling bare key: {m:?}");
+fn a_page_inheriting_the_project_bibliography_is_not_told_none_is_declared() {
+    let dir = Tmp::new("bib-inherit");
+    std::fs::write(
+        dir.0.join("_site.yml"),
+        "title: S\nbibliography: shared.bib\n",
+    )
+    .unwrap();
+    std::fs::write(dir.0.join("shared.bib"), "@misc{shared1, title={S}}\n").unwrap();
+    let src = "---\ntitle: P\n---\n\nSee [@shared2].\n";
+    let doc = crate::render::render_single_doc(src, &dir.0);
     assert!(
-        m[0].contains("@russell2022artificial"),
-        "names the key: {m:?}"
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("broken citation")),
+        "the true diagnostic: {:?}",
+        doc.warnings
     );
+    let w = citations_without_bibliography(src, &doc.blocks, &dir.0);
+    assert!(w.is_empty(), "{:?}", msgs(&w));
+
+    // A project bibliography that yields nothing (here: not UTF-8) is no inheritance at all.
+    // Checked on its own, the page must not read clean: nothing else on this surface says
+    // why every reference is a raw key.
+    let unread = Tmp::new("bib-unread");
+    std::fs::write(
+        unread.0.join("_site.yml"),
+        "title: S\nbibliography: shared.bib\n",
+    )
+    .unwrap();
+    std::fs::write(
+        unread.0.join("shared.bib"),
+        b"@misc{shared2, title={M\xfcller}}\n",
+    )
+    .unwrap();
+    let doc = crate::render::render_single_doc(src, &unread.0);
+    let w = citations_without_bibliography(src, &doc.blocks, &unread.0);
+    assert_eq!(w.len(), 1, "{:?}", msgs(&w));
     assert!(
-        m[0].contains("[@russell2022artificial]"),
-        "suggests the bracketed form (did-you-mean): {m:?}"
+        w[0].message
+            .starts_with("citations are present but no `bibliography:`")
+            && w[0].message.contains("_site.yml"),
+        "{}",
+        w[0].message
     );
-    assert!(
-        ws[0].line.is_some(),
-        "must be located for click-to-source: {:?}",
-        ws[0]
-    );
+
+    // The control: a page with no bibliography anywhere still gets the advice.
+    let bare = Tmp::new("bib-none");
+    let doc = crate::render::render_single_doc(src, &bare.0);
+    let w = citations_without_bibliography(src, &doc.blocks, &bare.0);
+    assert_eq!(w.len(), 1, "{:?}", msgs(&w));
 }
 
-#[test]
-fn bracketed_citation_is_clean() {
-    let dir = Tmp::new("bare-cite-ok");
-    let ws = bare_cite_warnings(&dir, "As shown [@russell2022artificial].\n");
-    assert!(ws.is_empty(), "a real citation must not trip this: {ws:?}");
-}
-
-#[test]
-fn bare_at_word_outside_the_bibliography_is_clean() {
-    // The greedy-match hazard: `is_cite_key_char` admits `/ . : +`, so an unguarded
-    // scan eats `@media`, `@types/node` and e-mail. Membership gating is what
-    // makes this rule safe, so pin it.
-    let dir = Tmp::new("bare-cite-noise");
-    let ws = bare_cite_warnings(
-        &dir,
-        "Use @media queries, install @types/node, mail bob@russell2022artificial.com \
-         or ping @russell2022artificialXYZ today.\n",
-    );
-    assert!(ws.is_empty(), "must not fire on non-bib `@word`s: {ws:?}");
-}
-
-#[test]
-fn bare_key_in_a_code_block_is_clean() {
-    let dir = Tmp::new("bare-cite-code");
-    let ws = bare_cite_warnings(&dir, "```\n@russell2022artificial\n```\n");
-    assert!(ws.is_empty(), "code is not prose: {ws:?}");
-}
-
-#[test]
-fn no_bibliography_declared_means_no_scan() {
-    let dir = Tmp::new("bare-cite-nobib");
-    let src = "---\ntitle: T\n---\n\nPlease refer to @russell2022artificial.\n";
-    let doc = render_document_with_includes(src, &dir.0);
-    let ws = bare_citation_key_not_rendered(src, &doc.blocks, &dir.0);
-    assert!(ws.is_empty(), "no bibliography, nothing to match: {ws:?}");
-}
+// The bare-`@key` tests moved to `cite::tests` with the check itself, which now runs in
+// the citation walk (`cite::render`) instead of scanning the finished HTML here.
 
 // The `csl:` recognized-but-unsupported tests moved to `frontmatter::tests` with the rule
 // itself, which now runs on the render path so the preview is not silent. This module is

@@ -75,6 +75,11 @@ impl Bibliography {
         self.entries.is_empty()
     }
 
+    /// Whether `key` names an entry.
+    pub(crate) fn contains(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
     /// Every parsed entry key, for the broken-citation did-you-mean.
     pub(crate) fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
@@ -90,6 +95,34 @@ impl Bibliography {
     pub fn overlay(&mut self, page: Bibliography) {
         self.entries.extend(page.entries);
     }
+}
+
+/// Read `.bib` files, in order, into `bib`, one file at a time (see `parse::read_into`),
+/// returning every diagnostic. Each file is `(name, path)`: the name is how a message
+/// refers to it, the path is where it is read from.
+///
+/// The one reader of `.bib` files. A page's own files and the project's shared files both
+/// come through here, so a file that cannot be read, and an entry that never closes, read
+/// the same wherever the file was declared. `strings` is the `@string` table the files
+/// share, in the order they are read.
+pub(crate) fn read_bib_files(
+    bib: &mut Bibliography,
+    files: &[(String, std::path::PathBuf)],
+    strings: &mut HashMap<String, String>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for (name, path) in files {
+        match std::fs::read_to_string(path) {
+            Ok(text) => warnings.extend(parse::read_into(bib, name, &text, strings)),
+            // A file that exists but is not UTF-8 (a Latin-1 export) is named for what it
+            // is: "not found" sends the author hunting for a typo in a correct path.
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => warnings.push(format!(
+                "bibliography `{name}` is not valid UTF-8, so it was not read; save it as UTF-8"
+            )),
+            Err(_) => warnings.push(format!("bibliography file not found: {name}")),
+        }
+    }
+    warnings
 }
 
 /// Largest edit distance at which a name is a plausible typo rather than a different

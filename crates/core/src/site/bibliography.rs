@@ -6,12 +6,13 @@
 //! - **Resolution** ([`resolve_shared`]) happens once, at `Site::discover`, against the
 //!   site root. Doing it per page would report the same bad path N times and would make
 //!   "relative to what?" depend on which page happened to be rendering.
-//! - **The unused-entry lint** ([`Site::validate_shared_bibliography`]) is a *site-wide*
-//!   pass, because a shared entry cited by one page is used even though every other page
-//!   leaves it alone. The per-page mirror of this check (`cite::process`) is deliberately
-//!   scoped to what the page itself declared, for the same reason.
+//! - **The hygiene check** ([`Site::validate_shared_bibliography`]) reads the shared files
+//!   once and reports what is wrong inside them (a duplicate key, an entry never closed, a
+//!   key no citation can name, an undefined `@string` macro, a file that is not UTF-8)
+//!   against `_site.yml`, where they are declared. Reported per page, one mistake would
+//!   print once per page, which is why a page render drops the shared layer's diagnostics.
 //!
-//! Neither touches the BibTeX parser or the CSL formatter.
+//! Both read the files through `cite::read_bib_files`, the one `.bib` reader.
 
 use super::Site;
 use crate::render::Warning;
@@ -72,17 +73,42 @@ pub(super) fn resolve_shared(
 /// project-level mistake belonging to a project-level check; surfacing it as a warning on
 /// whichever page happens to be open would attribute it to the wrong file.
 pub(crate) fn shared_for_single_doc(root: &Path) -> Vec<PathBuf> {
+    let declared = declared_at(root);
+    if declared.is_empty() {
+        return Vec::new();
+    }
+    resolve_shared(root, &declared, &mut Vec::new())
+}
+
+/// What a document in `doc_dir` inherits from its project's `_site.yml` `bibliography:`:
+/// `None` when the project declares none, else whether any entry could be read from it.
+/// `Some(false)` is a declaration that yields nothing (a missing or non-UTF-8 file, an
+/// empty one), which a page checked on its own has no other way to hear about.
+pub(crate) fn project_bibliography_has_entries(doc_dir: &Path) -> Option<bool> {
+    let root = crate::includes::single_doc_root(doc_dir);
+    let declared = declared_at(&root);
+    if declared.is_empty() {
+        return None;
+    }
+    let files: Vec<(String, PathBuf)> = resolve_shared(&root, &declared, &mut Vec::new())
+        .into_iter()
+        .map(|p| (String::new(), p))
+        .collect();
+    let mut bib = crate::cite::Bibliography::default();
+    crate::cite::read_bib_files(&mut bib, &files, &mut Default::default());
+    Some(!bib.is_empty())
+}
+
+/// The `bibliography:` entries of the `_site.yml` at `root`, as written. Empty when there
+/// is none, or it declares none.
+fn declared_at(root: &Path) -> Vec<String> {
     let Ok(text) = super::config::read_site_yml(root) else {
         return Vec::new();
     };
     let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
         return Vec::new();
     };
-    let declared = crate::site::frontmatter::string_list(value.get("bibliography"));
-    if declared.is_empty() {
-        return Vec::new();
-    }
-    resolve_shared(root, &declared, &mut Vec::new())
+    crate::site::frontmatter::string_list(value.get("bibliography"))
 }
 
 impl Site {
@@ -99,25 +125,10 @@ impl Site {
         }
     }
 
-    /// The project-wide bibliography as text, concatenated in declaration order. Empty
-    /// when `_site.yml` declares none, which is every project that predates the key.
-    ///
-    /// Read per page render rather than parsed once and shared: a [`crate::cite::Bibliography`]
-    /// is built per document (the page's own entries are laid over this one), and the files
-    /// are a handful of kilobytes next to a full markdown render.
-    pub fn shared_bibliography_text(&self) -> String {
-        let mut text = String::new();
-        for p in &self.bibliography {
-            if let Ok(content) = std::fs::read_to_string(p) {
-                text.push_str(&content);
-                text.push('\n');
-            }
-        }
-        text
-    }
-
-    /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: duplicate
-    /// keys within it.
+    /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: whatever the
+    /// one `.bib` reader finds in the files (a duplicate key, an entry never closed, a key no
+    /// citation can name, an undefined `@string` macro, a file that is not UTF-8), each
+    /// named by file and, inside a file, by line.
     ///
     /// Read-only — it never edits a `.bib` and never changes what renders. Empty for a
     /// project with no `_site.yml` `bibliography:`, so it costs nothing to call
@@ -133,9 +144,22 @@ impl Site {
         if self.bibliography.is_empty() {
             return Vec::new();
         }
-        let text = self.shared_bibliography_text();
-        let (_bib, dup_warnings) = crate::cite::parse_bib_warned(&text);
-        dup_warnings.into_iter().map(Warning::new).collect()
+        // Named relative to the project root, the way `_site.yml` declared them
+        // (`resolve_shared` joined each onto the absolutized root).
+        let root = crate::includes::absolutize(&self.root);
+        let files: Vec<(String, PathBuf)> = self
+            .bibliography
+            .iter()
+            .map(|p| {
+                let name = p.strip_prefix(&root).unwrap_or(p);
+                (name.display().to_string(), p.clone())
+            })
+            .collect();
+        let mut bib = crate::cite::Bibliography::default();
+        crate::cite::read_bib_files(&mut bib, &files, &mut Default::default())
+            .into_iter()
+            .map(Warning::new)
+            .collect()
     }
 }
 
@@ -166,6 +190,97 @@ mod tests {
         assert!(
             w.iter().any(|m| m.contains("duplicate bibliography key")),
             "a duplicate inside the shared file is the project's problem: {w:?}"
+        );
+    }
+
+    /// The shared files are read one by one, so an entry left unclosed at the end of
+    /// `a.bib` cannot eat the first entry of `b.bib`; the project check names the file. The
+    /// files used to be concatenated into one text first (audit 2026-09-24 G3).
+    #[test]
+    fn an_unclosed_entry_in_one_shared_file_does_not_swallow_the_next_file() {
+        let root = write_site(
+            "shared-bib-unclosed",
+            &[
+                ("_site.yml", "title: T\nbibliography: [a.bib, b.bib]\n"),
+                (
+                    "a.bib",
+                    "@article{a1, title={From a}, year={2001}}\n\
+                     @article{a2, title={Unclosed}, year={2002}\n",
+                ),
+                ("b.bib", "@article{b1, title={First in b}, year={2003}}\n"),
+                ("index.tmd", "---\ntitle: A\n---\n\nSee [@b1].\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").expect("renders");
+        assert!(html.contains("First in b"), "b1 resolves:\n{html}");
+        let w = messages(&site.validate_shared_bibliography());
+        assert!(
+            w.iter()
+                .any(|m| m.contains("a.bib") && m.contains("a2") && m.contains("not closed")),
+            "{w:?}"
+        );
+    }
+
+    /// A page's `.bib` can use an `@string` macro the project's shared `.bib` defines, as
+    /// `\bibliography{shared,page}` shares macros across its files (the `IEEEabrv.bib`
+    /// pattern). The two layers used to be parsed as separate texts, so the page printed the
+    /// macro's name, `jn`, as the journal (audit 2026-09-24, bibtex #20).
+    #[test]
+    fn a_page_bib_can_use_a_string_macro_the_shared_bib_defines() {
+        let root = write_site(
+            "shared-bib-macro",
+            &[
+                ("_site.yml", "title: T\nbibliography: shared.bib\n"),
+                ("shared.bib", "@string{jn = {Shared Journal}}\n"),
+                (
+                    "page.bib",
+                    "@article{p1, title={Page entry}, journal=jn, year={2005}}\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\ntitle: A\nbibliography: page.bib\n---\n\nSee [@p1].\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").expect("renders");
+        assert!(html.contains("<em>Shared Journal</em>"), "{html}");
+        // The same page opened on its own reads the same layers in the same order.
+        let src = std::fs::read_to_string(root.join("index.tmd")).unwrap();
+        let doc = crate::render_single_doc(&src, &root);
+        assert!(doc.body_html().contains("<em>Shared Journal</em>"));
+        assert!(
+            !doc.warnings
+                .iter()
+                .any(|w| w.message.contains("not defined")),
+            "{:?}",
+            doc.warnings
+        );
+    }
+
+    /// A shared `.bib` that is not UTF-8 was skipped in silence, leaving every page's
+    /// citations as raw keys with no diagnostic that named the file (audit 2026-09-24,
+    /// bibtex #9). The project check reports it.
+    #[test]
+    fn a_shared_bib_that_is_not_utf8_is_reported_against_the_project() {
+        let root = write_site(
+            "shared-bib-latin1",
+            &[
+                ("_site.yml", "title: T\nbibliography: refs.bib\n"),
+                ("index.tmd", "---\ntitle: A\n---\n\nSee [@k].\n"),
+            ],
+        );
+        std::fs::write(
+            root.join("refs.bib"),
+            b"@article{k, author={M\xfcller, Hans}, title={T}, year={2020}}\n",
+        )
+        .unwrap();
+        let w = messages(&Site::discover(&root).validate_shared_bibliography());
+        assert!(
+            w.iter()
+                .any(|m| m.contains("refs.bib") && m.contains("not valid UTF-8")),
+            "{w:?}"
         );
     }
 

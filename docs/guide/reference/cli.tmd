@@ -148,7 +148,7 @@ Everything the lint looks at, grouped by what it protects:
 | **Local media** | A local image (an `<img src>`, a `srcset` candidate with `<picture><source>` included, a front-matter `image:`, or `_site.yml`'s `logo:`/`favicon:`) that is missing, or that the build cannot publish: outside the project, a symlink out of the checkout, or under a `.`-prefixed folder |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
-| **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), and a `bibliography:` path that does not resolve |
+| **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), an entry that is never closed, a key no `[@…]` citation can name, an undefined `@string` macro, a `.bib` that is not UTF-8, and a `bibliography:` path that does not resolve |
 
 Each row names a defect you cannot see in the rendered page. A check stays in this set
 only if it catches such a defect.

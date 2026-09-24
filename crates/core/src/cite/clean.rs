@@ -13,9 +13,130 @@
 /// below), so `\url{http://a.com/x_y}` -> `http://a.com/x_y`. (An earlier naive
 /// `replace("\\url", "")` corrupted any word merely CONTAINING the substring, e.g.
 /// `\urlstyle`, and deleted a bare `\url` with no argument.)
+///
+/// A math span (`$…$`, `\(…\)`, `\ensuremath{…}`) is kept as the TeX the author wrote,
+/// braces and all: references are not typeset, and TeX text is the honest fallback where
+/// resolving its macros one by one would change the formula (`$O(n \log n)$`).
+///
+/// TeX's input ligatures print as TeX typesets them (see [`tex_ligatures`]). That makes
+/// this the cleaner for TEXT: a URL goes through [`clean_url`], where `~` and `--` are
+/// characters of the address.
 pub(crate) fn clean(s: &str) -> String {
-    let s = latex_accents(s);
-    s.replace(['{', '}'], "").trim().to_string()
+    let mut out = String::new();
+    for (part, math) in split_math(s) {
+        if math {
+            out.push_str(&part);
+        } else {
+            out.push_str(&latex_accents(&tex_ligatures(&part)).replace(['{', '}'], ""));
+        }
+    }
+    out.trim().to_string()
+}
+
+/// [`clean`] for a URL: escapes resolved (`\_`, `\%`, `\url{}` unwrapped) and braces
+/// stripped, with no ligatures and no math, since every character is the address's.
+pub(crate) fn clean_url(s: &str) -> String {
+    latex_accents(s).replace(['{', '}'], "").trim().to_string()
+}
+
+/// TeX's input ligatures in text: ``` `` ``` and `''` as curly double quotes, `--` and
+/// `---` as en and em dashes, and the `~` tie as a no-break space. A character after a
+/// backslash is a macro's (`\~n` is an accent), and a brace between two hyphens breaks
+/// the ligature (`-{}-` prints two), both as in TeX. Run before macros are resolved, so
+/// `\textasciitilde` still prints a tilde.
+fn tex_ligatures(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(c) = rest.chars().next() {
+        let (text, len) = match c {
+            '\\' => {
+                let next = rest[1..].chars().next().map_or(0, char::len_utf8);
+                out.push_str(&rest[..1 + next]);
+                rest = &rest[1 + next..];
+                continue;
+            }
+            '`' if rest.starts_with("``") => ("\u{201c}", 2),
+            '\'' if rest.starts_with("''") => ("\u{201d}", 2),
+            '-' if rest.starts_with("---") => ("\u{2014}", 3),
+            '-' if rest.starts_with("--") => ("\u{2013}", 2),
+            '~' => ("\u{a0}", 1),
+            _ => {
+                out.push(c);
+                rest = &rest[c.len_utf8()..];
+                continue;
+            }
+        };
+        out.push_str(text);
+        rest = &rest[len..];
+    }
+    out
+}
+
+/// `s` cut into text and math parts, in order, each flagged `true` for math. The math
+/// delimiters are `$…$`, `\(…\)` and `\ensuremath{…}` (written back as `$…$`); an
+/// escaped `\$` is text, and a `$` with no partner is text too.
+fn split_math(s: &str) -> Vec<(String, bool)> {
+    let mut parts = Vec::new();
+    let mut text = String::new();
+    let mut i = 0;
+    while i < s.len() {
+        let rest = &s[i..];
+        // `\\` and `\$` are text: the second backslash or the dollar is escaped.
+        if rest.starts_with("\\\\") || rest.starts_with("\\$") {
+            text.push_str(&rest[..2]);
+            i += 2;
+            continue;
+        }
+        let math = if let Some(body) = rest.strip_prefix('$') {
+            let mut end = None;
+            let mut prev = '$';
+            for (k, c) in body.char_indices() {
+                if c == '$' && prev != '\\' {
+                    end = Some(k);
+                    break;
+                }
+                prev = c;
+            }
+            end.map(|k| (rest[..k + 2].to_string(), k + 2))
+        } else if rest.starts_with("\\(") {
+            rest.find("\\)").map(|k| (rest[..k + 2].to_string(), k + 2))
+        } else if let Some(body) = rest.strip_prefix("\\ensuremath{") {
+            let mut depth = 1usize;
+            body.char_indices()
+                .find(|&(_, c)| {
+                    match c {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                    depth == 0
+                })
+                .map(|(k, _)| {
+                    let len = "\\ensuremath{".len() + k + 1;
+                    (format!("${}$", &body[..k]), len)
+                })
+        } else {
+            None
+        };
+        match math {
+            Some((span, len)) => {
+                if !text.is_empty() {
+                    parts.push((std::mem::take(&mut text), false));
+                }
+                parts.push((span, true));
+                i += len;
+            }
+            None => {
+                let c = rest.chars().next().unwrap_or_default();
+                text.push(c);
+                i += c.len_utf8();
+            }
+        }
+    }
+    if !text.is_empty() {
+        parts.push((text, false));
+    }
+    parts
 }
 
 /// Resolve the common LaTeX accent / special-letter macros to composed Unicode.
@@ -29,8 +150,10 @@ pub(crate) fn clean(s: &str) -> String {
 ///   itself possibly a nested macro like `{\H{o}}`) is the base. Resolved to the
 ///   precomposed character when one exists, else base + combining mark.
 ///
-/// Unknown macros degrade gracefully: the backslash + macro name are dropped and the
-/// argument letter is kept, so nothing renders worse than the previous brace-strip.
+/// An unknown control word followed by an argument (`\emph{x}`, `\url{…}`) is a
+/// formatting command: its name is dropped and the argument kept. Any other unknown
+/// control word (`\foo`, `\foo{}`) is kept as written, so the author sees what was not
+/// understood instead of losing the text it stood for.
 fn latex_accents(s: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::new();
@@ -92,8 +215,19 @@ fn latex_accents(s: &str) -> String {
             i = next;
             continue;
         }
-        // Unknown macro: drop the backslash + name, keep going (argument letters,
-        // if any, are emitted as ordinary characters by later iterations).
+        // Unknown control word. With an argument it is a formatting command: drop the
+        // name and let later iterations emit the argument. Without one (or with an empty
+        // `{}`) keep it as written. A control SYMBOL (`\-`, `\/`) prints nothing.
+        if name.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            let empty_arg = chars.get(j) == Some(&'{') && chars.get(j + 1) == Some(&'}');
+            if empty_arg || chars.get(j) != Some(&'{') {
+                out.push('\\');
+                out.push_str(&name);
+                if empty_arg {
+                    j += 2;
+                }
+            }
+        }
         i = j;
     }
     out
@@ -139,14 +273,7 @@ fn read_accent_arg(chars: &[char], j: usize) -> (Option<String>, usize) {
                 k += 1;
             }
             let macro_src: String = chars[j..k].iter().collect();
-            // `\i`/`\j` are dotless ONLY so an accent can sit on them; when they are
-            // the base of an accent, the precomposed letter uses the DOTTED i/j (e.g.
-            // `\"\i` -> ï = U+00EF, not the decomposed ı + diaeresis).
-            let resolved = match macro_src.as_str() {
-                r"\i" => "i".to_string(),
-                r"\j" => "j".to_string(),
-                _ => latex_accents(&macro_src),
-            };
+            let resolved = latex_accents(&macro_src);
             // A macro-terminating space after a control WORD is swallowed.
             if k < chars.len()
                 && chars[k] == ' '
@@ -167,10 +294,19 @@ fn read_accent_arg(chars: &[char], j: usize) -> (Option<String>, usize) {
 /// Combine a base string with a combining diacritic, preferring a precomposed
 /// character. Only the first scalar of `base` carries the accent (the common case
 /// is a single letter; a multi-char base keeps its tail verbatim).
+///
+/// `\i`/`\j` are dotless ONLY so an accent can sit on them, so an accented dotless i/j
+/// is the DOTTED letter's precomposed form (`\"\i` and DBLP's `{\'{\i}}` -> ï, í), not
+/// the decomposed ı + mark, which is not NFC and which search then misses.
 fn compose(base: String, combining: char) -> String {
     let mut it = base.chars();
     let Some(first) = it.next() else {
         return String::new();
+    };
+    let first = match first {
+        '\u{131}' => 'i',
+        '\u{237}' => 'j',
+        c => c,
     };
     let rest: String = it.collect();
     let combined = match precomposed(first, combining) {
@@ -203,9 +339,34 @@ fn accent_diacritic(name: &str) -> Option<char> {
     })
 }
 
-/// No-argument special letters / ligatures.
+/// No-argument special letters, symbols and logos, and the declarations that print
+/// nothing.
 fn special_letter(name: &str) -> Option<&'static str> {
     Some(match name {
+        // Symbols and logos that exporters (Better BibTeX above all) write for Unicode.
+        "textendash" => "\u{2013}",
+        "textemdash" => "\u{2014}",
+        "textquoteleft" => "\u{2018}",
+        "textquoteright" => "\u{2019}",
+        "textquotedblleft" => "\u{201c}",
+        "textquotedblright" => "\u{201d}",
+        "ldots" | "dots" | "textellipsis" => "\u{2026}",
+        "textdegree" => "\u{b0}",
+        "texttimes" => "\u{d7}",
+        "S" => "\u{a7}",
+        "copyright" | "textcopyright" => "\u{a9}",
+        "textregistered" => "\u{ae}",
+        "texttrademark" => "\u{2122}",
+        "textless" => "<",
+        "textgreater" => ">",
+        "textasciitilde" => "~",
+        "textbackslash" => "\\",
+        "TeX" => "TeX",
+        "LaTeX" => "LaTeX",
+        "BibTeX" => "BibTeX",
+        // Font and spacing declarations (`{\em Title}`, `{\sc Fortran}`): no text.
+        "em" | "it" | "bf" | "sc" | "rm" | "tt" | "sl" | "sf" | "itshape" | "bfseries"
+        | "scshape" | "upshape" | "normalfont" | "relax" => "",
         "AA" => "Å",
         "aa" => "å",
         "AE" => "Æ",

@@ -83,3 +83,100 @@ fn non_bib_bibliography_is_flagged_not_silently_ignored() {
         "warning should point at `bibliography:` (line 3)"
     );
 }
+
+/// Two `.bib` files are two files: an entry left unclosed at the end of the first cannot
+/// swallow the first entry of the second, and the diagnostic names the file it is in.
+/// The page's files used to be concatenated and parsed as one text (audit 2026-09-24 G3),
+/// so `b1` vanished and the only message was "broken citation: @b1".
+#[test]
+fn an_unclosed_entry_is_confined_to_its_own_file_and_reported_there() {
+    let dir = tmp("unclosed");
+    fs::write(
+        dir.join("a.bib"),
+        "@article{a1, title={From a}, year={2001}}\n@article{a2, title={Unclosed}, year={2002}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("b.bib"),
+        "@article{b1, title={First in b}, year={2003}}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: [a.bib, b.bib]\n---\n\nSee [@a2] and [@b1].\n";
+    let doc = render_document_with_includes(src, &dir);
+    let html = doc.body_html();
+    assert!(html.contains("First in b"), "b1 resolves:\n{html}");
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("broken citation")),
+        "{:?}",
+        doc.warnings
+    );
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("not closed"))
+        .unwrap_or_else(|| panic!("no unclosed-entry warning: {:?}", doc.warnings));
+    assert!(
+        w.message.contains("a.bib") && w.message.contains("a2"),
+        "{}",
+        w.message
+    );
+    assert_eq!(w.line, Some(3), "located at `bibliography:`");
+}
+
+/// An `@string` macro nothing defines is reported, located, instead of silently printing
+/// its name as the field's text (audit 2026-09-24, bibtex #20). BibTeX's predefined month
+/// macros (`month = jan`) are defined, so they draw nothing.
+#[test]
+fn an_undefined_string_macro_is_reported_at_the_bibliography_line() {
+    let dir = tmp("undefined-macro");
+    fs::write(
+        dir.join("refs.bib"),
+        "@article{k, title={T}, journal=nosuch, month=jan, year=2020}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
+    let doc = render_document_with_includes(src, &dir);
+    let hits: Vec<_> = doc
+        .warnings
+        .iter()
+        .filter(|w| w.message.contains("not defined"))
+        .collect();
+    assert_eq!(hits.len(), 1, "{:?}", doc.warnings);
+    assert!(
+        hits[0].message.contains("`nosuch`") && hits[0].message.contains("refs.bib"),
+        "{}",
+        hits[0].message
+    );
+    assert_eq!(hits[0].line, Some(3));
+}
+
+/// A `.bib` saved in Latin-1 (older JabRef and BibDesk defaults) exists, so "not found"
+/// sent the author hunting for a typo in a path that was right (audit 2026-09-24, bibtex
+/// #9). It is named for what it is. Decoding Latin-1 is not a feature: the fix is to save
+/// the file as UTF-8.
+#[test]
+fn a_bib_that_is_not_utf8_is_reported_as_such_not_as_missing() {
+    let dir = tmp("latin1");
+    // `M\xfcller` is "Müller" in Latin-1, and invalid as UTF-8.
+    fs::write(
+        dir.join("refs.bib"),
+        b"@article{k, author={M\xfcller, Hans}, title={T}, year={2020}}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nSee [@k].\n";
+    let doc = render_document_with_includes(src, &dir);
+    assert!(
+        !doc.warnings.iter().any(|w| w.message.contains("not found")),
+        "{:?}",
+        doc.warnings
+    );
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("not valid UTF-8"))
+        .unwrap_or_else(|| panic!("{:?}", doc.warnings));
+    assert!(w.message.contains("refs.bib"), "{}", w.message);
+    assert_eq!(w.line, Some(3));
+}

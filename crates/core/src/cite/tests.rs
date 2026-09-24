@@ -917,3 +917,610 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An entry whose closing `}` was lost ends where the next entry starts, and says so.
+///
+/// It used to swallow that next entry whole: the field loop read `@article{smith2020` as a
+/// field name, found no `=`, broke, and the outer scan resumed past the `@` it had already
+/// consumed. `[@smith2020]` then became a broken citation whose did-you-mean offered
+/// `@smith2019` as a one-click fix, which cites a different paper (audit 2026-09-24 G3).
+#[test]
+fn an_unclosed_entry_ends_where_the_next_one_starts_and_is_reported() {
+    let (b, w) = parse_bib_warned(
+        "@article{smith2019,\n  author = {Smith, John},\n  title = {First},\n  year = {2019}\n\n\
+         @article{smith2020,\n  author = {Smith, John},\n  title = {Second},\n  year = {2020}\n}\n",
+    );
+    let second = b.format("smith2020").expect("the next entry survives");
+    assert!(
+        second.contains("Second") && second.contains("2020"),
+        "{second}"
+    );
+    let first = b
+        .format("smith2019")
+        .expect("the unclosed entry keeps what it read");
+    assert!(first.contains("First") && first.contains("2019"), "{first}");
+    assert!(
+        w.iter()
+            .any(|m| m.contains("smith2019") && m.contains("not closed") && m.contains("line 1")),
+        "the lost brace is reported, naming the entry and its line: {w:?}"
+    );
+
+    // An unbalanced `{` inside a value is the same failure one level down: the value runs
+    // on until the next entry starts, and that entry must still be read.
+    let (b, w) = parse_bib_warned(
+        "@article{good1, title={Before}, year={2000}}\n\n\
+         @article{broken, title={Missing close {brace}, year={2001}}\n\n\
+         @article{good2, title={After}, year={2002}}\n",
+    );
+    assert!(
+        b.format("good2").is_some_and(|f| f.contains("After")),
+        "good2 lost"
+    );
+    assert!(
+        w.iter()
+            .any(|m| m.contains("broken") && m.contains("not closed")),
+        "{w:?}"
+    );
+
+    // Reaching the end of the file inside an entry is reported too.
+    let (_, w) = parse_bib_warned("@article{last, title={T}, year={2002}\n");
+    assert!(
+        w.iter()
+            .any(|m| m.contains("last") && m.contains("not closed")),
+        "{w:?}"
+    );
+
+    // A well-formed file draws nothing.
+    let (_, w) = parse_bib_warned(
+        "@article{a, title={A}, year={1}}\n@misc(b, title={B})\n@string{j = {J}}\n",
+    );
+    assert!(w.is_empty(), "{w:?}");
+}
+
+/// A key with a character `[@…]` cannot name is reported and not stored, instead of being
+/// stored truncated with no fields (audit 2026-09-24, bibtex #14).
+///
+/// The key read used to stop at the first character `is_cite_key_char` rejects, so
+/// `smith&jones2020` became the key `smith` with an empty entry: citing it printed an empty
+/// reference row, and the phantom replaced a real `smith` entry defined earlier.
+#[test]
+fn a_key_the_citation_syntax_cannot_name_is_reported_not_stored_truncated() {
+    let (b, w) = parse_bib_warned(
+        "@misc{smith, title={Real smith}, year={2019}}\n\
+         @misc{smith&jones2020, title={Ampersand}, year={2020}}\n\
+         @misc{o'brien2020, title={Apostrophe}, year={2020}}\n",
+    );
+    let smith = b.format("smith").expect("the real entry");
+    assert!(
+        smith.contains("Real smith"),
+        "no phantom replaces it: {smith}"
+    );
+    assert!(b.format("o").is_none(), "no truncated key is stored");
+    for (key, line) in [("smith&jones2020", "line 2"), ("o'brien2020", "line 3")] {
+        assert!(
+            w.iter()
+                .any(|m| m.contains(key) && m.contains("cannot be cited") && m.contains(line)),
+            "{key}: {w:?}"
+        );
+    }
+    assert!(!w.iter().any(|m| m.contains("duplicate")), "{w:?}");
+}
+
+/// A name is a literal (corporate) name only when the WHOLE name is one brace group.
+///
+/// The test used to be "the name starts with `{`", and that is exactly how every exporter
+/// writes an accent on a name's first letter: Google Scholar `{\"O}zt{\"u}rk`, DBLP
+/// `{\"{O}}zt{\"{u}}rk`, Better BibTeX `{\"O}`. Those names were published unformatted,
+/// "Öztürk, Ayşe", in the middle of an IEEE list (audit 2026-09-24 G1).
+#[test]
+fn a_name_starting_with_a_braced_accent_is_still_a_person() {
+    let cases = [
+        // Google Scholar and Better BibTeX, comma form.
+        (r#"{\"O}zt{\"u}rk, Ay{\c{s}}e"#, "A. Öztürk"),
+        (r#"{\O}rsted, Hans"#, "H. Ørsted"),
+        (r#"{\AA}ngstr{\"o}m, Anders"#, "A. Ångström"),
+        (r#"{\v{S}}koda, Emil"#, "E. Škoda"),
+        (r#"{\"O}zt{\"u}rk, {\c{S}}ule"#, "Ş. Öztürk"),
+        // DBLP's doubly braced accents.
+        (r#"{\"{O}}zt{\"{u}}rk, Ay{\c{s}}e"#, "A. Öztürk"),
+        // Better BibTeX writes the cedilla with a space inside the group, which is one
+        // word, not two initials.
+        (r#"{\"O}zt{\"u}rk, Ay{\c s}e"#, "A. Öztürk"),
+        // First-Last form, the accent on the given name.
+        (r#"{\'E}mile Durkheim"#, "É. Durkheim"),
+        (r#"{\'{A}}lvaro Garc{\'\i}a"#, "Á. García"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+    // The corporate marker still holds: one group around the whole name.
+    assert_eq!(
+        super::author::format_authors("{World Health Organization}"),
+        "World Health Organization"
+    );
+}
+
+/// BibTeX's von rule for the "First von Last" order that DBLP and arXiv use for every
+/// name: the surname starts at the first lowercase word (not the last word), so the
+/// particle is printed as written instead of being turned into initials. `Laurens van der
+/// Maaten` published as "L. V. D. Maaten" (audit 2026-09-24 G2).
+#[test]
+fn a_lowercase_particle_in_first_last_order_is_part_of_the_surname() {
+    let cases = [
+        // DBLP.
+        (
+            "Laurens van der Maaten and Geoffrey E. Hinton",
+            "L. van der Maaten and G. E. Hinton",
+        ),
+        (r#"A{\"{a}}ron van den Oord"#, "A. van den Oord"),
+        ("Hado van Hasselt", "H. van Hasselt"),
+        ("Ulrike von Luxburg", "U. von Luxburg"),
+        ("Nando de Freitas", "N. de Freitas"),
+        ("Jean de la Fontaine", "J. de la Fontaine"),
+        ("Ludwig van Beethoven", "L. van Beethoven"),
+        // No particle: the last word is the surname, as before.
+        ("Geoffrey E. Hinton", "G. E. Hinton"),
+        // The comma forms already kept the particle, and still do.
+        ("van Beethoven, Ludwig", "L. van Beethoven"),
+        ("Van der Maaten, Laurens", "L. Van der Maaten"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+}
+
+/// The rest of BibTeX's name grammar that exporters rely on (audit 2026-09-24, bibtex #3):
+/// the three-part "von Last, Jr, First" form (Better BibTeX), hyphenated given names
+/// (`Klaus-Robert`, DBLP's `Ming{-}Wei`), a tie between initials, and an ` AND ` in
+/// capitals, which BibTeX reads case-insensitively.
+#[test]
+fn bibtex_name_forms_the_exporters_use_are_split_like_bibtex() {
+    let cases = [
+        ("King, Jr., Martin Luther", "M. L. King, Jr."),
+        (r#"Klaus-Robert M{\"u}ller"#, "K.-R. Müller"),
+        (
+            r#"M{\"u}ller, Klaus-Robert and Serre, Jean-Pierre"#,
+            "K.-R. Müller and J.-P. Serre",
+        ),
+        ("Ming{-}Wei Chang", "M.-W. Chang"),
+        ("D.~E. Knuth", "D. E. Knuth"),
+        ("Smith, John AND Doe, Jane", "J. Smith and J. Doe"),
+        ("SMITH AND JONES", "SMITH and JONES"),
+        // Unchanged: a Jr written inside the surname stays there.
+        ("Steele Jr, Guy L", "G. L. Steele Jr"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+}
+
+/// A LaTeX control word the cleaner does not know is kept, not deleted, and a math span
+/// is left as the TeX the author wrote (audit 2026-09-24 G5).
+///
+/// Unknown macros used to be dropped with their name, which is harmless for a formatting
+/// command whose argument follows (`\emph{x}`) and destroys text for everything else:
+/// arXiv titles keep their math verbatim, so `{$\alpha$}-Synuclein` published as
+/// "$$-Synuclein", `$O(n \log n)$` lost its `\log`, and `The {\TeX}book` became "The book".
+#[test]
+fn unknown_control_words_and_math_are_kept_not_deleted() {
+    let cases = [
+        // Math spans are verbatim, braces and all.
+        (r"{$\alpha$}-Synuclein", r"$\alpha$-Synuclein"),
+        (r"{\(\ell_1\)}-Regularized", r"\(\ell_1\)-Regularized"),
+        (
+            r"An {$O(n \log n)$} Algorithm",
+            r"An $O(n \log n)$ Algorithm",
+        ),
+        (r"$\frac{a}{b}$-norm", r"$\frac{a}{b}$-norm"),
+        (r"{\ensuremath{\beta}}-VAE", r"$\beta$-VAE"),
+        // An escaped dollar is a dollar, not math.
+        (r"\$5 and \$6", "$5 and $6"),
+        // The symbols and logos exporters write.
+        (r"The {\TeX}book", "The TeXbook"),
+        (r"\LaTeX{} and \BibTeX", "LaTeX and BibTeX"),
+        (
+            r"Deep Learning \textendash{} A Survey",
+            "Deep Learning \u{2013} A Survey",
+        ),
+        (r"1990\textemdash{}2000", "1990\u{2014}2000"),
+        (r"Alzheimer\textquoteright{}s", "Alzheimer\u{2019}s"),
+        (
+            r"37{\textdegree}C and 5{\texttimes}",
+            "37\u{b0}C and 5\u{d7}",
+        ),
+        (r"Wait\ldots", "Wait\u{2026}"),
+        (
+            r"\S 3, \copyright{} 2020, \textregistered",
+            "\u{a7}3, \u{a9} 2020, \u{ae}",
+        ),
+        (r"a \textless{} b \textgreater{} c", "a < b > c"),
+        // Declarations that print nothing still print nothing.
+        (r"{\em Emphasised} and {\sc Caps}", "Emphasised and Caps"),
+        // A command with an argument keeps its argument, as before.
+        (r"\emph{Deep} \textit{learning}", "Deep learning"),
+        // Anything else stays visible, so the author sees what was not understood.
+        (r"a \foo b", r"a \foo b"),
+        (r"a \foo{} b", r"a \foo b"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+}
+
+/// DBLP writes an accented i as `{\'{\i}}`: the accent's argument is a BRACED dotless i.
+/// Only the bare `\'\i` form was mapped to the dotted letter, so this one published a
+/// dotless ı plus a combining acute, which looks close but is not NFC: Ctrl-F and the
+/// search index miss "Martínez" (audit 2026-09-24, bibtex #17).
+#[test]
+fn an_accent_on_a_braced_dotless_i_is_the_precomposed_letter() {
+    for (raw, want) in [
+        (r"Mart{\'{\i}}nez", "Mart\u{ed}nez"),
+        (r"Rodr\'{\i}guez", "Rodr\u{ed}guez"),
+        (r"Garc{\'\i}a", "Garc\u{ed}a"),
+        (r#"Na{\"{\i}}ve"#, "Na\u{ef}ve"),
+    ] {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+}
+
+/// TeX's input ligatures print as TeX typesets them, in text fields and never in a URL:
+/// ``` ``quoted'' ``` as curly quotes (the renderer's smart typography gives prose the
+/// same), `--` and `---` as en and em dashes, `~` as a no-break space. They printed
+/// literally: "``double''", "1990--2000", "Proc.~of", "E.~coli" (audit 2026-09-24,
+/// bibtex #16 and the escaping lens's adjacent note).
+#[test]
+fn tex_ligatures_in_text_fields_print_as_typeset() {
+    for (raw, want) in [
+        ("``Quoted'' title", "\u{201c}Quoted\u{201d} title"),
+        ("1990--2000", "1990\u{2013}2000"),
+        ("a---b", "a\u{2014}b"),
+        ("Proc.~of the ACM", "Proc.\u{a0}of the ACM"),
+        // Not a ligature: an accent, a braced break, a symbol macro, and math.
+        (r"Espa\~na", "Espa\u{f1}a"),
+        ("-{}-", "--"),
+        (r"\textasciitilde", "~"),
+        ("$a--b$", "$a--b$"),
+    ] {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+    let b = parse_bib("@misc{u, title={A--B}, url={http://example.org/~user/a--b}}\n");
+    let f = b.format("u").unwrap();
+    assert!(
+        f.contains("href=\"http://example.org/~user/a--b\""),
+        "a URL is not text: {f}"
+    );
+}
+
+/// IEEE punctuation on common shapes (audit 2026-09-24, bibtex #16). A title that ends in
+/// `?`, `!` or `.` keeps its own mark instead of gaining a comma or period inside the
+/// quote ("…Networks?,”", "…End?.”", Google Scholar's "t-SNE.,”"); a note does not double
+/// a period; a single page is "p." and a range is dashed even with one hyphen, as BibTeX's
+/// `n.dashify` does.
+#[test]
+fn ieee_punctuation_follows_the_title_and_the_page_count() {
+    let b = parse_bib(concat!(
+        "@article{q1, author={Xu, Keyulu}, title={How Powerful are Graph Neural Networks?}, journal={ICLR}, year={2019}}\n",
+        "@misc{q2, title={Is This the End?}}\n",
+        "@article{gs, title={Visualizing data using t-SNE.}, journal={JMLR}, year={2008}}\n",
+        "@misc{t6, title={Note only}, note={Accessed: 2023-01-01}}\n",
+        "@misc{t8, title={Title ending period.}, note={A note.}}\n",
+        "@article{p1, title={P}, journal={J}, pages={42}, year={2020}}\n",
+        "@article{p2, title={P}, journal={J}, pages={123-145}, year={2020}}\n",
+        "@article{p3, title={P}, journal={J}, pages={123 -- 145}, year={2020}}\n",
+        "@article{p7, title={P}, journal={J}, pages={1--5, 7--9}, year={2020}}\n",
+    ));
+    let f = |k: &str| b.format(k).unwrap();
+    assert_eq!(
+        f("q1"),
+        "K. Xu, \u{201c}How Powerful are Graph Neural Networks?\u{201d} <em>ICLR</em>, 2019."
+    );
+    assert_eq!(f("q2"), "\u{201c}Is This the End?\u{201d}");
+    assert!(
+        f("gs").starts_with("\u{201c}Visualizing data using t-SNE.\u{201d} <em>JMLR</em>"),
+        "{}",
+        f("gs")
+    );
+    assert_eq!(f("t6"), "\u{201c}Note only.\u{201d} Accessed: 2023-01-01.");
+    assert_eq!(f("t8"), "\u{201c}Title ending period.\u{201d} A note.");
+    assert!(f("p1").contains("<em>J</em>, p. 42, 2020"), "{}", f("p1"));
+    assert!(f("p2").contains("pp. 123\u{2013}145"), "{}", f("p2"));
+    assert!(f("p3").contains("pp. 123\u{2013}145"), "{}", f("p3"));
+    assert!(
+        f("p7").contains("pp. 1\u{2013}5, 7\u{2013}9"),
+        "{}",
+        f("p7")
+    );
+}
+
+/// Zotero's "Better BibLaTeX" and built-in BibLaTeX exports name three fields differently:
+/// `journaltitle`, `date` and `location`. Only the BibTeX names were read, so every article
+/// lost its journal and year and every `@online` its year, silently (audit 2026-09-24 G6,
+/// bibtex #7).
+#[test]
+fn a_biblatex_export_keeps_its_journal_year_and_place() {
+    let b = parse_bib(concat!(
+        "@article{bl, title = {Deep Learning for {{DNA}} Sequencing: {{A}} Review},\n",
+        "  author = {Smith, John and Müller, Hans}, date = {2020-01},\n",
+        "  journaltitle = {Nature Methods}, volume = {17}, number = {3}, pages = {123--145}}\n",
+        "@online{web, title = {Some {{Web Page}}}, author = {{Mozilla Contributors}},\n",
+        "  date = {2021-03-04}, url = {https://developer.mozilla.org/en-US/docs/Web},\n",
+        "  organization = {{MDN Web Docs}}}\n",
+        "@book{bk, title = {A Book}, date = {1999}, publisher = {OUP}, location = {Oxford}}\n",
+        // The BibTeX name wins when both are present.
+        "@article{both, title = {T}, journal = {BibTeX J}, journaltitle = {BibLaTeX J}, year = {2001}, date = {2002}}\n",
+    ));
+    let bl = b.format("bl").unwrap();
+    assert!(
+        bl.ends_with("<em>Nature Methods</em>, vol. 17, no. 3, pp. 123\u{2013}145, 2020."),
+        "{bl}"
+    );
+    assert!(b.format("web").unwrap().contains("MDN Web Docs, 2021."));
+    assert!(b.format("bk").unwrap().contains("Oxford: OUP, 1999."));
+    let both = b.format("both").unwrap();
+    assert!(both.contains("BibTeX J") && both.contains("2001"), "{both}");
+}
+
+/// Four fields real exports rely on were never read (audit 2026-09-24, bibtex #15):
+/// `doi` (a DOI-only entry, as Mendeley and Better BibTeX write one, had no link),
+/// `editor` (an edited volume rendered with no names at all), `crossref` (DBLP's standard
+/// export puts a conference paper's venue, year and publisher on the parent entry, so the
+/// child lost them all, and its pages too) and `school` (a thesis lost its university).
+#[test]
+fn doi_editor_crossref_and_school_are_read() {
+    let b = parse_bib(concat!(
+        "@article{doi, author={Smith, John}, title={T}, journal={J}, year={2019}, doi={10.1000/xyz123}}\n",
+        "@misc{doiurl, title={T}, doi={https://doi.org/10.1000/xyz}}\n",
+        "@misc{both, title={T}, url={https://example.org/p}, doi={10.1000/xyz}}\n",
+        "@book{ed, title={Edited Volume}, editor={Keeper, Kay}, year={2018}, publisher={OUP}, address={Oxford}}\n",
+        "@book{eds, title={Two Editors}, editor={Keeper, Kay and Other, Olga}, year={2018}, publisher={OUP}}\n",
+        "@inproceedings{child, author={Poe, P.}, title={Crossref child}, crossref={conf20}, pages={1--10}}\n",
+        "@proceedings{conf20, title={Proceedings of Conf 2020}, booktitle={Proceedings of Conf 2020}, year={2020}, publisher={ACM}}\n",
+        "@phdthesis{thesis, author={Graves, Alex}, title={Supervised sequence labelling}, year={2008}, school={Technische Universit{\\\"a}t M{\\\"u}nchen}}\n",
+    ));
+    let f = |k: &str| b.format(k).unwrap();
+    assert!(
+        f("doi").ends_with(
+            "[Online]. Available: <a href=\"https://doi.org/10.1000/xyz123\">https://doi.org/10.1000/xyz123</a>"
+        ),
+        "{}",
+        f("doi")
+    );
+    assert!(
+        f("doiurl").contains("href=\"https://doi.org/10.1000/xyz\""),
+        "a DOI written as a URL is not doubled: {}",
+        f("doiurl")
+    );
+    assert!(
+        f("both").contains("href=\"https://example.org/p\"") && !f("both").contains("doi.org"),
+        "a url wins over the doi: {}",
+        f("both")
+    );
+    assert_eq!(
+        f("ed"),
+        "K. Keeper, Ed., <em>Edited Volume</em>. Oxford: OUP, 2018."
+    );
+    assert!(
+        f("eds").starts_with("K. Keeper and O. Other, Eds., "),
+        "{}",
+        f("eds")
+    );
+    assert_eq!(
+        f("child"),
+        "P. Poe, \u{201c}Crossref child,\u{201d} in <em>Proceedings of Conf 2020</em>, ACM, 2020, pp. 1\u{2013}10."
+    );
+    assert!(
+        f("thesis").contains("Technische Universität München, 2008."),
+        "{}",
+        f("thesis")
+    );
+}
+
+/// Every field reaches the page escaped; `edition` was interpolated raw, in both the book
+/// and the chapter format, so markup in it became real elements (and a `<!--` in it hid
+/// the rest of the page) (audit 2026-09-24, bibtex #18 / escaping #8e).
+#[test]
+fn the_edition_field_is_escaped() {
+    let b = parse_bib(concat!(
+        "@book{bk, title={B}, edition={<b>3</b> & more}, publisher={P}, year={2000}}\n",
+        "@incollection{ch, title={C}, booktitle={B}, edition={<i>2</i>}, publisher={P}, year={2000}}\n",
+    ));
+    let bk = b.format("bk").unwrap();
+    assert!(
+        bk.contains("&lt;b&gt;3&lt;/b&gt; &amp; more ed.") && !bk.contains("<b>"),
+        "{bk}"
+    );
+    let ch = b.format("ch").unwrap();
+    assert!(
+        ch.contains("&lt;i&gt;2&lt;/i&gt; ed.") && !ch.contains("<i>"),
+        "{ch}"
+    );
+}
+
+/// An entry missing its title (or everything but its author) leaves no dangling
+/// punctuation: `@misc{k, author=…}` rendered "J. Smith, " and `@book{k, author=…}`
+/// "J. Smith, ." (audit 2026-09-24, bibtex #19). The gap stays visible in the page, which
+/// is where the author sees it; only the stray marks go.
+#[test]
+fn an_entry_missing_fields_leaves_no_dangling_punctuation() {
+    let b = parse_bib(concat!(
+        "@misc{m, author={Smith, John}}\n",
+        "@book{b, author={Smith, John}}\n",
+        "@book{bp, author={Smith, John}, publisher={P}, year={2000}}\n",
+        "@misc{u, author={Smith, John}, url={https://example.org/x}}\n",
+    ));
+    assert_eq!(b.format("m").unwrap(), "J. Smith.");
+    assert_eq!(b.format("b").unwrap(), "J. Smith.");
+    assert_eq!(b.format("bp").unwrap(), "J. Smith, P, 2000.");
+    assert_eq!(
+        b.format("u").unwrap(),
+        "J. Smith, [Online]. Available: <a href=\"https://example.org/x\">https://example.org/x</a>"
+    );
+}
+
+/// A citation group is parsed on its TEXT, not on the escaped HTML around it, and escaped
+/// once on the way out (audit 2026-09-24, bibtex #13 and escaping #4).
+///
+/// It was split on `;` as comrak had escaped it, so the `;` of `&amp;` split the group:
+/// `[@k1, pp. 3 & 7]` published "[1, pp. 3 &amp]", " 7" lost. Then the text was escaped
+/// a second time, so a group that was not a citation read "[Q&amp;A @ noon]".
+#[test]
+fn a_citation_group_is_parsed_on_text_not_on_escaped_html() {
+    let b = parse_bib("@misc{k1, title={T}, year={2020}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@k1, pp. 3 &amp; 7]. B [@k1, ch. &lt;2&gt;]. C [Q&amp;A @ noon].</p>",
+    )];
+    process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    assert!(
+        html.contains("[<a href=\"#ref-k1\">1</a>, pp. 3 &amp; 7]"),
+        "{html}"
+    );
+    assert!(
+        html.contains("[<a href=\"#ref-k1\">1</a>, ch. &lt;2&gt;]"),
+        "{html}"
+    );
+    assert!(html.contains("[Q&amp;A @ noon]"), "{html}");
+    assert!(!html.contains("&amp;amp;"), "escaped twice: {html}");
+}
+
+/// A bracket is a citation group only when every item in it starts with `@` (after an
+/// optional `-`); anything else is left as the text it is (audit 2026-09-24, bibtex #12).
+///
+/// The item's `@` used to be found anywhere in it and the text before it thrown away, so
+/// `[see @a, p. 3; also @b]` published "[1, p. 3, 2]" with "see" and "also" silently gone,
+/// `[x < y @a]` published "[1]", `[by mail at bob@smith.2020]` cited `smith.2020`, and
+/// `[bob@example.com]` cited a key `example.com`. Left literal, a bare `@key` in the text is
+/// then reported by the bare-citation check rather than lost.
+#[test]
+fn a_bracket_is_a_citation_only_when_every_item_starts_with_at() {
+    let b =
+        parse_bib("@misc{smith.2020, title={S}}\n@misc{doe+roe, title={D}}\n@misc{a, title={A}}\n");
+    let mut xrefs = HashMap::new();
+    xrefs.insert("fig-x".to_string(), "3".to_string());
+    let mut blocks = vec![
+        block("<p>A [see @smith.2020, pp. 33\u{2013}35; also @doe+roe, sec. 2].</p>"),
+        block("<p>B Contact us [by mail at bob@smith.2020].</p>"),
+        block("<p>C Email [bob@example.com] for details.</p>"),
+        block("<p>D [x &lt; y @a].</p>"),
+        block("<p>E [see @fig-x].</p>"),
+        block("<p>F [@smith.2020; -@doe+roe, p. 2].</p>"),
+    ];
+    let w = process(&mut blocks, &b, &xrefs, None);
+    let html = |i: usize| blocks[i].html.clone();
+    assert!(
+        html(0).contains("[see @smith.2020, pp. 33\u{2013}35; also @doe+roe, sec. 2]"),
+        "{}",
+        html(0)
+    );
+    assert!(
+        html(1).contains("[by mail at bob@smith.2020]"),
+        "{}",
+        html(1)
+    );
+    assert!(html(2).contains("[bob@example.com]"), "{}", html(2));
+    assert!(html(3).contains("[x &lt; y @a]"), "{}", html(3));
+    // A bare cross-reference inside a literal bracket still links.
+    assert!(
+        html(4).contains("[see <a href=\"#fig-x\" class=\"tali-xref\">Figure&nbsp;3</a>]"),
+        "{}",
+        html(4)
+    );
+    // A real group still renders, and only its keys are numbered.
+    assert!(
+        html(5)
+            .contains("[<a href=\"#ref-smith.2020\">1</a>, <a href=\"#ref-doe+roe\">2</a>, p. 2]"),
+        "{}",
+        html(5)
+    );
+    let refs = &blocks.last().unwrap().html;
+    assert_eq!(refs.matches("class=\"csl-entry\"").count(), 2, "{refs}");
+    assert!(!refs.contains("example.com"), "{refs}");
+    assert!(broken(&w).is_empty(), "{w:?}");
+}
+
+/// The bare-citation errors a page draws: a `@key` that names a bibliography entry but
+/// shipped as literal text. Rendered with a one-entry `.bib` beside the page.
+fn bare_key_errors(tag: &str, body: &str) -> Vec<Warning> {
+    let dir = std::env::temp_dir().join(format!("tali-bare-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{knuth84, title={Literate Programming}, author={Knuth, D.}, year={1984}}\n",
+    )
+    .unwrap();
+    let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
+    let doc = crate::render_document_with_includes(&src, &dir);
+    let mut w = doc.warnings.clone();
+    let _ = std::fs::remove_dir_all(&dir);
+    w.retain(|w| w.message.contains("is not a citation"));
+    w
+}
+
+/// A correct citation in a figure caption renders correctly, and must not fail the gate:
+/// the old check substring-scanned the finished HTML, so the caption's raw text in the
+/// image's `alt` read as a bare `@key` and `build --check-only` exited 1 on a valid page
+/// (audit 2026-09-24 G4).
+#[test]
+fn a_citation_in_a_figure_caption_is_not_a_bare_key() {
+    let w = bare_key_errors("fig", "![Adapted from [@knuth84]](img.png){#fig-a}\n");
+    assert!(w.is_empty(), "{w:?}");
+}
+
+/// Code and comments are not prose, wherever they sit (audit 2026-09-24 G4, and the
+/// scanners lens's #7): inline code, a code block nested in a list item or a callout,
+/// and an HTML comment. Only a top-level `<pre>` block used to be skipped.
+#[test]
+fn a_key_in_code_or_a_comment_is_not_a_bare_key() {
+    for (tag, body) in [
+        ("block", "```\n@knuth84\n```\n"),
+        ("inline", "Write `[@knuth84]` to cite.\n"),
+        ("list", "- An item:\n\n  ```\n  see @knuth84\n  ```\n"),
+        (
+            "callout",
+            "::: {.callout-note}\n```\nsee @knuth84\n```\n:::\n",
+        ),
+        ("comment", "Prose.\n\n<!-- cite [@knuth84] here -->\n"),
+    ] {
+        let w = bare_key_errors(tag, body);
+        assert!(w.is_empty(), "{tag}: {w:?}");
+    }
+}
+
+/// The real defect is still caught, once, located, with the bracketed form offered; and
+/// a key left in a bracket that is not a citation group (text before its `@`) is caught
+/// too, instead of being dropped in silence.
+#[test]
+fn a_bare_key_in_prose_is_still_an_error() {
+    let w = bare_key_errors("prose", "As shown by @knuth84.\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].message.contains("[@knuth84]"), "{}", w[0].message);
+    assert_eq!(w[0].severity, crate::render::Severity::Error);
+    assert_eq!(w[0].line, Some(6));
+    let w = bare_key_errors("bracket", "Read it [see @knuth84, p. 3].\n");
+    assert_eq!(w.len(), 1, "{w:?}");
+    // A real citation is clean.
+    assert!(bare_key_errors("cited", "As shown [@knuth84].\n").is_empty());
+    // Membership gating is what makes the rule safe: `is_cite_key_char` admits `/ . : +`,
+    // so without it `@media`, `@types/node` and addresses would all fire.
+    let w = bare_key_errors(
+        "noise",
+        "Use @media queries, install @types/node, mail bob@knuth84.com or ping \
+         @knuth84XYZ today.\n",
+    );
+    assert!(w.is_empty(), "{w:?}");
+}
+
+/// No bibliography, nothing to match: every `@word` is prose.
+#[test]
+fn a_page_without_a_bibliography_draws_no_bare_key_error() {
+    let src = "---\ntitle: T\n---\n\nPlease refer to @knuth84.\n";
+    let doc = crate::render_document(src);
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("is not a citation")),
+        "{:?}",
+        doc.warnings
+    );
+}

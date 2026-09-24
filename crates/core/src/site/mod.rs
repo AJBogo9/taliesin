@@ -173,7 +173,7 @@ mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book, chapter_heading};
 mod bibliography;
-pub(crate) use bibliography::shared_for_single_doc;
+pub(crate) use bibliography::{project_bibliography_has_entries, shared_for_single_doc};
 mod fanout;
 mod feed;
 mod meta;

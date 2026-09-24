@@ -63,6 +63,8 @@ fn ieee_corpus_reference_output_is_byte_stable() {
 /// (`{Umar Jamil}` -> "U. Jamil", must keep initializing) and a double-brace
 /// corporate author (`{{Wikipedia contributors}}` -> rendered whole). These two
 /// posts caught a real regression during this lane, so they are pinned exactly.
+/// (The title ending in `!` pinned "easily!,”" until the 2026-09-24 audit, bibtex #16:
+/// IEEE keeps the title's own mark and adds no comma after it.)
 #[test]
 fn single_and_double_brace_author_corpus_output_is_byte_stable() {
     let elbo = references_section(&render_post(
@@ -76,7 +78,7 @@ fn single_and_double_brace_author_corpus_output_is_byte_stable() {
          [1] C. M. Bishop, <em>Pattern Recognition and Machine Learning</em>. Springer, 2006.</div>\
          <div id=\"ref-jamil2023vae\" class=\"csl-entry\">\
          [2] U. Jamil, \u{201c}Variational Autoencoder - Model, ELBO, loss function and maths \
-         explained easily!,\u{201d} 2023. [Online]. Available: \
+         explained easily!\u{201d} 2023. [Online]. Available: \
          <a href=\"https://www.youtube.com/watch?v=iwEzwTTalbg\">\
          https://www.youtube.com/watch?v=iwEzwTTalbg</a>. YouTube video, accessed March 31, 2026.\
          </div></section>",
@@ -111,9 +113,11 @@ fn cite_coverage_corpus_doc_renders_all_fixes() {
     let html = render_post("posts/cite-coverage/index.tmd");
     let refs = references_section(&html);
 
-    // Fix 1: LaTeX accents -> composed Unicode in author names.
+    // Fix 1: LaTeX accents -> composed Unicode in author names. (`Klaus-Robert` keeps
+    // both initials, as BibTeX gives them: this line pinned "K. Müller" until the
+    // 2026-09-24 audit, bibtex #3.)
     assert!(
-        refs.contains("[1] K. Müller and B. Schölkopf,"),
+        refs.contains("[1] K.-R. Müller and B. Schölkopf,"),
         "accents not composed: {refs}"
     );
     assert!(

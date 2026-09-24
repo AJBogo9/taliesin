@@ -1616,15 +1616,17 @@ fn load_bibliography(
     bib_line: Option<u32>,
     warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
-    let mut shared_text = String::new();
-    for p in shared {
-        if let Ok(content) = std::fs::read_to_string(p) {
-            shared_text.push_str(&content);
-            shared_text.push('\n');
-        }
-    }
+    let mut bib = crate::cite::Bibliography::default();
+    let shared: Vec<(String, PathBuf)> = shared
+        .iter()
+        .map(|p| (p.display().to_string(), p.clone()))
+        .collect();
+    // One `@string` table for both layers, read shared first: a page's `.bib` may use a
+    // macro the project's defines, as `\bibliography{shared,page}` would let it.
+    let mut strings = HashMap::new();
+    crate::cite::read_bib_files(&mut bib, &shared, &mut strings);
     let Some(base) = base_dir else {
-        return crate::cite::parse_bib(&shared_text);
+        return bib;
     };
     // Point every `.bib` diagnostic at the front-matter `bibliography:` line (the
     // .bib is an external file with no in-doc position of its own), so it is
@@ -1633,7 +1635,7 @@ fn load_bibliography(
         Some(l) => w.at(None, l),
         None => w,
     };
-    let mut text = String::new();
+    let mut files = Vec::new();
     for path in paths {
         let path = path.trim();
         // Only `.bib` is supported; a differently-suffixed path (a stray token or an
@@ -1650,15 +1652,7 @@ fn load_bibliography(
         // was *refused* is reported as such rather than as "not found", so an author
         // whose file plainly exists is not sent hunting for a typo.
         match crate::includes::try_join_in(base, path, root) {
-            Ok(p) => match std::fs::read_to_string(&p) {
-                Ok(content) => {
-                    text.push_str(&content);
-                    text.push('\n');
-                }
-                Err(_) => warnings.push(locate(Warning::new(format!(
-                    "bibliography file not found: {path}"
-                )))),
-            },
+            Ok(p) => files.push((path.to_string(), p)),
             Err(crate::includes::Refused::OutsideRoot) => warnings.push(locate(Warning::new(
                 format!("bibliography `{path}` is outside the project root and was not read"),
             ))),
@@ -1670,9 +1664,9 @@ fn load_bibliography(
             }
         }
     }
-    let (page_bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
+    let mut page_bib = crate::cite::Bibliography::default();
+    let bib_warnings = crate::cite::read_bib_files(&mut page_bib, &files, &mut strings);
     warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
-    let mut bib = crate::cite::parse_bib(&shared_text);
     bib.overlay(page_bib);
     bib
 }
@@ -3667,7 +3661,7 @@ fn leading_h1_text(blocks: &[Block]) -> Option<String> {
 /// Reverse [`escape_html`]: decode the entities the renderer itself emits (`&amp;`,
 /// `&lt;`, `&gt;`, `&quot;`, `&#39;`). Not a general HTML entity decoder — it exists so
 /// text lifted back out of emitted HTML can be re-escaped exactly once.
-fn unescape_html(s: &str) -> String {
+pub(crate) fn unescape_html(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
     }
