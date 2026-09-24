@@ -6,106 +6,61 @@ use lsp_types::{FoldingRange, FoldingRangeKind};
 /// running to the next heading of equal or shallower level), `:::` fenced divs, and code
 /// fences.
 ///
-/// Indentation folding is what `.tmd` gets today (there is no `folding` key in the
-/// language configuration and no server capability), and it is meaningless in a
+/// Indentation folding is what `.tmd` gets without this, and it is meaningless in a
 /// Markdown-derived format where nesting is expressed by fences and heading level.
 ///
-/// Code fences are tracked whether or not they are folded, because everything inside one is
-/// literal: a `# comment` on the first line of a `{python}` cell is not a heading, and
-/// treating it as one would close the enclosing section's fold early. This is the same rule
-/// `lsp_outline` follows, using the same two helpers.
+/// Every construct is the one the page renders: the front matter is core's one splitter's
+/// block, code fences and headings come from its line classifier (`render::rendered_lines`,
+/// the parse the render makes), and divs are paired as the render pairs them
+/// (`render::div_lines`). So a `# comment` in a cell is no heading, a fence line inside a
+/// longer fence closes nothing, and a `:::` in a code sample is no div.
 ///
 /// An unterminated construct folds to the last line rather than being dropped: a half-typed
 /// div is the normal case for a provider that fires while the author types.
 pub(crate) fn folding_ranges(text: &str) -> Vec<FoldingRange> {
     // CommonMark line endings, so a lone `\r` cannot collapse the buffer to one unfoldable
     // line — but minus the empty line a final terminator leaves behind, which `str::lines`
-    // (what this was) also drops. `last` is where an unterminated construct folds to, and the
-    // end of the document an author means is their last line of text, not the blank after it.
+    // also drops. `last` is where an unterminated construct folds to, and the end of the
+    // document an author means is their last line of text, not the blank after it.
     let mut lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     if lines.last() == Some(&"") {
         lines.pop();
     }
-    let last = lines.len().saturating_sub(1) as u32;
+    let last = lines.len().saturating_sub(1);
+    let class = taliesin_core::render::rendered_lines(text);
     let mut out = Vec::new();
-    // (start_line, heading_level) for each heading still open.
-    let mut headings: Vec<(u32, u8)> = Vec::new();
-    // start_line for each `:::` div still open.
-    let mut divs: Vec<u32> = Vec::new();
-    let mut fm_start: Option<u32> = None;
-    let mut fence: Option<(u32, char)> = None;
 
-    for (i, raw) in lines.iter().enumerate() {
-        let i = i as u32;
-        let line = raw.trim_end();
-
-        // A code fence swallows everything until its matching marker closes it.
-        if let Some(marker) = crate::lsp_outline::fence_marker(line) {
-            match fence {
-                None => fence = Some((i, marker)),
-                Some((start, open)) if open == marker => {
-                    out.push(region(start, i));
-                    fence = None;
-                }
-                Some(_) => {}
-            }
-            continue;
-        }
-        if fence.is_some() {
-            continue;
-        }
-
-        // Front matter: only when `---` opens line 0, so a thematic break mid-document
-        // is not mistaken for it.
-        if line == "---" {
-            match fm_start {
-                None if i == 0 => fm_start = Some(0),
-                Some(start) => {
-                    out.push(region(start, i));
-                    fm_start = None;
-                }
-                None => {}
-            }
-            continue;
-        }
-
-        if let Some((level, _)) = crate::lsp_outline::atx_heading(line) {
-            // A heading closes every open heading at its level or deeper.
-            while let Some(&(start, open)) = headings.last() {
-                if open >= level {
-                    out.push(region(start, i.saturating_sub(1)));
-                    headings.pop();
-                } else {
-                    break;
-                }
-            }
-            headings.push((i, level));
-            continue;
-        }
-
-        if line.starts_with(":::") {
-            // A bare `:::` closes; `::: {.x}` or `:::note` opens.
-            if line.trim_matches(':').trim().is_empty() {
-                if let Some(start) = divs.pop() {
-                    out.push(region(start, i));
-                }
-            } else {
-                divs.push(i);
-            }
-        }
+    let front: Vec<usize> = (0..lines.len())
+        .filter(|&i| class.line(i).kind == taliesin_core::lines::Kind::FrontMatter)
+        .collect();
+    if let (Some(&start), Some(&end)) = (front.first(), front.last()) {
+        out.push(region(start, end));
     }
-
-    // Unterminated constructs fold to the end of the document.
+    for fence in &class.fences {
+        out.push(region(fence.open, fence.end.min(last)));
+    }
+    for (open, close) in taliesin_core::render::div_lines(text) {
+        out.push(region(open, close.unwrap_or(last)));
+    }
+    // (start_line, heading_level) for each heading still open. A heading closes every open
+    // heading at its level or deeper.
+    let mut headings: Vec<(usize, u8)> = Vec::new();
+    for i in 0..lines.len() {
+        let c = class.line(i);
+        let Some(level) = c.heading.filter(|_| c.depth == 0) else {
+            continue;
+        };
+        while let Some(&(start, open)) = headings.last() {
+            if open < level {
+                break;
+            }
+            out.push(region(start, i.saturating_sub(1)));
+            headings.pop();
+        }
+        headings.push((i, level));
+    }
+    // Unterminated sections fold to the end of the document.
     for (start, _) in headings {
-        out.push(region(start, last));
-    }
-    for start in divs {
-        out.push(region(start, last));
-    }
-    if let Some(start) = fm_start {
-        out.push(region(start, last));
-    }
-    if let Some((start, _)) = fence {
         out.push(region(start, last));
     }
     // A zero-height range is not foldable and clutters the client's gutter.
@@ -113,11 +68,11 @@ pub(crate) fn folding_ranges(text: &str) -> Vec<FoldingRange> {
     out
 }
 
-fn region(start_line: u32, end_line: u32) -> FoldingRange {
+fn region(start_line: usize, end_line: usize) -> FoldingRange {
     FoldingRange {
-        start_line,
+        start_line: start_line as u32,
         start_character: None,
-        end_line,
+        end_line: end_line as u32,
         end_character: None,
         kind: Some(FoldingRangeKind::Region),
         collapsed_text: None,
@@ -160,6 +115,21 @@ inside
             "expected the front matter to fold, got {:?}",
             super::folding_ranges(DOC)
         );
+    }
+
+    /// The front matter is the block core's one splitter reads (audit 2026-09-24, B1 and
+    /// scanners #10): closed by `...` or by a fence with trailing whitespace too. Only an
+    /// exact `---` closed it here, so either left the fold running to the end of the file.
+    #[test]
+    fn front_matter_folds_where_the_splitter_ends_it() {
+        for closer in ["...", "--- "] {
+            let text = format!("---\ntitle: T\n{closer}\n\n# One\n\ntext\n");
+            assert!(
+                lines_of(&text, Some(lsp_types::FoldingRangeKind::Region)).contains(&(0, 2)),
+                "closer {closer:?}: {:?}",
+                super::folding_ranges(&text)
+            );
+        }
     }
 
     #[test]

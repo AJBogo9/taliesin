@@ -70,19 +70,20 @@ pub(crate) struct MathSpan {
 ///
 /// This is the single owner of Taliesin's `$` delimiter rules, which is what keeps
 /// completion's "am I inside math?" from becoming a second delimiter scanner: a `\` escapes
-/// the next character, a fenced block is code and not math, an inline `$…$` is abandoned at a
-/// line break (`render::math_close` gives up at `\n`) while `$$…$$` survives one, and an
-/// opening `$` must be followed by a non-space, which is what keeps `$ 5` from opening math.
+/// the next character, a line that is not markdown to core's classifier `class` (code, raw
+/// HTML, front matter) is not math, an inline `$…$` is abandoned at a line break
+/// (`render::math_close` gives up at `\n`) while `$$…$$` survives one, and an opening `$`
+/// must be followed by a non-space, which is what keeps `$ 5` from opening math. `text` is
+/// the buffer from its start, so its lines are `class`'s.
 ///
 /// A span still open at end-of-input is returned with `closed: false`; one abandoned at a
 /// line break is not returned at all, because it was never math.
-pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
+pub(crate) fn scan_math(text: &str, class: &taliesin_core::lines::Lines) -> Vec<MathSpan> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     let mut spans: Vec<MathSpan> = Vec::new();
     let mut display: Option<usize> = None;
     let mut inline: Option<usize> = None;
-    let mut in_code = false;
     let close = |spans: &mut Vec<MathSpan>, open: usize| {
         spans.push(MathSpan {
             start: open,
@@ -91,29 +92,16 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
     };
 
     let mut i = 0;
+    let mut line = 0;
     while i <= n {
         let line_start = i;
         let mut line_end = line_start;
         while line_end < n && chars[line_end] != '\n' {
             line_end += 1;
         }
-        // Read the fence marker off the char slice rather than materializing the line:
-        // completion calls this on every keystroke, over the whole buffer prefix.
-        let fence = {
-            let mut k = line_start;
-            while k < line_end && chars[k].is_whitespace() {
-                k += 1;
-            }
-            let run = |c: char| {
-                k + 2 < line_end && chars[k] == c && chars[k + 1] == c && chars[k + 2] == c
-            };
-            run('`') || run('~')
-        };
-        // An inline span never survives a line break or a fence boundary; drop it unrecorded.
+        // An inline span never survives a line break; drop it unrecorded.
         inline = None;
-        if fence {
-            in_code = !in_code;
-        } else if !in_code {
+        if class.line(line).kind.is_markdown() {
             let mut j = line_start;
             while j < line_end {
                 match chars[j] {
@@ -145,6 +133,7 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
             break;
         }
         i = line_end + 1;
+        line += 1;
     }
     // Whatever is still open at end-of-input is a span the author is mid-way through typing.
     for open in [display, inline].into_iter().flatten() {
@@ -218,7 +207,7 @@ pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Targ
     }
 
     // Front-matter key.
-    if let Some(t) = classify_frontmatter_key(&lines, line, character) {
+    if let Some(t) = classify_frontmatter_key(text, &lines, line, character) {
         return t;
     }
 
@@ -267,9 +256,16 @@ fn classify_include(lt: &[char], character: usize) -> Option<Target> {
     None
 }
 
-fn classify_frontmatter_key(lines: &[&str], line: usize, character: usize) -> Option<Target> {
-    let (start_line, end_line) = frontmatter_body(lines)?;
-    if line < start_line || line >= end_line {
+fn classify_frontmatter_key(
+    text: &str,
+    lines: &[&str],
+    line: usize,
+    character: usize,
+) -> Option<Target> {
+    // A key line lies between the front matter's fences, as core's one splitter finds them.
+    let class = taliesin_core::render::rendered_lines(text);
+    let front = |i: usize| class.line(i).kind == taliesin_core::lines::Kind::FrontMatter;
+    if line == 0 || !(front(line - 1) && front(line) && front(line + 1)) {
         return None;
     }
     let chars: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
@@ -294,21 +290,6 @@ fn classify_frontmatter_key(lines: &[&str], line: usize, character: usize) -> Op
             start: indent,
             end: key_end,
         });
-    }
-    None
-}
-
-/// The `[start, end)` line range of the front-matter body (key lines between the fences),
-/// or None when there is no closed `---` block. 0-based over `lines`.
-fn frontmatter_body(lines: &[&str]) -> Option<(usize, usize)> {
-    if lines.first().map(|l| l.trim()) != Some("---") {
-        return None;
-    }
-    for (i, l) in lines.iter().enumerate().skip(1) {
-        let t = l.trim();
-        if t == "---" || t == "..." {
-            return Some((1, i));
-        }
     }
     None
 }
@@ -503,6 +484,18 @@ mod tests {
                 end: 6
             }
         );
+    }
+
+    /// A key line is one inside the block core's splitter reads, a BOM before the opening
+    /// fence included; the fences themselves are no key lines.
+    #[test]
+    fn a_frontmatter_key_is_read_inside_the_splitters_block() {
+        let text = "\u{feff}---\ntitle: Hi\n---\ntitle: body\n";
+        assert!(matches!(
+            classify_target(text, 1, 2),
+            Target::FrontmatterKey { .. }
+        ));
+        assert_eq!(classify_target(text, 3, 2), Target::None);
     }
 
     #[test]

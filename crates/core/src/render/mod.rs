@@ -49,10 +49,13 @@ pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
 mod cell_extract;
 pub use cell_extract::option_directive;
+// `pub` for the editor's cell regions, which must call a fence a cell exactly when this
+// render does.
 use cell_extract::{
-    cell_flag_or, cell_option, code_fold, code_lang, hidden_cell, is_executable_fence,
-    parse_js_opts, slice_lines, strip_cell_options,
+    cell_flag_or, cell_option, code_fold, hidden_cell, parse_js_opts, slice_lines,
+    strip_cell_options,
 };
+pub use cell_extract::{code_lang, is_executable_fence};
 mod cell_numbered;
 pub use cell_numbered::caption_label;
 pub(crate) use cell_numbered::numbered_caption;
@@ -68,9 +71,11 @@ mod divs;
 pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
-pub(crate) use divs::rendered_lines;
+// `pub` for the language server, whose outline, folds, cell regions and completion read
+// block structure from the same parse this render does.
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
 use divs::{DivFences, group_divs, preprocess, scan_div_spans};
+pub use divs::{div_lines, rendered_lines};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.

@@ -1159,7 +1159,11 @@ fn resolve_completion(
     }
     doc_prefix.push_str(&line_prefix);
 
-    let ctx = crate::lsp_complete::detect_context(&line_prefix, &doc_prefix);
+    let ctx = crate::lsp_complete::detect_context(
+        &line_prefix,
+        &doc_prefix,
+        &taliesin_core::render::rendered_lines(text),
+    );
     if matches!(ctx, Ctx::None) {
         return None;
     }
@@ -1711,10 +1715,11 @@ fn to_document_symbol(
     // it must not be read as own-prose, so a parent says "total" and a leaf does not.
     let words = taliesin_core::prose::word_count(&lines[start..=end].join("\n"));
     let detail = (words > 0).then(|| {
+        let noun = if words == 1 { "word" } else { "words" };
         if node.children.is_empty() {
-            format!("{words} words")
+            format!("{words} {noun}")
         } else {
-            format!("{words} words total")
+            format!("{words} {noun} total")
         }
     });
     #[allow(deprecated)] // `deprecated` is a required (deprecated) field of DocumentSymbol.
@@ -2946,6 +2951,20 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
+    /// One word is "1 word" (audit 2026-09-24, scanners #10: the outline read "1 words").
+    #[test]
+    fn document_symbol_detail_says_one_word_in_the_singular() {
+        let uri = Url::parse("file:///tmp/tali-lsp-outline-one.tmd").unwrap();
+        let mut docs = std::collections::HashMap::new();
+        docs.insert(uri.clone(), "# Top\n\n## \n\n# One\n".to_string());
+        let Some(lsp_types::DocumentSymbolResponse::Nested(syms)) = document_symbols(&docs, &uri)
+        else {
+            panic!("a nested outline");
+        };
+        assert_eq!(syms[0].detail.as_deref(), Some("1 word total"));
+        assert_eq!(syms[1].detail.as_deref(), Some("1 word"));
+    }
+
     // A section with no prose at all carries NO detail — not "0 words". The zero is the
     // boundary the `words > 0` gate exists for, and every fixture above is well past it: a
     // heading's own text counts as prose, so reaching zero needs an untitled heading over a
@@ -3015,6 +3034,328 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    /// One class of the audit's scanner matrix (2026-09-24, scanners #10): a block that
+    /// is code, raw HTML or prose to comrak, set between a document's head and a tail every
+    /// editor feature is asked about.
+    struct Class {
+        name: &'static str,
+        /// The outline title the context itself adds, when comrak reads a heading in it.
+        heading: Option<&'static str>,
+        /// `(language, executable)` of every cell region the context itself holds.
+        regions: &'static [(&'static str, bool)],
+    }
+
+    /// A heading, a div and prose, the lines every class wraps as a sample or a comment.
+    const PROBE: &[&str] = &["# Probe heading", "::: {.probe-div}", "probe", ":::"];
+
+    /// Outline, folds, cell regions and cell-option completion read block structure from
+    /// core's classifier, the parse the page renders from (audit 2026-09-24, B2 and
+    /// scanners #10). Each used a fence tracker of its own, and every tracker disagreed with
+    /// comrak somewhere: a ```` ```` ```` sample holding ``` gave a phantom heading, a
+    /// "``` python" line or one line of inline code starting with ``` lost every later
+    /// heading, fold, cell and `#|` completion, a ``` inside a `~~~` sample flipped `#|`
+    /// completion for the rest of the file, a commented-out or indented-code cell was
+    /// "executable", a quoted cell was missed, and setext and indented headings were not in
+    /// the outline.
+    #[test]
+    fn every_editor_feature_reads_block_structure_as_the_render_does() {
+        fn with(prefix: &str, lines: &[&str]) -> Vec<String> {
+            lines.iter().map(|l| format!("{prefix}{l}")).collect()
+        }
+        let probe = |before: &[&str], after: &[&str]| -> Vec<String> {
+            before
+                .iter()
+                .chain(PROBE)
+                .chain(after)
+                .map(|l| l.to_string())
+                .collect()
+        };
+        let owned: Vec<(&str, Vec<String>)> = vec![
+            ("L01 plain sample", probe(&["```text"], &["```"])),
+            (
+                "L02 longer fence around a shorter one",
+                probe(&["````markdown", "```python", "x = 1", "```"], &["````"]),
+            ),
+            (
+                "L03 tilde around a backtick line",
+                probe(&["~~~markdown", "```"], &["~~~"]),
+            ),
+            (
+                "L04 backticks around a tilde line",
+                probe(&["```markdown", "~~~"], &["```"]),
+            ),
+            ("L05 longer closing fence", probe(&["```text"], &["````"])),
+            (
+                "L06 a fence line with an info string closes nothing",
+                probe(&["```text", "``` python"], &["```"]),
+            ),
+            (
+                "L07 inline code at line start",
+                probe(&["```inline``` at line start.", ""], &[]),
+            ),
+            ("L08 tilde fence", probe(&["~~~python"], &["~~~"])),
+            ("L09 indented code", with("    ", PROBE)),
+            (
+                "L10 fence indented four in a list item",
+                ["1. step", ""]
+                    .iter()
+                    .map(|l| l.to_string())
+                    .chain(with("    ", &["```text"]))
+                    .chain(with("    ", PROBE))
+                    .chain(with("    ", &["```"]))
+                    .collect(),
+            ),
+            (
+                "L11 fence in a block quote",
+                with(
+                    "> ",
+                    &["```text", PROBE[0], PROBE[1], PROBE[2], PROBE[3], "```"],
+                ),
+            ),
+            ("L12 HTML comment", probe(&["<!--"], &["-->"])),
+            ("L13 indented fence", probe(&["  ```text"], &["  ```"])),
+            ("L15 front matter closed by `...`", probe(&[], &[])),
+            (
+                "L16 setext heading",
+                vec!["Setext heading".into(), "===".into()],
+            ),
+            (
+                "L17 heading indented two spaces",
+                vec!["  ## Indented heading".into()],
+            ),
+            (
+                "L18 commented-out cell",
+                ["<!--", "```{python}", "z = 2", "```", "-->"]
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect(),
+            ),
+            (
+                "L19 cell in indented code",
+                with("    ", &["```{python}", "z = 2", "```"]),
+            ),
+            (
+                "L20 cell in a block quote",
+                with("> ", &["```{python}", "z = 2", "```"]),
+            ),
+            (
+                "L21 a line of inline code that opens with a fence",
+                probe(&["```pip install x``` installs it.", ""], &[]),
+            ),
+            // A heading inside a quote or a list item is no section of the document.
+            (
+                "L22 heading in a block quote",
+                vec!["> ## Quoted heading".into()],
+            ),
+            (
+                "L23 heading in a list item",
+                vec!["- ## Listed heading".into()],
+            ),
+        ];
+        let expect: &[Class] = &[
+            Class {
+                name: "L01",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L02",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L03",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L04",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L05",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L06",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L07",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L08",
+                heading: None,
+                regions: &[("python", false)],
+            },
+            Class {
+                name: "L09",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L10",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L11",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L12",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L13",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L15",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L16",
+                heading: Some("Setext heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L17",
+                heading: Some("Indented heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L18",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L19",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L20",
+                heading: None,
+                regions: &[("python", false)],
+            },
+            Class {
+                name: "L21",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L22",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L23",
+                heading: None,
+                regions: &[],
+            },
+        ];
+        assert_eq!(owned.len(), expect.len());
+        for ((name, ctx), class) in owned.iter().zip(expect) {
+            assert!(name.starts_with(class.name), "{name} vs {}", class.name);
+            let closer = if class.name == "L15" { "..." } else { "---" };
+            let mut lines: Vec<String> = vec!["---".into(), "title: T".into(), closer.into()];
+            lines.extend(["".into(), "# Intro".into(), "".into()]);
+            lines.extend(ctx.iter().cloned());
+            let after_heading = lines.len() + 1;
+            let tail = [
+                "",
+                "# After heading",
+                "",
+                "::: {.after-div}",
+                "x",
+                ":::",
+                "",
+                "```{python}",
+                "#| echo: false",
+                "y = 1",
+                "```",
+                "",
+                "#| prose line",
+            ];
+            lines.extend(tail.iter().map(|l| l.to_string()));
+            let after_div = after_heading + 2;
+            let cell_opt = after_heading + 7;
+            let prose_opt = cell_opt + 4;
+            let text = lines.join("\n") + "\n";
+
+            let uri = Url::parse("file:///tmp/tali-lsp-classes.tmd").unwrap();
+            let mut docs = std::collections::HashMap::new();
+            docs.insert(uri.clone(), text.clone());
+            let mut titles = Vec::new();
+            fn walk(nodes: &[lsp_types::DocumentSymbol], out: &mut Vec<String>) {
+                for n in nodes {
+                    out.push(n.name.clone());
+                    walk(n.children.as_deref().unwrap_or(&[]), out);
+                }
+            }
+            match document_symbols(&docs, &uri) {
+                Some(lsp_types::DocumentSymbolResponse::Nested(syms)) => walk(&syms, &mut titles),
+                other => panic!("{name}: {other:?}"),
+            }
+            let mut want = vec!["Intro".to_string()];
+            want.extend(class.heading.map(str::to_string));
+            want.push("After heading".into());
+            assert_eq!(titles, want, "{name}: outline");
+
+            let folds: Vec<(u32, u32)> = crate::lsp_fold::folding_ranges(&text)
+                .iter()
+                .map(|f| (f.start_line, f.end_line))
+                .collect();
+            assert!(
+                folds.iter().any(|&(s, _)| s as usize == after_heading),
+                "{name}: no fold for the heading after the context: {folds:?}"
+            );
+            assert!(
+                folds.contains(&(after_div as u32, after_div as u32 + 2)),
+                "{name}: no fold for the div after the context: {folds:?}"
+            );
+
+            let regions = crate::lsp_cells::cell_regions(&text);
+            let (cell, rest): (Vec<_>, Vec<_>) =
+                regions.iter().partition(|r| r.start_line == cell_opt + 1);
+            assert_eq!(
+                cell.iter()
+                    .map(|r| (r.language.as_str(), r.end_line, r.executable))
+                    .collect::<Vec<_>>(),
+                [("python", cell_opt + 1, true)],
+                "{name}: the real cell"
+            );
+            assert_eq!(
+                rest.iter()
+                    .map(|r| (r.language.as_str(), r.executable))
+                    .collect::<Vec<_>>(),
+                class.regions,
+                "{name}: the context's own regions"
+            );
+
+            let complete =
+                |line: usize| resolve_completion(&docs, &complete_params(&uri, line as u32, 3));
+            assert!(
+                complete(cell_opt).is_some(),
+                "{name}: `#|` completion inside the real cell"
+            );
+            assert!(
+                complete(prose_opt).is_none(),
+                "{name}: `#|` completion on a prose line"
+            );
+        }
     }
 
     // The client needs to know where cells are to forward completion into them, and that

@@ -3611,6 +3611,15 @@ fn bibliography_files_are_the_shared_ones_then_the_pages_own() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The divs the editor folds are the divs the render pairs: nested ones, one never closed,
+/// and no `:::` shown in a code sample or written in a list item, where it is text.
+#[test]
+fn div_lines_are_the_divs_the_render_pairs() {
+    let src =
+        "::: {.a}\n::: {.b}\nx\n:::\n:::\n\n```\n:::\n```\n\n- item\n\n  ::: {.c}\n\n::: {.d}\ny\n";
+    assert_eq!(div_lines(src), vec![(0, Some(4)), (1, Some(3)), (14, None)]);
+}
+
 // --- accessibility regressions (Batch 3) ---
 
 /// WCAG relative luminance of an sRGB `#rrggbb` color.

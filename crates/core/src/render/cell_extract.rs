@@ -146,13 +146,13 @@ pub(super) fn slice_lines(lines: &[&str], start: BufLine, end: BufLine) -> Strin
 /// so it cannot itself be the executable/display gate. Testing only `starts_with('{')`
 /// and leaning on `code_lang` is what let a display-only snippet warm a kernel and take
 /// an output block.
-pub(super) fn is_executable_fence(info: &str) -> bool {
+pub fn is_executable_fence(info: &str) -> bool {
     info.trim_start()
         .strip_prefix('{')
         .is_some_and(|inner| !inner.trim_start().starts_with('.'))
 }
 
-pub(super) fn code_lang(info: &str) -> Option<String> {
+pub fn code_lang(info: &str) -> Option<String> {
     let info = info.trim();
     if info.is_empty() {
         return None;
