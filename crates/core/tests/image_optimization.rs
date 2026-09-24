@@ -22,10 +22,11 @@ fn render_pin() -> String {
 #[test]
 fn the_first_image_is_eager_and_the_rest_are_lazy() {
     let html = render_pin();
-    // Full tags. `fit-a.png` is 535x428 and is the document's first image.
+    // Full tags. `fit-a.png` is 535x428 and is the document's first image. It is a
+    // labelled figure, so its caption describes it and the image itself is `alt=""`.
     assert!(
         html.contains(
-            r#"<img src="fit-a.png" alt="A model fit, wide enough to be worth measuring." width="535" height="428" fetchpriority="high" />"#
+            r#"<img src="fit-a.png" alt="" width="535" height="428" fetchpriority="high" />"#
         ),
         "the first image must be eager, at its intrinsic size:\n{}",
         img_tags(&html)

@@ -52,9 +52,11 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
     let mut caption = String::new();
     emit_children(image, &mut caption);
     let attrs = parse_attrs(attr_str.as_deref().unwrap_or(""));
-    let has_fig_id = attrs.id.as_deref().is_some_and(|i| i.starts_with("fig-"));
-    // A bare image with neither a caption nor a `#fig-` id is decorative.
-    if caption.trim().is_empty() && !has_fig_id {
+    // Only a `#fig-` id makes a figure, as the guide documents. An image with alt text and
+    // no label used to become "Figure N" too, captioned with its alt: writing good alt text
+    // changed the page and shifted every `@fig-` number after it (audit images #9). An
+    // unlabelled image stays an image, with its alt.
+    if !attrs.id.as_deref().is_some_and(|i| i.starts_with("fig-")) {
         return None;
     }
     Some(FigureParts {
@@ -96,9 +98,10 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     } else {
         format!(" style=\"{dims}\"")
     };
-    // `alt` is the caption HTML with tags stripped: it already carries valid
-    // entities, so only quote-escape it (escape_attr would double-escape `&`).
-    let alt = escape_attr_from_html(&strip_tags(&fig.caption));
+    // `alt=""`: the figcaption is the image's description, so repeating it as alt made a
+    // screen reader read the same sentence twice (audit images #9). The executed-figure
+    // path has always done this (`kernel::render_media`).
+    let alt = "";
     let img = |src: &str, class: &str| {
         let cls = if class.is_empty() {
             String::new()

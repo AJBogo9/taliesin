@@ -1738,6 +1738,43 @@ fn standalone_image_becomes_a_numbered_figure() {
     );
 }
 
+/// Images #9: only a `#fig-` id makes a numbered figure, as the guide says. Any standalone
+/// image with alt text used to become "Figure N" with its alt as the caption, so writing
+/// good alt text (which the a11y lint asks for) changed the page and shifted every `@fig-`
+/// number after it. And a figure's `<img>` repeated its caption as `alt`, so a screen
+/// reader read the same sentence twice; the figcaption is the description, the image is
+/// presentational (`alt=""`), as for an executed figure.
+#[test]
+fn only_a_fig_label_makes_a_numbered_figure_and_its_image_is_not_read_twice() {
+    let doc = render_document(
+        "![A grey cat asleep on a keyboard.](cat.png)\n\n\
+         ![Loss falls to zero.](loss.png){#fig-loss}\n\nSee @fig-loss.\n",
+    );
+    let cat = &doc.blocks[0].html;
+    assert!(
+        !cat.contains("<figure") && !cat.contains("Figure"),
+        "an image with alt text and no label became a figure: {cat}"
+    );
+    assert!(
+        cat.contains("alt=\"A grey cat asleep on a keyboard.\""),
+        "an unlabelled image keeps its alt: {cat}"
+    );
+    let fig = &doc.blocks[1].html;
+    assert!(
+        fig.contains("<span class=\"tali-caption-label\">Figure&nbsp;1</span>: Loss falls"),
+        "the unlabelled image burned a number, shifting @fig-loss: {fig}"
+    );
+    assert!(
+        fig.contains("alt=\"\"") && !fig.contains("alt=\"Loss falls"),
+        "the figure's image repeats its caption as alt, so it is read twice: {fig}"
+    );
+    let all: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        all.contains("Figure&nbsp;1"),
+        "@fig-loss resolves to Figure 1: {all}"
+    );
+}
+
 #[test]
 fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
     // A `dark=` source ships a light + dark <img> pair (like `{{< video dark= >}}`); CSS
@@ -1754,10 +1791,11 @@ fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
         "dark variant: {h}"
     );
     assert_eq!(
-        h.matches("alt=\"A model fit.\"").count(),
+        h.matches("alt=\"\"").count(),
         2,
-        "alt on both: {h}"
+        "both variants are presentational beside the caption: {h}"
     );
+    assert!(h.contains("</span>: A model fit.</figcaption>"), "{h}");
     assert_eq!(
         h.matches("style=\"width:60%\"").count(),
         2,
