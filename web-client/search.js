@@ -842,12 +842,38 @@
       flashMark = null;
     }
   }
+  // The closed `<details>` elements that hide `node` (a collapsed callout is one too): each
+  // closed ancestor whose BODY holds it, since a `<summary>` shows while its details is
+  // closed. A hit inside one was flashed where nobody could see it, and a same-page Enter
+  // on a heading inside one scrolled nowhere.
+  /** @param {Node} node @returns {HTMLDetailsElement[]} */
+  function closedAround(node) {
+    /** @type {HTMLDetailsElement[]} */
+    var out = [];
+    var child = node;
+    for (var el = node.parentElement; el; child = el, el = el.parentElement) {
+      var d = /** @type {HTMLDetailsElement} */ (el);
+      if (d.tagName === "DETAILS" && !d.open &&
+          /** @type {Element} */ (child).tagName !== "SUMMARY") out.push(d);
+    }
+    return out;
+  }
+  // Open whatever hides `node`, as the browser's own find-in-page and fragment navigation
+  // do, before anything measures or scrolls to it.
+  /** @param {Node} node */
+  function reveal(node) {
+    closedAround(node).forEach(function (d) { d.open = true; });
+  }
   // The first substring occurrence of any `terms` entry within `[start, next heading)`,
   // as a Range — or null (fuzzy-/title-only matches have no substring occurrence here).
+  // A visible occurrence wins over an earlier one a closed `<details>` hides, which is
+  // returned only when there is no visible one.
   /** @param {Element | null} startEl @param {string[]} terms @returns {Range | null} */
   function firstTermRange(startEl, terms) {
     var low = terms.filter(Boolean).map(function (t) { return t.toLowerCase(); });
     if (!low.length || !startEl) return null;
+    /** @type {Range | null} */
+    var hidden = null;
     /** @type {Element | null} */
     var el = startEl;
     while (el) {
@@ -865,14 +891,15 @@
           var r = document.createRange();
           r.setStart(tn, best);
           r.setEnd(tn, best + bestLen);
-          return r;
+          if (!closedAround(tn).length) return r;
+          if (!hidden) hidden = r;
         }
       }
       // Advance to the next sibling block; stop at the next heading (section boundary).
       el = el.nextElementSibling;
       if (el && /^H[1-6]$/.test(el.tagName)) break;
     }
-    return null;
+    return hidden;
   }
   // Flash the first occurrence of `terms` in the section headed by `headingEl`. Scrolls
   // to it only if off-screen (the heading is already in view). No-op without a match.
@@ -881,6 +908,7 @@
     if (!headingEl || !terms || !terms.length) return;
     var range = firstTermRange(headingEl, terms);
     if (!range) return;
+    reveal(range.startContainer);
     var rect = range.getBoundingClientRect();
     var vh = window.innerHeight || document.documentElement.clientHeight;
     if (rect.bottom < 0 || rect.top > vh) {
@@ -944,6 +972,7 @@
     var target = document.getElementById(item.id);
     if (!target) return;
     if (history.replaceState) history.replaceState(null, "", "#" + item.id);
+    reveal(target);
     target.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     flashTermsIn(target, terms);
   }
