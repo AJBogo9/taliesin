@@ -100,9 +100,13 @@ curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz"
 curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz.sha256"
 shasum -a 256 -c "taliesin-$VERSION-$TARGET.tar.gz.sha256"          # must print: OK
 tar xzf "taliesin-$VERSION-$TARGET.tar.gz"
+mkdir -p ~/.local/bin
 install -m755 "taliesin-$VERSION-$TARGET/taliesin" ~/.local/bin/    # or anywhere on PATH
 taliesin --help
 ```
+
+`~/.local/bin` must be on your `PATH` for the last line to work: macOS does not add it,
+and Ubuntu's `~/.profile` adds it at the next login once the directory exists.
 
 The Linux build is statically linked against musl, so it has no glibc floor and runs on
 any distribution. The macOS builds are unsigned and unnotarized: fetched with `curl` as
