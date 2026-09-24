@@ -895,24 +895,101 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // deliberately NOT re-derived here if empty: that means the page has no live state at
     // all (the arm below has no body at all), and re-composing half the title
     // policy at a second call site is the exact shape of the bug this replaced.
-    let (tab_title, toc, body, page_includes, generation) = {
+    let live = {
         let pages = project.pages.lock();
-        let ps = pages.get(&page.rel);
-        match ps {
-            Some(ps) => (
-                ps.doc.tab_title.clone(),
-                ps.doc.toc,
-                ps.doc.body_html(),
-                ps.doc.includes.clone(),
-                ps.doc.generation,
-            ),
-            None => (String::new(), false, String::new(), Default::default(), 0),
-        }
+        pages
+            .get(&page.rel)
+            .map(|ps| LivePage {
+                tab_title: ps.doc.tab_title.clone(),
+                toc: ps.doc.toc,
+                body: ps.doc.body_html(),
+                includes: ps.doc.includes.clone(),
+                generation: ps.doc.generation,
+            })
+            .unwrap_or_default()
     };
-    let chrome = { project.site.lock().page_chrome(page) };
+    let frame = SiteFrame::of(&project.site.lock(), page);
+    live_page_html(&frame, &project.dir, page, &live)
+}
+
+/// What a live page takes from its site, taken under the site lock and assembled without
+/// it: the chrome it is wrapped in, and the dev menu's drafts row.
+struct SiteFrame {
+    chrome: taliesin_core::render::SiteCtx,
+    drafts_global: String,
+}
+
+impl SiteFrame {
+    fn of(site: &Site, page: &Page) -> SiteFrame {
+        // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
+        // link resolves from any page depth. A build ships neither this global nor the dev
+        // menu.
+        let items: Vec<String> = site
+            .pages
+            .iter()
+            .filter(|p| p.draft)
+            .map(|p| {
+                format!(
+                    "{{\"url\":\"/{}\",\"title\":\"{}\"}}",
+                    js_str(&p.url),
+                    js_str(p.title.as_deref().unwrap_or(&p.rel)),
+                )
+            })
+            .collect();
+        SiteFrame {
+            chrome: site.page_chrome(page),
+            drafts_global: format!("window.TALIESIN_DRAFTS=[{}];", items.join(",")),
+        }
+    }
+}
+
+/// What a live page takes from its own last build ([`PageDoc`]). All empty for a page with
+/// no live state.
+#[derive(Default)]
+struct LivePage {
+    tab_title: String,
+    toc: bool,
+    body: String,
+    includes: taliesin_core::render::PageIncludes,
+    generation: u64,
+}
+
+/// A digest of what a tab on `page` shows outside its `#tali-root`: the `<body>` of the live
+/// page with its blocks and its generation left out (navbar, book drawer, pager, footer, the
+/// draft banner, the dev menu's drafts row). That reaches an open tab only by a reload; the
+/// blocks reach it as ops and the title as a `title` message.
+///
+/// The `<head>` is left out on purpose. It carries the page's own social meta, which follows
+/// its `title:` and `description:`, and a tab cannot show it: counting it would reload the
+/// page an author is typing a `title:` into, throwing away its live state, for nothing the
+/// reader can see.
+fn shell_digest(site: &Site, dir: &Path, page: &Page, doc: &PageDoc) -> u64 {
+    let live = LivePage {
+        toc: doc.toc,
+        includes: doc.includes.clone(),
+        ..LivePage::default()
+    };
+    let html = live_page_html(&SiteFrame::of(site, page), dir, page, &live);
+    let body = taliesin_core::render::tags(&html)
+        .find(|t| t.name.eq_ignore_ascii_case("body"))
+        .map_or(0, |t| t.at);
+    taliesin_core::hash::fnv1a(&html[body..])
+}
+
+/// The live page: `frame` around `live`, with the preview client.
+fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -> String {
+    let LivePage {
+        tab_title,
+        toc,
+        body,
+        includes: page_includes,
+        generation,
+    } = live;
+    let (toc, generation) = (*toc, *generation);
+    let chrome = &frame.chrome;
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
-    includes.merge(&page_includes);
+    includes.merge(page_includes);
 
     // The TOC rail is an empty landmark the client fills once it has the headings; the
     // wrapper class that reserves the column for it is `SiteCtx::layout`'s business, not
@@ -941,7 +1018,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
-        js_str(&project.dir.to_string_lossy()),
+        js_str(&dir.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
@@ -952,7 +1029,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
         format!("{};", chrome.search_index)
     };
     // Body links (author `.tmd` references) -> `.html`; chrome links already are.
-    let body = taliesin_core::site::rewrite_tmd_links(&body);
+    let body = taliesin_core::site::rewrite_tmd_links(body);
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
@@ -975,24 +1052,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let boot = protocol::boot_id();
-    // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
-    // link resolves from any page depth. A build ships neither this global nor the dev menu.
-    let drafts_global = {
-        let site = project.site.lock();
-        let items: Vec<String> = site
-            .pages
-            .iter()
-            .filter(|p| p.draft)
-            .map(|p| {
-                format!(
-                    "{{\"url\":\"/{}\",\"title\":\"{}\"}}",
-                    js_str(&p.url),
-                    js_str(p.title.as_deref().unwrap_or(&p.rel)),
-                )
-            })
-            .collect();
-        format!("window.TALIESIN_DRAFTS=[{}];", items.join(","))
-    };
+    let drafts_global = &frame.drafts_global;
     let scripts_pre = format!(
         "<script>{doc_global} {toc_flag} {search_cfg} {drafts_global} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
@@ -1005,7 +1065,7 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
-        title: &tab_title,
+        title: tab_title,
         favicon: &favicon,
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
@@ -1853,26 +1913,37 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
     // cross-reference registry and the search index as a side effect, so the
     // `refresh_xrefs` below is skipped then.
     //
-    // If the page set actually changed (a page added, renamed or deleted), open tabs reload
-    // so their nav and listings refresh; otherwise every open page is rebuilt. Discovery
-    // first, then the swap: the site lock is not held across it.
+    // A re-discovery (this, or a page added, renamed or deleted) reloads the tabs whose
+    // chrome it moved and rebuilds every other open page. Discovery first, then the swap:
+    // the site lock is not held across it.
     let moved = project.what_moved(changed);
     let rediscovered = moved.page_set || moved.records;
+    // Rebuild only pages a tab is watching and that depend on a change.
+    let mut open = watched_pages(project);
     if rediscovered {
+        let before = shell_digests(project, &open);
         let new = project.rediscover();
-        let set_changed = page_rels(&new) != page_rels(&project.site.lock());
         project.adopt(new, &moved.digests, false);
-        if set_changed {
-            reload_open_tabs(project);
-            return;
-        }
+        // The chrome is outside `#tali-root`, where no block op reaches, so a tab whose
+        // chrome moved (a book's drawer and pager naming a retitled chapter, a pager next
+        // to a page added or removed) reloads, and so does a tab whose page is gone. Every
+        // other tab keeps its DOM and its live state (an open `<details>`, a playing video,
+        // a `{js}` widget) and takes what moved in its body as ops below. Reloading every
+        // tab instead was correct but threw that state away, and rebuilding every tab alone
+        // left each one on the old chrome with nothing sent at all (audit 2026-09-24 C5).
+        let after = shell_digests(project, &open);
+        let stale: Vec<String> = open
+            .iter()
+            .filter(|rel| after.get(*rel).is_none_or(|d| before.get(*rel) != Some(d)))
+            .cloned()
+            .collect();
+        reload_tabs(project, &stale);
+        open.retain(|rel| !stale.contains(rel));
     }
 
-    // Rebuild only pages a tab is watching and that depend on a change.
-    let open = watched_pages(project);
-    let mut to_rebuild: Vec<String> = if moved.records {
-        // Every open page renders some part of the moved page's metadata, or could: a
-        // listing card, a nav label, a prev/next arrow. The set is the pages a tab is
+    let mut to_rebuild: Vec<String> = if rediscovered {
+        // Every open page renders some part of the moved page's metadata or of the page
+        // set, or could: a listing card, a nav label, a prev/next arrow. The set is the pages a tab is
         // watching, so this is a handful of renders on an edit that is rare next to body
         // edits, and it is the same shape as the moved-anchor rebuild below.
         open.clone()
@@ -2051,24 +2122,53 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
     rebuild_project(app, &project, changed);
 }
 
-/// Reload every open tab and drop its cached block state, so the reload re-renders
-/// fresh against the (re-discovered) site — used after a `_site.yml` or page-set
-/// change. The reload message is delivered before each channel's sender is dropped.
-fn reload_open_tabs(project: &Arc<Project>) {
-    let mut pages = project.pages.lock();
-    for ps in pages.values() {
-        let _ = ps.tx.send(protocol::reload());
+/// Reload every open tab ([`reload_tabs`]), after a `_site.yml` change.
+fn reload_open_tabs(project: &Project) {
+    let all: Vec<String> = project.pages.lock().keys().cloned().collect();
+    reload_tabs(project, &all);
+}
+
+/// Reload the tabs open on `rels` and drop those pages' cached block state, so each reload
+/// re-renders fresh against the re-discovered site. The reload message is delivered before
+/// the channel's sender is dropped.
+fn reload_tabs(project: &Project, rels: &[String]) {
+    if rels.is_empty() {
+        return;
     }
-    pages.clear();
+    let mut pages = project.pages.lock();
+    for rel in rels {
+        if let Some(ps) = pages.remove(rel) {
+            let _ = ps.tx.send(protocol::reload());
+        }
+    }
     crate::log::update(0);
 }
 
-/// The site's page identifiers, sorted — to tell whether a `.tmd` add/remove actually
-/// changed the page set (vs. an editor save-via-rename of an existing page).
-fn page_rels(site: &Site) -> Vec<String> {
-    let mut v: Vec<String> = site.pages.iter().map(|p| p.rel.clone()).collect();
-    v.sort();
-    v
+/// Each watched page's [`shell_digest`] against the site in force. A page the site no
+/// longer has is left out.
+fn shell_digests(project: &Project, open: &[String]) -> HashMap<String, u64> {
+    // Each tab's own parts first, then the site: the two locks are never held together.
+    let docs: Vec<(String, PageDoc)> = {
+        let pages = project.pages.lock();
+        open.iter()
+            .filter_map(|rel| {
+                let ps = pages.get(rel)?;
+                let doc = PageDoc {
+                    toc: ps.doc.toc,
+                    includes: ps.doc.includes.clone(),
+                    ..PageDoc::default()
+                };
+                Some((rel.clone(), doc))
+            })
+            .collect()
+    };
+    let site = project.site.lock();
+    docs.into_iter()
+        .filter_map(|(rel, doc)| {
+            let page = site.page(&rel)?;
+            Some((rel, shell_digest(&site, &project.dir, page, &doc)))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -3502,7 +3602,7 @@ mod project_tests {
         std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
-        let _tab = watch(&project, "methods.tmd");
+        let mut tab = watch(&project, "methods.tmd");
         let chapter = |project: &Project| {
             let site = project.site.lock();
             site.chapter_for(site.page("methods.tmd").unwrap())
@@ -3518,9 +3618,77 @@ mod project_tests {
             "the chapter after an unnumbered one is chapter 1"
         );
         assert_eq!(
+            tab.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "its numbers and its drawer moved, so the open chapter reloads"
+        );
+        assert!(queued(&mut build_rx, &mut fast_rx).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C5. A book's drawer and pager are chrome: they sit outside
+    /// `#tali-root`, where no block op reaches. Retitling a chapter re-discovered the book
+    /// and rebuilt every open chapter, whose bodies had not changed, so every tab kept the
+    /// old label with nothing sent at all, while a comment claimed the tabs took the change
+    /// as ops. After a re-discovery a tab whose chrome moved reloads, and one whose chrome
+    /// held takes the change as ops, keeping its live state.
+    #[test]
+    fn a_rediscovery_reloads_exactly_the_tabs_whose_chrome_moved() {
+        let dir = scratch("chrome-book");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\nchapters:\n  - intro.tmd\n  - methods.tmd\n",
+        )
+        .unwrap();
+        let intro = dir.join("intro.tmd");
+        std::fs::write(&intro, "# Introduction\n\nText.\n").unwrap();
+        std::fs::write(dir.join("methods.tmd"), "# Methods\n\nText.\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut tab = watch(&project, "methods.tmd");
+
+        std::fs::write(&intro, "# Opening\n\nText.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(intro).collect());
+
+        assert_eq!(
+            tab.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "the drawer and the pager on this chapter name the retitled one"
+        );
+        assert!(
+            project.pages.lock().is_empty(),
+            "so it re-renders on the reload"
+        );
+        assert!(queued(&mut build_rx, &mut fast_rx).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // A website's listing shows the post's title in its body, which ops reach, and its
+        // chrome does not name the post: it keeps its DOM. So does the post itself, whose
+        // `<head>` meta follows its title but which no reader sees.
+        let dir = scratch("chrome-site");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let mut tab = watch(&project, "index.tmd");
+        let mut own = watch(&project, "posts/a.tmd");
+
+        std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(post).collect());
+
+        assert!(
+            tab.try_recv().is_err(),
+            "no reload for a tab whose chrome held"
+        );
+        assert!(own.try_recv().is_err(), "nor for the page being retitled");
+        assert_eq!(
             queued(&mut build_rx, &mut fast_rx),
-            vec!["methods.tmd".to_string()],
-            "its numbers moved, so the open chapter is rebuilt"
+            vec!["index.tmd".to_string(), "posts/a.tmd".to_string()]
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3578,44 +3746,57 @@ mod project_tests {
     /// `Modify(Name(To))` on the new, then a `Modify(Name(Both))` carrying both. Read as an
     /// edit in place, it left the site listing the old page and 404ing the new URL until a
     /// restart. The old path is a page that is gone and the new one a source file discovery
-    /// never classified, so `rebuild_project` re-discovers, sees the page set actually move,
-    /// and reloads the open tabs, which is the only thing that repaints a navbar, a listing
-    /// and a breadcrumb, and the only thing that gets the tab sitting on the vanished page
-    /// off it.
+    /// never classified, so `rebuild_project` re-discovers and serves the new page set: the
+    /// tab left on the vanished page reloads (onto the 404 the build would give it), and the
+    /// listing that links the page takes the new link as ops.
     #[test]
-    fn renaming_a_page_reloads_the_open_tabs_onto_the_new_page_set() {
+    fn renaming_a_page_moves_the_page_set_and_reloads_the_tab_left_on_it() {
         let dir = scratch("rename");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
         std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
-        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
-        std::fs::write(dir.join("notes.tmd"), "---\ntitle: Notes\n---\n\nProse.\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("posts/notes.tmd"),
+            "---\ntitle: Notes\n---\n\nProse.\n",
+        )
+        .unwrap();
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
-        let mut tab = watch(&project, "index.tmd");
+        let mut left = watch(&project, "posts/notes.tmd");
+        let mut listing = watch(&project, "index.tmd");
 
-        std::fs::rename(dir.join("notes.tmd"), dir.join("journal.tmd")).unwrap();
+        std::fs::rename(dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")).unwrap();
         // Exactly what the watcher hands `dispatch_changes` for that rename: both paths.
-        let changed: HashSet<PathBuf> = [dir.join("notes.tmd"), dir.join("journal.tmd")]
-            .into_iter()
-            .collect();
+        let changed: HashSet<PathBuf> =
+            [dir.join("posts/notes.tmd"), dir.join("posts/journal.tmd")]
+                .into_iter()
+                .collect();
         rebuild_project(&app, &project, &changed);
 
-        assert_eq!(
-            tab.try_recv().as_deref().unwrap_or(""),
-            protocol::reload(),
-            "the open tab must be told to reload: its navbar still links to the old page"
-        );
-        assert!(
-            project.pages.lock().is_empty(),
-            "the live block state is dropped so the reload re-renders against the new site"
-        );
         let site = project.site.lock();
-        assert!(site.page("journal.tmd").is_some(), "the new page is served");
-        assert!(site.page("notes.tmd").is_none(), "the old page is not");
-        drop(site);
         assert!(
-            queued(&mut build_rx, &mut fast_rx).is_empty(),
-            "a reload re-renders on the request; queueing a build for a dropped page too \
-             would be a second render of the same paint"
+            site.page("posts/journal.tmd").is_some(),
+            "the new page is served"
+        );
+        assert!(
+            site.page("posts/notes.tmd").is_none(),
+            "the old page is not"
+        );
+        drop(site);
+        assert_eq!(
+            left.try_recv().as_deref().unwrap_or(""),
+            protocol::reload(),
+            "the tab on the vanished page must not go on showing it"
+        );
+        assert!(listing.try_recv().is_err(), "the listing's chrome held");
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing is rebuilt with the new link, and the vanished page is not"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
