@@ -1039,3 +1039,32 @@ fn a_name_starting_with_a_braced_accent_is_still_a_person() {
         "World Health Organization"
     );
 }
+
+/// BibTeX's von rule for the "First von Last" order that DBLP and arXiv use for every
+/// name: the surname starts at the first lowercase word (not the last word), so the
+/// particle is printed as written instead of being turned into initials. `Laurens van der
+/// Maaten` published as "L. V. D. Maaten" (audit 2026-09-24 G2).
+#[test]
+fn a_lowercase_particle_in_first_last_order_is_part_of_the_surname() {
+    let cases = [
+        // DBLP.
+        (
+            "Laurens van der Maaten and Geoffrey E. Hinton",
+            "L. van der Maaten and G. E. Hinton",
+        ),
+        (r#"A{\"{a}}ron van den Oord"#, "A. van den Oord"),
+        ("Hado van Hasselt", "H. van Hasselt"),
+        ("Ulrike von Luxburg", "U. von Luxburg"),
+        ("Nando de Freitas", "N. de Freitas"),
+        ("Jean de la Fontaine", "J. de la Fontaine"),
+        ("Ludwig van Beethoven", "L. van Beethoven"),
+        // No particle: the last word is the surname, as before.
+        ("Geoffrey E. Hinton", "G. E. Hinton"),
+        // The comma forms already kept the particle, and still do.
+        ("van Beethoven, Ludwig", "L. van Beethoven"),
+        ("Van der Maaten, Laurens", "L. Van der Maaten"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+}

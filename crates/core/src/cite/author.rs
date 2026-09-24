@@ -87,10 +87,21 @@ fn format_one_author(name: &str) -> String {
     if let Some((last, first)) = name.split_once(',') {
         format!("{}{}", initials(first), clean(last.trim()))
     } else {
+        // BibTeX's von rule: the surname starts at the first lowercase word before the
+        // last one (`Laurens van der Maaten`), else it is the last word. The particle is
+        // printed as written; only the words before it are initials.
         let words = words(name);
         match words.split_last() {
-            Some((last, firsts)) if !firsts.is_empty() => {
-                format!("{}{}", initials(&firsts.join(" ")), clean(last))
+            Some((_, firsts)) if !firsts.is_empty() => {
+                let von = firsts
+                    .iter()
+                    .position(|w| starts_lowercase(w))
+                    .unwrap_or(firsts.len());
+                format!(
+                    "{}{}",
+                    initials(&words[..von].join(" ")),
+                    clean(&words[von..].join(" "))
+                )
             }
             _ => clean(name),
         }
@@ -106,6 +117,29 @@ fn initials(first: &str) -> String {
         .filter_map(|w| clean(w).chars().find(|c| c.is_alphabetic()))
         .map(|c| format!("{}. ", c.to_uppercase()))
         .collect()
+}
+
+/// Whether a name word starts with a lowercase letter, the way BibTeX decides it: the
+/// first letter outside braces, where a braced special character (`{\"a}`, `{\o}`)
+/// counts as its letter and any other brace group is skipped as caseless.
+fn starts_lowercase(word: &str) -> bool {
+    let mut depth = 0usize;
+    for (i, c) in word.char_indices() {
+        match c {
+            '{' if depth == 0 && word[i + 1..].starts_with('\\') => {
+                // Resolved, the special character is the first letter of what follows.
+                return clean(&word[i..])
+                    .chars()
+                    .find(|c| c.is_alphabetic())
+                    .is_some_and(char::is_lowercase);
+            }
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            c if depth == 0 && c.is_alphabetic() => return c.is_lowercase(),
+            _ => {}
+        }
+    }
+    false
 }
 
 /// The words of a name part, split at whitespace outside braces: a brace group is part
