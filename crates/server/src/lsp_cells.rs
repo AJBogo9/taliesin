@@ -48,7 +48,7 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
             };
             let end = end.min(lines.len());
             // Skip the leading `#|` / `//|` / `%%|` option block. These are Taliesin
-            // directives, not code — the engine strips them before the cell ever reaches a
+            // directives, not code: the engine strips them before the cell ever reaches a
             // kernel (`render::strip_cell_options`), and handing them to a language server
             // would make it parse a syntax error instead of the code below.
             // `option_directive` is core's own predicate rather than a second reading of the

@@ -433,9 +433,9 @@ mod tests {
     /// The same property over a real project instead of a fixture: every anchor the walk
     /// records must actually be written at the file and line it names.
     ///
-    /// `corpus/single-page-report` is the shape that motivated this — seven
+    /// `corpus/single-page-report` is the shape that motivated this: seven
     /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial, and cells
-    /// labelled `#| label: fig-…` inside partials too — so a regression through any other
+    /// labelled `#| label: fig-…` inside partials too. So a regression through any other
     /// route than the one above still fails here.
     #[test]
     fn every_recorded_anchor_is_written_where_the_walk_says_it_is() {
