@@ -190,6 +190,32 @@ def define(**kwargs):
 globals()["define"] = define
 "#;
 
+/// Start every thread in a copy of the context of the code that started it.
+///
+/// ipykernel keeps a cell's parent header in a `ContextVar` and stamps each output with the
+/// one the writing thread sees. A thread that did not inherit the cell's context (every
+/// ordinary `threading.Thread`) sees the GLOBAL header instead, which is whichever cell is
+/// running at the moment it prints: a background thread's output was published under, and
+/// frozen into, an unrelated later cell, and reset that cell's silence cap on every line
+/// (audit exec #13; the FA8 guard only held for a thread given a copied context by hand).
+/// With the context inherited, the output carries the header of the cell that started the
+/// thread, so the receive loop's parent filter keeps it out of every other cell. Output a
+/// thread prints after its cell finished is dropped: that cell's output is final.
+///
+/// This is what Python 3.14 does by default in free-threaded builds
+/// (`sys.flags.thread_inherit_context`). Threads the kernel started before this ran (its
+/// own I/O and heartbeat threads) are untouched.
+const THREAD_CONTEXT_PREAMBLE: &str = r#"
+import threading as _tali_threading, contextvars as _tali_contextvars
+_tali_thread_start = _tali_threading.Thread.start
+def _tali_start_in_context(self, *args, **kwargs):
+    _ctx = _tali_contextvars.copy_context()
+    _run = self.run
+    self.run = lambda: _ctx.run(_run)
+    return _tali_thread_start(self, *args, **kwargs)
+_tali_threading.Thread.start = _tali_start_in_context
+"#;
+
 /// Make inline matplotlib figures follow the page theme **without tainting the
 /// author's saved figures**. The previous approach set `InlineBackend.rc` globally,
 /// which leaks into `matplotlib.rcParams` and so into any `savefig` the author runs
@@ -510,6 +536,11 @@ impl KernelSpec {
                     provides: "inline matplotlib figures will not follow the page's light/dark \
                                palette",
                     code: MPL_THEME_PREAMBLE,
+                },
+                Preamble {
+                    provides: "a background thread's output lands in whichever cell is \
+                               running, and keeps that cell's silence cap from firing",
+                    code: THREAD_CONTEXT_PREAMBLE,
                 },
             ],
         }
@@ -2732,6 +2763,60 @@ mod tests {
                 html.matches("could not be decoded").count(),
                 2,
                 "each dropped message must say so on the page: {html}"
+            );
+        });
+    }
+
+    // exec #13, FA8 without the copied context: a PLAIN thread an earlier cell started
+    // (no `contextvars.copy_context()`, which is how threads are written) had its output
+    // stamped with whichever cell was current, because ipykernel falls back to the global
+    // parent header for a thread that did not inherit the cell's context. So that output
+    // was published under, and frozen into, an unrelated later cell, and it kept that
+    // cell's silence cap from ever firing. Threads now inherit the context of the cell
+    // that started them, so their output belongs to that cell and the loop filters it.
+    #[test]
+    fn a_plain_threads_output_stays_with_the_cell_that_started_it() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise threads.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(1));
+            let first = render_outputs(
+                &k.execute(
+                    "import threading, time\n\
+                     def chat():\n    \
+                         for _ in range(300):\n        \
+                             print('tick', flush=True); time.sleep(0.1)\n\
+                     threading.Thread(target=chat, daemon=True).start()\n\
+                     print('started')",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(first.contains("started"), "cell 1 did not run: {first}");
+            let t = std::time::Instant::now();
+            let quiet = render_outputs(&k.execute("import time\ntime.sleep(8)").await.unwrap());
+            assert!(
+                !quiet.contains("tick"),
+                "a thread cell 1 started published its output under cell 2: {quiet}"
+            );
+            assert!(
+                quiet.contains("no output for 1s") && t.elapsed() < Duration::from_secs(6),
+                "cell 2's silence cap was kept from firing by another cell's thread \
+                 ({:?}): {quiet}",
+                t.elapsed()
             );
         });
     }

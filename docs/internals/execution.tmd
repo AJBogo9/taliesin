@@ -241,9 +241,10 @@ client connections. `start()`:
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
    the ZMQ slow-joiner problem before the first run), and
 5. runs each language's **startup preambles** once against the now-warm kernel: Python
-   installs the `define` Python-to-JS bridge and a matplotlib theme hook that
+   installs the `define` Python-to-JS bridge, a matplotlib theme hook that
    restyles inline figures to follow the page (lazily, the first time a cell uses
-   matplotlib).
+   matplotlib), and makes every thread start in a copy of the context of the code that
+   started it (see the parent-header check below).
 
 A preamble that fails is not fatal (the kernel runs cells without the bridge) but it is
 not silent either, because otherwise its failure would show up later in another cell as
@@ -267,7 +268,12 @@ forty-minute training run that logs an epoch line is alive, while a cell that ha
 said nothing for ten minutes is treated as a runaway. The parent-header check matters
 because iopub is a broadcast channel: a background thread an earlier cell left
 running keeps publishing under its own parent header, and counting that as this
-cell's output would disarm the cap for the cell it exists to govern. An optional
+cell's output would disarm the cap for the cell it exists to govern. A thread only has
+"its own" header because of the thread preamble: ipykernel reads the header from a
+context variable, and a plain `threading.Thread` that did not inherit the cell's context
+gets whichever cell is running when it prints, which put its output into, and froze it
+with, an unrelated later cell. Output a thread prints after its cell has finished is
+dropped, since that cell's output is final. An optional
 **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`) is available but off by default,
 since bounding total runtime is a cost decision, not a safety one.
 
