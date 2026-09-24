@@ -1281,10 +1281,10 @@ fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks:
     }
     let pre = finished();
     let mut pages = project.pages.lock();
-    let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
-        doc: PageDoc::default(),
-        tx: broadcast::channel(256).0,
-    });
+    // A page with no state was dropped while this build ran (see `build_page`'s publish).
+    let Some(ps) = pages.get_mut(rel) else {
+        return;
+    };
     ps.doc.blocks = pre;
     let _ = ps.tx.send(full_render_json(&ps.doc));
 }
@@ -1553,10 +1553,15 @@ async fn build_page(
     let doc = pass.doc;
 
     let mut pages = project.pages.lock();
-    let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
-        doc: PageDoc::default(),
-        tx: broadcast::channel(256).0,
-    });
+    // Every build is queued for a page that has state (a visit creates it first), so a
+    // page without one had it dropped while this build ran: `reload_open_tabs` cleared it
+    // for a re-discovered site, or nobody had the page open. Publishing would put the state
+    // back, rendered against the defaults this build captured before the drop, and every
+    // later GET would serve that stale body (audit 2026-09-24, invalidation #10). The next
+    // visit renders it fresh instead.
+    let Some(ps) = pages.get_mut(rel) else {
+        return BuildOutcome::Done;
+    };
     let recovered = std::mem::take(&mut ps.doc.errored);
     let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
     // A burst that aims at raw HTML the DOM does not hold as one element (a comment, a
@@ -2715,6 +2720,7 @@ mod project_tests {
         let v1 = "---\ntitle: C\n---\n\nFirst.\n\n<!-- TODO -->\n\nLast.\n";
         std::fs::write(&page, v1).unwrap();
         let (project, _app, _b, _f) = project_and_app(&dir);
+        open_page(&project, "index.tmd");
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, "index.tmd", None));
         let mut rx = project.pages.lock()["index.tmd"].tx.subscribe();
@@ -3123,6 +3129,18 @@ mod project_tests {
         assert!(!PageDoc::default().cell_free);
     }
 
+    /// Give `rel` the live state a visit gives it (`client_conn` allocates exactly this), so
+    /// a build of it has somewhere to publish.
+    fn open_page(project: &Project, rel: &str) {
+        project.pages.lock().insert(
+            rel.to_string(),
+            PageState {
+                doc: PageDoc::default(),
+                tx: broadcast::channel(256).0,
+            },
+        );
+    }
+
     fn page_state_with_blocks(html: &str) -> PageState {
         PageState {
             doc: PageDoc {
@@ -3459,6 +3477,34 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Audit 2026-09-24 invalidation #10. `reload_open_tabs` drops every page's state so the
+    /// reload re-renders against the new site, and a page nobody has open has none. A build
+    /// already in flight for such a page used to put a state back when it finished, carrying
+    /// the render defaults it captured before the drop: measured, a `bibliography:` switched
+    /// in `_site.yml` while a closed page's cell ran left that page serving the old citation
+    /// on every later GET. Both publishing steps of a build must leave a dropped page alone.
+    #[test]
+    fn a_build_in_flight_does_not_bring_back_a_dropped_page_state() {
+        let dir = scratch("resurrect");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+        let (project, _app, _b, _f) = project_and_app(&dir);
+        let page = project.site.lock().page("index.tmd").cloned().unwrap();
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock().is_empty(),
+            "the post-exec publish recreated the state of a page nobody has open"
+        );
+        publish_pre_exec_body(&project, "index.tmd", &page, &[]);
+        assert!(
+            project.pages.lock().is_empty(),
+            "the pre-exec publish recreated the state of a page nobody has open"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Build one cell-free page of `files` on the bypass lane and return the dev menu's
     /// diagnostics exactly as the websocket carries them.
     fn wire_diagnostics(tag: &str, files: &[(&str, &str)], rel: &str) -> Vec<serde_json::Value> {
@@ -3479,6 +3525,7 @@ mod project_tests {
             scope: None,
             front_matter: Mutex::new(HashMap::new()),
         });
+        open_page(&project, rel);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(build_page(&project, rel, None));
         let wire = protocol::diagnostics(&project.pages.lock()[rel].doc.diagnostics);
