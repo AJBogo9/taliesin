@@ -360,10 +360,28 @@ pub(crate) fn page_static_diagnostics(
     base: &Path,
     scope: Scope,
 ) -> Vec<taliesin_core::render::Warning> {
+    let mut out = static_diagnostics_but_local_assets(src, blocks, base, scope);
+    out.extend(taliesin_core::diagnostics::validate_local_assets(
+        blocks, base,
+    ));
+    out
+}
+
+/// [`page_static_diagnostics`] without the one check a page's own cells can change: whether
+/// each local file its body references exists. A cell that writes `gen.png` for the
+/// `![…](gen.png)` below it makes that file exist, so [`PagePass`] asks this question
+/// after the cells ran whenever they run (still of the blocks the author wrote); asked
+/// before, the build reported the figure the next line was about to write as missing, on
+/// every first build (audit 2026-09-24, WP3 residual).
+fn static_diagnostics_but_local_assets(
+    src: &str,
+    blocks: &[taliesin_core::Block],
+    base: &Path,
+    scope: Scope,
+) -> Vec<taliesin_core::render::Warning> {
     use taliesin_core::diagnostics as dx;
     let mut out = Vec::new();
     out.extend(dx::validate_internal_anchors(blocks));
-    out.extend(dx::validate_local_assets(blocks, base));
     out.extend(dx::validate_front_matter_image(src, base));
     if scope == Scope::Standalone {
         out.extend(dx::validate_local_links(blocks, base));
@@ -450,6 +468,9 @@ pub(crate) struct PagePass {
     /// The page as this surface names it (see [`diag_from`]).
     label: String,
     base: std::path::PathBuf,
+    /// Whether the local-file check has run: after the cells when they run, else before
+    /// the finish (see [`static_diagnostics_but_local_assets`]).
+    assets_checked: bool,
 }
 
 impl PagePass {
@@ -482,6 +503,7 @@ impl PagePass {
             kernel_failure: None,
             label: label.to_string(),
             base,
+            assets_checked: false,
         };
         // A front matter that does not parse: every key in it was dropped, so the page
         // lost its `title:`, `bibliography:` or `listing:`. No validator is behind it to
@@ -493,29 +515,60 @@ impl PagePass {
             pass.problems += 1;
             pass.unparseable += 1;
         }
-        let statics =
-            page_static_diagnostics(&pass.src, &pass.doc.blocks, &pass.base, Scope::InSite);
+        let statics = static_diagnostics_but_local_assets(
+            &pass.src,
+            &pass.doc.blocks,
+            &pass.base,
+            Scope::InSite,
+        );
         pass.add(&statics);
         pass
     }
 
+    /// Whether each local file the page's blocks (as the author wrote them) reference exists,
+    /// once.
+    fn check_local_assets(&mut self, blocks: &[taliesin_core::Block]) {
+        if !std::mem::replace(&mut self.assets_checked, true) {
+            let assets = taliesin_core::diagnostics::validate_local_assets(blocks, &self.base);
+            self.add(&assets);
+        }
+    }
+
     /// Run the page's cells and splice their outputs in. What only execution can know is
     /// carried out of it: an exec-phase defect (reported, never counted, like the offline
-    /// nudge), each failed cell (counted), and a kernel that would not start.
-    pub(crate) async fn execute(&mut self, exec: &mut crate::exec::Executor) {
+    /// nudge), each failed cell (counted), and a kernel that would not start. Returns where
+    /// in [`diags`](Self::diags) the exec-phase defects landed: the executor has already
+    /// printed each one at its cell.
+    pub(crate) async fn execute(
+        &mut self,
+        exec: &mut crate::exec::Executor,
+    ) -> std::ops::Range<usize> {
+        let written = self.doc.blocks.clone();
         self.doc.blocks = exec.run(std::mem::take(&mut self.doc.blocks)).await;
         self.kernel_failure = exec.kernel_failure_report();
+        let start = self.diags.len();
         let label = &self.label;
         self.diags
             .extend(exec.take_warnings().iter().map(|w| diag_from(w, label)));
+        let announced = start..self.diags.len();
         self.failures = exec.take_failures();
         self.problems += self.failures.len();
+        // After the cells, of the blocks as written: a file a cell wrote now exists.
+        self.check_local_assets(&written);
+        announced
     }
 
     /// Finish the page as its project publishes it (chapter numbering, cross-references and
     /// the broken ones, `listing:`/`hero:` expansion, the table-of-contents gate) and report
     /// the render's and the finish's warnings.
     pub(crate) fn finish(&mut self, site: &taliesin_core::Site, page: &taliesin_core::site::Page) {
+        // No cells ran: the blocks are still the author's, and a listing's cards are not
+        // theirs to check against this page's folder, so ask before the finish adds them.
+        if !self.assets_checked {
+            let blocks = std::mem::take(&mut self.doc.blocks);
+            self.check_local_assets(&blocks);
+            self.doc.blocks = blocks;
+        }
         let mut warnings = std::mem::take(&mut self.doc.warnings);
         self.toc = site.finish_blocks(
             page,
@@ -547,7 +600,7 @@ impl PagePass {
     ) -> PagePass {
         let mut pass = PagePass::begin(&PageRender::of(site, page), page, src, label);
         if let Some(exec) = exec {
-            pass.execute(exec).await;
+            let _ = pass.execute(exec).await;
         }
         pass.finish(site, page);
         pass

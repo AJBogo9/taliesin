@@ -599,3 +599,51 @@ fn an_include_located_diagnostic_names_the_partial_by_its_real_path() {
         );
     }
 }
+
+/// A figure a cell writes to disk is no missing asset: the build checks a page's local
+/// files after its cells ran, so `savefig("gen.png")` then `![…](gen.png)` builds clean
+/// the first time. The check ran before execution and reported the file the next line
+/// was about to write (audit 2026-09-24, WP3 residual).
+#[test]
+fn a_file_a_cell_writes_is_not_a_missing_asset() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("cell-writes");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    let page = "---\ntitle: T\n---\n\n\
+        ```{python}\n#| echo: false\nopen('gen.png', 'wb').write(b'\\x89PNG\\r\\n\\x1a\\n')\n```\n\n\
+        ![A generated chart](gen.png)\n";
+    fs::write(dir.join("index.tmd"), page).unwrap();
+    let single = taliesin()
+        .arg("build")
+        .arg(dir.join("index.tmd"))
+        .args(["--stdout", "--strict"])
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run taliesin");
+    let _ = fs::remove_file(dir.join("gen.png"));
+    let site = taliesin()
+        .arg("build")
+        .arg(&dir)
+        .arg("--out")
+        .arg(dir.join("_out"))
+        .arg("--strict")
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run taliesin");
+    let _ = fs::remove_dir_all(&dir);
+    for out in [&single, &site] {
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !err.contains("gen.png"),
+            "the file the cell wrote is not reported:\n{err}"
+        );
+        assert!(out.status.success(), "the build is clean:\n{err}");
+    }
+}
