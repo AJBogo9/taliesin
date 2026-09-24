@@ -36,16 +36,34 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 const CLIENT_ONLY: &[&str] = &["name", "viewof", "input"];
 
 /// Options a client-language cell never reads, so each is inert on one. A running client
-/// cell hands its source to the browser before the `echo` check, the Figure and Table arms
-/// read only `include` for a non-kernel language, and `cache` keys `_freeze/`, which only a
-/// kernel cell reaches. `include` is NOT here: it hides a `lst-`/`tbl-` cell of any
-/// language. (`echo` on a listing is inert in every language, and a client table cell
-/// never runs, so each has its own reason in `inert_option_message`.)
-const NOT_ON_CLIENT: &[&str] = &["echo", "cache"];
+/// cell hands its source to the browser before the `echo` check, and the Figure and Table
+/// arms read only `include` for a non-kernel language. `include` is NOT here: it hides a
+/// `lst-`/`tbl-` cell of any language. (`echo` on a listing is inert in every language, and
+/// a client table cell never runs, so each has its own reason in `inert_option_message`.)
+/// `cache` has a rule of its own: it keys `_freeze/`, which only a cell a kernel runs reaches.
+const NOT_ON_CLIENT: &[&str] = &["echo"];
 
 /// The label prefixes the cell-role test in `render_internal` reads. Any other `label:`
-/// feeds no anchor, number, element id or freeze key.
-const NUMBERED_LABEL_PREFIXES: &[&str] = &["fig-", "lst-", "tbl-"];
+/// feeds no anchor, number, element id or freeze key. `pub` for completion, which offers
+/// only these after `#| label:`.
+pub const NUMBERED_LABEL_PREFIXES: &[&str] = &["fig-", "lst-", "tbl-"];
+
+/// Whether known option `key` can act on a `{lang}` cell: false for `cache` on a cell no
+/// kernel runs, a `CLIENT_ONLY` key off a client language and a `NOT_ON_CLIENT` key on one.
+/// The language half of `inert_option_message`, and what completion offers a cell by, so
+/// the offer and the warning cannot disagree. The role half (`echo` on a listing) stays in
+/// the lint: the role is not known while the key is being typed.
+pub fn option_acts_on_language(key: &str, lang: &str) -> bool {
+    if key == "cache" {
+        return super::executes_to_kernel(lang);
+    }
+    let inert = if super::is_client_lang(lang) {
+        NOT_ON_CLIENT
+    } else {
+        CLIENT_ONLY
+    };
+    !inert.contains(&key)
+}
 
 /// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
 ///
@@ -83,7 +101,7 @@ pub(crate) const INPUT_TYPES: &[&str] = &["slider", "number", "checkbox", "text"
 /// `cell_option` reads it) and its 0-based line offset within `literal` (the fence body).
 /// Mirrors `cell_option`'s scan: only the contiguous leading `#|` / `//|` / `%%|` block,
 /// stopping at the first code line.
-pub(crate) fn cell_option_keys(literal: &str) -> Vec<(String, &str, usize)> {
+pub fn cell_option_keys(literal: &str) -> Vec<(String, &str, usize)> {
     let mut keys = Vec::new();
     for (i, line) in literal.lines().enumerate() {
         let Some(opt) = super::option_directive(line) else {
@@ -119,7 +137,13 @@ pub(crate) fn validate_cell_options(
         .filter_map(|(k, value, offset)| {
             let line = (fence_line + 1 + offset) as u32;
             let message = if !CELL_OPTION_KEYS.contains(&k.as_str()) {
-                unknown_key_message("cell option", &k, CELL_OPTION_KEYS)
+                // A suggestion the author accepts must not draw the inert warning next.
+                let acting: Vec<&str> = CELL_OPTION_KEYS
+                    .iter()
+                    .copied()
+                    .filter(|key| option_acts_on_language(key, lang))
+                    .collect();
+                unknown_key_message("cell option", &k, &acting)
             } else if let Some(first) = read_at.get(&k) {
                 format!("repeated `{k}:`: only the first, on line {first}, is read")
             } else {
@@ -168,16 +192,13 @@ fn inert_option_message(
             _ => {}
         }
     }
-    if !client && CLIENT_ONLY.contains(&key) {
-        return Some(format!(
-            "`{key}` has no effect on a `{{{lang}}}` cell: it is a `{{js}}` cell option"
-        ));
-    }
-    if client && NOT_ON_CLIENT.contains(&key) {
-        let why = if key == "echo" {
-            format!("a running `{{{lang}}}` cell never shows its source")
-        } else {
+    if !option_acts_on_language(key, lang) {
+        let why = if key == "cache" {
             "only a kernel cell's output is kept in `_freeze/`".to_string()
+        } else if !client {
+            "it is a `{js}` cell option".to_string()
+        } else {
+            format!("a running `{{{lang}}}` cell never shows its source")
         };
         return Some(format!(
             "`{key}` has no effect on a `{{{lang}}}` cell: {why}"
@@ -486,6 +507,33 @@ mod tests {
     #[test]
     fn include_on_a_plain_client_cell_is_a_deliberate_false_negative() {
         assert!(validate_cell_options("//| include: false\n", "js", None, 1, None).is_empty());
+    }
+
+    /// The language half of the rule is the one question completion asks too (a cell is
+    /// offered only the keys that act on its language), so the offer and the warning agree.
+    #[test]
+    fn the_language_rule_is_the_one_completion_asks() {
+        let inert = |lang| {
+            CELL_OPTION_KEYS
+                .iter()
+                .copied()
+                .filter(|k| !option_acts_on_language(k, lang))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(inert("js"), ["echo", "cache"]);
+        assert_eq!(inert("python"), ["name", "viewof", "input"]);
+        // Nothing runs a display language, so nothing keeps its output in `_freeze/`.
+        assert_eq!(inert("mermaid"), ["cache", "name", "viewof", "input"]);
+        for lang in ["js", "python", "mermaid"] {
+            for key in CELL_OPTION_KEYS {
+                let value = if *key == "label" { "fig-a" } else { "x" };
+                assert_eq!(
+                    option_acts_on_language(key, lang),
+                    inert_option_message(key, value, lang, None).is_none(),
+                    "`{key}` on {{{lang}}}"
+                );
+            }
+        }
     }
 
     /// Only a `fig-`/`lst-`/`tbl-` label is read (the cell-role test in `render_internal`);

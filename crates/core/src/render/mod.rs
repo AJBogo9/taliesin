@@ -77,6 +77,9 @@ pub use divs::{div_lines, rendered_lines};
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
 pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES};
+// `pub` for the language server, which offers a cell only the options the lint does not
+// call inert on its language, and a cell `label:` only the prefixes that number it.
+pub use validate::{NUMBERED_LABEL_PREFIXES, cell_option_keys, option_acts_on_language};
 // The IMPLEMENTED div classes. The validator uses this directly; outside `render` its only
 // reader is `vocab.rs`'s drift test, which pins the OFFERED subset (`vocab::DIV_CLASS_NAMES`,
 // several classes shorter) as a subset of it so a class the editor suggests always gets a

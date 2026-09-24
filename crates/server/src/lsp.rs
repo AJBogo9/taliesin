@@ -1181,6 +1181,27 @@ fn resolve_completion(
             .map(|(name, description)| item(name.to_string(), description.to_string(), kind))
             .collect()
     };
+    // The cross-reference prefixes an anchor id can start with. `{#` defines any anchor; a
+    // cell's `label:` is offered only the prefixes that number a cell (`sec-`/`eq-` there
+    // make no anchor, and the lint says so).
+    let anchor_prefixes = |typed: &str, numbered_only: bool| -> Vec<CompletionItem> {
+        vocab::xref_prefixes()
+            .iter()
+            .map(|(prefix, label)| (format!("{prefix}-"), label))
+            .filter(|(prefix, _)| prefix.starts_with(typed))
+            .filter(|(prefix, _)| {
+                !numbered_only
+                    || taliesin_core::render::NUMBERED_LABEL_PREFIXES.contains(&prefix.as_str())
+            })
+            .map(|(prefix, label)| {
+                item(
+                    prefix,
+                    format!("{label} anchor"),
+                    CompletionItemKind::REFERENCE,
+                )
+            })
+            .collect()
+    };
 
     let items: Vec<CompletionItem> = match ctx {
         Ctx::None => return None,
@@ -1194,7 +1215,15 @@ fn resolve_completion(
                 .filter(|it| typed.is_empty() || it.label.starts_with(&typed))
                 .collect()
         }
-        Ctx::CellOption => from_named(&vocab::cell_options(), CompletionItemKind::PROPERTY),
+        // Only the keys that act on the cell's language and that it has not set already:
+        // the rest draw the lint's inert or repeated warning.
+        Ctx::CellOption { lang, set } => {
+            from_named(&vocab::cell_options(), CompletionItemKind::PROPERTY)
+                .into_iter()
+                .filter(|it| taliesin_core::render::option_acts_on_language(&it.label, &lang))
+                .filter(|it| !set.contains(&it.label))
+                .collect()
+        }
         Ctx::DivClass => {
             let mut out: Vec<CompletionItem> = vocab::callout_kinds()
                 .into_iter()
@@ -1357,18 +1386,8 @@ fn resolve_completion(
             .collect(),
         // `{#` -> the cross-reference prefixes. Defining an anchor is where the prefix has
         // to be right; `@` already offered them for referencing one.
-        Ctx::AnchorId { typed } => vocab::xref_prefixes()
-            .iter()
-            .map(|(prefix, label)| (format!("{prefix}-"), label))
-            .filter(|(prefix, _)| prefix.starts_with(typed.as_str()))
-            .map(|(prefix, label)| {
-                item(
-                    prefix,
-                    format!("{label} anchor"),
-                    CompletionItemKind::REFERENCE,
-                )
-            })
-            .collect(),
+        Ctx::AnchorId { typed } => anchor_prefixes(&typed, false),
+        Ctx::CellLabel { typed } => anchor_prefixes(&typed, true),
         // `{{< input type=` -> the control kinds. `inputTypes` has been in the vocabulary
         // since it was written and nothing ever read it.
         Ctx::InputType { typed } => vocab::input_types()
@@ -3523,6 +3542,97 @@ mod tests {
             !offers_grid(2),
             "the callout arm wins, so the grid is inert"
         );
+    }
+
+    // A cell is offered only the options that act on its language, and `label:` only the
+    // prefixes that number a cell. Each one withheld is one `render/validate.rs` warns about,
+    // so accepting the editor's own suggestion used to draw that warning straight away.
+    #[test]
+    fn a_cell_offers_only_the_options_that_act_on_it() {
+        let uri = Url::parse("file:///tmp/tali-lsp-cell-options.tmd").unwrap();
+        let lines = [
+            "```{js}",
+            "//| ",
+            "//| label: ",
+            "//| echo: ",
+            "```",
+            "",
+            "```{python}",
+            "#| ",
+            "#| label: ",
+            "```",
+            "",
+            "# Intro {#",
+            "",
+            "```{python}",
+            "#| echo: false",
+            "#| ",
+            "```",
+            "",
+            "```{mermaid}",
+            "%%| ",
+            "```",
+        ];
+        let text = format!("{}\n", lines.join("\n"));
+        let docs = std::collections::HashMap::from([(uri.clone(), text)]);
+        let offered = |line: usize| -> Vec<String> {
+            let character = lines[line].len() as u32;
+            match resolve_completion(&docs, &complete_params(&uri, line as u32, character)) {
+                Some(lsp_types::CompletionResponse::Array(items)) => {
+                    items.into_iter().map(|i| i.label).collect()
+                }
+                None => Vec::new(),
+                other => panic!("expected a completion list, got {other:?}"),
+            }
+        };
+        let js = offered(1);
+        for key in ["name", "viewof", "input", "label"] {
+            assert!(js.iter().any(|l| l == key), "`{key}` on {{js}}: {js:?}");
+        }
+        for key in ["echo", "cache"] {
+            assert!(!js.iter().any(|l| l == key), "`{key}` on {{js}}: {js:?}");
+        }
+        let python = offered(7);
+        for key in ["echo", "cache", "include", "label"] {
+            assert!(
+                python.iter().any(|l| l == key),
+                "`{key}` on {{python}}: {python:?}"
+            );
+        }
+        for key in ["name", "viewof", "input"] {
+            assert!(
+                !python.iter().any(|l| l == key),
+                "`{key}` on {{python}}: {python:?}"
+            );
+        }
+        for line in [2, 8] {
+            let mut prefixes = offered(line);
+            prefixes.sort();
+            assert_eq!(prefixes, ["fig-", "lst-", "tbl-"], "`{}`", lines[line]);
+        }
+        assert_eq!(offered(3), Vec::<String>::new(), "a value for an inert key");
+        // The other side of the shared anchor-prefix list: a prose `{#` still gets them all.
+        let mut prose = offered(11);
+        prose.sort();
+        assert_eq!(
+            prose,
+            ["eq-", "fig-", "lst-", "sec-", "tbl-"],
+            "prose `{{#`"
+        );
+        // A key the cell already set is not offered again: render reads the first one.
+        let repeated = offered(15);
+        assert!(
+            !repeated.iter().any(|l| l == "echo"),
+            "echo set above: {repeated:?}"
+        );
+        assert!(repeated.iter().any(|l| l == "include"), "{repeated:?}");
+        // Nothing runs a display language, so nothing keeps its output in `_freeze/`.
+        let mermaid = offered(19);
+        assert!(
+            !mermaid.iter().any(|l| l == "cache"),
+            "cache on {{mermaid}}: {mermaid:?}"
+        );
+        assert!(mermaid.iter().any(|l| l == "echo"), "{mermaid:?}");
     }
 
     // Stepless math completion. The author who knows the symbol is called "alpha" should not

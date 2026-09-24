@@ -35,7 +35,13 @@ pub(crate) enum CompletionContext {
         key: String,
         typed: String,
     },
-    CellOption,
+    /// A `#|` option key in a cell's leading block, with the cell's language (the answer
+    /// `render::code_lang` gives its fence), which decides the keys that act on it, and the
+    /// keys its option lines above already set, which render reads first.
+    CellOption {
+        lang: String,
+        set: Vec<String>,
+    },
     DivClass,
     Xref {
         typed: String,
@@ -64,6 +70,11 @@ pub(crate) enum CompletionContext {
     /// A `#| key:` cell option whose value has a closed set, then the partial value.
     CellOptionValue {
         key: String,
+        typed: String,
+    },
+    /// A cell's `#| label:` value, then the partial id. Only the numbered prefixes make a
+    /// cell an anchor, so it is offered those rather than every [`Self::AnchorId`] prefix.
+    CellLabel {
         typed: String,
     },
     /// A ` ```{lang} ` cell's language, being typed.
@@ -193,8 +204,9 @@ enum Region {
     FrontMatter,
     /// The opening fence of a code block: its language.
     FenceOpen,
-    /// The leading option block of a code cell the render runs: `#|` options.
-    CellOptions,
+    /// The leading option block of a code cell the render runs: `#|` options, for a cell
+    /// in `lang` whose option lines above the cursor already set the keys in `set`.
+    CellOptions { lang: String, set: Vec<String> },
     /// Any other code, raw HTML, or a cell line below its options: nothing to complete.
     Code,
 }
@@ -212,20 +224,27 @@ fn region(doc_prefix: &str, class: &taliesin_core::lines::Lines) -> Region {
         Kind::FenceBody => {
             // A cell the render runs (top level, `{lang}`), with only option lines between
             // its fence and the cursor: `render::cell_option` reads no further.
-            let cell = class.fences.iter().find(|f| f.open < at && at <= f.end);
-            let options = cell.is_some_and(|f| {
-                class.line(f.open).depth == 0
-                    && taliesin_core::render::is_executable_fence(&f.info)
-                    && taliesin_core::render::code_lang(&f.info).is_some()
-                    && above[f.open + 1..at]
-                        .iter()
-                        .all(|l| taliesin_core::render::option_directive(l).is_some())
-            });
-            if options {
-                Region::CellOptions
-            } else {
-                Region::Code
-            }
+            let lang = class
+                .fences
+                .iter()
+                .find(|f| f.open < at && at <= f.end)
+                .filter(|f| {
+                    class.line(f.open).depth == 0
+                        && taliesin_core::render::is_executable_fence(&f.info)
+                        && above[f.open + 1..at]
+                            .iter()
+                            .all(|l| taliesin_core::render::option_directive(l).is_some())
+                })
+                .and_then(|f| Some((f, taliesin_core::render::code_lang(&f.info)?)));
+            lang.map_or(Region::Code, |(f, lang)| {
+                // Read by render's own reader, so a key set twice is judged as the lint does.
+                let set =
+                    taliesin_core::render::cell_option_keys(&above[f.open + 1..at].join("\n"))
+                        .into_iter()
+                        .map(|(key, _, _)| key)
+                        .collect();
+                Region::CellOptions { lang, set }
+            })
         }
         _ => Region::Code,
     }
@@ -255,7 +274,7 @@ pub(crate) fn detect_context(
             .map_or(CompletionContext::None, |typed| {
                 CompletionContext::CellLanguage { typed }
             }),
-        Region::CellOptions => cell_option_context(line_prefix),
+        Region::CellOptions { lang, set } => cell_option_context(line_prefix, lang, set),
         Region::Code => CompletionContext::None,
     }
 }
@@ -328,19 +347,21 @@ fn prose_context(
     CompletionContext::None
 }
 
-/// The contexts of a line in a cell's leading option block.
-fn cell_option_context(line_prefix: &str) -> CompletionContext {
+/// The contexts of a line in the leading option block of a cell in `lang`.
+fn cell_option_context(line_prefix: &str, lang: String, set: Vec<String>) -> CompletionContext {
     if is_cell_option_line(line_prefix) {
-        return CompletionContext::CellOption;
+        return CompletionContext::CellOption { lang, set };
     }
     if let Some((key, typed)) = cell_option_value(line_prefix) {
         // `label:` is where a cell's cross-reference id is INVENTED, and getting its
         // prefix right is what decides whether the cell becomes a numbered figure at
-        // all — so it gets the same prefix vocabulary as `{#`, not a value list.
+        // all, so it gets the numbered prefixes, not a value list.
         if key == "label" {
-            return CompletionContext::AnchorId { typed };
+            return CompletionContext::CellLabel { typed };
         }
-        if CELL_OPTION_VALUES.iter().any(|(k, _)| *k == key) {
+        if CELL_OPTION_VALUES.iter().any(|(k, _)| *k == key)
+            && taliesin_core::render::option_acts_on_language(&key, &lang)
+        {
             return CompletionContext::CellOptionValue { key, typed };
         }
     }
@@ -989,6 +1010,13 @@ mod tests {
         }
     }
 
+    fn option(lang: &str) -> CompletionContext {
+        CompletionContext::CellOption {
+            lang: lang.to_string(),
+            set: Vec::new(),
+        }
+    }
+
     #[test]
     fn detects_a_math_command_inside_inline_math() {
         assert_eq!(
@@ -1220,12 +1248,17 @@ mod tests {
                 typed: "tr".to_string()
             }
         );
-        // `label:` invents a cross-reference id, so it gets the prefix vocabulary.
+        // `label:` invents a cross-reference id, so it gets the numbered prefixes.
         assert_eq!(
             ctx("#| label: fig-", &doc("#| label: fig-")),
-            CompletionContext::AnchorId {
+            CompletionContext::CellLabel {
                 typed: "fig-".to_string()
             }
+        );
+        // A value for a key the cell's language never reads is not offered either.
+        assert_eq!(
+            ctx("//| echo: ", "---\nt: x\n---\n\n```{js}\n//| echo: "),
+            CompletionContext::None
         );
         // Outside a cell, a `#|` line is prose.
         assert_eq!(
@@ -1567,14 +1600,17 @@ mod tests {
             assert_eq!(ctx(line, doc), CompletionContext::None, "{doc:?}");
         }
         // Options only in the leading block of a cell the render runs.
-        assert_eq!(
-            ctx("#| ec", "~~~{python}\n#| ec"),
-            CompletionContext::CellOption
-        );
+        assert_eq!(ctx("#| ec", "~~~{python}\n#| ec"), option("python"));
+        // The keys set above ride along too, so a key is not offered a second time.
         assert_eq!(
             ctx("#| ec", "```{python}\n#| echo: false\n#| ec"),
-            CompletionContext::CellOption
+            CompletionContext::CellOption {
+                lang: "python".to_string(),
+                set: vec!["echo".to_string()],
+            }
         );
+        // The enclosing cell's language rides along, so the offer can be filtered by it.
+        assert_eq!(ctx("//| na", "```{js}\n//| na"), option("js"));
         for doc in [
             "```python\n#| ec",
             "```{.python}\n#| ec",
@@ -1591,7 +1627,7 @@ mod tests {
     #[test]
     fn cell_option_only_inside_a_code_cell() {
         let doc_in = "```{python}\n#| ec";
-        assert_eq!(ctx("#| ec", doc_in), CompletionContext::CellOption);
+        assert_eq!(ctx("#| ec", doc_in), option("python"));
         // Same line, but no open fence above → not a cell option.
         assert_eq!(ctx("#| ec", "#| ec"), CompletionContext::None);
     }
@@ -1637,10 +1673,7 @@ mod tests {
             }
         );
         // The fence above the cursor's line opened a code cell.
-        assert_eq!(
-            ctx("#| ec", "```{python}\r#| ec"),
-            CompletionContext::CellOption
-        );
+        assert_eq!(ctx("#| ec", "```{python}\r#| ec"), option("python"));
         // `execute:` is the less-indented ancestor key of the current line.
         assert_eq!(
             nested_parent("---\rexecute:\r  ec").as_deref(),
@@ -1767,9 +1800,9 @@ mod tests {
             // the line indented code, which is not a div.)
             ("", "   :::{.", CompletionContext::DivClass),
             // --- cell option: only inside an open fence, and only in key position
-            (CELL, "#|", CompletionContext::CellOption),
-            (CELL, "//| ec", CompletionContext::CellOption),
-            (CELL, "%%| ec", CompletionContext::CellOption),
+            (CELL, "#|", option("python")),
+            (CELL, "//| ec", option("python")),
+            (CELL, "%%| ec", option("python")),
             // Past the key, into the value: no longer a cell-option key position.
             (CELL, "#| ec: 1", CompletionContext::None),
             // The same line with no open fence above it is not a cell option at all.
