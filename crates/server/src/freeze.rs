@@ -66,11 +66,13 @@ use serde::{Deserialize, Serialize};
 /// v4: the `{js}` runtime script types became `application/tali-js` / `tali-define`
 /// and the cell target id became `tali-js-<block_id>`; entries cached before that
 /// rename carry the old names, which the current runtime's exact-match selectors
-/// never ingest, so `{js}` cells would silently receive no data.
+/// never ingest, so `{js}` cells would silently receive no data. v5: a `\r\n` line ending
+/// stopped reading as "clear the line" (audit E1), so entries cached before hold blank lines
+/// where a `csv.writer` table or any other CRLF text was printed.
 ///
 /// (The v2/v3 notes deliberately describe the *change* rather than spelling the
 /// retired prefix, which `crates/core/tests/retired_names.rs` keeps out of the tree.)
-const FORMAT_VERSION: u32 = 4;
+const FORMAT_VERSION: u32 = 5;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
 /// back and forth restores instantly instead of re-running) up to this bound, then
@@ -617,7 +619,7 @@ mod tests {
         let digest = format!("{:016x}", fnv1a(&CACHED_OUTPUT_TOKENS.join("\u{1f}")));
         assert_eq!(
             (digest.as_str(), FORMAT_VERSION),
-            ("71f1fe21dc878fcd", 4),
+            ("71f1fe21dc878fcd", 5),
             "the cached-output token vocabulary changed. Bump FORMAT_VERSION, then \
              update BOTH values here. Skipping the bump makes every existing _freeze/ \
              entry replay markup the current runtime cannot read."

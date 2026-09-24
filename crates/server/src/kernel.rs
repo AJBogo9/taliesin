@@ -1301,21 +1301,39 @@ impl Drop for Kernel {
 /// new line is shorter. We clear instead, because the writers that use `\r` (tqdm and
 /// friends) redraw a full padded line each frame, and a stale tail would be a visual
 /// artefact of emulating the terminal too faithfully.
+///
+/// A `\r` (or a run of them) directly before `\n` is a line ending, not a redraw, as in
+/// JupyterLab: `csv.writer`, HTTP bodies and email end every line with `\r\n`, and clearing
+/// on the `\r` erased every one of those lines. So a `\r` only clears once something other
+/// than `\n` follows it, and one still waiting at the end of the text is kept there, so the
+/// next chunk of the same stream can finish the decision ([`LiveOutputs`] re-collapses
+/// `prev + next`). The result therefore holds no `\r` except possibly one trailing, which
+/// [`render_outputs`] drops.
 fn apply_carriage_returns(text: &str) -> String {
     let mut committed = String::new();
     let mut line = String::new();
+    let mut pending_cr = false;
     for ch in text.chars() {
         match ch {
-            '\r' => line.clear(),
+            '\r' => pending_cr = true,
             '\n' => {
                 committed.push_str(&line);
                 committed.push('\n');
                 line.clear();
+                pending_cr = false;
             }
-            c => line.push(c),
+            c => {
+                if std::mem::take(&mut pending_cr) {
+                    line.clear();
+                }
+                line.push(c);
+            }
         }
     }
     committed.push_str(&line);
+    if pending_cr {
+        committed.push('\r');
+    }
     committed
 }
 
@@ -1414,6 +1432,9 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     "tali-stream"
                 };
+                // A trailing `\r` is a redraw nothing followed (see `apply_carriage_returns`):
+                // invisible on a terminal, but a line break once the HTML parser sees it.
+                let text = text.strip_suffix('\r').unwrap_or(text);
                 s.push_str(&format!(
                     "<pre class=\"{class}\">{}</pre>",
                     esc(&scrub_kernel_paths(&strip_ansi(text)))
@@ -1751,6 +1772,35 @@ mod tests {
         assert_eq!(
             collapse_carriage_returns(&mixed),
             vec![out("bar"), Output::Rich("<img>".into()), out("bar2")]
+        );
+    }
+
+    /// E1: a `\r\n` line ending is a newline, not "clear the line, then end it". The stdlib
+    /// `csv.writer` ends every row with `\r\n`, as do HTTP bodies and email, and reading the
+    /// `\r` as a redraw erased every row: the page showed blank lines and cached them.
+    /// The pair can also arrive split across two messages, so a trailing `\r` must wait for
+    /// the next character before it decides anything.
+    #[test]
+    fn a_crlf_line_ending_is_a_newline_not_a_line_clear() {
+        assert_eq!(
+            collapse_carriage_returns(&[out("a,b\r\n1,2\r\n")]),
+            vec![out("a,b\n1,2\n")]
+        );
+        assert_eq!(
+            collapse_carriage_returns(&[out("x,y\r"), out("\n3,4\r"), out("\n")]),
+            vec![out("x,y\n3,4\n")],
+            "a `\\r\\n` split across two messages is still one newline"
+        );
+        // A `\r` followed by anything else still redraws, across the boundary too.
+        assert_eq!(
+            collapse_carriage_returns(&[out("10%\r"), out("20%\n")]),
+            vec![out("20%\n")]
+        );
+        // A stream that ENDS on `\r` shows the line it drew, and the `\r` itself (which the
+        // HTML parser would turn into a line break) never reaches the page.
+        assert_eq!(
+            render_outputs(&[out("50%\r")]),
+            "<pre class=\"tali-stream\">50%</pre>"
         );
     }
 
