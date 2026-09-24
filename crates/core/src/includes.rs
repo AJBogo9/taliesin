@@ -51,6 +51,20 @@ pub fn normalize_line_endings(src: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// Read a `.tmd` source from disk, line endings normalized ([`normalize_line_endings`]).
+///
+/// The one raw-source reader for every scan that does not go through [`expand`] (site
+/// discovery's front matter, a book chapter's title fallback). Those used to read the file
+/// raw, so a lone-CR file was one line to them while the render path split it: discovery
+/// found no front matter and published a `draft: true` page.
+pub fn read_source(path: &Path) -> std::io::Result<String> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(match normalize_line_endings(&text) {
+        Cow::Borrowed(_) => text,
+        Cow::Owned(normalized) => normalized,
+    })
+}
+
 /// Where a line of the expanded buffer originally came from.
 #[derive(Debug, Clone)]
 pub struct LineOrigin {

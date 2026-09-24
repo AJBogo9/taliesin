@@ -31,11 +31,7 @@ impl Site {
             // know a time — the feed's `T00:00:00Z` is there because Atom REQUIRES a full
             // timestamp, a constraint that does not travel here. The two share the
             // validator, not the format.
-            if let Some((y, m, d)) = p
-                .date
-                .as_deref()
-                .and_then(crate::frontmatter::calendar_date)
-            {
+            if let Some((y, m, d)) = p.day() {
                 s.push_str(&format!("    <lastmod>{y:04}-{m:02}-{d:02}</lastmod>\n"));
             }
             s.push_str("  </url>\n");

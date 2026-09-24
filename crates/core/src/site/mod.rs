@@ -41,7 +41,8 @@ pub struct Page {
     pub url: String,
     /// Front-matter title (for nav labels + prev/next + listing cards).
     pub title: Option<String>,
-    /// Front-matter `date` as written (ISO strings sort chronologically).
+    /// Front-matter `date` as written, for display. Anything that orders or stamps by it
+    /// reads [`Page::day`] instead.
     pub date: Option<String>,
     /// Front-matter `description` (shown on a listing card).
     pub description: Option<String>,
@@ -61,6 +62,18 @@ pub struct Page {
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
     pub draft: bool,
+}
+
+impl Page {
+    /// The calendar day `date:` names (`crate::frontmatter::calendar_date`), `None` when it
+    /// names none. The one reading of the date that the listing order, the Atom feed and the
+    /// sitemap's `<lastmod>` share: the raw string sorted an un-padded `2026-1-5` above
+    /// `2026-01-20`, and free text above every real date.
+    pub(crate) fn day(&self) -> Option<(u32, u32, u32)> {
+        self.date
+            .as_deref()
+            .and_then(crate::frontmatter::calendar_date)
+    }
 }
 
 /// A `hero:` front-matter block: the headline + lead + call-to-action band at the
@@ -84,8 +97,7 @@ pub struct HeroSpec {
 pub struct HeroAction {
     pub text: String,
     pub href: String,
-    /// `primary: true` (or `class: primary`) renders the filled accent button;
-    /// otherwise the outline style.
+    /// `primary: true` renders the filled accent button; otherwise the outline style.
     pub primary: bool,
 }
 
@@ -579,7 +591,7 @@ impl Site {
     /// to their `.html` targets. Returns `None` if the page isn't part of the site.
     pub fn render_page(&self, rel_or_url: &str) -> Option<String> {
         let page = self.page(rel_or_url)?;
-        let src = std::fs::read_to_string(&page.input).ok()?;
+        let src = crate::includes::read_source(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
         // A numbered book chapter scopes its theorems to its chapter number
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
@@ -730,7 +742,7 @@ impl Site {
     /// the element ids it defines, whether it runs cells, and its outgoing local links.
     /// One render, not three passes, so the ids and the links cannot disagree.
     fn page_link_facts(&self, page: &Page) -> Option<PageLinkFacts> {
-        let src = std::fs::read_to_string(&page.input).ok()?;
+        let src = crate::includes::read_source(&page.input).ok()?;
         self.page_link_facts_from_src(page, &src)
     }
 
@@ -1134,7 +1146,7 @@ impl Site {
         // rule below is "first definition wins", so completion order would let the winner
         // depend on which page rendered fastest. See `fanout::map_ordered`.
         let per_page = fanout::map_ordered(&self.pages, |page| {
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
+            let Ok(src) = crate::includes::read_source(&page.input) else {
                 return Vec::new();
             };
             let base = page.input.parent().unwrap_or(&self.root);
@@ -1366,6 +1378,18 @@ impl Site {
         warnings: &mut Vec<Warning>,
     ) -> Vec<&Page> {
         let prefix = Self::listing_prefix(host, spec);
+        // A `contents:` that names no directory (a typo, a glob) can list nothing. An
+        // existing directory with no pages in it yet is a new blog, and stays silent.
+        if !self.root.join(&prefix).is_dir() {
+            warnings.push(
+                Warning::new(format!(
+                    "the listing on `{}` has `contents: {}`, but there is no such directory \
+                     beside the page, so it lists nothing",
+                    host.rel, spec.contents
+                ))
+                .severity(Severity::Error),
+            );
+        }
         let mut items: Vec<&Page> = Vec::new();
         for p in &self.pages {
             if p.rel == host.rel || !p.rel.starts_with(&prefix) {
@@ -1385,9 +1409,10 @@ impl Site {
             }
             items.push(p);
         }
-        // Order by date (string-ISO sorts chronologically), tiebreak on rel, then reverse:
-        // newest first, unconditionally.
-        items.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
+        // Order by calendar day (a page whose date names none sorts oldest), then by the
+        // date as written (a time on the same day), then by rel; then reverse: newest
+        // first, unconditionally.
+        items.sort_by(|a, b| (a.day(), &a.date, &a.rel).cmp(&(b.day(), &b.date, &b.rel)));
         items.reverse();
         if let Some(n) = spec.max_items {
             items.truncate(n);
@@ -2123,6 +2148,101 @@ pub(crate) mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// A `draft:` value that is neither a bool nor one of YAML 1.1's bool words (`1`, `y`,
+    /// `x`, `[true]`) fell back to "not a draft", so the page was published, listed and put
+    /// in the feed with no diagnostic. It is held back now (a flag the tool cannot read must
+    /// fail safe) and reported; a null `draft:` is simply unset.
+    #[test]
+    fn an_unreadable_draft_flag_holds_the_page_back_and_warns() {
+        let root = write_site(
+            "draftunreadable",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHome.\n"),
+                ("one.tmd", "---\ntitle: One\ndraft: 1\n---\n\nx\n"),
+                ("y.tmd", "---\ntitle: Y\ndraft: y\n---\n\nx\n"),
+                ("list.tmd", "---\ntitle: L\ndraft: [true]\n---\n\nx\n"),
+                ("null.tmd", "---\ntitle: N\ndraft: ~\n---\n\nx\n"),
+                ("no.tmd", "---\ntitle: No\ndraft: false\n---\n\nx\n"),
+            ],
+        );
+        let mut warnings = Vec::new();
+        let rels: Vec<String> =
+            website_pages(&root, DraftMode::Exclude, &mut warnings, &mut Vec::new())
+                .iter()
+                .map(|p| p.rel.clone())
+                .collect();
+        for held in ["one.tmd", "y.tmd", "list.tmd"] {
+            assert!(
+                !rels.contains(&held.to_string()),
+                "{held} held back: {rels:?}"
+            );
+            assert!(
+                warnings
+                    .iter()
+                    .any(|w| w.starts_with(held) && w.contains("not a boolean")),
+                "{held} reported: {warnings:?}"
+            );
+        }
+        for kept in ["null.tmd", "no.tmd"] {
+            assert!(
+                rels.contains(&kept.to_string()),
+                "{kept} published: {rels:?}"
+            );
+            assert!(
+                !warnings.iter().any(|w| w.starts_with(kept)),
+                "{kept} is not reported: {warnings:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file whose lines end in a lone CR (a classic-Mac tool, pasted terminal output) is
+    /// one line to `str::lines`, while comrak and the render path split it. Discovery read
+    /// such a file raw, found no front matter, and PUBLISHED a `draft: true` page, listed it
+    /// and indexed its body. Every raw `.tmd` reader now goes through
+    /// `includes::read_source`, which normalizes line endings the way the render path does.
+    #[test]
+    fn a_lone_cr_file_is_read_like_any_other() {
+        let root = write_site(
+            "lonecr",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHome.\n"),
+                (
+                    "posts/d.tmd",
+                    "---\rtitle: Draft\rdraft: true\r---\r\rSecret draft body.\r",
+                ),
+                ("posts/p.tmd", "---\rtitle: Kept\r---\r\rPublished.\r"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            !site.pages.iter().any(|p| p.rel == "posts/d.tmd"),
+            "a lone-CR `draft: true` is a draft: {:?}",
+            site.pages.iter().map(|p| &p.rel).collect::<Vec<_>>()
+        );
+        let kept = site.pages.iter().find(|p| p.rel == "posts/p.tmd").unwrap();
+        assert_eq!(kept.title.as_deref(), Some("Kept"));
+        let _ = std::fs::remove_dir_all(&root);
+
+        // A book chapter's title fallback reads the file too.
+        let root = write_site(
+            "lonecrbook",
+            &[
+                ("_site.yml", "title: B\nchapters:\n  - one.tmd\n"),
+                (
+                    "one.tmd",
+                    "---\rdescription: x\r---\r\r# The first chapter\r\rText.\r",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let chapters = site.book.as_ref().unwrap().chapters();
+        assert_eq!(chapters[0].title, "The first chapter");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn author_404_is_honored_and_excluded_from_search() {
         use std::fs;
@@ -2463,6 +2583,59 @@ pub(crate) mod tests {
             site.page("index.html").is_none(),
             "nothing answers `index.html`, which is why the root needs the mapping"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A `listing:` whose `contents:` names no directory (a typo, a glob) renders no
+    /// cards, and nothing said so. An existing directory with no pages in it yet is a new
+    /// blog, not a mistake, and stays silent.
+    #[test]
+    fn a_listing_whose_contents_names_no_directory_is_diagnosed() {
+        let root = write_site(
+            "listingcontents",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "typo.tmd",
+                    "---\ntitle: Typo\nlisting:\n  contents: post\n---\n\nx\n",
+                ),
+                (
+                    "glob.tmd",
+                    "---\ntitle: Glob\nlisting:\n  contents: \"posts/*.tmd\"\n---\n\nx\n",
+                ),
+                (
+                    "ok.tmd",
+                    "---\ntitle: Ok\nlisting:\n  contents: posts\n---\n\nx\n",
+                ),
+                ("posts/a.tmd", "---\ntitle: A\n---\n\nx\n"),
+                (
+                    "empty.tmd",
+                    "---\ntitle: Empty\nlisting:\n  contents: drafts\n---\n\nx\n",
+                ),
+                ("drafts/.keep", ""),
+            ],
+        );
+        let site = Site::discover(&root);
+        for (rel, contents) in [("typo.tmd", "post"), ("glob.tmd", "posts/*.tmd")] {
+            let (_, warnings) = render_page(&site, rel);
+            assert!(
+                warnings
+                    .iter()
+                    .any(|w| w.message.contains(&format!("`contents: {contents}`"))
+                        && w.message.contains("no such directory")
+                        && w.severity == Severity::Error),
+                "{rel}: {warnings:?}"
+            );
+        }
+        for rel in ["ok.tmd", "empty.tmd"] {
+            let (_, warnings) = render_page(&site, rel);
+            assert!(
+                !warnings
+                    .iter()
+                    .any(|w| w.message.contains("no such directory")),
+                "{rel}: {warnings:?}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

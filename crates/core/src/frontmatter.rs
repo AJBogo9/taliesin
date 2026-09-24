@@ -8,7 +8,7 @@
 //! blocks, each suggesting the closest known key. It only warns (located
 //! for click-to-source); rendering is unaffected, an unknown key still renders.
 
-use crate::render::Warning;
+use crate::render::{Severity, Warning};
 
 /// Top-level front-matter keys taliesin recognizes: the closed set of keys it
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
@@ -33,7 +33,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // (output, nav, listings); the live preview still shows it, badged.
     "draft",
     // Title block: `title-block-style: none` is honored (suppresses the visible
-    // header); see `render::detect_title_block_hidden`.
+    // header); see `render::DocFront::title_block_hidden`.
     "title-block-style",
     // Table of contents
     "toc",
@@ -47,7 +47,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
 ];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
-/// `render::detect_execute_defaults`).
+/// `render::DocFront::exec_cache`).
 ///
 /// One key, and that is the whole set on purpose: `echo`/`include` were document-wide
 /// defaults for something every real document says per cell (`#| echo:`), so they were
@@ -60,6 +60,10 @@ pub(crate) const EXECUTE_KEYS: &[&str] = &["cache"];
 /// longhand, and `parse_listing_spec` does not read the key
 /// (`a_retired_listing_sort_cannot_reverse_the_cards_or_the_feed` pins that).
 pub(crate) const LISTING_KEYS: &[&str] = &["contents", "id", "type", "max-items"];
+
+/// The `listing: type:` values `site::frontmatter::parse_listing_spec` reads. Any other
+/// value renders the default text list, so it is reported rather than accepted in silence.
+pub(crate) const LISTING_TYPES: &[&str] = &["list"];
 
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
 ///
@@ -81,12 +85,9 @@ pub(crate) const HERO_ACTION_KEYS: &[&str] = &["text", "href", "primary"];
 /// parse (the parse error is reported separately by [`yaml_error`]).
 pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     let Some(block) = front_matter_block(src) else {
-        return Vec::new();
+        return misplaced_front_matter(src).into_iter().collect();
     };
-    if block.trim().is_empty() {
-        return Vec::new();
-    }
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+    let Some(value) = parse_front_matter_block(block) else {
         return Vec::new();
     };
     let Some(map) = value.as_mapping() else {
@@ -102,6 +103,20 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         }
     }
     validate_date_value(map, block, &mut out);
+    validate_bool_value(
+        map.get("toc"),
+        "toc",
+        block_key_span(block, "toc"),
+        &mut out,
+    );
+    if let Some(serde_yaml::Value::Mapping(execute)) = map.get("execute") {
+        validate_bool_value(
+            execute.get("cache"),
+            "cache",
+            nested_key_span(block, "execute", "cache"),
+            &mut out,
+        );
+    }
     validate_image_alt(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
@@ -109,12 +124,14 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     // `listing:` is one mapping or a sequence of mappings (a page carrying two lists).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
-            validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out)
+            validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out);
+            validate_listing_values(m, block, &mut out);
         }
         Some(serde_yaml::Value::Sequence(seq)) => {
             for item in seq {
                 if let Some(m) = item.as_mapping() {
                     validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out);
+                    validate_listing_values(m, block, &mut out);
                 }
             }
         }
@@ -123,13 +140,24 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     out
 }
 
+/// A parsed YAML value as a boolean: a real bool, or one of the YAML-1.1 words
+/// [`yaml_bool_word`] catches. `None` for anything else. The one boolean read of a parsed
+/// value (`toc:`, `execute: cache:`, a hero action's `primary:`).
+pub(crate) fn value_bool(v: &serde_yaml::Value) -> Option<bool> {
+    match v {
+        serde_yaml::Value::Bool(b) => Some(*b),
+        serde_yaml::Value::String(s) => yaml_bool_word(s),
+        _ => None,
+    }
+}
+
 /// Interpret a raw YAML scalar as a boolean, catching the YAML-1.1 words serde_yaml
 /// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off` — alongside
 /// canonical `true`/`false` (case-insensitive, tolerant of surrounding quotes). Returns
 /// `None` for any non-boolean value (e.g. `echo: fenced`), so a caller keeps its own
 /// meaning for that. The single source of the boolean vocabulary shared by the
-/// front-matter (`site::frontmatter::bool_field`), cell-option
-/// (`render::cell_extract`), toc (`render::fm_extract::detect_toc`), and `_site.yml`
+/// front-matter (`site::frontmatter::draft_flag`, [`value_bool`]), cell-option
+/// (`render::cell_extract`), toc (`render::DocFront::toc`), and `_site.yml`
 /// readers, so `toc: yes` / `#| echo: no` take effect instead of silently no-oping.
 pub(crate) fn yaml_bool_word(s: &str) -> Option<bool> {
     match s
@@ -190,11 +218,6 @@ fn days_in_month(year: u32, month: u32) -> u32 {
     }
 }
 
-/// `date:` is the one front-matter value read by MACHINES (the sitemap's `<lastmod>`, the
-/// Atom feed's `<updated>`), so a value they cannot parse silently vanishes from both while
-/// the page still displays it — a green `check` certifying a half-published post. Free text
-/// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
-/// rather than calling the value wrong.
 /// PA-M13: an `image:` with no `image-alt:` emits `alt=""`, which tells a screen-reader
 /// user the image is *decorative* — but a card thumbnail or hero image carries meaning, so
 /// the empty alt is an omission rather than a choice. A body `<img>` has been linted for
@@ -230,8 +253,16 @@ fn validate_image_alt(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warn
     // instruction on the same line.
 }
 
+/// `date:` is the one front-matter value read by MACHINES (the sitemap's `<lastmod>`, the
+/// Atom feed's `<updated>`), so a value they cannot parse is lost to both while the page
+/// still displays it: the sitemap drops the page's `<lastmod>` and the feed drops the
+/// entry, and without this a green `check` certified a half-published post. Free text
+/// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
+/// rather than calling the value wrong.
 fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
-    let Some(val) = map.get("date").and_then(|v| v.as_str()) else {
+    // Every scalar the site reads as a date (`site::scalar`), a number included: an
+    // un-quoted `date: 20260515` is as unreadable to the sitemap and the feed as free text.
+    let Some(val) = crate::site::scalar(map.get("date")) else {
         return;
     };
     let val = val.trim().trim_matches(['"', '\'']);
@@ -240,8 +271,9 @@ fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<War
     }
     out.push(located(
         format!(
-            "`date: {val}` isn't a machine-readable date, so it is left out of the sitemap \
-             and the Atom feed (the page still shows it) — write `YYYY-MM-DD` to publish it"
+            "`date: {val}` isn't a machine-readable date, so the sitemap carries no \
+             `<lastmod>` for this page and the Atom feed leaves it out (the page still \
+             shows the date) — write `YYYY-MM-DD` to publish it"
         ),
         block_key_line(block, "date"),
     ));
@@ -297,6 +329,61 @@ fn validate_child_keys(
     }
 }
 
+/// A boolean key (`toc:`, `execute: cache:`) whose value [`value_bool`] cannot read. The
+/// renderer ignores such a value, so the page quietly got the automatic TOC (or kept the
+/// cache on) with nothing reported. A null value is unset, not wrong.
+fn validate_bool_value(
+    v: Option<&serde_yaml::Value>,
+    key: &str,
+    span: Option<(u32, u32, u32)>,
+    out: &mut Vec<Warning>,
+) {
+    let Some(v) = v.filter(|v| !v.is_null() && value_bool(v).is_none()) else {
+        return;
+    };
+    let written = match crate::site::scalar(Some(v)) {
+        Some(s) => format!("`{key}: {s}`"),
+        None => format!("`{key}:` with a list or a mapping"),
+    };
+    out.push(located_span(
+        format!(
+            "{written} is not a boolean, so it is ignored: write `{key}: true` or `{key}: false`"
+        ),
+        span,
+    ));
+}
+
+/// A `listing:` value its parser cannot use: a `type:` outside [`LISTING_TYPES`], which
+/// renders the default text list, and a `max-items:` that is not a whole number (`"2"`,
+/// `2.0`, `-1`), which leaves the listing uncapped and so also makes it the posts' owning
+/// listing. Both used to be dropped in silence.
+fn validate_listing_values(m: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    if let Some(ty) = crate::site::scalar(m.get("type"))
+        && !LISTING_TYPES.contains(&ty.as_str())
+    {
+        out.push(located_span(
+            unknown_key_message("listing type", &ty, LISTING_TYPES),
+            nested_key_span(block, "listing", "type"),
+        ));
+    }
+    if let Some(v) = m.get("max-items")
+        && !v.is_null()
+        && v.as_u64().is_none()
+    {
+        let shown = match v {
+            serde_yaml::Value::String(s) => format!("\"{s}\""),
+            other => crate::site::scalar(Some(other)).unwrap_or_else(|| "…".to_string()),
+        };
+        out.push(located_span(
+            format!(
+                "`max-items: {shown}` is not a whole number, so the listing is not capped \
+                 (write a count, like `max-items: 3`)"
+            ),
+            nested_key_span(block, "listing", "max-items"),
+        ));
+    }
+}
+
 /// Validate each entry of `hero.actions:`, the list of buttons under a landing banner.
 ///
 /// This vocabulary was unvalidated until 2026-08-02, and unlike a top-level key its typo
@@ -304,9 +391,9 @@ fn validate_child_keys(
 /// with no label, and `check` stays green. That is the same failure shape as a typo'd
 /// chapter entry (`site::book`), and it earns the same diagnostic.
 ///
-/// Located at the misspelled key when the `actions:` block is a flow-style list on one
-/// line (the form every real page uses, so the span usually lands); falls back to the
-/// `hero:` key otherwise.
+/// Located at the misspelled key, in a flow-style entry (`- { txt: Go }`, the form every
+/// real page uses) as in a block-style one; falls back to the `hero:` key when the key
+/// cannot be found.
 fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(serde_yaml::Value::Mapping(hero)) = map.get("hero") else {
         return;
@@ -320,7 +407,7 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
             if !HERO_ACTION_KEYS.contains(&key) {
                 out.push(located_span(
                     unknown_key_message("hero action key", key, HERO_ACTION_KEYS),
-                    block_key_span(block, key).or_else(|| block_key_span(block, "hero")),
+                    nested_key_span(block, "hero", key).or_else(|| block_key_span(block, "hero")),
                 ));
             }
         }
@@ -345,26 +432,31 @@ pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
 }
 
 /// `(line, col, end_col)` of a top-level `key:`, all 1-based (see [`block_key_line`] for the
-/// line rule). Top-level keys are unindented, so `col` is 1 and `end_col` is `1 + key.len()`.
-/// Columns are Unicode-scalar counts; a front-matter key is ASCII, so scalar == byte == UTF-16.
+/// line rule). Top-level keys are unindented, so `col` is 1, or 2 for a quoted key, which
+/// is the same key to YAML (`"title": x`). Columns are Unicode-scalar counts; a front-matter
+/// key is ASCII, so scalar == byte == UTF-16.
 pub(crate) fn block_key_span(block: &str, key: &str) -> Option<(u32, u32, u32)> {
     block.lines().enumerate().find_map(|(i, line)| {
-        let t = line.trim_start();
-        (line.len() == t.len() && key_matches(t, key))
-            .then(|| (i as u32 + 2, 1, 1 + key.chars().count() as u32))
+        let quote = (!line.starts_with(char::is_whitespace))
+            .then(|| key_at(line, key))
+            .flatten()?;
+        let col = 1 + quote as u32;
+        Some((i as u32 + 2, col, col + key.chars().count() as u32))
     })
 }
 
-/// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based. `col` follows
-/// the line's indentation plus an optional `- ` list prefix. Indentation is ASCII, so the
-/// scalar column equals the byte/UTF-16 column.
+/// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based: at the start
+/// of a line in the parent's block (after its indentation and any `- ` list marker), or as a
+/// key of a flow mapping written on one line (`- { text: Go, href: a.tmd }`, how list
+/// entries are usually written). Indentation is ASCII, so the scalar column equals the
+/// byte/UTF-16 column.
 fn nested_key_span(block: &str, parent: &str, key: &str) -> Option<(u32, u32, u32)> {
     let mut in_block = false;
     for (i, line) in block.lines().enumerate() {
         let t = line.trim_start();
-        let at_top = line.len() == t.len();
+        let at_top = !line.is_empty() && line.len() == t.len();
         if !in_block {
-            if at_top && key_matches(t, parent) {
+            if at_top && key_at(t, parent).is_some() {
                 in_block = true;
             }
             continue;
@@ -372,26 +464,46 @@ fn nested_key_span(block: &str, parent: &str, key: &str) -> Option<(u32, u32, u3
         if at_top {
             break; // dedent ends the parent block
         }
-        let indent = line.len() - t.len();
-        let (prefix, body) = match t.strip_prefix("- ") {
-            Some(rest) => (
-                2 + (rest.len() - rest.trim_start().len()),
-                rest.trim_start(),
-            ),
-            None => (0, t),
-        };
-        if key_matches(body, key) {
-            let col = indent as u32 + prefix as u32 + 1;
+        // Where a key can start: past the indentation and any `- ` markers, and past
+        // each `{` or `,` of a flow mapping.
+        let mut starts = Vec::new();
+        let mut s = line.len() - t.len();
+        while let Some(rest) = line[s..].strip_prefix("- ") {
+            s = line.len() - rest.trim_start().len();
+        }
+        starts.push(s);
+        for (b, c) in line.char_indices() {
+            if matches!(c, '{' | ',') {
+                let after = &line[b + 1..];
+                starts.push(line.len() - after.trim_start().len());
+            }
+        }
+        if let Some((start, quote)) = starts
+            .into_iter()
+            .find_map(|s| key_at(&line[s..], key).map(|q| (s, q)))
+        {
+            let col = (start + quote) as u32 + 1;
             return Some((i as u32 + 2, col, col + key.chars().count() as u32));
         }
     }
     None
 }
 
-/// Does `text` start with `key` immediately followed by `:` (a YAML key)?
-fn key_matches(text: &str, key: &str) -> bool {
-    text.strip_prefix(key)
-        .is_some_and(|rest| rest.starts_with(':'))
+/// Whether `text` starts with the mapping key `key` (bare or quoted, then `:`), and if so
+/// how many quote characters precede it (0 or 1).
+fn key_at(text: &str, key: &str) -> Option<usize> {
+    let (quote, body) = match text.chars().next() {
+        Some(q @ ('"' | '\'')) => (Some(q), &text[1..]),
+        _ => (None, text),
+    };
+    let rest = body.strip_prefix(key)?;
+    let rest = match quote {
+        Some(q) => rest.strip_prefix(q)?,
+        None => rest,
+    };
+    rest.trim_start()
+        .starts_with(':')
+        .then_some(usize::from(quote.is_some()))
 }
 
 /// If the document has front matter that is present but not valid YAML, return the
@@ -414,30 +526,132 @@ pub fn yaml_error(src: &str) -> Option<(String, u32)> {
     }
 }
 
+/// A document's front matter parsed as YAML, the one parse every field reader goes
+/// through (the renderer's `render::DocFront` and the site's `parse_front_matter`).
+/// `None` when the document has no front matter, when the block is blank, or when it is
+/// not valid YAML: [`yaml_error`] reports that last case, located, and the build fails
+/// on it, so nothing here recovers a guess from a block YAML cannot read.
+pub(crate) fn front_matter_value(src: &str) -> Option<serde_yaml::Value> {
+    parse_front_matter_block(front_matter_block(src)?)
+}
+
+/// [`front_matter_value`] for a block the caller already split off with
+/// [`front_matter_block`].
+pub(crate) fn parse_front_matter_block(block: &str) -> Option<serde_yaml::Value> {
+    if block.trim().is_empty() {
+        return None;
+    }
+    serde_yaml::from_str(block).ok()
+}
+
 /// The leading `---` ... `---`/`...` block of a document, without the fences.
-/// `None` if the source doesn't open with a front-matter fence. The one canonical
-/// front-matter splitter (BOM- and `...`-terminator-aware); the site parser and the
-/// shortcode/extension scanner reuse it so every path agrees on edge cases.
+/// `None` if the source doesn't open with a front-matter fence. THE front-matter splitter:
+/// the renderer blanks this block before comrak sees the source ([`blank_front_matter`];
+/// comrak's own front-matter extension is off), and the lint, site discovery, the listing
+/// card, the feed and the dev server's digest all read it, so every path agrees on what the
+/// block is. A fence line may carry trailing whitespace, a BOM may precede the opening
+/// fence, and the block closes at `---` or `...`, as in Pandoc and Quarto.
 ///
 /// `pub` because the dev server digests this block to tell a body edit from a change to
 /// what DISCOVERY reads, and a second hand-rolled `---` splitter is how the two would come
 /// to disagree about a BOM or a `...` terminator.
 pub fn front_matter_block(src: &str) -> Option<&str> {
-    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
-    let first = src.split_inclusive('\n').next()?;
+    front_matter_span(src).map(|(inner, _)| &src[inner])
+}
+
+/// Where [`front_matter_block`]'s block sits in `src`: the byte range between the fences,
+/// and the offset just past the closing fence line.
+fn front_matter_span(src: &str) -> Option<(std::ops::Range<usize>, usize)> {
+    let bom = if src.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    let first = src[bom..].split_inclusive('\n').next()?;
     if first.trim_end() != "---" {
         return None;
     }
-    let after = first.len();
+    let after = bom + first.len();
     let mut pos = after;
     for line in src[after..].split_inclusive('\n') {
         let trimmed = line.trim_end();
         if trimmed == "---" || trimmed == "..." {
-            return Some(&src[after..pos]);
+            return Some((after..pos, pos + line.len()));
         }
         pos += line.len();
     }
     None
+}
+
+/// `src` with its front matter, fences included, blanked line for line: every character
+/// but the line breaks goes, so comrak parses the body alone while every later line keeps
+/// its number (click-to-source, `data-sourcepos` and every diagnostic stay in the author's
+/// own numbering). Borrows when there is no front matter.
+pub(crate) fn blank_front_matter(src: &str) -> std::borrow::Cow<'_, str> {
+    let Some((_, end)) = front_matter_span(src) else {
+        return std::borrow::Cow::Borrowed(src);
+    };
+    let mut out: String = src[..end]
+        .chars()
+        .filter(|c| matches!(c, '\n' | '\r'))
+        .collect();
+    out.push_str(&src[end..]);
+    std::borrow::Cow::Owned(out)
+}
+
+/// A block that is meant as front matter but that [`front_matter_block`] does not accept,
+/// as a located error: a blank line above the opening `---`, or no closing fence. Either
+/// way the block is body text, so every key in it is ignored and the YAML is published on
+/// the page. Only a block whose keys include a real front-matter key counts as meant, so a
+/// document that opens with a thematic break stays silent.
+fn misplaced_front_matter(src: &str) -> Option<Warning> {
+    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
+    let meant = |yaml: &str| {
+        parse_front_matter_block(yaml)
+            .as_ref()
+            .and_then(serde_yaml::Value::as_mapping)
+            .is_some_and(|m| {
+                m.keys()
+                    .filter_map(|k| k.as_str())
+                    .any(|k| KNOWN_KEYS.contains(&k))
+            })
+    };
+    let blank = src.lines().take_while(|l| l.trim().is_empty()).count();
+    let (message, line) = if blank > 0 {
+        let rest = src.split_inclusive('\n').skip(blank).collect::<String>();
+        if !front_matter_block(&rest).is_some_and(meant) {
+            return None;
+        }
+        (
+            "front matter must start on the first line: a blank line above this `---` makes \
+             the block body text, so every key in it is ignored and the YAML is published \
+             on the page (delete the blank line)",
+            blank + 1,
+        )
+    } else {
+        let mut lines = src.lines();
+        if lines.next()?.trim_end() != "---" {
+            return None;
+        }
+        let head = lines
+            .take_while(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !meant(&head) {
+            return None;
+        }
+        (
+            "front matter opened on this line is never closed, so it is body text: every key \
+             in it is ignored and the YAML is published on the page (end the block with a \
+             `---` line)",
+            1,
+        )
+    };
+    Some(
+        Warning::new(message)
+            .at(None, line as u32)
+            .severity(Severity::Error),
+    )
 }
 
 /// The candidate within edit distance 2 of `key` (a "did you mean"), or `None`.
@@ -547,6 +761,53 @@ mod tests {
         // case IS the witness — do not delete it as redundant.
         let m2 = msgs("---\ntitle: X\nlisting:\n  - contents: a\n    sort-uii: false\n---\n");
         assert_eq!(m2, vec!["unknown listing key `sort-uii`"]);
+    }
+
+    /// A `listing:` value the parser cannot use was dropped in silence: a `type:` outside
+    /// the vocabulary rendered the default text list, and a `max-items:` that is not a
+    /// whole number (`"2"`, `2.0`, `-1`) left the listing uncapped (which also made it the
+    /// posts' owning listing). Both are located now.
+    #[test]
+    fn listing_type_and_max_items_values_are_validated() {
+        let ws = validate_front_matter(
+            "---\ntitle: X\nlisting:\n  contents: posts\n  type: lists\n  max-items: 2.0\n---\n",
+        );
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("type"))
+            .unwrap_or_else(|| panic!("{ws:?}"));
+        assert_eq!(
+            w.message,
+            "unknown listing type `lists` (did you mean `list`?)"
+        );
+        assert_eq!(w.line, Some(5), "{w:?}");
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("max-items"))
+            .unwrap_or_else(|| panic!("{ws:?}"));
+        assert!(
+            w.message.contains("`max-items: 2.0` is not a whole number"),
+            "{w:?}"
+        );
+        assert_eq!(w.line, Some(6), "{w:?}");
+
+        for bad in ["\"2\"", "-1"] {
+            let m = msgs(&format!(
+                "---\ntitle: X\nlisting:\n  - contents: posts\n    max-items: {bad}\n---\n"
+            ));
+            assert!(
+                m.iter().any(|w| w.contains("not a whole number")),
+                "{bad}: {m:?}"
+            );
+        }
+        assert_eq!(
+            msgs("---\ntitle: X\nlisting:\n  contents: posts\n  type: table\n---\n"),
+            vec!["unknown listing type `table`"]
+        );
+        assert!(
+            msgs("---\ntitle: X\nlisting:\n  contents: posts\n  type: list\n  max-items: 3\n---\n")
+                .is_empty()
+        );
     }
 
     /// The listing category-filter chips were deleted 2026-08-03 (visual minimalism
@@ -695,6 +956,24 @@ mod tests {
         );
     }
 
+    /// A `date:` YAML reads as a NUMBER (`date: 20260515`) is as unreadable to the sitemap
+    /// and the feed as free text, but the rule only looked at strings, so it said nothing
+    /// while the feed stamped the entry with another post's date. And the message says what
+    /// actually happens: the page stays in the sitemap without a `<lastmod>`, and the feed
+    /// leaves it out.
+    #[test]
+    fn a_numeric_date_is_linted_and_the_message_says_what_is_lost() {
+        let m = msgs("---\ntitle: X\ndate: 20260515\n---\n");
+        let w = m
+            .iter()
+            .find(|w| w.contains("20260515"))
+            .unwrap_or_else(|| panic!("a numeric date must warn: {m:?}"));
+        assert!(
+            w.contains("no `<lastmod>`") && w.contains("Atom feed leaves it out"),
+            "{w}"
+        );
+    }
+
     /// The diagnostic must carry a line, like every other front-matter rule — an unlocated
     /// warning is the exact Quarto flaw D53 critiques.
     #[test]
@@ -829,6 +1108,75 @@ mod tests {
         assert_eq!(d.line, Some(4));
         assert_eq!(d.col, Some(3)); // 2-space indent -> column 3
         assert_eq!(d.end_col, Some(8));
+    }
+
+    /// `toc:` and `execute: cache:` are booleans. Any other value (`toc: 0`, `toc: n`, a
+    /// list) was ignored in silence, so the page quietly got the automatic TOC (or kept the
+    /// cache on); it is located now. The YAML-1.1 words (`yes`/`off`) are read as booleans
+    /// and stay silent, and so does a null.
+    #[test]
+    fn a_boolean_key_with_a_value_that_is_not_one_is_diagnosed() {
+        for (fm, line, needle) in [
+            ("toc: 0\n", 3, "`toc: 0`"),
+            ("toc: n\n", 3, "`toc: n`"),
+            ("toc: [a]\n", 3, "`toc:`"),
+            ("execute:\n  cache: 0\n", 4, "`cache: 0`"),
+        ] {
+            let ws = validate_front_matter(&format!("---\ntitle: X\n{fm}---\n"));
+            let w = ws
+                .iter()
+                .find(|w| w.message.contains("not a boolean"))
+                .unwrap_or_else(|| panic!("{fm:?}: {ws:?}"));
+            assert!(w.message.contains(needle), "{fm:?}: {}", w.message);
+            assert_eq!(w.line, Some(line), "{fm:?}: {w:?}");
+        }
+        for fm in [
+            "toc: yes\n",
+            "toc: false\n",
+            "toc:\n",
+            "execute:\n  cache: off\n",
+        ] {
+            let ws = validate_front_matter(&format!("---\ntitle: X\n{fm}---\n"));
+            assert!(ws.is_empty(), "{fm:?}: {ws:?}");
+        }
+    }
+
+    /// A hero action is written as a flow mapping on its own line, and a typo in one used
+    /// to be located at the `hero:` key, whatever the doc comment promised, because the
+    /// locator only matched a key at the start of an unindented line.
+    #[test]
+    fn a_hero_action_key_typo_is_located_at_the_key() {
+        let src = "---\ntitle: T\nhero:\n  headline: H\n  actions:\n    \
+                   - { text: Go, href: a.tmd }\n    - { txt: Typo, href: a.tmd }\n---\n";
+        let w = validate_front_matter(src);
+        let d = w
+            .iter()
+            .find(|w| w.message.contains("`txt`"))
+            .unwrap_or_else(|| panic!("{w:?}"));
+        assert_eq!(
+            (d.line, d.col, d.end_col),
+            (Some(7), Some(9), Some(12)),
+            "{d:?}"
+        );
+    }
+
+    /// A quoted key is the same key to YAML (`"title": x`), so its diagnostic is located the
+    /// same way; it used to come out with no line at all.
+    #[test]
+    fn a_quoted_key_is_located_like_a_plain_one() {
+        let w = validate_front_matter(
+            "---\n\"titel\": X\n'date': Spring 2026\nexecute:\n  \"cach\": true\n---\n",
+        );
+        let at = |needle: &str| {
+            let d = w
+                .iter()
+                .find(|w| w.message.contains(needle))
+                .unwrap_or_else(|| panic!("{needle}: {w:?}"));
+            (d.line, d.col, d.end_col)
+        };
+        assert_eq!(at("`titel`"), (Some(2), Some(2), Some(7)));
+        assert_eq!(at("Spring 2026").0, Some(3));
+        assert_eq!(at("`cach`"), (Some(5), Some(4), Some(8)));
     }
 
     /// PA-M13. The escape hatch matters as much as the warning: an author who means the

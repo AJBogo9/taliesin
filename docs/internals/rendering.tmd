@@ -33,7 +33,10 @@ flowchart TB
    `{{< include >}}` was resolved a pass earlier. It is
    **line-preserving** (each tag opens and closes on one line, the template's
    newlines collapsed) so the source map from stage 1 stays valid.
-3. **Fenced-div scan + preprocess** (`render/divs.rs`). The `:::` fenced divs aren't
+3. **Front matter, fenced-div scan + preprocess** (`frontmatter.rs`, `render/divs.rs`).
+   `frontmatter::front_matter_block` is the one front-matter splitter: the block is read
+   once as YAML (`render/fm_extract.rs`), then its lines are blanked, so comrak (whose own
+   front-matter extension is off) parses the body alone. The `:::` fenced divs aren't
    CommonMark, so their spans are recorded first, then the marker lines are blanked
    without changing the line count (again preserving sourcepos). The inner content then
    parses as ordinary blocks.
@@ -53,8 +56,7 @@ flowchart TB
    becomes one block: the emitter renders it to HTML (code highlighted by
    `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id** and a
    `data-sourcepos` mapped back through the source map. A `` ```{lang} `` fence is
-   recognised as an executable **cell** and recorded for the server to run later. The
-   front-matter node is where the document's metadata is resolved.
+   recognised as an executable **cell** and recorded for the server to run later.
 6. **Regroup divs** (`render/divs.rs`). The flat blocks are wrapped back into
    callout / layout-grid / generic container blocks using the spans from stage 3.
    Inner blocks keep their own ids and sourcepos, so click-to-source works inside a

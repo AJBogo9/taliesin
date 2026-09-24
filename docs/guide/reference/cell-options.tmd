@@ -30,6 +30,10 @@ cell's language; the table shows the idiomatic choice for each language.
 A space between the comment marker and the pipe is tolerated (`# | echo: false`,
 `// | name: x`), but the canonical form is tight.
 
+A value follows YAML's comment rule: a `#` after whitespace starts a comment, so
+`#| echo: false  # hide setup` reads `false`. A caption that contains ` #` goes in quotes
+(`#| fig-cap: "Run #3"`).
+
 ### The leading-block rule
 
 Options are read only from the contiguous run of directive lines at the top of the

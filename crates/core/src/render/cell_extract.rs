@@ -1,6 +1,6 @@
 //! Cell-option parsing: the `#|`/`//|`/`%%|` directive primitive and the pure leaf
-//! parsers that key off it — language detection, boolean flags, document execute
-//! defaults, code-fold, option stripping, source slicing, and `{js}` option parsing.
+//! parsers that key off it — language detection, boolean flags, code-fold, option
+//! stripping, source slicing, and `{js}` option parsing.
 //! All take a code literal/lines + key and return derived strings/bools; none touches
 //! the orchestrator's shared state.
 
@@ -33,10 +33,38 @@ pub(super) fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
         if let Some((k, v)) = opt.split_once(':')
             && k.trim() == key
         {
-            return Some(v.trim().trim_matches(['"', '\'']));
+            return Some(option_value(v));
         }
     }
     None
+}
+
+/// A raw `#|` option value as YAML reads it: a trailing comment dropped, then the
+/// surrounding quotes. YAML's rule is that a `#` after whitespace starts a comment; in a
+/// quoted value only the `#` after the closing quote does. Without this,
+/// `#| echo: false  # hide setup` was not the word `false`, and the hidden cell's code
+/// was published.
+fn option_value(raw: &str) -> &str {
+    let v = raw.trim();
+    let end = match v.chars().next() {
+        // Quoted: the closing quote is the first one after which only a comment follows.
+        Some(q @ ('"' | '\'')) => v
+            .char_indices()
+            .skip(1)
+            .find(|&(i, c)| {
+                c == q && {
+                    let rest = v[i + 1..].trim_start();
+                    rest.is_empty() || rest.starts_with('#')
+                }
+            })
+            .map_or(v.len(), |(i, _)| i + 1),
+        // Plain: the first `#` at the start or after whitespace.
+        _ => v
+            .char_indices()
+            .find(|&(i, c)| c == '#' && (i == 0 || v[..i].ends_with([' ', '\t'])))
+            .map_or(v.len(), |(i, _)| i),
+    };
+    v[..end].trim_end().trim_matches(['"', '\''])
 }
 
 /// A boolean cell option (`#| echo: false`) that falls back to a document default
@@ -50,66 +78,6 @@ pub(super) fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
         Some(v) => crate::frontmatter::yaml_bool_word(v) != Some(false),
         None => default,
     }
-}
-
-/// The document-level `cache:` default from a front-matter `execute:` block:
-///
-/// ```yaml
-/// execute:
-///   cache: false
-/// ```
-///
-/// Defaults to `true`; a per-cell `#| cache:` overrides it.
-///
-/// `echo:` and `include:` used to live here too and were retired on 2026-08-02. They were
-/// document-wide defaults for something every real document states per cell (`#| echo:`),
-/// and a default that silently suppresses every listing in a file reads worse than saying
-/// it on the cells you mean. `cache:` stays because it is genuinely a whole-document
-/// property: it is about the freeze cache, not about how any one cell reads.
-pub(super) fn detect_execute_cache(front_matter: &str) -> bool {
-    // Off only for a recognized false word (`false`/`no`/`off`); everything else stays on.
-    // Coerces the YAML-1.1 words so `execute: {cache: no}` takes effect.
-    fn apply_kv(k: &str, v: &str, cache: &mut bool) {
-        if k.trim() == "cache" {
-            *cache = crate::frontmatter::yaml_bool_word(v.trim().trim_matches(['"', '\'']))
-                != Some(false);
-        }
-    }
-
-    let mut cache = true;
-    let mut in_block = false;
-    for line in front_matter.lines() {
-        let indent = line.len() - line.trim_start().len();
-        let t = line.trim();
-        if !in_block {
-            if indent == 0
-                && let Some(rest) = t.strip_prefix("execute:")
-            {
-                let rest = rest.trim();
-                if let Some(inner) = rest.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                    // Flow form on one line: `execute: {cache: false}`.
-                    for pair in inner.split(',') {
-                        if let Some((k, v)) = pair.split_once(':') {
-                            apply_kv(k, v, &mut cache);
-                        }
-                    }
-                } else if rest.is_empty() {
-                    in_block = true; // block form: indented lines follow
-                }
-            }
-            continue;
-        }
-        if t.is_empty() {
-            continue;
-        }
-        if indent == 0 {
-            break; // dedent ends the block
-        }
-        if let Some((k, v)) = t.split_once(':') {
-            apply_kv(k, v, &mut cache);
-        }
-    }
-    cache
 }
 
 /// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)

@@ -31,13 +31,10 @@ pub(crate) fn parse_front_matter(
     label: &str,
     warnings: &mut Vec<String>,
 ) -> FrontInfo {
-    let Ok(src) = std::fs::read_to_string(path) else {
+    let Ok(src) = crate::includes::read_source(path) else {
         return FrontInfo::default();
     };
-    let Some(block) = crate::frontmatter::front_matter_block(&src) else {
-        return FrontInfo::default();
-    };
-    let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+    let Some(val) = crate::frontmatter::front_matter_value(&src) else {
         return FrontInfo::default();
     };
     // Parsed for its DIAGNOSTICS only. Nothing in the site layer reads a page's authors
@@ -59,23 +56,23 @@ pub(crate) fn parse_front_matter(
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing"), label, warnings),
         hero: parse_hero(val.get("hero")),
-        draft: bool_field(&val, "draft", false, label, warnings),
+        draft: draft_flag(&val, label, warnings),
     }
 }
 
-/// A boolean front-matter field that also catches the YAML-1.1 words serde_yaml
-/// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off`. Without
-/// this, `draft: yes` is a string, `as_bool()` is `None`, and the draft silently
-/// PUBLISHES. Coerce them fail-safe and warn to use canonical `true`/`false`.
-fn bool_field(
-    val: &serde_yaml::Value,
-    key: &str,
-    default: bool,
-    label: &str,
-    warnings: &mut Vec<String>,
-) -> bool {
-    let Some(v) = val.get(key) else {
-        return default;
+/// The `draft:` flag. Also catches the YAML-1.1 words serde_yaml (which follows YAML 1.2)
+/// reads as plain STRINGS (`yes`/`no`/`on`/`off`): without this, `draft: yes` is a string,
+/// `as_bool()` is `None`, and the draft silently PUBLISHES. They are coerced with a warning
+/// to use canonical `true`/`false`.
+///
+/// Any other value (`draft: 1`, `y`, `x`, a list) says the author meant *something*, and
+/// the tool cannot tell what, so it fails SAFE: the page is held back as a draft and the
+/// value is reported. It used to fall back to "not a draft", which published the page,
+/// listed it and put it in the feed with no diagnostic. A null `draft:` is unset.
+fn draft_flag(val: &serde_yaml::Value, label: &str, warnings: &mut Vec<String>) -> bool {
+    let v = match val.get("draft") {
+        None | Some(serde_yaml::Value::Null) => return false,
+        Some(v) => v,
     };
     if let Some(b) = v.as_bool() {
         return b;
@@ -84,11 +81,19 @@ fn bool_field(
         && let Some(b) = crate::frontmatter::yaml_bool_word(s)
     {
         warnings.push(format!(
-            "{label}: `{key}: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `{key}: {b}`"
+            "{label}: `draft: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `draft: {b}`"
         ));
         return b;
     }
-    default
+    let what = match scalar(Some(v)) {
+        Some(s) => format!("`draft: {s}` is not a boolean"),
+        None => "`draft:` holds a list or a mapping, not a boolean".to_string(),
+    };
+    warnings.push(format!(
+        "{label}: {what}, so the page is held back as a draft \u{2014} write `draft: true` \
+         or `draft: false`"
+    ));
+    true
 }
 
 pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
@@ -103,8 +108,10 @@ pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
                 Some(HeroAction {
                     text: scalar(it.get("text"))?,
                     href: scalar(it.get("href"))?,
-                    primary: it.get("primary").and_then(serde_yaml::Value::as_bool) == Some(true)
-                        || scalar(it.get("class")).as_deref() == Some("primary"),
+                    // A boolean like every other; `class: primary` is not a key, so it is
+                    // reported as unknown and not read.
+                    primary: it.get("primary").and_then(crate::frontmatter::value_bool)
+                        == Some(true),
                 })
             })
             .collect(),
@@ -203,6 +210,36 @@ mod tests {
         assert!(!spec("grid").with_image, "`type: grid` is no longer read");
         assert!(spec("list").with_image, "`type: list` keeps the thumbnails");
         assert!(!spec("default").with_image, "`default` stays text-only");
+    }
+
+    /// `class: primary` on a hero action is not in `HERO_ACTION_KEYS`, so the lint calls it
+    /// unknown, yet the parser still honoured it and the button rendered filled. The read is
+    /// gone with the key: this is the parser-side pin. `primary:` itself is a boolean read
+    /// like every other, so `primary: yes` and `primary: "true"` take effect too.
+    #[test]
+    fn parse_hero_reads_primary_as_a_bool_and_not_the_retired_class() {
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "hero:\n  actions:\n    - { text: C, href: a, class: primary }\n    \
+             - { text: Y, href: a, primary: yes }\n    - { text: S, href: a, primary: \"true\" }\n    \
+             - { text: T, href: a, primary: true }\n    - { text: N, href: a, primary: no }\n",
+        )
+        .unwrap();
+        let h = parse_hero(v.get("hero")).expect("hero parses");
+        let primary: Vec<(&str, bool)> = h
+            .actions
+            .iter()
+            .map(|a| (a.text.as_str(), a.primary))
+            .collect();
+        assert_eq!(
+            primary,
+            [
+                ("C", false),
+                ("Y", true),
+                ("S", true),
+                ("T", true),
+                ("N", false)
+            ]
+        );
     }
 
     /// `hero.image:`/`image-alt:` were retired on 2026-08-02 and their two-column layout

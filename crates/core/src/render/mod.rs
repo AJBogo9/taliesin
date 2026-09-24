@@ -20,7 +20,9 @@ pub(crate) use model::{BufLine, CellRole, CodeFold};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
-    options.extension.front_matter_delimiter = Some("---".to_string());
+    // No `front_matter_delimiter`: `frontmatter::front_matter_block` is the one splitter,
+    // so a WHOLE document goes through `frontmatter::blank_front_matter` before it is
+    // parsed with these options.
     options.extension.strikethrough = true;
     options.extension.table = true;
     options.extension.autolink = true;
@@ -39,14 +41,14 @@ fn parse_options() -> Options<'static> {
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 mod fm_extract;
+use fm_extract::DocFront;
 pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
-use fm_extract::{detect_title_block_hidden, detect_toc, extract_field};
 mod cell_extract;
 pub use cell_extract::option_directive;
 use cell_extract::{
-    cell_flag_or, cell_option, code_fold, code_lang, detect_execute_cache, hidden_cell,
-    is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,
+    cell_flag_or, cell_option, code_fold, code_lang, hidden_cell, is_executable_fence,
+    parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
 pub use cell_numbered::caption_label;
@@ -507,21 +509,31 @@ fn render_internal_impl(
     // then strip the fence markers in a line-preserving pass so sourcepos line
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
-    let (spans, unclosed_fences) = scan_div_spans(src);
-    let processed = preprocess(src);
+    //
+    // The front matter is blanked first, line for line: `frontmatter::front_matter_block`
+    // is the ONE splitter, and comrak's own front-matter extension is off, because the two
+    // disagreed (comrak took only an exact `---` and closed at the first `---` anywhere, so
+    // a `--- ` fence published the YAML as a heading, or swallowed the body up to a later
+    // `---` rule).
+    let body = crate::frontmatter::blank_front_matter(src);
+    let (spans, unclosed_fences) = scan_div_spans(&body);
+    let processed = preprocess(&body);
     let root = parse_document(&arena, &processed, &options);
 
     let lines: Vec<&str> = processed.lines().collect();
-    let mut title: Option<String> = None;
-    let mut subtitle: Option<String> = None;
-    let mut date: Option<String> = None;
-    let mut authors: Vec<crate::author::Author> = Vec::new();
-    let mut description: Option<String> = None;
-    let mut toc_explicit: Option<bool> = None;
+    // The front matter, read ONCE as YAML (the same parse og:title, the listing card and
+    // the feed read), before the walk: the section-numbering base below needs to know
+    // whether a title block will be emitted BEFORE the first heading.
+    let front = DocFront::of(src);
+    let title = front.text("title");
+    let subtitle = front.text("subtitle");
+    let date = front.text("date");
+    let description = front.text("description");
+    let toc_explicit = front.toc();
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
     // but skips the visible `<h1>` header (nav landing pages don't need it).
-    let mut hide_title_block = false;
-    let mut bib_paths: Vec<String> = Vec::new();
+    let hide_title_block = front.title_block_hidden();
+    let bib_paths = front.bibliography();
     // Populated only by a project's `_site.yml head:` (merged in by `site::page_chrome`) and
     // by the chrome's own draft banner; a document's front matter has had no include keys
     // since the raw-injection family was retired on 2026-08-02.
@@ -545,18 +557,19 @@ fn render_internal_impl(
             .at(file, mapped as u32),
         );
     }
+    // The byline. Front matter is the head of the primary document by definition, so
+    // line 1 is the right anchor for an `author:` diagnostic.
+    let (authors, author_msgs) = crate::author::parse(front.get("author"));
+    warnings.extend(author_msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
     // The document-level `execute: cache:` default; a cell's own `#| cache` overrides it.
     // `echo`/`include` have no document-level form since 2026-08-02 — they are per-cell
     // (`#| echo:`), which is where every real document already said them.
-    let mut exec_cache = true;
+    let exec_cache = front.exec_cache();
     // Whether this render will emit a visible title block — and therefore demote every
-    // body heading one level. Read from the front matter up front (not from the in-loop
-    // `title`/`format`/`hide_title_block`, which are only set once the walk has passed
-    // the front-matter node) because the section-numbering base below needs it BEFORE
-    // the first heading. The demotion site further down uses this same value, so the
-    // two cannot drift.
-    let emits_title_block_here =
-        emits_title_block(crate::frontmatter::front_matter_block(src).unwrap_or(""));
+    // body heading one level. The section-numbering base below needs it BEFORE the first
+    // heading, and the demotion site further down uses this same value, so the two cannot
+    // drift.
+    let emits_title_block_here = front.emits_title_block();
     let mut flat: Vec<FlatBlock> = Vec::new();
     // Footnote definitions, resolved BEFORE the walk. comrak moves every definition to
     // the document end, so by the time the walk reaches a `[^a]` reference in an early
@@ -679,44 +692,6 @@ fn render_internal_impl(
             cell_role,
         ) = {
             let data = node.data.borrow();
-            if let NodeValue::FrontMatter(fm) = &data.value {
-                title = extract_field(fm, "title");
-                subtitle = extract_field(fm, "subtitle");
-                date = extract_field(fm, "date");
-                // The byline reads the front matter as YAML, not with `extract_field`'s
-                // line scan: a structured `author:` puts the name on an INDENTED
-                // sub-line, which the scan skips, so it would return None and the byline
-                // would silently vanish. The scan stays the fallback for a block YAML
-                // cannot parse at all, where a scalar `author: Name` is still recoverable.
-                // `fm` is comrak's literal, `---` fences included, and a trailing `---`
-                // opens a SECOND YAML document that `from_str::<Value>` refuses outright.
-                // Parse the stripped block instead.
-                let block = crate::frontmatter::front_matter_block(src).unwrap_or(fm);
-                match serde_yaml::from_str::<serde_yaml::Value>(block) {
-                    Ok(v) => {
-                        let (list, msgs) = crate::author::parse(v.get("author"));
-                        // Front matter is the head of the primary document by
-                        // definition, so line 1 is the right anchor and the only one in
-                        // scope here (the per-block `file`/`start_line` are bound below).
-                        warnings.extend(msgs.into_iter().map(|m| Warning::new(m).at(None, 1)));
-                        authors = list;
-                    }
-                    Err(_) => {
-                        // YAML the parser refuses at all: recover what a line scan can, so a
-                        // scalar `author: Name` still produces a byline.
-                        authors = extract_field(fm, "author")
-                            .map(crate::author::Author::named)
-                            .into_iter()
-                            .collect();
-                    }
-                }
-                description = extract_field(fm, "description");
-                bib_paths = bibliography_paths(fm);
-                toc_explicit = detect_toc(fm);
-                hide_title_block = detect_title_block_hidden(fm);
-                exec_cache = detect_execute_cache(fm);
-                continue;
-            }
             let sp = data.sourcepos;
             // Translate the buffer line range back to the originating file/line.
             let (file, start_line, end_line) = map_span(

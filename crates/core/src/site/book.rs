@@ -105,11 +105,7 @@ fn push_group(
         }
         // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner entries.
         if let Some(map) = ch.as_mapping() {
-            let part = map
-                .get("part")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let part = scalar(map.get("part")).unwrap_or_default();
             let header_idx = entries.len();
             entries.push(BookEntry {
                 part: Some(part),
@@ -157,8 +153,8 @@ fn push_chapter_entry(
     if let Some(map) = value.as_mapping()
         && let Some(file) = map.get("file").and_then(|v| v.as_str())
     {
-        let label = map.get("text").and_then(|v| v.as_str());
-        push_chapter(root, file, label, entries, num, mode, excluded);
+        let label = scalar(map.get("text"));
+        push_chapter(root, file, label.as_deref(), entries, num, mode, excluded);
         return true;
     }
     false
@@ -178,7 +174,7 @@ fn push_chapter(
 ) {
     let input = root.join(file);
     let rel = file.to_string();
-    let src = std::fs::read_to_string(&input).unwrap_or_default();
+    let src = crate::includes::read_source(&input).unwrap_or_default();
     let (h1, unnumbered) = chapter_heading_in(&src);
     // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
     // warnings: `book_pages` re-parses this file with the real sink, so a
@@ -221,7 +217,7 @@ fn push_chapter(
 /// unnumbered (`{.unnumbered}` / `{-}`). Used for a book chapter's title fallback and,
 /// via the `.0`, for a titleless website page's title ([`discovery::website_pages`]).
 pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
-    let Ok(src) = std::fs::read_to_string(input) else {
+    let Ok(src) = crate::includes::read_source(input) else {
         return (None, false);
     };
     chapter_heading_in(&src)

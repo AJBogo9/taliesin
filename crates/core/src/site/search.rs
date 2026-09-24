@@ -158,7 +158,7 @@ pub(super) fn render_finished(
     targets: &HashMap<String, XrefTarget>,
     site_defaults: Option<&render::SiteDefaults>,
 ) -> Option<(String, render::RenderedDoc)> {
-    let src = std::fs::read_to_string(&page.input).ok()?;
+    let src = crate::includes::read_source(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
     let mut doc = render::render_document_scoped_with_site(&src, base, chapter, site_defaults);
     if let Some(chapter) = chapter {
