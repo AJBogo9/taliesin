@@ -60,7 +60,7 @@ fn repo_root() -> String {
 /// gutter (`"  " + a 7-wide tag + " "`), so a multi-line error reads as one block
 /// instead of half a message sitting flush against the left margin. `first` is the
 /// index of the message's own first line within `stderr` (the caller may have other
-/// log lines, or a `serve: ` prefix, ahead of it).
+/// log lines ahead of it).
 fn assert_continuations_hang_under_the_gutter(stderr: &str, first_line_needle: &str) {
     let lines: Vec<&str> = stderr.lines().collect();
     let start = lines
@@ -395,6 +395,57 @@ fn start(doc: &Path) -> (Server, u16) {
         std::thread::sleep(Duration::from_millis(50));
     }
     panic!("preview of {} never came up on {port}", doc.display());
+}
+
+/// `preview <file>` for a document its project does not publish (here a chapter the book's
+/// `chapters:` leaves out) opens the home page, since the document has no page of its own.
+/// It did so with no word in the log (audit 2026-09-24, config-seam #16); the log now names
+/// the document, after the banner, where it is still on screen.
+#[test]
+fn preview_of_a_document_the_project_does_not_publish_says_so() {
+    let dir = std::env::temp_dir().join(format!("tali-unlisted-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("ch")).unwrap();
+    fs::write(
+        dir.join("_site.yml"),
+        "title: B\nchapters:\n  - index.tmd\n",
+    )
+    .unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nProse.\n").unwrap();
+    fs::write(dir.join("ch/b.tmd"), "---\ntitle: B\n---\n\nProse.\n").unwrap();
+
+    let port = free_port();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .arg("preview")
+        .arg(dir.join("ch/b.tmd"))
+        .arg(port.to_string())
+        .arg("--no-exec")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+    // The server answers only once its startup log is written, so an answer means the
+    // warning, if any, is already in the pipe.
+    let canonical = fs::canonicalize(&dir).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut up = false;
+    while !up && Instant::now() < deadline {
+        up = http_get(port, "/__taliesin").is_some_and(|(status, body)| {
+            status == 200
+                && serde_json::from_str::<serde_json::Value>(&body)
+                    .is_ok_and(|v| v["root"].as_str().map(Path::new) == Some(canonical.as_path()))
+        });
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let _ = child.kill();
+    let out = child.wait_with_output().expect("reap preview");
+    let _ = fs::remove_dir_all(&dir);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(up, "preview never came up on {port}: {stderr}");
+    assert!(
+        stderr.contains("ch/b.tmd is not a page of this project"),
+        "the log names the document it could not open: {stderr}"
+    );
 }
 
 /// The contract: for a document with no ancestor `_site.yml`, what `preview` serves and

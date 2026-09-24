@@ -41,9 +41,11 @@ The following are by design:
   run. `--no-exec` renders cells as source instead.
 - **The preview binds to loopback only.** There is no flag that exposes it on a
   network. The websocket enforces an origin check (so a page on another site cannot
-  drive the control channel), and every HTTP request passes a `Host` allowlist (the
-  DNS-rebinding guard). To read a draft on another device, `build` it and serve the
-  folder yourself.
+  drive the control channel), every HTTP request passes a `Host` allowlist (the
+  DNS-rebinding guard), and a page on another site, or on another local port, may link
+  to the preview but not load its responses into itself (the search index holds every
+  page's text, drafts included). To read a draft on another device, `build` it and
+  serve the folder yourself.
 - **The preview is a read-only view.** It never writes back to your source;
   click-to-source only navigates the editor.
 - **Symlinks inside your checkout are followed.** A `{{< include >}}`,
@@ -68,5 +70,5 @@ The following are by design:
 Reports that fall inside this model (for example, "a cell can run arbitrary
 code") are working as intended. Reports that let an untrusted document or a
 remote page cross one of these boundaries (read files outside the project,
-get past the origin check or the `Host` allowlist, inject script into the
-rendered page) are in scope and welcome.
+get past the origin check, the `Host` allowlist or the cross-site load check,
+inject script into the rendered page) are in scope and welcome.

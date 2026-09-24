@@ -327,21 +327,10 @@ fn unknown_command_message(other: &str) -> String {
 ///
 /// Consulted only after [`taliesin_core::closest`] has declined, so no suggestion that
 /// already worked changes. Candidates are [`COMMANDS`], so a retired verb is never the
-/// answer here either (`serve-site` must not resolve to the `serve` that was cut).
-///
-/// Ambiguity yields nothing rather than a coin flip: `b` opens `build` alone today, but `l`
-/// opens `lsp` alone only because `lint` is a flag rather than a verb, and picking a winner
-/// when two do match would teach a rule that is not real.
+/// answer here either (`serve-site` must not resolve to the `serve` that was cut). The rule
+/// itself, shared with the unknown-flag did-you-mean, is [`serve::extends_or_abbreviates`].
 fn extended_command(other: &str) -> Option<&'static str> {
-    if other.len() < 2 {
-        return None;
-    }
-    let mut hits = COMMANDS
-        .iter()
-        .map(|c| c.name)
-        .filter(|c| other.starts_with(c) || c.starts_with(other));
-    let first = hits.next()?;
-    hits.next().is_none().then_some(first)
+    serve::extends_or_abbreviates(other, COMMANDS.iter().map(|c| c.name))
 }
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can

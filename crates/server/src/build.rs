@@ -101,8 +101,8 @@ const NON_HTML_OUTPUT_EXTS: &[&str] = &[
 /// ([`NON_HTML_OUTPUT_EXTS`]), or `None` when the output path is absent or an acceptable
 /// target. Names the extension, hands over the concrete `.html` fix (the out path with its
 /// extension swapped, so `dist/x.pdf` → `dist/x.html`), offers the browser Print-to-PDF escape
-/// hatch, and points at the planned print track. `error: `-prefixed to match the other
-/// `parse_build_args` errors (`cmd_build` prints it verbatim to stderr).
+/// hatch, and points at the planned print track. No `error:` prefix, like the other
+/// `parse_build_args` errors (`cmd_build` frames them with `log::error`).
 fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
     let out = out_html?;
     let ext = Path::new(out).extension()?.to_str()?.to_ascii_lowercase();
@@ -112,7 +112,7 @@ fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
     let html = Path::new(out).with_extension("html");
     let html = html.display();
     Some(format!(
-        "error: `build` renders HTML only, but the output path `{out}` ends in `.{ext}`. \
+        "`build` renders HTML only, but the output path `{out}` ends in `.{ext}`. \
          Write `{html}` instead (or omit it to build `{html}` beside the source). For a rough \
          PDF, open the built page and use your browser's Print to PDF; a real print/PDF track \
          is planned (ROADMAP Pillar IV)."
@@ -136,87 +136,80 @@ fn source_output_error(out_html: Option<&str>) -> Option<String> {
         return None;
     }
     Some(format!(
-        "error: `{out}` is a Taliesin source file, and the second positional is the path \
+        "`{out}` is a Taliesin source file, and the second positional is the path \
          `build` WRITES to. Refusing to overwrite your source. `build` takes one page at a \
          time, so a shell glob (`build *.tmd`) hands it the next page as the output path — \
          build the whole project instead (`build <dir>`), or name an `.html` output."
     ))
 }
 
-/// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
-/// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
-/// Returns `Err(usage/error message)` for a bad `--jobs` value, a value-less `--out`/`--dir`,
-/// an unknown `--flag`, or a missing source path.
+/// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build") by the grammar
+/// every verb shares ([`crate::serve::parse_args`]). Flags may appear anywhere; the first
+/// positional is the source, the optional second is `[out.html]`, and a third is refused.
+/// Returns `Err(usage/error message)` for a bad `--jobs` value, a value-less `--out`, an
+/// unknown flag, an extra positional, or a missing source path.
 fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
-    let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut no_exec = false;
     let mut stdout = false;
     let mut check_only = false;
-    let mut jobs_result: Result<Option<usize>, String> = Ok(None);
+    // The `--jobs` value as typed, when given: `--check-only` refuses the flag whatever its
+    // value, so `0` and `auto` (both "no cap") must not read as "not given".
+    let mut jobs_given: Option<&str> = None;
+    let mut jobs: Option<usize> = None;
     let mut format: &str = "human";
-    let mut it = args[2..].iter();
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            // `--format human|json`: mirror `check`'s flag exactly (value validated below).
-            "--format" => match it.next().map(|s| s.as_str()) {
-                Some(v) if v == "human" || v == "json" => format = v,
-                other => return Err(format!("error: {}", crate::serve::bad_format_error(other))),
-            },
-            // `--json`: clig.dev shorthand for `--format json`, accepted on every
-            // machine-output command so neither spelling dead-ends.
-            "--json" => format = "json",
-            // `--out <dir>` needs a real value. A missing one (end of args, or a flag
-            // follows) is a hard error rather than silently leaving out_dir None and
-            // writing `<stem>.html` to an unexpected place. (`--out` = output dir; the
-            // undocumented `--dir` alias was dropped — `--dir` is the scaffold-input flag.)
-            "--out" => match it.next().map(|s| s.as_str()) {
-                Some(v) if !v.starts_with('-') => out_dir = Some(v),
-                _ => {
-                    return Err(format!(
-                        "error: {a} requires a directory value (e.g. {a} site)"
-                    ));
+    let positionals =
+        crate::serve::parse_args("build", &args[2..], BUILD_FLAGS, 2, |flag, value| {
+            match flag {
+                // `--format human|json`: mirror `check`'s flag exactly.
+                "--format" => match value.take() {
+                    Some(v @ ("human" | "json")) => format = v,
+                    other => return Err(crate::serve::bad_format_error(other)),
+                },
+                // `--json`: clig.dev shorthand for `--format json`, accepted on every
+                // machine-output command so neither spelling dead-ends.
+                "--json" => format = "json",
+                // `--out <dir>` needs a real value. A missing one (end of args, or a flag
+                // follows) is a hard error rather than silently leaving out_dir None and
+                // writing `<stem>.html` to an unexpected place. (`--out` = output dir; the
+                // undocumented `--dir` alias was dropped — `--dir` is the scaffold-input flag.)
+                "--out" => match value.take() {
+                    Some(v) => out_dir = Some(v),
+                    None => {
+                        return Err(format!(
+                            "{flag} requires a directory value (e.g. {flag} site)"
+                        ));
+                    }
+                },
+                "--jobs" | "-j" => {
+                    let raw = value.take();
+                    jobs = parse_jobs_value(raw)?;
+                    jobs_given = raw;
                 }
-            },
-            "--jobs" | "-j" => {
-                let raw = it.next().filter(|s| !s.starts_with("--"));
-                jobs_result = parse_jobs_value(raw.map(|s| s.as_str()));
+                "--strict" => strict = true,
+                // `--no-exec`: render code cells as source, deliberately. `serve` has accepted
+                // it all along (as sugar for `TALIESIN_NO_EXEC`); `build` had only the env var,
+                // which is a poor thing to make someone reach for now that a missing kernel
+                // *fails* the build. This is that failure's opt-out.
+                "--no-exec" => no_exec = true,
+                // `--stdout`: the page to stdout rather than to a file. This is the whole of what
+                // the `render` verb was, minus a second code path — pair it with `--no-exec` for
+                // `render`'s static, kernel-free dump.
+                "--stdout" => stdout = true,
+                // `--check-only`: lint, write nothing. Never executes a cell, so it needs no
+                // `--no-exec` (and accepts one, which agrees with it rather than contradicting it).
+                "--check-only" => check_only = true,
+                // Anything else is refused with a did-you-mean. **Any leading dash counts, not
+                // just `--`.** `-o` is the output flag in most other renderers, so it is a likely
+                // typo here; with only `--` rejected it fell through to the positionals and became
+                // the output *path*, writing a file named `-o` that then resists `rm`/`cat`
+                // without a `--` sentinel. A genuinely dash-named source file is still buildable,
+                // as `./-weird.tmd`.
+                _ => return Ok(false),
             }
-            "--strict" => strict = true,
-            // `--no-exec`: render code cells as source, deliberately. `serve` has accepted
-            // it all along (as sugar for `TALIESIN_NO_EXEC`); `build` had only the env var,
-            // which is a poor thing to make someone reach for now that a missing kernel
-            // *fails* the build. This is that failure's opt-out.
-            "--no-exec" => no_exec = true,
-            // `--stdout`: the page to stdout rather than to a file. This is the whole of what
-            // the `render` verb was, minus a second code path — pair it with `--no-exec` for
-            // `render`'s static, kernel-free dump.
-            "--stdout" => stdout = true,
-            // `--check-only`: lint, write nothing. Never executes a cell, so it needs no
-            // `--no-exec` (and accepts one, which agrees with it rather than contradicting it).
-            "--check-only" => check_only = true,
-            // An unrecognized flag is a hard error with a did-you-mean, not silently
-            // dropped (a typo'd `--stict` would otherwise build without the intended flag).
-            // **Any leading dash counts, not just `--`.** `-o` is the output flag in most
-            // other renderers, so it is a likely typo here; with only `--` rejected it fell
-            // through to the positionals and became the output *path*, writing a file named
-            // `-o` that then resists `rm`/`cat` without a `--` sentinel. Same rule
-            // `init`/`new` adopted in wave 8, and the one `notes/CUT-PROGRESS.md` states for
-            // any parser that takes bare positionals. A genuinely dash-named source file is
-            // still buildable, as `./-weird.tmd`.
-            s if s.starts_with('-') => {
-                return Err(format!(
-                    "error: {}",
-                    crate::serve::unknown_flag_error(s, BUILD_FLAGS)
-                ));
-            }
-            s => positionals.push(s),
-        }
-    }
-    // Errors are returned ready-to-print, preserving cmd_build's original messages
-    // (the `--jobs` failure was prefixed `error: `; the missing-path one was the usage line).
-    let jobs = jobs_result.map_err(|m| format!("error: {m}"))?;
+            Ok(true)
+        })?;
     // Derives the synopsis from `build`'s `--help` block so it can't drift (it once omitted
     // `--format json`).
     let path = positionals
@@ -247,13 +240,13 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             .or_else(|| positionals.get(1).map(|o| format!("`{o}`")))
         {
             return Err(format!(
-                "error: --stdout writes the page to stdout, but {other} writes it to a file. \
+                "--stdout writes the page to stdout, but {other} writes it to a file. \
                  Pick one."
             ));
         }
         if format == "json" {
             return Err(
-                "error: --stdout and --format json both write to stdout. Use one or the other."
+                "--stdout and --format json both write to stdout. Use one or the other."
                     .to_string(),
             );
         }
@@ -267,10 +260,10 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             .map(|d| format!("--out {d}"))
             .or_else(|| positionals.get(1).map(|o| format!("`{o}`")))
             .or_else(|| stdout.then(|| "--stdout".to_string()))
-            .or_else(|| jobs.map(|n| format!("--jobs {n}")))
+            .or_else(|| jobs_given.map(|n| format!("--jobs {n}")))
     {
         return Err(format!(
-            "error: --check-only writes nothing, but {other} describes output. Drop one."
+            "--check-only writes nothing, but {other} describes output. Drop one."
         ));
     }
     Ok(BuildArgs {
@@ -306,8 +299,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         check_only,
     } = match parse_build_args(args) {
         Ok(p) => p,
-        Err(msg) => {
+        // A missing path prints the bare usage line, as `preview` does.
+        Err(msg) if msg.starts_with("usage:") => {
             eprintln!("{msg}");
+            return ExitCode::FAILURE;
+        }
+        Err(msg) => {
+            log::error(&msg);
             return ExitCode::FAILURE;
         }
     };
@@ -343,6 +341,15 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             log::error(&format!(
                 "--stdout writes one page, but {path} is a project of many. Name a single \
                  .tmd file, or build the site to a directory."
+            ));
+            return ExitCode::FAILURE;
+        }
+        // The same for the single-file `[out.html]`: a project builds to a directory, and
+        // silently building `_site/` while ignoring the name the author typed is the trap.
+        if let Some(out) = out_html {
+            log::error(&format!(
+                "{path} is a project, which builds to a directory, so the output file `{out}` \
+                 does not apply. Name the directory with --out <dir>, or leave it out."
             ));
             return ExitCode::FAILURE;
         }
@@ -3353,6 +3360,52 @@ mod mirror_tests {
         // A genuinely dash-named source file is still buildable, spelled portably.
         let a = argv(&["taliesin", "build", "./-weird.tmd"]);
         assert_eq!(parse_build_args(&a).unwrap().path, "./-weird.tmd");
+    }
+
+    /// `build` reads its argv by the grammar every verb shares (audit 2026-09-24, leads
+    /// cluster 10), and each case below misbehaved before it did.
+    #[test]
+    fn build_args_follow_the_grammar_every_verb_shares() {
+        let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        // `--flag=value` means `--flag value`. `--format=json` was an unknown flag with no
+        // did-you-mean.
+        let a = argv(&[
+            "taliesin",
+            "build",
+            "doc.tmd",
+            "--check-only",
+            "--format=json",
+        ]);
+        assert_eq!(parse_build_args(&a).unwrap().format, "json");
+        let a = argv(&["taliesin", "build", "doc.tmd", "--out=dist"]);
+        assert_eq!(parse_build_args(&a).unwrap().out_dir, Some("dist"));
+        // A third positional is refused, not silently dropped.
+        let err = parse_build_args(&argv(&[
+            "taliesin",
+            "build",
+            "a.tmd",
+            "out.html",
+            "extra.html",
+        ]))
+        .expect_err("a third positional must be refused");
+        assert!(
+            err.contains("`extra.html`"),
+            "names the extra argument: {err}"
+        );
+        // `--jobs` describes output whatever its value, so `--check-only` refuses `0` and
+        // `auto` too. Both passed (they parse to "no cap") while `--jobs 4` was refused.
+        for v in ["0", "auto", "4"] {
+            let err = parse_build_args(&argv(&[
+                "taliesin",
+                "build",
+                "site",
+                "--check-only",
+                "--jobs",
+                v,
+            ]))
+            .expect_err("--check-only refuses --jobs");
+            assert!(err.contains("--jobs"), "--jobs {v}: {err}");
+        }
     }
 
     fn tmp(name: &str) -> PathBuf {

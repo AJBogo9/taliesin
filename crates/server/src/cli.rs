@@ -95,6 +95,15 @@ fn init_files(today: &str) -> Vec<(PathBuf, String)> {
 /// an empty set means any `-flag` gets a bare "unknown flag" (or a retirement note).
 const INIT_FLAGS: &[&str] = &[];
 
+/// Parse `init [dir]` by the grammar every verb shares ([`serve::parse_args`]): no flags, and
+/// at most one directory. Any leading dash is a flag, not a directory name: `-y` existed
+/// until Wave 8, and a leftover `taliesin init -y` must not scaffold a project into a
+/// directory called `-y`. A second directory is refused rather than dropped.
+fn parse_init_args(args: &[String]) -> Result<Option<&str>, String> {
+    let dir = serve::parse_args("init", &args[2..], INIT_FLAGS, 1, |_, _| Ok(false))?;
+    Ok(dir.first().copied())
+}
+
 /// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
 /// current directory). Writes `_site.yml`, `index.tmd` and one dated example post, then
 /// prints the preview hint.
@@ -104,21 +113,13 @@ const INIT_FLAGS: &[&str] = &[];
 /// `docs/guide/reference/cli.tmd` states that `build --check-only --format json` is the
 /// tool's one machine-readable surface -- which deleting these makes true.
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
-    let mut dir_arg: Option<&str> = None;
-    let it = args[2..].iter();
-    for a in it {
-        match a.as_str() {
-            // Any leading dash is a flag, not a directory name. `--` alone would be enough
-            // if `-y` had never existed; it did until Wave 8, and a leftover `taliesin init
-            // -y` must not scaffold a project into a directory called `-y`.
-            s if s.starts_with('-') => {
-                log::error(&serve::unknown_flag_error(s, INIT_FLAGS));
-                return ExitCode::FAILURE;
-            }
-            s if dir_arg.is_none() => dir_arg = Some(s),
-            _ => {}
+    let dir_arg = match parse_init_args(args) {
+        Ok(d) => d,
+        Err(msg) => {
+            log::error(&msg);
+            return ExitCode::FAILURE;
         }
-    }
+    };
 
     let dir_owned: String = dir_arg.unwrap_or(".").to_string();
 
@@ -249,36 +250,32 @@ pub(crate) struct ServeArgs<'a> {
     pub no_exec: bool,
 }
 
-/// Parse `preview <file.tmd|dir> [port] [--port <N>] [--open] [--no-exec]`.
+/// Parse `preview <file.tmd|dir> [port] [--port <N>] [--open] [--no-exec]` by the grammar
+/// every verb shares ([`serve::parse_args`]).
 ///
 /// The port may be the second positional (the original spelling) or `--port <N>` /
 /// `--port=<N>`. Without the flag, `--port 4400` tripped the unknown-flag did-you-mean and
-/// was answered with an unrelated flag two edits away.
-/// Pure + unit-tested: no environment reads, no filesystem.
+/// was answered with an unrelated flag two edits away. An unknown flag is a hard error with
+/// a did-you-mean, never silently dropped: a typo'd `--noexec` would otherwise preview and
+/// run every cell. Pure + unit-tested: no environment reads, no filesystem.
 pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String> {
-    let mut positionals: Vec<&str> = Vec::new();
     let mut flag_port: Option<&str> = None;
     let (mut open, mut no_exec) = (false, false);
-
-    let mut it = args[2..].iter().peekable();
-    while let Some(a) = it.next() {
-        match a.as_str() {
+    let positionals = serve::parse_args("preview", &args[2..], SERVE_FLAGS, 2, |flag, value| {
+        match flag {
             "--open" => open = true,
             "--no-exec" => no_exec = true,
             "--port" => {
                 flag_port = Some(
-                    it.next()
-                        .map(String::as_str)
+                    value
+                        .take()
                         .ok_or_else(|| "--port needs a value (e.g. --port 4400)".to_string())?,
                 );
             }
-            s if s.starts_with("--port=") => flag_port = Some(&s["--port=".len()..]),
-            // An unrecognized `--flag` is a hard error with a did-you-mean (never silently
-            // dropped: a typo'd `--noexec` would otherwise preview and run every cell).
-            s if s.starts_with("--") => return Err(serve::unknown_flag_error(s, SERVE_FLAGS)),
-            s => positionals.push(s),
+            _ => return Ok(false),
         }
-    }
+        Ok(true)
+    })?;
 
     let path = *positionals
         .first()
@@ -329,8 +326,10 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     );
     match result {
         Ok(()) => ExitCode::SUCCESS,
+        // No prefix: the refusals are the messages `build` prints for the same input, and
+        // `serve:` named a verb retired in Wave 5.
         Err(e) => {
-            log::error(&format!("serve: {e}"));
+            log::error(&e.to_string());
             ExitCode::FAILURE
         }
     }
@@ -400,6 +399,20 @@ mod tests {
         let a = argv(&["taliesin", "preview", "doc.tmd", "--no-exec", "--open"]);
         let p = parse_serve_args(&a).unwrap();
         assert!(p.no_exec && p.open && p.port == 4321);
+    }
+
+    /// `preview` reads its argv by the grammar every verb shares (audit 2026-09-24, leads
+    /// cluster 10), and each case below misbehaved before it did.
+    #[test]
+    fn preview_args_follow_the_grammar_every_verb_shares() {
+        // A single-dash token is a flag, not the document: `preview -o doc.tmd` took `-o`
+        // as the path and then refused `doc.tmd` as a port.
+        let err = parse_serve_args(&argv(&["taliesin", "preview", "-o", "doc.tmd"])).unwrap_err();
+        assert!(err.contains("unknown flag `-o`"), "{err}");
+        // A third positional is refused, not silently dropped.
+        let err = parse_serve_args(&argv(&["taliesin", "preview", "doc.tmd", "4400", "extra"]))
+            .unwrap_err();
+        assert!(err.contains("`extra`"), "names the extra argument: {err}");
     }
 
     fn tmp(name: &str) -> PathBuf {

@@ -116,6 +116,80 @@ fn the_human_report_is_glyph_marked_and_uncoloured_when_piped() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `doctor` reads its argv by the grammar every verb shares (audit 2026-09-24, leads
+/// cluster 10). A single-dash token is a flag: `doctor -jsn` answered "cannot read -jsn". A
+/// second directory is refused: `doctor a b` audited `b` and ignored `a`. And
+/// `--format=json` is `--format json`.
+#[test]
+fn doctor_args_follow_the_grammar_every_verb_shares() {
+    let out = taliesin()
+        .args(["doctor", "-jsn"])
+        .output()
+        .expect("run doctor");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "a single-dash typo must fail: {err}");
+    assert!(
+        err.contains("unknown flag `-jsn`"),
+        "is read as a flag: {err}"
+    );
+
+    let (a, b) = (tmp("grammar-a"), tmp("grammar-b"));
+    let out = taliesin()
+        .arg("doctor")
+        .arg(&a)
+        .arg(&b)
+        .output()
+        .expect("run doctor");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "a second directory must fail: {err}");
+    assert!(
+        err.contains(b.to_str().unwrap()),
+        "names the extra argument: {err}"
+    );
+
+    let out = taliesin()
+        .arg("doctor")
+        .arg(&a)
+        .arg("--format=json")
+        .env_remove("TALIESIN_PYTHON")
+        .output()
+        .expect("run doctor");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_ok_and(|v| v["checks"].is_array()),
+        "--format=json prints the JSON report: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&a);
+    let _ = std::fs::remove_dir_all(&b);
+}
+
+/// A mistyped project directory gets the did-you-mean a mistyped document gets: the refusal
+/// is `lint::cannot_read`, the one "cannot read" message every front door prints, rather
+/// than a hand-rolled copy of its first half.
+#[test]
+fn doctor_suggests_a_near_miss_directory() {
+    let base = tmp("nearmiss");
+    std::fs::create_dir_all(base.join("project")).unwrap();
+    let out = taliesin()
+        .arg("doctor")
+        .arg(base.join("projcet"))
+        .output()
+        .expect("run doctor");
+    let err = String::from_utf8_lossy(&out.stderr);
+    let _ = std::fs::remove_dir_all(&base);
+    assert!(
+        !out.status.success(),
+        "a missing directory must fail: {err}"
+    );
+    assert!(
+        err.contains(&format!(
+            "did you mean `{}`",
+            base.join("project").display()
+        )),
+        "suggests the sibling it was one transposition from: {err}"
+    );
+}
+
 /// An unrecognized flag is an error, not a directory. Silently treating `--jsonn` as the
 /// project path audits the wrong place and exits 0, which reads as "your environment is fine".
 #[test]

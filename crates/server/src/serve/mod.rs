@@ -4,7 +4,8 @@
 //! HTTP + asset plumbing (`serve_asset_from`, `content_type`, `percent_decode`), the
 //! bundled client + favicon + dev-menu CSS, port binding and the single-instance takeover
 //! probe, the origin/host/identity guards in [`security`], the shutdown signal, the file-watch
-//! predicates, and `guarded`/`panic_msg`/`unknown_flag_error`/`bad_format_error`.
+//! predicates, `parse_args` (the argv grammar every verb shares), and
+//! `guarded`/`panic_msg`/`bad_format_error`.
 //!
 //! **There is no server here.** The live preview is [`crate::serve_site`], for a project
 //! and for a single document alike — Wave 1.1 folded the single-document server away, since
@@ -114,6 +115,11 @@ struct Incumbent {
 /// connections and never replies must not stall startup.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// The most of a port holder's reply the probe reads. A real answer is under 300 bytes;
+/// the timeout bounds how long a holder can talk, not how much, and a holder streaming
+/// bytes forever grew the probe past 2 GB in about a second, ten probes at once.
+const PROBE_READ_CAP: u64 = 64 * 1024;
+
 /// Accept a reported pid only if signalling it could mean one process. Any local user
 /// can bind a loopback port, so this number is untrusted input on its way to `kill`, and
 /// the non-positive range is where it gets dangerous: `kill(-1, ...)` signals *every*
@@ -125,38 +131,56 @@ fn plausible_pid(raw: i64) -> Option<i32> {
         .then_some(raw as i32)
 }
 
-/// Strip the marker the kernel appends to `/proc/*/exe` once the binary behind it has
-/// been replaced. Rebuilding while a preview runs is routine here (the `taliesin`
-/// launcher rebuilds on source change), and that preview is still a preview.
+/// Confirm against the OS that `pid` owns the socket listening on `port`, instead of
+/// taking the port holder's word for it: the pid it names must be the process that
+/// answered. `/proc/<pid>/fd` answers both halves at once. It lists the process's
+/// sockets, and reading it for a process owned by another user fails outright, so a
+/// hostile responder cannot borrow this preview's privileges to signal something it could
+/// not signal itself.
+///
+/// This compared `/proc/<pid>/exe` with this binary until 2026-09-24, which let a holder
+/// name ANY process of this binary (the author's own `taliesin lsp`, another project's
+/// preview) and have it terminated. Holding the port is the fact the takeover rests on.
 #[cfg(target_os = "linux")]
-fn without_deleted_marker(p: &Path) -> PathBuf {
-    let s = p.to_string_lossy();
-    let stripped: &str = s.strip_suffix(" (deleted)").unwrap_or(&s);
-    PathBuf::from(stripped)
-}
-
-/// Confirm against the OS that `pid` is another instance of *this binary*, instead of
-/// taking the port holder's word for it. `/proc/<pid>/exe` answers both halves at once:
-/// it names the executable, and reading it for a process owned by another user fails
-/// outright, so a hostile responder cannot borrow this preview's privileges to signal
-/// something it could not signal itself.
-#[cfg(target_os = "linux")]
-fn is_sibling_preview(pid: i32) -> bool {
-    let (Ok(mine), Ok(theirs)) = (
-        std::env::current_exe(),
-        std::fs::read_link(format!("/proc/{pid}/exe")),
-    ) else {
+fn holds_the_port(pid: i32, port: u16) -> bool {
+    // `/proc/net/tcp`: after a header line, one socket per line, fields `sl local_address
+    // rem_address st ... inode`, the address as `HEXIP:HEXPORT` (the IP as the in-memory
+    // word, so native-endian) and `0A` meaning LISTEN. A preview binds IPv4 loopback only,
+    // so the IPv4 table is the whole search, and only a socket on 127.0.0.1 or 0.0.0.0 can
+    // have answered a probe sent to 127.0.0.1: one on another address with the same port
+    // number belongs to someone the probe never reached.
+    let Ok(table) = std::fs::read_to_string("/proc/net/tcp") else {
         return false;
     };
-    without_deleted_marker(&mine) == without_deleted_marker(&theirs)
+    let listening: Vec<String> = table
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let (hex_ip, hex_port) = f.get(1)?.split_once(':')?;
+            let inode = f.get(9)?;
+            let ip = std::net::Ipv4Addr::from(u32::from_str_radix(hex_ip, 16).ok()?.to_ne_bytes());
+            let listens_here = u16::from_str_radix(hex_port, 16).ok()? == port
+                && (ip == std::net::Ipv4Addr::LOCALHOST || ip.is_unspecified())
+                && *f.get(3)? == "0A";
+            listens_here.then(|| format!("socket:[{inode}]"))
+        })
+        .collect();
+    let Ok(fds) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return false;
+    };
+    fds.flatten().any(|fd| {
+        std::fs::read_link(fd.path())
+            .is_ok_and(|target| listening.iter().any(|l| target.as_os_str() == l.as_str()))
+    })
 }
 
 /// No cheap portable equivalent of the `/proc` check, so elsewhere the root match and
-/// [`plausible_pid`] are what stand between a responder and a SIGTERM. The residual
-/// exposure is a same-user process being terminated, which such an attacker could do
-/// directly anyway.
+/// [`plausible_pid`] are what stand between a responder and a SIGTERM. Nothing ties the
+/// pid to the port there, so a holder on another account can name any process of the
+/// user running the preview.
 #[cfg(not(target_os = "linux"))]
-fn is_sibling_preview(_pid: i32) -> bool {
+fn holds_the_port(_pid: i32, _port: u16) -> bool {
     true
 }
 
@@ -172,7 +196,11 @@ async fn identify(port: u16) -> Option<Incumbent> {
             format!("GET {IDENTITY_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         sock.write_all(req.as_bytes()).await.ok()?;
         let mut raw = Vec::new();
-        sock.read_to_end(&mut raw).await.ok()?;
+        (&mut sock)
+            .take(PROBE_READ_CAP)
+            .read_to_end(&mut raw)
+            .await
+            .ok()?;
         let raw = String::from_utf8(raw).ok()?;
         let (_head, body) = raw.split_once("\r\n\r\n")?;
         let v: serde_json::Value = serde_json::from_str(body).ok()?;
@@ -225,15 +253,15 @@ pub(crate) async fn bind_with_fallback(
     // Probe concurrently: a port held by something that accepts connections but never
     // answers costs the full timeout, and ten of those in series would stall startup.
     // Both halves of the filter matter: the root match says the incumbent is redundant,
-    // and `is_sibling_preview` says the pid it handed us is really its own, since a
-    // responder that simply names a pid must not have it signalled on its say-so.
+    // and `holds_the_port` says the pid it handed us is the process that answered, since
+    // a responder that simply names a pid must not have it signalled on its say-so.
     let root = canonical(root);
     let mine: Vec<Incumbent> =
         futures_util::future::join_all((port..=port.saturating_add(9)).map(identify))
             .await
             .into_iter()
             .flatten()
-            .filter(|i| i.root == root && is_sibling_preview(i.pid))
+            .filter(|i| i.root == root && holds_the_port(i.pid, i.port))
             .collect();
 
     if !mine.is_empty() {
@@ -242,8 +270,9 @@ pub(crate) async fn bind_with_fallback(
                 "port {}: replacing an existing preview of this project (pid {})",
                 inc.port, inc.pid
             ));
-            // SAFETY: SIGTERM to a pid that just identified itself, over loopback, as a
-            // preview of the very root we are about to serve, i.e. this user's own server.
+            // SAFETY: SIGTERM to the pid that owns the port which just identified itself,
+            // over loopback, as a preview of the very root we are about to serve, i.e. this
+            // user's own server.
             // SIGTERM rather than SIGKILL so it runs its kernel-reaping teardown.
             unsafe { libc::kill(inc.pid, libc::SIGTERM) };
         }
@@ -328,6 +357,8 @@ pub(crate) fn content_type(path: &Path) -> &'static str {
         Some("webp") => "image/webp",
         Some("avif") => "image/avif",
         Some("ico") => "image/x-icon",
+        Some("html" | "htm") => "text/html; charset=utf-8",
+        Some("txt") => "text/plain; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("json") => "application/json; charset=utf-8",
@@ -630,23 +661,130 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|p| panic_msg(&*p))
 }
 
-/// Build a hard-error message for an unrecognized `--flag`: a `closest`-based "did you mean
-/// `--strict`?" when a known flag is within edit distance 2. Shared by the `build`/`preview`
-/// flag parsers so a typo'd flag fails loudly instead of being silently dropped. `known` is
-/// each parser's own accepted long-flag set. No `error:` prefix, so the caller frames it (raw
-/// `eprintln!` adds `error: `; `log::error` styles it).
-pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
-    match taliesin_core::closest(flag, known) {
-        Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
-        None => format!("unknown flag `{flag}`"),
+/// Read a verb's argv (the tokens after the verb) by the one grammar every verb shares, so
+/// no two verbs disagree about what a token is. Four parsers followed four rules until
+/// 2026-09-24: `doctor -jsn` was a directory, `preview -o x.tmd` a path, `--format=json` an
+/// unknown flag, and an extra positional was dropped by three verbs and kept by the fourth.
+///
+/// - Any token that starts with `-` is a flag, never a positional. A dash-named file is
+///   still reachable as `./-x.tmd`.
+/// - `--flag=value` means `--flag value`. A flag's value is the part after `=`, else the
+///   next token unless that token is itself a flag ([`FlagValue::take`]).
+/// - An unknown flag is refused with a did-you-mean over the verb's own flags (`known`), and
+///   a known flag given an `=value` it does not take is refused too.
+/// - At most `max` positionals: an extra one is refused, never silently dropped.
+///
+/// `on_flag` sees each flag and returns whether it knows it. Returns the positionals in
+/// order; an error is a message with no `error:` prefix, for `log::error` to frame.
+pub(crate) fn parse_args<'a>(
+    verb: &str,
+    args: &'a [String],
+    known: &[&'static str],
+    max: usize,
+    mut on_flag: impl FnMut(&'a str, &mut FlagValue<'a, '_>) -> Result<bool, String>,
+) -> Result<Vec<&'a str>, String> {
+    let mut positionals = Vec::new();
+    let mut next = 0;
+    while let Some(token) = args.get(next).map(String::as_str) {
+        next += 1;
+        if !token.starts_with('-') {
+            if positionals.len() == max {
+                // Hung under `crate::log`'s 10-column tag gutter, like `not_a_project_error`.
+                return Err(
+                    format!("unexpected argument `{token}`\n{}", crate::usage_line(verb))
+                        .replace('\n', "\n          "),
+                );
+            }
+            positionals.push(token);
+            continue;
+        }
+        let (name, inline) = match token.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (token, None),
+        };
+        let mut value = FlagValue {
+            inline,
+            args,
+            next: &mut next,
+            taken: false,
+        };
+        if !on_flag(name, &mut value)? {
+            return Err(unknown_flag_error(verb, name, known));
+        }
+        if inline.is_some() && !value.taken {
+            return Err(format!("`{name}` takes no value"));
+        }
     }
+    Ok(positionals)
+}
+
+/// Where a flag's value comes from, for [`parse_args`]'s `on_flag`.
+pub(crate) struct FlagValue<'a, 'n> {
+    inline: Option<&'a str>,
+    args: &'a [String],
+    next: &'n mut usize,
+    taken: bool,
+}
+
+impl<'a> FlagValue<'a, '_> {
+    /// The flag's value: the part after `=`, else the next token unless that token is itself
+    /// a flag, in which case it stays a flag and the value is `None`.
+    pub(crate) fn take(&mut self) -> Option<&'a str> {
+        self.taken = true;
+        if let Some(v) = self.inline {
+            return (!v.is_empty()).then_some(v);
+        }
+        let v = self
+            .args
+            .get(*self.next)
+            .map(String::as_str)
+            .filter(|t| !t.starts_with('-'))?;
+        *self.next += 1;
+        Some(v)
+    }
+}
+
+/// Build a hard-error message for an unrecognized flag: "did you mean `--strict`?" when a
+/// known flag is within edit distance 2 (`closest`), or is the one flag the typed name
+/// extends or abbreviates (`--output` for `--out`, three edits away); otherwise a pointer
+/// to the verb's `--help`, which lists its flags. [`parse_args`] is the one caller, so a
+/// typo'd flag fails loudly the same way on every verb. `known` is each verb's own
+/// accepted long-flag set. No `error:` prefix, so the caller frames it.
+fn unknown_flag_error(verb: &str, flag: &str, known: &[&'static str]) -> String {
+    match taliesin_core::closest(flag, known)
+        .or_else(|| extends_or_abbreviates(flag, known.iter().copied()))
+    {
+        Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
+        None => format!("unknown flag `{flag}` (run `taliesin {verb} --help` for its flags)"),
+    }
+}
+
+/// The one candidate a typed name extends or abbreviates, for the cases edit distance
+/// cannot see: `preview-site` is five edits from `preview`, and `--output` three from
+/// `--out`. The verb and flag did-you-means both consult it, only after `closest` declines.
+///
+/// A name shorter than two characters is not a signal, and ambiguity yields nothing rather
+/// than a coin flip: picking a winner when two candidates match would teach a rule that is
+/// not real.
+pub(crate) fn extends_or_abbreviates<'c>(
+    typed: &str,
+    candidates: impl IntoIterator<Item = &'c str>,
+) -> Option<&'c str> {
+    if typed.len() < 2 {
+        return None;
+    }
+    let mut hits = candidates
+        .into_iter()
+        .filter(|c| typed.starts_with(c) || c.starts_with(typed));
+    let first = hits.next()?;
+    hits.next().is_none().then_some(first)
 }
 
 /// One wording for a bad `--format` value, shared by every subcommand that takes
 /// `--format`/`--json` (`build`/`doctor`) so the same mistake reads
 /// identically everywhere. `got` is the offending value, or
 /// `None` when `--format` was given with nothing after it. No `error:` prefix — the caller
-/// frames it exactly like `unknown_flag_error` (raw `eprintln!`, or `log::error` styles it).
+/// frames it exactly like `unknown_flag_error` (`log::error` styles it).
 pub(crate) fn bad_format_error(got: Option<&str>) -> String {
     format!(
         "--format expects human or json (got {})",
@@ -765,17 +903,21 @@ pub(crate) fn not_a_project_error(path: &Path, verb: &str) -> String {
 /// exit 0. Derived from that same constant, so the two verbs and the walker can never
 /// disagree about what a source document is.
 ///
-/// Two lines: name the file, name the accepted extension, suggest nothing else.
+/// Two lines: name the file, then the accepted extension and the rename that gets there. A
+/// `.tmd` is Markdown, so a Markdown file only needs the new name; the hint names no other
+/// tool, since Taliesin answers for its own vocabulary and nothing else.
 pub(crate) fn not_a_source_error(path: &Path, verb: &str) -> String {
-    let accepted = taliesin_core::ext::ACCEPTED_SOURCE_EXTS
+    let exts = taliesin_core::ext::ACCEPTED_SOURCE_EXTS;
+    let accepted = exts
         .iter()
         .map(|e| format!(".{e}"))
         .collect::<Vec<_>>()
         .join(", ");
     format!(
         "{shown} is not a Taliesin source document.\n\
-         taliesin {verb} takes a {accepted} file.",
-        shown = path.display()
+         taliesin {verb} takes a {accepted} file: if it is Markdown, rename it to {renamed}.",
+        shown = path.display(),
+        renamed = path.with_extension(exts[0]).display()
     )
     // Same gutter hang as `not_a_project_error`, for the same reason.
     .replace('\n', "\n          ")
@@ -1045,10 +1187,16 @@ mod protocol_contract {
                 "names the accepted extension .{ext}: {msg}"
             );
         }
+        // The fix, not only the rule: a stranger with a Markdown file was told what the
+        // tool takes and left to work out the rename (audit 2026-09-24, first-hour #13).
+        assert!(
+            msg.contains("rename it to notes/note.tmd"),
+            "names the rename that makes it a source document: {msg}"
+        );
         assert_eq!(
             msg.lines().count(),
             2,
-            "two lines, suggesting nothing else: {msg}"
+            "two lines, the refusal and its fix: {msg}"
         );
         // Same gutter-hang treatment as `not_a_project_error`, above.
         for cont in msg.lines().skip(1) {
@@ -1235,6 +1383,117 @@ mod protocol_contract {
 }
 
 #[cfg(test)]
+mod argv_tests {
+    use super::parse_args;
+
+    const KNOWN: &[&str] = &["--flag", "--value"];
+
+    /// The grammar, in one place, on a stand-in verb with one switch and one valued flag.
+    /// Returns `(positionals, flag seen, value)` or the error.
+    fn parse(tokens: &[&str]) -> Result<(Vec<String>, bool, Option<String>), String> {
+        let args: Vec<String> = tokens.iter().map(|s| s.to_string()).collect();
+        let (mut flag, mut value) = (false, None);
+        let positionals = parse_args("build", &args, KNOWN, 2, |name, v| {
+            match name {
+                "--flag" => flag = true,
+                "--value" => value = Some(v.take().ok_or("--value needs a value")?.to_string()),
+                _ => return Ok(false),
+            }
+            Ok(true)
+        })?;
+        Ok((
+            positionals.iter().map(|s| s.to_string()).collect(),
+            flag,
+            value,
+        ))
+    }
+
+    #[test]
+    fn every_verb_reads_a_token_the_same_way() {
+        // Positionals in order, flags anywhere.
+        let (pos, flag, _) = parse(&["a", "--flag", "b"]).unwrap();
+        assert_eq!((pos, flag), (vec!["a".to_string(), "b".to_string()], true));
+
+        // Any leading dash is a flag: a single-dash token is never a path.
+        let err = parse(&["a", "-o"]).unwrap_err();
+        assert!(err.contains("unknown flag `-o`"), "{err}");
+        // An unknown flag names the verb's nearest one.
+        let err = parse(&["--flga"]).unwrap_err();
+        assert!(err.contains("did you mean `--flag`"), "{err}");
+
+        // A value is the part after `=`, else the next token unless that is itself a flag.
+        assert_eq!(parse(&["--value=x"]).unwrap().2.as_deref(), Some("x"));
+        assert_eq!(parse(&["--value", "x"]).unwrap().2.as_deref(), Some("x"));
+        let err = parse(&["--value", "--flag"]).unwrap_err();
+        assert!(
+            err.contains("needs a value"),
+            "a flag is not a value: {err}"
+        );
+        let err = parse(&["--value="]).unwrap_err();
+        assert!(
+            err.contains("needs a value"),
+            "an empty `=` is no value: {err}"
+        );
+        // A switch given a value it does not take is refused rather than half-read.
+        let err = parse(&["--flag=yes"]).unwrap_err();
+        assert!(err.contains("`--flag` takes no value"), "{err}");
+
+        // At most `max` positionals: the extra one is named, with the verb's usage line.
+        let err = parse(&["a", "b", "c"]).unwrap_err();
+        assert!(err.contains("unexpected argument `c`"), "{err}");
+        assert!(err.contains(&crate::usage_line("build")), "{err}");
+    }
+
+    /// `build --output x.html` got a bare "unknown flag `--output`": it is three edits from
+    /// `--out`, past the did-you-mean's reach, though it plainly extends it (audit
+    /// 2026-09-24, first-hour #15). The verb names already answer a name that extends or
+    /// abbreviates one of theirs (`preview-site`); flags now take the same rule. With no
+    /// suggestion at all, the error says where the flags are listed.
+    #[test]
+    fn an_unknown_flag_that_extends_a_known_one_suggests_it() {
+        let err = parse(&["--values-file"]).unwrap_err();
+        assert!(err.contains("did you mean `--value`"), "{err}");
+        let err = parse(&["--fl"]).unwrap_err();
+        assert!(err.contains("did you mean `--flag`"), "{err}");
+        // Ambiguous is no answer: `--` opens both flags.
+        let err = parse(&["--"]).unwrap_err();
+        assert!(!err.contains("did you mean"), "{err}");
+        // Nothing close: point at the verb's own help instead of guessing.
+        let err = parse(&["-o"]).unwrap_err();
+        assert!(
+            !err.contains("did you mean") && err.contains("`taliesin build --help`"),
+            "{err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod content_type_tests {
+    use super::content_type;
+    use std::path::Path;
+
+    /// A static page or text file a project ships displays in the preview as it does on
+    /// any static host. With no arm for either, `widget.html` came back as
+    /// `application/octet-stream`, so the browser downloaded it and an `<iframe>` of it
+    /// broke in the preview only.
+    #[test]
+    fn a_static_page_and_a_text_file_display_instead_of_downloading() {
+        for (name, want) in [
+            ("widget.html", "text/html; charset=utf-8"),
+            ("OLD.HTM", "text/html; charset=utf-8"),
+            ("notes.txt", "text/plain; charset=utf-8"),
+        ] {
+            assert_eq!(content_type(Path::new(name)), want, "{name}");
+        }
+        // Anything unknown still falls back to the generic binary type.
+        assert_eq!(
+            content_type(Path::new("blob.bin")),
+            "application/octet-stream"
+        );
+    }
+}
+
+#[cfg(test)]
 mod percent_decode_tests {
     use super::percent_decode;
 
@@ -1264,7 +1523,102 @@ mod percent_decode_tests {
 
 #[cfg(test)]
 mod takeover_tests {
-    use super::plausible_pid;
+    use super::{PROBE_TIMEOUT, identify, plausible_pid};
+    use std::time::Instant;
+
+    /// The takeover signals a pid only if that pid owns the socket listening on the port
+    /// that answered. Being some process of this user, or even of this binary, is not it.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn only_the_process_listening_on_the_port_holds_it() {
+        use super::holds_the_port;
+        let me = std::process::id() as i32;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(holds_the_port(me, port), "this process listens on {port}");
+
+        // Another live process of this user, holding no socket at all.
+        let mut other = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep");
+        let other_holds = holds_the_port(other.id() as i32, port);
+        let _ = other.kill();
+        let _ = other.wait();
+        assert!(
+            !other_holds,
+            "a process that does not listen on {port} does not hold it"
+        );
+
+        // The same port number on another address is not the port the probe reached: a
+        // probe to 127.0.0.1 is never answered from 127.0.0.2.
+        let elsewhere = std::net::TcpListener::bind("127.0.0.2:0").unwrap();
+        let other_port = elsewhere.local_addr().unwrap().port();
+        assert!(
+            !holds_the_port(me, other_port),
+            "a listener on 127.0.0.2:{other_port} does not hold 127.0.0.1:{other_port}"
+        );
+
+        // A port that is no longer listening is held by nobody.
+        drop(listener);
+        assert!(
+            !holds_the_port(me, port),
+            "{port} closed, so no one holds it"
+        );
+    }
+
+    /// Any local process can hold a port in the fallback range and answer the identity
+    /// probe, so the reply is untrusted input, and its size is part of that. A holder that
+    /// streams bytes forever drove the probe past a 2 GB memory cap in about a second (audit
+    /// 2026-09-24, A4), and ten probes run at once. The probe must stop reading at a cap far
+    /// above a real answer (under 300 bytes) and give up at once, not at the timeout.
+    #[tokio::test]
+    async fn the_identity_probe_stops_reading_an_endless_reply() {
+        use std::io::{Read, Write};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        // Bounded, so a regression costs this test BUDGET bytes of memory rather than
+        // whatever loopback can deliver before the probe's timeout.
+        const BUDGET: u64 = 256 << 20;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let sent = Arc::new(AtomicU64::new(0));
+        let counter = sent.clone();
+        std::thread::spawn(move || {
+            let Ok((mut s, _)) = listener.accept() else {
+                return;
+            };
+            let _ = s.read(&mut [0u8; 1024]);
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n");
+            let chunk = vec![b' '; 1 << 16];
+            while counter.load(Ordering::SeqCst) < BUDGET {
+                if s.write_all(&chunk).is_err() {
+                    return;
+                }
+                counter.fetch_add(chunk.len() as u64, Ordering::SeqCst);
+            }
+            // Hold the connection open: only a read cap, never an EOF, may end the probe.
+            std::thread::sleep(PROBE_TIMEOUT * 2);
+        });
+
+        let started = Instant::now();
+        assert!(
+            identify(port).await.is_none(),
+            "a stream of spaces is not a preview"
+        );
+        let took = started.elapsed();
+        let streamed = sent.load(Ordering::SeqCst);
+        assert!(
+            streamed < 48 << 20,
+            "the probe kept reading an endless reply: {} MiB went into it",
+            streamed >> 20
+        );
+        assert!(
+            took < PROBE_TIMEOUT / 2,
+            "the probe waited out its timeout ({took:?}) instead of stopping at its read cap"
+        );
+    }
 
     #[test]
     fn only_a_pid_that_means_one_process_survives_the_takeover_check() {

@@ -40,7 +40,7 @@ project, the message names that ancestor and the command to run there instead:
 ```
 
 `preview` reports the same two forms, with `preview` in place of `build`
-throughout (and a `serve:` tag ahead of the first line).
+throughout.
 
 ## `--check-only`: the pre-publish gate
 
@@ -181,6 +181,11 @@ canonical URL instead of stacking a second server (every extra one would keep it
 file watcher and kernel re-executing the same sources, on a port nobody is watching). A
 port held by anything else falls back to the next free port. Either way the chosen URL
 is logged.
+
+Every command reads its arguments by one rule: a flag may appear anywhere on the line,
+`--flag=value` is the same as `--flag value`, an argument that starts with `-` is always a
+flag (spell a dash-named file `./-notes.tmd`), and an argument beyond the ones a command
+takes is refused rather than ignored.
 
 `preview` takes these flags (they may appear anywhere on the line):
 
@@ -404,7 +409,9 @@ came from) without opening the browser dev tools.
 
 `preview` binds `127.0.0.1` and nothing else: there is no flag that exposes it on a
 network. Every response passes a `Host` allowlist (the DNS-rebinding guard) and the
-websocket enforces an origin check, so a page on another site cannot drive it.
+websocket enforces an origin check, so a page on another site cannot drive it. A page on
+another site, or on another local port, can link to the preview but cannot load its
+responses into itself: the search index holds the text of every page, drafts included.
 
 Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`

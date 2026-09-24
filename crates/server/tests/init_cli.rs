@@ -159,6 +159,27 @@ fn the_template_flag_is_rejected_and_writes_nothing() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `init` takes one directory. A second one was silently dropped (`init ia ib` scaffolded
+/// `ia` and exited 0), so it is refused before anything is written (audit 2026-09-24, leads
+/// cluster 10).
+#[test]
+fn a_second_directory_is_refused_and_writes_nothing() {
+    let one = tmp("first");
+    let two = tmp("second");
+    let (ok, _out, err) = run(&["init", one.to_str().unwrap(), two.to_str().unwrap()]);
+    assert!(!ok, "a second directory must fail: {err}");
+    assert!(
+        err.contains(two.to_str().unwrap()),
+        "names the extra argument: {err}"
+    );
+    assert!(
+        !one.join("_site.yml").exists() && !two.exists(),
+        "a refused run scaffolds nothing"
+    );
+    let _ = std::fs::remove_dir_all(&one);
+    let _ = std::fs::remove_dir_all(&two);
+}
+
 /// The wizard is gone, so a bare `init` scaffolds rather than prompting, which is the
 /// behavior CI, a pipe and an agent always got. Driven with stdin on `/dev/null` so a
 /// regression that reintroduced a prompt would hang or fail here, not at a terminal.

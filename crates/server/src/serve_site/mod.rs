@@ -375,7 +375,18 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
             // `build` echoes the path exactly as the author typed it, and the two verbs
             // must answer the same refusal with the same-looking path.
             let typed = file.clone();
-            let file = file.canonicalize().unwrap_or(file);
+            // A missing document gets the one "cannot read" message every front door prints,
+            // with its did-you-mean for a near-miss sibling (`build` answers the same typo
+            // the same way).
+            let file = match file.canonicalize() {
+                Ok(file) => file,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        e.kind(),
+                        crate::lint::cannot_read(&typed, &e),
+                    ));
+                }
+            };
             if !file.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -462,6 +473,23 @@ impl Resolved {
     fn session_key(&self) -> PathBuf {
         self.scoped.clone().unwrap_or_else(|| self.root.clone())
     }
+
+    /// The warning for a document target its project does not publish, or `None`. Such a
+    /// document (a partial, or a book chapter `chapters:` leaves out) has no page, so the
+    /// preview opens the project's home page instead. It did that silently, leaving the
+    /// author to find the document's own URL answering 404.
+    fn unpublished_doc_warning(&self) -> Option<String> {
+        let doc = self.doc.as_deref()?;
+        if focus_url(&self.site, doc).is_some() {
+            return None;
+        }
+        let shown = doc.strip_prefix(&self.root).unwrap_or(doc);
+        Some(format!(
+            "{} is not a page of this project (a partial, or a chapter `chapters:` does not \
+             list), so the preview opens at the home page",
+            shown.display()
+        ))
+    }
 }
 
 /// What [`resolve_target`] worked out about the thing being previewed.
@@ -504,6 +532,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     // them.
     let resolved = resolve_target(target)?;
     let session_key = resolved.session_key();
+    let unpublished = resolved.unpublished_doc_warning();
     let Resolved {
         root,
         site,
@@ -565,7 +594,9 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let router = with_identity(router, &session_key);
     let router = with_host_guard(router);
 
-    let (listener, addr) = bind_with_fallback(port, &session_key).await?;
+    let (listener, addr) = bind_with_fallback(port, &session_key)
+        .await
+        .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
 
@@ -578,6 +609,11 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         &root.display().to_string(),
         &format!("site, {page_count} pages"),
     );
+    // After the banner rather than with the site warnings above, which the soft clear
+    // pushes up into the scrollback: this one is about the thing the author just asked for.
+    if let Some(w) = &unpublished {
+        crate::log::warn(w);
+    }
     if open {
         // A document target opens at its own page; a project target at its home.
         match &focus {
@@ -3177,6 +3213,44 @@ mod session_key_tests {
             err.to_string().contains(".tmd"),
             "names the accepted extension: {err}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A document the project does not publish (a partial, or a book chapter `chapters:`
+    /// leaves out) has no page to open, so the preview opens the project's home page. It did
+    /// that without a word, and the document's own URL answered 404 (audit 2026-09-24,
+    /// config-seam #16); the preview now names the document it could not open.
+    #[test]
+    fn a_document_the_project_does_not_publish_is_named() {
+        let dir = tmp("unpublished");
+        std::fs::create_dir_all(dir.join("ch")).unwrap();
+        std::fs::create_dir_all(dir.join("_parts")).unwrap();
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: B\nchapters:\n  - index.tmd\n  - ch/a.tmd\n",
+        )
+        .unwrap();
+        for (file, title) in [("index.tmd", "Home"), ("ch/a.tmd", "A"), ("ch/b.tmd", "B")] {
+            std::fs::write(
+                dir.join(file),
+                format!("---\ntitle: {title}\n---\n\nProse.\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(dir.join("_parts/p.tmd"), "A partial.\n").unwrap();
+
+        for doc in ["ch/b.tmd", "_parts/p.tmd"] {
+            let served = resolve_target(Target::at(dir.join(doc))).unwrap();
+            let warning = served
+                .unpublished_doc_warning()
+                .unwrap_or_else(|| panic!("{doc} is not a page, and the preview must say so"));
+            assert!(warning.contains(doc), "names the document: {warning}");
+        }
+        // A listed chapter, and the project itself, open where they should.
+        let listed = resolve_target(Target::at(dir.join("ch/a.tmd"))).unwrap();
+        assert_eq!(listed.unpublished_doc_warning(), None);
+        let whole = resolve_target(Target::at(dir.clone())).unwrap();
+        assert_eq!(whole.unpublished_doc_warning(), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

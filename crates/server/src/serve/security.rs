@@ -1,6 +1,7 @@
-//! The preview's two request guards: the websocket origin check and the DNS-rebinding
-//! `Host` check. The preview binds loopback only, so both are about a *local* peer or a
-//! page in the author's own browser, never a remote one. `use super::*` reaches the axum
+//! The preview's request guards: the websocket origin check, the DNS-rebinding `Host`
+//! check, and the Fetch Metadata check that stops another site including a response. The
+//! preview binds loopback only, so all three are about a *local* peer or a page in the
+//! author's own browser, never a remote one. `use super::*` reaches the axum
 //! Router/middleware types and Arc from serve/mod.rs.
 
 use super::*;
@@ -27,7 +28,10 @@ pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
     // authority", so the two guards cannot disagree about what loopback is. A hand-rolled
     // `split(':').next()` lived here and could never return a string containing a colon,
     // which made the `::1` arm unreachable for every input: `[::1]:9999` came out as `"["`.
-    matches!(host_name(authority), "localhost" | "127.0.0.1" | "::1")
+    matches!(
+        host_name(authority),
+        Some("localhost" | "127.0.0.1" | "::1")
+    )
 }
 
 /// Apply [`origin_allowed`] to a request's headers; the websocket handler gates the
@@ -52,42 +56,75 @@ pub(crate) fn host_allowed(host: Option<&str>) -> bool {
     let Some(host) = host else {
         return true; // no Host => not a browser => can't be a rebinding attack
     };
-    matches!(host_name(host), "localhost" | "127.0.0.1" | "::1")
+    matches!(host_name(host), Some("localhost" | "127.0.0.1" | "::1"))
 }
 
-/// The host portion of a `Host` header value, dropping an optional `:port` and IPv6
-/// brackets: `localhost:4388` -> `localhost`, `[::1]:4388` -> `::1`, `192.168.1.5:4388`
-/// -> `192.168.1.5`.
-fn host_name(host: &str) -> &str {
-    if let Some(rest) = host.strip_prefix('[') {
-        return rest.split(']').next().unwrap_or(rest); // `[::1]:4388` -> `::1`
+/// The host portion of an authority (a `Host` header value, or an origin's part after the
+/// scheme), dropping an optional `:port` and IPv6 brackets: `localhost:4388` ->
+/// `localhost`, `[::1]:4388` -> `::1`, `192.168.1.5:4388` -> `192.168.1.5`. `None` when
+/// anything but a `:port` of digits follows the host, so `[localhost]evil.example` and
+/// `localhost:4388evil` name no host at all rather than a loopback one.
+fn host_name(authority: &str) -> Option<&str> {
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(rest) => {
+            let (host, after) = rest.split_once(']')?; // `[::1]:4388` -> `::1`, `:4388`
+            if after.is_empty() {
+                (host, "")
+            } else {
+                (host, after.strip_prefix(':')?)
+            }
+        }
+        None => authority.split_once(':').unwrap_or((authority, "")),
+    };
+    port.bytes().all(|b| b.is_ascii_digit()).then_some(host)
+}
+
+/// Why the preview refuses a request with these headers, or `None` to serve it: the one
+/// decision [`host_guard`] enforces, kept pure so a test can put headers to it.
+fn refusal(headers: &axum::http::HeaderMap) -> Option<&'static str> {
+    let host = headers
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok());
+    if !host_allowed(host) {
+        return Some(
+            "taliesin: refused (the Host header does not name this preview server; this is \
+             the DNS-rebinding guard).",
+        );
     }
-    host.rsplit_once(':').map_or(host, |(h, _)| h)
+    let metadata = |name| headers.get(name).and_then(|v| v.to_str().ok());
+    if !fetch_site_allowed(metadata("sec-fetch-site"), metadata("sec-fetch-mode")) {
+        return Some(
+            "taliesin: refused (a page on another site may link to this preview, but not \
+             load it as part of itself).",
+        );
+    }
+    None
 }
 
-/// Axum middleware enforcing [`host_allowed`], the DNS-rebinding defense. Unconditional:
-/// a rebinding read works against the loopback preview (whose HTTP routes are otherwise
-/// ungated), which is exactly the case it exists for.
+/// Whether a request's Fetch Metadata lets it be served. A page on another site, or on
+/// another port of this one (`same-site`: a site ignores the port), may NAVIGATE here: a
+/// link, a prefetch, or the editor companion's webview `<iframe>`, which is `cross-site`
+/// because the webview is its own origin. It may not load a response as part of itself.
+/// A browser runs a `<script src>` from any origin, and `/search-index.js` assigns every
+/// page's text, drafts included, to a global the including page can read.
+///
+/// `same-origin` is the preview's own page and `none` the address bar. No header means no
+/// browser, or one too old to send it. The websocket upgrade carries none either: the
+/// origin check guards it.
+fn fetch_site_allowed(site: Option<&str>, mode: Option<&str>) -> bool {
+    !matches!(site, Some("cross-site" | "same-site")) || mode == Some("navigate")
+}
+
+/// Axum middleware enforcing [`refusal`], starting with [`host_allowed`], the DNS-rebinding
+/// defense. Unconditional: a rebinding read works against the loopback preview (whose HTTP
+/// routes are otherwise ungated), which is exactly the case it exists for.
 pub(crate) async fn host_guard(
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let allowed = {
-        let host = req
-            .headers()
-            .get(axum::http::header::HOST)
-            .and_then(|v| v.to_str().ok());
-        host_allowed(host)
-    };
-    if allowed {
-        next.run(req).await
-    } else {
-        (
-            axum::http::StatusCode::FORBIDDEN,
-            "taliesin: refused (the Host header does not name this preview server; this is \
-             the DNS-rebinding guard).",
-        )
-            .into_response()
+    match refusal(req.headers()) {
+        None => next.run(req).await,
+        Some(why) => (axum::http::StatusCode::FORBIDDEN, why).into_response(),
     }
 }
 
@@ -168,5 +205,111 @@ mod tests {
         // A host that merely *contains* a loopback name is not loopback.
         assert!(!host_allowed(Some("127.0.0.1.evil.example:4388")));
         assert!(!host_allowed(Some("localhost.evil.example")));
+    }
+
+    /// Another site may navigate to the preview but not load it as part of itself. A
+    /// browser runs a `<script src>` from any origin, and `/search-index.js` assigns every
+    /// page's text, drafts included, to a global the including page reads: a page served
+    /// from `localhost:5128` read a draft's canary from a preview on `127.0.0.1` (audit
+    /// 2026-09-24, Part H), and so did one on another port of `127.0.0.1` (`same-site`, since
+    /// a site ignores the port). The header sets below are what Chrome sent, measured
+    /// 2026-09-24 against a logging stand-in for the preview.
+    #[test]
+    fn another_site_may_navigate_to_the_preview_but_not_include_it() {
+        use axum::http::{HeaderMap, HeaderName, HeaderValue};
+        let refused = |metadata: &[(&'static str, &str)]| {
+            let mut h = HeaderMap::new();
+            h.insert(
+                axum::http::header::HOST,
+                HeaderValue::from_static("127.0.0.1:4321"),
+            );
+            for (name, value) in metadata {
+                h.insert(
+                    HeaderName::from_static(name),
+                    HeaderValue::from_str(value).unwrap(),
+                );
+            }
+            refusal(&h).is_some()
+        };
+        let fetch = |site, mode, dest| {
+            refused(&[
+                ("sec-fetch-site", site),
+                ("sec-fetch-mode", mode),
+                ("sec-fetch-dest", dest),
+            ])
+        };
+
+        // The inclusion: a script or an image, from another site or another local port.
+        assert!(
+            fetch("cross-site", "no-cors", "script"),
+            "cross-site <script src>"
+        );
+        assert!(
+            fetch("same-site", "no-cors", "script"),
+            "same-site <script src>"
+        );
+        assert!(
+            fetch("cross-site", "no-cors", "image"),
+            "cross-site <img src>"
+        );
+        assert!(fetch("cross-site", "cors", "empty"), "cross-site fetch()");
+
+        // Navigations stay open: a link from another site, and the editor companion's
+        // webview, whose `<iframe>` is cross-site because the webview is its own origin.
+        assert!(
+            !fetch("cross-site", "navigate", "document"),
+            "a link from elsewhere"
+        );
+        assert!(
+            !fetch("cross-site", "navigate", "iframe"),
+            "the VS Code webview"
+        );
+        // The preview's own page and its parts, the address bar, and a prefetch (which
+        // Chrome sends as `none` with `Sec-Purpose: prefetch`).
+        assert!(!fetch("same-origin", "no-cors", "script"), "its own script");
+        assert!(!fetch("same-origin", "cors", "empty"), "its own fetch()");
+        assert!(
+            !fetch("none", "navigate", "document"),
+            "the address bar, a prefetch"
+        );
+        // No Fetch Metadata: curl, the takeover's identity probe, and the websocket
+        // upgrade, which Chrome sends without it (the origin check guards that one).
+        assert!(!refused(&[]), "a request with no Fetch Metadata");
+    }
+
+    /// An authority is a host and an optional `:port`, nothing else. The bracket branch
+    /// kept whatever preceded `]` and ignored the rest, and the other branch kept whatever
+    /// preceded the last `:`, so `[localhost]evil.example` and `localhost:4388evil` both
+    /// read as loopback, in the `Host` check and the `Origin` check alike. No browser sends
+    /// either (audit 2026-09-24, security info 10), so this is hygiene, not an exploit.
+    #[test]
+    fn an_authority_is_a_host_and_an_optional_port_and_nothing_else() {
+        for bogus in [
+            "[localhost]evil.example",
+            "[::1]evil.example",
+            "[::1]:4388evil",
+            "localhost:4388evil",
+            "localhost:evil.example",
+        ] {
+            assert!(!host_allowed(Some(bogus)), "Host {bogus}");
+            assert!(
+                !origin_allowed(Some(&format!("http://{bogus}")), Some("127.0.0.1:4388")),
+                "Origin http://{bogus}"
+            );
+        }
+        // The real spellings still pass, with and without a port.
+        for real in [
+            "localhost",
+            "localhost:4388",
+            "127.0.0.1:4388",
+            "[::1]",
+            "[::1]:4388",
+        ] {
+            assert!(host_allowed(Some(real)), "Host {real}");
+            assert!(
+                origin_allowed(Some(&format!("http://{real}")), Some("127.0.0.1:4388")),
+                "Origin http://{real}"
+            );
+        }
     }
 }
