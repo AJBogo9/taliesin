@@ -60,9 +60,7 @@ mod cell_numbered;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 pub use cell_numbered::{caption_label, markdown_fragment, numbered_caption};
 mod client_lang;
-pub use client_lang::{
-    ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
-};
+pub use client_lang::{JS_CELL_MIME, has_js_cells, is_client_lang};
 // `pub(crate)` only so `frontmatter` can reach `extension::dataset::DATASET_KEYS`: the
 // front-matter linter validates `datasets:` sub-keys against the same closed list the
 // renderer reads, rather than a second copy that could drift from it.
@@ -1008,19 +1006,14 @@ fn render_internal_impl(
                     // later figure down by one. `executes_to_kernel` is the canonical
                     // executable set (the executor picks its cells by it too).
                     let include = cell.as_ref().is_none_or(|c| c.include);
-                    // Under `--no-exec` a client-side figure (`{js}`, `{glsl}`) no longer
+                    // Under `--no-exec` a client-side figure (`{js}`) no longer
                     // materializes, so it must not burn a figure number or register an
                     // anchor — the same reasoning the comment above gives for
                     // `{bash}`/`{sql}`, reached for the same reason (nothing will emit the
                     // float). It falls through to the keeps-its-source arm below and warns
                     // like any other non-executing labelled cell.
-                    // `client_lang_runnable` is the same reasoning one step further: a
-                    // client language whose runtime is unavailable in this build also
-                    // materializes nothing, so it must not burn a figure number either.
-                    let emitted_at_render_time = lang == "mermaid"
-                        || (client_lang(&lang).is_some()
-                            && client_lang_runnable(&lang)
-                            && !no_exec_in_force());
+                    let emitted_at_render_time =
+                        lang == "mermaid" || (is_client_lang(&lang) && !no_exec_in_force());
                     if !(emitted_at_render_time || (executes_to_kernel(&lang) && include)) {
                         if let Some(a) = anchor {
                             warnings.push(if include {
@@ -1071,8 +1064,7 @@ fn render_internal_impl(
                                 &attrs,
                                 &fig_num,
                             )),
-                            l if client_lang(l).is_some() => html.push_str(&emit_client_figure(
-                                client_lang(l).expect("guarded by the match arm"),
+                            l if is_client_lang(l) => html.push_str(&emit_client_figure(
                                 &code,
                                 &id,
                                 cell.as_ref().map(|c| &c.js),
@@ -1196,26 +1188,20 @@ fn render_internal_impl(
                     }
                 }
             }
-        } else if let Some((c, spec)) = cell
-            .as_ref()
-            .and_then(|c| client_lang(&c.lang).map(|spec| (c, spec)))
-        {
-            if no_exec_in_force() || !client_lang_runnable(&c.lang) {
+        } else if let Some(c) = cell.as_ref().filter(|c| is_client_lang(&c.lang)) {
+            if no_exec_in_force() {
                 // `--no-exec`: a client-side cell is a code cell whose kernel is the
                 // browser, so it renders as source like a `{python}` cell with no kernel
                 // does (item 79). `emit` keeps the highlighted source and the block's
                 // id/sourcepos, so click-to-source and the incremental swap are unaffected.
-                //
-                // A language whose runtime is unavailable in this build takes the identical
-                // arm, for the identical reason: nothing will run it, so emitting the live
-                // wrapper would leave a husk. Doing it here rather than as a post-pass over
-                // finished HTML also means the wrapper is never emitted, so no later stage
-                // has to recover the author's source back out of a `<script>` element.
+                // Doing it here rather than as a post-pass over finished HTML means the
+                // wrapper is never emitted, so no later stage has to recover the author's
+                // source back out of a `<script>` element.
                 emit(node, &attrs, &mut html);
             } else {
-                // Native interactive client-side cell (`{js}`, `{glsl}`): the matching
-                // enhancer runs it in the reader's browser (no Observable runtime).
-                html.push_str(&emit_client_cell(spec, &c.code, &id, &c.js, &attrs));
+                // Native interactive `{js}` cell: `tali-js.js` runs it in the reader's
+                // browser (no Observable runtime).
+                html.push_str(&emit_client_cell(&c.code, &id, &c.js, &attrs));
             }
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
             // `echo: false` / `include: false`: keep the block so the executor still
@@ -2201,7 +2187,7 @@ pub(super) fn code_scripts_in(body: &str, mode: OutputMode, mermaid_src: &str) -
         } else {
             String::new()
         },
-        talijs_s = gate(has_client_cells(body), TALIESIN_JS),
+        talijs_s = gate(has_js_cells(body), TALIESIN_JS),
     )
 }
 
@@ -2241,7 +2227,7 @@ const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
 const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. The enhancer
-/// itself rides in [`code_scripts`].
+/// itself rides in the framework scripts ([`code_scripts_for`]).
 ///
 /// **When to emit is not this function's decision** — `page::needs_js_libs` owns it:
 /// unconditional in a preview (a doc can gain its first `{js}` cell on any edit, and the
@@ -2250,11 +2236,6 @@ const TALIESIN_JS: &str = include_str!("../../assets/js/tali-js.js");
 /// which described the build and silently mis-described the preview it was breaking.
 pub(crate) fn js_cell_head() -> String {
     format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
-}
-
-/// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
-pub fn has_js_cells(body: &str) -> bool {
-    has_client_cells_of(body, "js")
 }
 
 // `code-enhance.js` is authored as ordered per-feature fragments under

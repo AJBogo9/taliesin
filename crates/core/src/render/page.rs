@@ -338,12 +338,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // time this runs), and the deferred jslibs (d3/Plot) have executed by the
             // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
             //
-            // Gated on [`has_client_cells`], NOT on `{js}` alone: every registered
-            // client-side language runs through this one runtime, so a second language
-            // added to the registry needs it just as much. A language with its own
-            // enhancer follows it inline (and must, since it would call
-            // `window.taliJs.registerLanguage` on the object this script has just defined).
-            let tali_js_inline = if has_client_cells(p.body) {
+            // Gated on [`has_js_cells`].
+            let tali_js_inline = if has_js_cells(p.body) {
                 format!("\n<script>{TALIESIN_JS}</script>")
             } else {
                 String::new()

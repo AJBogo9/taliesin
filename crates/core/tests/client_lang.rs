@@ -1,26 +1,17 @@
-//! The client-side cell-language registry (backlog item 153), pinned at the seams a
-//! second language actually crosses.
-//!
-//! **Why the registry is still tested with one language in it.** `{glsl}` was withdrawn on
-//! 2026-08-08, so `CLIENT_LANGS` has a single entry — but the registry's whole claim is
-//! that adding a language is a *registration* rather than surgery, and the interesting
-//! failures are all of the form "one of the six places that used to say `lang == "js"` did
-//! not move". Each seam below is one of those places. The rows that could only be driven
-//! from a shader went with `{glsl}`; what is left is the language-blind half, which is what
-//! a future second language would land on.
+//! The `{js}` cell, the one language whose kernel is the reader's browser (backlog item
+//! 153), pinned at the seams it crosses.
 //!
 //! | seam                          | what it pins                                         |
 //! |-------------------------------|------------------------------------------------------|
 //! | the mime handshake            | Rust's `<script type>` is what `tali-js.js` looks up  |
-//! | the disjointness rule         | a client language never reaches `exec.rs`             |
+//! | the disjointness rule         | a `{js}` cell never reaches `exec.rs`                 |
 //! | the `{js}` asset gate         | a prose page ships neither runtime nor libraries      |
 //! | inline vs External globals    | a global present in preview and absent in the build   |
 //! | `reactive.rs::runtime_defines`| the dangling-input warning is not suppressed wholesale |
 
 use taliesin_core::OutputMode;
 use taliesin_core::render::{
-    client_lang, code_scripts_for, executes_to_kernel, has_client_cells, has_client_cells_of,
-    has_js_cells,
+    JS_CELL_MIME, code_scripts_for, executes_to_kernel, has_js_cells, is_client_lang,
 };
 
 fn render(src: &str) -> taliesin_core::RenderedDoc {
@@ -30,43 +21,39 @@ fn render(src: &str) -> taliesin_core::RenderedDoc {
 const CHART: &str = "```{js}\nreturn document.createElement(\"p\");\n```\n";
 
 // ---------------------------------------------------------------------------
-// the registry itself
+// the language itself
 // ---------------------------------------------------------------------------
 
-/// The two halves of the registry must agree on the MIME, because it is the only thing
-/// they share: Rust writes `<script type=…>` and `tali-js.js` looks the language up by
-/// exactly that string. A typo on either side is a cell that silently never mounts.
+/// The render and the client runtime must agree on the MIME, because it is the only thing
+/// they share: Rust writes `<script type=…>` and `tali-js.js` looks the cell up by exactly
+/// that string. A typo on either side is a cell that silently never mounts.
 #[test]
-fn every_registered_mime_is_looked_up_by_the_client_runtime() {
+fn the_cell_mime_is_looked_up_by_the_client_runtime() {
     let runtime = include_str!("../assets/js/tali-js.js");
-    // One statement per registered language; the registry has one entry today.
-    let spec = client_lang("js").expect("registered");
     assert!(
-        runtime.contains(spec.mime),
-        "`{}` is registered server-side as `{}` but the client runtime never looks that \
-         mime up",
-        spec.lang,
-        spec.mime
+        runtime.contains(JS_CELL_MIME),
+        "`{{js}}` cells are written as `{JS_CELL_MIME}` but the client runtime never looks \
+         that mime up"
     );
 }
 
 /// A client-side language's kernel is the browser, so it must never be in the set the
-/// executor will try to run. The two sets being disjoint is what keeps the registry out of
+/// executor will try to run. The two sets being disjoint is what keeps `{js}` out of
 /// `exec.rs` without `exec.rs` having to know it exists.
 #[test]
 fn client_langs_never_reach_a_kernel() {
-    assert!(client_lang("js").is_some(), "`js` should be registered");
+    assert!(is_client_lang("js"), "`js` runs in the browser");
     assert!(
         !executes_to_kernel("js"),
         "`js` is a client-side language and must not be in the executable set"
     );
     assert!(
-        client_lang("python").is_none(),
-        "`python` runs against a kernel and must not be in the client registry"
+        !is_client_lang("python"),
+        "`python` runs against a kernel, not in the browser"
     );
 }
 
-// The `--no-exec` half of the registry lives in `crates/server/tests/no_exec_js_cells.rs`,
+// The `--no-exec` half lives in `crates/server/tests/no_exec_js_cells.rs`,
 // beside the `{js}` case it generalizes. `no_exec_in_force` reads a process-wide env var,
 // so it has to be driven through a subprocess: setting it in-process would leak into every
 // other test sharing this binary and make their results depend on scheduling order.
@@ -75,18 +62,12 @@ fn client_langs_never_reach_a_kernel() {
 // asset gates
 // ---------------------------------------------------------------------------
 
-/// Two gates rather than one, kept apart even at one language: `has_client_cells` gates the
-/// shared runtime and `has_js_cells` gates the ~490 KB of d3 + Plot that only `{js}` draws
-/// with. Collapsing them would make a future language without drawing libraries pay for
-/// them, which is the shape the registry exists to prevent.
+/// The one gate for the cell runtime and the ~490 KB of d3 + Plot: open on a `{js}` page,
+/// shut on a prose page.
 #[test]
-fn the_runtime_and_the_drawing_libraries_are_gated_separately() {
-    let chart = render(CHART).body_html();
-    assert!(has_client_cells(&chart) && has_js_cells(&chart));
-    assert!(has_client_cells_of(&chart, "js"));
-
-    let prose = render("Just prose.\n").body_html();
-    assert!(!has_client_cells(&prose) && !has_js_cells(&prose));
+fn the_runtime_and_the_drawing_libraries_are_gated_on_a_js_cell() {
+    assert!(has_js_cells(&render(CHART).body_html()));
+    assert!(!has_js_cells(&render("Just prose.\n").body_html()));
 }
 
 /// A `{js}` page in a static Build ships the shared runtime; a prose page ships none of it.

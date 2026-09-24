@@ -95,13 +95,6 @@ fn no_exec_renders_a_js_cell_as_source_instead_of_running_it() {
     );
 }
 
-// A twin of the test above ran the same assertions against `{glsl}`, the registry's second
-// language, and was the one row that could catch `--no-exec` being re-spelled `lang == "js"`
-// instead of driven off `CLIENT_LANGS`. It went with `{glsl}` on 2026-08-08. With one
-// registered language the two spellings are indistinguishable by test, so **a second
-// language added to `CLIENT_LANGS` owes this file a row** — that is the moment the
-// distinction becomes observable again.
-
 #[test]
 fn no_exec_does_not_number_a_js_figure_it_will_not_emit() {
     // A labelled `{js}` figure materializes only because the render pass emits it. With the
