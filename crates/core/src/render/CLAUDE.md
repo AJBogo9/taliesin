@@ -7,10 +7,10 @@ Module map:
 - `cell_extract.rs` cell-option parsing (`#|`/`//|`/`%%|` directive + leaf parsers)
 - `cell_numbered.rs` numbered `{js}`/figure/listing emitters + `numbered_caption` (interpolate the orchestrator's `attrs`; never build data-attrs)
 - `page.rs`   full HTML-page assembly (the `PAGE_TEMPLATE` shell, `SiteCtx` wiring, favicon)
-- `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
+- `emit.rs`   per-block HTML (server-side highlight, the `code-fold` `<details>`)
 - `divs.rs`   `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)
 - `figure.rs` numbered figures + captions
-- `theme.rs`  `--tali-*` themes (light/dark), `theme_head`
+- `theme.rs`  `theme_head`, the pre-paint script only (the `--tali-*` palettes are `assets/css/tokens.css` and `tokens-dark.css`)
 - `extension/` shortcode expansion (`{{< input >}}`)
 
 Conventions:

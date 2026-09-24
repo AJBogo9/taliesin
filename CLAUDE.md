@@ -27,9 +27,9 @@ the invariants below.
 
 > **⚠ ORDERING RULE.** *A pin and its docs page are deleted in the SAME commit as their
 > feature, never before.* A corpus document deleted ahead of the code it guards leaves
-> that code silently unguarded while every gate still passes — the sweeps in
-> `crates/core/tests/corpus.rs` iterate over whatever exists, so removing a document
-> removes coverage without removing a test.
+> that code unguarded: the sweeps in `crates/core/tests/corpus.rs` iterate over whatever
+> exists. `crates/core/tests/corpus_manifest.rs` lists every corpus document, so a
+> deletion costs one deliberate line, but nothing checks that it lands with its feature.
 
 **The one standing freeze is warm-page eviction**: `MAX_WARM_PAGES` plus the
 deterministic LRU order in `serve_site/exec_pool.rs`, which the **preview** relies on
@@ -54,7 +54,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
-    emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
+    emit.rs          per-block HTML (server-side highlighting, the `code-fold` <details>)
     divs.rs          `:::` fenced divs (callouts, the `layout-ncol` grid, width escapes)
     figure.rs        numbered figures + captions
     extension/       shortcode expansion: `{{< input >}}` (the only one that expands
@@ -93,7 +93,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    the bundled set lacks deserializes the `two-face` extras, a measured
                    138 ms. Without the memo, re-highlighting was 85% of a warm edit
   src/diagnostics/ the static validators `lint::page_static_diagnostics` runs: headings,
-                   anchors, assets, media, links, the `{js}` reactive graph, a11y (alt
+                   anchors, assets (images; audio and video are skipped), links, the
+                   `{js}` reactive graph, a11y (alt
                    text + heading skips) and bibliography. **The keep test is "a defect
                    the author cannot see in the rendered page"**
   src/cite/        citations ([@key]) + cross-references (@fig-, @sec-): a module dir
@@ -113,7 +114,8 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    it). ONE project per build and
                    ONE PROJECT PER DEPLOY: the four sites publish separately and link by
                    absolute URL (tools/publish.sh)
-  assets/          bundled offline: css/ (base, dark, site), js/ (code-enhance/
+  assets/          bundled offline: css/ (base, dark, fonts, site, tokens,
+                   tokens-dark), js/ (code-enhance/
                    fragments, mermaid.js, tali-js.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
@@ -197,9 +199,10 @@ editor/vscode/   the VS Code companion. It implements NO language features of it
                  language. Even that keeps the knowledge in Rust: cell locations come from
                  `taliesin/cellRegions` (`lsp_cells.rs`), never from a fence scan in TS.
                  **Add an editor feature in Rust, not here.**
-web-client/      browser preview client (vanilla JS, the only client): client.js mounts
-                 blocks + applies ops (Ctrl-click opens source in the editor),
-                 search.js (Cmd-K), toc-spy.js (scrollspy)
+web-client/      browser scripts (vanilla JS): client.js is the preview client (mounts
+                 blocks + applies ops, Ctrl-click opens source in the editor) and never
+                 ships in a build; search.js (Cmd-K) and toc-spy.js (scrollspy) ship in
+                 built pages too
 docs/            project's own manual: TWO sibling book projects, authored in .tmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/);
                  docs/internals/ = Internals book. docs/ itself is just a container
@@ -251,8 +254,8 @@ anywhere. For UI work, `/preview <file.tmd>` builds, serves on port 4388, and ve
 in the browser via the chrome-devtools MCP. A `PostToolUse` hook runs `rustfmt` on every
 edited `.rs` file, so the tree stays `cargo fmt`-clean.
 
-**Editing `assets/css/*` or `assets/js/*` needs a `cargo build` before the change shows
-up.** They are `include_str!`-compiled into the binary, so rebuilding only the site
+**Editing `assets/css/*`, `assets/js/*` or `web-client/*` needs a `cargo build` before the
+change shows up.** They are `include_str!`-compiled into the binary, so rebuilding only the site
 re-emits the *old* bundled CSS/JS and you will measure a stale page. This bites BOTH
 loops: the `style` websocket message that used to hot-swap CSS went with `theme:` on
 2026-08-17, so nothing pushes a bundle to a live page any more. What a rebuild does give
@@ -262,7 +265,10 @@ previous build's client), so the reload fetches the fresh bundle.
 
 ## Executing cells
 
-`{python}` cells need a Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`).
+`{python}` cells need a Python with `ipykernel`. The interpreter is the first of: the
+`_site.yml` `python:` field, the project's own `.venv`, `TALIESIN_PYTHON`, a `.venv` found
+walking up from the project (the walk stops at a `.git` or `pyproject.toml` directory,
+after probing it), then `python3` (`interpreter.rs`; `doctor` names the one it picked).
 `{r}` was the second kernel language and was cut in Wave 6, so `Executor::langs` and
 `FreezeCache::packages` are one-key maps that **must stay maps**. Without a kernel, cells
 render as source and the preview shows a "kernel unavailable" diagnostic.
