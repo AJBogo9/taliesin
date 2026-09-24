@@ -44,9 +44,6 @@ fn is_word(c: char) -> bool {
 fn is_xref_id_char(c: char) -> bool {
     is_word(c) || c == '-'
 }
-fn is_cite_key_char(c: char) -> bool {
-    is_word(c) || c == ':' || c == '.' || c == '-'
-}
 fn is_ws(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c')
 }
@@ -160,34 +157,33 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
     spans
 }
 
-/// Classify the token at 0-based (`line`, `character`). Citation `[@k]` wins over xref
-/// `@k`; a front-matter key is recognized only inside the `---` body, on the key token.
+/// Classify the token at 0-based (`line`, `character`). A key of a citation group wins over
+/// a bare xref `@k`; a front-matter key is recognized only inside the `---` body, on the key
+/// token.
 pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Target {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let lt: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
     let n = lt.len();
 
-    // Citation `[@key]` first (its `@` must not be read as an xref).
-    let mut i = 0;
-    while i + 1 < n {
-        if lt[i] == '[' && lt[i + 1] == '@' {
-            let key_start = i + 2;
-            let mut j = key_start;
-            while j < n && is_cite_key_char(lt[j]) {
-                j += 1;
+    // A key of a citation group first, read by the render's own grammar (its `@` must not
+    // be read as an xref). A cross-reference key in a group (`[@fig-x]`) renders as the
+    // cross-reference it names, so it navigates as one.
+    if let Some((key, span)) =
+        taliesin_core::cite::citation_key_at(lines.get(line).copied().unwrap_or(""), character)
+    {
+        return if taliesin_core::cite::is_xref_anchor(&key) {
+            Target::Xref {
+                id: key,
+                start: span.start,
+                end: span.end,
             }
-            if j > key_start && j < n && lt[j] == ']' {
-                let (start, end) = (i + 1, j); // `@` .. `]`
-                if covers(start, end, character) {
-                    return Target::Cite {
-                        key: lt[key_start..j].iter().collect(),
-                        start,
-                        end,
-                    };
-                }
+        } else {
+            Target::Cite {
+                key,
+                start: span.start,
+                end: span.end,
             }
-        }
-        i += 1;
+        };
     }
 
     // Cross-reference `@id`, where `@` is not preceded by a word char, `@`, or `[`.
@@ -393,86 +389,59 @@ pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
     None
 }
 
-/// The char offset of the BibTeX entry header `@type{key,` for `key` in `chars`, or None
-/// when absent. Shared by `bib_entry_site` (offset → line/col) and `bib_entry_text`
-/// (offset → brace-balanced entry text) so the two can't drift.
-fn bib_entry_offset(chars: &[char], keyc: &[char]) -> Option<usize> {
-    let (n, m) = (chars.len(), keyc.len());
-    if m == 0 {
-        return None;
-    }
-    let mut i = 0;
-    while i < n {
-        if chars[i] == '@' {
-            let mut j = i + 1;
-            let type_start = j;
-            while j < n && is_word(chars[j]) {
-                j += 1;
-            }
-            if j > type_start {
-                while j < n && is_ws(chars[j]) {
-                    j += 1;
-                }
-                if j < n && chars[j] == '{' {
-                    j += 1;
-                    while j < n && is_ws(chars[j]) {
-                        j += 1;
-                    }
-                    if j + m <= n && chars[j..j + m] == *keyc {
-                        let mut k = j + m;
-                        while k < n && is_ws(chars[k]) {
-                            k += 1;
-                        }
-                        if k < n && chars[k] == ',' {
-                            return Some(i);
-                        }
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-    None
+/// The `.bib` files a citation in the buffer at `uri` resolves against, in the order the
+/// render reads them: a later file's entry wins a key two files define.
+pub(crate) fn bib_files(uri: &lsp_types::Url, text: &str) -> Vec<std::path::PathBuf> {
+    let Some(dir) = uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+    else {
+        return Vec::new();
+    };
+    frontmatter_bib_paths(text)
+        .iter()
+        .map(|rel| dir.join(rel))
+        .collect()
 }
 
-/// The 0-based (line, col) of the BibTeX entry header `@type{key,` for `key` in `bib`,
-/// or None when absent.
-pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
-    let chars: Vec<char> = bib.chars().collect();
-    let keyc: Vec<char> = key.chars().collect();
-    let i = bib_entry_offset(&chars, &keyc)?;
-    Some(offset_to_line_col(&chars, i))
+/// The entry the render cites for `key` among `files` (see [`bib_files`]): the file, its
+/// text and the entry's byte range in it, read by core's `.bib` parser. The last definition
+/// wins, as it does in the render: a later file over an earlier one, and within one file.
+pub(crate) fn bib_entry(
+    files: &[std::path::PathBuf],
+    key: &str,
+) -> Option<(std::path::PathBuf, String, std::ops::Range<usize>)> {
+    files.iter().rev().find_map(|path| {
+        let text = std::fs::read_to_string(path).ok()?;
+        let (_, span) = taliesin_core::cite::entry_spans(&text)
+            .into_iter()
+            .rfind(|(k, _)| k == key)?;
+        Some((path.clone(), text, span))
+    })
 }
 
-/// The raw BibTeX entry (`@type{key, … }`) for `key`, brace-balanced so a `{…}` inside a
-/// field value doesn't cut it short; None when the key is absent. A Rust port of the
-/// companion's `bibEntryFor`, used by the LSP hover to show the citation source.
-pub(crate) fn bib_entry_text(bib: &str, key: &str) -> Option<String> {
-    let chars: Vec<char> = bib.chars().collect();
-    let keyc: Vec<char> = key.chars().collect();
-    let start = bib_entry_offset(&chars, &keyc)?;
-    let brace_open = (start..chars.len()).find(|&i| chars[i] == '{')?;
-    let mut depth = 0usize;
-    for i in brace_open..chars.len() {
-        match chars[i] {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(
-                        chars[start..=i]
-                            .iter()
-                            .collect::<String>()
-                            .trim()
-                            .to_string(),
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    // Unbalanced .bib: give back what we have (mirrors `bibEntryFor`).
-    Some(chars[start..].iter().collect::<String>().trim().to_string())
+/// Every key the bibliography stores from `files`, sorted: the keys a citation can name.
+pub(crate) fn bib_keys(files: &[std::path::PathBuf]) -> std::collections::BTreeSet<String> {
+    files
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .flat_map(|text| taliesin_core::cite::entry_spans(&text))
+        .map(|(key, _)| key)
+        .collect()
+}
+
+/// The 0-based (line, scalar column) of byte `at` in `text`, counting lines the way the
+/// editor does (`lsp_pos::lines`).
+pub(crate) fn line_col(text: &str, at: usize) -> (u32, u32) {
+    let before = &text[..at];
+    let lines = crate::lsp_pos::lines(before).count().saturating_sub(1);
+    let col = crate::lsp_pos::lines(before)
+        .last()
+        .unwrap_or("")
+        .chars()
+        .count();
+    (lines as u32, col as u32)
 }
 
 fn strip_quotes(s: &str) -> String {
@@ -601,38 +570,6 @@ mod tests {
         assert_eq!(definition_site("nothing", "fig-1"), None);
         // A longer id must not match on a prefix.
         assert_eq!(definition_site("{#fig-10}", "fig-1"), None);
-    }
-
-    #[test]
-    fn bib_entry_site_finds_the_entry_header() {
-        assert_eq!(
-            bib_entry_site("@article{smith2020,\n  title={x}\n}", "smith2020"),
-            Some((0, 0))
-        );
-        assert_eq!(
-            bib_entry_site("% comment\n@book{key1 ,\n}", "key1"),
-            Some((1, 0))
-        );
-        assert_eq!(bib_entry_site("@article{other,}", "smith2020"), None);
-    }
-
-    #[test]
-    fn bib_entry_text_is_brace_balanced() {
-        // A `{…}` inside a field value must not cut the entry short.
-        assert_eq!(
-            bib_entry_text(
-                "@article{smith2020,\n  title = {A {Deep} Study}\n}\ntrailing",
-                "smith2020"
-            )
-            .as_deref(),
-            Some("@article{smith2020,\n  title = {A {Deep} Study}\n}")
-        );
-        assert_eq!(bib_entry_text("@book{other,\n}", "smith2020"), None);
-        // Unbalanced .bib: return what we have rather than nothing.
-        assert_eq!(
-            bib_entry_text("@misc{k1,\n  note = {open", "k1").as_deref(),
-            Some("@misc{k1,\n  note = {open")
-        );
     }
 
     /// One fixture line for the cursor walk. `span` is the **inclusive** `[first, last]` cursor
@@ -983,55 +920,6 @@ mod tests {
         match classify_target(cr, 1, 6) {
             Target::Cite { key, .. } => assert_eq!(key, "smith2020"),
             other => panic!("expected the citation on the line after the CR, got {other:?}"),
-        }
-    }
-
-    fn bib_offset(bib: &str, key: &str) -> Option<usize> {
-        let chars: Vec<char> = bib.chars().collect();
-        let keyc: Vec<char> = key.chars().collect();
-        bib_entry_offset(&chars, &keyc)
-    }
-
-    /// The `@type{key,` scan: whitespace tolerance, and stopping at the end of a truncated `.bib`.
-    ///
-    /// The two tests above reach this scanner only through canonical, complete entries, which
-    /// leaves 17 mutants alive: every one of its four bounds checks can be widened past the end of
-    /// the buffer, and both of its whitespace-skipping loops can be made no-ops, without a fixture
-    /// noticing. Both are reachable in practice — `.bib` files are written by hand and by export
-    /// tools, and this scans one straight off disk on every hover and every go-to-definition of a
-    /// `[@key]`, including while the author has that file open and half-written.
-    #[test]
-    fn bib_entry_offset_skips_whitespace_and_stops_at_the_end_of_a_truncated_bib() {
-        // Canonical, and the offset is the `@`, not the key.
-        assert_eq!(
-            bib_offset("x\n@article{smith2020,\n}", "smith2020"),
-            Some(2)
-        );
-        // BibTeX allows whitespace before the brace and after it, so both must be skipped.
-        assert_eq!(bib_offset("@article {key,\n}", "key"), Some(0));
-        assert_eq!(bib_offset("@article{ key,\n}", "key"), Some(0));
-        assert_eq!(bib_offset("@article { key ,\n}", "key"), Some(0));
-        // …but the key itself must match whole: a longer key is not a hit on its prefix.
-        assert_eq!(bib_offset("@article{keyword,\n}", "key"), None);
-        // An entry needs a type; `@{…}` is not a header.
-        assert_eq!(bib_offset("@{key,\n}", "key"), None);
-        // An empty key matches nothing rather than every entry.
-        assert_eq!(bib_offset("@article{key,\n}", ""), None);
-
-        // Truncated after each part of the header in turn: None, never a read past the end.
-        for truncated in [
-            "@article",
-            "@article ",
-            "@article{",
-            "@article{ ",
-            "@article{key",
-            "@article{key ",
-        ] {
-            assert_eq!(
-                bib_offset(truncated, "key"),
-                None,
-                "a `.bib` truncated at {truncated:?} must not resolve a key"
-            );
         }
     }
 

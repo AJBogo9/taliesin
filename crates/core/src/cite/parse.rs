@@ -19,6 +19,32 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
     (bib, warnings)
 }
 
+/// Where each entry that a bibliography stores sits in the text of one `.bib` file: its key
+/// and the byte range from its `@` to where reading it ended (past its closing delimiter,
+/// when it has one), in file order. Read by the one parser, so the editor's hover,
+/// go-to-definition and key completion see exactly the entries a page cites, paren-delimited
+/// ones included, under the keys the bibliography stores them by.
+pub fn entry_spans(text: &str) -> Vec<(String, std::ops::Range<usize>)> {
+    let mut spans = Vec::new();
+    read_spanned(
+        &mut Bibliography::default(),
+        "",
+        text,
+        &mut HashMap::new(),
+        &mut spans,
+    );
+    // `read_spanned` counts in chars, like the rest of the parser.
+    let byte: Vec<usize> = text
+        .char_indices()
+        .map(|(b, _)| b)
+        .chain([text.len()])
+        .collect();
+    spans
+        .into_iter()
+        .map(|(key, r)| (key, byte[r.start]..byte[r.end]))
+        .collect()
+}
+
 /// Parse the text of ONE `.bib` file into `bib`, returning its diagnostics. `file` names
 /// the file in those messages (empty for a bare text).
 ///
@@ -35,6 +61,18 @@ pub(crate) fn read_into(
     file: &str,
     text: &str,
     strings: &mut HashMap<String, String>,
+) -> Vec<String> {
+    read_spanned(bib, file, text, strings, &mut Vec::new())
+}
+
+/// [`read_into`], also recording in `spans` each stored entry's key and char range (see
+/// [`entry_spans`]).
+fn read_spanned(
+    bib: &mut Bibliography,
+    file: &str,
+    text: &str,
+    strings: &mut HashMap<String, String>,
+    spans: &mut Vec<(String, std::ops::Range<usize>)>,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     let entries = &mut bib.entries;
@@ -166,13 +204,14 @@ pub(crate) fn read_into(
         if key.is_empty() {
             continue;
         }
-        // Every key the bib stores can also be `[@cited]`: the scanner and this check share
-        // one predicate. A key it cannot name is reported and left out, never stored as a
-        // row nothing can cite.
-        if !key.chars().all(super::is_cite_key_char) {
+        // Every key the bib stores can also be `[@cited]`: this check reads the key the way
+        // a citation does (`key_prefix`). A key it cannot name is reported and left out,
+        // never stored as a row nothing can cite.
+        if super::key_prefix(&key) != key {
             warnings.push(format!(
                 "{}: key `{key}` cannot be cited: a `[@…]` key may use only letters, digits \
-                 and `- _ : . + /`, so the entry was skipped",
+                 and `- _ : . + /`, and ends with a letter, a digit or `_`, so the entry was \
+                 skipped",
                 place(key_at)
             ));
             continue;
@@ -191,6 +230,7 @@ pub(crate) fn read_into(
             ));
         }
         biblatex_names(&mut fields);
+        spans.push((key.clone(), at..i));
         entries.insert(key, Entry { kind, fields });
     }
     for (at, name) in undefined {

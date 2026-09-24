@@ -856,50 +856,6 @@ pub(crate) fn harvest_anchor_ids(text: &str) -> Vec<String> {
     seen.into_iter().collect()
 }
 
-/// Harvest BibTeX citation keys (`@type{key,`) from a `.bib` file's text, deduplicated and
-/// sorted. `/@\w+\s*\{\s*([^,\s}]+)\s*,/g`.
-pub(crate) fn harvest_bib_keys(bib: &str) -> Vec<String> {
-    let chars: Vec<char> = bib.chars().collect();
-    let n = chars.len();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut i = 0;
-    while i < n {
-        if chars[i] == '@' {
-            let mut j = i + 1;
-            let type_start = j;
-            while j < n && is_word(chars[j]) {
-                j += 1;
-            }
-            if j > type_start {
-                while j < n && chars[j].is_whitespace() {
-                    j += 1;
-                }
-                if j < n && chars[j] == '{' {
-                    j += 1;
-                    while j < n && chars[j].is_whitespace() {
-                        j += 1;
-                    }
-                    let key_start = j;
-                    while j < n && !matches!(chars[j], ',' | '}') && !chars[j].is_whitespace() {
-                        j += 1;
-                    }
-                    if j > key_start {
-                        let mut k = j;
-                        while k < n && chars[k].is_whitespace() {
-                            k += 1;
-                        }
-                        if k < n && chars[k] == ',' {
-                            seen.insert(chars[key_start..j].iter().collect::<String>());
-                        }
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-    seen.into_iter().collect()
-}
-
 /// One directory entry the caller read from disk (name + whether it is a directory).
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct DirEntry {
@@ -1633,15 +1589,6 @@ mod tests {
         assert!(harvest_anchor_ids("::: {.theorem #pyth}\n:::").is_empty());
     }
 
-    #[test]
-    fn harvest_bib_keys_reads_entry_headers() {
-        assert_eq!(
-            harvest_bib_keys("@article{smith2020,\n  title={x}\n}\n@book{jones19 ,\n}"),
-            vec!["jones19".to_string(), "smith2020".to_string()]
-        );
-        assert!(harvest_bib_keys("% just a comment\nno entries").is_empty());
-    }
-
     /// Every trigger in `detect_context` is decided from the *end* of the line prefix, so its
     /// edges are "one character before the trigger completes" and "one character past the token".
     /// The 2026-07-27 mutation round found 24 survivors across these deciders because the tests
@@ -1821,44 +1768,6 @@ mod tests {
                 "line prefix {line_prefix:?} (doc {doc_prefix:?})"
             );
         }
-    }
-
-    /// `harvest_bib_keys` scans a whole `.bib` with a hand-rolled cursor, and 20 of its boundary
-    /// mutants survived: nothing fed it an entry that ends at EOF, an empty key, or whitespace in
-    /// the places BibTeX allows it. Each row below is one of those shapes.
-    #[test]
-    fn harvest_bib_keys_is_pinned_at_the_shapes_a_real_bib_contains() {
-        // Whitespace is legal between the type, the brace, the key and the comma.
-        assert_eq!(
-            harvest_bib_keys("@article {k1 ,\n}"),
-            vec!["k1".to_string()]
-        );
-        assert_eq!(
-            harvest_bib_keys("@article{\n  k1,\n}"),
-            vec!["k1".to_string()]
-        );
-        // A key must be followed by a comma to be an entry header.
-        assert!(harvest_bib_keys("@article{k1}").is_empty());
-        // Truncated at EOF, mid-key: the scan must stop at the end, not read past it.
-        assert!(harvest_bib_keys("@article{k1").is_empty());
-        assert!(harvest_bib_keys("@article{").is_empty());
-        // Truncated with no brace at all: the type scan and the whitespace skip after it must
-        // both stop at the end of the buffer.
-        assert!(harvest_bib_keys("@article").is_empty());
-        assert!(harvest_bib_keys("@article ").is_empty());
-        // A `@type` *not* followed by `{` is not an entry header, however entry-shaped the rest
-        // of the line looks.
-        assert!(harvest_bib_keys("@article xyz,").is_empty());
-        // `@` with no entry type, and an entry with no key.
-        assert!(harvest_bib_keys("@{k1,}").is_empty());
-        assert!(harvest_bib_keys("@article{,x}").is_empty());
-        // A bare `@` in prose is not an entry.
-        assert!(harvest_bib_keys("mail a@b.com").is_empty());
-        // Deduplicated and sorted.
-        assert_eq!(
-            harvest_bib_keys("@a{dup,}\n@b{dup,}\n@c{alpha,}"),
-            vec!["alpha".to_string(), "dup".to_string()]
-        );
     }
 
     /// Same story for `harvest_anchor_ids` (10 survivors): the fixtures above never put an anchor

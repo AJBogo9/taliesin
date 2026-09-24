@@ -838,24 +838,15 @@ fn resolve_definition(
                 Location::new(target, point(&body, anchor.line, 0, 0))
             }
         },
-        // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
+        // `[@key]` → the BibTeX entry the render cites for it.
         Target::Cite { key, .. } => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?;
-            let mut hit = None;
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                let abs = dir.join(&rel);
-                if let Ok(bib) = std::fs::read_to_string(&abs)
-                    && let Some((line, col)) = crate::lsp_nav::bib_entry_site(&bib, &key)
-                {
-                    hit = Some(Location::new(
-                        Url::from_file_path(&abs).ok()?,
-                        point(&bib, line, col, col),
-                    ));
-                    break;
-                }
-            }
-            hit?
+            let files = crate::lsp_nav::bib_files(uri, text);
+            let (path, bib, span) = crate::lsp_nav::bib_entry(&files, &key)?;
+            let (line, col) = crate::lsp_nav::line_col(&bib, span.start);
+            Location::new(
+                Url::from_file_path(&path).ok()?,
+                point(&bib, line, col, col),
+            )
         }
         // A front-matter key has no definition site to jump to; its answer is the hover.
         Target::FrontmatterKey { .. } | Target::None => return None,
@@ -1039,18 +1030,11 @@ fn token_hover(
             };
             markup(format!("`{key}:`{scope}\n\n{description}"), start, end)
         }
-        // `[@key]` → the brace-balanced BibTeX entry from the first front-matter `.bib`.
+        // `[@key]` → the BibTeX entry the render cites for it, as written in its `.bib`.
         Target::Cite { key, start, end } => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?;
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel))
-                    && let Some(entry) = crate::lsp_nav::bib_entry_text(&bib, &key)
-                {
-                    return markup(format!("```bibtex\n{entry}\n```"), start, end);
-                }
-            }
-            None
+            let files = crate::lsp_nav::bib_files(uri, text);
+            let (_, bib, span) = crate::lsp_nav::bib_entry(&files, &key)?;
+            markup(format!("```bibtex\n{}\n```", bib[span].trim()), start, end)
         }
         // `{{< include x.tmd >}}` → where the path resolves, and whether it is there. This
         // used to answer nothing even though the target was classified and go-to-definition
@@ -1530,21 +1514,10 @@ fn resolve_completion(
                 })
                 .collect()
         }
-        Ctx::Cite => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?.to_path_buf();
-            let mut keys = std::collections::BTreeSet::new();
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel)) {
-                    for k in crate::lsp_complete::harvest_bib_keys(&bib) {
-                        keys.insert(k);
-                    }
-                }
-            }
-            keys.into_iter()
-                .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
-                .collect()
-        }
+        Ctx::Cite => crate::lsp_nav::bib_keys(&crate::lsp_nav::bib_files(uri, text))
+            .into_iter()
+            .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
+            .collect(),
         Ctx::ShortcodePath { shortcode, typed } => {
             let doc_dir = uri.to_file_path().ok()?;
             let doc_dir = doc_dir.parent()?.to_path_buf();
@@ -3495,6 +3468,106 @@ mod tests {
         assert!(
             labels.contains(&"smith2020") && labels.contains(&"jones19"),
             "expected both citation keys, got {labels:?}"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Hover, go-to-definition and key completion read a citation with the render's own group
+    /// grammar and the `.bib` with its own parser (audit 2026-09-24, bibtex #11). A scanner of
+    /// their own resolved 2 of 11 real shapes: it wanted `[@` and `]` hard against the key,
+    /// knew no `/`, `+` or non-ASCII key character, never found a paren-delimited entry, and
+    /// offered keys the bibliography does not store.
+    #[test]
+    fn every_citation_shape_the_render_cites_resolves_in_the_editor() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-citeshape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let entries = [
+            ("a1", "@misc{a1, title={First}}"),
+            ("b1", "@misc{b1, title={Second}}"),
+            ("knuth:1984", "@misc{knuth:1984, title={Colon}}"),
+            (
+                "DBLP:journals/corr/abs-1706-03762",
+                "@misc{DBLP:journals/corr/abs-1706-03762, title={Dblp}}",
+            ),
+            (
+                "10.1145/3292500.3330701",
+                "@misc{10.1145/3292500.3330701, title={Doi}}",
+            ),
+            ("doe+roe", "@misc{doe+roe, title={Plus}}"),
+            ("müller2020", "@misc{müller2020, title={Umlaut}}"),
+            ("paren1", "@book(paren1, title = \"Paren\")"),
+        ];
+        let mut bib: Vec<&str> = entries.iter().map(|(_, e)| *e).collect();
+        // Two keys no citation can name: the bibliography skips them, so must completion.
+        bib.push("@misc{smith&jones2020, title={Amp}}");
+        bib.push("@misc{end.dot., title={Dot}}");
+        std::fs::write(dir.join("refs.bib"), bib.join("\n") + "\n").unwrap();
+        let lines = [
+            "A [@a1, p. 3] and [@a1; @b1] and [-@knuth:1984].",
+            "B [@DBLP:journals/corr/abs-1706-03762] [@10.1145/3292500.3330701].",
+            "C [@doe+roe] [@müller2020] [@paren1] [@knuth:1984: a note].",
+            "See [@",
+        ];
+        let doc = dir.join("paper.tmd");
+        let text = format!("---\nbibliography: refs.bib\n---\n\n{}\n", lines.join("\n"));
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // (line of `lines`, the `@key` to put the cursor inside, the key it names)
+        let probes = [
+            (0, "@a1,", "a1"),
+            (0, "@b1]", "b1"),
+            (0, "@knuth:1984]", "knuth:1984"),
+            (1, "@DBLP", "DBLP:journals/corr/abs-1706-03762"),
+            (1, "@10.1145", "10.1145/3292500.3330701"),
+            (2, "@doe+roe", "doe+roe"),
+            (2, "@müller2020", "müller2020"),
+            (2, "@paren1", "paren1"),
+            (2, "@knuth:1984:", "knuth:1984"),
+        ];
+        let mut id = 400;
+        for (row, needle, key) in probes {
+            let line = lines[row];
+            let col = line[..line.find(needle).unwrap()].chars().count() as u32 + 2;
+            let at = row as u32 + 4;
+            let entry_line = entries.iter().position(|(k, _)| *k == key).unwrap() as u32;
+            let entry = entries[entry_line as usize].1;
+            id += 1;
+            let hover = hover_raw_at(&client, &uri, id, at, col)
+                .unwrap_or_else(|| panic!("no hover on {needle} ({key})"));
+            assert!(
+                hover_markdown(&hover).contains(entry),
+                "{needle}: hover shows {:?}, not {entry:?}",
+                hover_markdown(&hover)
+            );
+            id += 1;
+            match definition_at(&client, &uri, id, at, col) {
+                Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                    assert_eq!(loc.uri, Url::from_file_path(dir.join("refs.bib")).unwrap());
+                    assert_eq!(loc.range.start.line, entry_line, "{needle}");
+                }
+                other => panic!("{needle}: expected the entry's location, got {other:?}"),
+            }
+        }
+
+        let items = complete_at(&client, &uri, 499, 7, 6);
+        let mut got: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        got.sort_unstable();
+        let mut want: Vec<&str> = entries.iter().map(|(k, _)| *k).collect();
+        want.sort_unstable();
+        assert_eq!(
+            got, want,
+            "completion offers exactly the keys a citation can name"
         );
 
         shutdown(&client);
