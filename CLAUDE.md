@@ -79,8 +79,18 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                      favicon): `render_doc_to_page`, the one RenderedDoc → page every
                      build writes (the preview calls `assemble_html_page` itself)
   src/diff.rs      block-level diff (BlockOp) for incremental updates
-  src/includes.rs  {{< include >}} resolution + per-file source map
-  src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
+  src/lines.rs     what each source line is, as comrak parses it (markdown, code, raw HTML,
+                   front matter; quote/list depth): the ONE answer for every pass that reads
+                   source line by line (includes, shortcodes, the `:::` scan, the prose
+                   count, the anchor scan). Never hand-roll a fence tracker
+  src/includes.rs  {{< include >}} resolution + per-file source map; `read_source` (the one
+                   normalizing reader) and `publishable`, the one publication and
+                   containment rule the copiers, the asset lint and the preview share
+  src/reads.rs     the files a render reads or looks for, recorded as it runs: what the
+                   preview rebuilds a page on
+  src/frontmatter.rs the one front-matter splitter (`front_matter_block`,
+                   `blank_front_matter`) + YAML parse + lint (typo warnings); the renderer
+                   reads the block once as YAML (`render::DocFront`)
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline), memoized on
                    `(latex, display)`. KaTeX runs on ONE long-lived worker thread and is
                    reached by channel: the `katex` crate keeps its JS context in a
@@ -93,7 +103,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    is consulted BEFORE `resolve`, which is load-bearing: resolving a token
                    the bundled set lacks deserializes the `two-face` extras, a measured
                    138 ms. Without the memo, re-highlighting was 85% of a warm edit
-  src/diagnostics/ the static validators `lint::page_static_diagnostics` runs: headings,
+  src/diagnostics/ the static validators `lint::page_static_diagnostics` runs:
                    anchors, assets (images; audio and video are skipped), links, the
                    `{js}` reactive graph, a11y (alt
                    text + heading skips) and bibliography. **The keep test is "a defect
@@ -105,9 +115,14 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    front-matter parse (frontmatter.rs), books (book.rs), Atom feeds per
                    dated listing (feed.rs, which also owns `nav_ordered`), sitemap.xml +
                    robots.txt (seo.rs), the five-tag OpenGraph head (meta.rs), Cmd-K
-                   search (search.rs), cross-refs (xref.rs). The two whole-project render
-                   passes — `harvest_xref_numbers` and `search::build_sections`, which
-                   `discover` runs back to back and `refresh_xrefs` re-runs on every save —
+                   search (search.rs), cross-refs (xref.rs). `Site::discover` is the
+                   project; `discover_document` is the project a document named on its
+                   own belongs to, scoped to it; `discover_registry` (the LSP's) runs no
+                   render pass. The two whole-project render passes, `harvest_xref_numbers`
+                   (numbers and heading text only: it typesets no math and highlights no
+                   code) and `search::build_sections`, which `discover` runs back to back
+                   (a preview save re-runs the harvest via `refresh_xrefs`, and the search
+                   index only when an anchor moved, after the open pages, off the lock),
                    fan out across cores via `fanout::map_ordered`, which returns results in
                    PAGE order (the duplicate-label rule is "first definition wins", so
                    completion order would make a build depend on scheduling) and lets a
@@ -124,14 +139,15 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    help, handler) + the dispatch and both help surfaces derived from it
   src/cli.rs       `init` (the scaffold) + `preview` arg parsing
   src/serve/       the dev server's SHARED layer, not a server: HTTP/asset plumbing,
-                   port binding + the single-instance probe, security.rs's origin/Host/
-                   identity guards, the watch predicates, and the CLI error helpers
+                   port binding + the single-instance probe, security.rs's three guards,
+                   the watch predicates, and the CLI error helpers
                    (`guarded`, `unknown_flag_error`, `bad_format_error`). **The preview
-                   binds 127.0.0.1 and nothing else**, so both guards are about a local
-                   peer: `ws_origin_ok` is the only thing stopping an open tab sending
-                   `restart_kernel`, and `with_host_guard` is the unconditional
-                   DNS-rebinding allowlist. `restart_kernel` over the websocket is the
-                   ONLY write the server accepts from a client
+                   binds 127.0.0.1 and nothing else**, so all three guards are about a
+                   local peer: `ws_origin_ok` is the only thing stopping an open tab
+                   sending `restart_kernel`; `with_host_guard` is the unconditional
+                   DNS-rebinding allowlist and, from Fetch Metadata, refuses a cross-site
+                   load that is not a navigation. `restart_kernel` over the websocket is
+                   the ONLY write the server accepts from a client
   src/serve_site/  THE dev server — one server for a project and for a single document
                    alike (mod.rs: per-page state/executor, cross-page nav, hot reload;
                    exec_pool.rs: the MAX_WARM_PAGES LRU, the one freeze). ONE project per
@@ -139,17 +155,18 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    whose `--check` runs in `.githooks/pre-push`.
                    `preview <file.tmd>` resolves to the file's enclosing `_site.yml`
                    project, opened at that page; with no ancestor it is a project of just
-                   that document (`Site::discover_single`), rendering no navbar and no
-                   footer, so `preview <file>` and `build <file>` agree on page chrome —
-                   **including the TOC**, which `build.rs` asks `Site::page_toc` for when
-                   (and only when) the front matter left `toc:` out. **Inside a project
+                   that document (`Site::discover_document`), rendering no navbar and no
+                   footer, so `preview <file>` and `build <file>` agree on page chrome,
+                   **including the TOC**: both run the one page pass, whose finish
+                   (`Site::finish_blocks`) decides it through `Site::page_toc`. **Inside a project
                    the two verbs part company by design**: `preview p3.tmd` opens the
                    whole project at that page, `build p3.tmd` writes one self-contained
                    file, and a navbar linking to `.html` siblings the build never wrote
                    would be broken chrome. A directory with no `_site.yml` is refused by
                    both verbs
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans what
-                   re-runs via cumulative-hash keys (warm reuse + cold replay)
+                   re-runs via cumulative-hash keys (warm reuse + cold replay). A cell's
+                   failure travels as data (`exec::Failure`), never read back out of HTML
   src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell
                    outputs keyed by a cumulative content hash, so unchanged cells restore
                    instead of re-executing across builds + preview restarts. Also records
@@ -161,11 +178,13 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
                    one memoized subprocess per interpreter per process
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
-  src/lint.rs      the SHARED static-lint kernel, not a verb: `Diagnostic`, `diag_from`,
-                   `blocking` (what fails `--strict`), `page_static_diagnostics` (the
-                   check-superset, ONE definition for `build`, `build --check-only`, the
-                   preview and the LSP), `buffer_diagnostics_in_site` (the LSP's seam)
-                   and `cmd_check_only` (the ~40-line front door). **Severity is a field
+  src/lint.rs      the SHARED static-lint kernel, not a verb: `PagePass`, THE one page
+                   pass every verb wraps (`build`, `--check-only`, the preview, the LSP:
+                   render, front matter, static checks, cells when the verb runs them,
+                   the project's finish); `Diagnostic`, the one diagnostic type (the
+                   preview's wire carries it too); `blocking` (what fails `--strict`);
+                   `page_static_diagnostics` (the check-superset); `buffer_diagnostics_in_site`
+                   (the LSP's seam) and `cmd_check_only` (the front door). **Severity is a field
                    on `render::Warning`**, set by the validator that found the defect:
                    there is no `TAL-*` code catalogue, so a reworded message can no longer
                    silently reclassify a family
@@ -358,7 +377,8 @@ cross-checks the hook, `gates.sh` and `ci.yml`
   has been the same bug four times (FA11, FA12, then both halves of FA13 — a stolen
   anchor, a rewritten code sample, a never-linked `.md` published into a deploy, and a
   single-quoted asset silently missing from a portable folder). The walker knows
-  tag-versus-text, skips `<script>`/`<style>` bodies, and reads all three value forms.
+  tag-versus-text, skips `<script>`/`<style>` bodies and comments, reads all three value
+  forms, and hands back `Attr::value` decoded (`R&amp;D.png` reads `R&D.png`).
 - **A duplicate element id is RENAMED, never refused** (`dedup_element_ids`, the last
   id-assigning pass). The first definition keeps the author's own spelling, so every link
   and `@ref` they wrote still resolves; the duplicate draws an error-severity located

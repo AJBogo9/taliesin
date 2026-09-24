@@ -12,6 +12,11 @@ Module map:
 - `figure.rs` numbered figures + captions
 - `theme.rs`  `theme_head`, the pre-paint script only (the `--tali-*` palettes are `assets/css/tokens.css` and `tokens-dark.css`)
 - `extension/` shortcode expansion (`{{< input >}}`)
+- `client_lang.rs` the `{js}` cell: `is_client_lang`, `JS_CELL_MIME`, `JS_CELL_CLASS`, `has_js_cells`
+- `validate.rs` the closed body vocabularies (cell options, callout kinds, div classes) + did-you-mean
+- `image_meta.rs` intrinsic image dimensions, a post-emission pass over a block's finished HTML
+- `text.rs`   visible-text extraction for the Cmd-K search index
+- `workers.rs` the parked big-stack threads every render runs on
 
 Conventions:
 - Submodules use `use super::*` and **can see mod.rs's private items** (a child sees its
