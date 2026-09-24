@@ -430,11 +430,16 @@ fn parse_xref(chars: &[char]) -> Option<(&'static str, String, usize)> {
 /// Render `@a; @b, p. 5` style citation group content into `[1, 2, p. 5]`. A
 /// cross-reference key inside the brackets (`[@fig-x]`) renders as a cross-ref link,
 /// not a citation.
+///
+/// `inner` is escaped HTML, as the text run it came from. It is decoded before it is
+/// parsed and escaped once on the way out: split as it was, the `;` of an `&amp;` split
+/// the group, and the text was escaped a second time.
 fn render_citation_group(
     inner: &str,
     cite_key: &mut impl FnMut(&str) -> usize,
     xrefs: &HashMap<String, String>,
 ) -> String {
+    let inner = crate::render::unescape_html(inner);
     let mut rendered: Vec<String> = Vec::new();
     for item in inner.split(';') {
         let item = item.trim().trim_start_matches('-'); // `-@key` suppresses author (n/a for numeric)
@@ -458,7 +463,7 @@ fn render_citation_group(
         rendered.push(piece);
     }
     if rendered.is_empty() {
-        format!("[{}]", esc(inner))
+        format!("[{}]", esc(&inner))
     } else {
         format!("[{}]", rendered.join(", "))
     }

@@ -3634,7 +3634,7 @@ fn leading_h1_text(blocks: &[Block]) -> Option<String> {
 /// Reverse [`escape_html`]: decode the entities the renderer itself emits (`&amp;`,
 /// `&lt;`, `&gt;`, `&quot;`, `&#39;`). Not a general HTML entity decoder — it exists so
 /// text lifted back out of emitted HTML can be re-escaped exactly once.
-fn unescape_html(s: &str) -> String {
+pub(crate) fn unescape_html(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
     }

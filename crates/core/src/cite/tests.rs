@@ -1356,3 +1356,29 @@ fn an_entry_missing_fields_leaves_no_dangling_punctuation() {
         "J. Smith, [Online]. Available: <a href=\"https://example.org/x\">https://example.org/x</a>"
     );
 }
+
+/// A citation group is parsed on its TEXT, not on the escaped HTML around it, and escaped
+/// once on the way out (audit 2026-09-24, bibtex #13 and escaping #4).
+///
+/// It was split on `;` as comrak had escaped it, so the `;` of `&amp;` split the group:
+/// `[@k1, pp. 3 & 7]` published "[1, pp. 3 &amp]", " 7" lost. Then the text was escaped
+/// a second time, so a group that was not a citation read "[Q&amp;A @ noon]".
+#[test]
+fn a_citation_group_is_parsed_on_text_not_on_escaped_html() {
+    let b = parse_bib("@misc{k1, title={T}, year={2020}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@k1, pp. 3 &amp; 7]. B [@k1, ch. &lt;2&gt;]. C [Q&amp;A @ noon].</p>",
+    )];
+    process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    assert!(
+        html.contains("[<a href=\"#ref-k1\">1</a>, pp. 3 &amp; 7]"),
+        "{html}"
+    );
+    assert!(
+        html.contains("[<a href=\"#ref-k1\">1</a>, ch. &lt;2&gt;]"),
+        "{html}"
+    );
+    assert!(html.contains("[Q&amp;A @ noon]"), "{html}");
+    assert!(!html.contains("&amp;amp;"), "escaped twice: {html}");
+}
