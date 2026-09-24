@@ -658,12 +658,13 @@
   }
 
   // A `{js}` cell can error asynchronously (its async body runs after the mount);
-  // watch the content for them (debounced) so the dev-menu count stays live.
+  // watch the content for them so the dev-menu count stays live. Throttled, not
+  // debounced: a cell that repaints every 100 ms (a ticker, an animation) reset a debounce
+  // forever, and a late error never reached the badge.
   if (window.MutationObserver) {
     let t = 0;
     new MutationObserver(() => {
-      clearTimeout(t);
-      t = setTimeout(scanCellErrors, 200);
+      if (!t) t = setTimeout(() => { t = 0; scanCellErrors(); }, 200);
     }).observe(root, { childList: true, subtree: true });
   }
 
