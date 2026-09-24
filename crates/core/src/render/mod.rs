@@ -2114,7 +2114,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
 /// caller is writing the vendored library to that href beside the page, so the loader fetches
 /// it instead of the page carrying it. See [`AssetMode::Inline`]'s field for the measurement.
 pub(super) fn code_scripts_in(body: &str, mode: OutputMode, mermaid_src: &str) -> String {
-    let mermaid_present = body.contains("class=\"mermaid\"");
+    let mermaid_present = has_mermaid(body);
     // A static Build inlines the vendored mermaid library (it sets `globalThis.mermaid`,
     // which the loader below short-circuits on) so a diagram renders FULLY OFFLINE — no
     // CDN, no external request. Preview keeps just the lean lazy loader (dev-time network
@@ -2312,9 +2312,10 @@ pub fn js_cell_libs_js() -> String {
     format!("{D3_JS}\n;\n{PLOT_JS}")
 }
 
-/// True if a rendered body contains a mermaid diagram (gates the mermaid file link).
+/// True if a rendered body contains a mermaid diagram (gates the mermaid library, inlined
+/// or linked). An element with the class, not text that shows one ([`has_class`]).
 pub fn has_mermaid(body: &str) -> bool {
-    body.contains("class=\"mermaid\"")
+    has_class(body, |c| c == "mermaid")
 }
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
@@ -3430,6 +3431,15 @@ pub(crate) fn attr_values<'a>(
         .flat_map(|t| attrs(&t))
         .filter(move |a| a.name.eq_ignore_ascii_case(name))
         .map(|a| a.value)
+}
+
+/// Whether any element in `html` carries a `class` token `pred` accepts, read through the
+/// one walker. The page-assembly gates (KaTeX, mermaid) ask this and never
+/// `contains("class=\"…\"")`: a substring answers for prose and code samples that merely
+/// SHOW the markup, and each such page shipped the payload for its text (369 KB of KaTeX,
+/// 3.5 MB of mermaid) until 2026-09-24.
+pub(crate) fn has_class(html: &str, pred: impl Fn(&str) -> bool) -> bool {
+    attr_values(html, "class").any(|v| v.split_ascii_whitespace().any(&pred))
 }
 
 /// Minimal percent-decoding for asset references and request paths (so `%20` etc. in

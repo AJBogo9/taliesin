@@ -625,6 +625,52 @@ fn mermaid_library_inlined_into_build_pages_only() {
     );
 }
 
+/// The page-assembly gates decide from MARKUP, never from text that merely shows it. Each
+/// read the finished body with a substring `contains`, so prose documenting the construct
+/// shipped its payload: `<span class="katex">` in inline code cost a math-free page 369 KB
+/// of KaTeX, `<pre class="mermaid">` cost 3.5 MB of mermaid, `<script
+/// type="application/tali-js">` cost d3, Plot and the cell runtime, and `<nav id="TOC">` on
+/// a `toc: false` page drew a "Skip to table of contents" link to an anchor that is not
+/// there. The last document is the control: the real constructs still ship everything.
+#[test]
+fn page_payload_gates_read_markup_and_not_text_that_shows_it() {
+    let shows = render_document(
+        "---\ntitle: Docs\ntoc: false\n---\n\n\
+         KaTeX wraps math in `<span class=\"katex\">`, mermaid reads `<pre class=\"mermaid\">`, \
+         a cell ships as `<script type=\"application/tali-js\">`, and the rail is \
+         `<nav id=\"TOC\">`.\n",
+    );
+    let page = super::render_doc_to_page(&shows, "docs", crate::OutputMode::Build);
+    let skip_to_toc =
+        |page: &str| tags(page).any(|t| attr_value(&t, "href").as_deref() == Some("#TOC"));
+    assert!(!page.contains(&KATEX_CSS[..400]), "KaTeX shipped for text");
+    assert!(
+        !page.contains("__esbuild_esm_mermaid"),
+        "mermaid shipped for text"
+    );
+    assert!(!page.contains("d3js.org"), "d3 shipped for text");
+    assert!(
+        !page.contains("tali-js cell error:"),
+        "the cell runtime shipped for text"
+    );
+    assert!(
+        !skip_to_toc(&page),
+        "a skip link to a TOC that is not there"
+    );
+
+    let real = render_document(
+        "---\ntitle: Real\ntoc: true\n---\n\n## One\n\n$x^2$\n\n## Two\n\n\
+         ```mermaid\nflowchart LR\n  A --> B\n```\n\n## Three\n\n\
+         ```{js}\nconst x = 1;\n```\n",
+    );
+    let page = super::render_doc_to_page(&real, "real", crate::OutputMode::Build);
+    assert!(page.contains(&KATEX_CSS[..400]), "real math ships KaTeX");
+    assert!(page.contains("__esbuild_esm_mermaid"), "a real diagram");
+    assert!(page.contains("d3js.org"), "a real cell ships d3");
+    assert!(page.contains("tali-js cell error:"), "and its runtime");
+    assert!(skip_to_toc(&page), "a real TOC keeps its skip link");
+}
+
 /// The third delivery, between the two above: a Build page whose caller has undertaken to
 /// write the library BESIDE it. `build <file.tmd> --out <dir>` produces a folder whose
 /// contract already permits sibling assets, so inlining there bought nothing and cost 16.5x

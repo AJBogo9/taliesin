@@ -66,12 +66,19 @@ pub fn client_lang_runnable(lang: &str) -> bool {
 /// True if a rendered body carries a cell of any client-side language. Gates the shared
 /// `tali-js.js` runtime, which every registered language's enhancer registers into.
 pub fn has_client_cells(body: &str) -> bool {
-    CLIENT_LANGS.iter().any(|c| body.contains(c.mime))
+    CLIENT_LANGS.iter().any(|c| has_script_type(body, c.mime))
 }
 
 /// True if a rendered body carries a cell of one named client-side language. Gates that
 /// language's own payload (d3 + Plot for `{js}`), so a page carrying only some other
 /// registered language does not ship half a megabyte of plotting library.
 pub fn has_client_cells_of(body: &str, lang: &str) -> bool {
-    client_lang(lang).is_some_and(|c| body.contains(c.mime))
+    client_lang(lang).is_some_and(|c| has_script_type(body, c.mime))
+}
+
+/// Whether an element in `body` carries `type="{mime}"`, read through the one walker. A
+/// substring `contains(mime)` answered for prose that merely names the type, and shipped
+/// d3, Plot and the cell runtime to a page with no cell on it.
+fn has_script_type(body: &str, mime: &str) -> bool {
+    super::attr_values(body, "type").any(|t| t == mime)
 }
