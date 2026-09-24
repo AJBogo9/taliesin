@@ -318,8 +318,8 @@ impl Site {
             if in_footer && target.ends_with(".xml") {
                 continue;
             }
-            // A raw file on disk: the same judgement the body-link resolver makes.
-            if self.root.join(&target).is_file() {
+            // A raw file the build publishes: the same judgement the body-link resolver makes.
+            if self.raw_file_target(&target) == Some(true) {
                 continue;
             }
             let where_ = if in_footer { "footer" } else { "nav" };
@@ -718,6 +718,27 @@ fn social_icon(name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::site::{Site, tests::write_site};
+
+    /// A nav link to a file is judged by the rule the build ships files by: one under a
+    /// `.`-prefixed folder exists and is never deployed, so the link is dead on every page.
+    #[test]
+    fn a_nav_link_to_a_file_the_build_never_publishes_is_broken() {
+        let root = write_site(
+            "chromeprivate",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nnav:\n  left:\n    - { text: CV, href: .private/cv.pdf }\n    - { text: Slides, href: _files/s.pdf }\n",
+                ),
+                (".private/cv.pdf", "x"),
+                ("_files/s.pdf", "y"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert_eq!(ws.len(), 1, "{ws:?}");
+        assert!(ws[0].message.contains(".private/cv.pdf"), "{ws:?}");
+    }
 
     /// `logo:` and `favicon:` ship on every page, and nothing checked either names a file:
     /// a typo published a broken brand image (or a missing tab icon) site-wide under a clean

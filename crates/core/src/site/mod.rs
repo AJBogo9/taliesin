@@ -765,6 +765,23 @@ impl Site {
         })
     }
 
+    /// Whether a link target that is no page (site-root-relative, as [`Self::link_target_url`]
+    /// returns it) is a file the build publishes: `None` when no file is there, `Some(false)`
+    /// for one the build never ships (a `.`-prefixed path, a symlink out of the checkout).
+    /// The one publication rule, [`crate::includes::publishable`], so a link the gate
+    /// accepts is a file the referenced-file pass deploys.
+    pub(crate) fn raw_file_target(&self, target: &str) -> Option<bool> {
+        let on_disk = crate::render::asset_fs_path(target);
+        if !self.root.join(&on_disk).is_file() {
+            return None;
+        }
+        let reach = crate::includes::Reach::Referenced;
+        Some(
+            crate::includes::publishable(&self.root, &self.root, Path::new(&on_disk), reach)
+                .is_ok(),
+        )
+    }
+
     /// Resolve a page-relative link `path` (from the page at `from_url`) to a site-root
     /// relative `.html` url. `None` for a link that climbs above the site root.
     fn link_target_url(&self, from_url: &str, path: &str) -> Option<String> {
@@ -811,9 +828,28 @@ impl Site {
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: a raw source file that exists under the root
-                    // (`notes.md`, `data.csv`) is a legitimate target, and the build ships
-                    // it via `deploy_referenced_sources`.
-                    if self.root.join(&target_url).is_file() {
+                    // (`notes.md`, `data.csv`, an `_downloads/` PDF) is a legitimate target,
+                    // and the build ships it via `deploy_referenced_sources`. Judged by the
+                    // rule that build ships by (`includes::publishable`): a file in a
+                    // `.`-prefixed folder exists and is never published, so a link to it is
+                    // dead in the deploy.
+                    if let Some(published) = self.raw_file_target(&target_url) {
+                        if published {
+                            continue;
+                        }
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` resolves to `{target_url}`, a file the build \
+                             never publishes (a `.`-prefixed path, or a symlink out of the \
+                             checkout)"
+                        ))
+                        .severity(Severity::Error);
+                        out.push((
+                            rel.clone(),
+                            match line {
+                                Some(l) => w.at(source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
                         continue;
                     }
                     // What must NOT excuse it: the *source* of a page discovery held back.
@@ -1832,6 +1868,40 @@ pub(crate) mod tests {
             "a raw source file on disk is still a legitimate target:\n{joined}"
         );
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file on disk is a legitimate link target only if the build publishes it. A link
+    /// into a `.`-prefixed folder was excused because the file existed, and the build never
+    /// ships one, so the deploy 404'd under a clean gate. An `_`-prefixed folder's file is
+    /// referenced, so it ships and the link is fine.
+    #[test]
+    fn a_link_to_a_file_the_build_never_publishes_is_broken() {
+        let root = write_site(
+            "private-link",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[notes](.notes/x.pdf) and [slides](_downloads/y.pdf).\n",
+                ),
+                (".notes/x.pdf", "x"),
+                ("_downloads/y.pdf", "y"),
+            ],
+        );
+        let msgs: Vec<String> = Site::discover(&root)
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert!(
+            msgs.iter().any(|m| m.contains(".notes/x.pdf")),
+            "a link into a dot folder is dead in the deploy: {msgs:?}"
+        );
+        assert!(
+            !msgs.iter().any(|m| m.contains("y.pdf")),
+            "a referenced `_downloads/` file ships: {msgs:?}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
