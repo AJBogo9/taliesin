@@ -661,15 +661,20 @@ fn cell_error_message(page_label: &str, f: &exec::CellFailure) -> String {
 
 /// What a failed cell's console line says about why.
 fn failure_reason(failure: exec::Failure) -> &'static str {
-    use crate::exec::{Failure, NOT_RUN_DIED, NOT_RUN_REQUEST, NOT_RUN_TIMEOUT};
+    use crate::exec::{Failure, NOT_RUN_CRASHED, NOT_RUN_DIED, NOT_RUN_REQUEST, NOT_RUN_TIMEOUT};
     match failure {
         Failure::Raised => {
             "code cell raised an uncaught exception; its traceback is baked into the output"
         }
         // The executor logs the full "which interpreter, and why it could not launch"
         // diagnostic separately, once per language, so this line does not repeat it.
+        Failure::NotRun(NOT_RUN_CRASHED) => {
+            "code cell crashed the kernel: its process exited while this cell ran, so the \
+             cells after it did not run"
+        }
         Failure::NotRun(NOT_RUN_DIED) => {
-            "code cell did not run: the kernel exited first; it re-runs on the next save"
+            "code cell did not run: the kernel exited during an earlier cell; it runs again \
+             next time"
         }
         Failure::NotRun(NOT_RUN_REQUEST) => {
             "code cell did not complete: the execution request failed"
@@ -3606,6 +3611,7 @@ mod build_diag_tests {
             "the message must say what actually happened, and why: {msg}"
         );
         for kind in [
+            crate::exec::NOT_RUN_CRASHED,
             crate::exec::NOT_RUN_DIED,
             crate::exec::NOT_RUN_REQUEST,
             crate::exec::NOT_RUN_TIMEOUT,

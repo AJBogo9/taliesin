@@ -581,13 +581,14 @@ impl Output {
         }
     }
 
-    /// The kernel process exited while this cell was in flight.
+    /// The kernel process exited while this cell was in flight, so this is the cell that
+    /// most likely crashed it.
     pub(crate) fn kernel_died() -> Self {
         Output::Error {
             ename: "KernelDied".into(),
             evalue: "kernel process exited mid-cell".into(),
             traceback: vec![],
-            not_run: Some(crate::exec::NOT_RUN_DIED),
+            not_run: Some(crate::exec::NOT_RUN_CRASHED),
         }
     }
 }

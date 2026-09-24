@@ -437,3 +437,50 @@ fn a_failing_hidden_cell_is_a_located_error_that_fails_strict() {
         "located at the hidden cell's opening fence: {hit}"
     );
 }
+
+/// exec #16: when a cell crashed the kernel, every console line (the crashing cell's
+/// included) read "did not run: the kernel exited first; it re-runs on the next save", so
+/// the author could not tell which cell to look at, and a headless build has no "save".
+/// The cell in flight when the kernel died is now named as the one that crashed it.
+#[test]
+fn the_cell_that_crashed_the_kernel_is_named_as_the_one() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("crash");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\n```{python}\nprint('one')\n```\n\n\
+         ```{python}\nimport os\nos._exit(1)\n```\n\n```{python}\nprint('three')\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(dir.join("doc.tmd"))
+        .args(["--format", "json"])
+        .output()
+        .expect("run taliesin");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let lines: Vec<&str> = stderr
+        .lines()
+        .filter(|l| l.contains("cell error"))
+        .collect();
+    assert_eq!(lines.len(), 2, "one line per failed cell:\n{stderr}");
+    assert!(
+        lines[0].contains("@ 9:") && lines[0].contains("crashed the kernel"),
+        "the crashing cell (line 9) must be named as the one that crashed it:\n{stderr}"
+    );
+    assert!(
+        lines[1].contains("@ 14:") && lines[1].contains("did not run"),
+        "the cell after it did not run:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("next save"),
+        "a headless build has no save to wait for:\n{stderr}"
+    );
+}

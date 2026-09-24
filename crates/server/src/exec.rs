@@ -50,7 +50,11 @@ const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 /// No kernel could be started for the cell's language (a missing/bad interpreter, a failed
 /// boot). The most likely setup failure there is.
 pub(crate) const NOT_RUN_UNAVAILABLE: &str = "kernel-unavailable";
-/// The kernel died mid-run, so this cell was skipped without being sent.
+/// The kernel process exited while THIS cell was running: most likely the cell crashed it
+/// (`os._exit`, a segfaulting extension, the OOM killer). Distinct from [`NOT_RUN_DIED`] so
+/// the console can name the one cell to look at.
+pub(crate) const NOT_RUN_CRASHED: &str = "kernel-crashed";
+/// The kernel died earlier in the run, so this cell was skipped without being sent.
 pub(crate) const NOT_RUN_DIED: &str = "kernel-died";
 /// The execute request itself failed (a ZMQ/protocol error, an interrupt), so the
 /// interpreter returned no result.
@@ -94,7 +98,8 @@ pub(crate) fn reset_announcements() {
 
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
-pub(crate) const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+pub(crate) const KERNEL_DIED_HTML: &str =
+    "<pre class=\"tali-error\">kernel exited before this cell ran; it runs again next time</pre>";
 
 /// A callback the server hands the executor to stream build progress
 /// (`build-state` messages) to the previewing client: each call receives a
@@ -1598,6 +1603,7 @@ fn failure_of(outs: &crate::kernel::Outputs) -> Option<Failure> {
         .collect();
     let not_run = [
         NOT_RUN_UNAVAILABLE,
+        NOT_RUN_CRASHED,
         NOT_RUN_DIED,
         NOT_RUN_REQUEST,
         NOT_RUN_TIMEOUT,
@@ -1923,7 +1929,7 @@ mod tests {
         );
         assert_eq!(
             of(vec![Output::kernel_died()]),
-            Some(Failure::NotRun(NOT_RUN_DIED))
+            Some(Failure::NotRun(NOT_RUN_CRASHED))
         );
         assert_eq!(
             of(vec![Output::interrupt_ignored()]),
