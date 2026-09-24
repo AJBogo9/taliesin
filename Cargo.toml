@@ -52,7 +52,7 @@ serde_json = "1"
 # machine with no toolchain; it was in the tree by accident rather than by decision. (Two C
 # build dependencies remain and are unavoidable: `ring`, via the Jupyter ZMQ client's HMAC,
 # and QuickJS, via `katex`. The rule this manifest actually keeps is narrower than "no C" —
-# `cc` is fine, `nasm` is not; see the `image` note below.) We emit scope *classes* and
+# `cc` is fine, `nasm` is not.) We emit scope *classes* and
 # color them in CSS, so the light/dark toggle restyles code without re-highlighting.
 #
 # The features are named one by one rather than taken as `default-fancy`, which is that
@@ -90,12 +90,6 @@ libc = "0.2"
 # The decoder set is exactly what the corpus contains — `.svg` has no intrinsic pixel size
 # and is not handled here, and `.avif` *decoding* is deliberately absent because it means
 # dav1d (C) via `avif-native`.
-#
-# NEVER depend on `ravif` directly. That turns on rav1e's `asm` feature, whose build script
-# fails with "NASM build failed. Make sure you have nasm installed" — measured — which would
-# break `cargo install` and the macOS cross-builds in `release.yml`. Going through `image`'s
-# own `avif` feature configures rav1e without asm; a cold release build of it is 21.8 s at
-# `-j4` on a machine with no nasm at all.
 image = { version = "0.25", default-features = false, features = [
     "png",
     "jpeg",
