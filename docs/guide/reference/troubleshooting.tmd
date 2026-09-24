@@ -71,9 +71,10 @@ occupying the warm kernel, every later cell queues behind it, and **Restart kern
 
 If a kernel process dies mid-session (a segfault in a native library, an
 out-of-memory kill), Taliesin recovers without hanging. The cell that was
-running when the kernel died gets a *"kernel exited before this cell ran; it will
-re-run on the next save"* placeholder, and the next run notices the dead
-process, drops it, respawns a fresh kernel, and re-runs every cell from the top
+running when the kernel died shows *"KernelDied: kernel process exited mid-cell"*, and
+the console names it as the cell that crashed the kernel; each cell after it shows
+*"kernel exited before this cell ran; it runs again next time"*. The next run notices the
+dead process, drops it, respawns a fresh kernel, and re-runs every cell from the top
 (the new kernel holds no state, so the warm prefix is gone). You don't have to
 touch **Restart kernel** for this.
 
