@@ -27,8 +27,6 @@ pub(crate) struct ProjectAnchor {
     pub path: PathBuf,
     /// 0-based line of the defining site, in `path`'s own numbering (see [`origin_of`]).
     pub line: u32,
-    /// The rendered section number for a numbered chapter heading; empty otherwise.
-    pub number: String,
 }
 
 /// One walk's result.
@@ -217,7 +215,7 @@ fn walk(root: &Path) -> ProjectScan {
         // `{{< include >}}` shifts everything below it.
         let (src, origins) = taliesin_core::includes::resolve(&raw, base);
 
-        for a in taliesin_core::site::scan_page_anchors(&src, None) {
+        for a in taliesin_core::site::scan_page_anchors(&src) {
             // First definition wins project-wide, matching `scan_xref_targets`. Two owners of
             // "which page defines `fig-x`" that disagreed would send F12 somewhere the built
             // page does not link to.
@@ -229,7 +227,6 @@ fn walk(root: &Path) -> ProjectScan {
                     // The source map reports a 1-based line; everything on the LSP wire
                     // is 0-based.
                     line: line.saturating_sub(1) as u32,
-                    number: a.number,
                 });
             }
         }

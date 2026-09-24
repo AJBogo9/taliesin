@@ -8288,7 +8288,7 @@ fn every_line_pass_agrees_with_comrak_about_what_is_code() {
         let doc = render_document_with_includes(&src, &d);
         let html = doc.body_html();
         let (expanded, _) = crate::includes::resolve(&src, &d);
-        let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded, None)
+        let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded)
             .into_iter()
             .map(|a| a.id)
             .collect();

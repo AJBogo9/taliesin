@@ -1,7 +1,7 @@
 //! Project-wide cross-reference registry: scan each page's source for `{#sec-}`/
-//! `{#fig-}`/… anchors (+ a section number for numbered book sections) and rewrite
+//! `{#fig-}`/… anchors (the site's render-harvest then numbers them) and rewrite
 //! `data-tali-xref`-marked links to the right page. `use super::*` reaches Page,
-//! Book, section_number, Block.
+//! Book, Block.
 
 use super::*;
 use crate::render::parse_attrs;
@@ -25,12 +25,12 @@ pub struct XrefTarget {
     pub title: String,
 }
 /// Scan every page's source for cross-referenceable anchors (`{#sec-x}` headings,
-/// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url and —
-/// for a numbered book section — its number. A lightweight source pass (no render),
-/// so cross-page `@ref`s resolve without a second execution. First definition wins.
+/// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url. A
+/// lightweight source pass (no render), so cross-page `@ref`s resolve without a second
+/// execution; the numbers come from the render-harvest that follows
+/// ([`super::Site::harvest_xref_numbers`]). First definition wins.
 pub(super) fn scan_xref_targets(
     pages: &[Page],
-    book: &Option<Book>,
     warnings: &mut Vec<String>,
 ) -> HashMap<String, XrefTarget> {
     let mut map: HashMap<String, XrefTarget> = HashMap::new();
@@ -39,23 +39,14 @@ pub(super) fn scan_xref_targets(
         let Ok(raw) = std::fs::read_to_string(&page.input) else {
             continue;
         };
-        // Resolve `{{< include >}}` first, exactly like the render pipeline does, so
-        // the section-number counters advance over included headings too (otherwise a
-        // chapter built from includes numbers its sections differently here than in
-        // the rendered page, and `@sec-` resolves to the wrong number).
+        // Resolve `{{< include >}}` first, exactly like the render pipeline does: an anchor
+        // authored in an included partial belongs to the page that includes it.
         let base = page
             .input
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        let chapter = super::book::chapter_of(book, page);
-        for ScannedAnchor {
-            id,
-            number,
-            title,
-            line,
-        } in scan_page_anchors(&src, chapter)
-        {
+        for ScannedAnchor { id, title, line } in scan_page_anchors(&src) {
             match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
@@ -79,7 +70,7 @@ pub(super) fn scan_xref_targets(
                 std::collections::hash_map::Entry::Vacant(e) => {
                     e.insert(XrefTarget {
                         url: page.url.clone(),
-                        number,
+                        number: String::new(),
                         title,
                     });
                 }
@@ -128,7 +119,7 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
         // skips `_`-prefixed directories, so it is reachable only this way.
         let base = input.parent().unwrap_or_else(|| Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        out.extend(scan_page_anchors(&src, None).into_iter().map(|a| a.id));
+        out.extend(scan_page_anchors(&src).into_iter().map(|a| a.id));
         out.extend(cell_label_anchors(&src));
     }
     out
@@ -208,15 +199,6 @@ fn heading_title(line: &str) -> String {
     text.trim().to_string()
 }
 
-/// Every heading level in a page's source, in document order — the input
-/// [`ChapterNumbering`] derives its base from.
-fn heading_levels(content: &[(usize, &str)]) -> Vec<usize> {
-    content
-        .iter()
-        .filter_map(|(_, t)| heading_level_of(t))
-        .collect()
-}
-
 /// One cross-referenceable anchor as the source scan sees it.
 /// One cross-reference anchor found in a page's source.
 ///
@@ -226,60 +208,31 @@ fn heading_levels(content: &[(usize, &str)]) -> Vec<usize> {
 /// even though the walk had already computed one.
 pub struct ScannedAnchor {
     pub id: String,
-    /// Section number for a `{#sec-}` heading in a numbered chapter; empty otherwise.
-    pub number: String,
     /// The heading's own text when the anchor sits on a heading line; empty otherwise.
     pub title: String,
     /// 1-based source line, for the duplicate-label warning.
     pub line: usize,
 }
 
-/// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
-/// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
-/// are counted in order so an unlabeled section still advances the numbering.
+/// The `{#prefix-id}` cross-ref anchors in one page's source. It numbers nothing: a
+/// number is what the page SHOWS, which only its render knows (`number_sections`), and
+/// counting source lines here disagreed with it on setext headings, `##\t`, and a heading
+/// a callout took for its title.
 ///
 /// Public so the editor's project walk uses this scanner rather than a second one: two
 /// implementations of "what defines an anchor" would let go-to-definition and the built page
 /// disagree about which file owns a label.
-pub fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> {
+pub fn scan_page_anchors(src: &str) -> Vec<ScannedAnchor> {
     let mut out = Vec::new();
-    // The numbering base is the shallowest heading below the chapter's own, so the whole
-    // heading shape has to be known before the first anchor is numbered: pre-scan it.
-    // `emits_title_block` is the renderer's own gate, so this scan and the rendered page
-    // agree on whether a leading heading is the chapter's title or its first section.
-    let content: Vec<(usize, &str)> = content_lines_numbered(src).collect();
-    let levels: Vec<usize> = heading_levels(&content);
-    let mut numbering = chapter.map(|ch| {
-        ChapterNumbering::new(
-            ch,
-            &levels,
-            crate::render::emits_title_block(
-                crate::frontmatter::front_matter_block(src).unwrap_or(""),
-            ),
-        )
-    });
-    for &(line, t) in &content {
-        if let Some(level) = heading_level_of(t) {
-            let number = numbering
-                .as_mut()
-                .map(|n| n.next(level))
-                .unwrap_or_default();
-            if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-                out.push(ScannedAnchor {
-                    id,
-                    number,
-                    title: heading_title(t),
-                    line,
-                });
-            }
-        } else if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            // a figure/equation anchor: link, no number, no heading to name it by
-            out.push(ScannedAnchor {
-                id,
-                number: String::new(),
-                title: String::new(),
-                line,
-            });
+    for (line, t) in content_lines_numbered(src) {
+        if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
+            // A figure/equation anchor has no heading to name it by.
+            let title = if heading_level_of(t).is_some() {
+                heading_title(t)
+            } else {
+                String::new()
+            };
+            out.push(ScannedAnchor { id, title, line });
         }
     }
     out

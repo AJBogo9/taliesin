@@ -6,9 +6,9 @@ use super::*;
 
 /// A page's book chapter number, if it is a numbered chapter (`None` for a website page,
 /// the `index` preface, or an unnumbered entry). The one lookup behind every number a
-/// reader sees: `Site::chapter_for` delegates here, and the two passes that run before a
-/// `Site` exists (`scan_xref_targets`, `search::build_sections`) call it directly, so the
-/// registry, the search index, and the rendered page cannot disagree about a chapter.
+/// reader sees: `Site::chapter_for` delegates here, and `search::build_sections`, which
+/// runs before a `Site` exists, calls it directly, so the registry, the search index, and
+/// the rendered page cannot disagree about a chapter.
 pub(super) fn chapter_of(book: &Option<Book>, page: &Page) -> Option<u32> {
     book.as_ref().and_then(|b| {
         b.entries

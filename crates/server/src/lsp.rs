@@ -1016,12 +1016,11 @@ fn token_hover(
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    let head = if anchor.number.is_empty() {
-                        format!("**{label}** `@{id}`")
-                    } else {
-                        format!("**{label} {}** `@{id}`", anchor.number)
-                    };
-                    markup(format!("{head}\n\nDefined in `{page}`"), start, end)
+                    markup(
+                        format!("**{label}** `@{id}`\n\nDefined in `{page}`"),
+                        start,
+                        end,
+                    )
                 }
             }
         }

@@ -658,29 +658,24 @@ fn render_internal_impl(
     let mut image_annotator = ImageAnnotator::new();
     let mut lst_count: usize = 0;
     let mut sec_count: usize = 0;
-    // Section numbering for a book chapter, advanced over EVERY heading in document
-    // order so a `{#sec-x}` registers the same number the heading visibly shows via
-    // `number_chapter_headings` (they share `ChapterNumbering`). Its base is the
-    // shallowest heading below the chapter's own, so the whole heading shape must be
-    // known before the walk reaches the first heading: pre-scan the top-level nodes,
-    // exactly the set the walk below numbers.
-    let chapter_heading_levels: Vec<usize> = root
+    // The block ids of the page's SECTION headings: the top-level heading nodes the walk
+    // below emits (a heading inside a `:::` div is one too, since the markers are blanked
+    // before the parse). A book chapter numbers exactly these, once the divs are folded
+    // (`number_sections`); a heading quoted or in a list item is not a section.
+    let mut section_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let top_heading_levels: Vec<usize> = root
         .children()
         .filter_map(|n| match &n.data.borrow().value {
             NodeValue::Heading(h) => Some(h.level as usize),
             _ => None,
         })
         .collect();
-    let mut sec_numbering = chapter.map(|ch| {
-        crate::site::ChapterNumbering::new(ch, &chapter_heading_levels, emits_title_block_here)
-    });
     // How far every body heading moves so the page keeps exactly one `<h1>` (the title
-    // block's) with no gap under it. Shares `chapter_heading_levels` with the numbering
-    // above, which is the same set the walk demotes, so the two cannot disagree about the
-    // page's shape. `None` when this render emits no title block: then the document's own
-    // `#` is its `<h1>` and nothing shifts.
+    // block's) with no gap under it, from the levels of the headings the walk demotes.
+    // `None` when this render emits no title block: then the document's own `#` is its
+    // `<h1>` and nothing shifts.
     let heading_shift = emits_title_block_here
-        .then(|| heading_shift_for(&chapter_heading_levels))
+        .then(|| heading_shift_for(&top_heading_levels))
         .flatten();
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
@@ -849,32 +844,21 @@ fn render_internal_impl(
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
         let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
-        // Advance the hierarchical section counters over EVERY heading (in a book
-        // chapter), so a labelled `{#sec-x}` registers the same number its heading
-        // will visibly show — even when earlier, unlabelled headings sit between them.
-        // Outside a chapter there is no hierarchy: keep the flat sequential counter.
-        let hierarchical_number = heading_level.and_then(|level| {
-            sec_numbering
-                .as_mut()
-                .map(|numbering| numbering.next(level as usize))
-        });
-        // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N":
-        // the chapter-hierarchical number ("2.2") in a book, else a flat sequential one.
+        if heading_level.is_some() {
+            section_ids.insert(id.clone());
+        }
+        // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N": a
+        // flat sequential number here, which a book chapter replaces with the number the
+        // heading shows once the page is folded (`number_sections`).
         if let Some((_, Some(id))) = &h_attr
             && id.starts_with("sec-")
         {
-            let number = match &hierarchical_number {
-                Some(n) => n.clone(),
-                None => {
-                    sec_count += 1;
-                    sec_count.to_string()
-                }
-            };
+            sec_count += 1;
             register_xref(
                 &mut xref_registry,
                 &mut warnings,
                 id,
-                number,
+                sec_count.to_string(),
                 source_file.as_deref(),
                 src_line as u32,
             );
@@ -1262,6 +1246,18 @@ fn render_internal_impl(
     // the walk's headings and figures, `group_divs`'s containers, and the `<table>` id
     // `apply_table_captions` just folded in.
     dedup_element_ids(&mut blocks, &mut warnings);
+    // A book chapter's section numbers, from the page as folded (so a heading a callout took
+    // for its title is no longer one) and before the citation pass reads the registry, so a
+    // same-page `@sec-` reads the number its heading shows.
+    if let Some(chapter) = chapter {
+        crate::site::number_sections(
+            &mut blocks,
+            &section_ids,
+            chapter,
+            emits_title_block_here,
+            &mut xref_registry,
+        );
+    }
     let bib_line = crate::frontmatter::bibliography_line(src);
     let bib = load_bibliography(
         &bib_paths,
@@ -1308,6 +1304,7 @@ fn render_internal_impl(
             &authors,
             date.as_deref(),
             description.as_deref(),
+            chapter,
         )
     {
         blocks.insert(
@@ -1456,17 +1453,24 @@ pub fn time_html(raw: &str, class: &str) -> String {
 /// Build the visible title-block header from front-matter metadata (title +
 /// optional subtitle/description and an author · date meta line). Returns `None`
 /// without a title. Carries `data-block-id` so it lives in the block model.
+///
+/// A numbered book chapter's title reads "N Title": it is the chapter's own heading, so it
+/// carries the bare chapter number its sections count below ("N.1").
 fn title_block_html(
     title: Option<&str>,
     subtitle: Option<&str>,
     authors: &[crate::author::Author],
     date: Option<&str>,
     description: Option<&str>,
+    chapter: Option<u32>,
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
         "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\"><h1 class=\"title\">",
     );
+    if let Some(chapter) = chapter {
+        h.push_str(&crate::site::section_number_span(&chapter.to_string()));
+    }
     h.push_str(&html_escape(title));
     h.push_str("</h1>");
     if let Some(s) = subtitle.filter(|s| !s.is_empty()) {

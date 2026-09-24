@@ -190,8 +190,7 @@ mod frontmatter;
 pub use config::*;
 pub(crate) use frontmatter::*;
 mod chapter;
-pub(crate) use chapter::ChapterNumbering;
-use chapter::number_chapter_headings; // also used by xref.rs (via `use super::*`)
+pub(crate) use chapter::{number_sections, section_number_span};
 mod discovery;
 // `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
 // private `use` is still visible to a descendant module), so the project-wide anchor
@@ -383,7 +382,7 @@ impl Site {
         // one should be reported once rather than on every page.
         let bibliography = bibliography::resolve_shared(root, &config.bibliography, &mut warnings);
 
-        let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
+        let xref_targets = scan_xref_targets(&pages, &mut warnings);
 
         let standalone = only.is_some() && !root.join("_site.yml").is_file();
 
@@ -952,8 +951,8 @@ impl Site {
         out
     }
 
-    /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
-    /// resolution (+ broken-ref warnings), and site front-matter expansion
+    /// Finish a page's blocks in place: site-wide cross-ref resolution (+ broken-ref
+    /// warnings), and site front-matter expansion
     /// (`listing:`). The single block-finishing step shared by the static
     /// build, `render_page_doc`, and the live preview, so all three produce identical
     /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
@@ -980,7 +979,6 @@ impl Site {
         src: Option<&str>,
         toc_explicit: Option<bool>,
     ) -> bool {
-        self.number_chapter(page, blocks);
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks, src));
@@ -1152,7 +1150,7 @@ impl Site {
         // pushes its own, once per anchor — its `dup_reported` guard reads `self.warnings`,
         // which this never clears, so it stays idempotent across refreshes.
         let mut discarded = Vec::new();
-        let scanned = scan_xref_targets(&self.pages, &self.book, &mut discarded);
+        let scanned = scan_xref_targets(&self.pages, &mut discarded);
         let prev_targets = std::mem::replace(&mut self.xref_targets, scanned);
         let harvested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.harvest_xref_numbers();
@@ -1163,11 +1161,12 @@ impl Site {
     }
 
     /// Render-harvest: render each page once (scoped to its chapter) and fill in the
-    /// CROSS-PAGE facts the lightweight source-scan can't know — a figure / equation /
-    /// table / listing number is assigned only during render, so `scan_xref_targets` left
-    /// it empty. This enriches `xref_targets[anchor].number` (for those non-heading
-    /// anchors), so a `@fig-x` to another page renders "Figure&nbsp;2.3" instead of a bare
-    /// "Figure".
+    /// CROSS-PAGE facts the lightweight source-scan can't know — a section / figure /
+    /// equation / table / listing number is assigned only during render, so
+    /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`, so a
+    /// `@fig-x` to another page renders "Figure&nbsp;2.3" instead of a bare "Figure", and a
+    /// `@sec-x` reads the number its heading shows (the render numbers a chapter's sections
+    /// once, for the heading and every reference alike: `number_sections`).
     ///
     /// It also *inserts* an anchor the scan cannot see at all: a float labelled by a
     /// cell directive (`#| label: fig-x`, `%%| label:`) is inside a fence the scan skips
@@ -1190,22 +1189,18 @@ impl Site {
                 return Vec::new();
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let doc = render::render_document_scoped_with_site(
-                &src,
-                base,
-                self.chapter_for(page),
-                Some(&defaults),
-            );
+            let chapter = self.chapter_for(page);
+            let doc =
+                render::render_document_scoped_with_site(&src, base, chapter, Some(&defaults));
             let mut mine: Vec<(String, String, String)> = Vec::new();
             for (anchor, number) in doc.xref_numbers {
                 // These three conditions gate an INSERT, not just an enrich, so each has
                 // to hold on its own rather than lean on the entry already existing:
                 //
-                // `sec-` numbers are the source-scan's job (chapter-hierarchical, and
-                // correctly ABSENT on a non-book website). Harvesting the render's flat
-                // per-page section counter here would fill an empty website target with
-                // a bare "1", which `rewrite_one_xref` then mislabels "Chapter 1". Only
-                // fig/eq/tbl/lst need this render-time enrichment.
+                // A `sec-` number is taken from a numbered chapter only: a non-book
+                // website has no section numbering, and harvesting the render's flat
+                // per-page section counter would fill an empty website target with a bare
+                // "1", which `rewrite_one_xref` then mislabels "Chapter 1".
                 //
                 // `is_ref_anchor` keeps parity with the scan (`xref.rs`), because the
                 // render registry is LOOSER: the table-caption path registers any id, so
@@ -1215,7 +1210,9 @@ impl Site {
                 //
                 // An empty number means the render assigned none, so there is nothing to
                 // enrich the target with and nothing worth inserting one for.
-                if !number.is_empty() && !anchor.starts_with("sec-") && xref::is_ref_anchor(&anchor)
+                if !number.is_empty()
+                    && (chapter.is_some() || !anchor.starts_with("sec-"))
+                    && xref::is_ref_anchor(&anchor)
                 {
                     mine.push((anchor, number, page.url.clone()));
                 }
@@ -1259,8 +1256,8 @@ impl Site {
                         }
                         continue;
                     }
-                    // Only fill a gap the source-scan left (fig/eq/tbl/lst/thm); a book
-                    // heading's section number is already authoritative from the scan.
+                    // Only fill a gap: the source-scan numbers nothing, so this is every
+                    // number a target has.
                     if e.get().number.is_empty() {
                         e.get_mut().number = number;
                     }
@@ -1283,21 +1280,13 @@ impl Site {
     }
 
     /// This page's book chapter number, if it is a numbered chapter (None for a
-    /// website page or an unnumbered preface). Drives heading section numbering, float
-    /// numbering, and theorem numbering alike, so all three stay in lockstep.
+    /// website page or an unnumbered preface). The render scoped to it numbers the
+    /// sections, the floats and the theorems alike, so all three stay in lockstep.
+    /// There is no key to turn numbering on: a chapter is numbered iff this gives it a
+    /// number, i.e. it is a `chapters:` entry that is not the `index` preface and whose
+    /// H1 carries no `.unnumbered`/`{-}` (see `book.rs`).
     pub fn chapter_for(&self, page: &Page) -> Option<u32> {
         book::chapter_of(&self.book, page)
-    }
-
-    /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …).
-    /// There is no key to turn this on: a chapter is numbered iff `chapter_for` gives
-    /// it a number, i.e. it is a `chapters:` entry that is not the `index` preface and
-    /// whose H1 carries no `.unnumbered`/`{-}` (see `book.rs`). A no-op for a website
-    /// or an unnumbered preface. Called by both the static build and the live preview.
-    pub fn number_chapter(&self, page: &Page, blocks: &mut [Block]) {
-        if let Some(number) = self.chapter_for(page) {
-            number_chapter_headings(blocks, number);
-        }
     }
 
     // --- listings ---------------------------------------------------------
@@ -1660,12 +1649,12 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
 /// Walk a raw `.tmd` source's *content* lines: those comrak reads as markdown, so not the
 /// front matter, not code (fenced or indented) and not raw HTML (a comment, `<pre>`,
 /// `<script>`). Each yielded line is already `trim_start`ed. This is the skeleton both
-/// raw-source scanners share — [`xref::scan_page_anchors`] (heading `{#id}` anchors +
-/// section numbers) and [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#`
+/// raw-source scanners share — [`xref::scan_page_anchors`] (heading `{#id}` anchors) and
+/// [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#`
 /// inside front matter, a `# comment` inside a code sample or a heading the author commented
 /// out is never mistaken for a heading in either. It does NOT resolve `{{< include >}}`: that
-/// stays a deliberate caller choice (the xref scan resolves includes first so section
-/// numbers advance over included headings; chapter-title detection reads the file raw).
+/// stays a deliberate caller choice (the xref scan resolves includes first so an anchor in
+/// a partial belongs to its page; chapter-title detection reads the file raw).
 pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
     content_lines_numbered(src).map(|(_, t)| t)
 }
