@@ -74,6 +74,33 @@ mod tests {
         assert_eq!(indexable_text("<p>a   b\n\nc</p>"), "a b c");
     }
 
+    /// A tag boundary separates fields and blocks; it never parts text from punctuation
+    /// that touches it on the page. Every numbered caption read "Figure 1 : The caption"
+    /// against a page reading "Figure 1: The caption", and "(<em>x</em>)" read "( x )".
+    #[test]
+    fn a_boundary_never_parts_text_from_the_punctuation_it_touches() {
+        assert_eq!(
+            indexable_text(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span>: \
+                 The caption.</figcaption>"
+            ),
+            "Figure 1: The caption."
+        );
+        assert_eq!(
+            indexable_text("<p>Some (<em>emph</em>), then <a href=\"#x\">a link</a>.</p>"),
+            "Some (emph), then a link."
+        );
+        // Fields and blocks still separate, and an existing space is not doubled.
+        assert_eq!(
+            indexable_text("<p>First.</p><p>Second.</p><div><span>A</span><span>B</span></div>"),
+            "First. Second. A B"
+        );
+        assert_eq!(
+            indexable_text("<p>x</p><script>y</script><p>(z)</p>"),
+            "x (z)"
+        );
+    }
+
     /// A `<` that opens no tag is text, as the walker ([`tags`]) and the browser read it:
     /// an unescaped `a < b` in a raw-HTML block shows on the page. Read as the start of a
     /// tag, it hid everything up to the next `>`.

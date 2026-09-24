@@ -374,7 +374,7 @@ mod tests {
             !text.contains("\\pi"),
             "raw LaTeX leaked into the index: {text}"
         );
-        assert_eq!(text, "Euler: eiπ .");
+        assert_eq!(text, "Euler: eiπ.");
     }
 
     #[test]

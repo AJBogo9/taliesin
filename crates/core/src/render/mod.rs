@@ -3664,6 +3664,8 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
     // marks up a TOKEN and a boundary splits it: `np.linspace` was indexed `np . linspace`
     // and no code on any page could be found by typing it.
     let mut code = 0usize;
+    // A word boundary a tag asked for, left in front of the next text (see [`push_text`]).
+    let mut pending = false;
     let mut i = 0;
     while let Some(rel) = html[i..].find('<') {
         let lt = i + rel;
@@ -3676,13 +3678,13 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             .is_some_and(|b| b.is_ascii_alphabetic() || matches!(b, b'/' | b'!' | b'?'));
         if !markup {
             if skip_math == 0 {
-                out.push_str(&html[i..=lt]);
+                push_text(&mut out, &mut pending, &html[i..=lt]);
             }
             i = lt + 1;
             continue;
         }
         if skip_math == 0 {
-            out.push_str(&html[i..lt]);
+            push_text(&mut out, &mut pending, &html[i..lt]);
         }
         // The tag body up to the `>` that closes it, through [`tag_end`]: quote-aware (a
         // `>` inside a quoted attribute value does not end the tag), and a comment is one
@@ -3713,8 +3715,7 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
             code = code.saturating_sub(1);
         }
         // Decided from the tag NAME, so it has to follow the parse above rather than
-        // precede it. Nothing else is pushed in between, so the space still lands
-        // exactly where the tag was. Never inside code, and never at a `<code>` tag
+        // precede it. Never inside code, and never at a `<code>` tag
         // itself, which is inline (`(<code>exec.rs</code>)` reads "(exec.rs)"); a
         // `<pre>` is a block, so its own two tags still separate it from the prose.
         let boundary = match separate {
@@ -3724,11 +3725,7 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
         if is_code && !is_close && !tag.trim_end().ends_with('/') {
             code += 1;
         }
-        // Never double a boundary that is already there. `</span> <span>` carries a
-        // real space of its own, and pushing a second one publishes "models.  14 April".
-        if boundary && !out.ends_with(char::is_whitespace) {
-            out.push(' ');
-        }
+        pending |= boundary;
         if name == "math" {
             if is_close {
                 skip_math = skip_math.saturating_sub(1);
@@ -3760,9 +3757,30 @@ fn strip_tags_inner(html: &str, separate: Separate) -> String {
         }
     }
     if skip_math == 0 {
-        out.push_str(&html[i..]);
+        push_text(&mut out, &mut pending, &html[i..]);
     }
     out.trim().to_string()
+}
+
+/// Append a run of `text` to [`strip_tags_inner`]'s output, first leaving the word boundary
+/// a tag asked for (`pending`). The space goes in only where the page shows one: not
+/// against one already there (`</span> <span>` carries its own, and a second published
+/// "models.  14 April"), and not between text and punctuation that touches it, which no tag
+/// separates on the page (`Figure 1</span>: The caption` read "Figure 1 : The caption",
+/// `(<em>x</em>)` read "( x )").
+fn push_text(out: &mut String, pending: &mut bool, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if std::mem::take(pending)
+        && !out.ends_with(|c: char| c.is_whitespace() || matches!(c, '(' | '['))
+        && !text.starts_with(|c: char| {
+            c.is_whitespace() || matches!(c, '.' | ',' | ':' | ';' | '!' | '?' | ')' | ']')
+        })
+    {
+        out.push(' ');
+    }
+    out.push_str(text);
 }
 
 /// The plain text of a document's leading `# H1`, when that H1 is the document's *first*
