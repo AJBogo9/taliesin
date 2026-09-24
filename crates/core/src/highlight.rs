@@ -72,7 +72,7 @@ pub fn load_syntax_sets() {
 /// Map a markdown language token to a token the syntax sets know.
 fn alias(lang: &str) -> &str {
     match lang {
-        "ojs" | "js" => "javascript",
+        "js" => "javascript",
         "ts" => "typescript",
         "sh" | "shell" | "zsh" => "bash",
         "py" => "python",
@@ -217,6 +217,13 @@ mod tests {
         assert!(!html.contains("tali-hl-"));
     }
 
+    /// `ojs` is Quarto's Observable JS, another tool's fence name: Taliesin answers for its
+    /// own vocabulary only, so an `ojs` fence is an unknown language like any other.
+    #[test]
+    fn another_tools_fence_name_is_not_aliased() {
+        assert_eq!(highlight("a < b", Some("ojs")), "a &lt; b");
+    }
+
     #[test]
     fn no_language_is_plain_escaped() {
         assert_eq!(highlight("x < y", None), "x &lt; y");
@@ -346,8 +353,8 @@ mod tests {
     #[test]
     fn established_languages_still_come_from_the_bundled_set() {
         for token in [
-            "rust", "rs", "bash", "sh", "zsh", "yaml", "yml", "js", "ojs", "markdown", "python",
-            "py", "json", "css", "html", "r", "bibtex", "diff", "sql", "c",
+            "rust", "rs", "bash", "sh", "zsh", "yaml", "yml", "js", "markdown", "python", "py",
+            "json", "css", "html", "r", "bibtex", "diff", "sql", "c",
         ] {
             let (_, set) = resolve(alias(token)).unwrap_or_else(|| panic!("`{token}` unresolved"));
             assert!(

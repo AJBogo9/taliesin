@@ -8878,3 +8878,28 @@ fn a_multi_root_construct_round_trips_through_a_live_swap() {
         "a swap must carry every control, not just the first: {updated}"
     );
 }
+
+/// A fenced div opens with an attribute block, `::: {.callout-note}`. The bare
+/// `::: callout-note` form is Pandoc's and was never Taliesin's: the guide never showed it
+/// and nothing in the corpus or the docs wrote it, so its line is text and its `:::` closes
+/// nothing (which the close check reports).
+#[test]
+fn a_bare_class_after_the_colons_opens_no_div() {
+    let doc = render_document("::: callout-note\nBody.\n:::\n");
+    let html = doc.body_html();
+    assert!(
+        !has_class(&html, |c| c == "callout" || c == "callout-note"),
+        "a bare class opened a div: {html}"
+    );
+    assert!(
+        html.contains("::: callout-note"),
+        "the line is text: {html}"
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("closes no open div")),
+        "the close is reported: {:?}",
+        doc.warnings
+    );
+}

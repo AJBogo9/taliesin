@@ -93,8 +93,8 @@ fn half_typed_constructs_never_panic() {
         ("dangling cite bracket", "as shown in [@"),
         ("unclosed footnote", "text[^"),
         ("just a backslash", "\\"),
-        ("nested unclosed divs", "::: a\n::: b\ncontent"),
-        ("fence inside div, both open", "::: note\n```python"),
+        ("nested unclosed divs", "::: {.a}\n::: {.b}\ncontent"),
+        ("fence inside div, both open", "::: {.note}\n```python"),
         ("attr block unclosed", "para\n{#id .class"),
         ("only frontmatter delimiter", "---"),
     ];
