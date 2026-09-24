@@ -4,11 +4,10 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
-**Before proposing a round, read [DETECTION-DEBT.md](DETECTION-DEBT.md).** It is the live
-register of what would ship *silently* — one row per class, with a "what would change this
-score" column — and it exists because three separate rounds re-derived that same list from
-scratch. A round whose only output would be to rebuild those rows is not worth running; a round
-that would *lower* one of them is.
+**Before proposing a round, read "Classes that would ship silently today" in
+[LESSONS.md](LESSONS.md#classes-that-would-ship-silently-today).** It lists what would ship *silently*, one class per bullet, and it exists because three
+separate rounds re-derived that same list from scratch. A round whose only output would be to
+rebuild it is not worth running; a round that would close one of those classes is.
 
 ## Round index — every dated findings doc in `notes/`
 

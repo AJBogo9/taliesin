@@ -423,6 +423,40 @@ security findings sat in exactly that band, which is why ~30 correctness rounds 
 coverage, count test *bodies*, never filenames — `mounts` shows 0 files by name and 3 by body, of
 which 2 are false positives.
 
+### Classes that would ship silently today
+
+Folded here from `DETECTION-DEBT.md` on 2026-09-24, when 12 of its 27 rows described deleted
+code and 4 scores were wrong (audit 2026-09-24, Part J). Only the classes that are still live
+are kept; the closed and dead rows are in git. **Before proposing an audit round, read this
+list: a round that would only re-derive it is not worth running; one that would close a class
+is. When a fix closes a class, delete its bullet in the same change.**
+
+- **A shape absent from the corpus breaks.** By construction: the corpus cannot catch what it
+  does not contain. Deliberately unfixed; pin only shapes that earn it.
+- **A shape only the dogfood books use breaks at render.** Both books pass `build --check-only`
+  in the pre-push hook, `tools/gates.sh` and CI, so a broken link or reference is caught, but the
+  corpus invariants in `crates/core/tests/corpus.rs` never render them.
+- **Click-to-source stops landing the cursor.** The relay hop is tested
+  (`editor/vscode/src/test/webview.test.ts`); the last hop, host to editor cursor, is manual.
+- **The preview client sends the wrong anchor with a `tali-goto`.** `client.js` sends the page's
+  `baseDir` for a block and the site `root` for chrome; no test reads either choice. A probe must
+  Ctrl-click chrome on a *nested* page, since on a flat project the two coincide.
+- **Live cell output lands in the wrong element.** The server half is pinned (`protocol.rs`,
+  `kernel.rs`, `a_running_cell_streams_its_output_before_it_finishes`); the DOM half in
+  `client.js` (`{id}-out`) has no harness and was verified by hand. The `tools/ui-audit` harness
+  the old row proposed was deleted on 2026-08-13, so a probe would be built fresh.
+- **A VS Code manifest declaration is rejected at load.** `manifest.test.ts` cross-checks
+  commands, configuration, menus, keybindings and snippets against the source, but nothing
+  validates `contributes` against VS Code's own schema, and a rejection goes to a log nobody reads.
+- **The `{js}` client runtime regresses.** The only Node test (`reactive_live_region.rs`) runs one
+  function from the shipped bundle; the cell scheduler and input registration have no browser
+  test since `reactive_browser.rs` went with the headless-Chrome driver on 2026-08-08.
+- **A tag ships the wrong licence.** `release.yml` copies `LICENSE` and the notices into each
+  tarball and `third_party.rs` pins the list, but nothing inspects a tag's contents.
+- **Prose contradicts behaviour.** `stale_docs.rs`, `gate_script.rs` and `cross_site_links.rs`
+  catch claims derived from the tree; a claim where both spellings resolve is caught by review
+  or not at all. More derive-from-source gates cover only their own claim.
+
 ## Reading an item or a finding before acting on it
 
 - **A dense "do not touch" cluster is not evidence of coverage; it is a reason to measure.**

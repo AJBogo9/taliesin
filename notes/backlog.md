@@ -6,8 +6,7 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 > **Only open tasks live here.** Completed work lives in git, [AUDITS.md](AUDITS.md) and
 > [ROADMAP.md](ROADMAP.md); **delete an item when it lands** — never a `[x]`, never a strikethrough.
-> Method lessons go to [LESSONS.md](LESSONS.md), detection gaps to
-> [DETECTION-DEBT.md](DETECTION-DEBT.md), and everything that must not be rebuilt, re-filed or
+> Method lessons and detection gaps go to [LESSONS.md](LESSONS.md), and everything that must not be rebuilt, re-filed or
 > re-scoped goes to [DO-NOT-REBUILD.md](DO-NOT-REBUILD.md).
 >
 > **Pruned to the release critical path on 2026-08-07** (owner instruction), the fourth cut-back and

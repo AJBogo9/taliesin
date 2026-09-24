@@ -186,8 +186,8 @@ campaign has since pinned much of what one would look at. L6: a real external do
 repository that is not on this machine.
 
 Durable artefacts, so a later round does not rebuild them: the deck exemption register (R14), the
-sensitivity/tradeoff register (R6), the D≥8 detection cluster (R7, now
-[DETECTION-DEBT.md](DETECTION-DEBT.md)), the draft ACR (R9, now published in the guide) and the
+sensitivity/tradeoff register (R6), the D≥8 detection cluster (R7, now the "Classes that
+would ship silently today" list in [LESSONS.md](LESSONS.md)), the draft ACR (R9, now published in the guide) and the
 external-document shape inventory (R11, item 129).
 
 **One NEW family is open and proposed, not closed: feature-importance (FV).** The 2026-08-01
@@ -350,8 +350,8 @@ branch are enough to find its commits.
   `auto`. 197's open design question was ruled in the build: a page `chapters:` never names is
   KEPT, flagged `listed: false` and grouped under `Unlisted`, while a website reports `book: false`
   and keeps path order. **`showCollapseAll` is unobservable from any extension API** (VS Code
-  registers the per-view `collapseAll` command for every tree pane regardless) — that gap is in
-  [DETECTION-DEBT.md](DETECTION-DEBT.md), the probe traps are in [LESSONS.md](LESSONS.md), and
+  registers the per-view `collapseAll` command for every tree pane regardless; the tree view was
+  later cut), the probe traps are in [LESSONS.md](LESSONS.md), and
   `crates/server/tests/reader_chrome_browser.rs` is where a reader-chrome browser pin goes.
 - **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
   line that cites it and there is **no gathered endnote section** (one copy, or all four text
@@ -441,7 +441,7 @@ branch are enough to find its commits.
   `animate` + `point`, `tali.state`, and `tali.tex` / `tali.table` (**not** KaTeX-the-parser; only
   its CSS + fonts are bundled). The `animate` tick is a `type="number"` field, not `type="hidden"` —
   the latter hands every downstream cell the *string*. Two coverage illusions were deleted rather
-  than shipped and live in [DETECTION-DEBT.md](DETECTION-DEBT.md).
+  than shipped (the `animate` control was later retired).
 - **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves, 41's
   `alt` half, 150's risk half): `LICENSE-OUTPUT-EXCEPTION.md` is an **additional permission under
   AGPL §7** covering what Taliesin *emits* (deliberately **no** per-asset licence headers); `check`
@@ -469,7 +469,7 @@ branch are enough to find its commits.
   unbuilt.
 - **2026-07-28 honesty + build cost** (91, 110, 115, 119, 126, 134, 143): `chromiumoxide` is an opt-in
   `headless-js` feature, off by default; not linting `draft:` pages is **ruled correct** and the
-  defect was the silence; the ACR is published; DETECTION-DEBT.md is the live register.
+  defect was the silence; the ACR is published; the live detection list is in LESSONS.md.
 - **2026-07-28 verified sweep** (85, 86, 97, 98, 99, 114, 123, 130): a `theme:` extension bundle is
   contained; no built page fetches off-origin; a shortcode source is a path, not a URL; both
   `jsconfig.json` include lists are globbed.
