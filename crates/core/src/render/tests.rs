@@ -507,6 +507,15 @@ fn stray_closing_fence_is_ignored() {
     assert!(body.contains("A paragraph."), "got: {body}");
     assert!(!body.contains(":::"), "got: {body}");
     assert!(!body.contains("tali-div"), "got: {body}");
+    // ...and said, at the line, as an unclosed open is: an extra `:::` usually means one
+    // above closed the wrong div (lead `divs.rs:211`, audit 2026-09-24: it was silent).
+    let lines: Vec<Option<u32>> = doc.warnings.iter().map(|w| w.line).collect();
+    assert_eq!(lines, [Some(3)], "{:?}", doc.warnings);
+    assert!(
+        doc.warnings[0].message.contains("closes no open div"),
+        "{:?}",
+        doc.warnings
+    );
 }
 
 #[test]

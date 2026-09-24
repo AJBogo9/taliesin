@@ -519,7 +519,7 @@ fn render_internal_impl(
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
     let divs = DivFences::find(src);
-    let (spans, unclosed_fences) = scan_div_spans(&divs);
+    let (spans, unclosed_fences, stray_closes) = scan_div_spans(&divs);
     let processed = preprocess(src, &divs);
     let root = parse_document(&arena, &processed, &options);
 
@@ -555,6 +555,14 @@ fn render_internal_impl(
                  rendered without its wrapper",
             )
             .at(file, mapped as u32),
+        );
+    }
+    // A `:::` close with no div open is dropped; say so, since an extra close usually
+    // means one above it closed the wrong div.
+    for at in stray_closes {
+        let (file, mapped) = map_origin(origins, at);
+        warnings.push(
+            Warning::new("`:::` closes no open div: the line is dropped").at(file, mapped as u32),
         );
     }
     // A `:::` div opened inside a list item or block quote is text there (a div wraps

@@ -279,30 +279,31 @@ pub(crate) struct DivSpan {
 
 /// Pair the markers into fenced-div spans (stack-based, so nesting is handled). Sorted so
 /// that for a shared opening line the outermost (latest close) comes first.
-/// Also returns the 1-based line of any `:::` open that was never closed — the
-/// orchestrator warns on those (an unterminated fence otherwise drops its wrapper
-/// silently and the content renders unfenced).
-pub(crate) fn scan_div_spans(divs: &DivFences) -> (Vec<DivSpan>, Vec<BufLine>) {
+/// Also returns the 1-based lines of every marker that pairs with nothing: a `:::` open
+/// that was never closed, and a close with no div open. The orchestrator warns on both
+/// (an unterminated fence otherwise drops its wrapper silently and the content renders
+/// unfenced; a stray close usually means one above it closed the wrong div).
+pub(crate) fn scan_div_spans(divs: &DivFences) -> (Vec<DivSpan>, Vec<BufLine>, Vec<BufLine>) {
     let mut stack: Vec<(BufLine, String)> = Vec::new();
     let mut spans: Vec<DivSpan> = Vec::new();
+    let mut stray: Vec<BufLine> = Vec::new();
     for (i, fence) in &divs.markers {
         match fence {
             Fence::Open(attrs) => stack.push((BufLine::new(i + 1), attrs.clone())),
-            Fence::Close => {
-                if let Some((open, attrs)) = stack.pop() {
-                    spans.push(DivSpan {
-                        open,
-                        close: BufLine::new(i + 1),
-                        attrs,
-                    });
-                }
-            }
+            Fence::Close => match stack.pop() {
+                Some((open, attrs)) => spans.push(DivSpan {
+                    open,
+                    close: BufLine::new(i + 1),
+                    attrs,
+                }),
+                None => stray.push(BufLine::new(i + 1)),
+            },
         }
     }
     spans.sort_by_key(|s| (s.open, std::cmp::Reverse(s.close)));
     let mut unclosed: Vec<BufLine> = stack.into_iter().map(|(open, _)| open).collect();
     unclosed.sort_unstable();
-    (spans, unclosed)
+    (spans, unclosed, stray)
 }
 
 /// Parse a fenced-div attribute string: `.class`, `#id`, and `key=val`

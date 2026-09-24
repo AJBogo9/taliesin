@@ -129,7 +129,8 @@ nothing is emitted for either.
 Fenced divs become callouts, layout grids, or generic containers. A `:::` line opens or
 closes a div only at the top level of the document: inside code, an HTML comment, a list
 item or a block quote it is text, and a div opened in a list item or block quote draws a
-warning saying so.
+warning saying so. A div left open, and a `:::` that closes no open div, are reported at
+their line.
 
 ::: {.callout-tip}
 ## Tip
