@@ -14,6 +14,13 @@
 > syntax set and the other lazy statics are built on first use), so best-of-twelve there
 > would have published ~13 ms as a "cold render" against a true ~105 ms.
 >
+> **The structural rows were regenerated 2026-09-24; the timing rows were not.** A line
+> shift above a `:::` container became a `SetMeta` that carries the container's inner
+> positions (it was a full `Update`), which changed the op counts and the payload. The
+> timing rows above and below are still the 2026-08-27 release-build measurement; they
+> were not re-measured with the fix because the machine was loaded that day, and a wall
+> clock taken under load would publish the load.
+>
 > **The warm rows dropped ~4.5x on 2026-08-27** and the `refresh_xrefs` rows ~11x, from three
 > changes in `crates/core`: `highlight::highlight` gained the memo `math::render` already had
 > (it was 10.7 ms of a 12.6 ms warm render, re-deriving identical HTML every keystroke),
@@ -25,8 +32,8 @@
 
 What this shows, for one keystroke-sized edit to a paragraph above the cells in a real
 post: the warm server re-renders and diffs in a fraction of the cold-start time (lazy
-syntax-highlight and math init are amortized), it sends a payload roughly 9x smaller
-than the full page a reload would re-fetch, and 53 of the 55 emitted ops are `SetMeta`,
+syntax-highlight and math init are amortized), it sends a payload roughly 89x smaller
+than the full page a reload would re-fetch, and 54 of the 55 emitted ops are `SetMeta`,
 which patches a block's `data-sourcepos` in place without touching its DOM node, so the
 live state of every one of those blocks survives the edit. None of these are things a
 batch compiler's cold-pass-plus-full-reload model (Jupyter/nbconvert, R Markdown/knitr,
@@ -39,10 +46,10 @@ Quarto, MyST) can match.
 | cold full render | 104112.2 us |
 | warm edit (render + diff) | 2570.8 us |
 | diff only | 211.8 us |
-| ops emitted | 55 (insert 1, set_meta 53, update 1, remove 0) |
-| full page HTML | 287286 bytes |
-| warm-edit payload | 31930 bytes |
-| payload shrink vs full reload | 9x smaller |
+| ops emitted | 55 (insert 1, set_meta 54, update 0, remove 0) |
+| full page HTML | 287755 bytes |
+| warm-edit payload | 3241 bytes |
+| payload shrink vs full reload | 89x smaller |
 | open `<details>` survives as same DOM node | yes |
 
 ## project-scale save: `Site::refresh_xrefs`
@@ -78,38 +85,19 @@ Deliberately **not gated**: this is a wall clock, and wall clocks measure the ma
 by this project's own rule they carry a date and get re-measured before a release rather
 than pinned by a test that fails on a slower laptop.
 
-## Where the payload goes, and why the ratio is 9x and not 83x
+## Where the payload goes
 
-Read this before quoting the ratio anywhere.
+All 55 ops together weigh 3,241 bytes: 54 `SetMeta` patches and the one `Insert` for the
+newly typed paragraph. The document's `::: {.callout-note collapse="true"}` fenced div, the
+only block whose html carries more than one `data-sourcepos`, is one of the 54: its patch
+carries the new position of every inner block as well, and the client writes them onto the
+div's own descendants in order, so Ctrl-click inside it stays exact and an opened callout
+stays open.
 
-The single `Update` is **29,081 of the 32,303 payload bytes (90%)**. It is one block:
-the `::: {.callout-note collapse="true"}` fenced div, the only block of the document's
-59 whose html carries more than one `data-sourcepos`. The other 54 ops (53 `SetMeta`
-plus the one `Insert` for the newly typed paragraph) together account for the remaining
-~3.2 KB.
-
-That one `Update` is deliberate. Until 2026-06-30 a line-shifting edit above a fenced
-div emitted a cheap `SetMeta` for it too, and the payload was ~3.2 KB against a 270 KB
-page: the **83x** this file used to publish. `6cdbc218` then made a block whose html
-holds more than one `data-sourcepos` fall through to a full `Update`, because `SetMeta`
-patches only the *outer* element's `data-sourcepos` and would leave the div's inner
-blocks pointing at stale lines, silently sending Ctrl-click and reverse cursor-sync
-inside the div to the wrong place. See
-`diff::nested_div_sourcepos_shift_is_a_full_update_not_setmeta`.
-
-So the 83x was a correct measurement of a design that no longer exists. It was never
-regenerated after the hardening (the two later commits to this file touched only prose
-and paths), and `RESULTS.json` was gitignored, so nothing caught the drift for five
-weeks. Both are fixed: the JSON is committed, and `regression.rs` now pins the op shape
-exactly, so the next change to this contract fails a test instead of quietly
-invalidating a published number.
-
-**Known consequence, not yet addressed.** Because the client applies `Update` with
-`el.replaceWith(node)` (`web-client/client.js:1712`) after `teardownJs`, a `:::`
-collapse callout that the reader has opened *does* close when an edit lands above it,
-and any `{js}` cell inside such a div is torn down and re-mounted. The DOM-preservation
-row above is still `yes` and honestly so: it tracks the single-`data-sourcepos`
-stateful blocks, which are 58 of this document's 59 and include the `{python}` cell's
-`<details>` output disclosure. But "live DOM state survives an edit" holds for every
-block shape *except* a fenced div, and that exception should be stated whenever the
-claim is made.
+From 2026-06-30 (`6cdbc218`) until 2026-09-24 that div took a full `Update` instead,
+because `SetMeta` could then patch only the outer element and would have left the inner
+positions stale. That one op was 90% of a 32 KB payload, this file published 9x, and the
+re-render closed an opened callout (and re-mounted any `{js}` cell inside a fenced div) on
+every edit above it. The 83x published before 2026-06-30 had today's shape but patched the
+outer position only. `regression.rs` pins the op shape exactly, so the next change to this
+contract fails a test instead of quietly invalidating a published number.

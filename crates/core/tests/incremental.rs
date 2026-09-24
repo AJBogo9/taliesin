@@ -107,6 +107,7 @@ fn structural_edit_preserves_live_blocks_below_via_metadata_only_op() {
                 target_id: v1.blocks[2].id.clone(), // Gamma, line-shifted
                 sourcepos: v2.blocks[1].sourcepos.clone(),
                 source_file: v2.blocks[1].source_file.clone(),
+                inner: Vec::new(),
             },
         ]
     );
@@ -202,4 +203,44 @@ fn a_burst_touching_raw_html_that_is_not_one_element_re_mounts() {
     ] {
         assert!(!remounts(before, &after), "{label} must stay block ops");
     }
+}
+
+/// A line-shifting edit above a `:::` container must patch its positions in place, inner
+/// blocks included, rather than re-render it: a re-render reset every slider in a
+/// `layout-ncol` grid and closed every `<details>` in a callout on each keystroke above
+/// them, while the same widgets at the top level kept their state.
+#[test]
+fn a_line_shift_above_a_container_patches_its_positions_in_place() {
+    let body = "::: {.callout-note}\nInside.\n\n<details><summary>S</summary>Open.</details>\n\n- a\n- b\n:::\n\nAfter.\n";
+    let v1 = render_document(&format!("Top.\n\n{body}"));
+    let v2 = render_document(&format!("Top.\n\nAdded above.\n\n{body}"));
+    let ops = diff_blocks(&v1.blocks, &v2.blocks);
+    let callout = &v2.blocks[2];
+    assert!(callout.html.contains("callout"), "{}", callout.html);
+    assert!(
+        !ops.iter().any(|op| matches!(op, BlockOp::Update { .. })),
+        "a shift re-renders nothing: {ops:?}"
+    );
+    // Every inner position rides along, in document order, or Ctrl-click inside the
+    // callout would open the old line.
+    let inner: Vec<String> = taliesin_core::render::tags(&callout.html)
+        .flat_map(|t| taliesin_core::render::attrs(&t).collect::<Vec<_>>())
+        .filter(|a| a.name == "data-sourcepos")
+        .skip(1)
+        .map(|a| a.value.to_string())
+        .collect();
+    assert_eq!(
+        inner.len(),
+        3,
+        "the paragraph, the details and the list: {inner:?}"
+    );
+    assert!(
+        ops.contains(&BlockOp::SetMeta {
+            target_id: callout.id.clone(),
+            sourcepos: callout.sourcepos.clone(),
+            source_file: None,
+            inner,
+        }),
+        "the container's positions are patched in place, inner ones included: {ops:?}"
+    );
 }

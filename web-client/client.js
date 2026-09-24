@@ -20,7 +20,7 @@
  * @typedef {{ type: "update", gen?: number, target_id: string, html: string }} UpdateMsg
  * @typedef {{ type: "insert", gen?: number, after_id: ?string, html: string }} InsertMsg
  * @typedef {{ type: "remove", gen?: number, target_id: string }} RemoveMsg
- * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
+ * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string, inner: string[] }} SetMetaMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "title", title: ?string }} TitleMsg
@@ -1062,10 +1062,14 @@
         // content. Patch only its position attributes so click-to-source stays
         // exact — without re-rendering, so its live DOM state (video, {js} widget,
         // open <details>) survives. No afterChange(): content is unchanged.
+        // A `:::` container also sends `inner`: the new position of every element
+        // inside it that carries one, in document order.
         renderOk();
         const el = elById(msg.target_id);
-        if (!el) return resync();
+        const inner = el && msg.inner.length ? el.querySelectorAll("[data-sourcepos]") : null;
+        if (!el || (inner && inner.length !== msg.inner.length)) return resync();
         el.setAttribute("data-sourcepos", msg.sourcepos);
+        if (inner) inner.forEach((n, i) => n.setAttribute("data-sourcepos", msg.inner[i]));
         if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
         else el.removeAttribute("data-source-file");
         // Recorded AFTER the patch, so the row's click-to-source uses the new position.

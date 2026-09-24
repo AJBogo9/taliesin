@@ -41,11 +41,13 @@ fn op_payload_bytes(op: &BlockOp) -> usize {
             target_id,
             sourcepos,
             source_file,
+            inner,
         } => {
             ENVELOPE
                 + target_id.len()
                 + sourcepos.len()
                 + source_file.as_deref().map_or(0, str::len)
+                + inner.iter().map(String::len).sum::<usize>()
         }
     }
 }
@@ -227,6 +229,7 @@ mod tests {
             target_id: "b-2".into(),
             sourcepos: "5:1-7:3".into(),
             source_file: None,
+            inner: Vec::new(),
         };
         assert_eq!(op_payload_bytes(&set_meta), 32 + 3 + 7);
     }

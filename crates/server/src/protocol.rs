@@ -233,9 +233,10 @@ pub fn op(op: &BlockOp, generation: u64, rewrite_html: impl Fn(&str) -> String) 
             target_id,
             sourcepos,
             source_file,
+            inner,
         } => serde_json::json!({
             "type": "set_meta", "gen": generation, "target_id": target_id,
-            "sourcepos": sourcepos, "source_file": source_file
+            "sourcepos": sourcepos, "source_file": source_file, "inner": inner
         }),
     }
     .to_string()

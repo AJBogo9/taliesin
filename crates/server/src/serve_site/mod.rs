@@ -2016,6 +2016,7 @@ mod protocol_contract {
                 target_id: "b3".into(),
                 sourcepos: "12:1-14:9".into(),
                 source_file: Some("inc/part.tmd".into()),
+                inner: vec!["13:1-13:4".into()],
             },
             7,
         ));
@@ -2028,6 +2029,9 @@ mod protocol_contract {
         // `source_file` attributes an included block to its real file; a rename makes
         // click-to-source open the WRONG file.
         assert_eq!(sm["source_file"], "inc/part.tmd");
+        // `inner` carries a container's inner positions, patched onto its descendants in
+        // order; a rename makes the client resync on every shift above a container.
+        assert_eq!(sm["inner"], serde_json::json!(["13:1-13:4"]));
 
         // A non-included block must emit source_file as JSON null (the client's
         // `if (msg.source_file)` is falsy for it and removes the attribute), not omit
@@ -2037,6 +2041,7 @@ mod protocol_contract {
                 target_id: "b4".into(),
                 sourcepos: "3:1-3:5".into(),
                 source_file: None,
+                inner: Vec::new(),
             },
             8,
         ));

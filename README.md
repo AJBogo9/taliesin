@@ -33,9 +33,9 @@ its sources and method.
   on a 16-core machine). A 6-page book (`docs/internals`) builds in 0.15 s (25 ms/page);
   `preview` is serving in ≈50 ms for a single document (spawn to first HTTP 200) and
   ≈90 ms for a 16-page book; a warm keystroke-sized edit diffs in 0.21 ms and ships a
-  32 KB patch instead of a 287 KB page reload, and 53 of its 55 ops are metadata-only
-  patches that never touch a DOM node (those 53 plus the one `insert` for the newly typed
-  paragraph total ~3.2 KB), which is why live state survives the edit. These figures
+  3.2 KB patch instead of a 288 KB page reload (payload regenerated 2026-09-24), and 54
+  of its 55 ops are metadata-only patches that never touch a DOM node, which is why live
+  state survives the edit. These figures
   measure Taliesin's work only and are not comparable with a cold Pandoc pass by a batch
   compiler, which does different work.
 - **One maintainer, and the scope is closed.** There is no support contract or release
