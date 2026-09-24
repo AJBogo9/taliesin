@@ -1,8 +1,8 @@
 # Execution-verified audit, 2026-09-24 (Opus 5.5)
 
 > **Status (2026-09-24, evening): fixed on branch `audit-fixes-2026-09-24`, not yet on `main`,
-> not released.** Parts A to K were implemented the same day, one commit per fix, almost each citing
-> the finding it closes (`git log --grep 'udit 2026-09-24' 9c5bd008..`). One defect the audit
+> not released.** Parts A to K were implemented the same day, one commit per fix; nearly all
+> cite the finding they close (`git log --grep 'udit 2026-09-24' 9c5bd008..`). One defect the audit
 > did not list was found while fixing it and fixed too: a cell printing long lines at full
 > speed never finished (a tokio budget livelock in the iopub read, present on `main`).
 >
