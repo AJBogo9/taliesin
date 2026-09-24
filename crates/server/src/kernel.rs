@@ -1071,9 +1071,10 @@ impl Kernel {
                 }
                 JupyterMessageContent::ExecuteResult(r) => outputs.rich(render_media(&r.data)),
                 JupyterMessageContent::DisplayData(d) => outputs.rich(render_media(&d.data)),
+                JupyterMessageContent::ClearOutput(c) => outputs.clear(c.wait),
                 // The interpreter raising about code that ran: a real traceback, so no
                 // not-run marker. This is the ONE site that may leave it `None`.
-                JupyterMessageContent::ErrorOutput(e) => outputs.note(Output::Error {
+                JupyterMessageContent::ErrorOutput(e) => outputs.error(Output::Error {
                     ename: e.ename,
                     evalue: e.evalue,
                     traceback: e.traceback,
@@ -1308,6 +1309,8 @@ pub(crate) struct Outputs {
     rich_bytes: usize,
     /// A cap fired: the notice is in the list, and later kernel output is dropped.
     capped: bool,
+    /// A `clear_output(wait=True)` waiting for the next output from the kernel.
+    clear_next: bool,
     /// How many entries of `list` the live view holds (see [`Outputs::sync`]).
     shown: usize,
     /// The live view's last entry is out of date.
@@ -1332,6 +1335,7 @@ impl Outputs {
         if self.capped {
             return;
         }
+        self.take_clear();
         self.push_stream(stderr, text);
         if self.stream_bytes > MAX_STREAM_BYTES {
             // Keep a char-boundary-safe prefix of the stream that crossed the line.
@@ -1361,6 +1365,7 @@ impl Outputs {
         if self.capped {
             return;
         }
+        self.take_clear();
         if self.rich_bytes + html.len() > MAX_RICH_BYTES {
             self.cap(format!(
                 "{} MB of rich output",
@@ -1371,6 +1376,48 @@ impl Outputs {
         self.rich_bytes += html.len();
         self.list.push(Output::Rich(html));
         self.cap_items();
+    }
+
+    /// A traceback the kernel raised. Like any output from the kernel it completes a pending
+    /// `clear_output(wait=True)`, and like a notice it is never dropped.
+    pub(crate) fn error(&mut self, e: Output) {
+        self.take_clear();
+        self.note(e);
+    }
+
+    /// `clear_output`: drop everything the cell has shown, the way a notebook does. With
+    /// `wait`, not until the kernel's next output arrives, which is what lets an animation
+    /// replace one frame with the next without an empty moment in between. The retained
+    /// bytes go with the entries, so a loop that clears before each frame holds one frame
+    /// against the caps, not all of them (audit E3). A no-op once a cap has fired, so its
+    /// notice stays on the page.
+    pub(crate) fn clear(&mut self, wait: bool) {
+        if self.capped {
+            return;
+        }
+        if wait {
+            self.clear_next = true;
+        } else {
+            self.clear_now();
+        }
+    }
+
+    fn take_clear(&mut self) {
+        if self.clear_next {
+            self.clear_now();
+        }
+    }
+
+    fn clear_now(&mut self) {
+        self.clear_next = false;
+        self.list.clear();
+        self.stream_bytes = 0;
+        self.rich_bytes = 0;
+        if self.shown > 0 {
+            self.reset = true;
+        }
+        self.shown = 0;
+        self.last_stale = false;
     }
 
     /// An output nothing may drop: a traceback the kernel raised, or a notice the
@@ -1892,6 +1939,64 @@ mod tests {
         );
     }
 
+    /// E3, the cap half: a cleared frame leaves the list, so it leaves the budget too.
+    /// Twelve 1 MB frames are 12 MB published without the clear and one frame retained
+    /// with it, so an animation must not trip the 8 MB rich cap. The live view is told to
+    /// start over (`Reset`) rather than to append the next frame under the old ones.
+    #[test]
+    fn a_cleared_frame_leaves_the_caps_and_the_live_view() {
+        let mut acc = Outputs::default();
+        let mut client: Vec<Output> = Vec::new();
+        let mut resets = 0;
+        for i in 0..12 {
+            acc.clear(true);
+            acc.rich(format!("<b>frame {i}</b>{}", "x".repeat(1024 * 1024)));
+            acc.sync(|op| match op {
+                LiveOp::Append(o) => client.push(o.clone()),
+                LiveOp::ReplaceLast(o) => {
+                    client.pop();
+                    client.push(o.clone());
+                }
+                LiveOp::Reset => {
+                    resets += 1;
+                    client.clear();
+                }
+            });
+        }
+        assert!(
+            !acc.capped(),
+            "cleared frames still counted against the rich cap"
+        );
+        assert_eq!(
+            resets, 11,
+            "every frame after the first replaces what was shown"
+        );
+        let list = acc.into_vec();
+        assert_eq!(list.len(), 1);
+        assert!(matches!(&list[0], Output::Rich(h) if h.starts_with("<b>frame 11</b>")));
+        assert_eq!(client, list, "the live view diverged from the list");
+
+        // `wait=True` waits for the next output; a bare clear empties at once, and a cap's
+        // notice survives a clear so the page still says why the cell stopped.
+        let mut acc = Outputs::default();
+        acc.stream(false, "kept until replaced\n");
+        acc.clear(true);
+        assert_eq!(
+            acc.list.len(),
+            1,
+            "wait=True must not clear before new output"
+        );
+        acc.clear(false);
+        assert!(acc.list.is_empty(), "a bare clear empties at once");
+        acc.rich("x".repeat(MAX_RICH_BYTES + 1));
+        assert!(acc.capped());
+        acc.clear(false);
+        assert!(
+            render_outputs(&acc.into_vec()).contains(TRUNCATION_MARKER),
+            "a clear after a cap erased the notice that says why the cell stopped"
+        );
+    }
+
     #[test]
     fn the_live_stream_and_the_final_render_agree() {
         // THE invariant for 175b. The client builds its live view by applying the
@@ -2174,6 +2279,64 @@ mod tests {
                 t.elapsed() < Duration::from_secs(20),
                 "silent cell ran {:?}, far past its 1s budget",
                 t.elapsed()
+            );
+        });
+    }
+
+    // E3: `clear_output` replaces what the cell has shown, the standard animation idiom
+    // (`clear_output(wait=True)` then draw the next frame). It was ignored, so every frame
+    // was published, and past the 8 MB rich cap the training loop drawing them was
+    // interrupted. `wait=True` defers the clear to the next output; a bare call clears now.
+    #[test]
+    fn clear_output_replaces_what_the_cell_showed() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise clear_output.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+
+            let frames = render_outputs(
+                &k.execute(
+                    "from IPython.display import clear_output\n\
+                     for i in range(50):\n    \
+                         clear_output(wait=True)\n    \
+                         print(f'frame {i}', flush=True)",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                frames.contains("frame 49"),
+                "the last frame is missing: {frames}"
+            );
+            assert!(
+                !frames.contains("frame 48"),
+                "an earlier frame survived clear_output(wait=True): {frames}"
+            );
+
+            let now = render_outputs(
+                &k.execute(
+                    "from IPython.display import clear_output\n\
+                     print('gone', flush=True)\n\
+                     clear_output()\n\
+                     print('kept')",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                now.contains("kept") && !now.contains("gone"),
+                "an immediate clear_output() did not clear: {now}"
             );
         });
     }

@@ -252,7 +252,10 @@ lost.
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
-`display_data`, and `error`, until the kernel returns to `idle`.
+`display_data`, and `error`, until the kernel returns to `idle`. It applies `clear_output`
+the way a notebook does, dropping what the cell has shown so far (with `wait=True`, when
+the next output arrives), so an animation that clears before each frame publishes only its
+last frame and holds one frame against the output caps.
 
 A **silence cap** (`TALIESIN_CELL_SILENCE`, default 600s) guards a wedged cell. It
 measures the gap since the last iopub message this cell's request is the parent
