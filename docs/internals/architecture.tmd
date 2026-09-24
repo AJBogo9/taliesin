@@ -125,11 +125,11 @@ makes that recovery a full re-mount even when the diff is empty). Because the st
 lives behind a `parking_lot::Mutex` (not `std::sync::Mutex`), a panic while the lock is
 held releases it cleanly rather than poisoning it.
 
-## Binding, and the two guards
+## Binding, and the three guards
 
 The server binds `127.0.0.1` and nothing else: there is no flag that puts it on a
-network. That is why the two guards in `serve/security.rs` are both about a local
-peer rather than a remote one.
+network. That is why the three guards in `serve/security.rs` are all about a local
+peer or a page in the author's own browser rather than a remote one.
 
 `ws_origin_ok` gates the websocket upgrade on `Origin` against `Host`. A page on
 another site must not be able to open the control channel and send `restart_kernel`,
@@ -141,6 +141,15 @@ must name a loopback address. This is the DNS-rebinding defence, and it cannot b
 folded into the origin check, because under a rebind both headers are the attacker's
 domain and compare equal. A request with no `Host` is allowed: only a browser can
 mount a rebind, and a browser always sends one.
+
+The same middleware reads the request's Fetch Metadata. A request from a page on another
+site, or on another port of this one (`Sec-Fetch-Site: cross-site` or `same-site`), is
+served only when it is a navigation: a link, a prefetch, or the editor companion's
+webview `<iframe>`, which is cross-site because the webview is its own origin. Anything
+else gets a `403`, because a browser runs a `<script src>` from any origin and
+`/search-index.js` hands the including page every page's text, drafts included. A
+request with no Fetch Metadata (curl, the takeover's identity probe, the websocket
+upgrade) is unaffected.
 
 Reading a draft on another device is a `build` and a static file server, not a flag on
 the preview.
