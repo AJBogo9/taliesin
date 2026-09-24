@@ -126,21 +126,25 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
     let own = page.canonicalize().ok();
     let mut inputs = Vec::new();
     super::collect_pages(&root, &mut inputs);
-    for input in inputs {
+    // Across cores: this runs on every keystroke in a file that is no page (a partial, a
+    // draft), and one page after another it was 35 ms of a 500-page project's publish.
+    let found = super::fanout::map_ordered(&inputs, |input| {
         if own.is_some() && input.canonicalize().ok() == own {
-            continue;
+            return Vec::new();
         }
-        let Ok(raw) = std::fs::read_to_string(&input) else {
-            continue;
+        let Ok(raw) = std::fs::read_to_string(input) else {
+            return Vec::new();
         };
         // Resolve includes, exactly as the scan above does: an anchor authored in an
         // `_includes/` partial belongs to whichever page includes it, and the walk
         // skips `_`-prefixed directories, so it is reachable only this way.
         let base = input.parent().unwrap_or_else(|| Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        out.extend(scan_page_anchors(&src).into_iter().map(|a| a.id));
-        out.extend(cell_label_anchors(&src));
-    }
+        let mut ids: Vec<String> = scan_page_anchors(&src).into_iter().map(|a| a.id).collect();
+        ids.extend(cell_label_anchors(&src));
+        ids
+    });
+    out.extend(found.into_iter().flatten());
     out
 }
 
