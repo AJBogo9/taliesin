@@ -4314,6 +4314,37 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&outside);
     }
 
+    /// Audit 2026-09-24 invalidation #12. The watcher dropped every event outside a list of
+    /// extensions, which disagreed with what the pages read: a page linking a `.pdf` kept
+    /// its "broken link" after the file was created. Whether a save matters is decided by
+    /// what the pages read, so the list is gone.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn creating_a_linked_file_of_any_kind_clears_its_broken_link() {
+        let dir = scratch("linked-pdf");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nRead [the report](report.pdf).\n",
+        )
+        .unwrap();
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        let broken = || {
+            let pages = live.app.root.pages.lock();
+            pages.get("index.tmd").is_some_and(|ps| {
+                ps.doc
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.message.contains("report.pdf"))
+            })
+        };
+        until("the missing file is reported", broken);
+        std::fs::write(dir.join("report.pdf"), b"%PDF-1.4\n").unwrap();
+        until("creating it clears the report", || !broken());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Audit 2026-09-24 invalidation #10. `reload_open_tabs` drops every page's state so the
     /// reload re-renders against the new site, and a page nobody has open has none. A build
     /// already in flight for such a page used to put a state back when it finished, carrying

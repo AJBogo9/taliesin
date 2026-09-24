@@ -103,13 +103,16 @@ recursive-watch model added an inotify descriptor per directory, including
 kill hot reload.
 
 The watcher skips `_freeze`: the executor writes its own cache there on every run, and
-without the skip each write would kick a redundant rebuild. The skip list is matched
+without the skip each write would kick a redundant rebuild. It skips every `.`-prefixed
+tree too, as discovery and the build do: a project's own `.venv` is thousands of
+directories. The skip list is matched
 against the path relative to the project root, never the whole path: the watcher deals
 in absolute event paths, and a project can live under a directory someone else called
 `_site` or `.git`. Scanning the whole path vetoed every event in such a project, which
-stopped hot reload silently while each page still served 200. Unrelated saves (an
-editor swap file, a build-output write) are filtered out, and a burst of saves is
-debounced.
+stopped hot reload silently while each page still served 200. Every other event reaches
+the rebuild, which decides by what the pages read (below), not by a file's extension, and
+a burst of saves is debounced. A directory that arrives by a rename or a move gets watches
+of its own, like a created one: notify drops a moved directory's watch.
 
 ### What a save rebuilds
 

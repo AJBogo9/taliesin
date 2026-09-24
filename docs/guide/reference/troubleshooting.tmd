@@ -130,10 +130,12 @@ never fails silently.
 
 ## Edits aren't picked up
 
-The watcher follows source/asset file types (`.tmd`, `.bib`, `.css`, images, …)
-under the document's directory and any `{{< include >}}`d file's directory, and
-skips build-output/VCS folders (`_site`, `_book`, `.git`). Editing a file outside
-those won't trigger a refresh.
+A save rebuilds the open pages that read the file: a page's source, an
+`{{< include >}}`d file, a `.bib`, an image a page shows, a file a page links to. The
+watcher covers the project's folder and skips generated and `.`-prefixed folders
+(`_site`, `_book`, `_freeze`, `node_modules`, `.git`, `.venv`). A stylesheet, a script or
+a data file the page loads in the browser is not read by the render: reload the tab to see
+a change to it.
 
 ## The VS Code companion preview won't connect
 
