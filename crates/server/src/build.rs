@@ -2461,17 +2461,20 @@ const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 /// Returns `(out-relative paths copied, names of skipped cache dirs)` so the caller can
 /// report residue it dropped rather than silently omitting it, and knows which output
 /// files this build owns (for the stale-file sweep).
-/// A symlink is followed only while its target stays inside the repository, matching
-/// what [`taliesin_core::includes`] allows a document path to resolve to: a link to a
-/// sibling directory of the same checkout is first-party authoring, one that leaves the
-/// checkout would publish a file the author never put in the project.
+///
+/// Every entry goes through the one publication rule, [`taliesin_core::includes::publishable`],
+/// as [`Reach::Wholesale`](taliesin_core::includes::Reach): that is where the `_`/`.`
+/// convention and the repository boundary live. It is applied to what an entry REACHES,
+/// not to its name alone. A symlink is followed only while its real path stays inside the
+/// repository and adds no `.`/`_` component to the path it shares with the project: a link
+/// to a sibling directory of the same checkout is first-party authoring, while `vendor ->
+/// ../.git` (an ordinary name, referenced by no page) published `.git/config` and every
+/// object until the 2026-09-24 audit, because only the link's own name was tested.
 fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
-    #[allow(clippy::too_many_arguments)]
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
-        boundary: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
         copied: &mut Vec<PathBuf>,
         skipped: &mut Vec<String>,
@@ -2489,13 +2492,16 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
         for entry in entries.flatten() {
             let p = entry.path();
             let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if name.starts_with('_') || name.starts_with('.') {
+            let Ok(rel) = p.strip_prefix(root) else {
                 continue;
-            }
-            // Testing the link itself is enough: anything deeper can only leave the
-            // repository through a link this same test already refused.
-            if entry.file_type().is_ok_and(|t| t.is_symlink())
-                && !p.canonicalize().is_ok_and(|c| c.starts_with(boundary))
+            };
+            if taliesin_core::includes::publishable(
+                root,
+                root,
+                rel,
+                taliesin_core::includes::Reach::Wholesale,
+            )
+            .is_err()
             {
                 continue;
             }
@@ -2510,11 +2516,8 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
                     skipped.push(name.to_string());
                     continue;
                 }
-                walk(&p, root, out, boundary, seen, copied, skipped);
+                walk(&p, root, out, seen, copied, skipped);
             } else if !SKIP_EXT.contains(&p.extension().and_then(|s| s.to_str()).unwrap_or("")) {
-                let Ok(rel) = p.strip_prefix(root) else {
-                    continue;
-                };
                 let dest = out.join(rel);
                 if let Some(parent) = dest.parent() {
                     let _ = std::fs::create_dir_all(parent);
@@ -2531,7 +2534,6 @@ fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
         root,
         root,
         out,
-        &taliesin_core::includes::repo_boundary(root),
         &mut std::collections::HashSet::new(),
         &mut copied,
         &mut skipped,
@@ -4165,6 +4167,59 @@ mod symlink_containment_tests {
             out.join("shared/fig.png").exists(),
             "a symlink to a sibling inside the repository is first-party authoring and \
              must still be mirrored; copied: {copied:?}"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The `.`/`_` privacy convention was tested on the LINK's name only, never on what the
+    /// link reaches, so a link no page references, with an ordinary name, published a
+    /// checkout's private files: `vendor -> ../.git` shipped `.git/config` (a token in a
+    /// remote URL) and every object, and `data.txt -> ../.deploysecret` shipped the secret,
+    /// under a clean `--check-only --strict`.
+    #[test]
+    fn mirror_assets_refuses_a_symlink_that_reaches_a_private_path() {
+        //   <dir>/repo/.git/config, .git/objects/ab/cdef     private: never published
+        //   <dir>/repo/.deploysecret                         private
+        //   <dir>/repo/_drafts/wip.png                       not mirrored wholesale
+        //   <dir>/repo/paper/fig.png                         an ordinary sibling
+        //   <dir>/repo/blog/_site.yml                        the site root
+        let dir = tmp("mirror-private-target");
+        let repo = dir.join("repo");
+        let blog = repo.join("blog");
+        fs::create_dir_all(repo.join(".git/objects/ab")).unwrap();
+        fs::create_dir_all(repo.join("_drafts")).unwrap();
+        fs::create_dir_all(repo.join("paper")).unwrap();
+        fs::create_dir_all(&blog).unwrap();
+        fs::write(repo.join(".git/config"), b"url = https://TOKEN@x/y").unwrap();
+        fs::write(repo.join(".git/objects/ab/cdef"), b"OBJECT").unwrap();
+        fs::write(repo.join(".deploysecret"), b"SECRET").unwrap();
+        fs::write(repo.join("_drafts/wip.png"), b"WIP").unwrap();
+        fs::write(repo.join("paper/fig.png"), b"FIG").unwrap();
+        fs::write(blog.join("_site.yml"), b"title: B\n").unwrap();
+        symlink("../.git", blog.join("vendor")).unwrap();
+        symlink("../.deploysecret", blog.join("data.txt")).unwrap();
+        symlink("../_drafts", blog.join("drafts")).unwrap();
+        symlink("../paper", blog.join("paper")).unwrap();
+
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        let (copied, _skipped) = mirror_assets(&blog, &out);
+
+        for leaked in ["vendor/config", "vendor/objects/ab/cdef", "data.txt"] {
+            assert!(
+                !out.join(leaked).exists(),
+                "`{leaked}` reaches a dot-prefixed path and must not be published; \
+                 copied: {copied:?}"
+            );
+        }
+        assert!(
+            !out.join("drafts/wip.png").exists(),
+            "a link into an underscore folder is not mirrored wholesale either; copied: {copied:?}"
+        );
+        assert!(
+            out.join("paper/fig.png").exists(),
+            "a link to an ordinary sibling in the repository is still mirrored; copied: {copied:?}"
         );
 
         let _ = fs::remove_dir_all(&dir);

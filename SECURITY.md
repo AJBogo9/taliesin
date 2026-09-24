@@ -52,7 +52,10 @@ The following are by design:
   project directories can share one file. The document *text* is held to a narrower
   boundary: an absolute path or a `../` climb above the project root is refused, and
   so is a symlink whose target leaves the checkout. `build` applies the same rule when it
-  mirrors assets into the output, so a link out of the checkout is never published. The
+  mirrors assets into the output, so a link out of the checkout is never published, and
+  it judges a link by what it reaches rather than by its own name: a link into a
+  `.`-prefixed path (`.git`, a dotfile) is never published, nor, when the whole project
+  is mirrored, one into an `_`-prefixed folder. The
   `preview` server's asset endpoint is stricter still: it serves only what canonicalizes
   under the document's own directory, so a symlinked image that builds fine may 404 there.
 
