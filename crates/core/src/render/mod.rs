@@ -3415,6 +3415,58 @@ pub(crate) fn attr_values<'a>(html: &'a str, name: &'a str) -> impl Iterator<Ite
         .map(|a| a.value)
 }
 
+/// The attributes whose value is a URL a page fetches or links to (`srcset`: a list of
+/// them, see [`attr_urls`]). THE list: the local-asset validator, the build's copiers and
+/// the 404 page's root-absolute rewrite all read these and no others. `poster` is a
+/// `<video>`'s still; `srcset` is the 2x candidate a high-density screen fetches and the
+/// dark-mode `<picture><source>`, which the gate and the copiers once skipped, so a
+/// portable folder 404'd them while the preview, serving any file, looked right.
+pub const URL_ATTRS: [&str; 4] = ["src", "href", "poster", "srcset"];
+
+/// The URLs one attribute carries: for `srcset` each candidate's URL
+/// ([`srcset_candidates`]), for any other of [`URL_ATTRS`] the value itself, and nothing
+/// for an attribute that holds no URL. `name` is matched case-insensitively.
+pub fn attr_urls<'a>(name: &str, value: &'a str) -> Vec<&'a str> {
+    if name.eq_ignore_ascii_case("srcset") {
+        srcset_candidates(value)
+            .into_iter()
+            .map(|(u, _)| u)
+            .collect()
+    } else if URL_ATTRS.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+        vec![value]
+    } else {
+        Vec::new()
+    }
+}
+
+/// A `srcset` value as `(url, descriptor)` candidates, read the way a browser reads one
+/// (HTML's "parse a srcset attribute"): a URL is a run of non-whitespace, so a `data:`
+/// URI keeps its own commas; commas right after a URL end the candidate with no
+/// descriptor; otherwise the descriptor (`2x`, `640w`) runs to the next comma. Splitting
+/// on every comma, as the 404 rewrite once did, cut a `data:` candidate in half.
+pub fn srcset_candidates(v: &str) -> Vec<(&str, &str)> {
+    let mut out = Vec::new();
+    let mut rest = v;
+    loop {
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == ',');
+        if rest.is_empty() {
+            return out;
+        }
+        let end = rest
+            .find(|c: char| c.is_ascii_whitespace())
+            .unwrap_or(rest.len());
+        let (url, after) = rest.split_at(end);
+        if let Some(url) = url.strip_suffix(',') {
+            out.push((url.trim_end_matches(','), ""));
+            rest = after;
+            continue;
+        }
+        let stop = after.find(',').unwrap_or(after.len());
+        out.push((url, after[..stop].trim()));
+        rest = &after[stop..];
+    }
+}
+
 /// Minimal percent-decoding for asset references and request paths (so `%20` etc. in
 /// filenames work).
 ///

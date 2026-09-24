@@ -2741,12 +2741,14 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
     swept
 }
 
-/// Unique local `src=`/`href=`/`poster=` values in `html` (skips external URLs,
-/// protocol-relative refs, data URIs, in-page anchors, and other schemes).
+/// Unique local URLs in `html`'s `src=`/`href=`/`poster=`/`srcset=` attributes
+/// ([`taliesin_core::render::URL_ATTRS`]; skips external URLs, protocol-relative refs, data
+/// URIs, in-page anchors, and other schemes).
 ///
 /// `poster=` is a media attribute the first two never carry: harvesting only `src`/`href`
 /// built a folder whose `<video>` still 404s. It stays because raw `<video>` HTML is in the
-/// trust model and `diagnostics/media.rs` validates the same attribute.
+/// trust model. `srcset=` (each candidate) joined it on 2026-09-24: a folder built without
+/// it 404'd the 2x image on every high-density screen and the dark `<picture><source>`.
 ///
 /// `data-src=` was harvested here too until 2026-08-09, for a theme-adaptive `dark=` pair
 /// that shipped both clips as `data-src` so the hidden one was never fetched. Wave 7 cut
@@ -2762,15 +2764,15 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
 /// Each value comes with the byte offset of its first occurrence, which is what locates a
 /// refused reference at the block that carries it ([`sourcepos_line_before`]).
 fn local_refs(html: &str) -> Vec<(String, usize)> {
-    const HARVESTED: &[&str] = &["src", "href", "poster"];
     let mut out: Vec<(String, usize)> = Vec::new();
     for tag in taliesin_core::render::tags(html) {
         for a in taliesin_core::render::attrs(&tag) {
-            if !HARVESTED.iter().any(|n| a.name.eq_ignore_ascii_case(n)) {
-                continue;
-            }
-            if is_local_ref(a.value) && !out.iter().any(|(v, _)| v == a.value) {
-                out.push((a.value.to_string(), a.at));
+            // The one list of URL attributes (`render::URL_ATTRS`) and the one reading of a
+            // `srcset`, shared with the gate and the 404 rewrite.
+            for v in taliesin_core::render::attr_urls(a.name, a.value) {
+                if is_local_ref(v) && !out.iter().any(|(seen, _)| seen == v) {
+                    out.push((v.to_string(), a.at));
+                }
             }
         }
     }
@@ -3409,6 +3411,30 @@ mod mirror_tests {
 
         assert!(out.join("my pic.png").is_file());
         assert_eq!(got.copied, 1, "one file, however it is spelled");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A `srcset` candidate and a `<picture><source srcset>` are images the browser
+    /// fetches (on a high-density screen, in dark mode), so they travel with the page.
+    /// Harvesting `src`/`href`/`poster` only built a folder whose 2x and dark images 404'd
+    /// while the preview, which serves any file, looked right.
+    #[test]
+    fn copy_local_assets_bundles_every_srcset_candidate() {
+        let dir = tmp_dir("srcset-copy");
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        for f in ["fig.png", "fig-2x.png", "dark.png"] {
+            fs::write(dir.join(f), f).unwrap();
+        }
+        let html = r#"<picture><source srcset="dark.png" media="(prefers-color-scheme: dark)">
+            <img src="fig.png" srcset="fig.png 1x, fig-2x.png 2x" alt="A."></picture>"#;
+
+        let got = copy_local_assets(html, &dir, &out);
+
+        for f in ["fig.png", "fig-2x.png", "dark.png"] {
+            assert!(out.join(f).is_file(), "`{f}` must be bundled");
+        }
+        assert_eq!(got.copied, 3);
         let _ = fs::remove_dir_all(&dir);
     }
 

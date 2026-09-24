@@ -564,6 +564,31 @@ fn the_asset_check_refuses_what_the_build_cannot_publish() {
     );
 }
 
+/// `srcset` and `<picture><source srcset>` name images as surely as `src` does: the 2x
+/// candidate a high-density screen fetches, the dark-mode source. The gate read `src` only,
+/// so a `srcset` naming a file that does not exist passed `--strict`.
+#[test]
+fn the_asset_check_reads_every_srcset_candidate() {
+    let dir = Tmp::new("assets-srcset");
+    std::fs::write(dir.0.join("fig.png"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "<img src=\"fig.png\" srcset=\"fig.png 1x, missing-2x.png 2x\" alt=\"A.\">\n\n",
+            "<picture><source srcset=\"missing-dark.png\" media=\"(prefers-color-scheme: dark)\">",
+            "<img src=\"fig.png\" alt=\"B.\"></picture>\n",
+        ),
+        &dir.0,
+    );
+    let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 2, "exactly the two missing candidates: {m:?}");
+    for missing in ["missing-2x.png", "missing-dark.png"] {
+        assert!(
+            m.iter().any(|s| s.contains(missing)),
+            "{missing} missed: {m:?}"
+        );
+    }
+}
+
 /// The same rule on the link and alt-text checks, which shared the scan.
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {
