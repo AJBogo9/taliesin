@@ -844,11 +844,21 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         .into_response()
 }
 
-/// Resolve a request to a page (rendered live) or a static asset under the root.
+/// Resolve a `GET` or `HEAD` to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
     State(app): State<Arc<SiteApp>>,
+    method: axum::http::Method,
     uri: axum::http::Uri,
 ) -> axum::response::Response {
+    // Reads only. The fallback answered every method as a GET, so a `POST` or a `DELETE`
+    // got the page or the file (audit 2026-09-24, WP1 residual).
+    if method != axum::http::Method::GET && method != axum::http::Method::HEAD {
+        return (
+            axum::http::StatusCode::METHOD_NOT_ALLOWED,
+            [(axum::http::header::ALLOW, "GET, HEAD")],
+        )
+            .into_response();
+    }
     let path = percent_decode(uri.path().trim_start_matches('/'));
     let project = &app.root;
     let sub = path.as_str();
@@ -4430,7 +4440,12 @@ mod project_tests {
         let app = Arc::new(app);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (status, body) = rt.block_on(async {
-            let res = page_or_asset(State(app.clone()), "/gone.html".parse().unwrap()).await;
+            let res = page_or_asset(
+                State(app.clone()),
+                axum::http::Method::GET,
+                "/gone.html".parse().unwrap(),
+            )
+            .await;
             let status = res.status();
             let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
                 .await
@@ -4450,6 +4465,43 @@ mod project_tests {
             script.contains("fetch(location.href"),
             "it asks about the page it stands for: {script}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 WP1 residual. The preview answered every HTTP method for a page or a
+    /// static file, a `POST` or a `DELETE` included, as if it were a `GET`. It serves reads
+    /// only: `GET` and `HEAD`, and `405` with an `Allow` header for anything else.
+    #[test]
+    fn the_preview_serves_pages_and_files_to_get_and_head_only() {
+        use axum::http::{Method, StatusCode, header};
+        let dir = scratch("methods");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        std::fs::write(dir.join("style.css"), "body{}").unwrap();
+        let (_project, app, _b, _f) = project_and_app(&dir);
+        let app = Arc::new(app);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let answer = |method: Method, uri: &str| {
+            let res = rt.block_on(page_or_asset(
+                State(app.clone()),
+                method,
+                uri.parse().unwrap(),
+            ));
+            let allow = res.headers().get(header::ALLOW).cloned();
+            (res.status(), allow)
+        };
+        for uri in ["/style.css", "/index.html"] {
+            assert_eq!(answer(Method::GET, uri).0, StatusCode::OK, "{uri}");
+            assert_eq!(answer(Method::HEAD, uri).0, StatusCode::OK, "{uri}");
+            for method in [Method::POST, Method::PUT, Method::DELETE] {
+                let (status, allow) = answer(method.clone(), uri);
+                assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{method} {uri}");
+                assert_eq!(
+                    allow.as_ref().and_then(|a| a.to_str().ok()),
+                    Some("GET, HEAD")
+                );
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
