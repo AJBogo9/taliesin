@@ -10,13 +10,15 @@ separate rounds re-derived that same list from scratch. A round whose only outpu
 rebuild it is not worth running; a round that would close one of those classes is.
 
 **Standing rule, from the [2026-09-24 round](2026-09-24-execution-verified-audit.md).** No new
-whole-repo audit round until that round's Parts A to C have landed. After that, review is
-diff-scoped by default (the `audit-tali` workflow over a change set); a whole-repo round needs a
-lens that is absent from the index below and that would close a class in the LESSONS.md list. A
-round's durable output is its commits plus one index row. **Unvetted leads expire 14 days after
-they are filed**: fix or delete each one by then; never carry a lead into the next round's file.
-The reason is measured: 0 of the 2026-09-02 round's 143 leads were acted on in 22 days, and the
-cost per confirmed finding rose about 4.5x between the 2026-08-13 and 2026-09-02 rounds.
+whole-repo audit round until that round's Parts A to C have landed; all of Parts A to K were
+fixed on branch `audit-fixes-2026-09-24` the same day, so this holds until that branch is on
+`main`. After that, review is diff-scoped by default (the `audit-tali` workflow over a change
+set); a whole-repo round needs a lens that is absent from the index below and that would
+close a class in the LESSONS.md list. A round's durable output is its commits plus one index
+row. **Unvetted leads expire 14 days after they are filed**: fix or delete each one by then;
+never carry a lead into the next round's file. The reason is measured: 0 of the 2026-09-02
+round's 143 leads were acted on in 22 days, and the cost per confirmed finding rose about 4.5x
+between the 2026-08-13 and 2026-09-02 rounds.
 
 **`notes/` is not gated and mostly not read.** The same round measured about 44k lines in it,
 with most dated files referenced only by their row here, and recommended deleting the spent dated
@@ -96,7 +98,7 @@ itself: DX1, AP7 and DIAG-1 had each tripped over one instance and stopped. **Th
 | [2026-08-20-feature-audit-backlog](2026-08-20-feature-audit-backlog.md) | 64-agent final feature audit: 282 features scored, 14 CUT verdicts | its cuts landed 2026-08-20 (`lang:`, `csl:`, `page-layout: full`, link attributes, the video and uncited-entry lints, five companion features); row added 2026-09-24 |
 | [2026-09-01-product-audit-backlog](2026-09-01-product-audit-backlog.md) | 84-agent whole-product end-user audit at `e23e42d4`: 13 confirmed critical/moderate | all 13 landed 2026-09-01 with a 21-agent review; row added 2026-09-24 |
 | [2026-09-02-fable-deep-audit](2026-09-02-fable-deep-audit.md) | 3-round workflow, 291 agents, ~16M tokens: 23 majors plus 143 unvetted leads | the 23 majors were fixed the same day; the leads were not acted on (83 of 86 re-checked on 2026-09-24 were still real); row added 2026-09-24 |
-| [2026-09-24-execution-verified-audit](2026-09-24-execution-verified-audit.md) | 15 lens auditors plus a coordinator, execution first: every headline finding reproduced with the binary | Parts A to K; its process rule heads this file |
+| [2026-09-24-execution-verified-audit](2026-09-24-execution-verified-audit.md) | 15 lens auditors plus a coordinator, execution first: every headline finding reproduced with the binary | Parts A to K fixed on branch `audit-fixes-2026-09-24` the same day, one commit per finding; its status header lists what was left for the author; its process rule heads this file |
 
 Rounds with their own narrative entry below (and so already in the ledger): AP1, AP5, AP8, AP9, AP10,
 AP12, the 2026-07-19 polish audit, the 2026-07-18 vacuous-test audit, the 2026-07-24 skimmability
