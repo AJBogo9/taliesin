@@ -97,8 +97,7 @@ pub struct HeroSpec {
 pub struct HeroAction {
     pub text: String,
     pub href: String,
-    /// `primary: true` (or `class: primary`) renders the filled accent button;
-    /// otherwise the outline style.
+    /// `primary: true` renders the filled accent button; otherwise the outline style.
     pub primary: bool,
 }
 

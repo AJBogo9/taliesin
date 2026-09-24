@@ -11,7 +11,7 @@
 //! A front matter that is not valid YAML reads as empty here: `frontmatter::yaml_error`
 //! reports it, located, and the build fails on it.
 
-use crate::frontmatter::{front_matter_value, parse_front_matter_block, yaml_bool_word};
+use crate::frontmatter::{front_matter_value, parse_front_matter_block, value_bool};
 
 /// A document's parsed front matter (YAML `null` when it has none, or none that parses).
 #[derive(Default)]
@@ -41,7 +41,7 @@ impl DocFront {
     /// site default) from an unset toc (which inherits it). Catches the YAML-1.1 words serde
     /// reads as strings (`toc: yes`), so they take effect instead of silently no-oping.
     pub(super) fn toc(&self) -> Option<bool> {
-        as_bool(self.get("toc")?)
+        value_bool(self.get("toc")?)
     }
 
     /// `title-block-style: none` suppresses the visible title-block header while keeping
@@ -69,7 +69,7 @@ impl DocFront {
     pub(super) fn exec_cache(&self) -> bool {
         self.get("execute")
             .and_then(|e| e.get("cache"))
-            .and_then(as_bool)
+            .and_then(value_bool)
             != Some(false)
     }
 
@@ -84,16 +84,6 @@ impl DocFront {
             Some(serde_yaml::Value::String(s)) => vec![s.clone()],
             _ => Vec::new(),
         }
-    }
-}
-
-/// A YAML value as a boolean: a real bool, or one of the YAML-1.1 words serde reads as a
-/// string (`crate::frontmatter::yaml_bool_word`). `None` for anything else.
-fn as_bool(v: &serde_yaml::Value) -> Option<bool> {
-    match v {
-        serde_yaml::Value::Bool(b) => Some(*b),
-        serde_yaml::Value::String(s) => yaml_bool_word(s),
-        _ => None,
     }
 }
 

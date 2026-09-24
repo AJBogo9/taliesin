@@ -129,6 +129,17 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     out
 }
 
+/// A parsed YAML value as a boolean: a real bool, or one of the YAML-1.1 words
+/// [`yaml_bool_word`] catches. `None` for anything else. The one boolean read of a parsed
+/// value (`toc:`, `execute: cache:`, a hero action's `primary:`).
+pub(crate) fn value_bool(v: &serde_yaml::Value) -> Option<bool> {
+    match v {
+        serde_yaml::Value::Bool(b) => Some(*b),
+        serde_yaml::Value::String(s) => yaml_bool_word(s),
+        _ => None,
+    }
+}
+
 /// Interpret a raw YAML scalar as a boolean, catching the YAML-1.1 words serde_yaml
 /// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off` — alongside
 /// canonical `true`/`false` (case-insensitive, tolerant of surrounding quotes). Returns
@@ -345,9 +356,9 @@ fn validate_listing_values(m: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
 /// with no label, and `check` stays green. That is the same failure shape as a typo'd
 /// chapter entry (`site::book`), and it earns the same diagnostic.
 ///
-/// Located at the misspelled key when the `actions:` block is a flow-style list on one
-/// line (the form every real page uses, so the span usually lands); falls back to the
-/// `hero:` key otherwise.
+/// Located at the misspelled key, in a flow-style entry (`- { txt: Go }`, the form every
+/// real page uses) as in a block-style one; falls back to the `hero:` key when the key
+/// cannot be found.
 fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(serde_yaml::Value::Mapping(hero)) = map.get("hero") else {
         return;
@@ -361,7 +372,7 @@ fn validate_hero_actions(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
             if !HERO_ACTION_KEYS.contains(&key) {
                 out.push(located_span(
                     unknown_key_message("hero action key", key, HERO_ACTION_KEYS),
-                    block_key_span(block, key).or_else(|| block_key_span(block, "hero")),
+                    nested_key_span(block, "hero", key).or_else(|| block_key_span(block, "hero")),
                 ));
             }
         }
@@ -386,26 +397,31 @@ pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
 }
 
 /// `(line, col, end_col)` of a top-level `key:`, all 1-based (see [`block_key_line`] for the
-/// line rule). Top-level keys are unindented, so `col` is 1 and `end_col` is `1 + key.len()`.
-/// Columns are Unicode-scalar counts; a front-matter key is ASCII, so scalar == byte == UTF-16.
+/// line rule). Top-level keys are unindented, so `col` is 1, or 2 for a quoted key, which
+/// is the same key to YAML (`"title": x`). Columns are Unicode-scalar counts; a front-matter
+/// key is ASCII, so scalar == byte == UTF-16.
 pub(crate) fn block_key_span(block: &str, key: &str) -> Option<(u32, u32, u32)> {
     block.lines().enumerate().find_map(|(i, line)| {
-        let t = line.trim_start();
-        (line.len() == t.len() && key_matches(t, key))
-            .then(|| (i as u32 + 2, 1, 1 + key.chars().count() as u32))
+        let quote = (!line.starts_with(char::is_whitespace))
+            .then(|| key_at(line, key))
+            .flatten()?;
+        let col = 1 + quote as u32;
+        Some((i as u32 + 2, col, col + key.chars().count() as u32))
     })
 }
 
-/// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based. `col` follows
-/// the line's indentation plus an optional `- ` list prefix. Indentation is ASCII, so the
-/// scalar column equals the byte/UTF-16 column.
+/// `(line, col, end_col)` of a nested child `key` under `parent:`, all 1-based: at the start
+/// of a line in the parent's block (after its indentation and any `- ` list marker), or as a
+/// key of a flow mapping written on one line (`- { text: Go, href: a.tmd }`, how list
+/// entries are usually written). Indentation is ASCII, so the scalar column equals the
+/// byte/UTF-16 column.
 fn nested_key_span(block: &str, parent: &str, key: &str) -> Option<(u32, u32, u32)> {
     let mut in_block = false;
     for (i, line) in block.lines().enumerate() {
         let t = line.trim_start();
-        let at_top = line.len() == t.len();
+        let at_top = !line.is_empty() && line.len() == t.len();
         if !in_block {
-            if at_top && key_matches(t, parent) {
+            if at_top && key_at(t, parent).is_some() {
                 in_block = true;
             }
             continue;
@@ -413,26 +429,46 @@ fn nested_key_span(block: &str, parent: &str, key: &str) -> Option<(u32, u32, u3
         if at_top {
             break; // dedent ends the parent block
         }
-        let indent = line.len() - t.len();
-        let (prefix, body) = match t.strip_prefix("- ") {
-            Some(rest) => (
-                2 + (rest.len() - rest.trim_start().len()),
-                rest.trim_start(),
-            ),
-            None => (0, t),
-        };
-        if key_matches(body, key) {
-            let col = indent as u32 + prefix as u32 + 1;
+        // Where a key can start: past the indentation and any `- ` markers, and past
+        // each `{` or `,` of a flow mapping.
+        let mut starts = Vec::new();
+        let mut s = line.len() - t.len();
+        while let Some(rest) = line[s..].strip_prefix("- ") {
+            s = line.len() - rest.trim_start().len();
+        }
+        starts.push(s);
+        for (b, c) in line.char_indices() {
+            if matches!(c, '{' | ',') {
+                let after = &line[b + 1..];
+                starts.push(line.len() - after.trim_start().len());
+            }
+        }
+        if let Some((start, quote)) = starts
+            .into_iter()
+            .find_map(|s| key_at(&line[s..], key).map(|q| (s, q)))
+        {
+            let col = (start + quote) as u32 + 1;
             return Some((i as u32 + 2, col, col + key.chars().count() as u32));
         }
     }
     None
 }
 
-/// Does `text` start with `key` immediately followed by `:` (a YAML key)?
-fn key_matches(text: &str, key: &str) -> bool {
-    text.strip_prefix(key)
-        .is_some_and(|rest| rest.starts_with(':'))
+/// Whether `text` starts with the mapping key `key` (bare or quoted, then `:`), and if so
+/// how many quote characters precede it (0 or 1).
+fn key_at(text: &str, key: &str) -> Option<usize> {
+    let (quote, body) = match text.chars().next() {
+        Some(q @ ('"' | '\'')) => (Some(q), &text[1..]),
+        _ => (None, text),
+    };
+    let rest = body.strip_prefix(key)?;
+    let rest = match quote {
+        Some(q) => rest.strip_prefix(q)?,
+        None => rest,
+    };
+    rest.trim_start()
+        .starts_with(':')
+        .then_some(usize::from(quote.is_some()))
 }
 
 /// If the document has front matter that is present but not valid YAML, return the
@@ -1037,6 +1073,44 @@ mod tests {
         assert_eq!(d.line, Some(4));
         assert_eq!(d.col, Some(3)); // 2-space indent -> column 3
         assert_eq!(d.end_col, Some(8));
+    }
+
+    /// A hero action is written as a flow mapping on its own line, and a typo in one used
+    /// to be located at the `hero:` key, whatever the doc comment promised, because the
+    /// locator only matched a key at the start of an unindented line.
+    #[test]
+    fn a_hero_action_key_typo_is_located_at_the_key() {
+        let src = "---\ntitle: T\nhero:\n  headline: H\n  actions:\n    \
+                   - { text: Go, href: a.tmd }\n    - { txt: Typo, href: a.tmd }\n---\n";
+        let w = validate_front_matter(src);
+        let d = w
+            .iter()
+            .find(|w| w.message.contains("`txt`"))
+            .unwrap_or_else(|| panic!("{w:?}"));
+        assert_eq!(
+            (d.line, d.col, d.end_col),
+            (Some(7), Some(9), Some(12)),
+            "{d:?}"
+        );
+    }
+
+    /// A quoted key is the same key to YAML (`"title": x`), so its diagnostic is located the
+    /// same way; it used to come out with no line at all.
+    #[test]
+    fn a_quoted_key_is_located_like_a_plain_one() {
+        let w = validate_front_matter(
+            "---\n\"titel\": X\n'date': Spring 2026\nexecute:\n  \"cach\": true\n---\n",
+        );
+        let at = |needle: &str| {
+            let d = w
+                .iter()
+                .find(|w| w.message.contains(needle))
+                .unwrap_or_else(|| panic!("{needle}: {w:?}"));
+            (d.line, d.col, d.end_col)
+        };
+        assert_eq!(at("`titel`"), (Some(2), Some(2), Some(7)));
+        assert_eq!(at("Spring 2026").0, Some(3));
+        assert_eq!(at("`cach`"), (Some(5), Some(4), Some(8)));
     }
 
     /// PA-M13. The escape hatch matters as much as the warning: an author who means the

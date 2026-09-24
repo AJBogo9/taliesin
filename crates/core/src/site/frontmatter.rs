@@ -111,8 +111,10 @@ pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
                 Some(HeroAction {
                     text: scalar(it.get("text"))?,
                     href: scalar(it.get("href"))?,
-                    primary: it.get("primary").and_then(serde_yaml::Value::as_bool) == Some(true)
-                        || scalar(it.get("class")).as_deref() == Some("primary"),
+                    // A boolean like every other; `class: primary` is not a key, so it is
+                    // reported as unknown and not read.
+                    primary: it.get("primary").and_then(crate::frontmatter::value_bool)
+                        == Some(true),
                 })
             })
             .collect(),
@@ -197,6 +199,36 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `class: primary` on a hero action is not in `HERO_ACTION_KEYS`, so the lint calls it
+    /// unknown, yet the parser still honoured it and the button rendered filled. The read is
+    /// gone with the key: this is the parser-side pin. `primary:` itself is a boolean read
+    /// like every other, so `primary: yes` and `primary: "true"` take effect too.
+    #[test]
+    fn parse_hero_reads_primary_as_a_bool_and_not_the_retired_class() {
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "hero:\n  actions:\n    - { text: C, href: a, class: primary }\n    \
+             - { text: Y, href: a, primary: yes }\n    - { text: S, href: a, primary: \"true\" }\n    \
+             - { text: T, href: a, primary: true }\n    - { text: N, href: a, primary: no }\n",
+        )
+        .unwrap();
+        let h = parse_hero(v.get("hero")).expect("hero parses");
+        let primary: Vec<(&str, bool)> = h
+            .actions
+            .iter()
+            .map(|a| (a.text.as_str(), a.primary))
+            .collect();
+        assert_eq!(
+            primary,
+            [
+                ("C", false),
+                ("Y", true),
+                ("S", true),
+                ("T", true),
+                ("N", false)
+            ]
+        );
+    }
 
     /// `hero.image:`/`image-alt:` were retired on 2026-08-02 and their two-column layout
     /// deleted on 2026-08-08, so `parse_hero` no longer reads either key. Dropping a key
