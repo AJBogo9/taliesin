@@ -9,6 +9,8 @@ use std::path::Path;
 use std::time::Instant;
 use taliesin_core::{BlockOp, diff_blocks, render_document_with_includes};
 
+pub mod e2e;
+
 /// One live edit's measurements. Times are nanoseconds and machine-dependent (the
 /// regression gate asserts the deterministic structural fields, not the times).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -118,63 +120,249 @@ pub fn measure_live_edit(
 /// [`LiveEditMetrics`] and the reason both exist.
 ///
 /// `measure_live_edit` measures the seam a single document goes through. Inside a site
-/// preview a save also pays `Site::refresh_xrefs`, whose harvest renders EVERY page to full
-/// HTML and keeps only the cross-page float numbers — so the per-save cost tracks the size
-/// of the *project*, not the size of the edit. Without this second measurement the headline
-/// warm-edit figure reads as if it described a book-sized save, and it does not.
+/// preview a save also runs whole-project passes, so its cost tracks the size of the
+/// *project*, not the size of the edit. Each field is the median of `runs`, in ns, of the
+/// pass one kind of save runs before the edited page is rebuilt.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ProjectSaveMetrics {
+pub struct ProjectPassMetrics {
     pub project: String,
     pub pages: usize,
-    /// Best-of-three `refresh_xrefs`, i.e. the whole-project pass every non-structural
-    /// save runs before the edited page is re-rendered.
-    pub xref_refresh_ns: u128,
-    pub xref_refresh_ns_per_page: u128,
+    pub runs: usize,
+    /// `Site::refresh_xrefs`: what every save of a page runs.
+    pub refresh_xrefs_ns: u128,
+    /// `Site::rebuild_search_index`: what a save that moves an anchor runs on top.
+    pub search_index_ns: u128,
+    /// `Site::discover` (warm): what a save that changes the page set or a page's front
+    /// matter runs instead, and what the preview runs at startup.
+    pub discover_ns: u128,
+    /// `Site::discover_registry`: what the language server runs on every save.
+    pub registry_ns: u128,
 }
 
-/// Time `Site::refresh_xrefs` on a real project — the O(pages) pass a site-preview save
-/// runs. Best of three, so first-touch file-cache noise is out. Read-only: it discovers and
-/// renders in memory and writes nothing.
-pub fn measure_project_save(label: &str, root: &Path) -> Option<ProjectSaveMetrics> {
+/// Time the passes a save runs on a real project, `runs` times each, and keep the medians.
+/// Read-only: it discovers and renders in memory and writes nothing.
+pub fn measure_project_passes(label: &str, root: &Path, runs: usize) -> Option<ProjectPassMetrics> {
     if !root.join("_site.yml").is_file() {
         return None;
     }
     let mut site = taliesin_core::Site::discover(root);
-    let pages = site.pages.len();
-    let mut best = u128::MAX;
-    for _ in 0..3 {
-        let t = Instant::now();
-        site.refresh_xrefs();
-        best = best.min(t.elapsed().as_nanos());
-    }
-    Some(ProjectSaveMetrics {
+    let time = |f: &mut dyn FnMut()| -> u128 {
+        let mut ns: Vec<u128> = (0..runs)
+            .map(|_| {
+                let t = Instant::now();
+                f();
+                t.elapsed().as_nanos()
+            })
+            .collect();
+        ns.sort_unstable();
+        ns[ns.len() / 2]
+    };
+    Some(ProjectPassMetrics {
         project: label.to_string(),
-        pages,
-        xref_refresh_ns: best,
-        xref_refresh_ns_per_page: best / pages.max(1) as u128,
+        pages: site.pages.len(),
+        runs,
+        refresh_xrefs_ns: time(&mut || site.refresh_xrefs()),
+        search_index_ns: time(&mut || site.rebuild_search_index()),
+        discover_ns: time(&mut || drop(taliesin_core::Site::discover(root))),
+        registry_ns: time(&mut || drop(taliesin_core::Site::discover_registry(root))),
     })
 }
 
-/// The project-scale table: one row per measured project, plus the per-page rate that makes
-/// the shape (linear in pages) readable rather than implied.
-pub fn project_markdown_report(ms: &[ProjectSaveMetrics]) -> String {
+/// The project-scale table: one row per measured project.
+pub fn project_markdown_report(ms: &[ProjectPassMetrics]) -> String {
+    let ms_ = |ns: u128| format!("{:.1} ms", ns as f64 / 1e6);
     let mut s = String::from(
-        "## project-scale save: `Site::refresh_xrefs`\n\n\
-         Every non-structural save in a **site** preview runs this before the edited page is\n\
-         re-rendered, and its harvest renders every page. So this cost tracks the size of the\n\
-         project, not the size of the edit — the warm-edit rows above are one document.\n\n\
-         | project | pages | refresh_xrefs | per page |\n|---|---|---|---|\n",
+        "## project-scale save: the whole-project passes\n\n\
+         Median of the runs, in-process, release build. A save of a page runs\n\
+         `refresh_xrefs`; one that moves an anchor also rebuilds the search index; one that\n\
+         changes the page set or a page's front matter runs `discover` instead. The language\n\
+         server runs `discover_registry` on every save.\n\n\
+         | project | pages | save: refresh_xrefs | anchor moved: + search index | front matter: discover | language server: registry |\n\
+         |---|---|---|---|---|---|\n",
     );
     for m in ms {
         s.push_str(&format!(
-            "| `{}` | {} | {:.1} ms | {:.2} ms |\n",
+            "| `{}` | {} | {} | {} | {} | {} |\n",
             m.project,
             m.pages,
-            m.xref_refresh_ns as f64 / 1e6,
-            m.xref_refresh_ns_per_page as f64 / 1e6,
+            ms_(m.refresh_xrefs_ns),
+            ms_(m.search_index_ns),
+            ms_(m.discover_ns),
+            ms_(m.registry_ns),
         ));
     }
     s
+}
+
+/// The end-to-end table: save to the first websocket message, and to `publishDiagnostics`.
+pub fn e2e_markdown_report(ms: &[e2e::SaveToOp]) -> String {
+    let ms_ =
+        |ns: Option<u128>| ns.map_or("n/a".to_string(), |ns| format!("{:.0} ms", ns as f64 / 1e6));
+    let mut s = String::from(
+        "## end to end: save to the first message\n\n\
+         Median of the rounds, against the release binary. From the file write to the first\n\
+         websocket message the preview sends, so the watcher's debounce, rediscovery and the\n\
+         edited page's own build are all inside; the language server column is the save to\n\
+         `publishDiagnostics`, its 120 ms coalescing window inside.\n\n\
+         | project | pages | body | heading (moves anchors) | title | atomic save | preview RSS after | language server |\n\
+         |---|---|---|---|---|---|---|---|\n",
+    );
+    for m in ms {
+        s.push_str(&format!(
+            "| `{}` | {} | {} | {} | {} | {} | {} | {} |\n",
+            m.project,
+            m.pages,
+            ms_(m.body_ns),
+            ms_(m.heading_ns),
+            ms_(m.title_ns),
+            ms_(m.atomic_ns),
+            m.preview_rss_kib
+                .map_or("n/a".to_string(), |k| format!("{} MB", k / 1024)),
+            ms_(m.lsp_save_ns),
+        ));
+    }
+    s
+}
+
+/// A deterministic word source for [`write_synthetic_book`] (xorshift), so two runs time
+/// the same text.
+struct Words(u64);
+
+impl Words {
+    fn below(&mut self, n: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 % n as u64) as usize
+    }
+
+    /// A paragraph of `n` words ending in an inline math expression.
+    fn para(&mut self, n: usize) -> String {
+        const WORDS: &[&str] = &[
+            "estimate",
+            "model",
+            "prior",
+            "posterior",
+            "sample",
+            "variance",
+            "kernel",
+            "gradient",
+            "likelihood",
+            "entropy",
+            "matrix",
+            "vector",
+            "projection",
+            "signal",
+            "filter",
+            "sequence",
+            "bound",
+            "proof",
+            "lemma",
+            "algorithm",
+            "graph",
+            "search",
+            "optimal",
+            "measure",
+            "density",
+            "expectation",
+            "the",
+            "a",
+            "of",
+            "and",
+            "to",
+            "in",
+        ];
+        let mut p = String::from("Consider");
+        for _ in 0..n {
+            p.push(' ');
+            p.push_str(WORDS[self.below(WORDS.len())]);
+        }
+        let (i, j) = (self.below(9) + 1, self.below(4) + 2);
+        p + &format!(" with *emphasis* and inline math $x_{{{i}}}^{j} + \\alpha_{{{i}}}$.")
+    }
+}
+
+/// Write a synthetic book of `pages` pages under `root`: an unnumbered preface and
+/// `pages - 1` chapters in parts of ten, each 2 to 10 KB of prose with inline and display
+/// math, a python and a rust block, a figure, a table, cross-chapter `@sec-`/`@fig-`/`@eq-`
+/// and `@tbl-` references, and in every seventh chapter a shared partial. The shape of the
+/// books the 2026-09-24 audit measured at scale.
+pub fn write_synthetic_book(root: &Path, pages: usize) -> std::io::Result<()> {
+    use std::fmt::Write as _;
+    let mut w = Words(0x2545_f491_4f6c_dd1d ^ pages as u64);
+    let _ = std::fs::remove_dir_all(root);
+    std::fs::create_dir_all(root.join("chapters"))?;
+    std::fs::create_dir_all(root.join("_includes"))?;
+    std::fs::create_dir_all(root.join("figures"))?;
+    std::fs::write(
+        root.join("figures/fig.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"50\"></svg>\n",
+    )?;
+    for k in 0..5 {
+        let body = format!(
+            "Shared partial {k}. {}\n\n$$ \\int_0^{{{}}} x^{{{}}} \\, dx $$\n",
+            w.para(60),
+            k + 1,
+            k + 2
+        );
+        std::fs::write(root.join(format!("_includes/part{k}.tmd")), body)?;
+    }
+    let chapters = pages.saturating_sub(1);
+    let mut site = String::from("title: \"Synthetic book\"\nchapters:\n  - index.tmd\n");
+    for first in (1..=chapters).step_by(10) {
+        let _ = writeln!(site, "  - part: \"Part {}\"\n    chapters:", first / 10 + 1);
+        for i in first..(first + 10).min(chapters + 1) {
+            let _ = writeln!(site, "      - chapters/ch{i:03}.tmd");
+        }
+    }
+    std::fs::write(root.join("_site.yml"), site)?;
+    let preface = format!(
+        "# Preface {{.unnumbered}}\n\n{}\n\nSee @sec-ch001.\n",
+        w.para(80)
+    );
+    std::fs::write(root.join("index.tmd"), preface)?;
+    for i in 1..=chapters {
+        let target = 2000 + w.below(8000);
+        let [a, b, c, d] = [0; 4].map(|_| w.below(chapters) + 1);
+        let mut t = format!(
+            "---\ntitle: \"Chapter {i}\"\ndescription: \"Synthetic chapter {i}.\"\n---\n\n\
+             # Topic {i} {{#sec-ch{i:03}}}\n\n{} See @sec-ch{a:03} and @fig-ch{b:03}.\n\n\
+             ## Background {{#sec-ch{i:03}-bg}}\n\n{} Recall @eq-ch{c:03} and @tbl-ch{d:03}.\n\n\
+             $$ \\sum_{{k=1}}^{{{i}}} a_k x^k = f_{{{i}}}(x) $$ {{#eq-ch{i:03}}}\n\n\
+             ```python\ndef step_{i}(x, lr=0.{i}):\n    return x - lr * grad(x)\n```\n\n\
+             ![Figure for chapter {i}.](../figures/fig.svg){{#fig-ch{i:03}}}\n\n\
+             | k | value |\n|---|---|\n| {i} | {} |\n\n: Table of chapter {i}. {{#tbl-ch{i:03}}}\n\n",
+            w.para(70),
+            w.para(90),
+            i * i
+        );
+        if i % 7 == 0 {
+            let _ = writeln!(t, "{{{{< include ../_includes/part{}.tmd >}}}}\n", i % 5);
+        }
+        let mut s = 2;
+        while t.len() < target {
+            let _ = writeln!(t, "## Section {s} {{#sec-ch{i:03}-s{s}}}\n");
+            for _ in 0..2 {
+                let n = 40 + w.below(80);
+                let _ = writeln!(t, "{}\n", w.para(n));
+            }
+            if s % 3 == 0 {
+                let _ = writeln!(
+                    t,
+                    "$$ \\mathbb{{E}}[X_{{{s}}}] = \\int x\\, p_{{{i}}}(x)\\, dx $$\n"
+                );
+            }
+            if s % 4 == 0 {
+                let _ = writeln!(
+                    t,
+                    "```rust\nfn f_{i}_{s}(v: &[f64]) -> f64 {{ v.iter().sum() }}\n```\n"
+                );
+            }
+            s += 1;
+        }
+        std::fs::write(root.join(format!("chapters/ch{i:03}.tmd")), t)?;
+    }
+    Ok(())
 }
 
 /// A human-readable markdown table for one measurement (printed by the binary and
