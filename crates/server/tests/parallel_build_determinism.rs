@@ -165,7 +165,7 @@ fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
     // would depend on its siblings if any build-order edge existed.
     fs::write(
         root.join("index.tmd"),
-        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n---\n\nWelcome to the blog.\n",
+        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: list\n---\n\nWelcome to the blog.\n",
     )
     .unwrap();
     // Siblings with ascending dates → the listing (date desc) shows them newest first.
@@ -267,6 +267,22 @@ fn write_kernel_site(root: &Path, n_pages: usize) {
     fs::write(root.join("_site.yml"), nav).unwrap();
 }
 
+/// Whether the kernel-backed tests below can run. Under `TALIESIN_REQUIRE_KERNEL` (the CI
+/// kernel job and `tools/gates.sh`) a missing interpreter is a failure, not a skip, the same
+/// as every other kernel test in the suite.
+fn have_kernel() -> bool {
+    if std::env::var_os("TALIESIN_PYTHON").is_some() {
+        return true;
+    }
+    assert!(
+        std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+        "TALIESIN_REQUIRE_KERNEL=1 but TALIESIN_PYTHON is unset: the concurrent-build \
+         determinism pins would silently skip"
+    );
+    eprintln!("skipping: TALIESIN_PYTHON not set (no kernel)");
+    false
+}
+
 /// Kernel-backed determinism: a multi-page site *with real Python cells*, built
 /// sequentially and concurrently, must still match byte-for-byte — the per-page kernel +
 /// per-page `_freeze/<rel>.json` isolation is what makes concurrent kernels safe. Gated on
@@ -277,8 +293,7 @@ fn write_kernel_site(root: &Path, n_pages: usize) {
 /// figure corpus would flake regardless of the scheduler. Textual cell output is stable.
 #[test]
 fn sequential_and_concurrent_match_with_code_cells() {
-    if std::env::var_os("TALIESIN_PYTHON").is_none() {
-        eprintln!("skipping: TALIESIN_PYTHON not set (no kernel)");
+    if !have_kernel() {
         return;
     }
     let base = tmp_dir("cells");
@@ -312,8 +327,7 @@ fn sequential_and_concurrent_match_with_code_cells() {
 /// no new hazard; it is out of scope here and unchanged by this task.
 #[test]
 fn concurrent_pages_with_same_relative_export_do_not_clobber() {
-    if std::env::var_os("TALIESIN_PYTHON").is_none() {
-        eprintln!("skipping: TALIESIN_PYTHON not set (no kernel)");
+    if !have_kernel() {
         return;
     }
     let base = tmp_dir("figiso");

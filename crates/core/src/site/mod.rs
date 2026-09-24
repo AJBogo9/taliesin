@@ -89,20 +89,17 @@ pub struct HeroAction {
     pub primary: bool,
 }
 
-/// A `listing:` front-matter block: a request to render a grid/list of cards for
-/// the documents under `contents`.
+/// A `listing:` front-matter block: a request to render a list of cards for the
+/// documents under `contents`.
 #[derive(Debug, Clone)]
 pub struct ListingSpec {
     /// Optional target id (`listing: { id: x }`) → fills `::: {#x}`; else appended.
     pub id: Option<String>,
     /// The directory whose pages are listed (relative to the hosting page).
     pub contents: String,
-    /// `type: grid` → card-grid layout; `list` and `default` are both a stacked
-    /// list and differ only in `with_image` (below).
-    pub grid: bool,
-    /// Whether cards show their `image:` thumbnail: `grid` and `list`, not plain
-    /// `default`. Lets a reading-first `list` keep the figure thumbnails while a
-    /// formal text listing (e.g. a CV's projects) stays image-free.
+    /// Whether cards show their `image:` thumbnail: `type: list`, not the plain default.
+    /// Lets a reading-first `list` keep the figure thumbnails while a formal text listing
+    /// (e.g. a CV's projects) stays image-free. `type: grid` was cut on 2026-09-24.
     pub with_image: bool,
     /// `max-items:` cap, if any.
     pub max_items: Option<usize>,
@@ -1281,11 +1278,23 @@ impl Site {
                     let pos = blocks[i].html.rfind("</div>").unwrap();
                     blocks[i].html.insert_str(pos, &cards);
                 }
-                // An anchor (e.g. an auto-slugged heading sharing the id, since
-                // an empty fenced div emits no block) → cards go right after it.
+                // An anchor (e.g. an auto-slugged heading sharing the id) → cards go right
+                // after it. An empty `::: {#id}` is a container, so it takes the arm above.
                 Some(i) => blocks.insert(i + 1, listing_block(id, cards)),
-                // No target at all → append so the listing still renders.
-                None => blocks.push(listing_block(id, cards)),
+                // No target at all → append so the listing still renders, and say so when
+                // the author named one: the cards landing at the foot of the page is the
+                // only other sign.
+                None => {
+                    if let Some(want) = &spec.id {
+                        warnings.push(Warning::new(format!(
+                            "the listing on `{}` has `id: {want}`, but no element on the page \
+                             has that id, so its cards were added at the end; put a \
+                             `::: {{#{want}}}` block where they belong",
+                            page.rel
+                        )));
+                    }
+                    blocks.push(listing_block(id, cards));
+                }
             }
         }
         // The back-to-listing link opens the page, above the title. A book has none: each
@@ -1399,7 +1408,6 @@ impl Site {
         warnings: &mut Vec<Warning>,
     ) -> String {
         let up = "../".repeat(host.url.matches('/').count());
-        let layout = if spec.grid { "grid" } else { "default" };
         let items = self.collection(host, spec, warnings);
         let cards: String = items
             .iter()
@@ -1418,7 +1426,7 @@ impl Site {
             .map(|id| format!(" data-block-id=\"{}\"", esc(id)))
             .unwrap_or_default();
         format!(
-            "<ul role=\"list\" class=\"tali-listing tali-listing-{layout}\"{id_attr}>{cards}</ul>"
+            "<ul role=\"list\" class=\"tali-listing tali-listing-default\"{id_attr}>{cards}</ul>"
         )
     }
 
@@ -2611,7 +2619,18 @@ pub(crate) mod tests {
                 ),
                 (
                     "anchored.tmd",
-                    "---\ntitle: Anchored\nlisting:\n  id: recent-posts\n  contents: posts\n---\n\n## Recent Posts\n\n::: {#recent-posts}\n:::\n\nTrailing paragraph.\n",
+                    "---\ntitle: Anchored\nlisting:\n  id: recent-posts\n  contents: posts\n---\n\n## Recent Posts\n\nTrailing paragraph.\n",
+                ),
+                // The guide's blog recipe verbatim: an EMPTY `::: {#recent}` under a heading
+                // whose slug is something else. It used to emit no element, so the cards were
+                // appended past "View all posts" with no diagnostic.
+                (
+                    "recipe.tmd",
+                    "---\ntitle: Recipe\nlisting:\n  id: recent\n  contents: posts\n---\n\n## Recent posts\n\n::: {#recent}\n:::\n\n[View all posts](blog.tmd)\n",
+                ),
+                (
+                    "missing.tmd",
+                    "---\ntitle: Missing\nlisting:\n  id: nowhere\n  contents: posts\n---\n\nBody.\n",
                 ),
                 ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
                 ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
@@ -2639,8 +2658,33 @@ pub(crate) mod tests {
             "an adopted listing must not carry its own block id: {filled}"
         );
 
-        // Placeholder shape: an empty fenced div emits no block, so the id is the heading's
-        // and the cards follow it, still ahead of the trailing prose.
+        // Placeholder shape: an empty `::: {#recent}` is still an element, so the cards are
+        // adopted into it, ahead of the link that follows, and nothing warns.
+        let (recipe, recipe_warnings) = render_page(&site, "recipe.tmd");
+        let div = at(&recipe, "id=\"recent\"");
+        assert!(
+            div < at(&recipe, "class=\"tali-card\"")
+                && at(&recipe, "class=\"tali-card\"") < at(&recipe, "View all posts"),
+            "cards must render inside the empty #recent div, before the link: {recipe}"
+        );
+        assert!(
+            recipe_warnings
+                .iter()
+                .all(|w| !w.message.contains("listing")),
+            "a listing that found its target draws no listing warning: {recipe_warnings:?}"
+        );
+
+        // No target at all: the cards still render (appended), and the author is told.
+        let (_, missing_warnings) = render_page(&site, "missing.tmd");
+        assert!(
+            missing_warnings.iter().any(
+                |w| w.message.contains("`id: nowhere`") && w.message.contains("::: {#nowhere}")
+            ),
+            "a listing id that names nothing must warn: {missing_warnings:?}"
+        );
+
+        // Anchor shape: the id is the heading's own slug and no div exists, so the cards
+        // follow the heading, still ahead of the trailing prose.
         let (anchored, _) = render_page(&site, "anchored.tmd");
         assert!(
             at(&anchored, "id=\"recent-posts\"") < at(&anchored, "class=\"tali-card\"")
@@ -3015,7 +3059,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "index.tmd",
-                    "---\ntitle: Home\nlisting:\n  type: grid\n---\n\nHi.\n",
+                    "---\ntitle: Home\nlisting:\n  type: list\n---\n\nHi.\n",
                 ),
             ],
         );
@@ -3061,7 +3105,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "index.tmd",
-                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Posts\n",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: list\n---\n\n# Posts\n",
                 ),
                 (
                     "posts/p.tmd",
@@ -3080,10 +3124,9 @@ pub(crate) mod tests {
 
     #[test]
     fn list_layout_shows_thumbnail_but_default_stays_text_only() {
-        // `type: list` is a stacked (non-grid) layout that KEEPS the `image:` thumbnail
-        // (reading-first feed); plain `type: default` is the same stacked layout WITHOUT
-        // the thumbnail (a formal text list, e.g. a CV's projects). Both must differ only
-        // in the image, and neither is the `grid` tile layout.
+        // `type: list` KEEPS the `image:` thumbnail (reading-first feed); plain
+        // `type: default` is the same layout WITHOUT the thumbnail (a formal text list,
+        // e.g. a CV's projects). The two differ only in the image.
         let root = write_site(
             "listvsdefault",
             &[
@@ -3109,9 +3152,8 @@ pub(crate) mod tests {
         // page bundles site.css, which mentions every class).
         // list: stacked layout, thumbnail present.
         assert!(
-            feed.contains("class=\"tali-listing tali-listing-default\"")
-                && !feed.contains("class=\"tali-listing tali-listing-grid\""),
-            "list is a stacked (non-grid) layout: {feed}"
+            feed.contains("class=\"tali-listing tali-listing-default\""),
+            "list is the one listing layout: {feed}"
         );
         assert!(
             feed.contains("class=\"tali-card-img\"") && feed.contains("alt=\"A nice pic\""),
@@ -3142,7 +3184,7 @@ pub(crate) mod tests {
                 ("_site.yml", "title: Demo\n"),
                 (
                     "blog.tmd",
-                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Blog\n",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: list\n---\n\n# Blog\n",
                 ),
                 (
                     "posts/a.tmd",
@@ -3162,11 +3204,11 @@ pub(crate) mod tests {
         // any page. The tag is left open here because a standalone listing also carries its
         // `data-block-id` (see `a_standalone_listing_block_is_targetable_by_the_op_that_…`).
         assert!(
-            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-grid\""),
+            blog.contains("<ul role=\"list\" class=\"tali-listing tali-listing-default\""),
             "the listing container must be a <ul>: {blog}"
         );
         assert!(
-            !blog.contains("<div class=\"tali-listing tali-listing-grid\">"),
+            !blog.contains("<div class=\"tali-listing"),
             "the old <div> container must be gone: {blog}"
         );
         // The explicit role is load-bearing, not belt-and-braces: `list-style: none` (which

@@ -202,9 +202,9 @@ run_gate "cargo clippy -D warnings" clippy.log \
 # ---------------------------------------------------------------------------
 # 3. The workspace suite, with both interpreter gates armed.
 #
-# --test-threads=1 because several tests own process-global state (the cell-timeout
-# OnceLock, the kernel pool), and a raced run is how this suite produces both flakes and
-# vacuous passes.
+# --test-threads=1 serializes the live-kernel tests, several of which are timing-sensitive
+# under load. It is not needed for correctness: CI and `.githooks/pre-push` run the suite in
+# parallel, so no test may depend on running alone (none mutates the process environment).
 #
 # There is no feature flag to pass any more. Until 2026-08-08 this line carried
 # `--features taliesin-server/headless-js`, because the browser test driver was off by
@@ -317,7 +317,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9-10. The two DOCUMENT gates: this project's own manual, and the composed deploy.
+# 9-11. The DOCUMENT gates (both books of this project's own manual) and the publish gate.
 #
 # Neither needs an interpreter, which is the whole reason they went missing here. A
 # gate that cannot skip has nothing to prove to this script, so wave 9 wired the
@@ -328,8 +328,8 @@ fi
 # direction: not a gate that skipped, but a gate that was never listed.
 # `crates/core/tests/gate_script.rs` now compares the two lists on every run.
 #
-# The hook keeps running both. It is the only gate that runs automatically and this
-# script is manual, so the two are a pair, not a move.
+# The hook keeps running both. It runs on its own before a push to main and this script
+# is manual, so the two are a pair, not a move.
 #
 # DEBUG profile on purpose: the clippy and test gates above have already built the
 # workspace, so these cost a link rather than a second full build (the hook records
@@ -347,7 +347,7 @@ run_gate "build docs/internals --check-only" docs-internals.log \
 run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
 
 # ---------------------------------------------------------------------------
-# 11. The published census still reproduces.
+# 12. The published census still reproduces.
 #
 # `README.md` ("Before you adopt it") and `docs/guide/using/choosing.tmd` publish the
 # figures and hand the reader the command: `python3 tools/portability-census.py`. That makes a
@@ -369,10 +369,10 @@ run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
 # `every_pre_push_command_is_also_run_by_the_gate_script` constrains hook ⊆ script, not the
 # reverse.
 # ---------------------------------------------------------------------------
-run_gate "portability census --verify" census.log python3 tools/portability-census.py --verify
+run_gate "portability census --verify" census.log "$PY" tools/portability-census.py --verify
 
 # ---------------------------------------------------------------------------
-# 12. The README's pinned install VERSION resolves to a git tag that exists.
+# 13. The README's pinned install VERSION resolves to a git tag that exists.
 #
 # The install block constructs three release-asset URLs from its `VERSION=`
 # line; a pin with no tag 404s all three, and `shasum -c` then fails against a
@@ -412,6 +412,6 @@ if [ ${#SKIPPED[@]} -gt 0 ]; then
 fi
 # The count is part of the verdict, not decoration: this script ran 8 gates while
 # claiming 10 for two waves, and a bare "every gate passed" is exactly as reassuring at
-# either number. Read it against the twelve stanzas above.
+# either number. Read it against the numbered stanzas above.
 green "PASSED — every gate ran and passed (${#PASSED[@]} gates)."
 exit 0

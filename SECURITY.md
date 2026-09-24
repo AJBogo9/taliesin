@@ -39,6 +39,11 @@ The following are by design:
   kernel or in the browser. Opening and previewing a `.tmd` document runs its
   code, exactly like a Jupyter notebook. Do not preview documents you would not
   run. `--no-exec` renders cells as source instead.
+- **`taliesin doctor` runs the project's interpreter.** Auditing the Python a project
+  resolves to means running it (`--version`, then an `import ipykernel` check), and that
+  can be a program the project names in `_site.yml` `python:` or ships as
+  `.venv/bin/python`. On a project you did not write, `doctor` is the same decision as
+  previewing it. `build --check-only`, `--no-exec` and `taliesin lsp` start no interpreter.
 - **The preview binds to loopback only.** There is no flag that exposes it on a
   network. The websocket enforces an origin check (so a page on another site cannot
   drive the control channel), every HTTP request passes a `Host` allowlist (the

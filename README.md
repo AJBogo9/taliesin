@@ -2,27 +2,31 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-> The native (and only) source extension is `.tmd`; the CLI is `taliesin`.
+Taliesin turns `.tmd` files into HTML: blog posts, papers, books and multi-page sites. A
+`.tmd` file is Markdown with executable code cells, in the syntax Pandoc and Quarto use
+(fenced divs, attributes, citations, cross-references, `{python}` cells), plus `{js}`
+cells that run in the browser. It is for people who write in their own editor and publish
+static HTML, the same niche as Quarto, MyST and Jupyter Book. Where it differs:
 
-A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
-files: blog posts, papers, books, and multi-page websites. Built for
-one author's workflow around three goals:
+1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) an element in the preview to jump to
+   its `.tmd` source.
+2. **Block-level live updates.** Saving swaps only the changed block(s) in the open
+   `taliesin preview`, preserving scroll position and the runtime state of live components
+   (Three.js, `{js}` cells).
+3. **A warm server and kernel.** The server and its Jupyter kernel stay running between
+   edits, so a save re-runs code from the first changed cell on, not the whole document.
+4. **HTML only.** There is no PDF, LaTeX or Word output.
 
-1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element to jump to its `.tmd` source.
-2. **Block-level incremental updates.** Saving a change swaps only the affected
-   block(s) in place, preserving scroll position and the runtime state of live
-   components (Three.js, `{js}` cells).
-3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
-
-Output is HTML only. The project's own manual is two sibling books authored in
-`.tmd`: the [User Guide](docs/guide/index.tmd) (how to use it) and the
-[Internals](docs/internals/index.tmd) book (the architecture, websocket protocol,
-and block model).
+The manual is two books written in `.tmd` and built with Taliesin: the
+[User Guide](https://guide.taliesin.sh/) (how to use it, starting with
+[Getting started](https://guide.taliesin.sh/using/getting-started.html)) and
+[Internals](https://internals.taliesin.sh/) (the architecture, websocket protocol and
+block model).
 
 ## Before you adopt it
 
-[Choosing Taliesin](docs/guide/using/choosing.tmd) covers each point below at length, with
-its sources and method.
+[Choosing Taliesin](https://guide.taliesin.sh/using/choosing.html) covers each point below
+at length, with its sources and method.
 
 - **Portability.** Across the 81 documents / 7,202 lines of the project's own corpus,
   6.6% of lines carry any construct beyond plain CommonMark, and all six construct
@@ -64,13 +68,13 @@ the AGPL licence means forking is always available and is often the right choice
 
 An editor-agnostic Rust dev server owns all logic behind a versioned websocket
 protocol. A plain browser preview is the client; Ctrl-clicking a block opens
-its source in your editor (a `vscode://` deep link by default). The protocol is
-open, so a third-party editor client (a VS Code extension, etc.) can speak it too.
+its source in VS Code (a `vscode://` deep link, which is not configurable). The protocol
+is open, so another editor client can speak it too.
 
 ```
 crates/core     parser (comrak + sourcepos) + block model + render
 crates/server   dev server, websocket, file watcher, kernel pool
-web-client/     browser preview client (vanilla JS), the only client
+web-client/     browser scripts (vanilla JS): the preview client, search, scrollspy
 ```
 
 ## Install & prerequisites
@@ -96,9 +100,13 @@ curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz"
 curl -LO "$BASE/$VERSION/taliesin-$VERSION-$TARGET.tar.gz.sha256"
 shasum -a 256 -c "taliesin-$VERSION-$TARGET.tar.gz.sha256"          # must print: OK
 tar xzf "taliesin-$VERSION-$TARGET.tar.gz"
+mkdir -p ~/.local/bin
 install -m755 "taliesin-$VERSION-$TARGET/taliesin" ~/.local/bin/    # or anywhere on PATH
 taliesin --help
 ```
+
+`~/.local/bin` must be on your `PATH` for the last line to work: macOS does not add it,
+and Ubuntu's `~/.profile` adds it at the next login once the directory exists.
 
 The Linux build is statically linked against musl, so it has no glibc floor and runs on
 any distribution. The macOS builds are unsigned and unnotarized: fetched with `curl` as
@@ -135,8 +143,11 @@ highlighting, and sites render with no kernel; a kernel is needed only
 to *run* `{python}` code cells (without one they render as source), which use one
 warm kernel reused across edits:
 
-- **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/)
-  (`python3 -m pip install ipykernel`).
+- **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/).
+  In your project directory, run `python3 -m venv .venv && .venv/bin/pip install ipykernel`
+  (on Debian and Ubuntu, `python3 -m venv` needs the `python3-venv` package). Taliesin finds
+  a project `.venv` with no configuration; `taliesin doctor` shows which Python it picked. A
+  system `pip install` is refused on current Debian, Ubuntu and Homebrew Pythons (PEP 668).
 
 `{js}` cells run in the browser and need no kernel.
 
@@ -144,7 +155,7 @@ warm kernel reused across edits:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `TALIESIN_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
+| `TALIESIN_PYTHON` | `python3` | Interpreter for `{python}` cells. A `_site.yml` `python:` or a `.venv` in the project directory outranks it. |
 | `TALIESIN_CELL_SILENCE` | `600` | Seconds a cell may produce **no output** before it is interrupted (SIGINT). This is the default liveness cap: a cell that keeps printing is never interrupted, however long it runs. `0` disables it. |
 | `TALIESIN_CELL_TIMEOUT` | unset | Optional per-cell wall-clock cap in seconds, off by default. Set it to bound total runtime regardless of output; `0` disables it. |
 | `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
@@ -173,17 +184,20 @@ the preview in a browser; Ctrl-clicking a block jumps to its `.tmd` source.
 Point it at a single file or a directory (a multi-page site project):
 
 ```sh
-cargo run -p taliesin-server -- preview corpus/posts/born-machines.tmd  # one doc
-cargo run -p taliesin-server -- preview corpus/tech-blog                # a whole site
-cargo run -p taliesin-server -- build   corpus/tech-blog                # static _site/
-cargo run -p taliesin-server -- build   corpus/posts/born-machines.tmd --stdout > out.html
+taliesin preview post.tmd              # one document
+taliesin preview my-site               # a whole site
+taliesin build   my-site               # static my-site/_site/
+taliesin build   post.tmd --stdout > out.html
 ```
+
+From a clone, `cargo run -p taliesin-server --` stands in for `taliesin`, and
+`corpus/tech-blog` is a complete site to try it on.
 
 The preview binds to loopback only.
 
-Code execution needs a Python with `ipykernel`; point the server at it with the
-`TALIESIN_PYTHON` env var (defaults to `python3`). Cells render as source if no
-kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
+Code execution needs a Python with `ipykernel`: a project `.venv` is found on its
+own, and `TALIESIN_PYTHON` points elsewhere (see the prerequisites above). Cells render as
+source if no kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
 become their own blocks keyed to the cell, so they swap in place.
 
 The core parses `.tmd` with comrak (sourcepos), splits the document into top-level
@@ -219,7 +233,7 @@ every block.
 
 Mermaid and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
-See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
+See the [User Guide](https://guide.taliesin.sh/) and [Internals](https://internals.taliesin.sh/)
 books, authored in `.tmd` and built with Taliesin itself.
 
 ## Documents you did not write
@@ -230,13 +244,13 @@ anything the project injects through `_site.yml`'s `head:`) passes through
 verbatim. Opening a document someone sent you is the same kind of decision as running a
 script they sent you. `--no-exec` stops the code cells, both kinds, but it is not a
 sanitizer, and Taliesin has no sandbox. The full account is in
-[the CLI reference](docs/guide/reference/cli.tmd) and the trust model is in
+[the CLI reference](https://guide.taliesin.sh/reference/cli.html) and the trust model is in
 [`SECURITY.md`](SECURITY.md).
 
 ## Accessibility
 
 The HTML Taliesin generates has a published WCAG 2.1 AA conformance report
-([docs/guide/reference/accessibility.tmd](docs/guide/reference/accessibility.tmd)), the
+([Accessibility](https://guide.taliesin.sh/reference/accessibility.html)), the
 ACR half of a VPAT, in the form an institutional evaluator expects. It states what
 conforms, what only partially conforms, and (at equal length) what has not been
 evaluated: there has been no screen-reader pass and no full keyboard walkthrough, and the

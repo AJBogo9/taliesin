@@ -117,3 +117,14 @@ fn an_error_writes_to_stderr_and_nothing_to_stdout() {
         );
     }
 }
+
+/// `--help` points a newcomer at the rendered User Guide. It pointed at the GitHub repo,
+/// whose README linked the guide's raw `.tmd` sources, which GitHub shows as plain text.
+#[test]
+fn help_points_at_the_rendered_guide() {
+    let h = help();
+    assert!(
+        h.contains("Docs: https://guide.taliesin.sh/"),
+        "help must name the rendered guide:\n{h}"
+    );
+}

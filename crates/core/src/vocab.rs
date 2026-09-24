@@ -80,7 +80,7 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("id", "Listing element id."),
         (
             "type",
-            "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
+            "Listing layout (`default` text rows, `list` rows with thumbnails).",
         ),
         ("max-items", "Maximum entries shown."),
         // hero:

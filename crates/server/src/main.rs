@@ -427,7 +427,7 @@ fn usage() {
         env!("TALIESIN_GIT_SHA")
     );
     println!("A fast .tmd -> HTML renderer and live preview server.");
-    println!("Docs: https://github.com/AJBogo9/taliesin");
+    println!("Docs: https://guide.taliesin.sh/");
     println!();
     print!("{}", commands_help());
     print!("{ENV_HELP}");

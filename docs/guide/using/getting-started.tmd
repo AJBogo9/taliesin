@@ -7,7 +7,9 @@ description: "The first hour with Taliesin, in steps that each end in something 
 
 Download the binary for your platform from
 [the releases page](https://github.com/AJBogo9/taliesin/releases), verify it against the
-`.sha256` published beside it, and put it on your `PATH`. Windows is not supported. The
+`.sha256` published beside it, and put it on your `PATH`; the
+[README](https://github.com/AJBogo9/taliesin#install--prerequisites) has the commands and
+the platform table. Windows is not supported. The
 binary is self-contained, with KaTeX, its fonts, the syntax definitions and every
 bundled script inside it, so nothing is fetched at runtime and there is nothing else to
 set up.
@@ -15,12 +17,12 @@ set up.
 Taliesin also builds from source with a Rust toolchain, which is always supported:
 
 ```sh
+git clone https://github.com/AJBogo9/taliesin && cd taliesin
 cargo build --release
 ```
 
 A first build takes a couple of minutes and produces the same binary at
-`target/release/taliesin`. Put it on your `PATH` (a symlink, or a small wrapper
-script that rebuilds on source changes before running it) so you can run
+`target/release/taliesin`. Put it on your `PATH` (a symlink will do) so you can run
 `taliesin preview …` from any directory. Every command below works either way:
 substitute `cargo run -p taliesin-server --` for `taliesin` if you'd rather not
 install it on `PATH`.
@@ -28,13 +30,17 @@ install it on `PATH`.
 ## Set up a kernel (for code execution)
 
 Prose, math, diagrams, and `{js}` cells need no setup. To *execute*
-`{python}` cells you point the server at a Jupyter kernel. A one-time setup:
+`{python}` cells you need a Python with a Jupyter kernel. A one-time setup, in your
+project directory:
 
 ```sh
-python3 -m venv .venv && . .venv/bin/activate
-pip install ipykernel numpy matplotlib   # + whatever your cells import
-export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
+python3 -m venv .venv
+.venv/bin/pip install ipykernel numpy matplotlib   # + whatever your cells import
 ```
+
+Taliesin finds a `.venv` in the project directory, or in a parent directory up to the
+repository root, with no configuration; `taliesin doctor` shows which Python it picked.
+(On Debian and Ubuntu, `python3 -m venv` needs the `python3-venv` package.)
 
 A document's `{python}` cells run against one warm kernel, reused across edits.
 Without a kernel, cells render as highlighted source and the preview shows a
@@ -42,9 +48,9 @@ Without a kernel, cells render as highlighted source and the preview shows a
 a kernel later. Streaming output, caching and the silence cap are in
 [Executable content](code.tmd).
 
-`TALIESIN_PYTHON` is the only environment variable most projects set. Every
-other one the server reads is tabled in the [CLI reference](../reference/cli.tmd),
-and none is required to start; `taliesin help` prints the same list.
+To use a Python outside the project, set `TALIESIN_PYTHON` to it. Every environment
+variable the server reads is tabled in the [CLI reference](../reference/cli.tmd), and
+none is required to start; `taliesin help` prints the same list.
 
 ## Scaffold a project
 
@@ -145,12 +151,20 @@ writes nothing. The two-stage form is in the
 [CLI reference](../reference/cli.tmd).
 
 The output is plain static HTML + assets with no server runtime, so on any host
-you control you upload the folder as-is. On **GitHub Pages**, build into `docs/` on
-your default branch or publish `_site/` as the Pages artifact. On a host that builds
-for you (**Netlify**, **Vercel**, **Cloudflare Pages**), install the binary in the
-build command
-(`cargo install --git https://github.com/AJBogo9/taliesin --locked taliesin-server`),
-then run `taliesin build <dir> --check-only && taliesin build <dir>` and set the
-publish directory to the emitted `_site/` or `_book/`. A hosted builder has no Python
-of its own: install one plus `ipykernel` and set `TALIESIN_PYTHON` in that same
-command, or `{python}` cells ship as highlighted source.
+you control you upload the folder as-is. On **GitHub Pages**, publish `_site/` as the
+Pages artifact, or build into `docs/` on your default branch with `--out docs`. A branch
+deploy runs Jekyll, which leaves out every folder whose name starts with `_`, including
+`_assets/` with the stylesheets and scripts, so add an empty `.nojekyll` file to `docs/`;
+a rebuild into `docs/` leaves it alone.
+
+On a host that builds for you (**Netlify**, **Vercel**, **Cloudflare Pages**), download
+the Linux binary in the build command (the
+[README's install commands](https://github.com/AJBogo9/taliesin#install--prerequisites)
+with `TARGET=x86_64-unknown-linux-musl`) rather than compiling it on every deploy, then run
+`taliesin build <dir> --check-only && taliesin build <dir>` and set the publish directory
+to the emitted `_site/` (`_book/` for a book). `{python}` cells need a Python with
+`ipykernel` there too. Without one, `build` stops with an error (exit 1) rather than
+publish cells it could not run, and a committed `_freeze/` does not stand in for it: its
+key includes the interpreter's path and version, which differ on the builder. So install
+Python and `ipykernel` in that same build command, pass `--no-exec` to publish the code as
+highlighted source with no outputs, or build locally and upload the output folder.

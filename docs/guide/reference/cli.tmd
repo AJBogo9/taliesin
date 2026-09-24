@@ -358,7 +358,7 @@ A failure names the interpreter it found, why that one, and the command that fix
   ⚠  python  python3 (python3)
              Python 3.12.3  ·  ipykernel MISSING
              .venv search: searched /home/me/proj, /home/me; stopped at /home/me
-             fix: python3 -m pip install ipykernel
+             fix: python3 -m venv .venv && .venv/bin/pip install ipykernel
 ```
 
 The line in parentheses is where the interpreter came from, and the search is ordered.
@@ -376,6 +376,12 @@ common surprise is a venv one directory too far up. `--format json` prints the s
 findings as an object for a script to read, and the exit code is narrow:
 non-zero only when an interpreter you configured is broken, because a machine with no
 project venv is a fact worth reporting, not a failure.
+
+**`doctor` runs the interpreter it finds.** Probing means running it twice, with
+`--version` and with an `import ipykernel` check, and the interpreter can be a program the
+project itself names in `python:` or ships as `.venv/bin/python`. On a project you did not
+write, running `doctor` is running that program; `build --check-only`, `--no-exec` and
+`taliesin lsp` start no interpreter.
 
 ## Inspecting a document: `build --stdout`
 
@@ -413,9 +419,8 @@ websocket enforces an origin check, so a page on another site cannot drive it. A
 another site, or on another local port, can link to the preview but cannot load its
 responses into itself: the search index holds the text of every page, drafts included.
 
-Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
-that rebuilds it when the tool's sources change) so `taliesin preview <file>`
-works from anywhere.
+Put `target/release/taliesin` on your `PATH` (a symlink will do) so
+`taliesin preview <file>` works from anywhere.
 
 ## `taliesin lsp`: the editor server
 
@@ -426,8 +431,20 @@ folding. All six capabilities are read-only: the server is parse-only (no kernel
 execution) and it never edits your source; your editor does.
 
 ```lua
--- Neovim (nvim-lspconfig or vim.lsp.start)
-cmd = { "taliesin", "lsp" }
+-- Neovim 0.10 or later: init.lua. Neovim does not know `.tmd`, so map it to Markdown
+-- (which also gives the highlighting) and start the server for `.tmd` buffers only.
+vim.filetype.add({ extension = { tmd = "markdown" } })
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "markdown",
+  callback = function(args)
+    if not vim.endswith(args.file, ".tmd") then return end
+    vim.lsp.start({
+      name = "taliesin",
+      cmd = { "taliesin", "lsp" },
+      root_dir = vim.fs.root(args.buf, { "_site.yml", ".git" }),
+    })
+  end,
+})
 ```
 
 ```toml

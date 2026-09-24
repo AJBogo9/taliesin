@@ -96,7 +96,9 @@ Plus the parts that are pure manifest: the grammar, the snippets, and
 
 It is not on the VS Code Marketplace, and this project does not publish it there. The
 `"publisher": "taliesin"` in `package.json` is a local identity that has never been
-published to. Build the `.vsix` and install it yourself:
+published to. Each release from v1.1.0 on attaches the `.vsix` (built by
+`.github/workflows/release.yml`); install that with
+`code --install-extension taliesin-companion-<version>.vsix`. Or build it yourself:
 
 ```sh
 cd editor/vscode

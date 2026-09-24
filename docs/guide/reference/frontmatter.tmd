@@ -200,8 +200,8 @@ is what every listing that used to spell it out asked for.
 | Sub-key | Type | Default | Meaning |
 |---|---|---|---|
 | `contents` | string | (required) | A single directory to crawl for documents, relative to this page (one directory string, not a list or glob). Every `.tmd` under it with a `title:` becomes a card; without it, there is nothing to list |
-| `id` | string | (none) | Fill a matching `::: {#id}` block in the page body instead of appending the listing to the end |
-| `type` | string | (list) | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's `image:` as a thumbnail beside the text; the default (anything else, or omitted) is the same stacked layout without images, for a formal text list |
+| `id` | string | (none) | Fill a matching `::: {#id}` block in the page body (an empty one is enough) instead of appending the listing to the end. An `id` that matches nothing appends the listing and draws a warning |
+| `type` | string | (none) | `list` keeps each card's `image:` as a thumbnail beside the text; the default (anything else, or omitted) is the same list without images, for a formal text list |
 | `max-items` | int | (none) | Cap the number of items shown; omit it to list every match |
 
 ```yaml
@@ -209,7 +209,7 @@ is what every listing that used to spell it out asked for.
 title: "Blog"
 listing:
   contents: posts        # crawl ./posts for documents
-  type: grid             # grid of cards (vs. the default stacked list)
+  type: list             # show each post's image: thumbnail
   max-items: 12
 ---
 ```
@@ -228,7 +228,7 @@ the Atom feed:
 title: "A post about rust"
 date: 2026-06-20
 categories: [rust, performance]   # these become <category> in the Atom feed
-image: cover.png                  # card thumbnail on a grid/list listing
+image: cover.png                  # card thumbnail on a type: list listing
 image-alt: "A flame graph of the hot loop"   # required whenever you set `image:`
 ---
 ```
@@ -469,7 +469,7 @@ my-site/
 ├── _includes/           # `_`-prefixed ⇒ skipped: partials for {{< include >}}
 │   └── _disclaimer.tmd
 │   └── my-theme/
-├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (gitignored)
+├── _freeze/             # `_`-prefixed ⇒ skipped: execution cache (keep it out of git)
 └── _site/               # build output (_book/ for a book; else build --out)
 ```
 

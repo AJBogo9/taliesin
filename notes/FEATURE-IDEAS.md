@@ -1092,14 +1092,14 @@ watcher, no invalidation protocol and no architecture change. See 74 below for w
     25-page guide) refreshed on save, behind `taliesin.explorerBadges`.
     **The `⚡ fully cached` and never-executed-cell badges are NOT built**: both need freeze-key
     machinery from the execution layer, and neither the extension nor `taliesin lsp` may start a
-    kernel. Filed in [DETECTION-DEBT.md](DETECTION-DEBT.md) rather than half-built.
+    kernel. Filed as detection debt rather than half-built (the badge was cut 2026-08-08).
 79. **SHIPPED 2026-07-30, and the idea's own claim about it was wrong.** It said this, not idea
     68, is "where live cell state belongs, because it can talk to a running preview". **It cannot.**
     The webview relay carries exactly four message types on purpose (`tali-goto`/`tali-page` up,
     `tali-cursor`/`tali-navigate` down) and none reports kernel liveness. What shipped is preview
     state (running, and on which port) plus the project problem count, sharing the ONE `check` run
     idea 78 already pays for. Widening the relay is a protocol decision to make on its own merits,
-    not a side effect of a status bar; filed in [DETECTION-DEBT.md](DETECTION-DEBT.md).
+    not a side effect of a status bar.
 
 ### Cluster D — Toolchain integration (removes a trip to the shell)
 

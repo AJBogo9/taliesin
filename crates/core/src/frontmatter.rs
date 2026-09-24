@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn clean_doc_with_nested_blocks_has_no_warnings() {
         let w = validate_front_matter(
-            "---\ntitle: X\ntoc: true\nexecute:\n  cache: true\nlisting:\n  contents: posts\n  type: grid\n---\n\nx\n",
+            "---\ntitle: X\ntoc: true\nexecute:\n  cache: true\nlisting:\n  contents: posts\n  type: list\n---\n\nx\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
     }

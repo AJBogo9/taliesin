@@ -511,11 +511,46 @@ fn stray_closing_fence_is_ignored() {
 
 #[test]
 fn empty_div_emits_no_block() {
-    // An open immediately followed by a close contains no blocks, so it
-    // produces no container at all (the documented "empty fenced div emits
-    // no block" behaviour the listing injector relies on).
+    // An open immediately followed by a close contains no blocks, so a feature div
+    // produces no container at all (and `validate_empty_feature_div` says so).
     let doc = render_document("::: {.callout-note}\n:::\n");
     assert!(doc.blocks.is_empty(), "got {} blocks", doc.blocks.len());
+}
+
+#[test]
+fn an_empty_div_with_an_id_still_emits_its_element() {
+    // `::: {#recent}` then `:::` is how an author marks where a `listing:` with `id: recent`
+    // goes (the guide's blog recipe does exactly this). It used to emit nothing, so the
+    // listing found no target and appended its cards to the end of the page, silently.
+    // The element keeps its place between its neighbours, top level or nested.
+    let doc = render_document("Before.\n\n::: {#recent}\n:::\n\nAfter.\n");
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    let before = h.find("Before.").expect("before");
+    let div = h
+        .find("id=\"recent\"")
+        .unwrap_or_else(|| panic!("no #recent element: {h}"));
+    let after = h.find("After.").expect("after");
+    assert!(
+        before < div && div < after,
+        "#recent sits where it was written: {h}"
+    );
+    assert!(
+        doc.warnings.is_empty(),
+        "and it is silent: {:?}",
+        doc.warnings
+    );
+
+    let nested = render_document("::: {.outer}\nText.\n\n::: {#slot}\n:::\n:::\n\nAfter.\n");
+    let outer = nested
+        .blocks
+        .iter()
+        .find(|b| b.html.starts_with("<div class=\"outer\""))
+        .unwrap_or_else(|| panic!("no .outer block: {:?}", nested.blocks));
+    assert!(
+        outer.html.contains("id=\"slot\""),
+        "#slot stays inside .outer: {}",
+        outer.html
+    );
 }
 
 #[test]

@@ -1,14 +1,14 @@
 export const meta = {
   name: 'audit-tali',
   description: 'Multi-dimension review of taliesin changes with per-finding adversarial verification',
-  whenToUse: 'Auditing a taliesin change set: fans reviewers across correctness + load-bearing invariants + scope-discipline + corpus coverage + simplicity, then refutes each finding before reporting. Pass a target description as args, or omit to review the current branch diff.',
+  whenToUse: 'Auditing a taliesin change set: fans reviewers across correctness + load-bearing invariants + scope-discipline + test coverage + simplicity, then refutes each finding before reporting. Pass a target description as args, or omit to review the current branch diff.',
   phases: [
     { title: 'Review' },
     { title: 'Verify' },
   ],
 }
 
-// What to audit. Pass a string via args (e.g. "crates/core/src/render/deck.rs" or a
+// What to audit. Pass a string via args (e.g. "crates/core/src/render/divs.rs" or a
 // feature description); default to the working/unpushed diff.
 const target = (typeof args === 'string' && args.trim())
   ? args.trim()
@@ -25,11 +25,11 @@ const DIMENSIONS = [
   },
   {
     key: 'scope-discipline',
-    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), reintroduced reveal.js/OJS/legacy shims or vocabulary, or legacy-compat tolerance. HTML is the only target; the engine is native (window.TaliesinDeck).',
+    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), a new feature, knob or reader-facing control, or a cut feature coming back (notes/DO-NOT-REBUILD.md lists them). HTML is the only target, and CLAUDE.md says to lean towards cutting.',
   },
   {
-    key: 'corpus-coverage',
-    prompt: 'Is each new capability pinned by a target corpus doc + a test added in the same change? Find gaps in corpus/ and crates/core/tests where behavior is unverified. The corpus is the arbiter of done.',
+    key: 'test-coverage',
+    prompt: 'Is each fix or capability pinned by a test added in the same change that fails without it (render witnesses go in crates/core/src/render/tests.rs; a corpus document is not a feature witness, per CLAUDE.md)? Find changed behaviour no test would catch.',
   },
   {
     key: 'simplify',

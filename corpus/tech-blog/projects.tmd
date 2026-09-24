@@ -3,7 +3,7 @@ title: "Projects"
 title-block-style: none
 listing:
   contents: projects
-  type: grid
+  type: list
 ---
 
 Things I built to learn something. Each project page documents what it does and how it works.

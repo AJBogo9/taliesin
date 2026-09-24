@@ -138,9 +138,18 @@ fn first_run_notice_body() -> &'static str {
 /// Same base resolution as the math-hover cache (`XDG_CACHE_HOME`, else `~/.cache`, else
 /// the temp dir).
 fn first_run_marker() -> std::path::PathBuf {
-    std::env::var_os("XDG_CACHE_HOME")
+    first_run_marker_from(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
+}
+
+/// [`first_run_marker`] over explicit `XDG_CACHE_HOME` and `HOME` values, so its test needs
+/// no `std::env::set_var`.
+fn first_run_marker_from(
+    xdg_cache_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    xdg_cache_home
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))
+        .or_else(|| home.map(|h| std::path::PathBuf::from(h).join(".cache")))
         .unwrap_or_else(std::env::temp_dir)
         .join("taliesin")
         .join("first-run-notice")
@@ -308,17 +317,14 @@ mod tests {
     /// The marker is a USER-level path, not a project one: the fact is about the tool, so a
     /// second project must not re-announce it. Also pinned: it is under a `taliesin/`
     /// directory, so the notice never drops a bare file into someone's cache root.
+    ///
+    /// The inputs are passed in rather than set with `std::env::set_var`: the suite runs in
+    /// parallel in CI and in the pre-push hook, and mutating the process environment while
+    /// other test threads read it is undefined behaviour.
     #[test]
     fn the_first_run_marker_is_user_level_and_namespaced() {
         let dir = std::env::temp_dir().join(format!("tali-frn-{}", std::process::id()));
-        // SAFETY: single-threaded scope in this test; the value is read immediately below.
-        let previous = std::env::var_os("XDG_CACHE_HOME");
-        unsafe { std::env::set_var("XDG_CACHE_HOME", &dir) };
-        let marker = first_run_marker();
-        match previous {
-            Some(v) => unsafe { std::env::set_var("XDG_CACHE_HOME", v) },
-            None => unsafe { std::env::remove_var("XDG_CACHE_HOME") },
-        }
+        let marker = first_run_marker_from(Some(dir.clone().into_os_string()), None);
         assert!(
             marker.starts_with(&dir),
             "the marker honours XDG_CACHE_HOME: {marker:?}"
@@ -327,6 +333,12 @@ mod tests {
             marker.parent().and_then(|p| p.file_name()),
             Some(std::ffi::OsStr::new("taliesin")),
             "namespaced under taliesin/: {marker:?}"
+        );
+        let home = first_run_marker_from(None, Some("/home/u".into()));
+        assert_eq!(
+            home,
+            std::path::Path::new("/home/u/.cache/taliesin/first-run-notice"),
+            "without XDG_CACHE_HOME the marker falls back to ~/.cache"
         );
     }
 

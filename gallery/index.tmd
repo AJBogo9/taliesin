@@ -4,7 +4,7 @@ description: "Short one-page demos of what Taliesin can do: reactive graphics, e
 toc: false
 listing:
   contents: .
-  type: grid
+  type: list
 ---
 
 Every page here is one `.tmd` file, rendered by Taliesin. The cards below are a

@@ -31,7 +31,7 @@ of a book needs is the neighbouring chapters, not the current one's headings.
 blog/
 ├── _site.yml
 ├── index.tmd            # home: about header + "recent posts" listing
-├── blog.tmd             # the full post index (a grid)
+├── blog.tmd             # the full post index
 ├── about.tmd            # a profile page
 ├── profile.webp
 ├── favicon.svg
@@ -78,7 +78,7 @@ listing:
   id: recent
   contents: posts
   max-items: 3
-  type: grid
+  type: list
 ---
 
 ## Recent posts
@@ -97,7 +97,7 @@ title: "Blog"
 title-block-style: none
 listing:
   contents: posts
-  type: grid
+  type: list
 ---
 ```
 

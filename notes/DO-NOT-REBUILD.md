@@ -170,57 +170,12 @@ session to rediscover.
   would widen scope on speculation. Revisit only if the author wants Taliesin to host their own
   academic homepage.
 
-## Audit lenses — closed, do not open a new round
+## Audit lenses: see the index
 
-[AUDITS.md](AUDITS.md) is the round index and a *record*, not a menu. The 14-round slate
-([spec](../docs/superpowers/specs/2026-07-27-audit-slate-design.md)) is **complete except R12**,
-real-device mobile on Android, which needs the author's phone. Its priority order is in the spec: the
-book drawer scroll lock first, then the `--host` QR flow, momentum scrolling and the dynamic viewport
-toolbar, tablet widths, TalkBack. **Record explicitly that an Android round does not cover
-WebKit/iOS**, or it will later read as full mobile coverage. **An audit's value decays to zero if its
-findings never ship** — three waves have shipped, and the P1 queue is now the work.
-
-**Two lenses remain un-run and both are blocked, not declined.** L3: `lsp.rs`, `complete.rs`,
-`skim.rs` and `manifest.rs` post-date every lens that would have owned them, though the mutation
-campaign has since pinned much of what one would look at. L6: a real external document, blocked on a
-repository that is not on this machine.
-
-Durable artefacts, so a later round does not rebuild them: the deck exemption register (R14), the
-sensitivity/tradeoff register (R6), the D≥8 detection cluster (R7, now
-[DETECTION-DEBT.md](DETECTION-DEBT.md)), the draft ACR (R9, now published in the guide) and the
-external-document shape inventory (R11, item 129).
-
-**One NEW family is open and proposed, not closed: feature-importance (FV).** The 2026-08-01
-[feature-value audit](2026-08-01-feature-value-audit.md) opened it — the first round to ask *what
-earns its keep* rather than *does it work* or *is it wanted*. It measured **adoption**, which is the
-cheapest axis and not the strongest, and its own "Successor rounds" section carries six lenses with
-a method and a **kill condition** each (a round that would only rebuild existing rows is not worth
-running). Ranked as that round left them:
-
-- **FV-2, ablation — run this next.** Delete a feature, run the corpus, count what breaks. Turns
-  every cut verdict from a judgement into a measurement. **Run it across all of T2–T4 or not at
-  all**: run against only the three already-named cuts it just rebuilds 203/204/209. **Commit
-  first** — the mutation-testing footgun eats uncommitted work.
-- **FV-3, cost-to-carry.** Churn + gates + defects per feature, i.e. the cost to *keep* rather than
-  to *build*, which is the shape the first round is blind to. Ten-minute pre-check: if churn just
-  concentrates in `render/mod.rs` and `build.rs` regardless of feature, the signal is noise — stop.
-- **FV-4, cognitive surface.** Closest lens to the author's stated "fits the hand like a glove"
-  goal: bloat is felt as *recall load*, not binary size. Count the vocabulary a user must hold vs
-  how much the tool teaches at point of need.
-- **FV-5, the LSP/editor value round.** ~11,300 LOC, the largest single investment in the tool, and
-  **structurally invisible** to the first round (shell history cannot see a companion-spawned
-  process). Blocked on method, not will; any instrumentation stays off by default.
-- **FV-6, reader-side value.** Every number so far is *author* adoption. **Needs an outside human —
-  do not run it as a desk exercise.**
-- **FV-7, inherited vocabulary.** How much of the surface exists because Quarto had it (`columns`
-  was one) rather than because it was chosen. Mind the triage doc's own degenerate-heading caveat.
-
-FV-8 is not a lens: it is item **208**, the dated 2026-09-15 re-measure.
-
-**Correction, noticed 2026-08-01 while adding the above:** the paragraph two above says L6 (a real
-external document) is "blocked on a repository that is not on this machine". [AUDITS.md](AUDITS.md)
-records that **R11 ran 2026-07-28** against `rust-lang/book` (112 files, 25,962 lines) and a real
-Quarto book, producing items 127-130. L6 is **not** blocked and should not be re-scoped as such.
+[AUDITS.md](AUDITS.md) is the round index and a *record*, not a menu. Its head carries the standing
+rule from the 2026-09-24 round: no whole-repo round until that round's Parts A to C land,
+diff-scoped review by default, unvetted leads expire after 14 days. The lens slate and the FV
+family this section used to rank are in this file's git history.
 
 ## Quarto catalog (policy, not a task)
 
@@ -233,11 +188,13 @@ was overruled; Atom shipped with autodiscovery).
 
 ## Do not re-add / re-scope
 
-**One line per entry.** Detail lives in git, in [AUDITS.md](AUDITS.md), in the dated findings docs and
-in [LESSONS.md](LESSONS.md) — look there rather than re-expanding this list. A batch's date and
-branch are enough to find its commits.
-
 ### Shipped
+
+**Several entries below describe features as they shipped and were cut later. Do not rebuild
+them:** `lsp_refs.rs` and `lsp_select.rs` (cut wave 10, 2026-08-09), the MCP server with its
+resources and prompts (cut wave 2, 2026-08-08), `taliesin features` and `features_cli.rs` (cut
+wave 2), debug mode (cut wave 3, 2026-08-08), the `TAL-*` diagnostic codes (cut wave 9,
+2026-08-08) and `taliesin new` (cut 2026-08-17).
 
 - **2026-08-07 the devtooling frontier round, tiers 1-2 in one batch** (owner instruction: implement
   216, 217, 220, 222-226 rather than drop them). Detail in
@@ -350,8 +307,8 @@ branch are enough to find its commits.
   `auto`. 197's open design question was ruled in the build: a page `chapters:` never names is
   KEPT, flagged `listed: false` and grouped under `Unlisted`, while a website reports `book: false`
   and keeps path order. **`showCollapseAll` is unobservable from any extension API** (VS Code
-  registers the per-view `collapseAll` command for every tree pane regardless) — that gap is in
-  [DETECTION-DEBT.md](DETECTION-DEBT.md), the probe traps are in [LESSONS.md](LESSONS.md), and
+  registers the per-view `collapseAll` command for every tree pane regardless; the tree view was
+  later cut), the probe traps are in [LESSONS.md](LESSONS.md), and
   `crates/server/tests/reader_chrome_browser.rs` is where a reader-chrome browser pin goes.
 - **2026-08-01 margin sidenotes + structured authors** (183, 184): a `[^note]` renders beside the
   line that cites it and there is **no gathered endnote section** (one copy, or all four text
@@ -441,7 +398,7 @@ branch are enough to find its commits.
   `animate` + `point`, `tali.state`, and `tali.tex` / `tali.table` (**not** KaTeX-the-parser; only
   its CSS + fonts are bundled). The `animate` tick is a `type="number"` field, not `type="hidden"` —
   the latter hands every downstream cell the *string*. Two coverage illusions were deleted rather
-  than shipped and live in [DETECTION-DEBT.md](DETECTION-DEBT.md).
+  than shipped (the `animate` control was later retired).
 - **2026-07-29 ruled-and-built batch** (101, 122, 71, 78, 149's buildable half, 18's doc halves, 41's
   `alt` half, 150's risk half): `LICENSE-OUTPUT-EXCEPTION.md` is an **additional permission under
   AGPL §7** covering what Taliesin *emits* (deliberately **no** per-asset licence headers); `check`
@@ -469,7 +426,7 @@ branch are enough to find its commits.
   unbuilt.
 - **2026-07-28 honesty + build cost** (91, 110, 115, 119, 126, 134, 143): `chromiumoxide` is an opt-in
   `headless-js` feature, off by default; not linting `draft:` pages is **ruled correct** and the
-  defect was the silence; the ACR is published; DETECTION-DEBT.md is the live register.
+  defect was the silence; the ACR is published; the live detection list is in LESSONS.md.
 - **2026-07-28 verified sweep** (85, 86, 97, 98, 99, 114, 123, 130): a `theme:` extension bundle is
   contained; no built page fetches off-origin; a shortcode source is a path, not a URL; both
   `jsconfig.json` include lists are globbed.
@@ -540,6 +497,10 @@ headings deliberately excluded).
 
 ### Decided against
 
+- **`listing: type: grid`** (cut 2026-09-24): its CSS went on 2026-08-15 with the ruled-list
+  redesign, after which it rendered exactly like `list` while the guide promised tiled cards.
+  The parser no longer reads it (`parse_listing_spec_no_longer_reads_type_grid`); a listing is
+  one ruled list, and `list` is the only value that shows thumbnails.
 - **The reader's code download** (C-READ-2's code half, `render/repro.rs`): **cut 2026-08-14 on the
   owner's call, out of scope for the MVP.** The whole feature went — the module, the `.tali-repro`
   CSS, the search-index skip and `REPRO_BLOCK_ID` with it, plus the manual's "Running it yourself"

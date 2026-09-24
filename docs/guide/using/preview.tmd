@@ -38,8 +38,16 @@ nothing in Neovim, Helix or Zed. Those editors get everything `taliesin lsp` ser
 live preview itself. Only the jump from the page back to the editor is limited to VS Code.
 :::
 
-**Getting the companion.** It is not on the VS Code Marketplace; you build the `.vsix`
-from this repository and install it yourself:
+**Getting the companion.** It is not on the VS Code Marketplace or Open VSX. Each release
+from v1.1.0 on attaches it as `taliesin-companion-<version>.vsix` on the
+[releases page](https://github.com/AJBogo9/taliesin/releases); download that file and
+install it:
+
+```sh
+code --install-extension taliesin-companion-<version>.vsix
+```
+
+To build it from a clone instead (this needs Node):
 
 ```sh
 cd editor/vscode && npm install && npm run build && npx @vscode/vsce package

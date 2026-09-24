@@ -24,7 +24,8 @@ git never runs `.githooks/pre-push` and nothing checks your push.
 The script runs every gate: fmt, clippy, the workspace suite, both `tsc` type-checks, the VS
 Code companion's grammar test, `cargo audit` / `cargo deny`, the two document gates
 (`build docs/guide --check-only` and `build docs/internals --check-only`) and the
-separate `tools/publish.sh --check` gate, all of which the pre-push hook also runs. A
+separate `tools/publish.sh --check` gate. CI runs the same gates on every pull request,
+and the pre-push hook runs fmt, clippy, the suite and the document and publish gates. A
 plain `cargo test` is not enough. The live-kernel and Node cases skip silently when their
 interpreter is missing, so a green `cargo test` on a machine without Python or Node says
 little. `gates.sh` arms both `TALIESIN_REQUIRE_*` variables, checks each canary test by
