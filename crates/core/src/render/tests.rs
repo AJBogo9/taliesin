@@ -6114,7 +6114,7 @@ fn katex_font_files_match_the_vendored_sheet_and_rewrite_cleanly() {
 }
 
 // Marker literals below are each confirmed present via grep before use (see the Task 1
-// report): base.css -> ".tali-title-block", dark.css -> the dark-theme mermaid override
+// report): base.css -> ".tali-title-block", dark.css -> the dark-theme syntax comment
 // selector, site.css -> ".tali-book-topbar" (site-only chrome), the code-enhance bundle
 // -> "function taliCopyText" (defined in 01-registry.js), search.js -> "function
 // buildIndex", mermaid.min.js -> the esbuild wrapper var, d3.min.js -> its source-map
@@ -6125,7 +6125,7 @@ fn shared_site_css_bundles_the_framework_sheets() {
     let css = shared_site_css();
     assert!(css.contains(".tali-title-block"), "base.css missing");
     assert!(
-        css.contains("html[data-theme=\"dark\"] pre.mermaid"),
+        css.contains("html[data-theme=\"dark\"] .tali-hl-comment"),
         "dark.css missing"
     );
     assert!(css.contains(".tali-book-topbar"), "site.css missing");

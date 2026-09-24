@@ -6,7 +6,6 @@
      tokenised in base.css now.) */
   /* Callout title tints are derived from --tali-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
-  html[data-theme="dark"] pre.mermaid { background: transparent; }
   /* The dark syntax palette is chosen, not lightened: same four roles, re-picked against the
      dark code ground. Ratios computed 2026-08-14. */
   html[data-theme="dark"] .tali-hl-comment { color: #8C877C; font-style: italic; } /* 4.86:1 */
