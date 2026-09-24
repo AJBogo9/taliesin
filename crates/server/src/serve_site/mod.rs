@@ -118,11 +118,9 @@ fn record_key(path: &Path) -> PathBuf {
 }
 
 /// The [`discovery_digest`](taliesin_core::site::discovery_digest) of the source at `path`,
-/// read as discovery reads it. An unreadable file digests as an empty one, which is what
-/// discovery makes of it.
+/// read as discovery reads it ([`taliesin_core::site::discovery_digests`]).
 fn digest_of(path: &Path) -> u64 {
-    let src = taliesin_core::includes::read_source(path).unwrap_or_default();
-    taliesin_core::site::discovery_digest(&src)
+    taliesin_core::site::discovery_digests(&[path.to_path_buf()])[0]
 }
 
 impl Project {
@@ -229,10 +227,10 @@ impl Project {
             .iter()
             .map(|p| record_key(&p.input))
             .collect();
+        let digests = taliesin_core::site::discovery_digests(&inputs);
         let mut records = self.records.lock();
         records.clear();
-        for input in inputs {
-            let digest = digest_of(&input);
+        for (input, digest) in inputs.into_iter().zip(digests) {
             records.insert(input, Some(digest));
         }
     }

@@ -129,6 +129,17 @@ pub fn discovery_digest(src: &str) -> u64 {
     crate::hash::fnv1a(&read)
 }
 
+/// The [`discovery_digest`] of the source at each of `paths`, read as discovery reads it (an
+/// unreadable file digests as an empty one), across cores and in order. The preview records
+/// every page's before it answers its first request, and each digest parses its page to
+/// find the H1: one page after another, that was 4 ms of `docs/guide`'s time to ready
+/// (audit 2026-09-24, WP20).
+pub fn discovery_digests(paths: &[PathBuf]) -> Vec<u64> {
+    super::fanout::map_ordered(paths, |path| {
+        discovery_digest(&crate::includes::read_source(path).unwrap_or_default())
+    })
+}
+
 /// A page's front-matter `image:`, stored site-root-relative so a listing card on another
 /// page and the `og:image` can link it (it is written relative to the page's own
 /// directory). An absolute/external URL (og:image social card, CDN-hosted thumb) is left
@@ -249,5 +260,23 @@ mod tests {
         // What the heading SHOWS is what names the chapter, so markup around the same
         // text changes nothing discovery keeps.
         assert!(same("---\ntitle: A\n---\n\n# *Intro*\n\nBody.\n"));
+    }
+
+    /// Each source is read as discovery reads it, and the digests come back in the order
+    /// asked, which is what the preview pairs them with its pages by: an unreadable file
+    /// digests as an empty one, which is what discovery makes of it.
+    #[test]
+    fn the_digests_read_each_source_as_discovery_does_in_order() {
+        let dir = std::env::temp_dir().join(format!("tali-digests-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (one, two) = ("---\ntitle: A\n---\n\n# One\n", "# Two\n");
+        std::fs::write(dir.join("one.tmd"), one).unwrap();
+        std::fs::write(dir.join("two.tmd"), two).unwrap();
+        let paths = ["two.tmd", "missing.tmd", "one.tmd"].map(|f| dir.join(f));
+        assert_eq!(
+            super::discovery_digests(&paths),
+            [two, "", one].map(discovery_digest)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
