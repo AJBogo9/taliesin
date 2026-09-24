@@ -38,8 +38,8 @@ pub(super) fn resolve_href(href: &str, up: &str) -> String {
 ///
 /// **Both suffixes, not just the fragment.** A `post.tmd?v=2` failed `strip_source_ext`,
 /// so the href round-tripped unrewritten — and a surviving `.tmd` href is what drives the
-/// build's `deploy_referenced_sources` to copy the raw markdown into the deploy (`.tmd` is
-/// in its `SKIP_EXT` source set). With a `draft: true` target that published the
+/// build's `deploy_referenced_sources` to copy the raw markdown into the deploy (it ships
+/// any referenced file the mirror left out). With a `draft: true` target that published the
 /// unpublished source, under a green `--check-only --strict`, because `manual_local_links`
 /// strips the query before resolving and so saw a link that was fine. `href_matches_page`
 /// already split on both characters for the same reason.

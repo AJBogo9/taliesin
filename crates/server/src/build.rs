@@ -1190,62 +1190,83 @@ fn bundle_file(
     }
 }
 
-/// Deploy any in-tree file a page links to whose extension is in [`SKIP_EXT`] — the
-/// source-only set [`mirror_assets`] drops as potential stray residue. A *referenced*
-/// source (a linked `.md` download, a `.scss` offered for inspection) is intentional, so
-/// dropping it leaves a dead link on an otherwise-green build. Non-source assets are
-/// already mirrored, and cross-page / out-of-tree refs are silently ignored here (the
-/// loud out-of-tree warning belongs to the single-doc [`copy_local_assets`]).
-fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
-    let mut copied = 0usize;
-    let boundary = taliesin_core::includes::repo_boundary(base);
-    for (r, _) in local_refs(html) {
-        // Decode through the shared resolution step (T3): a `%20`-spelled link must
-        // find the on-disk file with the space, and the DECODED name is what a static
-        // host resolves the emitted href to. Decoding before the escape checks keeps an
-        // encoded `..` from slipping past them.
-        let path = taliesin_core::render::asset_fs_path(&r);
-        let path = path.as_str();
-        // Cross-page / out-of-tree refs aren't ours to ship; mirror_assets already
-        // handled every non-source asset, so only the SKIP_EXT files can be missing.
-        if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
-            continue;
-        }
-        let ext = Path::new(path)
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-        if !SKIP_EXT.contains(&ext) {
-            continue;
-        }
-        let from = base.join(path);
-        if !from.is_file() || !inside_repo(&from, &boundary) {
-            continue;
-        }
-        let to = dest.join(path);
-        if same_file(&from, &to) {
-            continue;
-        }
-        if let Some(parent) = to.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if std::fs::copy(&from, &to).is_ok() {
-            copied += 1;
-        }
-    }
-    copied
+/// Ship each file a page references that [`mirror_assets`] left out: a source-only
+/// extension ([`SKIP_EXT`]: a linked `.md` download, a `.scss` offered for inspection) or
+/// anything under an `_`-prefixed folder (an `_images/` picture, a figure kept beside an
+/// `_includes/` partial, a navbar `logo:`). A reference is intentional, so dropping it
+/// left a broken page on a green build: until the 2026-09-24 audit this pass shipped the
+/// source extensions only, and an image in `_images/` was served by the preview, passed
+/// both gates and was missing from every deploy.
+///
+/// Judged by the one publication rule, [`taliesin_core::includes::publishable`], as a
+/// reference from the page's directory `page_dir` (relative to `root`), so a nested page's
+/// `../../_images/x.png` resolves against the project, and a `.`-prefixed path, a climb out
+/// of the project or a symlink out of the repository never ships. `shipped` holds every
+/// out-relative path this build has already written (pages, the mirror's copies, earlier
+/// pages' references), so each file is copied and counted once. Returns the count copied.
+fn deploy_referenced_sources(
+    html: &str,
+    root: &Path,
+    page_dir: &Path,
+    out: &Path,
+    shipped: &mut std::collections::HashSet<PathBuf>,
+) -> usize {
+    local_refs(html)
+        .into_iter()
+        .filter(|(r, _)| ship_referenced(r, root, page_dir, out, shipped))
+        .count()
 }
 
-/// Second asset pass for a site build: after every page is written, ship the source
-/// files (`.md`/`.scss`/…) that pages actually *link to*. The output tree mirrors the
-/// source tree, so each page's relative refs resolve from its source directory. Returns
-/// the count deployed. See [`deploy_referenced_sources`].
-fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
+/// Ship the one file `r` (a reference as a page spells it, from `page_dir` under `root`)
+/// names, unless the publication rule refuses it, it is no file, or `shipped` already has
+/// it. Whether it was copied. See [`deploy_referenced_sources`].
+fn ship_referenced(
+    r: &str,
+    root: &Path,
+    page_dir: &Path,
+    out: &Path,
+    shipped: &mut std::collections::HashSet<PathBuf>,
+) -> bool {
+    use taliesin_core::includes::{Reach, publishable};
+    // Decode through the shared resolution step (T3): a `%20`-spelled link must find the
+    // on-disk file with the space, and the DECODED name is what a static host resolves
+    // the emitted href to.
+    let path = taliesin_core::render::asset_fs_path(r);
+    let Ok(rel) = publishable(
+        root,
+        &root.join(page_dir),
+        Path::new(&path),
+        Reach::Referenced,
+    ) else {
+        return false;
+    };
+    let from = root.join(&rel);
+    if shipped.contains(&rel) || !from.is_file() {
+        return false;
+    }
+    let to = out.join(&rel);
+    if let Some(parent) = to.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::copy(&from, &to).is_ok() && shipped.insert(rel)
+}
+
+/// Second asset pass for a site build: after every page is written, ship the files pages
+/// actually *reference* that the mirror left out. The output tree mirrors the source tree,
+/// so each page's relative refs resolve from its source directory. `shipped` is the set of
+/// out-relative paths the build already wrote. Returns the count deployed. See
+/// [`deploy_referenced_sources`].
+fn deploy_referenced_sources_for_site(
+    root: &Path,
+    out: &Path,
+    shipped: &mut std::collections::HashSet<PathBuf>,
+) -> usize {
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
+        shipped: &mut std::collections::HashSet<PathBuf>,
         copied: &mut usize,
     ) {
         // The build never emits a symlink, so one under `out` is the author's own mount
@@ -1264,7 +1285,7 @@ fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_dir() {
-                walk(&p, root, out, seen, copied);
+                walk(&p, root, out, seen, shipped, copied);
             } else if p.extension().and_then(|s| s.to_str()) == Some("html") {
                 let Ok(html) = std::fs::read_to_string(&p) else {
                     continue;
@@ -1274,8 +1295,7 @@ fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
                     .ok()
                     .and_then(Path::parent)
                     .unwrap_or(Path::new(""));
-                *copied +=
-                    deploy_referenced_sources(&html, &root.join(rel_dir), &out.join(rel_dir));
+                *copied += deploy_referenced_sources(&html, root, rel_dir, out, shipped);
             }
         }
     }
@@ -1285,6 +1305,7 @@ fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
         root,
         out,
         &mut std::collections::HashSet::new(),
+        shipped,
         &mut copied,
     );
     copied
@@ -2393,10 +2414,18 @@ async fn build_site_async(
         diagnostics.push(crate::lint::diag_from(&w, "_site.yml"));
     }
 
-    // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.
-    // mirror_assets drops them by extension (publish hygiene), but a *referenced* source is
-    // an intentional download — skipping it would leave a dead link on a green build.
-    let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
+    // Second asset pass: ship the files pages actually reference that mirror_assets left
+    // out (a source extension, an `_`-prefixed folder). A reference is intentional, so
+    // skipping it would leave a dead link or a broken image on a green build.
+    let mut assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out, &mut keep);
+    // A page's front-matter `image:` is a reference no page body need carry: it is the
+    // `og:image` a shared link unfurls with, stored site-root-relative by discovery (an
+    // external URL is no local ref and ships nothing).
+    for img in site.pages.iter().filter_map(|p| p.card_image.as_deref()) {
+        if is_local_ref(img) {
+            assets += usize::from(ship_referenced(img, root, Path::new(""), &out, &mut keep));
+        }
+    }
 
     log::built(&format!(
         "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{not_found}{seo_note}{}",
@@ -3376,7 +3405,8 @@ mod mirror_tests {
 
         let html = r#"<a data-tali-src="index.tmd" href="index.html">card</a>
                       <a href="notes.md">the source</a>"#;
-        let copied = deploy_referenced_sources(html, &dir, &out);
+        let copied =
+            deploy_referenced_sources(html, &dir, Path::new(""), &out, &mut Default::default());
 
         assert!(
             out.join("notes.md").is_file(),
@@ -3560,7 +3590,8 @@ mod mirror_tests {
         fs::write(root.join("theme.scss"), b"x").unwrap();
         let html = r#"<a href="notes.md">notes</a> <link href="theme.scss">"#;
 
-        let copied = deploy_referenced_sources(html, &root, &out);
+        let copied =
+            deploy_referenced_sources(html, &root, Path::new(""), &out, &mut Default::default());
 
         assert!(out.join("notes.md").is_file(), "a linked .md must deploy");
         assert!(
@@ -4275,7 +4306,13 @@ mod symlink_containment_tests {
 
         let dest = dir.join("_site");
         fs::create_dir_all(&dest).unwrap();
-        let copied = deploy_referenced_sources(r#"<a href="notes.md">notes</a>"#, &repo, &dest);
+        let copied = deploy_referenced_sources(
+            r#"<a href="notes.md">notes</a>"#,
+            &repo,
+            Path::new(""),
+            &dest,
+            &mut Default::default(),
+        );
 
         assert!(
             !dest.join("notes.md").exists(),
@@ -4306,7 +4343,7 @@ mod symlink_containment_tests {
         .unwrap();
         symlink(".", out.join("loop")).unwrap();
 
-        let copied = deploy_referenced_sources_for_site(&root, &out);
+        let copied = deploy_referenced_sources_for_site(&root, &out, &mut Default::default());
 
         assert!(out.join("notes.md").is_file(), "the linked source ships");
         assert_eq!(
