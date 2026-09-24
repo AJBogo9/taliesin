@@ -117,11 +117,13 @@ fn stdout_conflicts_are_loud() {
 }
 
 /// A document built on its own is the same page its preview shows: a `hero:` replaces the
-/// title block and a `listing:` renders its list, because both verbs finish the page through
-/// the one `Site` it belongs to. The single-file build never asked the site and dropped
-/// both, silently (audit 2026-09-24, config-seam #4).
+/// title block, because both verbs finish the page through the one `Site` it belongs to. The
+/// single-file build never asked the site and dropped it, silently (audit 2026-09-24,
+/// config-seam #4). A `listing:` lists a project's pages, which a document on its own does
+/// not have, so both verbs leave it out and say so rather than show an empty list (WP11
+/// leftover).
 #[test]
-fn a_lone_document_builds_its_hero_and_listing_as_the_preview_does() {
+fn a_lone_document_builds_its_hero_as_the_preview_does_and_names_its_dropped_listing() {
     let dir = std::env::temp_dir().join(format!("tali-stdout-{}-hero", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -148,7 +150,11 @@ fn a_lone_document_builds_its_hero_and_listing_as_the_preview_does() {
         "the hero block is on the page: {classes:?}"
     );
     assert!(
-        classes.iter().any(|c| c.contains("tali-listing")),
-        "the listing is on the page: {classes:?}"
+        !classes.iter().any(|c| c.contains("tali-listing")),
+        "no empty listing on the page: {classes:?}"
+    );
+    assert!(
+        stderr.contains("land.tmd:6:") && stderr.contains("the listing on `land.tmd` was left out"),
+        "the note, at the `listing:` key: {stderr}"
     );
 }

@@ -1439,7 +1439,23 @@ impl Site {
         if let Some(hero) = &page.hero {
             set_title_block(blocks, self.hero_html(page, hero));
         }
-        for (li, spec) in page.listings.iter().enumerate() {
+        // A listing's cards are the project's other pages, which a document built on its own
+        // does not have: like the navbar it also leaves out, the listing goes, with one note.
+        let listings = if self.standalone && !page.listings.is_empty() {
+            let mut w = Warning::new(format!(
+                "the listing on `{}` was left out: it lists the project's pages, and this \
+                 document is built on its own; build the project folder to fill it",
+                page.rel
+            ));
+            w.line = src
+                .and_then(crate::frontmatter::front_matter_block)
+                .and_then(|b| crate::frontmatter::block_key_line(b, "listing"));
+            warnings.push(w);
+            &[][..]
+        } else {
+            &page.listings[..]
+        };
+        for (li, spec) in listings.iter().enumerate() {
             let at = spec
                 .id
                 .as_ref()
@@ -3991,6 +4007,51 @@ pub(crate) mod tests {
         let number = |site: &Site| site.chapter_for(site.page("b.tmd").unwrap());
         assert_eq!(number(&book), Some(1), "the published book skips the draft");
         assert_eq!(number(&alone), number(&book));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A listing is project chrome: its cards are the project's other pages. A listing page
+    /// built on its own (`build index.tmd` inside a project) rendered an empty list and said
+    /// nothing, because the site scoped to one document holds one page (audit 2026-09-24,
+    /// WP11 leftover). Like the navbar that build also leaves out, the listing goes, and one
+    /// note at its `listing:` key says why; the project build still lists the post.
+    #[test]
+    fn a_listing_page_built_alone_drops_its_listing_with_a_note() {
+        let root = write_site(
+            "alone-listing",
+            &[
+                ("_site.yml", "title: P\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nWelcome.\n",
+                ),
+                (
+                    "posts/one.tmd",
+                    "---\ntitle: One\ndate: 2026-01-02\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let src = std::fs::read_to_string(root.join("index.tmd")).unwrap();
+        let alone = Site::discover_document(&root.join("index.tmd"));
+        let mut blocks = render::render_document(&src).blocks;
+        let mut warnings = Vec::new();
+        alone.expand_page(
+            alone.page("index.tmd").unwrap(),
+            &mut blocks,
+            &mut warnings,
+            Some(&src),
+        );
+        let html: String = blocks.iter().map(|b| b.html.as_str()).collect();
+        assert!(!html.contains("tali-listing"), "{html}");
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].message.contains("built on its own"),
+            "{}",
+            warnings[0].message
+        );
+        assert_eq!(warnings[0].line, Some(3), "at the `listing:` key");
+        let project = Site::discover(&root).render_page("index.tmd").unwrap();
+        assert!(project.contains("href=\"posts/one.html\""), "{project}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
