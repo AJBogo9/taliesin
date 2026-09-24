@@ -8607,3 +8607,25 @@ fn a_shortcode_in_the_front_matter_is_left_as_written() {
     assert!(!expanded.contains("INJECTED"), "{expanded}");
     assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
 }
+
+/// Every render runs on a 256 MB-stack thread under the watchdog, and that thread used to be
+/// spawned afresh per render: 518 `clone3` per save of a 500-page book, a whole-project pass
+/// spending more samples creating and unmapping stacks than rendering, and glibc arenas
+/// fragmenting RSS from 87 to 272 MB over 150 edits (audit 2026-09-24, F4). A render now
+/// takes a parked worker. Counted against the spawns rather than timed, and bounded loosely
+/// (`< 20`, not `== 1`) because other tests render concurrently and may hold every parked
+/// worker at the moment one of these asks; a thread per render spawns all twenty.
+#[test]
+fn sequential_renders_reuse_a_parked_render_thread() {
+    use std::sync::atomic::Ordering;
+    let before = workers::SPAWNED.load(Ordering::Relaxed);
+    for i in 0..20 {
+        let doc = render_document(&format!("# Render {i}\n\nBody.\n"));
+        assert_eq!(doc.blocks.len(), 2);
+    }
+    let spawned = workers::SPAWNED.load(Ordering::Relaxed) - before;
+    assert!(
+        spawned < 20,
+        "twenty sequential renders spawned {spawned} render threads; a parked worker must be reused"
+    );
+}

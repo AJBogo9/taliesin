@@ -108,6 +108,8 @@ mod text;
 // than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
 pub(crate) use text::{heading_text, indexable_text};
 mod theme;
+// The long-lived big-stack threads renders run on.
+mod workers;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) mod page;
 use page::page_from_doc;
@@ -402,15 +404,20 @@ fn refused_render(warning: Warning) -> RenderedDoc {
 /// quadratic on balanced nested brackets (4.27 s at 128k in release, minutes by ~500k).
 /// That is neither a panic nor an abort — just unbounded CPU — so no `catch_unwind` and no
 /// depth guard can see it, and the warm preview loop simply freezes with no diagnostic. The
-/// worker is therefore *detached* rather than scoped, so a render that blows the budget can
+/// worker is therefore one this call never joins, so a render that blows the budget can
 /// be abandoned and the caller answered with a located error. The abandoned thread keeps
 /// running to completion (there is no safe way to kill a thread mid-parse); it is a bounded
 /// leak on a document that was already unrenderable, and the diagnostic tells the author
 /// which one. A panic is still propagated to the caller unchanged.
 ///
-/// Takes its inputs by value because a detached thread needs `'static`. This costs one
-/// `String` copy of the source on the [`render_document`] path; the include path already
-/// owns both its expanded source and its origins, so it hands them over rather than cloning.
+/// **The thread** is a parked worker ([`workers`]), not one spawned for this render: a
+/// whole-project pass renders every page, and a thread per render made a save of a 500-page
+/// book spawn and unmap 518 256 MB stacks.
+///
+/// Takes its inputs by value because the worker outlives this call and so needs `'static`.
+/// This costs one `String` copy of the source on the [`render_document`] path; the include
+/// path already owns both its expanded source and its origins, so it hands them over rather
+/// than cloning.
 fn render_internal(
     src: String,
     origins: Option<Vec<LineOrigin>>,
@@ -419,9 +426,8 @@ fn render_internal(
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
 ) -> RenderedDoc {
-    // Behind an `Arc` so the worker and the spawn-failure fallback can both reach it: a
-    // failed `Builder::spawn` drops its closure rather than handing it back, so the inputs
-    // cannot simply be moved in.
+    // Behind an `Arc` so the worker and the no-worker fallback can both reach it: a job the
+    // pool could not place is dropped unrun, so the inputs cannot simply be moved in.
     let input = std::sync::Arc::new(RenderInput {
         src,
         origins,
@@ -430,43 +436,41 @@ fn render_internal(
         chapter,
         site,
     });
-    let big_stack = || std::thread::Builder::new().stack_size(256 * 1024 * 1024);
-
-    let Some(budget) = render_budget() else {
-        // Watchdog disabled: keep the worker *scoped*, so nothing can outlive this call.
-        return std::thread::scope(|scope| {
-            match big_stack().spawn_scoped(scope, || input.render()) {
-                Ok(handle) => match handle.join() {
-                    Ok(doc) => doc,
-                    Err(payload) => std::panic::resume_unwind(payload),
-                },
-                Err(_) => input.render(),
-            }
-        });
-    };
-
     // `sync_channel(1)` so an abandoned worker never blocks forever on its send.
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     let worker = std::sync::Arc::clone(&input);
-    match big_stack().spawn(move || {
+    let placed = workers::RENDER.run(Box::new(move || {
         // Catch here rather than letting the thread unwind, so a panic reaches the caller
         // as a payload to re-raise instead of being misreported as a timeout.
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker.render()));
         let _ = tx.send(out);
-    }) {
-        Ok(_detached) => match rx.recv_timeout(budget) {
-            Ok(Ok(doc)) => doc,
-            Ok(Err(payload)) => std::panic::resume_unwind(payload),
-            Err(_) => refused_render(Warning::new(format!(
-                "render exceeded {}s and was abandoned (is this document pathological? \
-                 deeply nested brackets render quadratically); \
-                 raise or disable the limit with TALIESIN_RENDER_TIMEOUT",
-                budget.as_secs()
-            ))),
-        },
+    }));
+    if !placed {
         // Spawning the big-stack worker can fail under a strict address-space limit
         // (e.g. `ulimit -v`). Render inline on the current thread rather than panicking.
-        Err(_) => input.render(),
+        return input.render();
+    }
+    let out = match render_budget() {
+        Some(budget) => match rx.recv_timeout(budget) {
+            Ok(out) => out,
+            Err(_) => {
+                return refused_render(Warning::new(format!(
+                    "render exceeded {}s and was abandoned (is this document pathological? \
+                     deeply nested brackets render quadratically); \
+                     raise or disable the limit with TALIESIN_RENDER_TIMEOUT",
+                    budget.as_secs()
+                )));
+            }
+        },
+        // Watchdog disabled: wait for as long as the render takes.
+        None => match rx.recv() {
+            Ok(out) => out,
+            Err(_) => return input.render(),
+        },
+    };
+    match out {
+        Ok(doc) => doc,
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
