@@ -61,16 +61,14 @@ pub struct LineOrigin {
     pub line: usize,
 }
 
-/// An include directive that could not be expanded (unsafe path, cycle, or
-/// unreadable file), located back to the file + line that holds the directive so
-/// the caller can surface a click-to-source diagnostic instead of silently
-/// shipping the literal `{{< include … >}}`.
+/// A problem the include pass found, located back to the file + line that holds it so the
+/// caller can surface a click-to-source diagnostic: an include directive that could not be
+/// expanded (unsafe path, cycle, unreadable file), which is left literal rather than shipped
+/// silently.
 #[derive(Debug, Clone)]
 pub struct IncludeWarning {
-    /// The raw include target as written in the directive.
-    pub target: String,
-    /// Why it couldn't be resolved (a short human phrase).
-    pub reason: String,
+    /// The diagnostic, as the author reads it.
+    pub message: String,
     /// The file holding the directive (`None` = the primary document), matching
     /// [`LineOrigin::file`].
     pub file: Option<String>,
@@ -105,105 +103,99 @@ pub fn resolve_warned_in(
     base_dir: &Path,
     root: Option<&Path>,
 ) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
-    let mut lines = Vec::new();
-    let mut origins = Vec::new();
-    let mut warnings = Vec::new();
-    let mut stack = Vec::new(); // cycle guard: absolute paths currently expanding
-    let had_trailing_newline = src.ends_with('\n');
-    expand(
-        src,
-        base_dir,
-        base_dir,
-        None,
+    let mut x = Expansion {
+        primary_base: base_dir,
         root,
-        &mut stack,
-        &mut lines,
-        &mut origins,
-        &mut warnings,
-    );
-
-    let mut text = lines.join("\n");
-    if had_trailing_newline {
+        stack: Vec::new(),
+        lines: Vec::new(),
+        origins: Vec::new(),
+        warnings: Vec::new(),
+    };
+    x.expand(src, base_dir, None);
+    let mut text = x.lines.join("\n");
+    if src.ends_with('\n') {
         text.push('\n');
     }
-    (text, origins, warnings)
+    (text, x.origins, x.warnings)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn expand(
-    src: &str,
-    base_dir: &Path,            // directory of the file currently being expanded
-    primary_base: &Path,        // directory of the primary document (for nice labels)
-    file_label: Option<String>, // label of the current file (None = primary)
-    root: Option<&Path>,        // explicit containment root (constant across recursion)
-    stack: &mut Vec<PathBuf>,
-    out_lines: &mut Vec<String>,
-    out_origins: &mut Vec<LineOrigin>,
-    out_warnings: &mut Vec<IncludeWarning>,
-) {
-    // The one ingest point for every source text this crate renders: the primary document
-    // arrives here, and so does each included file (this function recurses with its
-    // contents). See [`normalize_line_endings`] for what a lone `\r` did before this line.
-    let normalized = normalize_line_endings(src);
-    let src = normalized.as_ref();
-    let directives = Directives::of(src);
-    for (idx, line) in src.lines().enumerate() {
-        // Emit `line` verbatim, mapped back to the current file (used whenever a
-        // directive isn't expanded: ordinary text, or an unsafe/cyclic/unreadable include).
-        let mut keep_line = || {
-            out_lines.push(line.to_string());
-            out_origins.push(LineOrigin {
+/// One include expansion's state, threaded through its recursion.
+struct Expansion<'a> {
+    /// Directory of the primary document (for nice labels).
+    primary_base: &'a Path,
+    /// Explicit containment root, constant across the recursion.
+    root: Option<&'a Path>,
+    /// Cycle guard: absolute paths currently expanding.
+    stack: Vec<PathBuf>,
+    lines: Vec<String>,
+    origins: Vec<LineOrigin>,
+    warnings: Vec<IncludeWarning>,
+}
+
+impl Expansion<'_> {
+    /// Append `src` (the file labelled `file_label`, `None` for the primary document, whose
+    /// includes resolve against `base_dir`) with its includes expanded.
+    fn expand(&mut self, src: &str, base_dir: &Path, file_label: Option<String>) {
+        // The one ingest point for every source text this crate renders: the primary
+        // document arrives here, and so does each included file (this function recurses
+        // with its contents). See [`normalize_line_endings`] for what a lone `\r` did
+        // before this line.
+        let normalized = normalize_line_endings(src);
+        let src = normalized.as_ref();
+        let lines = FileLines::of(src, file_label.is_some());
+        for (idx, line) in src.lines().enumerate() {
+            // Emit `line` verbatim, mapped back to the current file (used whenever a
+            // directive isn't expanded: ordinary text, or an unsafe/cyclic/unreadable
+            // include).
+            self.lines.push(line.to_string());
+            self.origins.push(LineOrigin {
                 file: file_label.clone(),
                 line: idx + 1,
             });
-        };
-        // Record a located warning for an include that couldn't be expanded, so the
-        // dropped directive surfaces as a click-to-source diagnostic in
-        // build/preview/`check` instead of leaking silently.
-        let mut drop_with_warning = |target: &str, reason: &str| {
-            keep_line();
-            out_warnings.push(IncludeWarning {
-                target: target.to_string(),
-                reason: reason.to_string(),
-                file: file_label.clone(),
-                line: idx + 1,
-            });
-        };
-        let Some(raw) = directives.at(idx, line) else {
-            keep_line();
-            continue;
-        };
-        let rel = raw;
-        // Unsafe path (absolute or escaping the project root), or an include cycle:
-        // leave the directive visible rather than reading outside the project / looping.
-        let Some(target) = safe_join_in(base_dir, rel, root) else {
-            drop_with_warning(raw, "path escapes the project root (or is absolute)");
-            continue;
-        };
-        if stack.contains(&target) {
-            drop_with_warning(raw, "include cycle");
-            continue;
-        }
-        match std::fs::read_to_string(&target) {
-            Ok(content) => {
-                let label = label_for(&target, primary_base);
-                let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
-                stack.push(target.clone());
-                expand(
-                    content.as_str(),
-                    &child_base,
-                    primary_base,
-                    Some(label),
-                    root,
-                    stack,
-                    out_lines,
-                    out_origins,
-                    out_warnings,
-                );
-                stack.pop();
+            let Some(raw) = lines.directive(idx, line) else {
+                continue;
+            };
+            // Unsafe path (absolute or escaping the project root), or an include cycle:
+            // leave the directive visible rather than reading outside the project / looping.
+            let refused = match safe_join_in(base_dir, raw, self.root) {
+                None => Some("path escapes the project root (or is absolute)"),
+                Some(target) if self.stack.contains(&target) => Some("include cycle"),
+                Some(target) => match std::fs::read_to_string(&target) {
+                    Ok(content) => {
+                        // The directive line is replaced by the file it names.
+                        self.lines.pop();
+                        self.origins.pop();
+                        let label = label_for(&target, self.primary_base);
+                        let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
+                        self.stack.push(target);
+                        self.expand(&content, &child_base, Some(label));
+                        self.stack.pop();
+                        None
+                    }
+                    Err(_) => Some("file not found or unreadable"),
+                },
+            };
+            // Record a located warning for an include that couldn't be expanded, so the
+            // directive left in place surfaces as a click-to-source diagnostic in
+            // build/preview/`check` instead of leaking silently.
+            if let Some(reason) = refused {
+                self.warnings.push(IncludeWarning {
+                    message: format!("include not resolved ({reason}): {{{{< include {raw} >}}}}"),
+                    file: file_label.clone(),
+                    line: idx + 1,
+                });
             }
-            // unreadable include: leave the directive visible
-            Err(_) => drop_with_warning(raw, "file not found or unreadable"),
+        }
+        if file_label.is_some()
+            && let Some(open) = lines.fence_open_at_end(src.lines().count())
+        {
+            self.warnings.push(IncludeWarning {
+                message: "code fence never closed: this included file ends inside it, so what \
+                          follows the include renders as code"
+                    .to_string(),
+                file: file_label,
+                line: open + 1,
+            });
         }
     }
 }
@@ -271,9 +263,9 @@ fn collect_resource_paths(v: Option<&serde_yaml::Value>, base_dir: &Path, out: &
 }
 
 fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
-    let directives = Directives::of(src);
+    let lines = FileLines::of(src, false);
     for (idx, line) in src.lines().enumerate() {
-        let Some(raw) = directives.at(idx, line) else {
+        let Some(raw) = lines.directive(idx, line) else {
             continue;
         };
         let Some(target) = safe_join(base_dir, raw) else {
@@ -292,28 +284,42 @@ fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut 
     }
 }
 
-/// Which lines of ONE file are include directives: a line holding only
-/// `{{< include PATH >}}`, where markdown is read. One inside code (fenced or indented), raw
-/// HTML (a commented-out include stays commented out) or the front matter is text.
+/// ONE file's lines, as the include pass reads them. Each file is classified on its own,
+/// since this pass is what builds the buffer the rest of the render sees.
 ///
-/// Each file is classified on its own, since this pass is what builds the buffer the rest
-/// of the render sees. Skips the parse when the file names no shortcode at all, which is
-/// nearly every file.
-struct Directives(Option<crate::lines::Lines>);
+/// Skips the parse when there is nothing to ask: a file that names no shortcode and, if it
+/// is an included one, opens no code fence, which is nearly every file.
+struct FileLines(Option<crate::lines::Lines>);
 
-impl Directives {
-    fn of(src: &str) -> Directives {
-        Directives(src.contains("{{<").then(|| crate::lines::classify(src)))
+impl FileLines {
+    fn of(src: &str, included: bool) -> FileLines {
+        let needed =
+            src.contains("{{<") || (included && (src.contains("```") || src.contains("~~~")));
+        FileLines(needed.then(|| crate::lines::classify(src)))
     }
 
-    /// The include target on 0-based line `idx` (whose text is `line`), if it is a directive.
-    fn at<'a>(&self, idx: usize, line: &'a str) -> Option<&'a str> {
+    /// The include target on 0-based line `idx` (whose text is `line`), if it is a
+    /// directive: a line holding only `{{< include PATH >}}`, where markdown is read. One
+    /// inside code (fenced or indented), raw HTML (a commented-out include stays commented
+    /// out) or the front matter is text.
+    fn directive<'a>(&self, idx: usize, line: &'a str) -> Option<&'a str> {
         let lines = self.0.as_ref()?;
         lines
             .line(idx)
             .kind
             .is_markdown()
             .then(|| parse_include(line))?
+    }
+
+    /// The 0-based line of a code fence the end of a `line_count`-line file leaves open.
+    /// In an included file that fence runs on into whatever follows the include.
+    fn fence_open_at_end(&self, line_count: usize) -> Option<usize> {
+        let lines = self.0.as_ref()?;
+        lines
+            .fences
+            .iter()
+            .find(|f| !f.closed && f.end + 1 >= line_count)
+            .map(|f| f.open)
     }
 }
 
@@ -617,6 +623,46 @@ mod tests {
         assert_eq!(parse_include("{{< input x >}}"), None); // different shortcode
     }
 
+    /// A scratch directory for a test that needs partials on disk.
+    fn partials(tag: &str, files: &[(&str, &str)]) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tali-inc-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for (name, text) in files {
+            std::fs::write(d.join(name), text).unwrap();
+        }
+        d
+    }
+
+    /// Audit 2026-09-24, scanners #11: a partial that ends inside an open code fence runs
+    /// on into the including file, so everything after the include (a second partial, a
+    /// callout) was published inside its code block with no diagnostic. Said at the
+    /// partial's own opening fence. A closed fence, and the primary document's own
+    /// unclosed fence (which runs to its end and swallows nothing), are not reported.
+    #[test]
+    fn a_partial_that_ends_inside_a_code_fence_is_reported_at_its_fence() {
+        let d = partials(
+            "unclosed",
+            &[
+                ("_a.md", "Snippet:\n\n```python\nprint(1)\n"),
+                ("_b.md", "SECOND\n\n```\nclosed\n```\n"),
+            ],
+        );
+        let (_, _, warnings) = resolve_warned(
+            "Intro.\n\n{{< include _a.md >}}\n\n{{< include _b.md >}}\n\n```\nopen\n",
+            &d,
+        );
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(warnings[0].file.as_deref(), Some("_a.md"));
+        assert_eq!(warnings[0].line, 3);
+        assert!(
+            warnings[0].message.contains("never closed"),
+            "{}",
+            warnings[0].message
+        );
+    }
+
     #[test]
     fn normalize_resolves_dotdot() {
         assert_eq!(normalize(Path::new("a/b/../c")), PathBuf::from("a/c"));
@@ -640,7 +686,7 @@ mod tests {
             .expect("an unresolvable include produces a warning");
         assert_eq!(w.line, 2, "warning is located on the directive line");
         assert_eq!(w.file, None, "directive lives in the primary document");
-        assert!(w.target.contains("etc/passwd"));
+        assert!(w.message.contains("etc/passwd"), "{}", w.message);
     }
 
     #[test]

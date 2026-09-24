@@ -290,11 +290,7 @@ fn render_doc_with_includes_impl(
     doc.warnings.extend(include_warnings.into_iter().map(|iw| {
         // `iw.line` is always >= 1 (constructed as `idx + 1` in includes.rs), so the
         // warning is always located on the directive line.
-        Warning::new(format!(
-            "include not resolved ({}): {{{{< include {} >}}}}",
-            iw.reason, iw.target
-        ))
-        .at(iw.file, iw.line as u32)
+        Warning::new(iw.message).at(iw.file, iw.line as u32)
     }));
     doc.warnings.extend(shortcode_warnings);
     doc
