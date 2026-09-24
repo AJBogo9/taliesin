@@ -1,8 +1,10 @@
-//! Pure document-outline extraction for `.tmd`: the ATX-heading tree that powers the LSP
-//! `textDocument/documentSymbol` response (outline view, breadcrumbs, sticky scroll). A Rust
-//! port of the companion's `outline.ts`, so it is editor-agnostic. Skips headings inside
-//! fenced code blocks and the leading `---` front-matter block, and strips a trailing
-//! `{#id}`/`{.class}` attribute block + inline emphasis markers from the title.
+//! Pure document-outline extraction for `.tmd`: the heading tree that powers the LSP
+//! `textDocument/documentSymbol` response (outline view, breadcrumbs, sticky scroll). The
+//! headings are the ones core's line classifier finds (`render::rendered_lines`, the parse
+//! the page renders from), ATX and setext alike, at the top level: a heading in a block
+//! quote or list item is no section of the document, and a `#` line in code, a comment or
+//! the front matter is no heading at all. A title loses a trailing `{#id}`/`{.class}`
+//! attribute block and inline emphasis markers.
 
 /// One heading in the nested outline.
 #[derive(Debug, PartialEq, Eq)]
@@ -45,72 +47,34 @@ fn clean_title(raw: &str) -> String {
     }
 }
 
-/// A leading `\s*(```+|~~~+)` fence marker char, or None. Shared with `lsp_fold`, which
-/// must skip fenced code for the same reason this does: a `# comment` inside a `{python}`
-/// cell is not a heading.
-pub(crate) fn fence_marker(line: &str) -> Option<char> {
+/// A heading line's text: an ATX line minus its `#` run, a setext heading's first line as
+/// it stands. Only asked of a line the classifier says starts a heading.
+fn heading_text(line: &str) -> &str {
     let t = line.trim_start();
-    if t.starts_with("```") {
-        Some('`')
-    } else if t.starts_with("~~~") {
-        Some('~')
+    let rest = t.trim_start_matches('#');
+    let hashes = t.len() - rest.len();
+    if (1..=6).contains(&hashes) && (rest.is_empty() || rest.starts_with([' ', '\t'])) {
+        rest
     } else {
-        None
+        t
     }
 }
 
-/// `^(#{1,6})\s+(.*)$` → (level, title-slice). Shared with `lsp_fold`.
-pub(crate) fn atx_heading(line: &str) -> Option<(u8, &str)> {
-    let hashes = line.chars().take_while(|&c| c == '#').count();
-    if !(1..=6).contains(&hashes) {
-        return None;
-    }
-    let rest = &line[hashes..];
-    let title = rest.trim_start_matches([' ', '\t']);
-    if title.len() == rest.len() {
-        return None; // no whitespace after the `#`s
-    }
-    Some((hashes as u8, title))
-}
-
-/// The ATX headings in reading order, skipping fenced code and a leading `---` block.
+/// The top-level headings in reading order, as core's classifier finds them.
 fn headings(text: &str) -> Vec<Flat> {
-    let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
-    let mut out = Vec::new();
-    let mut in_fence = false;
-    let mut fence = ' ';
-    let mut start = 0;
-    if lines.first().map(|l| l.trim()) == Some("---") {
-        for (i, l) in lines.iter().enumerate().skip(1) {
-            let t = l.trim();
-            if t == "---" || t == "..." {
-                start = i + 1;
-                break;
-            }
-        }
-    }
-    for (i, line) in lines.iter().enumerate().skip(start) {
-        if let Some(marker) = fence_marker(line) {
-            if !in_fence {
-                in_fence = true;
-                fence = marker;
-            } else if fence == marker {
-                in_fence = false;
-            }
-            continue;
-        }
-        if in_fence {
-            continue;
-        }
-        if let Some((level, title)) = atx_heading(line) {
-            out.push(Flat {
-                title: clean_title(title),
+    let class = taliesin_core::render::rendered_lines(text);
+    crate::lsp_pos::lines(text)
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let c = class.line(i);
+            let level = c.heading.filter(|_| c.depth == 0)?;
+            Some(Flat {
+                title: clean_title(heading_text(line)),
                 level,
                 line: i,
-            });
-        }
-    }
-    out
+            })
+        })
+        .collect()
 }
 
 /// One heading with the inclusive line extent of its section, in reading order.

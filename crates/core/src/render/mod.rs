@@ -49,10 +49,13 @@ pub(crate) use fm_extract::bibliography_paths;
 pub(crate) use fm_extract::emits_title_block; // also used by site/xref.rs's numbering scan
 mod cell_extract;
 pub use cell_extract::option_directive;
+// `pub` for the editor's cell regions, which must call a fence a cell exactly when this
+// render does.
 use cell_extract::{
-    cell_flag_or, cell_option, code_fold, code_lang, hidden_cell, is_executable_fence,
-    parse_js_opts, slice_lines, strip_cell_options,
+    cell_flag_or, cell_option, code_fold, hidden_cell, parse_js_opts, slice_lines,
+    strip_cell_options,
 };
+pub use cell_extract::{code_lang, is_executable_fence};
 mod cell_numbered;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 pub use cell_numbered::{caption_label, markdown_fragment, numbered_caption};
@@ -67,9 +70,11 @@ mod divs;
 pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
-pub(crate) use divs::rendered_lines;
+// `pub` for the language server, whose outline, folds, cell regions and completion read
+// block structure from the same parse this render does.
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
 use divs::{DivFences, group_divs, preprocess, scan_div_spans};
+pub use divs::{div_lines, rendered_lines};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
@@ -181,7 +186,7 @@ pub fn executes_to_kernel(lang: &str) -> bool {
 /// (`{python}`, not the display-only `{.python}`) whose leading option block names one.
 /// The site's name-only anchor scan reads cell labels through this, so it cannot call a
 /// display sample a cross-reference target the page never anchors.
-pub(crate) fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
+pub fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
     if is_executable_fence(info) && code_lang(info).is_some() {
         cell_option(literal, "label")
     } else {
@@ -1666,6 +1671,25 @@ fn load_bibliography(
         Some(l) => w.at(None, l),
         None => w,
     };
+    let mut refused = Vec::new();
+    let files = page_bib_files(paths, base, root, &mut refused);
+    warnings.extend(refused.into_iter().map(locate));
+    let mut page_bib = crate::cite::Bibliography::default();
+    let bib_warnings = crate::cite::read_bib_files(&mut page_bib, &files, &mut strings);
+    warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
+    bib.overlay(page_bib);
+    bib
+}
+
+/// The files a page's own `bibliography:` `paths` name, resolved against `base` inside
+/// `root`, as `(path as written, file)`. A path that is not a `.bib`, or that resolution
+/// refuses, is left out with a warning in `warnings`.
+fn page_bib_files(
+    paths: &[String],
+    base: &Path,
+    root: Option<&Path>,
+    warnings: &mut Vec<Warning>,
+) -> Vec<(String, PathBuf)> {
     let mut files = Vec::new();
     for path in paths {
         let path = path.trim();
@@ -1673,9 +1697,9 @@ fn load_bibliography(
         // unsupported CSL-JSON/YAML) is skipped rather than mis-read — but warn, since it
         // would otherwise silently fail to resolve any of its citations.
         if !path.ends_with(".bib") {
-            warnings.push(locate(Warning::new(format!(
+            warnings.push(Warning::new(format!(
                 "bibliography `{path}` ignored: only BibTeX (`.bib`) is supported"
-            ))));
+            )));
             continue;
         }
         // An explicitly named `.bib` that can't be read is worth flagging: citations
@@ -1684,22 +1708,35 @@ fn load_bibliography(
         // whose file plainly exists is not sent hunting for a typo.
         match crate::includes::try_join_in(base, path, root) {
             Ok(p) => files.push((path.to_string(), p)),
-            Err(crate::includes::Refused::OutsideRoot) => warnings.push(locate(Warning::new(
-                format!("bibliography `{path}` is outside the project root and was not read"),
+            Err(crate::includes::Refused::OutsideRoot) => warnings.push(Warning::new(format!(
+                "bibliography `{path}` is outside the project root and was not read"
             ))),
             Err(crate::includes::Refused::SymlinkOutsideRepo) => {
-                warnings.push(locate(Warning::new(format!(
+                warnings.push(Warning::new(format!(
                     "bibliography `{path}` is a symlink whose target is outside the project \
                      repository and was not read"
-                ))))
+                )))
             }
         }
     }
-    let mut page_bib = crate::cite::Bibliography::default();
-    let bib_warnings = crate::cite::read_bib_files(&mut page_bib, &files, &mut strings);
-    warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
-    bib.overlay(page_bib);
-    bib
+    files
+}
+
+/// The `.bib` files [`render_single_doc`] reads for the document `src` in `base_dir`, in
+/// the order it reads them: the project's shared `bibliography:`, then the page's own, so a
+/// later file's entry wins a key two files define. For the editor, whose citation hover,
+/// go-to-definition and key completion must search the files the page cites from.
+pub fn bibliography_files(src: &str, base_dir: &Path) -> Vec<PathBuf> {
+    let root = crate::includes::single_doc_root(base_dir);
+    let src = crate::includes::normalize_line_endings(src);
+    let paths = DocFront::of(&src).bibliography();
+    let mut files = crate::site::shared_for_single_doc(&root);
+    files.extend(
+        page_bib_files(&paths, base_dir, Some(&root), &mut Vec::new())
+            .into_iter()
+            .map(|(_, file)| file),
+    );
+    files
 }
 
 /// A top-level block plus its line in the (post-include, post-blank) buffer,

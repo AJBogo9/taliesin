@@ -417,19 +417,15 @@ fn rewrite_text(
                 continue;
             }
             if cites == CiteMode::Resolve {
-                // Offer the key, then the key without its trailing punctuation: the
-                // sentence-final `@key.` is the commonest way to write a bare citation, and
-                // `.` is a key character.
+                // The sentence-final `@key.` is the commonest way to write a bare citation,
+                // and its period is not part of the key (`key_prefix`).
                 let run: String = chars[i + 1..]
                     .iter()
                     .take_while(|&&c| is_cite_key_char(c))
                     .collect();
-                let mut key = run.as_str();
-                while !key.is_empty() && !bare_key(key) {
-                    match key.char_indices().last() {
-                        Some((at, c)) if !c.is_alphanumeric() => key = &key[..at],
-                        _ => break,
-                    }
+                let key = super::key_prefix(&run);
+                if !key.is_empty() {
+                    bare_key(key);
                 }
             }
         }
@@ -440,6 +436,37 @@ fn rewrite_text(
 }
 
 use super::is_cite_key_char;
+
+/// The citation key under char column `col` of a source line, read by the render's own
+/// grammar ([`group_items`], and the same bracket scan as [`rewrite_text`]): the key and the
+/// char range of its `@key`, which a cursor just past the key still counts as inside. `None`
+/// off a key, and for a bracket that is not a citation group. For the editor's hover and
+/// go-to-definition, so a key they resolve is a key the page cites.
+pub fn citation_key_at(line: &str, col: usize) -> Option<(String, std::ops::Range<usize>)> {
+    let mut rest = line;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        // No `]` to the right: no later `[` can close either.
+        let close = after.find(']')?;
+        let inner = &after[..close];
+        let Some(items) = inner.contains('@').then(|| group_items(inner)).flatten() else {
+            // Not a group: the `[` is text, and the scan goes on inside it.
+            rest = after;
+            continue;
+        };
+        let base = line.len() - after.len();
+        for (key, _) in items {
+            let chars = |to: usize| line[..to].chars().count();
+            // The `@` is the one byte before the key.
+            let (start, end) = (chars(base + key.start - 1), chars(base + key.end));
+            if (start..=end).contains(&col) {
+                return Some((inner[key].to_string(), start..end));
+            }
+        }
+        rest = &after[close + 1..];
+    }
+    None
+}
 
 /// A cross-reference link to `anchor`, labelled by kind. A locally-resolved number
 /// renders "Figure&nbsp;3"; an anchor unknown to this document's registry emits a
@@ -531,35 +558,50 @@ fn render_citation_group(
     let inner = crate::render::unescape_html(inner);
     // Every item is read before any is numbered, so a bracket that turns out not to be a
     // group has registered nothing.
-    let mut items: Vec<(String, &str)> = Vec::new();
-    for item in inner.split(';').map(str::trim).filter(|i| !i.is_empty()) {
-        // `-@key` suppresses the author, which a numeric style never prints.
-        let after = item.trim_start_matches('-').strip_prefix('@')?;
-        let key: String = after.chars().take_while(|&c| is_cite_key_char(c)).collect();
-        if key.is_empty() {
-            return None;
-        }
-        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
-        items.push((key, locator));
-    }
-    if items.is_empty() {
-        return None;
-    }
+    let items = group_items(&inner)?;
     let mut rendered: Vec<String> = Vec::new();
     for (key, locator) in items {
+        let key = &inner[key];
         // A cross-reference key (`fig-`, `tbl-`, …) is a cross-ref, not a citation.
-        if let Some(link) = xref_link(&key, xrefs) {
+        if let Some(link) = xref_link(key, xrefs) {
             rendered.push(link);
             continue;
         }
-        let n = cite_key(&key);
-        let mut piece = format!("<a href=\"#ref-{}\">{}</a>", esc(&key), n);
+        let n = cite_key(key);
+        let mut piece = format!("<a href=\"#ref-{}\">{}</a>", esc(key), n);
         if !locator.is_empty() {
             piece.push_str(&format!(", {}", esc(locator)));
         }
         rendered.push(piece);
     }
     Some(format!("[{}]", rendered.join(", ")))
+}
+
+/// The items of a citation group's `inner` text (between its brackets), each as the byte
+/// range of its key in `inner` and its locator, or `None` unless EVERY item starts with `@`
+/// and a key, after an optional `-`: the bracket is then text. The one reading of the group
+/// grammar, shared by the render and [`citation_key_at`].
+fn group_items(inner: &str) -> Option<Vec<(std::ops::Range<usize>, &str)>> {
+    let mut items = Vec::new();
+    let mut from = 0;
+    for piece in inner.split(';') {
+        let at = from + (piece.len() - piece.trim_start().len());
+        from += piece.len() + 1;
+        let item = piece.trim();
+        if item.is_empty() {
+            continue;
+        }
+        // `-@key` suppresses the author, which a numeric style never prints.
+        let after = item.trim_start_matches('-').strip_prefix('@')?;
+        let key = super::key_prefix(after);
+        if key.is_empty() {
+            return None;
+        }
+        let start = at + (item.len() - after.len());
+        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
+        items.push((start..start + key.len(), locator));
+    }
+    (!items.is_empty()).then_some(items)
 }
 
 #[cfg(test)]

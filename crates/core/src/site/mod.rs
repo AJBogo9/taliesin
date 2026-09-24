@@ -334,6 +334,36 @@ impl Site {
     /// then throws away. The alternative is a second reader of `_site.yml` in the server
     /// crate, and one policy with two readers is what put that bug there to begin with.
     pub fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
+        let mut site = Self::registry(root, drafts, only);
+        site.xref_targets = scan_xref_targets(&site.pages, &site.book, &mut site.warnings);
+        // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
+        // equation / table / listing / theorem number is assigned only during render, so
+        // `scan_xref_targets` left it empty. Harvesting here (not only in `build`) means the
+        // live preview also renders "Theorem 2.1" / "Figure 2.3" for a cross-page ref instead
+        // of a bare label. A pure render pass with no kernel execution, run once per
+        // discover so build, preview, and `check` resolve numbers identically.
+        site.harvest_xref_numbers();
+        // LAST, and the ordering is load-bearing: the Cmd-K index resolves each page's
+        // cross-page refs against `xref_targets`, so it has to run after the harvest above
+        // has put the numbers there. Built before it, every cross-page `@fig-` was indexed
+        // as a bare "Figure" and the snippet contradicted the page it linked to.
+        site.rebuild_search_index();
+        site
+    }
+
+    /// The project at `root` as its page registry alone (published view, drafts excluded):
+    /// config, pages, book, shared bibliography and discovery warnings, with no
+    /// cross-reference scan, no render pass and no search index. For the language server,
+    /// whose buffer lint and `siteMap` read nothing else, and which rediscovers on every save
+    /// of any page: the full [`discover`](Self::discover) renders every page twice, measured
+    /// at 309 ms for a 500-page book (audit 2026-09-24, F2).
+    pub fn discover_registry(root: &Path) -> Site {
+        Self::registry(root, DraftMode::Exclude, None)
+    }
+
+    /// Everything [`discover_scoped`](Self::discover_scoped) builds before its
+    /// whole-project passes.
+    fn registry(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
         let mut warnings = Vec::new();
         let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
@@ -383,40 +413,25 @@ impl Site {
         // one should be reported once rather than on every page.
         let bibliography = bibliography::resolve_shared(root, &config.bibliography, &mut warnings);
 
-        let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
-
         let standalone = only.is_some() && !root.join("_site.yml").is_file();
 
-        let mut site = Site {
+        Site {
             root: root.to_path_buf(),
             config,
             pages,
             book,
-            xref_targets,
+            xref_targets: HashMap::new(),
             bibliography,
             warnings,
             config_warning_count,
-            // Both are built below, once the registry's numbers exist: the search index
-            // READS `xref_targets`, so building it here (as it used to) indexed every
+            // `discover_scoped` builds these once the registry's numbers exist: the search
+            // index READS `xref_targets`, so building it here (as it used to) indexed every
             // cross-page `@fig-` before a single number had been harvested.
             search_index_json: String::new(),
             search_sections: Vec::new(),
             excluded_drafts,
             standalone,
-        };
-        // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
-        // equation / table / listing / theorem number is assigned only during render, so
-        // `scan_xref_targets` left it empty. Harvesting here (not only in `build`) means the
-        // live preview also renders "Theorem 2.1" / "Figure 2.3" for a cross-page ref instead
-        // of a bare label. A pure render pass with no kernel execution, run once per
-        // discover so build, preview, and `check` resolve numbers identically.
-        site.harvest_xref_numbers();
-        // LAST, and the ordering is load-bearing: the Cmd-K index resolves each page's
-        // cross-page refs against `xref_targets`, so it has to run after the harvest above
-        // has put the numbers there. Built before it, every cross-page `@fig-` was indexed
-        // as a bare "Figure" and the snippet contradicted the page it linked to.
-        site.rebuild_search_index();
-        site
+        }
     }
 
     /// Rebuild the whole Cmd-K index from the pages' current sources, against the CURRENT

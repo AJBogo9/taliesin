@@ -1524,3 +1524,91 @@ fn a_page_without_a_bibliography_draws_no_bare_key_error() {
         doc.warnings
     );
 }
+
+/// A key ends at its last letter, digit or `_`: punctuation belongs to a key only inside it,
+/// Pandoc's rule (audit 2026-09-24, bibtex #11). `[@knuth:1984: a note]` read the colon
+/// after the year as part of the key and published a broken citation; the sentence period
+/// of `[@smith.2020.]` did the same. A bib key that ENDS in punctuation can therefore never
+/// be cited, so it is reported and skipped like any other key the syntax cannot name.
+#[test]
+fn a_key_ends_at_its_last_letter_digit_or_underscore() {
+    let b = parse_bib("@misc{knuth:1984, title={K}}\n@misc{smith.2020, title={S}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@knuth:1984: a note]. B [@smith.2020.]. C [@knuth:1984, ch. 2].</p>",
+    )];
+    let w = process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    assert!(
+        html.contains("[<a href=\"#ref-knuth:1984\">1</a>"),
+        "{html}"
+    );
+    assert!(
+        html.contains("[<a href=\"#ref-smith.2020\">2</a>"),
+        "{html}"
+    );
+    assert!(broken(&w).is_empty(), "{w:?}");
+
+    let (b, w) = parse_bib_warned("@misc{end.dot., title={T}}\n@misc{snake_, title={U}}\n");
+    assert!(b.format("end.dot.").is_none() && b.format("end.dot").is_none());
+    assert!(
+        w.iter()
+            .any(|m| m.contains("end.dot.") && m.contains("cannot be cited")),
+        "{w:?}"
+    );
+    assert!(
+        b.format("snake_").is_some(),
+        "a trailing `_` is part of a key"
+    );
+}
+
+/// The key under a cursor, read by the render's own group grammar (audit 2026-09-24,
+/// bibtex #11): every key of a group, a locator after the key, `-@` and every character a
+/// key may hold. The editor's hover and go-to-definition used a scanner of their own that
+/// resolved 2 of 11 real citation shapes.
+#[test]
+fn the_key_at_a_column_is_read_by_the_group_grammar() {
+    let line = "A [@k1, p. 3] B [@a; @b] C [-@k2] D [@DBLP:j/abs-17] E [@müller2020] \
+                F [see @x] G [@knuth:1984: a note] H [@k3";
+    let at = |needle: &str, off: usize| {
+        let byte = line.find(needle).unwrap_or_else(|| panic!("{needle}"));
+        let col = line[..byte].chars().count() + off;
+        citation_key_at(line, col).map(|(key, span)| {
+            let shown: String = line.chars().skip(span.start).take(span.len()).collect();
+            (key, shown)
+        })
+    };
+    let hit = |k: &str| Some((k.to_string(), format!("@{k}")));
+    assert_eq!(at("@k1", 0), hit("k1"), "the `@` itself");
+    assert_eq!(at("@k1", 3), hit("k1"), "just past the key");
+    assert_eq!(at("@k1", 5), None, "on the locator");
+    assert_eq!(at("@a;", 1), hit("a"));
+    assert_eq!(at("@b]", 1), hit("b"), "a later key of the group");
+    assert_eq!(at("@k2", 2), hit("k2"), "an author-suppressed key");
+    assert_eq!(at("@DBLP", 9), hit("DBLP:j/abs-17"));
+    assert_eq!(at("@müller", 3), hit("müller2020"), "a non-ASCII key");
+    assert_eq!(at("@x]", 1), None, "a bracket that is not a group");
+    assert_eq!(at("@knuth", 2), hit("knuth:1984"));
+    assert_eq!(at("@k3", 1), None, "no closing bracket");
+}
+
+/// Where each entry a bibliography stores sits in its file, for the editor's hover and
+/// go-to-definition (audit 2026-09-24, bibtex #11): paren-delimited entries too, and only
+/// keys the bibliography keeps.
+#[test]
+fn entry_spans_are_the_entries_the_bibliography_stores() {
+    let text = "% c\n@misc{a, title={T {nested}}}\n@book(p1, title = \"P\")\n\
+                @misc{smith&jones2020, title={X}}\n@misc{müller2020, title={M}}\n";
+    let spans = entry_spans(text);
+    let got: Vec<(&str, &str)> = spans
+        .iter()
+        .map(|(k, r)| (k.as_str(), &text[r.clone()]))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("a", "@misc{a, title={T {nested}}}"),
+            ("p1", "@book(p1, title = \"P\")"),
+            ("müller2020", "@misc{müller2020, title={M}}"),
+        ]
+    );
+}

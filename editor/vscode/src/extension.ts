@@ -10,6 +10,7 @@ import {
   previewTarget,
   projectRootFor,
   pageUrlFor,
+  SitePage,
 } from "./paths";
 import { readSiteMap } from "./map";
 import { registerLanguageClient } from "./client";
@@ -65,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
       // preserveFocus: revealing must not steal the cursor from the editor the author is
       // typing in — the whole point is to look at the preview without leaving the text.
       target.panel.reveal(vscode.ViewColumn.Beside, true);
-      postCursor(target, editor.document.fileName, editor.selection.active.line + 1, true);
+      void postCursor(target, editor.document.fileName, editor.selection.active.line + 1, true);
     })
   );
   registerLanguageClient(context);
@@ -86,15 +87,37 @@ export function activate(context: vscode.ExtensionContext) {
  * message because a webview panel and its iframe are different origins; the cursor rides
  * along in `pendingCursor` and is sent once the new page reports itself.
  */
-function postCursor(p: LivePreview, editorPath: string, line: number, reveal: boolean): void {
+async function postCursor(
+  p: LivePreview,
+  editorPath: string,
+  line: number,
+  reveal: boolean
+): Promise<void> {
+  const pages = await pagesOf(p);
+  if (!isOpen(p)) return;
   const pageDoc = p.currentPage?.docPath ?? p.docPath;
-  const target = cursorTarget(pageDoc, p.pages, p.root, editorPath);
+  const target = cursorTarget(pageDoc, pages, p.root, editorPath);
   if (target.navigateTo) {
     p.pendingCursor = { editorPath, line, reveal };
     p.panel.webview.postMessage({ type: "tali-navigate", url: target.navigateTo });
     return;
   }
   p.panel.webview.postMessage({ type: "tali-cursor", file: target.file, line, reveal });
+}
+
+/**
+ * The pages a project preview serves, asked of the language server now rather than
+ * remembered from when the preview opened: a chapter added since then is a page the preview
+ * serves too, and the server's registry already notices it (audit 2026-09-24). `null` for a
+ * single-file preview, or when the map is unanswerable.
+ */
+async function pagesOf(p: LivePreview): Promise<SitePage[] | null> {
+  return p.root ? readSiteMap(p.root) : null;
+}
+
+/** Whether `p`'s panel is still open: the server's answer can arrive after it closed. */
+function isOpen(p: LivePreview): boolean {
+  return previews.get(previewKey(p.docPath, p.root)) === p;
 }
 
 async function openPreview(context: vscode.ExtensionContext, resource?: vscode.Uri) {
@@ -120,11 +143,9 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
   const existing = previews.get(key) ?? previews.get(docPath);
   if (existing) {
     existing.panel.reveal(vscode.ViewColumn.Beside);
-    const url =
-      existing.root && existing.pages
-        ? pageUrlFor(existing.pages, existing.root, docPath)
-        : null;
-    if (url) existing.panel.webview.postMessage({ type: "tali-navigate", url });
+    const pages = await pagesOf(existing);
+    const url = existing.root && pages ? pageUrlFor(pages, existing.root, docPath) : null;
+    if (url && isOpen(existing)) existing.panel.webview.postMessage({ type: "tali-navigate", url });
     return;
   }
   if (!previews.beginStart(key)) return; // a start is already in flight
@@ -184,7 +205,6 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     server,
     docPath,
     root: site ? site.root : null,
-    pages: site ? site.pages : null,
   };
   previews.set(entry);
   previews.endStart(key);
@@ -201,11 +221,12 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
         const waiting = entry.pendingCursor;
         entry.pendingCursor = null;
         if (waiting) {
-          const t = cursorTarget(m.doc_path, entry.pages, entry.root, waiting.editorPath);
+          const pages = await pagesOf(entry);
+          const t = cursorTarget(m.doc_path, pages, entry.root, waiting.editorPath);
           // Only ever settle here. If the cursor has moved on to a third page meanwhile, the
           // selection listener will ask again — re-navigating from inside a page report is
           // how this turns into a loop.
-          if (!t.navigateTo) {
+          if (!t.navigateTo && isOpen(entry)) {
             panel.webview.postMessage({
               type: "tali-cursor",
               file: t.file,
@@ -250,7 +271,7 @@ async function openPreview(context: vscode.ExtensionContext, resource?: vscode.U
     if (!isSourceFile(f)) return;
     const line = e.selections[0].active.line + 1;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => postCursor(entry, f, line, false), 80);
+    timer = setTimeout(() => void postCursor(entry, f, line, false), 80);
   });
 
   panel.onDidDispose(

@@ -1,11 +1,11 @@
 //! What the enclosing `_site.yml` project contains, for the editor surfaces that reach past
-//! the open buffer: cross-file go-to-definition, workspace symbols, and the sidebar's outline
-//! and references views.
+//! the open buffer: cross-file go-to-definition and hover, the buffer lint's page registry,
+//! and `siteMap`.
 //!
-//! **Why a walk behind a memo, and not an index.** Every consumer fires on a *user gesture*
-//! (F12, Ctrl+T, opening a view, the Explorer asking for a decoration), never per keystroke,
-//! so none of them needs a live index. An index would put file watching, invalidation and
-//! background state into a component whose statelessness is why it is reliable. Instead the
+//! **Why a walk behind a memo, and not an index.** Every consumer of the anchor walk fires on
+//! a *user gesture* (F12, a hover), never per keystroke, so none of them needs a live index.
+//! An index would put file watching, invalidation and background state into a component
+//! whose statelessness is why it is reliable. Instead the
 //! walk is cached and validated by `stat`ing every page and comparing `(mtime, len)`: a stat
 //! is orders of magnitude cheaper than the read-plus-parse it guards, and the failure mode is
 //! "re-walked when it need not have", never "served stale data".
@@ -14,7 +14,7 @@
 //! `site::anchors_defined_elsewhere_in_project` behind the existing coalescing window.
 //! It does use [`SiteCache`] below, which is the same stat-validated shape holding a
 //! different thing (the page registry) for a caller with the opposite cost profile — see
-//! the note there for the measurement that forced it.
+//! the note there for what it holds and why.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,8 +27,6 @@ pub(crate) struct ProjectAnchor {
     pub path: PathBuf,
     /// 0-based line of the defining site, in `path`'s own numbering (see [`origin_of`]).
     pub line: u32,
-    /// The rendered section number for a numbered chapter heading; empty otherwise.
-    pub number: String,
 }
 
 /// One walk's result.
@@ -87,26 +85,21 @@ impl ProjectCache {
     }
 }
 
-/// The enclosing project as a [`taliesin_core::Site`], memoized the same way and for the
-/// opposite reason to [`ProjectCache`].
+/// The enclosing project's page registry ([`taliesin_core::Site::discover_registry`]),
+/// memoized the same way and for the opposite reason to [`ProjectCache`].
 ///
 /// This one **does** sit on the per-keystroke diagnostic path, which is exactly why it has to
-/// exist. Making the editor's buffer lint site-aware needs the page registry — only it knows
-/// that `b.html` is a real page and which ids that page defines — and discovering it costs a
-/// full walk: measured at **188 ms on `docs/guide`**, against 14 ms for the entire rest of the
-/// lint. Discovering per publish would have made the fix for the missing diagnostic worse than
-/// the missing diagnostic.
+/// exist. Making the editor's buffer lint site-aware needs the page registry: only it knows
+/// that `b.html` is a real page and whether the buffer is one, and it is what `siteMap`
+/// answers from. The registry is all it holds. A full `Site::discover` also builds the
+/// cross-reference numbers and the search index by rendering every page twice, and nothing
+/// here reads either; a save of any page misses this memo, so every save paid both passes,
+/// 309 ms at 500 pages with the server answering nothing meanwhile (audit 2026-09-24, F2).
 ///
 /// Validated by the same `(mtime, len)` stamps, so an edit to any page in the project (or to
 /// `_site.yml`) rebuilds it and nothing serves a stale registry. The buffer being edited is
 /// *not* read from disk — `validate_cross_page_links_for_src` takes the live text — so the
 /// author's own unsaved typing never invalidates this.
-///
-/// **What it costs, measured over real stdio on `docs/guide` (release):** the first publish
-/// for a project goes from 14 ms to 205 ms, and every publish after it is unchanged — typing
-/// measured at ~134 ms against a ~130 ms baseline, of which 120 ms is the coalescing window
-/// that already gated it. So the walk is paid once when a project's first buffer opens, which
-/// is the one moment nobody is waiting on a keystroke.
 pub(crate) struct SiteCache {
     entries: HashMap<PathBuf, (taliesin_core::Site, Vec<Stamp>)>,
     builds: usize,
@@ -130,8 +123,9 @@ impl SiteCache {
     /// The project enclosing `page`, or `None` when no `_site.yml` sits above it.
     ///
     /// Whether `page` is a *page* of that project is settled by the caller
-    /// (`lint::collect_file_diagnostics_in_site`), so that one place decides it: a deck and
-    /// a `draft: true` chapter are both inside a project and are both linted standalone.
+    /// (`lint::collect_file_diagnostics_in_site`), so that one place decides it: an include
+    /// partial and a `draft: true` chapter are both inside a project and are both linted
+    /// standalone.
     ///
     /// `DraftMode::Exclude` matches `build --check-only`, the parity this whole path claims.
     pub(crate) fn get(&mut self, page: &Path) -> Option<&taliesin_core::Site> {
@@ -142,8 +136,10 @@ impl SiteCache {
             .get(&root)
             .is_some_and(|(_, seen)| *seen == stamps);
         if !fresh {
-            self.entries
-                .insert(root.clone(), (taliesin_core::Site::discover(&root), stamps));
+            self.entries.insert(
+                root.clone(),
+                (taliesin_core::Site::discover_registry(&root), stamps),
+            );
             self.builds += 1;
         }
         self.entries.get(&root).map(|(site, _)| site)
@@ -156,16 +152,16 @@ impl SiteCache {
 /// The companion's only structural question about a project — *where is this document
 /// served?* — asked so the preview webview opens at the chapter the author is editing rather
 /// than at the book's cover. It must be answered here and not in TypeScript: `.tmd`→`.html`,
-/// book chapter numbering, `index` handling and the draft/embedded-deck exclusions all live
-/// in Rust, and a second implementation over there is exactly what the LSP rewrite existed to
-/// delete. This was `taliesin map --format json`, spawned once per preview, until Wave 2 cut
-/// the verb; the same walk now answers in-process off [`SiteCache`].
+/// book chapter numbering, `index` handling and the draft exclusion all live in Rust, and a
+/// second implementation over there is exactly what the LSP rewrite existed to delete. This
+/// was `taliesin map --format json`, spawned once per preview, until Wave 2 cut the verb; the
+/// same registry now answers in-process off [`SiteCache`].
 ///
 /// `None` when `root` encloses no project, or a project with no pages — both of which the
 /// client reads as "fall back to the single-file preview".
 pub(crate) fn site_map(sites: &mut SiteCache, root: &Path) -> Option<serde_json::Value> {
     // `_site.yml` rather than `root` itself: `SiteCache::get` is keyed on a *page* and walks
-    // up from its parent, the same idiom `workspace/symbol` uses at its call site.
+    // up from its parent.
     let site = sites.get(&root.join("_site.yml"))?;
     if site.pages.is_empty() {
         return None;
@@ -212,24 +208,23 @@ fn walk(root: &Path) -> ProjectScan {
             continue;
         };
         let base = input.parent().unwrap_or_else(|| Path::new("."));
-        // The source map is kept, not discarded: `scan_page_anchors` counts lines in the
+        // The source map is kept, not discarded: `anchor_sites` counts lines in the
         // EXPANDED buffer, which is the page's own numbering only until the first
         // `{{< include >}}` shifts everything below it.
         let (src, origins) = taliesin_core::includes::resolve(&raw, base);
 
-        for a in taliesin_core::site::scan_page_anchors(&src, None) {
+        for (id, buffer_line, _) in crate::lsp_nav::anchor_sites(&src) {
             // First definition wins project-wide, matching `scan_xref_targets`. Two owners of
             // "which page defines `fig-x`" that disagreed would send F12 somewhere the built
             // page does not link to.
-            if seen.insert(a.id.clone(), ()).is_none() {
-                let (path, line) = origin_of(&input, base, &origins, a.line);
+            if seen.insert(id.clone(), ()).is_none() {
+                let (path, line) = origin_of(&input, base, &origins, buffer_line as usize + 1);
                 anchors.push(ProjectAnchor {
-                    id: a.id,
+                    id,
                     path,
                     // The source map reports a 1-based line; everything on the LSP wire
                     // is 0-based.
                     line: line.saturating_sub(1) as u32,
-                    number: a.number,
                 });
             }
         }
@@ -438,9 +433,10 @@ mod tests {
     /// The same property over a real project instead of a fixture: every anchor the walk
     /// records must actually be written at the file and line it names.
     ///
-    /// `corpus/single-page-report` is the shape that motivated this — seven
-    /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial — so a
-    /// regression through any other route than the one above still fails here.
+    /// `corpus/single-page-report` is the shape that motivated this: seven
+    /// `{{< include >}}`s, with three `{#fig-}` anchors inside the third partial, and cells
+    /// labelled `#| label: fig-…` inside partials too. So a regression through any other
+    /// route than the one above still fails here.
     #[test]
     fn every_recorded_anchor_is_written_where_the_walk_says_it_is() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -453,8 +449,11 @@ mod tests {
         for a in &scan.anchors {
             let body = std::fs::read_to_string(&a.path).unwrap_or_default();
             let line = body.lines().nth(a.line as usize).unwrap_or("");
+            let label = taliesin_core::render::option_directive(line)
+                .and_then(|o| o.split_once(':'))
+                .is_some_and(|(k, v)| k.trim() == "label" && v.trim() == a.id);
             assert!(
-                line.contains(&format!("{{#{}", a.id)),
+                line.contains(&format!("{{#{}", a.id)) || label,
                 "`{}` is recorded at {}:{} , which reads {line:?}",
                 a.id,
                 a.path.display(),
@@ -463,6 +462,48 @@ mod tests {
             checked += 1;
         }
         assert!(checked > 0, "no anchor in the report to check");
+    }
+
+    /// The walk takes what defines an anchor on the built page (audit 2026-09-24, scanners
+    /// #6c): a cell's `#| label:` too, which the diagnostics already resolved across pages
+    /// while F12 found nothing, and never an anchor shown in a sample, commented out or in
+    /// indented code.
+    #[test]
+    fn the_walk_takes_cell_labels_and_skips_what_the_page_does_not_define() {
+        let root = scratch("defines");
+        std::fs::write(root.join("_site.yml"), "title: t\n").unwrap();
+        std::fs::write(
+            root.join("two.tmd"),
+            [
+                "# Two {#sec-two}",
+                "",
+                "<!-- ## Old {#sec-old} -->",
+                "",
+                "    ## Indented {#sec-indented}",
+                "",
+                "```markdown",
+                "#| label: fig-shown",
+                "```",
+                "",
+                "```{python}",
+                "#| label: fig-cell",
+                "x = 1",
+                "```",
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        std::fs::write(root.join("one.tmd"), "See @fig-cell.\n").unwrap();
+        let mut cache = ProjectCache::new();
+        let scan = cache.get(&root.join("one.tmd")).unwrap();
+        let mut got: Vec<(&str, u32)> = scan
+            .anchors
+            .iter()
+            .map(|a| (a.id.as_str(), a.line))
+            .collect();
+        got.sort_unstable();
+        assert_eq!(got, [("fig-cell", 11), ("sec-two", 0)]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -568,6 +609,39 @@ mod tests {
             cache.builds(),
             2,
             "a page added to the project must invalidate the site memo"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The page registry is all the LSP reads from its project (audit 2026-09-24, F2):
+    /// `page_for_input`, the cross-page link check and `siteMap` read pages, config and
+    /// drafts, never the cross-reference numbers or the search index. Discovering those
+    /// renders every page twice, and a save of any page misses this memo, so every save paid
+    /// two whole-project render passes (309 ms at 500 pages, the LSP answering nothing
+    /// meanwhile). The cache holds the registry the full discovery would, and nothing else.
+    #[test]
+    fn the_site_cache_holds_the_registry_without_rendering_a_page() {
+        let root = fixture("registry");
+        std::fs::write(root.join("draft.tmd"), "---\ndraft: true\n---\n# D\n").unwrap();
+        let mut cache = SiteCache::new();
+        let site = cache
+            .get(&root.join("index.tmd"))
+            .expect("the fixture is a project");
+        let full = taliesin_core::Site::discover(&root);
+        let rels = |s: &taliesin_core::Site| -> Vec<(String, String)> {
+            s.pages
+                .iter()
+                .map(|p| (p.rel.clone(), p.url.clone()))
+                .collect()
+        };
+        assert_eq!(rels(site), rels(&full));
+        assert_eq!(site.excluded_drafts, full.excluded_drafts);
+        assert_eq!(site.warnings, full.warnings);
+        assert!(
+            site.search_index_json.is_empty() && site.xref_targets.is_empty(),
+            "no render pass: search index {:?}, xref targets {:?}",
+            site.search_index_json,
+            site.xref_targets.keys().collect::<Vec<_>>()
         );
         let _ = std::fs::remove_dir_all(&root);
     }

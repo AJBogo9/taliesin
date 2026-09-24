@@ -208,25 +208,95 @@ const CELL_OPTION_VALUES: &[(&str, &[(&str, &str)])] = &[
     ),
 ];
 
+/// What the cursor's line is, as the render reads it: the one question that decides which
+/// vocabularies can apply at all, asked of core's line classifier before anything else.
+enum Region {
+    /// Markdown: every prose context.
+    Prose,
+    /// The front matter, as core's one splitter delimits it (fences included).
+    FrontMatter,
+    /// The opening fence of a code block: its language.
+    FenceOpen,
+    /// The leading option block of a code cell the render runs: `#|` options.
+    CellOptions,
+    /// Any other code, raw HTML, or a cell line below its options: nothing to complete.
+    Code,
+}
+
+/// Where the cursor at the end of `doc_prefix` is (see [`Region`]). `class` is the
+/// classification of the WHOLE buffer, whose lines `doc_prefix` begins.
+fn region(doc_prefix: &str, class: &taliesin_core::lines::Lines) -> Region {
+    use taliesin_core::lines::Kind;
+    let above: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
+    let at = above.len().saturating_sub(1);
+    match class.line(at).kind {
+        Kind::Markdown => Region::Prose,
+        Kind::FrontMatter => Region::FrontMatter,
+        Kind::FenceOpen => Region::FenceOpen,
+        Kind::FenceBody => {
+            // A cell the render runs (top level, `{lang}`), with only option lines between
+            // its fence and the cursor: `render::cell_option` reads no further.
+            let cell = class.fences.iter().find(|f| f.open < at && at <= f.end);
+            let options = cell.is_some_and(|f| {
+                class.line(f.open).depth == 0
+                    && taliesin_core::render::is_executable_fence(&f.info)
+                    && taliesin_core::render::code_lang(&f.info).is_some()
+                    && above[f.open + 1..at]
+                        .iter()
+                        .all(|l| taliesin_core::render::option_directive(l).is_some())
+            });
+            if options {
+                Region::CellOptions
+            } else {
+                Region::Code
+            }
+        }
+        _ => Region::Code,
+    }
+}
+
 /// Classify the completion context at the cursor. `line_prefix` is the current line up to the
-/// cursor; `doc_prefix` is the whole document up to the cursor.
+/// cursor; `doc_prefix` is the whole document up to the cursor; `class` is core's
+/// classification of the whole buffer (`render::rendered_lines`).
 ///
-/// **Order is load-bearing**, because these patterns overlap: a shortcode path wins over
-/// `@`/`:::` (a path can contain either), a link target `](` wins over a citation `[@`, and a
-/// citation `[@` wins over a cross-reference `@`.
-pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionContext {
+/// **What the cursor's line IS decides first**: prose, front matter, a fence line, a cell's
+/// option block or other code. So an `@` typed in a `{python}` cell is Python, not a
+/// cross-reference, and a `#|` line is an option only where the render reads one.
+///
+/// **Within prose, order is load-bearing**, because these patterns overlap: a shortcode path
+/// wins over `@`/`:::` (a path can contain either), a link target `](` wins over a citation
+/// `[@`, and a citation `[@` wins over a cross-reference `@`.
+pub(crate) fn detect_context(
+    line_prefix: &str,
+    doc_prefix: &str,
+    class: &taliesin_core::lines::Lines,
+) -> CompletionContext {
+    match region(doc_prefix, class) {
+        Region::Prose => prose_context(line_prefix, doc_prefix, class),
+        Region::FrontMatter => frontmatter_context(line_prefix, doc_prefix),
+        // A cell's language: ` ```{py `.
+        Region::FenceOpen => detect_cell_language(line_prefix)
+            .map_or(CompletionContext::None, |typed| {
+                CompletionContext::CellLanguage { typed }
+            }),
+        Region::CellOptions => cell_option_context(line_prefix),
+        Region::Code => CompletionContext::None,
+    }
+}
+
+/// The contexts of a markdown line.
+fn prose_context(
+    line_prefix: &str,
+    doc_prefix: &str,
+    class: &taliesin_core::lines::Lines,
+) -> CompletionContext {
     // Math first: `\` opens no other context, and the guard is `in_math`, not the backslash,
     // so prose is unaffected. Taliesin renders math with KaTeX in-process, which is what
     // makes this list authoritative rather than a guess (see `math_vocab.rs`).
     if let Some(typed) = detect_math_command(line_prefix)
-        && in_math(doc_prefix)
+        && in_math(doc_prefix, class)
     {
         return CompletionContext::MathCommand { typed };
-    }
-    // A cell's language: ` ```{py `. Before everything else because a fence line cannot be
-    // any other context, and `{` would otherwise fall through to the div-class scan.
-    if let Some(typed) = detect_cell_language(line_prefix) {
-        return CompletionContext::CellLanguage { typed };
     }
     if let Some(typed) = detect_input_type(line_prefix) {
         return CompletionContext::InputType { typed };
@@ -279,43 +349,49 @@ pub(crate) fn detect_context(line_prefix: &str, doc_prefix: &str) -> CompletionC
     if let Some(typed) = detect_anchor_id(line_prefix) {
         return CompletionContext::AnchorId { typed };
     }
-    if in_code_cell(doc_prefix) {
-        if is_cell_option_line(line_prefix) {
-            return CompletionContext::CellOption;
+    CompletionContext::None
+}
+
+/// The contexts of a line in a cell's leading option block.
+fn cell_option_context(line_prefix: &str) -> CompletionContext {
+    if is_cell_option_line(line_prefix) {
+        return CompletionContext::CellOption;
+    }
+    if let Some((key, typed)) = cell_option_value(line_prefix) {
+        // `label:` is where a cell's cross-reference id is INVENTED, and getting its
+        // prefix right is what decides whether the cell becomes a numbered figure at
+        // all — so it gets the same prefix vocabulary as `{#`, not a value list.
+        if key == "label" {
+            return CompletionContext::AnchorId { typed };
         }
-        if let Some((key, typed)) = cell_option_value(line_prefix) {
-            // `label:` is where a cell's cross-reference id is INVENTED, and getting its
-            // prefix right is what decides whether the cell becomes a numbered figure at
-            // all — so it gets the same prefix vocabulary as `{#`, not a value list.
-            if key == "label" {
-                return CompletionContext::AnchorId { typed };
-            }
-            if CELL_OPTION_VALUES.iter().any(|(k, _)| *k == key) {
-                return CompletionContext::CellOptionValue { key, typed };
-            }
+        if CELL_OPTION_VALUES.iter().any(|(k, _)| *k == key) {
+            return CompletionContext::CellOptionValue { key, typed };
         }
     }
-    if in_frontmatter(doc_prefix) {
-        if let Some((key, typed)) = frontmatter_value(line_prefix) {
-            // A path-valued key offers files, not a word list. `frontmatterValues` only
-            // ever had `format` and `theme`, so every other key — including the six that
-            // name a file — was detected as a value position and then answered nothing.
-            if let Some((_, kind)) = PATH_KEYS.iter().find(|(k, _)| *k == key) {
-                return CompletionContext::Path { typed, kind: *kind };
-            }
-            return CompletionContext::FrontmatterValue { key, typed };
+    CompletionContext::None
+}
+
+/// The contexts of a front-matter line.
+fn frontmatter_context(line_prefix: &str, doc_prefix: &str) -> CompletionContext {
+    if let Some((key, typed)) = frontmatter_value(line_prefix) {
+        // A path-valued key offers files, not a word list. `frontmatterValues` only
+        // ever had `format` and `theme`, so every other key — including the six that
+        // name a file — was detected as a value position and then answered nothing.
+        if let Some((_, kind)) = PATH_KEYS.iter().find(|(k, _)| *k == key) {
+            return CompletionContext::Path { typed, kind: *kind };
         }
-        // A YAML list item under a path-valued key (`bibliography:` then `  - refs.bib`).
-        if let Some(typed) = yaml_list_item(line_prefix)
-            && let Some(kind) = enclosing_path_key(doc_prefix)
-        {
-            return CompletionContext::Path { typed, kind };
-        }
-        if is_frontmatter_key_line(line_prefix) {
-            return CompletionContext::FrontmatterKey {
-                parent: nested_parent(doc_prefix),
-            };
-        }
+        return CompletionContext::FrontmatterValue { key, typed };
+    }
+    // A YAML list item under a path-valued key (`bibliography:` then `  - refs.bib`).
+    if let Some(typed) = yaml_list_item(line_prefix)
+        && let Some(kind) = enclosing_path_key(doc_prefix)
+    {
+        return CompletionContext::Path { typed, kind };
+    }
+    if is_frontmatter_key_line(line_prefix) {
+        return CompletionContext::FrontmatterKey {
+            parent: nested_parent(doc_prefix),
+        };
     }
     CompletionContext::None
 }
@@ -383,7 +459,8 @@ fn detect_math_command(line_prefix: &str) -> Option<String> {
 
 /// Is the cursor (the end of `doc_prefix`) inside a math span?
 ///
-/// Scans for `$` delimiters, honoring `\` escapes, skipping fenced code blocks, and resetting
+/// Scans for `$` delimiters, honoring `\` escapes, skipping every line that is not markdown
+/// (code, raw HTML, front matter, by core's classifier `class`), and resetting
 /// inline state at every newline (an inline `$…$` cannot span lines — `render::math_close`
 /// gives up at `\n`). `$$` toggles display state, a single `$` toggles inline.
 ///
@@ -392,11 +469,11 @@ fn detect_math_command(line_prefix: &str) -> Option<String> {
 /// cannot be reused. It carries the renderer's "an opening `$` is not followed by whitespace"
 /// guard, which is what keeps `$ 5 ` from opening math; a bare `$5` price still does, and
 /// costs at most an offered `\alpha` after a backslash later on that same line.
-fn in_math(doc_prefix: &str) -> bool {
+fn in_math(doc_prefix: &str, class: &taliesin_core::lines::Lines) -> bool {
     // The cursor sits at the end of `doc_prefix`, so "inside math" is exactly "a span is
     // still open at end-of-input". `scan_math` drops a span abandoned at a line break, so an
     // unclosed span here always means the author is typing inside one.
-    crate::lsp_nav::scan_math(doc_prefix)
+    crate::lsp_nav::scan_math(doc_prefix, class)
         .iter()
         .any(|s| !s.closed)
 }
@@ -736,35 +813,6 @@ fn is_cell_option_line(line_prefix: &str) -> bool {
     }
 }
 
-/// An odd number of ``` fences before the current line ⇒ the cursor is inside a code cell.
-fn in_code_cell(doc_prefix: &str) -> bool {
-    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
-    let mut fences = 0;
-    // Exclude the current (last) line: a `#|` opener is inside the cell it began.
-    for line in lines.iter().take(lines.len().saturating_sub(1)) {
-        if line.trim_start().starts_with("```") {
-            fences += 1;
-        }
-    }
-    fences % 2 == 1
-}
-
-/// The cursor is inside the leading `---` front-matter block (opener present, not yet closed
-/// before the current line).
-fn in_frontmatter(doc_prefix: &str) -> bool {
-    let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
-    if lines.first().map(|l| l.trim()) != Some("---") {
-        return false;
-    }
-    for line in lines.iter().take(lines.len().saturating_sub(1)).skip(1) {
-        let t = line.trim();
-        if t == "---" || t == "..." {
-            return false;
-        }
-    }
-    true
-}
-
 /// The nearest less-indented ancestor key (a recognized nested parent) above the current line.
 fn nested_parent(doc_prefix: &str) -> Option<String> {
     let lines: Vec<&str> = crate::lsp_pos::lines(doc_prefix).collect();
@@ -822,82 +870,23 @@ fn frontmatter_value(line_prefix: &str) -> Option<(String, String)> {
 
 /// A front-matter key position: a partial word so far, no colon yet. `/^\s*[\w-]*$/`.
 ///
-/// A key never opens with `-` or `.`, and excluding those is what keeps the **closing**
-/// `---` out: it is all `-`, which `is_id_char` admits, so typing the delimiter that ends
-/// the front matter used to pop the entire 27-key list. [`in_frontmatter`] cannot catch it,
-/// because it deliberately ignores the current line so a cursor *on* a key line still counts
-/// as inside. The same exclusion covers the rarer `...` terminator and a YAML `- ` list dash.
+/// A key never opens with `-` or `.`, and excluding those is what keeps the fences out: the
+/// front matter's lines include its `---` delimiters, which are all `-`, which `is_id_char`
+/// admits, so typing one used to pop the entire 27-key list. The same exclusion covers the
+/// rarer `...` terminator and a YAML `- ` list dash.
 fn is_frontmatter_key_line(line_prefix: &str) -> bool {
     let t = line_prefix.trim_start();
     !t.starts_with('-') && !t.starts_with('.') && t.chars().all(is_id_char)
 }
 
-/// Harvest `{#id}` anchors (heading ids + figure/table labels) from the buffer, deduplicated
-/// and sorted. Suggestion-only; the provider filters by the typed prefix. `/\{#([\w-]+)\}/g`.
+/// The cross-reference anchors the buffer defines (`lsp_nav::anchor_sites`), deduplicated
+/// and sorted. Suggestion-only; the provider filters by the typed prefix.
 pub(crate) fn harvest_anchor_ids(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let n = chars.len();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut i = 0;
-    while i + 1 < n {
-        if chars[i] == '{' && chars[i + 1] == '#' {
-            let mut j = i + 2;
-            while j < n && is_id_char(chars[j]) {
-                j += 1;
-            }
-            if j > i + 2 && j < n && chars[j] == '}' {
-                seen.insert(chars[i + 2..j].iter().collect::<String>());
-                i = j + 1;
-                continue;
-            }
-        }
-        i += 1;
-    }
-    seen.into_iter().collect()
-}
-
-/// Harvest BibTeX citation keys (`@type{key,`) from a `.bib` file's text, deduplicated and
-/// sorted. `/@\w+\s*\{\s*([^,\s}]+)\s*,/g`.
-pub(crate) fn harvest_bib_keys(bib: &str) -> Vec<String> {
-    let chars: Vec<char> = bib.chars().collect();
-    let n = chars.len();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut i = 0;
-    while i < n {
-        if chars[i] == '@' {
-            let mut j = i + 1;
-            let type_start = j;
-            while j < n && is_word(chars[j]) {
-                j += 1;
-            }
-            if j > type_start {
-                while j < n && chars[j].is_whitespace() {
-                    j += 1;
-                }
-                if j < n && chars[j] == '{' {
-                    j += 1;
-                    while j < n && chars[j].is_whitespace() {
-                        j += 1;
-                    }
-                    let key_start = j;
-                    while j < n && !matches!(chars[j], ',' | '}') && !chars[j].is_whitespace() {
-                        j += 1;
-                    }
-                    if j > key_start {
-                        let mut k = j;
-                        while k < n && chars[k].is_whitespace() {
-                            k += 1;
-                        }
-                        if k < n && chars[k] == ',' {
-                            seen.insert(chars[key_start..j].iter().collect::<String>());
-                        }
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-    seen.into_iter().collect()
+    let ids: std::collections::BTreeSet<String> = crate::lsp_nav::anchor_sites(text)
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    ids.into_iter().collect()
 }
 
 /// One directory entry the caller read from disk (name + whether it is a directory).
@@ -1009,8 +998,16 @@ pub(crate) fn path_candidates(
 mod tests {
     use super::*;
 
+    /// The context at the end of `doc`, which is the whole buffer.
     fn ctx(line: &str, doc: &str) -> CompletionContext {
-        detect_context(line, doc)
+        detect_context(line, doc, &taliesin_core::render::rendered_lines(doc))
+    }
+
+    /// The context at the end of `doc`, a buffer whose front matter is closed on the line
+    /// after the cursor: core's splitter reads no block that is never closed.
+    fn ctx_fm(line: &str, doc: &str) -> CompletionContext {
+        let buffer = format!("{doc}\n---\n");
+        detect_context(line, doc, &taliesin_core::render::rendered_lines(&buffer))
     }
 
     fn math(typed: &str) -> CompletionContext {
@@ -1156,14 +1153,14 @@ mod tests {
     #[test]
     fn a_path_valued_frontmatter_key_offers_files_not_a_word_list() {
         assert_eq!(
-            ctx("bibliography: ref", "---\nbibliography: ref"),
+            ctx_fm("bibliography: ref", "---\nbibliography: ref"),
             CompletionContext::Path {
                 typed: "ref".to_string(),
                 kind: PathKind::Bibliography
             }
         );
         assert_eq!(
-            ctx("image: fi", "---\nimage: fi"),
+            ctx_fm("image: fi", "---\nimage: fi"),
             CompletionContext::Path {
                 typed: "fi".to_string(),
                 kind: PathKind::Image
@@ -1173,12 +1170,15 @@ mod tests {
         // completed a stylesheet path for a key its own lint squiggles. It now falls to the
         // generic value context, which has no word list for it either.
         assert!(
-            !matches!(ctx("css: ", "---\ncss: "), CompletionContext::Path { .. }),
+            !matches!(
+                ctx_fm("css: ", "---\ncss: "),
+                CompletionContext::Path { .. }
+            ),
             "a retired key must not offer path completion"
         );
         // A key with a word list still gets the word list.
         assert_eq!(
-            ctx("format: de", "---\nformat: de"),
+            ctx_fm("format: de", "---\nformat: de"),
             CompletionContext::FrontmatterValue {
                 key: "format".to_string(),
                 typed: "de".to_string()
@@ -1189,7 +1189,7 @@ mod tests {
     #[test]
     fn a_yaml_list_item_inherits_its_parent_keys_path_kind() {
         assert_eq!(
-            ctx("  - re", "---\nbibliography:\n  - re"),
+            ctx_fm("  - re", "---\nbibliography:\n  - re"),
             CompletionContext::Path {
                 typed: "re".to_string(),
                 kind: PathKind::Bibliography
@@ -1197,7 +1197,7 @@ mod tests {
         );
         // Under a key that takes no path, a list item is just a value.
         assert_eq!(
-            ctx("  - wr", "---\ncategories:\n  - wr"),
+            ctx_fm("  - wr", "---\ncategories:\n  - wr"),
             CompletionContext::None
         );
     }
@@ -1557,14 +1557,53 @@ mod tests {
         }
         // A real key position in the same buffer still completes.
         assert_eq!(
-            ctx("dat", "---\ntitle: Hi\ndat"),
+            ctx_fm("dat", "---\ntitle: Hi\ndat"),
             CompletionContext::FrontmatterKey { parent: None }
         );
         // And a blank line inside the block still offers keys.
         assert_eq!(
-            ctx("", "---\ntitle: Hi\n"),
+            ctx_fm("", "---\ntitle: Hi\n"),
             CompletionContext::FrontmatterKey { parent: None }
         );
+    }
+
+    /// What the cursor's line is decides which vocabularies apply, before any of them is
+    /// tried (audit 2026-09-24, scanners #10 and B2): prose completions leaked into code
+    /// cells (an `@` in a `{python}` cell offered cross-references), `#|` options were
+    /// offered in display blocks and below a cell's code, where the render reads none, and a
+    /// ``` inside a `~~~` block ended math completion for the rest of the file.
+    #[test]
+    fn the_cursors_line_decides_which_vocabulary_applies() {
+        // Code in a cell, and a comment: no prose vocabulary at all.
+        for (line, doc) in [
+            ("x = @fig-", "```{python}\nx = 1\nx = @fig-"),
+            ("@fig-", "```{python}\n@fig-"),
+            ("s = [@", "```{python}\nx = 1\ns = [@"),
+            ("{{< inc", "```{python}\nx = 1\n{{< inc"),
+            ("@fig-", "<!--\n@fig-"),
+        ] {
+            assert_eq!(ctx(line, doc), CompletionContext::None, "{doc:?}");
+        }
+        // Options only in the leading block of a cell the render runs.
+        assert_eq!(
+            ctx("#| ec", "~~~{python}\n#| ec"),
+            CompletionContext::CellOption
+        );
+        assert_eq!(
+            ctx("#| ec", "```{python}\n#| echo: false\n#| ec"),
+            CompletionContext::CellOption
+        );
+        for doc in [
+            "```python\n#| ec",
+            "```{.python}\n#| ec",
+            "```{python}\nx = 1\n#| ec",
+            "> ```{python}\n> #| ec",
+        ] {
+            assert_eq!(ctx("#| ec", doc), CompletionContext::None, "{doc:?}");
+        }
+        // Math is read on markdown lines, whatever a code block above holds.
+        assert_eq!(ctx(r"$\al", "~~~\n```\n~~~\n\n$\\al"), math(r"\al"));
+        assert_eq!(ctx(r"\al", "```\n$$\n```\n\n\\al"), CompletionContext::None);
     }
 
     #[test]
@@ -1579,12 +1618,12 @@ mod tests {
     fn frontmatter_key_value_and_nested_parent() {
         // Key position (bare word, no colon).
         assert_eq!(
-            ctx("titl", "---\ntitl"),
+            ctx_fm("titl", "---\ntitl"),
             CompletionContext::FrontmatterKey { parent: None }
         );
         // Value position for a closed-set key.
         assert_eq!(
-            ctx("format: de", "---\nformat: de"),
+            ctx_fm("format: de", "---\nformat: de"),
             CompletionContext::FrontmatterValue {
                 key: "format".to_string(),
                 typed: "de".to_string()
@@ -1592,7 +1631,7 @@ mod tests {
         );
         // A key nested under `execute:`.
         assert_eq!(
-            ctx("  ec", "---\nexecute:\n  ec"),
+            ctx_fm("  ec", "---\nexecute:\n  ec"),
             CompletionContext::FrontmatterKey {
                 parent: Some("execute".to_string())
             }
@@ -1608,9 +1647,18 @@ mod tests {
     #[test]
     fn a_lone_cr_buffer_is_read_as_its_commonmark_lines() {
         // The `---` opener is its own line, so the cursor after it is in front matter.
-        assert!(in_frontmatter("---\rtitle: x\rauthor: "));
+        assert_eq!(
+            ctx_fm("author: ", "---\rtitle: x\rauthor: "),
+            CompletionContext::FrontmatterValue {
+                key: "author".to_string(),
+                typed: String::new()
+            }
+        );
         // The fence above the cursor's line opened a code cell.
-        assert!(in_code_cell("```{python}\rx = 1"));
+        assert_eq!(
+            ctx("#| ec", "```{python}\r#| ec"),
+            CompletionContext::CellOption
+        );
         // `execute:` is the less-indented ancestor key of the current line.
         assert_eq!(
             nested_parent("---\rexecute:\r  ec").as_deref(),
@@ -1623,23 +1671,14 @@ mod tests {
         );
     }
 
+    /// The anchors offered after `@` are the ones the page defines (audit 2026-09-24,
+    /// scanners #6): a cell's label too, and never one shown in a code sample.
     #[test]
-    fn harvest_anchor_ids_finds_brace_anchors_only() {
-        assert_eq!(
-            harvest_anchor_ids("# A {#sec-a}\n\n![x](i.png){#fig-1}\n\nsee @fig-1"),
-            vec!["fig-1".to_string(), "sec-a".to_string()]
-        );
-        // A `{.theorem #x}` is not a `{#id}` anchor form.
-        assert!(harvest_anchor_ids("::: {.theorem #pyth}\n:::").is_empty());
-    }
-
-    #[test]
-    fn harvest_bib_keys_reads_entry_headers() {
-        assert_eq!(
-            harvest_bib_keys("@article{smith2020,\n  title={x}\n}\n@book{jones19 ,\n}"),
-            vec!["jones19".to_string(), "smith2020".to_string()]
-        );
-        assert!(harvest_bib_keys("% just a comment\nno entries").is_empty());
+    fn harvest_anchor_ids_offers_what_the_page_defines() {
+        let text = "# A {#sec-a}\n\n```markdown\n## S {#sec-sample}\n```\n\n\
+                    ```{python}\n#| label: fig-cell\nx = 1\n```\n\n![x](i.png){#fig-1}\n\n\
+                    ## Again {#sec-a}\n";
+        assert_eq!(harvest_anchor_ids(text), ["fig-1", "fig-cell", "sec-a"]);
     }
 
     /// Every trigger in `detect_context` is decided from the *end* of the line prefix, so its
@@ -1744,9 +1783,10 @@ mod tests {
             // Only whitespace before the `{.`: the look-back for the colons must stop at the
             // start of the line rather than walking off it.
             ("", " {.", CompletionContext::None),
-            // An indented div opener (a div inside a list item). The three colons are located
-            // relative to the `{`, so each of their offsets has to be counted, not divided.
-            ("", "     :::{.", CompletionContext::DivClass),
+            // An indented div opener. The three colons are located relative to the `{`, so
+            // each of their offsets has to be counted, not divided. (Four spaces would make
+            // the line indented code, which is not a div.)
+            ("", "   :::{.", CompletionContext::DivClass),
             // --- cell option: only inside an open fence, and only in key position
             (CELL, "#|", CompletionContext::CellOption),
             (CELL, "//| ec", CompletionContext::CellOption),
@@ -1815,72 +1855,18 @@ mod tests {
 
         for (before, line_prefix, want) in &cases {
             let doc_prefix = format!("{before}{line_prefix}");
+            // A row inside an open front matter is inside a block closed after the cursor
+            // line, since core's splitter reads no block that never closes.
+            let got = if before.starts_with(FM) && !before[FM.len()..].contains("---") {
+                ctx_fm(line_prefix, &doc_prefix)
+            } else {
+                ctx(line_prefix, &doc_prefix)
+            };
             assert_eq!(
-                &detect_context(line_prefix, &doc_prefix),
-                want,
+                &got, want,
                 "line prefix {line_prefix:?} (doc {doc_prefix:?})"
             );
         }
-    }
-
-    /// `harvest_bib_keys` scans a whole `.bib` with a hand-rolled cursor, and 20 of its boundary
-    /// mutants survived: nothing fed it an entry that ends at EOF, an empty key, or whitespace in
-    /// the places BibTeX allows it. Each row below is one of those shapes.
-    #[test]
-    fn harvest_bib_keys_is_pinned_at_the_shapes_a_real_bib_contains() {
-        // Whitespace is legal between the type, the brace, the key and the comma.
-        assert_eq!(
-            harvest_bib_keys("@article {k1 ,\n}"),
-            vec!["k1".to_string()]
-        );
-        assert_eq!(
-            harvest_bib_keys("@article{\n  k1,\n}"),
-            vec!["k1".to_string()]
-        );
-        // A key must be followed by a comma to be an entry header.
-        assert!(harvest_bib_keys("@article{k1}").is_empty());
-        // Truncated at EOF, mid-key: the scan must stop at the end, not read past it.
-        assert!(harvest_bib_keys("@article{k1").is_empty());
-        assert!(harvest_bib_keys("@article{").is_empty());
-        // Truncated with no brace at all: the type scan and the whitespace skip after it must
-        // both stop at the end of the buffer.
-        assert!(harvest_bib_keys("@article").is_empty());
-        assert!(harvest_bib_keys("@article ").is_empty());
-        // A `@type` *not* followed by `{` is not an entry header, however entry-shaped the rest
-        // of the line looks.
-        assert!(harvest_bib_keys("@article xyz,").is_empty());
-        // `@` with no entry type, and an entry with no key.
-        assert!(harvest_bib_keys("@{k1,}").is_empty());
-        assert!(harvest_bib_keys("@article{,x}").is_empty());
-        // A bare `@` in prose is not an entry.
-        assert!(harvest_bib_keys("mail a@b.com").is_empty());
-        // Deduplicated and sorted.
-        assert_eq!(
-            harvest_bib_keys("@a{dup,}\n@b{dup,}\n@c{alpha,}"),
-            vec!["alpha".to_string(), "dup".to_string()]
-        );
-    }
-
-    /// Same story for `harvest_anchor_ids` (10 survivors): the fixtures above never put an anchor
-    /// at offset 0, never put two of them back to back, and never truncated one at EOF.
-    #[test]
-    fn harvest_anchor_ids_is_pinned_at_the_text_edges() {
-        // At the very start, and as the entire text.
-        assert_eq!(harvest_anchor_ids("{#a}"), vec!["a".to_string()]);
-        // Back to back: the scan must resume after the `}`, not inside it.
-        assert_eq!(
-            harvest_anchor_ids("{#a}{#b}"),
-            vec!["a".to_string(), "b".to_string()]
-        );
-        // Empty id, truncated at EOF, and a space where an id char must be.
-        assert!(harvest_anchor_ids("{#}").is_empty());
-        assert!(harvest_anchor_ids("x{#a").is_empty());
-        assert!(harvest_anchor_ids("{# a}").is_empty());
-        assert!(harvest_anchor_ids("{#a b}").is_empty());
-        // A trailing `{` as the final character: the scan must not look at the character after it.
-        assert_eq!(harvest_anchor_ids("{#a}{"), vec!["a".to_string()]);
-        // Deduplicated.
-        assert_eq!(harvest_anchor_ids("{#a}\n{#a}"), vec!["a".to_string()]);
     }
 
     #[test]

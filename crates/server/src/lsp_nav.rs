@@ -44,12 +44,6 @@ fn is_word(c: char) -> bool {
 fn is_xref_id_char(c: char) -> bool {
     is_word(c) || c == '-'
 }
-fn is_cite_key_char(c: char) -> bool {
-    is_word(c) || c == ':' || c == '.' || c == '-'
-}
-fn is_ws(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\r' | '\x0c')
-}
 /// Inclusive of both ends, so a cursor just past the last char still hovers the token
 /// (matches the editor's word-range behaviour).
 fn covers(s: usize, e: usize, ch: usize) -> bool {
@@ -73,19 +67,20 @@ pub(crate) struct MathSpan {
 ///
 /// This is the single owner of Taliesin's `$` delimiter rules, which is what keeps
 /// completion's "am I inside math?" from becoming a second delimiter scanner: a `\` escapes
-/// the next character, a fenced block is code and not math, an inline `$…$` is abandoned at a
-/// line break (`render::math_close` gives up at `\n`) while `$$…$$` survives one, and an
-/// opening `$` must be followed by a non-space, which is what keeps `$ 5` from opening math.
+/// the next character, a line that is not markdown to core's classifier `class` (code, raw
+/// HTML, front matter) is not math, an inline `$…$` is abandoned at a line break
+/// (`render::math_close` gives up at `\n`) while `$$…$$` survives one, and an opening `$`
+/// must be followed by a non-space, which is what keeps `$ 5` from opening math. `text` is
+/// the buffer from its start, so its lines are `class`'s.
 ///
 /// A span still open at end-of-input is returned with `closed: false`; one abandoned at a
 /// line break is not returned at all, because it was never math.
-pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
+pub(crate) fn scan_math(text: &str, class: &taliesin_core::lines::Lines) -> Vec<MathSpan> {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     let mut spans: Vec<MathSpan> = Vec::new();
     let mut display: Option<usize> = None;
     let mut inline: Option<usize> = None;
-    let mut in_code = false;
     let close = |spans: &mut Vec<MathSpan>, open: usize| {
         spans.push(MathSpan {
             start: open,
@@ -94,29 +89,16 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
     };
 
     let mut i = 0;
+    let mut line = 0;
     while i <= n {
         let line_start = i;
         let mut line_end = line_start;
         while line_end < n && chars[line_end] != '\n' {
             line_end += 1;
         }
-        // Read the fence marker off the char slice rather than materializing the line:
-        // completion calls this on every keystroke, over the whole buffer prefix.
-        let fence = {
-            let mut k = line_start;
-            while k < line_end && chars[k].is_whitespace() {
-                k += 1;
-            }
-            let run = |c: char| {
-                k + 2 < line_end && chars[k] == c && chars[k + 1] == c && chars[k + 2] == c
-            };
-            run('`') || run('~')
-        };
-        // An inline span never survives a line break or a fence boundary; drop it unrecorded.
+        // An inline span never survives a line break; drop it unrecorded.
         inline = None;
-        if fence {
-            in_code = !in_code;
-        } else if !in_code {
+        if class.line(line).kind.is_markdown() {
             let mut j = line_start;
             while j < line_end {
                 match chars[j] {
@@ -148,6 +130,7 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
             break;
         }
         i = line_end + 1;
+        line += 1;
     }
     // Whatever is still open at end-of-input is a span the author is mid-way through typing.
     for open in [display, inline].into_iter().flatten() {
@@ -160,34 +143,33 @@ pub(crate) fn scan_math(text: &str) -> Vec<MathSpan> {
     spans
 }
 
-/// Classify the token at 0-based (`line`, `character`). Citation `[@k]` wins over xref
-/// `@k`; a front-matter key is recognized only inside the `---` body, on the key token.
+/// Classify the token at 0-based (`line`, `character`). A key of a citation group wins over
+/// a bare xref `@k`; a front-matter key is recognized only inside the `---` body, on the key
+/// token.
 pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Target {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
     let lt: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
     let n = lt.len();
 
-    // Citation `[@key]` first (its `@` must not be read as an xref).
-    let mut i = 0;
-    while i + 1 < n {
-        if lt[i] == '[' && lt[i + 1] == '@' {
-            let key_start = i + 2;
-            let mut j = key_start;
-            while j < n && is_cite_key_char(lt[j]) {
-                j += 1;
+    // A key of a citation group first, read by the render's own grammar (its `@` must not
+    // be read as an xref). A cross-reference key in a group (`[@fig-x]`) renders as the
+    // cross-reference it names, so it navigates as one.
+    if let Some((key, span)) =
+        taliesin_core::cite::citation_key_at(lines.get(line).copied().unwrap_or(""), character)
+    {
+        return if taliesin_core::cite::is_xref_anchor(&key) {
+            Target::Xref {
+                id: key,
+                start: span.start,
+                end: span.end,
             }
-            if j > key_start && j < n && lt[j] == ']' {
-                let (start, end) = (i + 1, j); // `@` .. `]`
-                if covers(start, end, character) {
-                    return Target::Cite {
-                        key: lt[key_start..j].iter().collect(),
-                        start,
-                        end,
-                    };
-                }
+        } else {
+            Target::Cite {
+                key,
+                start: span.start,
+                end: span.end,
             }
-        }
-        i += 1;
+        };
     }
 
     // Cross-reference `@id`, where `@` is not preceded by a word char, `@`, or `[`.
@@ -222,7 +204,7 @@ pub(crate) fn classify_target(text: &str, line: usize, character: usize) -> Targ
     }
 
     // Front-matter key.
-    if let Some(t) = classify_frontmatter_key(&lines, line, character) {
+    if let Some(t) = classify_frontmatter_key(text, &lines, line, character) {
         return t;
     }
 
@@ -271,9 +253,16 @@ fn classify_include(lt: &[char], character: usize) -> Option<Target> {
     None
 }
 
-fn classify_frontmatter_key(lines: &[&str], line: usize, character: usize) -> Option<Target> {
-    let (start_line, end_line) = frontmatter_body(lines)?;
-    if line < start_line || line >= end_line {
+fn classify_frontmatter_key(
+    text: &str,
+    lines: &[&str],
+    line: usize,
+    character: usize,
+) -> Option<Target> {
+    // A key line lies between the front matter's fences, as core's one splitter finds them.
+    let class = taliesin_core::render::rendered_lines(text);
+    let front = |i: usize| class.line(i).kind == taliesin_core::lines::Kind::FrontMatter;
+    if line == 0 || !(front(line - 1) && front(line) && front(line + 1)) {
         return None;
     }
     let chars: Vec<char> = lines.get(line).copied().unwrap_or("").chars().collect();
@@ -298,21 +287,6 @@ fn classify_frontmatter_key(lines: &[&str], line: usize, character: usize) -> Op
             start: indent,
             end: key_end,
         });
-    }
-    None
-}
-
-/// The `[start, end)` line range of the front-matter body (key lines between the fences),
-/// or None when there is no closed `---` block. 0-based over `lines`.
-fn frontmatter_body(lines: &[&str]) -> Option<(usize, usize)> {
-    if lines.first().map(|l| l.trim()) != Some("---") {
-        return None;
-    }
-    for (i, l) in lines.iter().enumerate().skip(1) {
-        let t = l.trim();
-        if t == "---" || t == "..." {
-            return Some((1, i));
-        }
     }
     None
 }
@@ -349,173 +323,129 @@ fn nested_parent_of(lines: &[&str], line: usize, indent: usize) -> Option<String
     None
 }
 
-fn offset_to_line_col(chars: &[char], idx: usize) -> (u32, u32) {
-    let mut line = 0u32;
-    let mut col = 0u32;
-    for &c in &chars[..idx] {
-        if c == '\n' {
-            line += 1;
-            col = 0;
-        } else {
-            col += 1;
-        }
-    }
-    (line, col)
-}
-
-/// The 0-based (line, col) where cross-reference `id` is DEFINED in `text`: the first
-/// occurrence preceded by `#` (a `{#id}` attribute) or `label:` (a `#| label: id` cell),
-/// never `@id` (a reference). None when the id is not defined here.
-pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
-    let chars: Vec<char> = text.chars().collect();
-    let idc: Vec<char> = id.chars().collect();
-    let (n, m) = (chars.len(), idc.len());
-    if m == 0 {
-        return None;
-    }
-    let mut i = 0;
-    while i + m <= n {
-        if chars[i..i + m] == idc[..] {
-            let after_ok = i + m >= n || !is_xref_id_char(chars[i + m]);
-            let prefix_ok = (i > 0 && chars[i - 1] == '#') || {
-                let mut j = i;
-                while j > 0 && is_ws(chars[j - 1]) {
-                    j -= 1;
-                }
-                j >= 6 && chars[j - 6..j].iter().collect::<String>() == "label:"
-            };
-            if after_ok && prefix_ok {
-                return Some(offset_to_line_col(&chars, i));
-            }
-        }
-        i += 1;
-    }
-    None
-}
-
-/// The char offset of the BibTeX entry header `@type{key,` for `key` in `chars`, or None
-/// when absent. Shared by `bib_entry_site` (offset → line/col) and `bib_entry_text`
-/// (offset → brace-balanced entry text) so the two can't drift.
-fn bib_entry_offset(chars: &[char], keyc: &[char]) -> Option<usize> {
-    let (n, m) = (chars.len(), keyc.len());
-    if m == 0 {
-        return None;
-    }
-    let mut i = 0;
-    while i < n {
-        if chars[i] == '@' {
-            let mut j = i + 1;
-            let type_start = j;
-            while j < n && is_word(chars[j]) {
-                j += 1;
-            }
-            if j > type_start {
-                while j < n && is_ws(chars[j]) {
-                    j += 1;
-                }
-                if j < n && chars[j] == '{' {
-                    j += 1;
-                    while j < n && is_ws(chars[j]) {
-                        j += 1;
-                    }
-                    if j + m <= n && chars[j..j + m] == *keyc {
-                        let mut k = j + m;
-                        while k < n && is_ws(chars[k]) {
-                            k += 1;
-                        }
-                        if k < n && chars[k] == ',' {
-                            return Some(i);
-                        }
-                    }
-                }
-            }
-        }
-        i += 1;
-    }
-    None
-}
-
-/// The 0-based (line, col) of the BibTeX entry header `@type{key,` for `key` in `bib`,
-/// or None when absent.
-pub(crate) fn bib_entry_site(bib: &str, key: &str) -> Option<(u32, u32)> {
-    let chars: Vec<char> = bib.chars().collect();
-    let keyc: Vec<char> = key.chars().collect();
-    let i = bib_entry_offset(&chars, &keyc)?;
-    Some(offset_to_line_col(&chars, i))
-}
-
-/// The raw BibTeX entry (`@type{key, … }`) for `key`, brace-balanced so a `{…}` inside a
-/// field value doesn't cut it short; None when the key is absent. A Rust port of the
-/// companion's `bibEntryFor`, used by the LSP hover to show the citation source.
-pub(crate) fn bib_entry_text(bib: &str, key: &str) -> Option<String> {
-    let chars: Vec<char> = bib.chars().collect();
-    let keyc: Vec<char> = key.chars().collect();
-    let start = bib_entry_offset(&chars, &keyc)?;
-    let brace_open = (start..chars.len()).find(|&i| chars[i] == '{')?;
-    let mut depth = 0usize;
-    for i in brace_open..chars.len() {
-        match chars[i] {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(
-                        chars[start..=i]
-                            .iter()
-                            .collect::<String>()
-                            .trim()
-                            .to_string(),
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    // Unbalanced .bib: give back what we have (mirrors `bibEntryFor`).
-    Some(chars[start..].iter().collect::<String>().trim().to_string())
-}
-
-fn strip_quotes(s: &str) -> String {
-    let s = s.strip_prefix(['"', '\'']).unwrap_or(s);
-    let s = s.strip_suffix(['"', '\'']).unwrap_or(s);
-    s.to_string()
-}
-
-/// The front-matter `bibliography:` paths (scalar or YAML list), raw as written.
-pub(crate) fn frontmatter_bib_paths(text: &str) -> Vec<String> {
+/// Every cross-reference anchor `text` defines, in document order, as `(id, 0-based line,
+/// scalar column of the id)`: what core reads as a definition, so go-to-definition, the
+/// project walk and xref completion agree with the built page. That is the `{#id}` of an
+/// attribute block on a markdown line (`site::scan_page_anchors`, over core's classifier: no
+/// sample, comment, indented code or front matter), and the `#| label:` in the leading option
+/// block of a top-level executable cell (`render::cell_label`, the render's own reading).
+pub(crate) fn anchor_sites(text: &str) -> Vec<(String, u32, u32)> {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
-    if lines.first().map(|l| l.trim()) != Some("---") {
-        return vec![];
-    }
-    let mut out = vec![];
-    let mut i = 1;
-    while i < lines.len() {
-        let t = lines[i].trim();
-        if t == "---" || t == "..." {
-            break;
+    // Where `id` sits on line `at`, as the last occurrence that is not the start of a longer
+    // id: the attribute block closes a line, and a `(#id)` link may come before it.
+    let column = |at: usize, id: &str| -> u32 {
+        let line = lines.get(at).copied().unwrap_or("");
+        line.match_indices(id)
+            .filter(|(i, _)| !line[i + id.len()..].starts_with(is_xref_id_char))
+            .last()
+            .map_or(0, |(i, _)| line[..i].chars().count() as u32)
+    };
+    let mut out: Vec<(String, u32, u32)> = taliesin_core::site::scan_page_anchors(text, None)
+        .into_iter()
+        .map(|a| {
+            let at = a.line.saturating_sub(1);
+            let col = column(at, &format!("#{}", a.id)) + 1;
+            (a.id, at as u32, col)
+        })
+        .collect();
+    let class = taliesin_core::render::rendered_lines(text);
+    for fence in class
+        .fences
+        .iter()
+        .filter(|f| class.line(f.open).depth == 0)
+    {
+        let end = if fence.closed {
+            fence.end
+        } else {
+            fence.end + 1
         }
-        if let Some(rest) = lines[i].strip_prefix("bibliography:") {
-            let val = rest.trim();
-            if !val.is_empty() {
-                out.push(strip_quotes(val));
-            } else {
-                for l in &lines[i + 1..] {
-                    let t2 = l.trim();
-                    if t2 == "---" || t2 == "..." {
-                        break;
-                    }
-                    match l.trim_start().strip_prefix('-') {
-                        Some(item) if !item.trim().is_empty() => {
-                            out.push(strip_quotes(item.trim()))
-                        }
-                        _ => break,
-                    }
-                }
-            }
-        }
-        i += 1;
+        .min(lines.len());
+        let body = lines
+            .get(fence.open + 1..end)
+            .unwrap_or_default()
+            .join("\n");
+        let Some(id) = taliesin_core::render::cell_label(&fence.info, &body)
+            .filter(|id| taliesin_core::cite::is_xref_anchor(id))
+        else {
+            continue;
+        };
+        // The line of the leading option that names it.
+        let Some(at) = (fence.open + 1..end)
+            .map_while(|i| Some((i, taliesin_core::render::option_directive(lines[i])?)))
+            .find(|(_, opt)| {
+                opt.split_once(':')
+                    .is_some_and(|(k, _)| k.trim() == "label")
+            })
+            .map(|(i, _)| i)
+        else {
+            continue;
+        };
+        out.push((id.to_string(), at as u32, column(at, id)));
     }
+    out.sort_by_key(|&(_, line, col)| (line, col));
     out
+}
+
+/// The 0-based (line, col) where cross-reference `id` is DEFINED in `text` (see
+/// [`anchor_sites`]); `None` when the id is not defined here.
+pub(crate) fn definition_site(text: &str, id: &str) -> Option<(u32, u32)> {
+    anchor_sites(text)
+        .into_iter()
+        .find(|(a, _, _)| a == id)
+        .map(|(_, line, col)| (line, col))
+}
+
+/// The `.bib` files a citation in the buffer at `uri` resolves against: the page's own and
+/// its project's shared `bibliography:`, in the order the render reads them, so a later
+/// file's entry wins a key two files define.
+pub(crate) fn bib_files(uri: &lsp_types::Url, text: &str) -> Vec<std::path::PathBuf> {
+    let Some(dir) = uri
+        .to_file_path()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+    else {
+        return Vec::new();
+    };
+    taliesin_core::render::bibliography_files(text, &dir)
+}
+
+/// The entry the render cites for `key` among `files` (see [`bib_files`]): the file, its
+/// text and the entry's byte range in it, read by core's `.bib` parser. The last definition
+/// wins, as it does in the render: a later file over an earlier one, and within one file.
+pub(crate) fn bib_entry(
+    files: &[std::path::PathBuf],
+    key: &str,
+) -> Option<(std::path::PathBuf, String, std::ops::Range<usize>)> {
+    files.iter().rev().find_map(|path| {
+        let text = std::fs::read_to_string(path).ok()?;
+        let (_, span) = taliesin_core::cite::entry_spans(&text)
+            .into_iter()
+            .rfind(|(k, _)| k == key)?;
+        Some((path.clone(), text, span))
+    })
+}
+
+/// Every key the bibliography stores from `files`, sorted: the keys a citation can name.
+pub(crate) fn bib_keys(files: &[std::path::PathBuf]) -> std::collections::BTreeSet<String> {
+    files
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .flat_map(|text| taliesin_core::cite::entry_spans(&text))
+        .map(|(key, _)| key)
+        .collect()
+}
+
+/// The 0-based (line, scalar column) of byte `at` in `text`, counting lines the way the
+/// editor does (`lsp_pos::lines`).
+pub(crate) fn line_col(text: &str, at: usize) -> (u32, u32) {
+    let before = &text[..at];
+    let lines = crate::lsp_pos::lines(before).count().saturating_sub(1);
+    let col = crate::lsp_pos::lines(before)
+        .last()
+        .unwrap_or("")
+        .chars()
+        .count();
+    (lines as u32, col as u32)
 }
 
 #[cfg(test)]
@@ -581,58 +511,67 @@ mod tests {
         );
     }
 
+    /// A key line is one inside the block core's splitter reads, a BOM before the opening
+    /// fence included; the fences themselves are no key lines.
+    #[test]
+    fn a_frontmatter_key_is_read_inside_the_splitters_block() {
+        let text = "\u{feff}---\ntitle: Hi\n---\ntitle: body\n";
+        assert!(matches!(
+            classify_target(text, 1, 2),
+            Target::FrontmatterKey { .. }
+        ));
+        assert_eq!(classify_target(text, 3, 2), Target::None);
+    }
+
     #[test]
     fn a_frontmatter_value_is_not_a_key() {
         assert_eq!(classify_target("---\ntitle: Hi\n---\n", 1, 8), Target::None);
     }
 
+    /// Where an id is DEFINED, as core reads a definition (audit 2026-09-24, scanners #6b):
+    /// the `{#id}` of an attribute block on a markdown line, or the `#| label:` in the leading
+    /// option block of a top-level executable cell. The first `#id` or `label: id` anywhere
+    /// in the buffer used to win, so F12 on `@sec-method` landed on a `(#sec-method)` link or
+    /// on a code sample showing the syntax.
     #[test]
-    fn definition_site_finds_attribute_and_label_forms_but_not_a_reference() {
+    fn definition_site_reads_only_what_the_page_defines() {
+        let text = [
+            "Read [the method](#sec-method) and @sec-method.",
+            "",
+            "```markdown",
+            "## Method {#sec-method}",
+            "#| label: fig-shown",
+            "```",
+            "",
+            "<!-- ## Old {#sec-method} -->",
+            "",
+            "    ## Indented {#sec-method}",
+            "",
+            "## Method {#sec-method}",
+            "",
+            "```{python}",
+            "#| echo: false",
+            "#| label: fig-plot",
+            "x = 1",
+            "#| label: fig-late",
+            "```",
+            "",
+            "![A plot](p.png){#fig-img}",
+        ]
+        .join("\n");
+        assert_eq!(definition_site(&text, "sec-method"), Some((11, 12)));
+        assert_eq!(definition_site(&text, "fig-plot"), Some((15, 10)));
+        assert_eq!(definition_site(&text, "fig-img"), Some((20, 18)));
+        assert_eq!(definition_site(&text, "fig-shown"), None, "a sample");
         assert_eq!(
-            definition_site("# Title {#fig-1}\n\nsee @fig-1", "fig-1"),
-            Some((0, 10))
+            definition_site(&text, "fig-late"),
+            None,
+            "below the cell's code"
         );
-        assert_eq!(
-            definition_site("#| label: fig-2\ncode", "fig-2"),
-            Some((0, 10))
-        );
-        // Only a reference present: no definition here.
+        // Only a reference present, or only a longer id: no definition here.
         assert_eq!(definition_site("see @fig-1 only", "fig-1"), None);
-        assert_eq!(definition_site("nothing", "fig-1"), None);
-        // A longer id must not match on a prefix.
         assert_eq!(definition_site("{#fig-10}", "fig-1"), None);
-    }
-
-    #[test]
-    fn bib_entry_site_finds_the_entry_header() {
-        assert_eq!(
-            bib_entry_site("@article{smith2020,\n  title={x}\n}", "smith2020"),
-            Some((0, 0))
-        );
-        assert_eq!(
-            bib_entry_site("% comment\n@book{key1 ,\n}", "key1"),
-            Some((1, 0))
-        );
-        assert_eq!(bib_entry_site("@article{other,}", "smith2020"), None);
-    }
-
-    #[test]
-    fn bib_entry_text_is_brace_balanced() {
-        // A `{…}` inside a field value must not cut the entry short.
-        assert_eq!(
-            bib_entry_text(
-                "@article{smith2020,\n  title = {A {Deep} Study}\n}\ntrailing",
-                "smith2020"
-            )
-            .as_deref(),
-            Some("@article{smith2020,\n  title = {A {Deep} Study}\n}")
-        );
-        assert_eq!(bib_entry_text("@book{other,\n}", "smith2020"), None);
-        // Unbalanced .bib: return what we have rather than nothing.
-        assert_eq!(
-            bib_entry_text("@misc{k1,\n  note = {open", "k1").as_deref(),
-            Some("@misc{k1,\n  note = {open")
-        );
+        assert_eq!(definition_site("{#fig-1}", "fig-1"), Some((0, 2)));
     }
 
     /// One fixture line for the cursor walk. `span` is the **inclusive** `[first, last]` cursor
@@ -940,19 +879,6 @@ mod tests {
         }
     }
 
-    /// The anchor scanner walks backwards from a match, so its edge is the *start of the text*
-    /// rather than a span boundary. Every fixture here is one the mutation round showed nothing
-    /// reached: an id at offset 0, an id preceded only by whitespace, and `label:` with no space.
-    #[test]
-    fn the_anchor_scanner_is_pinned_at_the_start_of_the_text() {
-        // At offset 0 there is no sigil to inspect, and looking for one must not read backwards.
-        assert_eq!(definition_site("fig-1 is here", "fig-1"), None);
-        // Preceded only by whitespace: the `label:` look-back walks to offset 0 and stops.
-        assert_eq!(definition_site("  fig-1", "fig-1"), None);
-        assert_eq!(definition_site("{#fig-1}", "fig-1"), Some((0, 2)));
-        assert_eq!(definition_site("#| label: fig-1", "fig-1"), Some((0, 10)));
-    }
-
     /// `{{< include >}}` is navigable and every *other* shortcode is not: accepting anything
     /// else makes the first argument of `{{< video … >}}` (or any future shortcode) look like
     /// a document to open.
@@ -984,132 +910,5 @@ mod tests {
             Target::Cite { key, .. } => assert_eq!(key, "smith2020"),
             other => panic!("expected the citation on the line after the CR, got {other:?}"),
         }
-    }
-
-    fn bib_offset(bib: &str, key: &str) -> Option<usize> {
-        let chars: Vec<char> = bib.chars().collect();
-        let keyc: Vec<char> = key.chars().collect();
-        bib_entry_offset(&chars, &keyc)
-    }
-
-    /// The `@type{key,` scan: whitespace tolerance, and stopping at the end of a truncated `.bib`.
-    ///
-    /// The two tests above reach this scanner only through canonical, complete entries, which
-    /// leaves 17 mutants alive: every one of its four bounds checks can be widened past the end of
-    /// the buffer, and both of its whitespace-skipping loops can be made no-ops, without a fixture
-    /// noticing. Both are reachable in practice — `.bib` files are written by hand and by export
-    /// tools, and this scans one straight off disk on every hover and every go-to-definition of a
-    /// `[@key]`, including while the author has that file open and half-written.
-    #[test]
-    fn bib_entry_offset_skips_whitespace_and_stops_at_the_end_of_a_truncated_bib() {
-        // Canonical, and the offset is the `@`, not the key.
-        assert_eq!(
-            bib_offset("x\n@article{smith2020,\n}", "smith2020"),
-            Some(2)
-        );
-        // BibTeX allows whitespace before the brace and after it, so both must be skipped.
-        assert_eq!(bib_offset("@article {key,\n}", "key"), Some(0));
-        assert_eq!(bib_offset("@article{ key,\n}", "key"), Some(0));
-        assert_eq!(bib_offset("@article { key ,\n}", "key"), Some(0));
-        // …but the key itself must match whole: a longer key is not a hit on its prefix.
-        assert_eq!(bib_offset("@article{keyword,\n}", "key"), None);
-        // An entry needs a type; `@{…}` is not a header.
-        assert_eq!(bib_offset("@{key,\n}", "key"), None);
-        // An empty key matches nothing rather than every entry.
-        assert_eq!(bib_offset("@article{key,\n}", ""), None);
-
-        // Truncated after each part of the header in turn: None, never a read past the end.
-        for truncated in [
-            "@article",
-            "@article ",
-            "@article{",
-            "@article{ ",
-            "@article{key",
-            "@article{key ",
-        ] {
-            assert_eq!(
-                bib_offset(truncated, "key"),
-                None,
-                "a `.bib` truncated at {truncated:?} must not resolve a key"
-            );
-        }
-    }
-
-    #[test]
-    fn frontmatter_bib_paths_reads_scalar_and_list() {
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: refs.bib\n---\n"),
-            vec!["refs.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: \"a.bib\"\n---"),
-            vec!["a.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography:\n  - a.bib\n  - b.bib\n---"),
-            vec!["a.bib".to_string(), "b.bib".to_string()]
-        );
-        assert_eq!(
-            frontmatter_bib_paths("---\ntitle: x\n---"),
-            Vec::<String>::new()
-        );
-        assert_eq!(
-            frontmatter_bib_paths("bibliography: x.bib"),
-            Vec::<String>::new()
-        );
-    }
-
-    /// A buffer whose lines end at a lone `\r` is four CommonMark lines (see
-    /// `lsp_pos::lines`); the `\n`-split read it as one line and found no front matter,
-    /// so every citation in the document lost hover and go-to-definition.
-    #[test]
-    fn frontmatter_bib_paths_reads_a_lone_cr_buffer() {
-        assert_eq!(
-            frontmatter_bib_paths("---\rbibliography: refs.bib\r---\r"),
-            vec!["refs.bib".to_string()]
-        );
-    }
-
-    /// Where the front-matter scan starts, where it stops, and that it walks forwards.
-    ///
-    /// Every fixture above puts `bibliography:` on the *first* line of a *terminated* front
-    /// matter, which is the one shape that hides all three of this loop's defects: a cursor that
-    /// walks backwards still reads line 1, a scan that never terminates still finds the key, and a
-    /// bound one line too wide is only reached when the document has no closing `---`.
-    #[test]
-    fn frontmatter_bib_paths_scans_forwards_and_only_inside_the_front_matter() {
-        // Not the first key: the scan has to walk forwards to reach it.
-        assert_eq!(
-            frontmatter_bib_paths("---\ntitle: x\nbibliography: refs.bib\n---\n"),
-            vec!["refs.bib".to_string()]
-        );
-        // A `bibliography:` line in the body is not front matter.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n---\n\nbibliography: body.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-        // `...` closes front matter as well as `---`.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n...\nbibliography: body.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-        // Unterminated front matter (an author mid-edit): stop at the last line, not past it.
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography: a.bib\n"),
-            vec!["a.bib".to_string()]
-        );
-    }
-
-    /// A `bibliography:` list ends at its first non-item, and an empty `-` is a non-item.
-    ///
-    /// The guard is the whole stopping rule: without it an empty `-` yields an empty path (which
-    /// `dir.join` resolves to the document's own directory) and the scan carries on past the end
-    /// of the list, so a half-typed entry silently changes which files are read.
-    #[test]
-    fn a_bibliography_list_stops_at_the_first_non_item() {
-        assert_eq!(
-            frontmatter_bib_paths("---\nbibliography:\n  - a.bib\n  -\n  - b.bib\n---\n"),
-            vec!["a.bib".to_string()]
-        );
     }
 }

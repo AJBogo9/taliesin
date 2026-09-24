@@ -11,10 +11,11 @@ pub(crate) struct CellRegion {
     /// 0-based first and last body lines, inclusive. An empty body yields no region.
     pub(crate) start_line: usize,
     pub(crate) end_line: usize,
-    /// Whether a kernel actually runs this fence: `{python}`/`{r}`, not a plain `python`
-    /// display block and not `{bash}`.
+    /// Whether a kernel actually runs this fence: a top-level `{python}` cell, not a plain
+    /// `python` display block, not a `{.python}` one, not one in a block quote or list item,
+    /// and not `{bash}`.
     ///
-    /// Here rather than in the editor because the answer is
+    /// Here rather than in the editor because the answer is the render's and
     /// [`crate::exec::kernel_lang`]'s, and an editor deciding for itself would be a second
     /// copy of the executable-language set — the drift that puts a Run button above a
     /// fence nothing can run.
@@ -26,92 +27,48 @@ pub(crate) struct CellRegion {
 /// Both spellings count: `{python}` (an executable cell) and a plain `python` info string (a
 /// display block). Editor intelligence is useful in both, and the difference — whether the
 /// kernel runs it — is not a difference in what the code *means*.
+///
+/// The fences are the ones core's line classifier finds (`render::rendered_lines`, the parse
+/// the page renders from), and the language is the render's reading of the info string
+/// (`render::code_lang`): a fence shown inside a longer one, in an HTML comment or in
+/// indented code is not a fence, and one in a block quote is.
 pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
     let lines: Vec<&str> = crate::lsp_pos::lines(text).collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let Some((marker, width, info)) = fence_open(lines[i]) else {
-            i += 1;
-            continue;
-        };
-        let close = close_line(&lines, i + 1, marker, width).unwrap_or(lines.len());
-        // Skip the leading `#|` / `//|` / `%%|` option block. These are Taliesin directives,
-        // not code — the engine strips them before the cell ever reaches a kernel
-        // (`render::strip_cell_options`), and handing them to a language server would make
-        // it parse a syntax error instead of the code below. `option_directive` is core's
-        // own predicate rather than a second reading of the rule, and "leading only" matters:
-        // the same token further down is an ordinary comment and stays.
-        let mut body_start = i + 1;
-        while body_start < close
-            && taliesin_core::render::option_directive(lines[body_start]).is_some()
-        {
-            body_start += 1;
-        }
-        // A fence with no language still has to be skipped as a unit: its contents are code,
-        // and a ``` inside it would otherwise be read as opening a block of its own.
-        if let Some(language) = language_of(info)
-            && close > body_start
-        {
-            let executable = is_braced(info)
-                && crate::exec::kernel_lang(&language.to_ascii_lowercase()).is_some();
-            out.push(CellRegion {
+    let class = taliesin_core::render::rendered_lines(text);
+    class
+        .fences
+        .iter()
+        .filter_map(|fence| {
+            let language = taliesin_core::render::code_lang(&fence.info)?;
+            // The body ends before the closing fence, or runs to where the block ends.
+            let end = if fence.closed {
+                fence.end
+            } else {
+                fence.end + 1
+            };
+            let end = end.min(lines.len());
+            // Skip the leading `#|` / `//|` / `%%|` option block. These are Taliesin
+            // directives, not code: the engine strips them before the cell ever reaches a
+            // kernel (`render::strip_cell_options`), and handing them to a language server
+            // would make it parse a syntax error instead of the code below.
+            // `option_directive` is core's own predicate rather than a second reading of the
+            // rule, and "leading only" matters: the same token further down is an ordinary
+            // comment and stays.
+            let mut start = fence.open + 1;
+            while start < end && taliesin_core::render::option_directive(lines[start]).is_some() {
+                start += 1;
+            }
+            let executable = class.line(fence.open).depth == 0
+                && taliesin_core::render::is_executable_fence(&fence.info)
+                && crate::exec::kernel_lang(&language).is_some();
+            (end > start).then(|| CellRegion {
                 language,
-                start_line: body_start,
-                end_line: close - 1,
+                start_line: start,
+                end_line: end - 1,
                 executable,
-            });
-        }
-        i = close + 1;
-    }
-    out
-}
-
-/// `(marker char, run width, info string)` for a line that opens a fence, else `None`.
-fn fence_open(line: &str) -> Option<(char, usize, &str)> {
-    let t = line.trim_start();
-    let marker = t.chars().next().filter(|c| *c == '`' || *c == '~')?;
-    let width = t.chars().take_while(|c| *c == marker).count();
-    if width < 3 {
-        return None;
-    }
-    Some((marker, width, &t[width..]))
-}
-
-/// The index of the fence that closes a block opened with `width` × `marker`: a fence of at
-/// least that width, of the same character, carrying no info string of its own.
-fn close_line(lines: &[&str], from: usize, marker: char, width: usize) -> Option<usize> {
-    (from..lines.len()).find(|&i| {
-        matches!(fence_open(lines[i]), Some((m, w, info))
-            if m == marker && w >= width && info.trim().is_empty())
-    })
-}
-
-/// The language named by a fence's info string: `{python}`, `{python, echo=false}` and a
-/// bare `python` all name `python`. `None` when the fence names nothing.
-/// Is this info string the `{lang}` (executable cell) spelling rather than a plain
-/// `lang` display block? The brace is the whole difference the engine reads.
-fn is_braced(info: &str) -> bool {
-    info.trim_start().starts_with('{')
-}
-
-fn language_of(info: &str) -> Option<String> {
-    let t = info.trim();
-    let name = match t.strip_prefix('{') {
-        Some(inner) => inner.split([',', '}', ' ', '\t']).next().unwrap_or(""),
-        None => t.split_whitespace().next().unwrap_or(""),
-    };
-    let name = name.trim();
-    // A language is a bare word. This rejects `{=html}`-style passthrough and the empty
-    // info string of a closing fence.
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '+')
-    {
-        return None;
-    }
-    Some(name.to_string())
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -125,7 +82,8 @@ mod tests {
         // and none of them runs. `{r}` is the retired row, kept here on purpose: it was
         // executable until 2026-08-08, so it is the case a stale executable-language list
         // would get wrong.
-        let src = "```{python}\nx=1\n```\n\n```python\nx=1\n```\n\n                   ```{bash}\nls\n```\n\n```{r}\nx<-1\n```\n";
+        // `{.python}` is the documented display-only spelling (`render::is_executable_fence`).
+        let src = "```{python}\nx=1\n```\n\n```python\nx=1\n```\n\n```{bash}\nls\n```\n\n```{r}\nx<-1\n```\n\n```{.python}\nx=1\n```\n";
         let got: Vec<(String, bool)> = cell_regions(src)
             .into_iter()
             .map(|r| (r.language, r.executable))
@@ -137,6 +95,7 @@ mod tests {
                 ("python".to_string(), false),
                 ("bash".to_string(), false),
                 ("r".to_string(), false),
+                ("python".to_string(), false),
             ],
             "executable must mean `a kernel runs this`, not `this is code`"
         );

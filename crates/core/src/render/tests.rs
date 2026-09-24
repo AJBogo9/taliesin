@@ -3656,6 +3656,44 @@ fn bibliography_paths_accepts_scalar_seq_and_spaced_path() {
     assert!(bibliography_paths("bibliography:\n  - a.bib\n  - b.bib\nauthor: \"oops").is_empty());
 }
 
+/// The `.bib` files a directly opened page cites from, for the editor (audit 2026-09-24,
+/// bibtex #10): the project's shared `bibliography:` first, then the page's own in the
+/// order it lists them, read as YAML from a front matter whose lines end at a lone `\r`
+/// too, and only paths the render would read.
+#[test]
+fn bibliography_files_are_the_shared_ones_then_the_pages_own() {
+    let dir = std::env::temp_dir().join(format!("tali-bibfiles-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("posts")).unwrap();
+    std::fs::write(
+        dir.join("_site.yml"),
+        "title: S\nbibliography: shared.bib\n",
+    )
+    .unwrap();
+    std::fs::write(dir.join("shared.bib"), "").unwrap();
+    let base = dir.join("posts");
+    let src = "---\rtitle: P\rbibliography: [a.bib, refs.json, b.bib]\r---\r\rBody.\r";
+    let root = crate::includes::absolutize(&dir);
+    assert_eq!(
+        bibliography_files(src, &base),
+        vec![
+            root.join("shared.bib"),
+            root.join("posts/a.bib"),
+            root.join("posts/b.bib")
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The divs the editor folds are the divs the render pairs: nested ones, one never closed,
+/// and no `:::` shown in a code sample or written in a list item, where it is text.
+#[test]
+fn div_lines_are_the_divs_the_render_pairs() {
+    let src =
+        "::: {.a}\n::: {.b}\nx\n:::\n:::\n\n```\n:::\n```\n\n- item\n\n  ::: {.c}\n\n::: {.d}\ny\n";
+    assert_eq!(div_lines(src), vec![(0, Some(4)), (1, Some(3)), (14, None)]);
+}
+
 // --- accessibility regressions (Batch 3) ---
 
 /// WCAG relative luminance of an sRGB `#rrggbb` color.

@@ -62,9 +62,24 @@ pub(crate) fn preprocess(src: &str, divs: &DivFences) -> String {
 /// lazy continuation of it rather than the indented code the page renders. A raw source is
 /// taken too: its lone `\r`s are normalized as the render's ingest does, so the numbering
 /// is comrak's either way.
-pub(crate) fn rendered_lines(src: &str) -> crate::lines::Lines {
+pub fn rendered_lines(src: &str) -> crate::lines::Lines {
     let src = crate::includes::normalize_line_endings(src);
     crate::lines::classify(&DivFences::find(&src).blank(&src))
+}
+
+/// Every `:::` div of `src` as the render pairs it: the 0-based lines of its opening and
+/// closing markers, the closing one `None` for a div that is never closed, in order of
+/// the opening line. For the editor's folds, so a fold is a div the page draws.
+pub fn div_lines(src: &str) -> Vec<(usize, Option<usize>)> {
+    let src = crate::includes::normalize_line_endings(src);
+    let (spans, unclosed, _) = scan_div_spans(&DivFences::find(&src));
+    let mut out: Vec<(usize, Option<usize>)> = spans
+        .iter()
+        .map(|s| (s.open.get() - 1, Some(s.close.get() - 1)))
+        .chain(unclosed.iter().map(|open| (open.get() - 1, None)))
+        .collect();
+    out.sort_unstable();
+    out
 }
 
 /// Indentation of `line` if it opens a multi-line display-math block: `$$` or a bare

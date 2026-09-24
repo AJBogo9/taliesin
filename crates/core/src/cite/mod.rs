@@ -31,8 +31,9 @@ mod validate;
 #[cfg(test)]
 mod tests;
 
-pub use parse::{parse_bib, parse_bib_warned};
+pub use parse::{entry_spans, parse_bib, parse_bib_warned};
 pub(crate) use render::XREF_LABELS;
+pub use render::citation_key_at;
 /// Whether an id's prefix names a cross-reference kind, i.e. whether `@id` can resolve.
 /// Public so `taliesin symbols` can offer only anchors an author can actually write
 /// after `@`, instead of reimplementing the prefix list outside `taliesin-core`.
@@ -163,6 +164,17 @@ pub(crate) fn nearest<'a>(
 /// the reference can never name. Keeping ONE predicate makes them agree by construction.
 pub(crate) fn is_cite_key_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '+' | '/')
+}
+
+/// The citation key `s` (the text after an `@`) starts with: its run of
+/// [`is_cite_key_char`]s, less any punctuation that run ends in. Punctuation belongs to a
+/// key only inside it, Pandoc's rule, so `[@knuth:1984: a note]` cites `knuth:1984` and the
+/// sentence period of `@smith.2020.` is not part of the key. Every reader of a key goes
+/// through this: the citation group, the bare-key check and the `.bib` parser, which skips a
+/// key this would shorten because no citation could name it.
+pub(crate) fn key_prefix(s: &str) -> &str {
+    let run = s.find(|c: char| !is_cite_key_char(c)).unwrap_or(s.len());
+    s[..run].trim_end_matches(|c: char| !(c.is_alphanumeric() || c == '_'))
 }
 
 /// Parse the 1-based start line out of a `startLine:col-endLine:col` sourcepos.

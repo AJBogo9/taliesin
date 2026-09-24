@@ -838,24 +838,15 @@ fn resolve_definition(
                 Location::new(target, point(&body, anchor.line, 0, 0))
             }
         },
-        // `[@key]` → the BibTeX entry in the first front-matter `.bib` that defines it.
+        // `[@key]` → the BibTeX entry the render cites for it.
         Target::Cite { key, .. } => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?;
-            let mut hit = None;
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                let abs = dir.join(&rel);
-                if let Ok(bib) = std::fs::read_to_string(&abs)
-                    && let Some((line, col)) = crate::lsp_nav::bib_entry_site(&bib, &key)
-                {
-                    hit = Some(Location::new(
-                        Url::from_file_path(&abs).ok()?,
-                        point(&bib, line, col, col),
-                    ));
-                    break;
-                }
-            }
-            hit?
+            let files = crate::lsp_nav::bib_files(uri, text);
+            let (path, bib, span) = crate::lsp_nav::bib_entry(&files, &key)?;
+            let (line, col) = crate::lsp_nav::line_col(&bib, span.start);
+            Location::new(
+                Url::from_file_path(&path).ok()?,
+                point(&bib, line, col, col),
+            )
         }
         // A front-matter key has no definition site to jump to; its answer is the hover.
         Target::FrontmatterKey { .. } | Target::None => return None,
@@ -1016,12 +1007,11 @@ fn token_hover(
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    let head = if anchor.number.is_empty() {
-                        format!("**{label}** `@{id}`")
-                    } else {
-                        format!("**{label} {}** `@{id}`", anchor.number)
-                    };
-                    markup(format!("{head}\n\nDefined in `{page}`"), start, end)
+                    markup(
+                        format!("**{label}** `@{id}`\n\nDefined in `{page}`"),
+                        start,
+                        end,
+                    )
                 }
             }
         }
@@ -1039,18 +1029,11 @@ fn token_hover(
             };
             markup(format!("`{key}:`{scope}\n\n{description}"), start, end)
         }
-        // `[@key]` → the brace-balanced BibTeX entry from the first front-matter `.bib`.
+        // `[@key]` → the BibTeX entry the render cites for it, as written in its `.bib`.
         Target::Cite { key, start, end } => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?;
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel))
-                    && let Some(entry) = crate::lsp_nav::bib_entry_text(&bib, &key)
-                {
-                    return markup(format!("```bibtex\n{entry}\n```"), start, end);
-                }
-            }
-            None
+            let files = crate::lsp_nav::bib_files(uri, text);
+            let (_, bib, span) = crate::lsp_nav::bib_entry(&files, &key)?;
+            markup(format!("```bibtex\n{}\n```", bib[span].trim()), start, end)
         }
         // `{{< include x.tmd >}}` → where the path resolves, and whether it is there. This
         // used to answer nothing even though the target was classified and go-to-definition
@@ -1175,7 +1158,11 @@ fn resolve_completion(
     }
     doc_prefix.push_str(&line_prefix);
 
-    let ctx = crate::lsp_complete::detect_context(&line_prefix, &doc_prefix);
+    let ctx = crate::lsp_complete::detect_context(
+        &line_prefix,
+        &doc_prefix,
+        &taliesin_core::render::rendered_lines(text),
+    );
     if matches!(ctx, Ctx::None) {
         return None;
     }
@@ -1530,21 +1517,10 @@ fn resolve_completion(
                 })
                 .collect()
         }
-        Ctx::Cite => {
-            let dir = uri.to_file_path().ok()?;
-            let dir = dir.parent()?.to_path_buf();
-            let mut keys = std::collections::BTreeSet::new();
-            for rel in crate::lsp_nav::frontmatter_bib_paths(text) {
-                if let Ok(bib) = std::fs::read_to_string(dir.join(&rel)) {
-                    for k in crate::lsp_complete::harvest_bib_keys(&bib) {
-                        keys.insert(k);
-                    }
-                }
-            }
-            keys.into_iter()
-                .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
-                .collect()
-        }
+        Ctx::Cite => crate::lsp_nav::bib_keys(&crate::lsp_nav::bib_files(uri, text))
+            .into_iter()
+            .map(|k| item(k, "citation key".to_string(), CompletionItemKind::REFERENCE))
+            .collect(),
         Ctx::ShortcodePath { shortcode, typed } => {
             let doc_dir = uri.to_file_path().ok()?;
             let doc_dir = doc_dir.parent()?.to_path_buf();
@@ -1738,10 +1714,11 @@ fn to_document_symbol(
     // it must not be read as own-prose, so a parent says "total" and a leaf does not.
     let words = taliesin_core::prose::word_count(&lines[start..=end].join("\n"));
     let detail = (words > 0).then(|| {
+        let noun = if words == 1 { "word" } else { "words" };
         if node.children.is_empty() {
-            format!("{words} words")
+            format!("{words} {noun}")
         } else {
-            format!("{words} words total")
+            format!("{words} {noun} total")
         }
     });
     #[allow(deprecated)] // `deprecated` is a required (deprecated) field of DocumentSymbol.
@@ -2973,6 +2950,20 @@ mod tests {
         thread.join().unwrap().unwrap();
     }
 
+    /// One word is "1 word" (audit 2026-09-24, scanners #10: the outline read "1 words").
+    #[test]
+    fn document_symbol_detail_says_one_word_in_the_singular() {
+        let uri = Url::parse("file:///tmp/tali-lsp-outline-one.tmd").unwrap();
+        let mut docs = std::collections::HashMap::new();
+        docs.insert(uri.clone(), "# Top\n\n## \n\n# One\n".to_string());
+        let Some(lsp_types::DocumentSymbolResponse::Nested(syms)) = document_symbols(&docs, &uri)
+        else {
+            panic!("a nested outline");
+        };
+        assert_eq!(syms[0].detail.as_deref(), Some("1 word total"));
+        assert_eq!(syms[1].detail.as_deref(), Some("1 word"));
+    }
+
     // A section with no prose at all carries NO detail — not "0 words". The zero is the
     // boundary the `words > 0` gate exists for, and every fixture above is well past it: a
     // heading's own text counts as prose, so reaching zero needs an untitled heading over a
@@ -3042,6 +3033,328 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    /// One class of the audit's scanner matrix (2026-09-24, scanners #10): a block that
+    /// is code, raw HTML or prose to comrak, set between a document's head and a tail every
+    /// editor feature is asked about.
+    struct Class {
+        name: &'static str,
+        /// The outline title the context itself adds, when comrak reads a heading in it.
+        heading: Option<&'static str>,
+        /// `(language, executable)` of every cell region the context itself holds.
+        regions: &'static [(&'static str, bool)],
+    }
+
+    /// A heading, a div and prose, the lines every class wraps as a sample or a comment.
+    const PROBE: &[&str] = &["# Probe heading", "::: {.probe-div}", "probe", ":::"];
+
+    /// Outline, folds, cell regions and cell-option completion read block structure from
+    /// core's classifier, the parse the page renders from (audit 2026-09-24, B2 and
+    /// scanners #10). Each used a fence tracker of its own, and every tracker disagreed with
+    /// comrak somewhere: a ```` ```` ```` sample holding ``` gave a phantom heading, a
+    /// "``` python" line or one line of inline code starting with ``` lost every later
+    /// heading, fold, cell and `#|` completion, a ``` inside a `~~~` sample flipped `#|`
+    /// completion for the rest of the file, a commented-out or indented-code cell was
+    /// "executable", a quoted cell was missed, and setext and indented headings were not in
+    /// the outline.
+    #[test]
+    fn every_editor_feature_reads_block_structure_as_the_render_does() {
+        fn with(prefix: &str, lines: &[&str]) -> Vec<String> {
+            lines.iter().map(|l| format!("{prefix}{l}")).collect()
+        }
+        let probe = |before: &[&str], after: &[&str]| -> Vec<String> {
+            before
+                .iter()
+                .chain(PROBE)
+                .chain(after)
+                .map(|l| l.to_string())
+                .collect()
+        };
+        let owned: Vec<(&str, Vec<String>)> = vec![
+            ("L01 plain sample", probe(&["```text"], &["```"])),
+            (
+                "L02 longer fence around a shorter one",
+                probe(&["````markdown", "```python", "x = 1", "```"], &["````"]),
+            ),
+            (
+                "L03 tilde around a backtick line",
+                probe(&["~~~markdown", "```"], &["~~~"]),
+            ),
+            (
+                "L04 backticks around a tilde line",
+                probe(&["```markdown", "~~~"], &["```"]),
+            ),
+            ("L05 longer closing fence", probe(&["```text"], &["````"])),
+            (
+                "L06 a fence line with an info string closes nothing",
+                probe(&["```text", "``` python"], &["```"]),
+            ),
+            (
+                "L07 inline code at line start",
+                probe(&["```inline``` at line start.", ""], &[]),
+            ),
+            ("L08 tilde fence", probe(&["~~~python"], &["~~~"])),
+            ("L09 indented code", with("    ", PROBE)),
+            (
+                "L10 fence indented four in a list item",
+                ["1. step", ""]
+                    .iter()
+                    .map(|l| l.to_string())
+                    .chain(with("    ", &["```text"]))
+                    .chain(with("    ", PROBE))
+                    .chain(with("    ", &["```"]))
+                    .collect(),
+            ),
+            (
+                "L11 fence in a block quote",
+                with(
+                    "> ",
+                    &["```text", PROBE[0], PROBE[1], PROBE[2], PROBE[3], "```"],
+                ),
+            ),
+            ("L12 HTML comment", probe(&["<!--"], &["-->"])),
+            ("L13 indented fence", probe(&["  ```text"], &["  ```"])),
+            ("L15 front matter closed by `...`", probe(&[], &[])),
+            (
+                "L16 setext heading",
+                vec!["Setext heading".into(), "===".into()],
+            ),
+            (
+                "L17 heading indented two spaces",
+                vec!["  ## Indented heading".into()],
+            ),
+            (
+                "L18 commented-out cell",
+                ["<!--", "```{python}", "z = 2", "```", "-->"]
+                    .iter()
+                    .map(|l| l.to_string())
+                    .collect(),
+            ),
+            (
+                "L19 cell in indented code",
+                with("    ", &["```{python}", "z = 2", "```"]),
+            ),
+            (
+                "L20 cell in a block quote",
+                with("> ", &["```{python}", "z = 2", "```"]),
+            ),
+            (
+                "L21 a line of inline code that opens with a fence",
+                probe(&["```pip install x``` installs it.", ""], &[]),
+            ),
+            // A heading inside a quote or a list item is no section of the document.
+            (
+                "L22 heading in a block quote",
+                vec!["> ## Quoted heading".into()],
+            ),
+            (
+                "L23 heading in a list item",
+                vec!["- ## Listed heading".into()],
+            ),
+        ];
+        let expect: &[Class] = &[
+            Class {
+                name: "L01",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L02",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L03",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L04",
+                heading: None,
+                regions: &[("markdown", false)],
+            },
+            Class {
+                name: "L05",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L06",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L07",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L08",
+                heading: None,
+                regions: &[("python", false)],
+            },
+            Class {
+                name: "L09",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L10",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L11",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L12",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L13",
+                heading: None,
+                regions: &[("text", false)],
+            },
+            Class {
+                name: "L15",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L16",
+                heading: Some("Setext heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L17",
+                heading: Some("Indented heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L18",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L19",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L20",
+                heading: None,
+                regions: &[("python", false)],
+            },
+            Class {
+                name: "L21",
+                heading: Some("Probe heading"),
+                regions: &[],
+            },
+            Class {
+                name: "L22",
+                heading: None,
+                regions: &[],
+            },
+            Class {
+                name: "L23",
+                heading: None,
+                regions: &[],
+            },
+        ];
+        assert_eq!(owned.len(), expect.len());
+        for ((name, ctx), class) in owned.iter().zip(expect) {
+            assert!(name.starts_with(class.name), "{name} vs {}", class.name);
+            let closer = if class.name == "L15" { "..." } else { "---" };
+            let mut lines: Vec<String> = vec!["---".into(), "title: T".into(), closer.into()];
+            lines.extend(["".into(), "# Intro".into(), "".into()]);
+            lines.extend(ctx.iter().cloned());
+            let after_heading = lines.len() + 1;
+            let tail = [
+                "",
+                "# After heading",
+                "",
+                "::: {.after-div}",
+                "x",
+                ":::",
+                "",
+                "```{python}",
+                "#| echo: false",
+                "y = 1",
+                "```",
+                "",
+                "#| prose line",
+            ];
+            lines.extend(tail.iter().map(|l| l.to_string()));
+            let after_div = after_heading + 2;
+            let cell_opt = after_heading + 7;
+            let prose_opt = cell_opt + 4;
+            let text = lines.join("\n") + "\n";
+
+            let uri = Url::parse("file:///tmp/tali-lsp-classes.tmd").unwrap();
+            let mut docs = std::collections::HashMap::new();
+            docs.insert(uri.clone(), text.clone());
+            let mut titles = Vec::new();
+            fn walk(nodes: &[lsp_types::DocumentSymbol], out: &mut Vec<String>) {
+                for n in nodes {
+                    out.push(n.name.clone());
+                    walk(n.children.as_deref().unwrap_or(&[]), out);
+                }
+            }
+            match document_symbols(&docs, &uri) {
+                Some(lsp_types::DocumentSymbolResponse::Nested(syms)) => walk(&syms, &mut titles),
+                other => panic!("{name}: {other:?}"),
+            }
+            let mut want = vec!["Intro".to_string()];
+            want.extend(class.heading.map(str::to_string));
+            want.push("After heading".into());
+            assert_eq!(titles, want, "{name}: outline");
+
+            let folds: Vec<(u32, u32)> = crate::lsp_fold::folding_ranges(&text)
+                .iter()
+                .map(|f| (f.start_line, f.end_line))
+                .collect();
+            assert!(
+                folds.iter().any(|&(s, _)| s as usize == after_heading),
+                "{name}: no fold for the heading after the context: {folds:?}"
+            );
+            assert!(
+                folds.contains(&(after_div as u32, after_div as u32 + 2)),
+                "{name}: no fold for the div after the context: {folds:?}"
+            );
+
+            let regions = crate::lsp_cells::cell_regions(&text);
+            let (cell, rest): (Vec<_>, Vec<_>) =
+                regions.iter().partition(|r| r.start_line == cell_opt + 1);
+            assert_eq!(
+                cell.iter()
+                    .map(|r| (r.language.as_str(), r.end_line, r.executable))
+                    .collect::<Vec<_>>(),
+                [("python", cell_opt + 1, true)],
+                "{name}: the real cell"
+            );
+            assert_eq!(
+                rest.iter()
+                    .map(|r| (r.language.as_str(), r.executable))
+                    .collect::<Vec<_>>(),
+                class.regions,
+                "{name}: the context's own regions"
+            );
+
+            let complete =
+                |line: usize| resolve_completion(&docs, &complete_params(&uri, line as u32, 3));
+            assert!(
+                complete(cell_opt).is_some(),
+                "{name}: `#|` completion inside the real cell"
+            );
+            assert!(
+                complete(prose_opt).is_none(),
+                "{name}: `#|` completion on a prose line"
+            );
+        }
     }
 
     // The client needs to know where cells are to forward completion into them, and that
@@ -3496,6 +3809,162 @@ mod tests {
             labels.contains(&"smith2020") && labels.contains(&"jones19"),
             "expected both citation keys, got {labels:?}"
         );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Hover, go-to-definition and key completion read a citation with the render's own group
+    /// grammar and the `.bib` with its own parser (audit 2026-09-24, bibtex #11). A scanner of
+    /// their own resolved 2 of 11 real shapes: it wanted `[@` and `]` hard against the key,
+    /// knew no `/`, `+` or non-ASCII key character, never found a paren-delimited entry, and
+    /// offered keys the bibliography does not store.
+    #[test]
+    fn every_citation_shape_the_render_cites_resolves_in_the_editor() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-citeshape-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let entries = [
+            ("a1", "@misc{a1, title={First}}"),
+            ("b1", "@misc{b1, title={Second}}"),
+            ("knuth:1984", "@misc{knuth:1984, title={Colon}}"),
+            (
+                "DBLP:journals/corr/abs-1706-03762",
+                "@misc{DBLP:journals/corr/abs-1706-03762, title={Dblp}}",
+            ),
+            (
+                "10.1145/3292500.3330701",
+                "@misc{10.1145/3292500.3330701, title={Doi}}",
+            ),
+            ("doe+roe", "@misc{doe+roe, title={Plus}}"),
+            ("müller2020", "@misc{müller2020, title={Umlaut}}"),
+            ("paren1", "@book(paren1, title = \"Paren\")"),
+        ];
+        let mut bib: Vec<&str> = entries.iter().map(|(_, e)| *e).collect();
+        // Two keys no citation can name: the bibliography skips them, so must completion.
+        bib.push("@misc{smith&jones2020, title={Amp}}");
+        bib.push("@misc{end.dot., title={Dot}}");
+        std::fs::write(dir.join("refs.bib"), bib.join("\n") + "\n").unwrap();
+        let lines = [
+            "A [@a1, p. 3] and [@a1; @b1] and [-@knuth:1984].",
+            "B [@DBLP:journals/corr/abs-1706-03762] [@10.1145/3292500.3330701].",
+            "C [@doe+roe] [@müller2020] [@paren1] [@knuth:1984: a note].",
+            "See [@",
+        ];
+        let doc = dir.join("paper.tmd");
+        let text = format!("---\nbibliography: refs.bib\n---\n\n{}\n", lines.join("\n"));
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        // (line of `lines`, the `@key` to put the cursor inside, the key it names)
+        let probes = [
+            (0, "@a1,", "a1"),
+            (0, "@b1]", "b1"),
+            (0, "@knuth:1984]", "knuth:1984"),
+            (1, "@DBLP", "DBLP:journals/corr/abs-1706-03762"),
+            (1, "@10.1145", "10.1145/3292500.3330701"),
+            (2, "@doe+roe", "doe+roe"),
+            (2, "@müller2020", "müller2020"),
+            (2, "@paren1", "paren1"),
+            (2, "@knuth:1984:", "knuth:1984"),
+        ];
+        let mut id = 400;
+        for (row, needle, key) in probes {
+            let line = lines[row];
+            let col = line[..line.find(needle).unwrap()].chars().count() as u32 + 2;
+            let at = row as u32 + 4;
+            let entry_line = entries.iter().position(|(k, _)| *k == key).unwrap() as u32;
+            let entry = entries[entry_line as usize].1;
+            id += 1;
+            let hover = hover_raw_at(&client, &uri, id, at, col)
+                .unwrap_or_else(|| panic!("no hover on {needle} ({key})"));
+            assert!(
+                hover_markdown(&hover).contains(entry),
+                "{needle}: hover shows {:?}, not {entry:?}",
+                hover_markdown(&hover)
+            );
+            id += 1;
+            match definition_at(&client, &uri, id, at, col) {
+                Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                    assert_eq!(loc.uri, Url::from_file_path(dir.join("refs.bib")).unwrap());
+                    assert_eq!(loc.range.start.line, entry_line, "{needle}");
+                }
+                other => panic!("{needle}: expected the entry's location, got {other:?}"),
+            }
+        }
+
+        let items = complete_at(&client, &uri, 499, 7, 6);
+        let mut got: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        got.sort_unstable();
+        let mut want: Vec<&str> = entries.iter().map(|(k, _)| *k).collect();
+        want.sort_unstable();
+        assert_eq!(
+            got, want,
+            "completion offers exactly the keys a citation can name"
+        );
+
+        shutdown(&client);
+        thread.join().unwrap().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The editor searches the `.bib` files the render reads (audit 2026-09-24, bibtex #10):
+    /// a project's shared `_site.yml` `bibliography:` as well as the page's own, whichever
+    /// YAML spelling the page uses. It read only a line scan of the page's front matter, so
+    /// the documented shared-bibliography workflow got no hover, no go-to-definition and no
+    /// key completion, and a flow list (`[a.bib, b.bib]`) was read as one path.
+    #[test]
+    fn citations_resolve_against_the_shared_and_the_page_bibliography() {
+        let dir = std::env::temp_dir().join(format!("tali-lsp-sharedbib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: S\nbibliography: shared.bib\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("shared.bib"), "@misc{shared1, title={Shared}}\n").unwrap();
+        std::fs::write(dir.join("posts/a.bib"), "@misc{own1, title={Own A}}\n").unwrap();
+        std::fs::write(dir.join("posts/b.bib"), "@misc{own2, title={Own B}}\n").unwrap();
+        let doc = dir.join("posts/post.tmd");
+        let text = "---\ntitle: P\nbibliography: [a.bib, b.bib]\n---\n\n\
+                    [@shared1] [@own2]\n\nSee [@\n"
+            .to_string();
+        std::fs::write(&doc, &text).unwrap();
+
+        let (server, client) = Connection::memory();
+        let thread = std::thread::spawn(move || run(server));
+        handshake(&client);
+        let uri = Url::from_file_path(&doc).unwrap();
+        did_open(&client, &uri, text);
+        let _ = recv_publish(&client);
+
+        for (id, col, file, entry) in [
+            (601, 3, "shared.bib", "@misc{shared1"),
+            (603, 15, "posts/b.bib", "@misc{own2"),
+        ] {
+            let md = hover_raw_at(&client, &uri, id, 5, col)
+                .map(|h| hover_markdown(&h))
+                .unwrap_or_default();
+            assert!(md.contains(entry), "hover at column {col}: {md:?}");
+            match definition_at(&client, &uri, id + 1, 5, col) {
+                Some(lsp_types::GotoDefinitionResponse::Scalar(loc)) => {
+                    assert_eq!(loc.uri, Url::from_file_path(dir.join(file)).unwrap())
+                }
+                other => panic!("definition at column {col}: {other:?}"),
+            }
+        }
+        let items = complete_at(&client, &uri, 605, 7, 6);
+        let mut got: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
+        got.sort_unstable();
+        assert_eq!(got, ["own1", "own2", "shared1"]);
 
         shutdown(&client);
         thread.join().unwrap().unwrap();

@@ -135,7 +135,7 @@ pub(crate) const MATH_COMMANDS: &[MathCommand] = &[
         "\\substack",
         "Stacked subscript",
         "Structure",
-        "\\substack{$1 \\\\ $2}",
+        "\\substack{$1 \\\\\\\\ $2}",
     ),
     snip(
         "\\stackrel",
@@ -603,6 +603,28 @@ mod tests {
                 cmd.snippet
             );
         }
+    }
+
+    /// No snippet inserts a control space (`\ `). In snippet syntax `\\` inserts ONE
+    /// backslash, so a row break must be written `\\\\`; `\substack`'s was written `\\`
+    /// and inserted `\substack{x \ y}`, which KaTeX renders without complaint (one row with
+    /// a space, not two), so `every_command_renders` could not see it (audit 2026-09-24,
+    /// WP9 leftover).
+    #[test]
+    fn no_snippet_inserts_a_control_space() {
+        for cmd in MATH_COMMANDS {
+            let inserted = probe(cmd);
+            let bytes = inserted.as_bytes();
+            let mut run = 0;
+            for &b in bytes {
+                if b == b' ' && run % 2 == 1 {
+                    panic!("`{}` inserts a control space: {inserted:?}", cmd.name);
+                }
+                run = if b == b'\\' { run + 1 } else { 0 };
+            }
+        }
+        let substack = MATH_COMMANDS.iter().find(|c| c.name == "\\substack");
+        assert_eq!(substack.map(probe).as_deref(), Some("\\substack{x \\\\ x}"));
     }
 
     /// The picker groups by category; a one-off category is a typo more often than a group.
