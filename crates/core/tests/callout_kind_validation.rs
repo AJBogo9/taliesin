@@ -68,3 +68,42 @@ fn recognized_callout_kind_does_not_warn() {
         doc.warnings
     );
 }
+
+/// A div class and a callout kind are author text inside an attribute, so they are escaped
+/// like every other attribute value. They were interpolated raw, so a `"` in either wrote
+/// a second attribute: `::: {.callout-note"onclick="alert(1)}` shipped a live `onclick`,
+/// the shape the fence-language fix closed at its own site. The generated title a callout
+/// takes from its kind is escaped too, so `<b>` in a kind is text, not an element.
+#[test]
+fn a_quote_in_a_div_class_or_callout_kind_never_writes_an_attribute() {
+    let proj = TempProj::new();
+    let src = "# T\n\n::: {.callout-note\"onclick=\"alert(1)}\nBody.\n:::\n\n\
+               ::: {.callout-x<b>y</b>}\nBody.\n:::\n\n\
+               ::: {.callout-note\"onclick=\"alert(3) collapse=\"true\"}\nBody.\n:::\n\n\
+               ::: {.a\"onmouseover=\"alert(2)}\nx\n:::\n";
+    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
+    let html = doc.body_html();
+    let mut classes = Vec::new();
+    for tag in taliesin_core::render::tags(&html) {
+        for a in taliesin_core::render::attrs(&tag) {
+            assert!(
+                !a.name.starts_with("on"),
+                "an event handler was written: {}",
+                tag.text
+            );
+            if a.name == "class" && a.value.contains('"') {
+                classes.push(a.value.to_string());
+            }
+        }
+        assert_ne!(tag.name, "b", "a kind became markup: {html}");
+    }
+    assert_eq!(
+        classes,
+        vec![
+            "callout callout-note\"onclick=\"alert(1)",
+            "callout callout-note\"onclick=\"alert(3) callout-collapse",
+            "a\"onmouseover=\"alert(2)",
+        ],
+        "each class reads back exactly as the author wrote it"
+    );
+}

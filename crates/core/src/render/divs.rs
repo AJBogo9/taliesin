@@ -540,7 +540,7 @@ fn build_container(
             }
             None => {
                 generated_kind_label = true;
-                capitalize(kind)
+                html_escape(&capitalize(kind))
             }
         };
         let title_class = if generated_kind_label {
@@ -549,6 +549,9 @@ fn build_container(
             "callout-title"
         };
         let body = concat(&inner);
+        // The kind is author text inside an attribute: escaped, or a `"` in it writes a
+        // second attribute (`{.callout-note"onclick="…}` shipped a live handler).
+        let kind = escape_attr(kind);
         // `collapse="true"` makes the callout a native <details> (starts closed);
         // `collapse="false"` is collapsible but starts open.
         match attrs.get("collapse") {
@@ -579,7 +582,8 @@ fn build_container(
         {
             warnings.push(w);
         }
-        let mut class = attrs.classes.join(" ");
+        // Escaped like any attribute value: a `"` in a class wrote a second attribute.
+        let mut class = escape_attr(&attrs.classes.join(" "));
         if class.is_empty() {
             class.push_str("tali-div");
         }
