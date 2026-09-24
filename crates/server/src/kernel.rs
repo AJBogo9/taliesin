@@ -99,10 +99,9 @@ fn silence_timeout() -> Option<Duration> {
 /// enough for the `KeyboardInterrupt` + `Idle` that resync the channels, short enough that
 /// a cell which will never answer does not hold the page.
 ///
-/// One constant for both interrupt sites, but they read its expiry differently. A cell the
-/// **flood cap** interrupted is still talking, so a window that runs dry is the wanted
-/// outcome. A cell a **liveness cap** interrupted has already gone quiet, so a window that
-/// runs out means SIGINT was not honoured — see [`Output::interrupt_ignored`].
+/// One constant for both interrupt sites (a liveness cap, a flood cap), and one reading of
+/// its expiry: a cell that has not reached Idle when it runs out did not honour SIGINT,
+/// and its kernel is stopped; see [`Output::interrupt_ignored`].
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 
 /// How long to wait before the next liveness check, and which cap owns that
@@ -955,10 +954,8 @@ impl Kernel {
         let silence = self.silence_cap;
         let started = Instant::now();
         // Set when we have interrupted and are draining the resulting KeyboardInterrupt +
-        // Idle. `grace_after_cap` records which of the two interrupt sites put us here,
-        // because they read the window's expiry differently (see [`INTERRUPT_GRACE`]).
+        // Idle, from either interrupt site (a liveness cap or a flood cap).
         let mut grace_until: Option<Instant> = None;
-        let mut grace_after_cap = false;
         // Last time THIS cell produced output: the silence cap measures from here, so it
         // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
@@ -979,14 +976,18 @@ impl Kernel {
                     silence,
                 ),
             };
-            // A cap's grace window ran out with this cell still not Idle: the interrupt was
-            // not honoured, and nothing short of killing the kernel stops the cell. So the
+            // A grace window ran out with this cell still not Idle: the interrupt was not
+            // honoured, whichever cap sent it. A flood cap's window used to be read as "the
+            // kernel stopped flooding us", but a cell that ignores SIGINT and keeps printing
+            // also lets it run dry at the first moment no message is waiting, and it was then
+            // abandoned still running (exec #19). Nothing short of killing the kernel stops
+            // such a cell. So the
             // kernel is killed (E6): left running, it would hold every later cell behind the
             // runaway, each of which would then wait out its own caps and be blamed for it.
             // The executor's dead-kernel path fails the rest of the run fast, and the next
             // run starts a fresh kernel. The pid goes to the console and not into the page
             // (two builds of one document must not differ by a pid).
-            if grace_after_cap && budget.is_zero() {
+            if grace_until.is_some() && budget.is_zero() {
                 if let Some(pid) = self.running_pid() {
                     crate::log::warn(&format!(
                         "kernel (pid {pid}) ignored the interrupt, so it was stopped; the \
@@ -1035,13 +1036,6 @@ impl Kernel {
                     if !budget.is_zero() {
                         continue;
                     }
-                    if grace_until.is_some() {
-                        // The flood cap's grace window ran dry: the kernel has stopped
-                        // flooding us, which is what the interrupt was for. (A *liveness*
-                        // cap's window expiring is handled at the top of the loop, where a
-                        // quiet window means the interrupt was ignored.)
-                        break;
-                    }
                     // A cap expired. Both paths interrupt: a wedged cell must actually be
                     // stopped, not just abandoned, or it keeps running in the warm kernel
                     // and every later cell queues behind it. The message names the cap
@@ -1060,7 +1054,6 @@ impl Kernel {
                     self.interrupt();
                     outputs.note(Output::timeout(note));
                     grace_until = Some(Instant::now() + INTERRUPT_GRACE);
-                    grace_after_cap = true;
                     continue;
                 }
             };
@@ -2801,6 +2794,61 @@ mod tests {
                 t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(5),
                 "the loop waited {:?} on a cell that ignored its interrupt",
                 t.elapsed()
+            );
+        });
+    }
+
+    // exec #19: the FLOOD cap's grace window running dry was read as "the kernel stopped
+    // flooding us", and the loop gave up on the cell. But a cell that ignores SIGINT and
+    // keeps printing also lets the window run dry the moment no message happens to be
+    // waiting, and it was then abandoned still running, with the next cell queued behind
+    // it. A window that ends without the cell reaching Idle means the interrupt was not
+    // honoured, whichever cap sent it, so the kernel is stopped either way.
+    #[test]
+    fn a_flood_that_ignores_its_interrupt_is_stopped_not_abandoned() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the flood cap.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = None;
+            let t = std::time::Instant::now();
+            let out = render_outputs(
+                &k.execute(
+                    "import signal, time\n\
+                     signal.signal(signal.SIGINT, lambda *a: None)\n\
+                     for i in range(10_000_000):\n    \
+                         print('x' * 200, flush=True)\n    \
+                         if i % 100 == 0: time.sleep(0.01)",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                out.contains(TRUNCATION_MARKER),
+                "the flood cap did not fire: {out}"
+            );
+            assert!(
+                !k.is_alive(),
+                "the flooding cell ignored its interrupt and was abandoned still running \
+                 in the kernel ({:?})",
+                t.elapsed()
+            );
+            assert!(
+                out.contains("ignored the interrupt"),
+                "the page must say why the kernel was stopped: {}",
+                &out[out.len().saturating_sub(400)..]
             );
         });
     }
