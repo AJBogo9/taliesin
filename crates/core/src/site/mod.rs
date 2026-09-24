@@ -2668,16 +2668,18 @@ pub(crate) mod tests {
             "cards must render inside the empty #recent div, before the link: {recipe}"
         );
         assert!(
-            recipe_warnings.iter().all(|w| !w.message.contains("listing")),
+            recipe_warnings
+                .iter()
+                .all(|w| !w.message.contains("listing")),
             "a listing that found its target draws no listing warning: {recipe_warnings:?}"
         );
 
         // No target at all: the cards still render (appended), and the author is told.
         let (_, missing_warnings) = render_page(&site, "missing.tmd");
         assert!(
-            missing_warnings
-                .iter()
-                .any(|w| w.message.contains("`id: nowhere`") && w.message.contains("::: {#nowhere}")),
+            missing_warnings.iter().any(
+                |w| w.message.contains("`id: nowhere`") && w.message.contains("::: {#nowhere}")
+            ),
             "a listing id that names nothing must warn: {missing_warnings:?}"
         );
 

@@ -488,8 +488,9 @@ mod tests {
         };
         let c = interpreter_check(&resolved("python3", Provenance::Default), &absent);
         assert!(
-            c.fix.as_deref().is_some_and(|f| f.contains("python3 -m venv .venv")
-                && !f.contains("-m pip install")),
+            c.fix.as_deref().is_some_and(
+                |f| f.contains("python3 -m venv .venv") && !f.contains("-m pip install")
+            ),
             "{:?}",
             c.fix
         );

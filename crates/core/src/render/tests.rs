@@ -526,10 +526,19 @@ fn an_empty_div_with_an_id_still_emits_its_element() {
     let doc = render_document("Before.\n\n::: {#recent}\n:::\n\nAfter.\n");
     let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
     let before = h.find("Before.").expect("before");
-    let div = h.find("id=\"recent\"").unwrap_or_else(|| panic!("no #recent element: {h}"));
+    let div = h
+        .find("id=\"recent\"")
+        .unwrap_or_else(|| panic!("no #recent element: {h}"));
     let after = h.find("After.").expect("after");
-    assert!(before < div && div < after, "#recent sits where it was written: {h}");
-    assert!(doc.warnings.is_empty(), "and it is silent: {:?}", doc.warnings);
+    assert!(
+        before < div && div < after,
+        "#recent sits where it was written: {h}"
+    );
+    assert!(
+        doc.warnings.is_empty(),
+        "and it is silent: {:?}",
+        doc.warnings
+    );
 
     let nested = render_document("::: {.outer}\nText.\n\n::: {#slot}\n:::\n:::\n\nAfter.\n");
     let outer = nested

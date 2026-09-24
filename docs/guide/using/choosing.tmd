@@ -36,8 +36,11 @@ None of those six constructs originated in Taliesin. Each is Pandoc or Quarto vo
 that predates it, so the 6.6% is syntax another Pandoc-family tool already parses. `.tmd`
 is a file extension, not a format. A project arriving from Quarto likewise brings its
 sentences, fenced cells, `#|` options, `:::` divs, math, citations and cross-references
-across unchanged. `taliesin build . --check-only` names the short list of vocabulary that
-differs, with a file and a line for each.
+across unchanged. Taliesin reads only `.tmd` pages and does not read `_quarto.yml`, so
+rename each `.qmd` to `.tmd` and add a `_site.yml` (see the
+[configuration reference](../reference/frontmatter.tmd#project-site-yml)). Then
+`taliesin build . --check-only` names the short list of vocabulary that differs, with a
+file and a line for each.
 
 The check cannot flag an unknown cross-reference prefix. Only `@fig-`, `@tbl-`, `@sec-`,
 `@eq-` and `@lst-` are references here; anything else (`@thm-`, `@def-`) stays literal
