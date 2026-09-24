@@ -1229,32 +1229,40 @@ fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<Bu
 /// the accepted cost of the warm-pool cut as "a `warming-kernel` state on the first cell";
 /// what shipped was no state at all.
 ///
-/// **Only on a first build.** A warm edit already has a body on screen, and a second full
-/// publish there would flash it away and back for nothing.
+/// **A full publish only on a first build.** A warm edit already has a body on screen, and a
+/// second full publish there would flash it away and back for nothing. A rebuild sends only
+/// its edited cells instead ([`publish_edited_cells`]).
 ///
 /// The cells go out as source, which is exactly what `--no-exec` already publishes, so the
 /// shape is supported end to end. The post-exec publish is untouched, and the diff between
 /// the two is what turns each cell's source into its output — `build_page` bumps the render
 /// generation on that diff, which is the re-mount the client is already told to expect.
 fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks: &[Block]) {
-    if project
-        .pages
-        .lock()
-        .get(rel)
-        .is_some_and(|ps| !ps.doc.blocks.is_empty())
-    {
-        return; // a body is already on screen: this is a rebuild, not a first paint
-    }
     // Finished exactly as the post-exec publish finishes them (numbering, cross-refs,
     // listing expansion), so this paint is the `--no-exec` render of the page rather than a
     // half-resolved one showing raw `@fig-` text. These warnings are recomputed against the
     // executed blocks below and are discarded here.
-    let mut pre = blocks.to_vec();
-    let mut discarded = Vec::new();
-    {
+    let finished = || {
+        let mut pre = blocks.to_vec();
+        let mut discarded = Vec::new();
         let site = project.site.lock();
         site.finish_blocks(page, &mut pre, &mut discarded, None, None);
+        pre
+    };
+    let edits = project
+        .pages
+        .lock()
+        .get(rel)
+        .filter(|ps| !ps.doc.blocks.is_empty())
+        .map(|ps| edited_cells(&ps.doc.blocks, blocks, executable_cell));
+    if let Some(edits) = edits {
+        // A body is already on screen: this is a rebuild, not a first paint.
+        if let Some(edits) = edits.filter(|e| !e.is_empty()) {
+            publish_edited_cells(project, rel, &finished(), &edits);
+        }
+        return;
     }
+    let pre = finished();
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
         doc: PageDoc::default(),
@@ -1262,6 +1270,100 @@ fn publish_pre_exec_body(project: &Arc<Project>, rel: &str, page: &Page, blocks:
     });
     ps.doc.blocks = pre;
     let _ = ps.tx.send(full_render_json(&ps.doc));
+}
+
+/// On a rebuild, put each EDITED code cell on screen before it runs (audit E7).
+///
+/// An edit changes the cell's content hash, so its block id: the block the client holds
+/// carries the old id, and the new one only arrived with the post-exec publish. The
+/// executor streams the cell's `running` state and its live output under the NEW id, and
+/// the client finds nowhere to show either (`openLiveOutput` looks the cell up by it), so
+/// the one cell the author is watching showed its old source and output, with no badge,
+/// until it finished. Only unedited downstream cells, whose ids survive, streamed.
+///
+/// So each edited cell goes out now as an `update` of the block it replaces, and its old
+/// output is removed, since the cell is about to produce a new one and the live output
+/// streams in its place. The page model is changed to match exactly what was sent, so the
+/// post-exec diff starts from what the client really holds. Prose edits still wait for
+/// the post-exec publish.
+///
+/// Edited cells are paired with the blocks they replace by order, and only when that is
+/// unambiguous: the page has the same number of executable cells as before, and every pair
+/// that differs is a new id replacing an id that is gone. Anything else (a cell added,
+/// removed or moved) sends nothing here and leaves it all to the post-exec diff.
+fn publish_edited_cells(
+    project: &Arc<Project>,
+    rel: &str,
+    pre: &[Block],
+    edits: &[(usize, usize)],
+) {
+    let mut pages = project.pages.lock();
+    let Some(ps) = pages.get_mut(rel) else {
+        return;
+    };
+    // The model may have moved since the pairing was made; pair again against it.
+    if edited_cells(&ps.doc.blocks, pre, executable_cell).as_deref() != Some(edits) {
+        return;
+    }
+    let mut ops = Vec::new();
+    // Back to front, so removing an output block does not shift a later edit's index.
+    for &(at, new) in edits.iter().rev() {
+        let old = std::mem::replace(&mut ps.doc.blocks[at], pre[new].clone());
+        let out = format!("{}-out", old.id);
+        if ps.doc.blocks.get(at + 1).is_some_and(|b| b.id == out) {
+            ps.doc.blocks.remove(at + 1);
+            ops.push(BlockOp::Remove { target_id: out });
+        }
+        ops.push(BlockOp::Update {
+            target_id: old.id,
+            html: pre[new].html.clone(),
+        });
+    }
+    ops.reverse();
+    ps.doc.generation = ps.doc.generation.wrapping_add(1);
+    let generation = ps.doc.generation;
+    for op in &ops {
+        let _ = ps.tx.send(op_json(op, generation));
+    }
+}
+
+/// Whether `b` is a code cell the kernel executes (the cells that stream).
+fn executable_cell(b: &Block) -> bool {
+    b.cell
+        .as_ref()
+        .is_some_and(|c| taliesin_core::render::executes_to_kernel(&c.lang))
+}
+
+/// The `(index in on_screen, index in new)` pairs of code cells an edit replaced, or `None`
+/// when the pairing is ambiguous (see [`publish_edited_cells`]). `cell` says which blocks
+/// are executable cells.
+fn edited_cells(
+    on_screen: &[Block],
+    new: &[Block],
+    cell: impl Fn(&Block) -> bool,
+) -> Option<Vec<(usize, usize)>> {
+    let old: Vec<usize> = (0..on_screen.len())
+        .filter(|&i| cell(&on_screen[i]))
+        .collect();
+    let now: Vec<usize> = (0..new.len()).filter(|&i| cell(&new[i])).collect();
+    if old.len() != now.len() {
+        return None;
+    }
+    let old_ids: std::collections::HashSet<&str> =
+        on_screen.iter().map(|b| b.id.as_str()).collect();
+    let new_ids: std::collections::HashSet<&str> = new.iter().map(|b| b.id.as_str()).collect();
+    let mut edits = Vec::new();
+    for (&o, &n) in old.iter().zip(&now) {
+        let (was, is) = (&on_screen[o].id, &new[n].id);
+        if was == is {
+            continue;
+        }
+        if new_ids.contains(was.as_str()) || old_ids.contains(is.as_str()) {
+            return None; // a move or a swap, not an edit in place
+        }
+        edits.push((o, n));
+    }
+    Some(edits)
 }
 
 /// Whether a rendered page needs no kernel, and so belongs on the bypass lane (AP3-1).
@@ -2397,6 +2499,153 @@ mod project_tests {
             "the post-exec publish must still splice the output in: {final_body}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// E7: the cell the author just edited must reach the page, as its new code block,
+    /// BEFORE it runs. Its content hash (so its block id) changed with the edit, and the new
+    /// block only arrived with the post-exec publish, so the client's `running` badge and
+    /// live output (`openLiveOutput` looks the cell up by that id) had nothing to attach to:
+    /// only unedited downstream cells streamed, never the one being watched. On a rebuild the
+    /// edited cells now go out as `update` ops first, with the old output removed, so the
+    /// live output streams into a block the client already holds.
+    #[test]
+    fn an_edited_cell_reaches_the_page_before_it_runs() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the pre-exec publish of an edited cell; this run did not."
+            );
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-editedcell-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let doc =
+            |cell: &str| format!("---\ntitle: E\n---\n\nProse.\n\n```{{python}}\n{cell}\n```\n");
+        std::fs::write(dir.join("index.tmd"), doc("print('v' + '1')")).unwrap();
+        let site = taliesin_core::site::Site::discover(&dir);
+        let (tx, _) = broadcast::channel(4096);
+        let mut pages = HashMap::new();
+        pages.insert(
+            "index.tmd".to_string(),
+            PageState {
+                doc: PageDoc::default(),
+                tx: tx.clone(),
+            },
+        );
+        let project = Arc::new(Project {
+            dir: dir.clone(),
+            site: parking_lot::Mutex::new(site),
+            pages: parking_lot::Mutex::new(pages),
+            exec_lane: Mutex::new(ExecLane::default()),
+            scope: None,
+            front_matter: Mutex::new(HashMap::new()),
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let msgs: Vec<serde_json::Value> = rt.block_on(async {
+            let py = {
+                let s = project.site.lock();
+                crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
+            };
+            let mut pool = ExecPool::new(
+                dir.join("_freeze"),
+                py,
+                Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            );
+            build_page(&project, "index.tmd", Some(&mut pool)).await;
+            std::fs::write(
+                dir.join("index.tmd"),
+                doc("import time\nprint('EDITED' + '-RUN', flush=True)\ntime.sleep(1)"),
+            )
+            .unwrap();
+            let mut rx = tx.subscribe();
+            build_page(&project, "index.tmd", Some(&mut pool)).await;
+            let mut out = Vec::new();
+            while let Ok(m) = rx.try_recv() {
+                out.push(serde_json::from_str(&m).unwrap());
+            }
+            out
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        let running = msgs
+            .iter()
+            .position(|m| m["type"] == "cell-state" && m["state"] == "running")
+            .expect("the edited cell ran");
+        let cell_id = msgs[running]["cell_id"].as_str().unwrap().to_string();
+        let shown = msgs.iter().position(|m| {
+            m["type"] == "update"
+                && m["html"]
+                    .as_str()
+                    .is_some_and(|h| h.contains(&format!("data-block-id=\"{cell_id}\"")))
+        });
+        assert!(
+            shown.is_some_and(|i| i < running),
+            "the edited cell's new block did not reach the page before it ran ({shown:?} vs \
+             running at {running}), so its badge and live output had nothing to attach to"
+        );
+    }
+
+    /// The pairing behind [`publish_edited_cells`]: an in-place edit pairs; a cell added,
+    /// removed or moved does not, and then nothing is sent before the run.
+    #[test]
+    fn only_an_edit_in_place_pairs_a_new_cell_with_the_block_it_replaces() {
+        let b = |id: &str, cell: bool| Block {
+            id: id.into(),
+            sourcepos: String::new(),
+            source_file: None,
+            html: String::new(),
+            cell: cell.then(|| taliesin_core::render::Cell {
+                lang: "python".into(),
+                code: String::new(),
+                figure: None,
+                table: None,
+                echo: true,
+                include: true,
+                cache: true,
+                js: Default::default(),
+            }),
+            nested: Vec::new(),
+        };
+        let on_screen = [
+            b("p", false),
+            b("c1", true),
+            b("c1-out", false),
+            b("c2", true),
+        ];
+        let is_cell = |x: &Block| x.cell.is_some();
+        assert_eq!(
+            edited_cells(
+                &on_screen,
+                &[b("p", false), b("c1x", true), b("c2", true)],
+                is_cell
+            ),
+            Some(vec![(1, 1)]),
+            "c1 edited in place"
+        );
+        assert_eq!(
+            edited_cells(
+                &on_screen,
+                &[b("p", false), b("c1", true), b("c2", true)],
+                is_cell
+            ),
+            Some(vec![]),
+            "nothing edited"
+        );
+        assert_eq!(
+            edited_cells(
+                &on_screen,
+                &[b("c1", true), b("c2", true), b("c3", true)],
+                is_cell
+            ),
+            None,
+            "a cell added"
+        );
+        assert_eq!(
+            edited_cells(&on_screen, &[b("c2", true), b("c1", true)], is_cell),
+            None,
+            "two cells swapped"
+        );
     }
 
     /// The gate that decides whether a save touched what DISCOVERY reads.
