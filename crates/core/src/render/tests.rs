@@ -547,6 +547,38 @@ fn toc_does_not_double_escape_entities() {
     assert!(!toc.contains("&amp;lt;"), "TOC double-escaped `<`: {toc}");
 }
 
+/// ONE escaper, for text and attributes alike, and it escapes `"`. Text escaped without it
+/// can spell `name="value"` byte for byte, which is how a code sample showing
+/// `<div id="x">` was read as markup by every substring scan (FA11-FA13), and why the
+/// favicon, sitting in an attribute, could be handed the text escaper and break out of
+/// its quotes.
+#[test]
+fn text_and_attributes_share_one_escaper_that_escapes_the_quote() {
+    assert_eq!(
+        html_escape("a=\"b\" & <c>"),
+        "a=&quot;b&quot; &amp; &lt;c&gt;"
+    );
+    assert_eq!(escape_attr("a=\"b\" & <c>"), html_escape("a=\"b\" & <c>"));
+    let doc = render_document("Write `<div id=\"x\">` here.\n");
+    assert!(
+        doc.blocks[0]
+            .html
+            .contains("<code>&lt;div id=&quot;x&quot;&gt;</code>"),
+        "{}",
+        doc.blocks[0].html
+    );
+    // A figure's alt is its caption's plain text, escaped once: what the walker reads
+    // back is what the caption says, not `R&amp;D`.
+    let fig = render_document("![R&D, a < b](a.png){#fig-a}\n");
+    let img = fig
+        .blocks
+        .iter()
+        .flat_map(|b| tags(&b.html).collect::<Vec<_>>())
+        .find(|t| t.name == "img")
+        .expect("the figure's image");
+    assert_eq!(attr_value(&img, "alt").as_deref(), Some("R&D, a < b"));
+}
+
 #[test]
 fn toc_href_matches_an_explicit_heading_id_containing_an_entity() {
     // The `id` reaches `toc_html` via `extract_attr` over ALREADY-escaped heading HTML,
@@ -7311,7 +7343,7 @@ fn a_lone_carriage_return_does_not_break_ids_slugs_or_sourcepos() {
 /// A code sample that SHOWS a duplicate `id="…"` is text, not markup.
 ///
 /// **The defect (Fable audit FA11).** `rename_repeated_ids` scanned flat HTML for ` id="`
-/// with no tag-versus-text state, and `escape_html` does not escape `"`. A fence or an
+/// with no tag-versus-text state, and `escape_html` did not escape `"` then. A fence or an
 /// inline code span displaying `<div id="example">` twice therefore had its **visible
 /// text** rewritten to `example-1`, and the page drew two error-severity "duplicate element
 /// id" diagnostics about elements that do not exist. Fenced blocks in a *known* language
@@ -7329,8 +7361,9 @@ fn a_code_sample_showing_a_duplicate_id_is_left_alone() {
         !html.contains("example-1"),
         "a code sample's visible text was rewritten: {html}"
     );
+    // Displayed as escaped text, which the browser shows as `id="example"`.
     assert_eq!(
-        html.matches("id=\"example\"").count(),
+        html.matches("id=&quot;example&quot;").count(),
         3,
         "all three displayed ids must survive verbatim: {html}"
     );

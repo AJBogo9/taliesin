@@ -96,9 +96,8 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     } else {
         format!(" style=\"{dims}\"")
     };
-    // `alt` is the caption HTML with tags stripped: it already carries valid
-    // entities, so only quote-escape it (escape_attr would double-escape `&`).
-    let alt = escape_attr_from_html(&strip_tags(&fig.caption));
+    // `alt` is the caption's plain text (tags stripped, references decoded), escaped once.
+    let alt = escape_attr(&unescape_html(&strip_tags(&fig.caption)));
     let img = |src: &str, class: &str| {
         let cls = if class.is_empty() {
             String::new()

@@ -3207,7 +3207,7 @@ const RAW_TEXT_ELEMENTS: &[&str] = &["script", "style"];
 ///
 /// **Why this exists (Fable audit FA11/FA12, then FA13).** Passes kept reading finished
 /// HTML with a bare `find("href=\"")` and no notion of tag-versus-text, and `escape_html`
-/// does not escape `"` — so a fenced or inline code sample that merely *shows*
+/// did not escape `"` until 2026-09-24 — so a fenced or inline code sample that merely *shows*
 /// `<div id="example">` had its visible text rewritten to `example-1` (stealing the real
 /// element's anchor and firing two bogus error-severity diagnostics), a sample showing
 /// `<a href="other.tmd">` was published reading `other.html`, and the build's asset
@@ -3733,9 +3733,13 @@ fn char_ref(s: &str) -> Option<(char, usize)> {
     Some((ch, s.len() - digits.len() + len + 1))
 }
 
-/// Escape a string for HTML *text* content (`&`, `<`, `>`). For attribute values
-/// (which also need `"`), use [`escape_attr`]. Shared with the server crate's
-/// executor/kernel output rendering so escaping is defined once.
+/// Escape a string for HTML, text or a double-quoted attribute value alike (`&`, `<`, `>`,
+/// `"`). THE one escaper: [`escape_attr`] is the same function under the name attribute
+/// call sites use, so no site can pick a text escaper for an attribute (the favicon did,
+/// and a `"` in its path wrote a second attribute). Escaping `"` in text too means no
+/// escaped text can spell `name="value"`, which is what the finished-HTML substring scans
+/// kept mistaking for markup (FA11-FA13). Shared with the server crate's executor/kernel
+/// output rendering.
 pub fn html_escape(s: &str) -> String {
     let mut out = String::new();
     escape_html(s, &mut out);
@@ -3821,29 +3825,8 @@ fn base64_encode(data: &[u8]) -> String {
     s
 }
 
+/// [`html_escape`] appending to `out`, for the emitters that build a page in one buffer.
 fn escape_html(s: &str, out: &mut String) {
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-}
-
-/// Make already-entity-escaped HTML *text* (e.g. a rendered caption with its tags
-/// stripped via [`strip_tags`]) safe inside a double-quoted attribute. Existing
-/// entities are valid in an attribute value, so only the `"` needs escaping —
-/// running [`escape_attr`] here would double-escape `&` (`&amp;` -> `&amp;amp;`).
-pub(crate) fn escape_attr_from_html(s: &str) -> String {
-    s.replace('"', "&quot;")
-}
-
-/// Escape a string for an HTML *attribute* value (`&`, `<`, `>`, `"`). For text
-/// content, use [`html_escape`].
-pub fn escape_attr(s: &str) -> String {
-    let mut out = String::new();
     for ch in s.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
@@ -3853,8 +3836,10 @@ pub fn escape_attr(s: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out
 }
+
+/// [`html_escape`], under the name attribute call sites read best with. The same function.
+pub use html_escape as escape_attr;
 
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see
