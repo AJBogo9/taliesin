@@ -1677,8 +1677,9 @@ pub(crate) fn exec_disabled() -> bool {
 
 /// Whether a finished cell failed, from the outputs the kernel module built, never from
 /// their HTML. A cell whose output list holds an executor-written error did not run or
-/// finish (the most specific kind wins, in the order the console explains them); one with
-/// only interpreter errors raised; one a flood cap cut short is truncated.
+/// finish (the most specific kind wins, in the order the console explains them); one a
+/// flood cap cut short is truncated, whatever the cap's interrupt left behind; one with
+/// only interpreter errors raised.
 fn failure_of(outs: &crate::kernel::Outputs) -> Option<Failure> {
     let kinds: Vec<Option<&'static str>> = outs
         .list()
@@ -1698,9 +1699,12 @@ fn failure_of(outs: &crate::kernel::Outputs) -> Option<Failure> {
     .into_iter()
     .find(|k| kinds.contains(&Some(*k)));
     match not_run {
+        // A flood cap interrupts the cell it caps, so what that interrupt left (the
+        // `KeyboardInterrupt`, or the ignored-interrupt notice and its timeout kind) is the
+        // cap's doing: the cap that fired is the one to name.
+        Some(NOT_RUN_TIMEOUT) | None if outs.capped() => Some(Failure::Truncated),
         Some(k) => Some(Failure::NotRun(k)),
         None if !kinds.is_empty() => Some(Failure::Raised),
-        None if outs.capped() => Some(Failure::Truncated),
         None => None,
     }
 }
@@ -2013,6 +2017,35 @@ mod tests {
     //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
     use super::*;
     use taliesin_core::render::Cell;
+
+    /// A flood cap interrupts the cell it caps, so the outputs end in what that interrupt
+    /// left: the `KeyboardInterrupt` a cell that honoured it raised, or the
+    /// `interrupt_ignored` notice for one that did not. Either way an OUTPUT cap fired, and
+    /// that is what the console has to name: read as `Raised` it blamed the author's code
+    /// for an interrupt the executor sent, and read by the notice's timeout kind it said "hit
+    /// a liveness cap" and pointed at TALIESIN_CELL_SILENCE (audit 2026-09-24, WP3 leftover).
+    #[test]
+    fn a_flood_capped_cell_is_truncated_whatever_its_interrupt_left() {
+        use crate::kernel::{Output, Outputs};
+        let flooded = |tail: Output| {
+            let mut outs = Outputs::default();
+            outs.rich("x".repeat(9 * 1024 * 1024), None);
+            assert!(outs.capped(), "the rich cap fired");
+            outs.error(tail);
+            failure_of(&outs)
+        };
+        let honoured = Output::Error {
+            ename: "KeyboardInterrupt".into(),
+            evalue: String::new(),
+            traceback: vec![],
+            not_run: None,
+        };
+        assert_eq!(flooded(honoured), Some(Failure::Truncated));
+        assert_eq!(
+            flooded(Output::interrupt_ignored()),
+            Some(Failure::Truncated)
+        );
+    }
 
     /// Whether a cell failed is read from the outputs the kernel module built, never from
     /// their HTML (audit exec #11): an executor-written error is `NotRun` with its kind
