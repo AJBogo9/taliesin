@@ -2,27 +2,31 @@
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-> The native (and only) source extension is `.tmd`; the CLI is `taliesin`.
+Taliesin turns `.tmd` files into HTML: blog posts, papers, books and multi-page sites. A
+`.tmd` file is Markdown with executable code cells, in the syntax Pandoc and Quarto use
+(fenced divs, attributes, citations, cross-references, `{python}` cells), plus `{js}`
+cells that run in the browser. It is for people who write in their own editor and publish
+static HTML, the same niche as Quarto, MyST and Jupyter Book. Where it differs:
 
-A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
-files: blog posts, papers, books, and multi-page websites. Built for
-one author's workflow around three goals:
+1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) an element in the preview to jump to
+   its `.tmd` source.
+2. **Block-level live updates.** Saving swaps only the changed block(s) in the open
+   `taliesin preview`, preserving scroll position and the runtime state of live components
+   (Three.js, `{js}` cells).
+3. **A warm server and kernel.** The server and its Jupyter kernel stay running between
+   edits, so a save re-runs code from the first changed cell on, not the whole document.
+4. **HTML only.** There is no PDF, LaTeX or Word output.
 
-1. **Click-to-source.** Ctrl-click (Cmd-click on Mac) a rendered element to jump to its `.tmd` source.
-2. **Block-level incremental updates.** Saving a change swaps only the affected
-   block(s) in place, preserving scroll position and the runtime state of live
-   components (Three.js, `{js}` cells).
-3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
-
-Output is HTML only. The project's own manual is two sibling books authored in
-`.tmd`: the [User Guide](https://guide.taliesin.sh/) (how to use it) and the
-[Internals](https://internals.taliesin.sh/) book (the architecture, websocket protocol,
-and block model).
+The manual is two books written in `.tmd` and built with Taliesin: the
+[User Guide](https://guide.taliesin.sh/) (how to use it, starting with
+[Getting started](https://guide.taliesin.sh/using/getting-started.html)) and
+[Internals](https://internals.taliesin.sh/) (the architecture, websocket protocol and
+block model).
 
 ## Before you adopt it
 
-[Choosing Taliesin](https://guide.taliesin.sh/using/choosing.html) covers each point below at length, with
-its sources and method.
+[Choosing Taliesin](https://guide.taliesin.sh/using/choosing.html) covers each point below
+at length, with its sources and method.
 
 - **Portability.** Across the 81 documents / 7,202 lines of the project's own corpus,
   6.6% of lines carry any construct beyond plain CommonMark, and all six construct
