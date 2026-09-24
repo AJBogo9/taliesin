@@ -73,17 +73,42 @@ pub(super) fn resolve_shared(
 /// project-level mistake belonging to a project-level check; surfacing it as a warning on
 /// whichever page happens to be open would attribute it to the wrong file.
 pub(crate) fn shared_for_single_doc(root: &Path) -> Vec<PathBuf> {
+    let declared = declared_at(root);
+    if declared.is_empty() {
+        return Vec::new();
+    }
+    resolve_shared(root, &declared, &mut Vec::new())
+}
+
+/// What a document in `doc_dir` inherits from its project's `_site.yml` `bibliography:`:
+/// `None` when the project declares none, else whether any entry could be read from it.
+/// `Some(false)` is a declaration that yields nothing (a missing or non-UTF-8 file, an
+/// empty one), which a page checked on its own has no other way to hear about.
+pub(crate) fn project_bibliography_has_entries(doc_dir: &Path) -> Option<bool> {
+    let root = crate::includes::single_doc_root(doc_dir);
+    let declared = declared_at(&root);
+    if declared.is_empty() {
+        return None;
+    }
+    let files: Vec<(String, PathBuf)> = resolve_shared(&root, &declared, &mut Vec::new())
+        .into_iter()
+        .map(|p| (String::new(), p))
+        .collect();
+    let mut bib = crate::cite::Bibliography::default();
+    crate::cite::read_bib_files(&mut bib, &files, &mut Default::default());
+    Some(!bib.is_empty())
+}
+
+/// The `bibliography:` entries of the `_site.yml` at `root`, as written. Empty when there
+/// is none, or it declares none.
+fn declared_at(root: &Path) -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(root.join("_site.yml")) else {
         return Vec::new();
     };
     let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
         return Vec::new();
     };
-    let declared = crate::site::frontmatter::string_list(value.get("bibliography"));
-    if declared.is_empty() {
-        return Vec::new();
-    }
-    resolve_shared(root, &declared, &mut Vec::new())
+    crate::site::frontmatter::string_list(value.get("bibliography"))
 }
 
 impl Site {

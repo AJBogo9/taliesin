@@ -6,10 +6,11 @@
 //! `alt`, in inline code or in a comment as a bare one (audit G4).
 
 use crate::render::{Block, Warning};
+use std::path::Path;
 
-/// Citations are present (`cite::process` appended the `tali-references` section), the page
-/// declares no `bibliography:`, and **not one reference resolved** — so every reference
-/// renders as a raw key with no diagnostic of its own.
+/// Citations are present (`cite::process` appended the `tali-references` section), neither
+/// the page nor its project declares a `bibliography:`, and **not one reference resolved**
+/// — so every reference renders as a raw key with no diagnostic of its own.
 ///
 /// Two conditions, and each rules out a different false positive:
 ///
@@ -20,14 +21,21 @@ use crate::render::{Block, Warning};
 ///   check-superset false-positive walk). Observing the outcome cannot be fooled by where
 ///   the bibliography came from, and it closes the mirror blind spot too — a declared `.bib`
 ///   that exists but is empty resolves nothing and used to pass silently.
-/// - *The page declares nothing*, so one mistake does not draw two diagnostics: a declared
-///   file that cannot be read is already `bibliography file not found`, which is the
-///   actionable message. (A declared file missing only *some* keys is `broken citation` per
-///   key, and does not reach here at all, since those rows resolve.)
+/// - *Nothing is declared*, so one mistake does not draw two diagnostics: a declared file
+///   that cannot be read is already `bibliography file not found`, which is the actionable
+///   message. (A declared file missing only *some* keys is `broken citation` per key, and
+///   does not reach here at all, since those rows resolve.) That includes the project's
+///   `_site.yml`: a page inheriting it whose every citation is broken (one typo in a
+///   one-citation post) already has its `broken citation`, and was also told to declare a
+///   file its project declares (audit 2026-09-24, bibtex #8). A project declaration that
+///   yields no entry at all is said as such instead: a page checked on its own hears about
+///   the project's file nowhere else.
 ///
 /// The raw-key marker is `cite::process`'s unresolved branch, the only place a reference row
 /// contains a `<code>` element.
-pub fn citations_without_bibliography(src: &str, blocks: &[Block]) -> Vec<Warning> {
+///
+/// `base` is the page's directory, from which its project's `_site.yml` is found.
+pub fn citations_without_bibliography(src: &str, blocks: &[Block], base: &Path) -> Vec<Warning> {
     let Some(refs) = blocks.iter().find(|b| b.id == "tali-references") else {
         return Vec::new();
     };
@@ -43,9 +51,17 @@ pub fn citations_without_bibliography(src: &str, blocks: &[Block]) -> Vec<Warnin
     if declares_bib {
         return Vec::new();
     }
-    vec![Warning::new(
-        "citations are present but no `bibliography:` is declared, so every reference renders as a raw key",
-    )]
+    match crate::site::project_bibliography_has_entries(base) {
+        Some(true) => Vec::new(),
+        Some(false) => vec![Warning::new(
+            "citations are present but no `bibliography:` entry could be read: the project's \
+             `_site.yml` declares one and nothing in it loaded, so every reference renders as \
+             a raw key",
+        )],
+        None => vec![Warning::new(
+            "citations are present but no `bibliography:` is declared, so every reference renders as a raw key",
+        )],
+    }
 }
 
 // The `csl:` recognized-but-unsupported warning used to live here. It moved to

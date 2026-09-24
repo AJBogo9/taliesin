@@ -356,6 +356,64 @@ fn a11y_clean_document_is_silent() {
     assert!(m.is_empty(), "a clean doc must be silent: {m:?}");
 }
 
+/// A page that inherits its project's `_site.yml` `bibliography:` is never told that no
+/// `bibliography:` is declared, even when every one of its citations fails to resolve (one
+/// typo in a one-citation post): the broken-citation warning is the true one, and the
+/// advice sent the author off to declare a file the project already declares (audit
+/// 2026-09-24, bibtex #8).
+#[test]
+fn a_page_inheriting_the_project_bibliography_is_not_told_none_is_declared() {
+    let dir = Tmp::new("bib-inherit");
+    std::fs::write(
+        dir.0.join("_site.yml"),
+        "title: S\nbibliography: shared.bib\n",
+    )
+    .unwrap();
+    std::fs::write(dir.0.join("shared.bib"), "@misc{shared1, title={S}}\n").unwrap();
+    let src = "---\ntitle: P\n---\n\nSee [@shared2].\n";
+    let doc = crate::render::render_single_doc(src, &dir.0);
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("broken citation")),
+        "the true diagnostic: {:?}",
+        doc.warnings
+    );
+    let w = citations_without_bibliography(src, &doc.blocks, &dir.0);
+    assert!(w.is_empty(), "{:?}", msgs(&w));
+
+    // A project bibliography that yields nothing (here: not UTF-8) is no inheritance at all.
+    // Checked on its own, the page must not read clean: nothing else on this surface says
+    // why every reference is a raw key.
+    let unread = Tmp::new("bib-unread");
+    std::fs::write(
+        unread.0.join("_site.yml"),
+        "title: S\nbibliography: shared.bib\n",
+    )
+    .unwrap();
+    std::fs::write(
+        unread.0.join("shared.bib"),
+        b"@misc{shared2, title={M\xfcller}}\n",
+    )
+    .unwrap();
+    let doc = crate::render::render_single_doc(src, &unread.0);
+    let w = citations_without_bibliography(src, &doc.blocks, &unread.0);
+    assert_eq!(w.len(), 1, "{:?}", msgs(&w));
+    assert!(
+        w[0].message
+            .starts_with("citations are present but no `bibliography:`")
+            && w[0].message.contains("_site.yml"),
+        "{}",
+        w[0].message
+    );
+
+    // The control: a page with no bibliography anywhere still gets the advice.
+    let bare = Tmp::new("bib-none");
+    let doc = crate::render::render_single_doc(src, &bare.0);
+    let w = citations_without_bibliography(src, &doc.blocks, &bare.0);
+    assert_eq!(w.len(), 1, "{:?}", msgs(&w));
+}
+
 // The bare-`@key` tests moved to `cite::tests` with the check itself, which now runs in
 // the citation walk (`cite::render`) instead of scanning the finished HTML here.
 
