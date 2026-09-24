@@ -203,6 +203,15 @@ on a later run:
   the value that cell just produced afresh.
 - **Everything downstream of a cell that errored or was interrupted.** It left the kernel
   half-mutated, so every cell after it ran against state its key does not describe.
+- **Anything a warm kernel re-ran.** A kernel that has already executed an earlier
+  version of a cell (or a cell since deleted) still holds the names it defined, so after
+  renaming `threshold` to `limit` a leftover `print(threshold)` keeps printing the old
+  value in that kernel, while a fresh one raises `NameError`. `LangState::executed` counts
+  every cell the kernel has been sent since it booted, and a run persists only when that
+  count equals the warm prefix it reuses, meaning the kernel ran exactly that prefix and
+  nothing else. In practice the preview persists what a cold kernel computes (first open,
+  after "Restart kernel", after the page left the warm pool), and the first build after
+  an editing session re-runs from the earliest cell edited in it.
 - **The cached tail the kernel didn't run.** Only cells `[shared, run_end)`,
   the cells that executed this rebuild, are recorded as the kernel's "ran"
   state; the disk-restored tail is left out, because the live kernel never produced

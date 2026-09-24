@@ -233,18 +233,22 @@ cell 3 is paid once and re-running one cell does not re-run the expensive ones a
 
 ### Publishing after a preview
 
-Every preview run writes `_freeze/` as it goes, so:
+The preview writes `_freeze/` from a fresh kernel only, which means a page's first run and
+the run after **Restart kernel**. A re-run inside a warm kernel is not written, because that
+kernel still holds names from earlier versions of your cells: rename `threshold` to `limit`
+and a leftover `print(threshold)` keeps printing there, while a fresh kernel raises
+`NameError`. So the first build after an editing session re-runs from the earliest cell you
+edited, and later builds replay:
 
 ```sh
 taliesin build .
 #   exec  index.tmd  restored 3 cached cells · 0 re-ran
 ```
 
-By the time you want the HTML, there is nothing left to compute. The cache is keyed on the
-cell's own code plus every upstream cell's, so there is nothing to clear by hand: no edit
-to code can produce a stale hit. The key does not see what a cell *reads* (a data file, an
-environment variable, an upgraded library), so mark a cell with an out-of-band input
-`#| cache: false`.
+The cache is keyed on the cell's own code plus every upstream cell's, so there is nothing to
+clear by hand: no edit to code can produce a stale hit. The key does not see what a cell
+*reads* (a data file, an environment variable, an upgraded library), so mark a cell with an
+out-of-band input `#| cache: false`.
 
 ### One kernel per project
 

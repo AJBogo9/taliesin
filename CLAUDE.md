@@ -280,7 +280,11 @@ cell and everything downstream with no stale hits and nothing to clear by hand. 
 downstream entry would assert "this output follows from this upstream code" about the one
 cell whose output does not, and deleting the directive later publishes that contradiction.
 `exec.rs`'s `first_uncacheable` is the single definition both that rule and `plan`'s re-run
-range turn on. `TALIESIN_NO_CACHE` skips the cache; "Restart kernel" forces a fresh re-run.
+range turn on. Nor is anything a WARM kernel re-ran: a run persists only when its kernel has
+executed exactly the reused prefix and nothing else (`LangState::executed == shared`), because
+a kernel that ran an earlier version of a cell still holds the names it defined, so the
+preview persists cold runs only. `TALIESIN_NO_CACHE` skips the cache; "Restart kernel" forces
+a fresh re-run.
 Kernel *variable* state is never cached, so a cold start can only skip work when the whole
 document is unchanged.
 

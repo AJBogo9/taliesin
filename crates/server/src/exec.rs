@@ -303,6 +303,15 @@ struct LangState {
     /// the warm-prefix reuse: a cell whose key still matches keeps its output and
     /// isn't re-run, because the kernel still holds its state.
     ran: Vec<Ran>,
+    /// How many cells the live kernel has been sent since it booted, re-runs included.
+    ///
+    /// `ran` says what the kernel's state is SUPPOSED to follow from; this says whether it
+    /// ran anything else. The kernel holds exactly the state of the shared prefix only when
+    /// it has executed that prefix once and nothing more, i.e. when `executed == shared`.
+    /// Any other count means an earlier version of some cell ran here too (a re-run after
+    /// an edit, a cell since deleted) and left names behind that no key mentions, so what
+    /// this run produces is not a function of its keys and is kept out of `_freeze`.
+    executed: usize,
     /// Whether this executor has already logged which interpreter this language runs
     /// (the "which python?" signal). Reset by `restart_kernel` (which clears `langs`),
     /// so a manual restart re-announces.
@@ -815,6 +824,12 @@ impl Executor {
         // kernel the execute loop below treats them as instant no-ops and would never
         // emit a terminal state for them). The cells still render as source.
         let boot_failed = to_run > 0 && !has_kernel;
+        // Whether the kernel this run executes in has run the shared prefix and nothing else
+        // (see `LangState::executed`). Read before the loop below adds this run's cells.
+        let pristine = self
+            .langs
+            .get(lang)
+            .is_some_and(|s| s.kernel.is_some() && s.executed == shared);
         if boot_failed {
             emit(
                 &self.sink,
@@ -1013,7 +1028,14 @@ impl Executor {
         // identical by construction and the one axis the cumulative key structurally
         // cannot see had a warning that could never fire.
         let packages_on_entry = self.freeze.recorded_packages(lang).map(str::to_string);
-        if has_kernel {
+        // And nothing at all from a WARM re-run: a kernel that already executed an earlier
+        // version of some cell at or past `shared` (or a cell since deleted) still holds what
+        // it left behind, so a renamed variable's old name keeps resolving and the output is
+        // one a fresh kernel cannot produce. Its key describes the code, not that history.
+        // The preview therefore persists what a cold kernel computes and nothing after it;
+        // the cost is that the next cold run re-executes from the first edited cell, the
+        // cold-start cost `plan` already accepts.
+        if has_kernel && pristine {
             for i in shared..run_end {
                 if i > uncacheable_at || i > failed_at {
                     continue;
@@ -1223,6 +1245,7 @@ impl Executor {
             Ok(k) => {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
                 state.kernel = Some(k);
+                state.executed = 0;
                 state.failed_at = None;
                 state.last_error = None;
             }
@@ -1274,9 +1297,15 @@ impl Executor {
         let interrupt = self.interrupt.clone();
         let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
-        let Some(kernel) = self.langs.get_mut(lang).and_then(|s| s.kernel.as_mut()) else {
+        let Some(state) = self.langs.get_mut(lang) else {
             return String::new(); // kernel unavailable: cell renders as source
         };
+        let Some(kernel) = state.kernel.as_mut() else {
+            return String::new();
+        };
+        // Counted before the send: a cell that errors, is interrupted or never replies has
+        // still been handed to the kernel and may have changed its state.
+        state.executed += 1;
         // Publish the pid BEFORE the await, clear it after: for the whole window in which
         // this task is blocked, someone else can find the process to signal. Outside that
         // window the handle reads 0, so a late request cannot SIGINT a pid the OS has
@@ -2633,6 +2662,115 @@ mod tests {
             ex.freeze.get(&hashes[2]).is_none(),
             "cell C was persisted even though the cell above it errored: the error is in \
              the warm prefix, so the downstream-persist guard never saw it"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A warm re-run executes in a kernel that still holds whatever the cells it ran before
+    /// left behind, so its output is not a function of its key and must never reach
+    /// `_freeze`. The audit's case (A3): rename a variable and leave a use of the old name
+    /// dangling. The warm kernel still has `threshold`, so the preview prints the old value;
+    /// persisting that let a later `build --strict` restore it with exit 0, while a fresh
+    /// kernel raises `NameError` on the same code.
+    ///
+    /// Two shapes, because the rule is "the kernel ran exactly the shared prefix and nothing
+    /// else", not an index high-water mark: the second deletes a cell and then adds one at the
+    /// same index, which never runs anything past the prefix `ran` records and is still stale.
+    /// Both end on a fresh executor over the same `_freeze` file, which is what a build is.
+    #[test]
+    fn a_warm_rerun_never_persists_state_its_key_does_not_describe() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise warm-state persistence; this run did not."
+            );
+            return;
+        }
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let html = |out: Vec<Block>| -> String { out.iter().map(|b| b.html.as_str()).collect() };
+
+        // (1) The rename. Run 1 is cold, so it may persist; run 2 re-runs both cells in the
+        // same kernel, which still holds `threshold`.
+        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let setup = "threshold = 10";
+        let renamed = "limit = 10";
+        let usage = "print(f'threshold is {threshold}')";
+        let mut ex = Executor::with_freeze(page.clone());
+        rt.block_on(async {
+            let _ = ex
+                .run(vec![
+                    python_cell_block_with("r-1", setup),
+                    python_cell_block_with("r-2", usage),
+                ])
+                .await;
+        });
+        if ex.diagnostic().is_some() {
+            return; // no working python kernel here
+        }
+        let edited = vec![
+            python_cell_block_with("r-1", renamed),
+            python_cell_block_with("r-2", usage),
+        ];
+        let warm = html(rt.block_on(ex.run(edited.clone())));
+        assert!(
+            warm.contains("threshold is 10"),
+            "precondition: the warm kernel still holds the old name: {warm}"
+        );
+        let interp = rt.block_on(interp_id("python", &ex.python.path.clone()));
+        let cold_keys = freeze::cumulative_hashes(&interp, &[setup, usage]);
+        assert!(
+            ex.freeze.get(&cold_keys[1]).is_some(),
+            "control: the COLD run's output is persisted, so the freeze is live and the keys \
+             line up"
+        );
+        drop(ex);
+        let mut build = Executor::with_freeze(page.clone());
+        let built = html(rt.block_on(build.run(edited)));
+        assert!(
+            built.contains("NameError") && !built.contains("threshold is 10"),
+            "a fresh executor over the same _freeze restored an output only the warm kernel's \
+             leftover state could produce: {built}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // (2) Delete the second cell, then add a different one at the same index. No run
+        // after the first executes anything past index 1, yet the kernel still holds `y`.
+        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let mut ex = Executor::with_freeze(page.clone());
+        let a = "x = 1";
+        rt.block_on(async {
+            let _ = ex
+                .run(vec![
+                    python_cell_block_with("d-1", a),
+                    python_cell_block_with("d-2", "y = x + 1"),
+                ])
+                .await;
+            let _ = ex.run(vec![python_cell_block_with("d-1", a)]).await;
+        });
+        let readded = vec![
+            python_cell_block_with("d-1", a),
+            python_cell_block_with("d-3", "print('y is', y)"),
+        ];
+        let warm = html(rt.block_on(ex.run(readded.clone())));
+        assert!(
+            warm.contains("y is 2"),
+            "precondition: the deleted cell's state is still in the kernel: {warm}"
+        );
+        drop(ex);
+        let mut build = Executor::with_freeze(page);
+        let built = html(rt.block_on(build.run(readded)));
+        assert!(
+            built.contains("NameError") && !built.contains("y is 2"),
+            "a deleted cell's leftover state was persisted under a key that does not \
+             mention it: {built}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
