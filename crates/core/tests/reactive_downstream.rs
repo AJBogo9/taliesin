@@ -162,22 +162,140 @@ fn a_remounted_producer_re_runs_its_consumers_and_only_them() {
 
 #[test]
 fn the_mount_actually_runs_the_stale_pass_after_the_fresh_one() {
-    // `staleAfterMount` being right is worth nothing if `enhance` does not call it, and no
-    // node harness can reach `enhance` (it is DOM-wide). Pin the two lines that wire it: the
-    // stale set is read off the graph BEFORE anything runs, and the two passes are CHAINED,
-    // because a stale consumer reads its producer's value out of the shared scope and must
-    // not start before that producer's `run()` has resolved.
+    // `mountPlan` being right is worth nothing if `enhance` does not call it, and no
+    // node harness can reach `enhance` (it is DOM-wide). Pin the lines that wire it: the
+    // plan is read off the graph BEFORE anything runs, it is seeded with the controls this
+    // mount bound and the names a teardown dropped, and the passes are CHAINED (after a
+    // define's pass over the cells already mounted), because a stale consumer reads its
+    // producer's value out of the shared scope and must not start before that producer's
+    // `run()` has resolved.
     let js = include_str!("../assets/js/tali-js.js");
-    assert!(
-        js.contains("var stale = staleAfterMount(r, runnable);"),
-        "enhance no longer computes the stale set; a producer edit re-runs nothing downstream"
-    );
-    assert!(
-        js.contains(
-            "runSequentially(runnable).then(function () { return runSequentially(stale); });"
+    for (needle, why) in [
+        (
+            "var plan = mountPlan(r, fresh, bound.concat(r.dropped.splice(0)));",
+            "enhance no longer plans its passes from the graph and the changed names",
         ),
-        "the stale pass must be chained after the fresh one, not raced against it"
+        (
+            "Promise.resolve(defined)\n      .then(function () { return runSequentially(plan.fresh); })\n      .then(function () { return runSequentially(plan.stale); });",
+            "the fresh and stale passes must be chained after the define pass, not raced",
+        ),
+        (
+            "return changed ? runSequentially((r.graph || buildGraph(r)).order) : null;",
+            "a define's re-run must go in dependency order and be handed to enhance",
+        ),
+    ] {
+        assert!(js.contains(needle), "{why}: `{needle}` is gone");
+    }
+}
+
+/// Audit 2026-09-24 D4 and liveops #6. What a mount runs, decided on stand-in cells.
+#[test]
+fn a_mount_runs_fresh_cells_in_dependency_order_and_seeds_changed_names() {
+    let script = format!(
+        "{}{}{}{}\n\
+         function cell(id, defines, inputs) {{\n\
+           return {{ id: id, defines: defines, inputs: inputs, container: null }};\n\
+         }}\n\
+         function ids(list) {{ return list.map(function (c) {{ return c.id; }}); }}\n\
+         // corpus order a reader can write: the sink ABOVE the producer it reads.\n\
+         var n = cell('n', 'n', []);\n\
+         var sink = cell('sink', null, ['squared']);\n\
+         var sq = cell('squared', 'squared', ['n']);\n\
+         var r = {{ cells: [n, sink, sq] }};\n\
+         var cold = mountPlan(r, r.cells, []);\n\
+         var out = {{ coldFresh: ids(cold.fresh), coldStale: ids(cold.stale) }};\n\
+         // An {{{{< input >}}}} control re-bound by an edit, and one a teardown dropped:\n\
+         // their consumers were not re-mounted, so they are stale.\n\
+         var kSink = cell('k-sink', null, ['k']);\n\
+         var r2 = {{ cells: [kSink] }};\n\
+         out.rebound = ids(mountPlan(r2, [], ['k']).stale);\n\
+         out.coldBound = ids(mountPlan(r2, [kSink], ['k']).stale);\n\
+         // No edge between them: authoring order, the earliest ready cell first.\n\
+         var p1 = cell('p1', 'x', []), s1 = cell('s1', null, ['x']), p2 = cell('p2', 'y', []);\n\
+         var r3 = {{ cells: [p1, s1, p2] }};\n\
+         out.tieBreak = ids(buildGraph(r3).order);\n\
+         console.log(JSON.stringify(out));",
+        extract("buildGraph"),
+        extract("downstreamInOrder"),
+        extract("staleAfterMount"),
+        extract("mountPlan"),
     );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert!(
+        got.contains(r#""coldFresh":["n","squared","sink"]"#),
+        "a consumer above its producer must run after it on a cold load: {got}"
+    );
+    assert!(
+        got.contains(r#""coldStale":[]"#) && got.contains(r#""coldBound":[]"#),
+        "a cold mount schedules nothing on top of its own pass: {got}"
+    );
+    assert!(
+        got.contains(r#""rebound":["k-sink"]"#),
+        "a re-bound control's consumers re-run: {got}"
+    );
+    assert!(
+        got.contains(r#""tieBreak":["p1","s1","p2"]"#),
+        "authoring order holds where no edge decides: {got}"
+    );
+}
+
+/// liveops #7. A define landing after a live edit re-ran `r.cells` in MOUNT order, which
+/// an edit reshuffles (the re-mounted producer moves to the end), so the sink ran before
+/// the producer it reads and kept the old product; the cyclic cells re-ran too.
+#[test]
+fn a_define_re_runs_the_mounted_cells_in_dependency_order() {
+    let script = format!(
+        "{}{}{}\n\
+         var ran = [];\n\
+         function cell(id, defines, inputs) {{\n\
+           return {{ id: id, defines: defines, inputs: inputs, container: null,\n\
+             run: function () {{ ran.push(id); return Promise.resolve(); }} }};\n\
+         }}\n\
+         var blob = {{ textContent: '{{\"z\": 7}}', setAttribute: function () {{}} }};\n\
+         globalThis.document = {{ querySelectorAll: function () {{ return [blob]; }} }};\n\
+         globalThis.window = globalThis;\n\
+         // Mount order after the producer `prod` was edited: it re-registered last.\n\
+         window.__talijs = {{ scope: {{}}, inputs: {{}}, defines: {{}}, listeners: {{}}, dropped: [],\n\
+           cells: [cell('n', 'n', []), cell('sink', null, ['prod']), cell('a', 'a', ['b']),\n\
+                   cell('b', 'b', ['a']), cell('prod', 'prod', ['n'])] }};\n\
+         function rt() {{ return window.__talijs; }}\n\
+         bindDefines().then(function () {{ console.log(JSON.stringify(ran)); }});",
+        extract("bindDefines"),
+        extract("buildGraph"),
+        extract("runSequentially"),
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(
+        got, r#"["n","prod","sink"]"#,
+        "producer before sink, and the cyclic pair left to its diagnostic"
+    );
+}
+
+/// liveops #6. A `{{< input >}}` control is not a cell, so teardown never unregistered
+/// one: a deleted control stayed in `r.inputs`, detached, and its consumers kept reading
+/// its last value.
+#[test]
+fn tearing_down_a_block_unregisters_the_controls_inside_it() {
+    let script = format!(
+        "{}\n\
+         var ctl = {{ getAttribute: function () {{ return 'k'; }} }};\n\
+         var other = {{ getAttribute: function () {{ return 'm'; }} }};\n\
+         var block = {{ querySelectorAll: function () {{ return [ctl]; }}, contains: function () {{ return false; }} }};\n\
+         globalThis.window = globalThis;\n\
+         window.__talijs = {{ scope: {{}}, inputs: {{ k: ctl, m: other }}, defines: {{}}, listeners: {{}},\n\
+           cells: [], dropped: [] }};\n\
+         teardownIn(block);\n\
+         console.log(JSON.stringify({{ inputs: Object.keys(window.__talijs.inputs), dropped: window.__talijs.dropped }}));",
+        extract("teardownIn"),
+    );
+    let Some(got) = node(&script) else {
+        return;
+    };
+    assert_eq!(got, r#"{"inputs":["m"],"dropped":["k"]}"#);
 }
 
 /// The runtime a real cell mounts into, reduced to what `setupCell` touches: one output
@@ -206,7 +324,8 @@ fn cell_harness() -> String {
          globalThis.Node = function () {{}};\n\
          var painted = [];\n\
          var box = {{ replaceChildren: function (n) {{ painted.push(n); }},\n\
-           getAttribute: function () {{ return null; }}, querySelector: function () {{ return null; }} }};\n\
+           getAttribute: function () {{ return null; }}, querySelector: function () {{ return null; }},\n\
+           compareDocumentPosition: function () {{ return 0; }} }};\n\
          globalThis.document = {{ getElementById: function () {{ return box; }},\n\
            createElement: function () {{ return {{}}; }} }};\n\
          var languages = {{ slow: function (src) {{ return {{ run: function () {{\n\

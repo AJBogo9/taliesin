@@ -72,6 +72,7 @@
    * @property {TaliJsCell[]} cells
    * @property {Record<string, Record<string, any>>} state
    * @property {TaliJsGraph} [graph]
+   * @property {string[]} dropped names a teardown unpublished since the last mount
    */
 
   // Per-page singleton. Reset implicitly on navigation/reload; on a full re-mount
@@ -80,7 +81,7 @@
   function rt() {
     if (!window.__talijs) {
       window.__talijs = {
-        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [],
+        scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [], dropped: [],
       };
     }
     return /** @type {TaliJsRuntime} */ (window.__talijs);
@@ -154,8 +155,10 @@
   }
 
   // Ingest `<script type="tali-define">` blobs (the Python ojs_define bridge): set
-  // the named values, then re-run every non-input cell — a define can land after
-  // the cells first ran (live preview executes Python after the page mounts).
+  // the named values, then re-run every mounted cell — a define can land after
+  // the cells first ran (live preview executes Python after the page mounts). Returns
+  // that pass, or null when no define landed, so `enhance` can run its own passes after it.
+  /** @returns {Promise<void> | null} */
   function bindDefines() {
     var r = rt();
     var changed = false;
@@ -177,10 +180,12 @@
       }
     });
     // Defines usually land once (cold load) or on kernel restart; re-run every
-    // cell (sequentially, document order) so inputs whose range depends on a define
+    // cell (sequentially, in dependency order) so inputs whose range depends on a define
     // (e.g. a slider sized by history.length) and name-helpers reading defines
-    // rebuild in dependency order.
-    if (changed) runSequentially(r.cells);
+    // rebuild before what reads them. It ran `r.cells` in MOUNT order, which a live edit
+    // reshuffles, so a sink could run before the producer it reads and keep the old
+    // product; graph order also leaves cyclic cells showing their diagnostic.
+    return changed ? runSequentially((r.graph || buildGraph(r)).order) : null;
   }
 
   /**
@@ -395,7 +400,15 @@
         if (impl.dispose) impl.dispose();
       },
     };
-    r.cells.push(cell);
+    // In DOCUMENT order, not mount order: a block re-mounted by an edit would otherwise
+    // move its cell to the end, and the graph's tie-break (authoring order wherever no
+    // edge decides) would drift from the page edit by edit.
+    var at = r.cells.findIndex(function (c) {
+      return !!c.container &&
+        !!(c.container.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_PRECEDING);
+    });
+    if (at < 0) r.cells.push(cell);
+    else r.cells.splice(at, 0, cell);
     return cell;
   }
 
@@ -436,6 +449,7 @@
         if (c.defines && r.inputs[c.defines] && c.container.contains(r.inputs[c.defines])) {
           delete r.inputs[c.defines];
         }
+        if (c.defines) r.dropped.push(c.defines);
       } else {
         kept.push(c);
       }
@@ -444,6 +458,18 @@
       r.cells = kept;
       delete r.graph; // the dependency graph is stale once cells are removed
     }
+    // A `{{< input >}}` control is not a cell, so the loop above never saw it: without this
+    // a deleted control stayed registered, detached, and its consumers kept its last value.
+    var el0 = /** @type {Element} */ (node);
+    var controls = el0.querySelectorAll ? [...el0.querySelectorAll("[data-tali-input]")] : [];
+    if (el0.matches && el0.matches("[data-tali-input]")) controls.push(el0);
+    controls.forEach(function (el) {
+      var n = el.getAttribute("data-tali-input");
+      if (n && r.inputs[n] === el) {
+        delete r.inputs[n];
+        r.dropped.push(n);
+      }
+    });
   }
 
   // Resolve EVERY outstanding invalidation and drop the whole runtime, so a
@@ -506,7 +532,9 @@
         indeg.set(cc, (indeg.get(cc) || 0) + 1);
       });
     });
-    var queue = cells.filter(function (c) { return indeg.get(c) === 0; }); // doc order
+    // Kahn's algorithm taking the EARLIEST ready cell each step (`r.cells` is in document
+    // order), so authoring order holds wherever no edge decides.
+    var queue = cells.filter(function (c) { return indeg.get(c) === 0; });
     /** @type {TaliJsCell[]} */
     var order = [];
     while (queue.length) {
@@ -514,7 +542,10 @@
       order.push(c);
       if (c.defines) (consumers[c.defines] || []).forEach(function (cc) {
         indeg.set(cc, (indeg.get(cc) || 0) - 1);
-        if (indeg.get(cc) === 0) queue.push(cc);
+        if (indeg.get(cc) === 0) {
+          queue.push(cc);
+          queue.sort(function (a, b) { return cells.indexOf(a) - cells.indexOf(b); });
+        }
       });
     }
     var cyclic = cells.filter(function (c) { return order.indexOf(c) < 0; });
@@ -566,15 +597,38 @@
   // rather than a `scheduleFrom` per seed, which would re-run a shared consumer once per
   // producer feeding it, repainting charts and rebuilding `import()`ed renderers for no
   // change in what they display.)
-  /** @param {TaliJsRuntime} r @param {TaliJsCell[]} mounted @returns {TaliJsCell[]} */
-  function staleAfterMount(r, mounted) {
+  //
+  // `names` are the other ways a mount changes what a name means without re-mounting its
+  // consumers: an `{{< input >}}` control bound fresh (its default or name was edited), and
+  // a name a teardown unpublished (a renamed `viewof`, a deleted control). Seeding only
+  // from re-mounted producers left `k = 3` under a slider now reading 8.
+  /**
+   * @param {TaliJsRuntime} r @param {TaliJsCell[]} mounted @param {string[]} [names]
+   * @returns {TaliJsCell[]}
+   */
+  function staleAfterMount(r, mounted, names) {
     /** @type {string[]} */
-    var seeds = [];
+    var seeds = (names || []).slice();
     mounted.forEach(function (c) { if (c.defines) seeds.push(c.defines); });
     if (!seeds.length) return [];
     /** @type {Set<TaliJsCell>} */
     var already = new Set(mounted);
     return downstreamInOrder(r, seeds).filter(function (c) { return !already.has(c); });
+  }
+
+  // What a mount runs, in order: the freshly mounted cells in DEPENDENCY order, then the
+  // cells the mount left stale. The fresh cells used to run in document order, so a
+  // consumer written above its producer read `undefined` on every load and in the built
+  // page, while the live preview (which re-runs consumers after a producer re-mounts)
+  // showed the right value. Cyclic cells are in no `order`, so they keep their diagnostic.
+  /**
+   * @param {TaliJsRuntime} r @param {TaliJsCell[]} fresh @param {string[]} names
+   * @returns {{fresh: TaliJsCell[], stale: TaliJsCell[]}}
+   */
+  function mountPlan(r, fresh, names) {
+    var g = r.graph || buildGraph(r);
+    var first = g.order.filter(function (c) { return fresh.indexOf(c) >= 0; });
+    return { fresh: first, stale: staleAfterMount(r, first, names) };
   }
 
   // Re-run exactly the closure downstream of `name`, once each, in dependency order — a
@@ -591,8 +645,10 @@
 
   /** @param {ParentNode | null} [root] */
   function enhance(root) {
-    bindDefines(); // ingest any define blobs already present before running cells
+    var defined = bindDefines(); // ingest any define blobs already present before running cells
     var r = rt();
+    /** @type {string[]} */
+    var bound = [];
     // Register declarative `{{< input >}}` controls (static HTML tagged data-tali-input) as
     // named reactive inputs, BEFORE cells run so their value is available on first run.
     // Reuses the same registerInput path as `//| viewof` cells; the change event fires the
@@ -605,6 +661,7 @@
         el.setAttribute("data-tali-input-bound", "1");
         var name = el.getAttribute("data-tali-input");
         if (!name) return;
+        bound.push(name);
         // Hydrate from the URL fragment BEFORE cells run, so a shared link restores the
         // control (and its downstream cells) on first paint.
         if (Object.prototype.hasOwnProperty.call(frag, name)) applyInputValue(el, frag[name]);
@@ -637,18 +694,15 @@
       if (c) fresh.push(c);
     });
     if (fresh.length) buildGraph(r); // (re)derive the graph + diagnose cycles
-    // Initial run in document order (the authoring convention is producer-before-
-    // consumer); cyclic cells are left showing their diagnostic rather than run.
-    /** @type {TaliJsCell[]} */
-    var runnable = fresh.filter(function (c) {
-      return !r.graph || r.graph.cyclic.indexOf(c) < 0;
-    });
     // Read off the graph we just built, BEFORE anything runs, so the closure is decided
     // against one consistent snapshot rather than against whatever a mid-pass teardown
-    // leaves behind. Then the two passes are chained: a stale consumer reads its producer's
-    // value out of the shared scope, so it must not start until that producer has resolved.
-    var stale = staleAfterMount(r, runnable);
-    runSequentially(runnable).then(function () { return runSequentially(stale); });
+    // leaves behind. Then the passes are chained: a stale consumer reads its producer's
+    // value out of the shared scope, so it must not start until that producer has resolved,
+    // and neither pass may interleave with a define's pass over the cells already mounted.
+    var plan = mountPlan(r, fresh, bound.concat(r.dropped.splice(0)));
+    Promise.resolve(defined)
+      .then(function () { return runSequentially(plan.fresh); })
+      .then(function () { return runSequentially(plan.stale); });
   }
 
   if (window.taliEnhancers && window.taliEnhancers.register) {
