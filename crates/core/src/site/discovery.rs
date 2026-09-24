@@ -48,7 +48,7 @@ pub(super) fn website_pages(
             // chapter does), so <title>, og:title, listing cards, nav, and search — all of
             // which read `Page.title` — agree instead of falling back to the site name /
             // rel-path. Front matter still wins when present.
-            let title = fm.title.or_else(|| chapter_heading(&input).0);
+            let title = fm.title.or_else(|| chapter_heading(&input));
             Some(Page {
                 input,
                 rel,

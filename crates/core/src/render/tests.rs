@@ -620,6 +620,51 @@ fn a_leftover_columns_div_builds_no_grid_and_layout_ncol_still_works() {
     );
 }
 
+/// A `:::` marker ends whatever block is open above it. The render used to blank a marker
+/// line before the parse, and a blank line ends no list: the list closing one column and
+/// the list opening the next were ONE loose list, so both items rendered in the first
+/// column, the second column vanished, and nothing was reported (found by WP8, audit
+/// 2026-09-24). The same held for an indented code block, a list item's continuation and
+/// a footnote's.
+#[test]
+fn a_block_open_above_a_div_marker_ends_at_it() {
+    let doc = render_document(
+        "::: {layout-ncol=2}\n::: {}\n- Alpha item\n:::\n::: {}\n- Beta item\n:::\n:::\n\n\
+         ::: {.callout-note}\n    code one\n:::\n::: {.callout-tip}\n    code two\n:::\n",
+    );
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    let columns: Vec<&str> = h.split("<div class=\"tali-div\"").skip(1).collect();
+    assert_eq!(columns.len(), 2, "two columns: {h}");
+    assert!(
+        columns[0].contains("<li>Alpha item</li>") && !columns[0].contains("Beta"),
+        "the first column holds its own tight list only: {h}"
+    );
+    assert!(
+        columns[1].contains("<li>Beta item</li>"),
+        "the second column holds the second list: {h}"
+    );
+    let callouts: Vec<&str> = h.split("class=\"callout callout-").skip(1).collect();
+    assert_eq!(callouts.len(), 2, "two callouts: {h}");
+    assert!(
+        callouts[0].contains("code one") && !callouts[0].contains("code two"),
+        "each callout holds its own code block: {h}"
+    );
+    assert!(callouts[1].contains("code two"), "{h}");
+    assert!(!h.contains("<hr"), "a marker renders nothing itself: {h}");
+    assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
+    // Raw HTML right above a marker ends only at a blank line, which that marker still is:
+    // the callout closes, and the paragraph after it is not taken into the HTML block.
+    let raw = render_document("::: {.callout-note}\n<div>raw</div>\n:::\nAfter.\n");
+    let h = raw.body_html();
+    let close = h.find("raw</div>").expect(&h);
+    let after = h
+        .find("<p")
+        .map(|p| (p, h[p..].contains("After.")))
+        .expect(&h);
+    assert!(close < after.0 && after.1, "{h}");
+    assert!(raw.warnings.is_empty(), "{:?}", raw.warnings);
+}
+
 #[test]
 fn a_block_after_an_empty_div_stays_inside_its_own_container() {
     // Regression (group_divs): the "skip degenerate/empty spans" step ran AFTER the "open
@@ -8365,7 +8410,7 @@ fn every_line_pass_agrees_with_comrak_about_what_is_code() {
         let doc = render_document_with_includes(&src, &d);
         let html = doc.body_html();
         let (expanded, _) = crate::includes::resolve(&src, &d);
-        let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded, None)
+        let anchors: Vec<String> = crate::site::scan_page_anchors(&expanded)
             .into_iter()
             .map(|a| a.id)
             .collect();

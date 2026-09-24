@@ -1,94 +1,92 @@
-//! Book-chapter section numbering: prefix each heading in a numbered chapter with its
-//! section number (`N`, `N.1`, `N.1.1`) as a `tali-section-number` span. Pure block-HTML
-//! surgery driven by the chapter number the orchestrator passes in.
+//! Book-chapter section numbering: each section heading of a numbered chapter carries its
+//! number (`N`, `N.1`, `N.1.1`) as a `tali-section-number` span, and a `@sec-` reference
+//! to it reads the same number. The render calls [`number_sections`] with the chapter
+//! number the orchestrator passes in; nothing else numbers a heading.
 
 use super::*;
 
-/// Prefix each heading in a book chapter with its section number: the chapter's
-/// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
-/// emitted as a `tali-section-number` span.
-pub(super) fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
-    let has_title_block = blocks.iter().any(|b| is_title_block(&b.html));
-    // The numbering base is the shallowest heading BELOW the chapter's own heading, so
-    // it has to be known before the first heading is numbered: pre-scan the levels.
-    let levels: Vec<usize> = blocks
-        .iter()
-        .filter(|b| !is_title_block(&b.html))
-        .flat_map(|b| heading_sites(&b.html))
-        .map(|(_, level)| level)
-        .collect();
+/// Number a book chapter's section headings in place, and set every `sec-` number in the
+/// page's cross-reference `registry` to the number its heading shows.
+///
+/// **One list, one pass.** The number a heading shows, the number a same-page `@sec-` reads
+/// and the number a cross-page `@sec-` reads (the site harvests this page's registry) all
+/// come from here. They were three sites until 2026-09-24, an HTML walk, the render's AST
+/// registry and a source scan, and each had its own idea of what a heading is: a setext
+/// heading was not one to the scan, a quoted one was one to the HTML walk only, and a
+/// heading a callout took for its title was one to the registry and the scan only. A link
+/// reading "1.3" then landed on a heading reading "1.2".
+///
+/// `sections` holds the block ids of the page's section headings, the top-level heading
+/// nodes the render's walk emitted (so a heading inside a `:::` div counts, and one in a
+/// block quote or list item, raw `<h2>` HTML and cell output do not). Read from the page
+/// as FOLDED, through the one tag walker, so a heading a callout consumed for its title is
+/// gone: it shows no number, takes none, and its `@sec-` reads a bare "Section".
+///
+/// `has_title_block`: the render emits a front-matter title block, which carries the
+/// chapter number itself and demotes every body heading one level.
+pub(crate) fn number_sections(
+    blocks: &mut [Block],
+    sections: &std::collections::HashSet<String>,
+    chapter: u32,
+    has_title_block: bool,
+    registry: &mut HashMap<String, String>,
+) {
+    // (block index, offset just past the heading's opening tag, level, its `id`), in
+    // document order.
+    let mut sites: Vec<(usize, usize, usize, Option<String>)> = Vec::new();
+    for (i, b) in blocks.iter().enumerate() {
+        for t in crate::render::tags(&b.html) {
+            let Some(level) = block_heading_level(t.text) else {
+                continue;
+            };
+            let is_section = crate::render::attr_value(&t, "data-block-id")
+                .is_some_and(|id| sections.contains(id.as_ref()));
+            if is_section {
+                let id = crate::render::attr_value(&t, "id").map(|id| id.into_owned());
+                sites.push((i, t.at + t.text.len(), usize::from(level), id));
+            }
+        }
+    }
+    let levels: Vec<usize> = sites.iter().map(|s| s.2).collect();
     let mut numbering = ChapterNumbering::new(chapter, &levels, has_title_block);
-    for b in blocks.iter_mut() {
-        if is_title_block(&b.html) {
-            // The chapter's title-block header is the visible chapter heading; give it the
-            // bare chapter number ("N") for continuity, without advancing the h2+ counters.
-            b.html = prefix_title_number(&b.html, &chapter.to_string());
-            continue;
+    let numbers: Vec<String> = levels.iter().map(|&l| numbering.next(l)).collect();
+    let shown: HashMap<&str, &str> = sites
+        .iter()
+        .zip(&numbers)
+        .filter_map(|(s, n)| Some((s.3.as_deref()?, n.as_str())))
+        .collect();
+    // A `sec-` label on no section heading (a callout took it for its title) has no number
+    // to read, so it reads the bare "Section", as the page shows it.
+    for (anchor, number) in registry.iter_mut() {
+        if anchor.starts_with("sec-") {
+            *number = shown
+                .get(anchor.as_str())
+                .map(|n| n.to_string())
+                .unwrap_or_default();
         }
-        let sites = heading_sites(&b.html);
-        if sites.is_empty() {
-            continue;
-        }
-        // Numbers are taken in document order and spliced back to front, so an earlier
-        // insertion cannot shift a later offset.
-        let numbers: Vec<String> = sites.iter().map(|&(_, l)| numbering.next(l)).collect();
-        for (&(at, _), number) in sites.iter().zip(&numbers).rev() {
-            b.html.insert_str(at, &section_number_span(number));
-        }
+    }
+    // Spliced back to front, so an earlier insertion cannot shift a later offset.
+    for ((b, at, _, _), number) in sites.iter().zip(&numbers).rev() {
+        blocks[*b]
+            .html
+            .insert_str(*at, &section_number_span(number));
     }
 }
 
-/// Every heading inside one block's emitted HTML: the byte offset just past its opening
-/// tag's `>` (where the number span goes) and its level, in document order.
+/// Assigns section numbers to one chapter's section headings, in document order.
 ///
-/// **Not `block_heading_level(&b.html)`, which only asks about a block's ROOT element.** A
-/// `:::` container concatenates its children into one `html`, so a `## Beta {#sec-beta}`
-/// inside a `.column-page` or a `layout-ncol` grid is a heading in the middle of a `<div>`
-/// block and answered `None` — it drew no number and advanced no counter, while the
-/// render-time `@sec-` registry (which walks the AST, before any folding) went on counting
-/// it. The two sites then disagreed by one for the rest of the chapter: `@sec-beta` read
-/// "Section 1.2" and landed on an unnumbered heading, while the NEXT heading visibly
-/// displayed "1.2". Those two sites must agree — a link reading "6.1.1" has to land on a
-/// heading reading "6.1.1" — which is the whole reason they share [`ChapterNumbering`].
-///
-/// Read through `render::tags`, so a heading spelled inside a `<script>` body or shown as
-/// escaped text in a code sample is not mistaken for one (the walker knows tag from text and
-/// skips raw-text element bodies); and each tag's level comes from `block_heading_level`, so
-/// what counts as a heading still has exactly one definition.
-fn heading_sites(html: &str) -> Vec<(usize, usize)> {
-    crate::render::tags(html)
-        .filter_map(|t| {
-            let level = block_heading_level(t.text)?;
-            Some((t.at + t.text.len(), usize::from(level)))
-        })
-        .collect()
-}
-
-/// Assigns section numbers to one chapter's headings, in document order.
-///
-/// **Three sites number the same chapter independently** and a link reading "6.1.1"
-/// must land on a heading reading "6.1.1": the rendered heading
-/// ([`number_chapter_headings`], over emitted HTML), the render-time `@sec-` registry
-/// (`render/mod.rs`, over the AST), and the project-wide source scan (`site/xref.rs`,
-/// over raw lines). They share this type so the *rule* cannot drift even though their
-/// inputs cannot be made identical.
-///
-/// The rule: the chapter's own heading — its front-matter title block, else its first
-/// heading when nothing above it is shallower — carries the bare chapter number "N".
+/// The rule: the chapter's own heading, its front-matter title block, else its first
+/// heading when nothing above it is shallower, carries the bare chapter number "N".
 /// Sections then count from the shallowest level *below* it, so a chapter rooted at
-/// `###` numbers "N.1", not "N.0.1".
-///
-/// Note the emitted-HTML site sees levels one deeper than the two source-side sites
-/// whenever a title block was emitted (that same gate demotes every body heading).
-/// Deriving the base per-site rather than hardcoding `h2` is what makes the slot
-/// (`level - base`) come out equal on both sides of that shift.
+/// `###` numbers "N.1", not "N.0.1", and a titled chapter, whose body headings the title
+/// block demoted one level, numbers its first `##` "N.1" too.
 pub(crate) struct ChapterNumbering {
     chapter: u32,
     /// The heading level that counter slot 0 corresponds to.
     base: usize,
     counters: [u32; 5],
     /// Whether the chapter's own heading has been consumed. A title block counts as
-    /// already consumed: [`prefix_title_number`] numbers it separately.
+    /// already consumed: it carries the chapter number itself.
     chapter_heading_seen: bool,
 }
 
@@ -137,50 +135,14 @@ impl ChapterNumbering {
 }
 
 /// The `tali-section-number` span, trailing space included, as it is spliced in just after a
-/// heading's opening tag. One spelling, shared with [`prefix_title_number`].
-fn section_number_span(number: &str) -> String {
+/// heading's opening tag. One spelling, shared with the title block's chapter number.
+pub(crate) fn section_number_span(number: &str) -> String {
     format!("<span class=\"tali-section-number\">{number}</span> ")
-}
-
-/// Whether a block is the front-matter `title:` block (a `<header class="tali-title-block">`,
-/// not a markdown heading — so `heading_level` never sees it as an `<h1>`).
-fn is_title_block(html: &str) -> bool {
-    html.contains("class=\"tali-title-block\"")
-}
-
-/// Number a numbered chapter's TITLE: insert the chapter number just inside the
-/// title block's `<h1 class="title">`, so the chapter reads "N Title" and its `N.1`
-/// subsections no longer look like numbers appearing from nowhere.
-fn prefix_title_number(html: &str, number: &str) -> String {
-    let marker = "<h1 class=\"title\">";
-    match html.find(marker) {
-        Some(i) => {
-            let at = i + marker.len();
-            format!(
-                "{}{}{}",
-                &html[..at],
-                section_number_span(number),
-                &html[at..]
-            )
-        }
-        None => html.to_string(),
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn numbers_the_chapter_title_block() {
-        let title = "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\">\
-            <h1 class=\"title\">Executable content</h1></header>";
-        assert_eq!(
-            prefix_title_number(title, "3"),
-            "<header class=\"tali-title-block\" data-block-id=\"tali-title-block\">\
-             <h1 class=\"title\"><span class=\"tali-section-number\">3</span> Executable content</h1></header>"
-        );
-    }
 
     /// A heading inside a `:::` container is a heading in the MIDDLE of a container block's
     /// html, so the root-element test could not see it: it drew no number and advanced no
@@ -251,15 +213,100 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The number a heading shows, the number a same-page `@sec-` reads and the number a
+    /// cross-page `@sec-` reads must be one number, whatever precedes the heading. They came
+    /// from three sites (an HTML walk, the render's AST registry, a source scan) that each
+    /// had their own idea of what a heading is (audit 2026-09-24, B5): a setext heading and
+    /// `##\t` were headings to the first two and not the scan; a heading quoted or in a list
+    /// item, and a raw `<h2>`, were headings to the HTML walk only; a heading that became a
+    /// callout's title was a heading to the registry and the scan only.
+    ///
+    /// A section is a heading the document's outline holds: a top-level heading, inside a
+    /// `:::` div or not. A heading in a quote or list item is not one (it cannot even carry
+    /// an `{#id}`), nor is raw HTML, nor a heading a callout took for its title.
     #[test]
-    fn detects_the_title_block_but_not_a_heading() {
-        assert!(is_title_block(
-            "<header class=\"tali-title-block\"><h1 class=\"title\">T</h1></header>"
-        ));
-        assert!(!is_title_block("<h2 id=\"x\">A section</h2>"));
+    fn every_reader_of_a_section_number_reads_the_same_number() {
+        let cases = [
+            ("nothing", "", "1.2"),
+            ("setext", "Setext\n------\n", "1.3"),
+            ("tab after the hashes", "##\tTabbed\n", "1.3"),
+            (
+                "a column-page div",
+                "::: {.column-page}\n## In a div\n:::\n",
+                "1.3",
+            ),
+            ("a block quote", "> ## Quoted\n", "1.2"),
+            ("a list item", "- ## Listed\n", "1.2"),
+            ("raw html", "<h2>Raw</h2>\n", "1.2"),
+            ("indented code", "    ## Indented\n", "1.2"),
+            ("a comment", "<!--\n## Old\n-->\n", "1.2"),
+            (
+                "a callout title",
+                "::: {.callout-note}\n## Consumed {#sec-consumed}\n\nBody.\n:::\n",
+                "1.2",
+            ),
+        ];
+        let mut wrong = Vec::new();
+        for titled in [false, true] {
+            for (shape, before, want) in cases {
+                let head = if titled {
+                    "---\ntitle: One\n---\n\n"
+                } else {
+                    "# One\n\n"
+                };
+                let root = crate::site::tests::write_site(
+                    &format!("secagree-{titled}-{}", shape.replace(' ', "-")),
+                    &[
+                        (
+                            "_site.yml",
+                            "title: BK\nchapters:\n  - index.tmd\n  - one.tmd\n  - two.tmd\n",
+                        ),
+                        ("index.tmd", "---\ntitle: Pre\n---\n\nHi.\n"),
+                        (
+                            "one.tmd",
+                            &format!(
+                                "{head}See @sec-after.\n\n## First {{#sec-first}}\n\nA.\n\n\
+                                 {before}\nB.\n\n## After {{#sec-after}}\n\nC.\n"
+                            ),
+                        ),
+                        ("two.tmd", "# Two\n\nSee @sec-after.\n"),
+                    ],
+                );
+                let site = Site::discover(&root);
+                let one = site.render_page("one.tmd").expect("renders");
+                let two = site.render_page("two.tmd").expect("renders");
+                let _ = std::fs::remove_dir_all(&root);
+                let at = one.find("id=\"sec-after\"").expect("the heading exists");
+                let body = &one[at..];
+                let shown = body[body.find('>').unwrap() + 1..]
+                    .strip_prefix("<span class=\"tali-section-number\">")
+                    .and_then(|s| s.split('<').next())
+                    .unwrap_or("none")
+                    .to_string();
+                let link = |html: &str| -> String {
+                    html.split("#sec-after\" class=\"tali-xref\">")
+                        .nth(1)
+                        .and_then(|s| s.split('<').next())
+                        .unwrap_or("unresolved")
+                        .replace("&nbsp;", " ")
+                };
+                let got = (shown, link(&one), link(&two));
+                let expected = (
+                    want.to_string(),
+                    format!("Section {want}"),
+                    format!("Section {want}"),
+                );
+                if got != expected {
+                    wrong.push(format!(
+                        "titled={titled} {shape}: {got:?}, want {expected:?}"
+                    ));
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
-    /// Number `levels` in document order, the way one call site would.
+    /// Number `levels` in document order, the way [`number_sections`] does.
     fn number(chapter: u32, levels: &[usize], has_title_block: bool) -> Vec<String> {
         let mut n = ChapterNumbering::new(chapter, levels, has_title_block);
         levels.iter().map(|&l| n.next(l)).collect()
@@ -275,7 +322,8 @@ mod tests {
             number(4, &[3, 4, 4, 3], true),
             ["4.1", "4.1.1", "4.1.2", "4.2"]
         );
-        // …and the source-side sites, one level shallower, must agree exactly.
+        // …and the rule is relative to the base, so the same shape one level shallower
+        // numbers exactly the same.
         assert_eq!(
             number(4, &[2, 3, 3, 2], true),
             number(4, &[3, 4, 4, 3], true)

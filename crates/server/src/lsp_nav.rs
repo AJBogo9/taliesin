@@ -340,7 +340,7 @@ pub(crate) fn anchor_sites(text: &str) -> Vec<(String, u32, u32)> {
             .last()
             .map_or(0, |(i, _)| line[..i].chars().count() as u32)
     };
-    let mut out: Vec<(String, u32, u32)> = taliesin_core::site::scan_page_anchors(text, None)
+    let mut out: Vec<(String, u32, u32)> = taliesin_core::site::scan_page_anchors(text)
         .into_iter()
         .map(|a| {
             let at = a.line.saturating_sub(1);

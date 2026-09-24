@@ -144,14 +144,12 @@ pub(super) fn page_fragment(
 /// Render ONE page's markdown with its post-passes finished, exactly as the served page
 /// finishes them. Returns `(source, rendered)`, or `None` when the source can't be read.
 ///
-/// **The order is the whole point of this function existing.** `Site::finish_blocks`
-/// numbers, then resolves; a scoped render numbers floats and theorems but NOT headings
-/// (that is `number_chapter_headings`, a separate step), and only then can the xref
-/// registry fill a cross-page `@fig-` that this alone-rendered page left as a bare marker.
-/// Getting the order wrong indexes text the page never shows — which is exactly the bug
-/// Ship A found, where every heading was indexed unnumbered under a page reading
-/// "5.2 How nulls behave". [`super::skim`] needs the identical recipe, so it is written
-/// once here rather than copied and left to drift.
+/// **The order is the whole point of this function existing.** A scoped render numbers the
+/// sections, floats and theorems, and only then can the xref registry fill a cross-page
+/// `@fig-` that this alone-rendered page left as a bare marker, as `Site::finish_blocks`
+/// does. Getting the order wrong indexes text the page never shows: Ship A found every
+/// heading indexed unnumbered under a page reading "5.2 How nulls behave", when the
+/// numbering was a separate step this skipped.
 pub(super) fn render_finished(
     page: &Page,
     chapter: Option<u32>,
@@ -161,9 +159,6 @@ pub(super) fn render_finished(
     let src = crate::includes::read_source(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
     let mut doc = render::render_document_scoped_with_site(&src, base, chapter, site_defaults);
-    if let Some(chapter) = chapter {
-        super::chapter::number_chapter_headings(&mut doc.blocks, chapter);
-    }
     super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
     Some((src, doc))
 }

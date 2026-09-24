@@ -1,7 +1,7 @@
 //! Project-wide cross-reference registry: scan each page's source for `{#sec-}`/
-//! `{#fig-}`/… anchors (+ a section number for numbered book sections) and rewrite
+//! `{#fig-}`/… anchors (the site's render-harvest then numbers them) and rewrite
 //! `data-tali-xref`-marked links to the right page. `use super::*` reaches Page,
-//! Book, section_number, Block.
+//! Book, Block.
 
 use super::*;
 use crate::render::parse_attrs;
@@ -18,19 +18,19 @@ use std::collections::BTreeSet;
 pub struct XrefTarget {
     pub url: String,
     pub number: String,
-    /// The target heading's own text, for an anchor that sits on a heading line;
-    /// empty otherwise (a figure/equation anchor, or a cell label harvested from a
-    /// render). Carried so an unnumbered cross-page `@sec-` can name what it points
+    /// The text the target heading shows, read off its page's render by the harvest
+    /// (`heading_titles`); empty for an anchor on no heading (a figure/equation anchor,
+    /// a cell label). Carried so an unnumbered cross-page `@sec-` can name what it points
     /// at instead of rendering the bare word "Section" — see [`rewrite_one_xref`].
     pub title: String,
 }
 /// Scan every page's source for cross-referenceable anchors (`{#sec-x}` headings,
-/// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url and —
-/// for a numbered book section — its number. A lightweight source pass (no render),
-/// so cross-page `@ref`s resolve without a second execution. First definition wins.
+/// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url. A
+/// lightweight source pass (no render), so cross-page `@ref`s resolve without a second
+/// execution; the numbers come from the render-harvest that follows
+/// ([`super::Site::harvest_xref_numbers`]). First definition wins.
 pub(super) fn scan_xref_targets(
     pages: &[Page],
-    book: &Option<Book>,
     warnings: &mut Vec<String>,
 ) -> HashMap<String, XrefTarget> {
     let mut map: HashMap<String, XrefTarget> = HashMap::new();
@@ -39,23 +39,14 @@ pub(super) fn scan_xref_targets(
         let Ok(raw) = std::fs::read_to_string(&page.input) else {
             continue;
         };
-        // Resolve `{{< include >}}` first, exactly like the render pipeline does, so
-        // the section-number counters advance over included headings too (otherwise a
-        // chapter built from includes numbers its sections differently here than in
-        // the rendered page, and `@sec-` resolves to the wrong number).
+        // Resolve `{{< include >}}` first, exactly like the render pipeline does: an anchor
+        // authored in an included partial belongs to the page that includes it.
         let base = page
             .input
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        let chapter = super::book::chapter_of(book, page);
-        for ScannedAnchor {
-            id,
-            number,
-            title,
-            line,
-        } in scan_page_anchors(&src, chapter)
-        {
+        for ScannedAnchor { id, line } in scan_page_anchors(&src) {
             match map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(e) => {
                     // First definition wins project-wide; warn when a *different*
@@ -79,8 +70,7 @@ pub(super) fn scan_xref_targets(
                 std::collections::hash_map::Entry::Vacant(e) => {
                     e.insert(XrefTarget {
                         url: page.url.clone(),
-                        number,
-                        title,
+                        ..XrefTarget::default()
                     });
                 }
             }
@@ -128,7 +118,7 @@ pub fn anchors_defined_elsewhere_in_project(page: &Path) -> BTreeSet<String> {
         // skips `_`-prefixed directories, so it is reachable only this way.
         let base = input.parent().unwrap_or_else(|| Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        out.extend(scan_page_anchors(&src, None).into_iter().map(|a| a.id));
+        out.extend(scan_page_anchors(&src).into_iter().map(|a| a.id));
         out.extend(cell_label_anchors(&src));
     }
     out
@@ -176,45 +166,42 @@ fn cell_label_anchors(src: &str) -> Vec<String> {
         .collect()
 }
 
-/// The ATX heading level of a content line (`## T` -> 2), or `None` if it is not a
-/// heading. `#` runs must be followed by a space, so a `#hashtag` is not a heading.
-fn heading_level_of(line: &str) -> Option<usize> {
-    let level = line.bytes().take_while(|&b| b == b'#').count();
-    ((1..=6).contains(&level) && line.as_bytes().get(level) == Some(&b' ')).then_some(level)
-}
-
-/// The display text of a heading line: its `#` run, its `{…}` attribute blocks and
-/// its inline `` ` ``/`*` delimiters removed. Plain text, not HTML — the caller
-/// escapes it, so a heading containing `<` or `&` cannot inject markup into the
-/// referring page's link label.
+/// The text each labelled heading on a rendered page shows, by its anchor: what a
+/// cross-page `@sec-` names its target by where there is no number to carry.
 ///
-/// Only the two delimiters that actually occur in the repo's anchored headings are
-/// stripped. `_` is deliberately left alone: it is far likelier to be a `snake_case`
-/// identifier than an emphasis marker in a heading, and mangling one is worse than
-/// leaving the other.
-fn heading_title(line: &str) -> String {
-    let after_hashes = line.trim_start_matches('#').trim_start();
-    let mut text = String::with_capacity(after_hashes.len());
-    let mut depth = 0usize;
-    for c in after_hashes.chars() {
-        match c {
-            '{' => depth += 1,
-            '}' => depth = depth.saturating_sub(1),
-            '`' | '*' if depth == 0 => {}
-            _ if depth == 0 => text.push(c),
-            _ => {}
+/// Read off the render, not the source line. A slice of the line kept an entity or a
+/// backslash escape raw (it reached the link escaped twice) and named nothing for a
+/// heading the line scan did not take for one, a setext heading or `##` then a tab. A
+/// heading a callout took for its title carries its anchor on the title element, whose
+/// text is the heading's.
+pub(super) fn heading_titles(blocks: &[Block]) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for b in blocks {
+        for tag in crate::render::tags(&b.html) {
+            let Some(id) = crate::render::attr_value(&tag, "id").filter(|id| is_ref_anchor(id))
+            else {
+                continue;
+            };
+            let is_title = crate::render::block_heading_level(tag.text).is_some()
+                || crate::render::attr_value(&tag, "class")
+                    .is_some_and(|c| c.split_whitespace().any(|c| c == "callout-title"));
+            if !is_title {
+                continue;
+            }
+            let from = tag.at + tag.text.len();
+            let to = b.html[from..]
+                .find(&format!("</{}", tag.name))
+                .map_or(b.html.len(), |n| from + n);
+            let inner = &b.html[from..to];
+            // A numbered chapter's heading opens with its number, which is not its title.
+            let inner = match inner.strip_prefix("<span class=\"tali-section-number\">") {
+                Some(rest) => rest.split_once("</span>").map_or(rest, |(_, t)| t),
+                None => inner,
+            };
+            out.insert(id.into_owned(), crate::render::indexable_text(inner));
         }
     }
-    text.trim().to_string()
-}
-
-/// Every heading level in a page's source, in document order — the input
-/// [`ChapterNumbering`] derives its base from.
-fn heading_levels(content: &[(usize, &str)]) -> Vec<usize> {
-    content
-        .iter()
-        .filter_map(|(_, t)| heading_level_of(t))
-        .collect()
+    out
 }
 
 /// One cross-referenceable anchor as the source scan sees it.
@@ -226,60 +213,24 @@ fn heading_levels(content: &[(usize, &str)]) -> Vec<usize> {
 /// even though the walk had already computed one.
 pub struct ScannedAnchor {
     pub id: String,
-    /// Section number for a `{#sec-}` heading in a numbered chapter; empty otherwise.
-    pub number: String,
-    /// The heading's own text when the anchor sits on a heading line; empty otherwise.
-    pub title: String,
     /// 1-based source line, for the duplicate-label warning.
     pub line: usize,
 }
 
-/// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
-/// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
-/// are counted in order so an unlabeled section still advances the numbering.
+/// The `{#prefix-id}` cross-ref anchors in one page's source. It numbers and names
+/// nothing: a number or a title is what the page SHOWS, which only its render knows
+/// (`number_sections`, `heading_titles`), and reading them off source lines here
+/// disagreed with it on setext headings, `##\t`, entities and a heading a callout took
+/// for its title.
 ///
 /// Public so the editor's project walk uses this scanner rather than a second one: two
 /// implementations of "what defines an anchor" would let go-to-definition and the built page
 /// disagree about which file owns a label.
-pub fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<ScannedAnchor> {
+pub fn scan_page_anchors(src: &str) -> Vec<ScannedAnchor> {
     let mut out = Vec::new();
-    // The numbering base is the shallowest heading below the chapter's own, so the whole
-    // heading shape has to be known before the first anchor is numbered: pre-scan it.
-    // `emits_title_block` is the renderer's own gate, so this scan and the rendered page
-    // agree on whether a leading heading is the chapter's title or its first section.
-    let content: Vec<(usize, &str)> = content_lines_numbered(src).collect();
-    let levels: Vec<usize> = heading_levels(&content);
-    let mut numbering = chapter.map(|ch| {
-        ChapterNumbering::new(
-            ch,
-            &levels,
-            crate::render::emits_title_block(
-                crate::frontmatter::front_matter_block(src).unwrap_or(""),
-            ),
-        )
-    });
-    for &(line, t) in &content {
-        if let Some(level) = heading_level_of(t) {
-            let number = numbering
-                .as_mut()
-                .map(|n| n.next(level))
-                .unwrap_or_default();
-            if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-                out.push(ScannedAnchor {
-                    id,
-                    number,
-                    title: heading_title(t),
-                    line,
-                });
-            }
-        } else if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            // a figure/equation anchor: link, no number, no heading to name it by
-            out.push(ScannedAnchor {
-                id,
-                number: String::new(),
-                title: String::new(),
-                line,
-            });
+    for (line, t) in content_lines_numbered(src) {
+        if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
+            out.push(ScannedAnchor { id, line });
         }
     }
     out
@@ -338,7 +289,7 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
 /// (`cite::render::xref_anchor_link`), and the site-level rewrite
 /// ([`rewrite_one_xref`]) only ever changes the PREFIX before `#` (to
 /// `{page}.html#{anchor}`, once a cross-page target resolves) — it never touches the
-/// anchor itself. So this one needle recovers the full reference, whether it stayed
+/// anchor itself. So this one read recovers the full reference, whether it stayed
 /// same-page, resolved cross-page, or is still an unresolved marker, from blocks a page
 /// already carries — no re-render, no project-wide reverse index.
 ///
@@ -346,28 +297,21 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
 /// `serve_site::rebuild_project`): when a cross-reference target moves, this tells it
 /// which of the OPEN pages actually cite the moved anchor, rather than rebuilding every
 /// open tab or reviving the deleted `backlinks` reverse index.
+///
+/// Read through the one tag walker, so only an `<a>` ELEMENT counts: a `{js}` cell's
+/// source in its script element, or a comment, that shows the markup cites nothing.
 pub fn xref_anchors_in(blocks: &[Block]) -> std::collections::HashSet<String> {
     let mut out = std::collections::HashSet::new();
     for b in blocks {
-        let mut rest = b.html.as_str();
-        while let Some(i) = rest.find("<a ") {
-            rest = &rest[i..];
-            let Some(tag_end) = rest.find('>') else {
-                break;
-            };
-            let tag = &rest[..tag_end];
-            if tag.contains("class=\"tali-xref\"")
-                && let Some(hs) = tag.find("href=\"")
+        for tag in crate::render::tags(&b.html) {
+            let is_xref = tag.name.eq_ignore_ascii_case("a")
+                && crate::render::attr_value(&tag, "class")
+                    .is_some_and(|c| c.split_whitespace().any(|c| c == "tali-xref"));
+            if let Some(href) = crate::render::attr_value(&tag, "href").filter(|_| is_xref)
+                && let Some((_, anchor)) = href.rsplit_once('#')
             {
-                let val_start = hs + "href=\"".len();
-                if let Some(hend) = tag[val_start..].find('"') {
-                    let href = &tag[val_start..val_start + hend];
-                    if let Some(hash) = href.rfind('#') {
-                        out.insert(href[hash + 1..].to_string());
-                    }
-                }
+                out.insert(anchor.to_string());
             }
-            rest = &rest[tag_end + 1..];
         }
     }
     out
@@ -637,6 +581,47 @@ mod tests {
         );
     }
 
+    /// The title a cross-page `@sec-` names its target by is the text the target heading
+    /// SHOWS. It was a slice of the source line with `` ` `` and `*` dropped (audit
+    /// 2026-09-24, B5 and escaping #3): an entity or a backslash escape reached the link
+    /// raw and was escaped a second time (`R&amp;amp;D \&lt;results\&gt;`), and a heading
+    /// the line scan did not see as one (`##` then a tab, a setext heading) named nothing.
+    #[test]
+    fn a_cross_page_sec_is_named_by_the_text_its_heading_shows() {
+        let root = crate::site::tests::write_site(
+            "xreftitles",
+            &[
+                ("_site.yml", "title: W\n"),
+                (
+                    "a.tmd",
+                    "# A\n\n## R&amp;D \\<results\\> *now* `x` {#sec-rd}\n\nT.\n\n\
+                     ##\tTabbed {#sec-tab}\n\nT.\n\nSetext {#sec-set}\n------\n\nT.\n\n\
+                     ::: {.callout-note}\n## Note title {#sec-note}\n\nBody.\n:::\n",
+                ),
+                (
+                    "b.tmd",
+                    "# B\n\nSee @sec-rd, @sec-tab, @sec-set and @sec-note.\n",
+                ),
+            ],
+        );
+        let b = Site::discover(&root).render_page("b.tmd").expect("renders");
+        let _ = std::fs::remove_dir_all(&root);
+        let label = |anchor: &str| -> String {
+            b.split(&format!("a.html#{anchor}\" class=\"tali-xref\">"))
+                .nth(1)
+                .and_then(|s| s.split("</a>").next())
+                .unwrap_or("unresolved")
+                .to_string()
+        };
+        assert_eq!(
+            label("sec-rd"),
+            "Section&nbsp;\u{201c}R&amp;D &lt;results&gt; now x\u{201d}"
+        );
+        assert_eq!(label("sec-tab"), "Section&nbsp;\u{201c}Tabbed\u{201d}");
+        assert_eq!(label("sec-set"), "Section&nbsp;\u{201c}Setext\u{201d}");
+        assert_eq!(label("sec-note"), "Section&nbsp;\u{201c}Note title\u{201d}");
+    }
+
     /// A website has no section numbering, so a cross-page `@sec-` has no number to
     /// carry. It must name its target rather than render the bare kind word.
     #[test]
@@ -740,8 +725,8 @@ mod tests {
         );
     }
 
-    /// The title is plain text from the source line, so it is escaped on the way into
-    /// the referring page — a heading may legitimately contain `&` or `<`.
+    /// The title is plain text (the heading's decoded text), so it is escaped on the way
+    /// into the referring page — a heading may legitimately contain `&` or `<`.
     #[test]
     fn a_heading_title_is_escaped_into_the_referring_page() {
         let targets = HashMap::from([(
@@ -757,31 +742,6 @@ mod tests {
         assert!(
             out.contains("Tom &amp; Jerry &lt;live&gt;") && !out.contains("<live>"),
             "the heading text must be escaped: {out}"
-        );
-    }
-
-    #[test]
-    fn heading_title_drops_the_hashes_attributes_and_inline_delimiters() {
-        assert_eq!(
-            heading_title("## Is the canary still slower? {#sec-model}"),
-            "Is the canary still slower?"
-        );
-        // The one anchored heading in the repo with inline code: the delimiters go, the
-        // identifier stays.
-        assert_eq!(
-            heading_title("### How `draft:` filtering works {#sec-draft-filtering}"),
-            "How draft: filtering works"
-        );
-        // A split-brace heading drops BOTH blocks, not only the last.
-        assert_eq!(
-            heading_title("## Setup {.unnumbered} {#sec-setup}"),
-            "Setup"
-        );
-        // `_` survives: a heading is likelier to hold a snake_case identifier than an
-        // emphasis pair.
-        assert_eq!(
-            heading_title("## The p95_ms column {#sec-p95}"),
-            "The p95_ms column"
         );
     }
 
@@ -859,6 +819,28 @@ mod tests {
         assert_eq!(
             xref_anchors_in(&blocks),
             std::collections::HashSet::from(["tbl-kl".to_string()])
+        );
+    }
+
+    /// Only an `<a>` ELEMENT is a citation, read through the one tag walker (audit
+    /// 2026-09-24, B3): a `{js}` cell's source in its script element and a comment that show
+    /// the markup cite nothing, and an anchor is read decoded.
+    #[test]
+    fn xref_anchors_in_reads_elements_not_text() {
+        // The tag is spelled in two pieces because `tests/token_contract.rs` reads any
+        // source file holding the whole word as browser code.
+        let blocks = [
+            block(concat!(
+                r##"<div class="cell tali-js"><"##,
+                r##"script type="text/javascript">const a = '<a href="#fig-in-js" class="tali-xref">Figure</a>';</"##,
+                r##"script></div>"##
+            )),
+            block(r##"<!-- <a href="#sec-commented" class="tali-xref">Section</a> -->"##),
+            block(r##"<p><a class='tali-xref' href='other.html#sec-single'>Section</a></p>"##),
+        ];
+        assert_eq!(
+            xref_anchors_in(&blocks),
+            std::collections::HashSet::from(["sec-single".to_string()])
         );
     }
 

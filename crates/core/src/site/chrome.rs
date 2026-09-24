@@ -281,7 +281,14 @@ impl Site {
             .map(|(_, path, _)| path)
             .collect();
 
-        let nav = self.config.nav.left.iter().chain(&self.config.nav.right);
+        // A book renders no navbar (`page_chrome`), so no page carries a `nav:` link.
+        let nav = self
+            .config
+            .nav
+            .left
+            .iter()
+            .chain(&self.config.nav.right)
+            .filter(|_| !self.is_book());
         let footer = self
             .config
             .footer
@@ -1675,6 +1682,41 @@ mod tests {
             ws.iter().all(|w| w.file.as_deref() == Some("_site.yml")),
             "located to the file the author must edit: {ws:?}"
         );
+    }
+
+    /// A book has no navbar (its topbar and Chapters drawer replace it), so no page carries
+    /// a `nav:` link and none can be broken: reporting one failed the gate over a link that
+    /// ships nowhere (audit 2026-09-24, leads `chrome.rs:234`). The footer still ships on
+    /// every chapter, so its links are still judged.
+    #[test]
+    fn a_book_judges_its_footer_links_but_not_a_nav_it_never_renders() {
+        let root = write_site(
+            "chromelinks-book",
+            &[
+                (
+                    "_site.yml",
+                    "title: Book\nnav:\n  left:\n    - { text: Gone, href: nothere.html }\n\
+                     footer:\n  right:\n    - { text: Nope, href: nope.tmd }\n\
+                     chapters:\n  - index.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let ws = site.validate_chrome_links();
+        let _ = std::fs::remove_dir_all(&root);
+        let joined = ws
+            .iter()
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert!(site.is_book());
+        assert!(
+            !joined.contains("nothere.html"),
+            "no nav in a book: {joined}"
+        );
+        assert!(joined.contains("nope.tmd"), "the footer ships: {joined}");
+        assert_eq!(ws.len(), 1, "{joined}");
     }
 
     /// The three ways a chrome href is legitimately not a page. Each of these shipped in a

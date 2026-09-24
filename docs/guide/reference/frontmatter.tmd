@@ -370,7 +370,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
 | `logo` | Brand image, replacing the wordmark in the navbar (a website) or the topbar and the chapter drawer (a book). Project-relative like `favicon`; `title` becomes its `alt`. There are no size or position sub-keys: the stylesheet caps it against the bar it sits in |
-| `nav` | Navbar items: a list (left), or `{ left, right }`. Each item is a link, so an item with no `href:` is reported and left out of the navbar |
+| `nav` | Navbar items: a list (left), or `{ left, right }`. Each item is a link, so an item with no `href:` is reported and left out of the navbar. A book has no navbar: its topbar and Chapters drawer replace it |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
 | `bibliography` | A `.bib` shared by every page of the project (a path, or a list of them), relative to `_site.yml`. Merged under each page's own `bibliography:`, so a page can cite a shared key and still add or correct entries locally |

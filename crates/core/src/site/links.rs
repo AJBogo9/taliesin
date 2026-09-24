@@ -167,25 +167,16 @@ pub(super) fn rewrite_one_href(val: &str) -> String {
     tmd_href(val)
 }
 
-/// Whether a block's *leading element tag* carries `id="x"` (so a `::: {#x}`
-/// placeholder matches, but a code sample or prose that merely contains the text
-/// `id="x"` in its body does not).
-/// Whether `needle` appears within a block's *leading element tag*. Quote-aware tag end,
-/// so a raw-HTML placeholder whose leading tag has a `>` inside an attribute value (e.g.
-/// `<div title="a > b" id="x">`) is handled. Shared by `block_tag_has_id` (specific id) and
-/// a leading tag already carrying an ` id="` attribute.
-pub(super) fn leading_tag_contains(html: &str, needle: &str) -> bool {
-    match crate::render::tag_end(html) {
-        Some(gt) => html[..gt].contains(needle),
-        None => html.contains(needle),
-    }
-}
-
+/// Whether a block's *leading element* carries the id `id` (so a `::: {#x}` placeholder
+/// matches, but a code sample or prose that merely contains the text `id="x"` in its body
+/// does not). Read through the one tag walker: `id` is an attribute NAME, so the
+/// `data-block-id` every block carries is not one, the value is read in any quoting and
+/// decoded, and a comment before the element is not its leading tag.
 pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
-    // Leading space so a real `id="x"` attribute matches but the `id="x"` *suffix* of
-    // `data-block-id="x"` does not (attributes are space-separated); mirrors the same
-    // leading-tag-only check for any ` id="` attribute.
-    leading_tag_contains(html, &format!(" id=\"{id}\""))
+    crate::render::tags(html)
+        .next()
+        .and_then(|tag| crate::render::attr_value(&tag, "id"))
+        .is_some_and(|value| value == id)
 }
 
 /// Resolve `target` (a path relative to the file at `from_rel`) to a site-root-
@@ -544,6 +535,15 @@ mod tests {
         // Body text that merely contains `id="intro"` outside the leading tag never matches.
         assert!(!block_tag_has_id(
             r#"<p>a code sample: <code>id="intro"</code></p>"#,
+            "intro"
+        ));
+        // Read as an attribute, however it is written (audit 2026-09-24, B3): an author's
+        // raw placeholder in single quotes, an id holding a character reference, and a
+        // placeholder a comment precedes are all the element's own id.
+        assert!(block_tag_has_id(r#"<div id='intro'></div>"#, "intro"));
+        assert!(block_tag_has_id(r#"<div id="r&amp;d"></div>"#, "r&d"));
+        assert!(block_tag_has_id(
+            r#"<!-- the cards go here --><div id="intro"></div>"#,
             "intro"
         ));
     }
