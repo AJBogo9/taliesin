@@ -1336,6 +1336,9 @@ mod tests {
             link[0].contains("no page in this site"),
             "the site-aware phrasing, not the standalone one: {link:?}"
         );
+        // The link already names its target, so "`nope.html` resolves to `nope.html`" would
+        // say nothing.
+        assert_eq!(link[0], "broken link: `nope.html` is no page in this site");
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -961,8 +961,15 @@ impl Site {
                         }
                         _ => String::new(),
                     };
+                    // "`x.html` resolves to `x.html`" says nothing: name the resolution
+                    // only when it differs from what the author wrote.
+                    let resolved = if target_url == *path {
+                        String::new()
+                    } else {
+                        format!(" resolves to `{target_url}`, which")
+                    };
                     let w = Warning::new(format!(
-                        "broken link: `{path}` resolves to `{target_url}`, which is no page in this site{hint}"
+                        "broken link: `{path}`{resolved} is no page in this site{hint}"
                     ))
                     .severity(Severity::Error);
                     out.push((
@@ -1393,9 +1400,14 @@ impl Site {
         // A listing's cards are the project's other pages, which a document built on its own
         // does not have: like the navbar it also leaves out, the listing goes, with one note.
         let listings = if self.standalone && !page.listings.is_empty() {
+            // A lone document has no project folder to name: it has no `_site.yml`.
+            let remedy = if self.root.join("_site.yml").is_file() {
+                "this document is built on its own; build the project folder to fill it"
+            } else {
+                "this document has no `_site.yml` project"
+            };
             let mut w = Warning::new(format!(
-                "the listing on `{}` was left out: it lists the project's pages, and this \
-                 document is built on its own; build the project folder to fill it",
+                "the listing on `{}` was left out: it lists the project's pages, and {remedy}",
                 page.rel
             ));
             w.line = src
@@ -4045,7 +4057,8 @@ pub(crate) mod tests {
         assert!(!html.contains("tali-listing"), "{html}");
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(
-            warnings[0].message.contains("built on its own"),
+            warnings[0].message.contains("built on its own")
+                && warnings[0].message.contains("build the project folder"),
             "{}",
             warnings[0].message
         );

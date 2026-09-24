@@ -157,4 +157,9 @@ fn a_lone_document_builds_its_hero_as_the_preview_does_and_names_its_dropped_lis
         stderr.contains("land.tmd:6:") && stderr.contains("the listing on `land.tmd` was left out"),
         "the note, at the `listing:` key: {stderr}"
     );
+    // A lone document has no project folder to build instead.
+    assert!(
+        stderr.contains("has no `_site.yml` project") && !stderr.contains("project folder"),
+        "the note names what is missing, not a project that does not exist: {stderr}"
+    );
 }
