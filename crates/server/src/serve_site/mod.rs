@@ -1976,12 +1976,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
 
     tokio::spawn(async move {
         while let Some(first) = sig_rx.recv().await {
-            let mut changed: HashSet<PathBuf> = HashSet::new();
-            changed.insert(first);
-            tokio::time::sleep(Duration::from_millis(80)).await;
-            while let Ok(path) = sig_rx.try_recv() {
-                changed.insert(path);
-            }
+            let changed = gather(first, &mut sig_rx).await;
             // Guarded, like every other task that renders on the author's behalf. This one
             // was not: `dispatch_changes` re-discovers the project, re-derives the
             // cross-reference registry and rebuilds the search index, and a panic in any of
@@ -1994,6 +1989,39 @@ fn spawn_watcher(app: Arc<SiteApp>) {
             }
         }
     });
+}
+
+/// How long the watcher waits for a save's events to stop before acting on them. Every
+/// editor's save, in place or by a rename over the old file (`sed -i` included), delivers
+/// all its events within about a millisecond, measured on 2026-09-24 (audit perf #4).
+const QUIET: Duration = Duration::from_millis(15);
+
+/// The longest a batch waits for its events to stop: a stream that never pauses (a cell
+/// writing a file in a loop) is acted on at this interval.
+const MOST_QUIET: Duration = Duration::from_millis(250);
+
+/// One save's changed paths: `first`, and whatever follows it until the events stop for
+/// [`QUIET`] (or [`MOST_QUIET`] has passed).
+///
+/// It was a fixed 80 ms sleep after the first event, which was 80 to 92% of every save on
+/// the author's own projects, and the floor that put every kind of save past 100 ms at
+/// about 40 to 100 pages (audit 2026-09-24 F3). A save split across two batches costs a
+/// second pass and nothing else: each batch is judged by what it changed.
+async fn gather(first: PathBuf, rx: &mut mpsc::UnboundedReceiver<PathBuf>) -> HashSet<PathBuf> {
+    let mut changed = HashSet::from([first]);
+    let deadline = tokio::time::Instant::now() + MOST_QUIET;
+    // Ends on a quiet `QUIET`, at the deadline, or when the watcher is gone.
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let Ok(Some(path)) = tokio::time::timeout(QUIET.min(left), rx.recv()).await else {
+            break;
+        };
+        changed.insert(path);
+        if left.is_zero() {
+            break;
+        }
+    }
+    changed
 }
 
 /// Which of the `open` pages actually cite one of `moved_anchors`, read from each open
@@ -4517,6 +4545,48 @@ mod project_tests {
                 );
             }
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 F3 (perf #4). The watcher slept a fixed 80 ms after the first event
+    /// of every save, 80 to 92% of each save on the author's projects, while every editor's
+    /// save finishes its events within about a millisecond. It now waits for its events to
+    /// stop, so a save reaches its open page in the render's time plus a short quiet
+    /// period.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_save_reaches_its_open_page_without_a_fixed_wait() {
+        let dir = scratch("quiet");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\nFirst.\n").unwrap();
+        let live = Live::start(&dir);
+        let mut tab = live.open("index.tmd");
+        until("the first build", || {
+            live.body("index.tmd").contains("First.")
+        });
+        let drain = |tab: &mut broadcast::Receiver<String>| while tab.try_recv().is_ok() {};
+        std::thread::sleep(Duration::from_millis(200));
+        drain(&mut tab);
+
+        let mut took = Vec::new();
+        for i in 0..5 {
+            let marker = format!("Saved {i}.");
+            let started = std::time::Instant::now();
+            std::fs::write(&page, format!("---\ntitle: Home\n---\n\n{marker}\n")).unwrap();
+            until("the save reaches the page", || {
+                live.body("index.tmd").contains(&marker)
+            });
+            took.push(started.elapsed());
+            std::thread::sleep(Duration::from_millis(100));
+            drain(&mut tab);
+        }
+        took.sort();
+        let median = took[took.len() / 2];
+        assert!(
+            median < Duration::from_millis(60),
+            "a save took {median:?} to reach its open page (all: {took:?})"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -69,7 +69,7 @@ sequenceDiagram
   participant DF as diff.rs
   participant CL as client.js
   FS->>SV: changed (notify)
-  SV->>RN: re-render (debounced)
+  SV->>RN: re-render (once its events stop)
   RN->>EX: run first changed cell + downstream
   EX-->>RN: output blocks
   RN-->>SV: new block list
@@ -110,9 +110,11 @@ against the path relative to the project root, never the whole path: the watcher
 in absolute event paths, and a project can live under a directory someone else called
 `_site` or `.git`. Scanning the whole path vetoed every event in such a project, which
 stopped hot reload silently while each page still served 200. Every other event reaches
-the rebuild, which decides by what the pages read (below), not by a file's extension, and
-a burst of saves is debounced. A directory that arrives by a rename or a move gets watches
-of its own, like a created one: notify drops a moved directory's watch.
+the rebuild, which decides by what the pages read (below), not by a file's extension. A
+save's events are gathered until they stop for 15 ms: every editor's save finishes its
+events within about a millisecond, and the fixed 80 ms wait this replaced was most of
+every save. A directory that arrives by a rename or a move gets watches of its own, like a
+created one: notify drops a moved directory's watch.
 
 ### What a save rebuilds
 
