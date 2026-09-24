@@ -219,10 +219,13 @@ its identity (a `@fig-` cross-reference still resolves through one).
 Splices another file's contents into this one before parsing, as if you had pasted
 it in place. The directive must be alone on its line, and it is left literal inside a
 fence or an inline code span (which is why the examples on this page do not fire). The
-path is resolved relative to the file that holds the directive.
+path is resolved relative to the file that holds the directive. A path in the partial's
+own text (an image, a link) is the including page's, because the text is spliced in
+before anything reads it: `![x](figures/a.png)` in a partial names `figures/a.png` beside
+each page that pulls it in.
 
-Use an include to keep an author bio, a license footer or a shared figure in a
-single file and pull it into many pages. Because the splice happens before the
+Use an include to keep an author bio or a license footer in a single file and pull it
+into many pages. Because the splice happens before the
 block model is built, the included blocks are ordinary blocks with their own
 block ids and source positions, and click-to-source still resolves into the
 partial's own file and line, not the page that pulled it in. The dev server also
