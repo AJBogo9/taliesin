@@ -1796,6 +1796,20 @@ fn a_captionless_figure_has_no_dangling_colon_and_alt_keeps_its_line_breaks() {
     );
 }
 
+/// An image's markdown title (`![alt](src "title")`) reached the `<img>` of an inline image
+/// but was dropped from a figure's, since the figure parts never carried it (audit,
+/// escaping "Adjacent").
+#[test]
+fn a_figure_keeps_its_images_title() {
+    let doc = render_document("![A loss curve.](loss.png \"Hover text\"){#fig-t dark=\"d.png\"}\n");
+    let h = &doc.blocks[0].html;
+    assert_eq!(
+        h.matches("title=\"Hover text\"").count(),
+        2,
+        "both theme variants carry the title: {h}"
+    );
+}
+
 #[test]
 fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
     // A `dark=` source ships a light + dark <img> pair (like `{{< video dark= >}}`); CSS

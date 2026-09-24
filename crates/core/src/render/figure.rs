@@ -8,6 +8,8 @@ use super::*;
 /// A standalone-image paragraph recognized as a figure.
 pub(super) struct FigureParts {
     url: String,
+    /// The image's markdown title (`![alt](src "title")`), empty when it has none.
+    title: String,
     /// Rendered inline HTML of the caption (the image's alt content).
     caption: String,
     pub(super) attrs: DivAttrs,
@@ -45,8 +47,8 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
         }
     }
     let image = image?;
-    let url = match &image.data.borrow().value {
-        NodeValue::Image(link) => link.url.clone(),
+    let (url, title) = match &image.data.borrow().value {
+        NodeValue::Image(link) => (link.url.clone(), link.title.clone()),
         _ => return None,
     };
     let mut caption = String::new();
@@ -61,6 +63,7 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
     }
     Some(FigureParts {
         url,
+        title,
         caption,
         attrs,
     })
@@ -102,6 +105,11 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     // screen reader read the same sentence twice (audit images #9). The executed-figure
     // path has always done this (`kernel::render_media`).
     let alt = "";
+    // The markdown title, as an inline image carries it.
+    let title = match fig.title.as_str() {
+        "" => String::new(),
+        t => format!(" title=\"{}\"", escape_attr(t)),
+    };
     let img = |src: &str, class: &str| {
         let cls = if class.is_empty() {
             String::new()
@@ -109,7 +117,7 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
             format!(" class=\"{class}\"")
         };
         format!(
-            "<img{cls} src=\"{}\" alt=\"{alt}\"{style} />",
+            "<img{cls} src=\"{}\" alt=\"{alt}\"{title}{style} />",
             escape_attr(safe_url(src, true))
         )
     };
