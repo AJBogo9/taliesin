@@ -1561,6 +1561,26 @@ fn a_key_ends_at_its_last_letter_digit_or_underscore() {
     );
 }
 
+/// The punctuation a key's run ends with is the separator before its locator, so it is
+/// part of neither: once the key stopped before the colon, `[@knuth:1984: a note]` printed
+/// "[1, : a note]" (audit 2026-09-24, WP10 leftover). It reads like the comma form.
+#[test]
+fn a_locator_drops_the_separator_its_key_ended_with() {
+    let b = parse_bib("@misc{knuth:1984, title={K}}\n@misc{smith.2020, title={S}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@knuth:1984: a note]. B [@smith.2020. p. 3]. C [@knuth:1984, ch. 2].</p>",
+    )];
+    process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    for want in [
+        "[<a href=\"#ref-knuth:1984\">1</a>, a note]",
+        "[<a href=\"#ref-smith.2020\">2</a>, p. 3]",
+        "[<a href=\"#ref-knuth:1984\">1</a>, ch. 2]",
+    ] {
+        assert!(html.contains(want), "{want} in {html}");
+    }
+}
+
 /// The key under a cursor, read by the render's own group grammar (audit 2026-09-24,
 /// bibtex #11): every key of a group, a locator after the key, `-@` and every character a
 /// key may hold. The editor's hover and go-to-definition used a scanner of their own that

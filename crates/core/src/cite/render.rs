@@ -598,7 +598,13 @@ fn group_items(inner: &str) -> Option<Vec<(std::ops::Range<usize>, &str)>> {
             return None;
         }
         let start = at + (item.len() - after.len());
-        let locator = after[key.len()..].trim().trim_start_matches(',').trim();
+        // What `key_prefix` trimmed off the key's run (the `:` of `@knuth:1984: a note`) is
+        // the separator, as a comma is, so the locator starts after it.
+        let locator = after[key.len()..]
+            .trim_start_matches(is_cite_key_char)
+            .trim()
+            .trim_start_matches(',')
+            .trim();
         items.push((start..start + key.len(), locator));
     }
     (!items.is_empty()).then_some(items)
