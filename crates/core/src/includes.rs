@@ -146,7 +146,7 @@ fn expand(
     // contents). See [`normalize_line_endings`] for what a lone `\r` did before this line.
     let normalized = normalize_line_endings(src);
     let src = normalized.as_ref();
-    let mut in_code: Option<(char, usize)> = None;
+    let directives = Directives::of(src);
     for (idx, line) in src.lines().enumerate() {
         // Emit `line` verbatim, mapped back to the current file (used whenever a
         // directive isn't expanded: ordinary text, or an unsafe/cyclic/unreadable include).
@@ -169,16 +169,7 @@ fn expand(
                 line: idx + 1,
             });
         };
-        let was_in_code = in_code.is_some();
-        in_code = next_code_state(in_code, line);
-        // A `{{< include >}}` inside a code fence is documentation, not a directive —
-        // leave it literal (matches the fenced-div handling).
-        let directive = if was_in_code || in_code.is_some() {
-            None
-        } else {
-            parse_include(line)
-        };
-        let Some(raw) = directive else {
+        let Some(raw) = directives.at(idx, line) else {
             keep_line();
             continue;
         };
@@ -280,14 +271,9 @@ fn collect_resource_paths(v: Option<&serde_yaml::Value>, base_dir: &Path, out: &
 }
 
 fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
-    let mut in_code: Option<(char, usize)> = None;
-    for line in src.lines() {
-        let was_in_code = in_code.is_some();
-        in_code = next_code_state(in_code, line);
-        if was_in_code || in_code.is_some() {
-            continue; // a `{{< include >}}` inside a code fence isn't a dependency
-        }
-        let Some(raw) = parse_include(line) else {
+    let directives = Directives::of(src);
+    for (idx, line) in src.lines().enumerate() {
+        let Some(raw) = directives.at(idx, line) else {
             continue;
         };
         let Some(target) = safe_join(base_dir, raw) else {
@@ -306,37 +292,28 @@ fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut 
     }
 }
 
-/// A Markdown code-fence marker line (3+ backticks/tildes after at most 3 spaces),
-/// as `(fence_char, run_len)` — so a `{{< include >}}` *inside* a code block is left
-/// literal rather than resolved.
-fn code_fence(line: &str) -> Option<(char, usize)> {
-    let trimmed = line.trim_start_matches(' ');
-    if line.len() - trimmed.len() > 3 {
-        return None;
-    }
-    let ch = trimmed.chars().next()?;
-    if ch != '`' && ch != '~' {
-        return None;
-    }
-    let run = trimmed.chars().take_while(|&c| c == ch).count();
-    (run >= 3).then_some((ch, run))
-}
+/// Which lines of ONE file are include directives: a line holding only
+/// `{{< include PATH >}}`, where markdown is read. One inside code (fenced or indented), raw
+/// HTML (a commented-out include stays commented out) or the front matter is text.
+///
+/// Each file is classified on its own, since this pass is what builds the buffer the rest
+/// of the render sees. Skips the parse when the file names no shortcode at all, which is
+/// nearly every file.
+struct Directives(Option<crate::lines::Lines>);
 
-/// Advance the fenced-code state by one line (open on a fence, close on a bare
-/// same-char fence of at least the opening length).
-fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
-    match state {
-        Some((ch, run)) => match code_fence(line) {
-            Some((c2, r2))
-                if c2 == ch
-                    && r2 >= run
-                    && line.trim_start().trim_start_matches(ch).trim().is_empty() =>
-            {
-                None
-            }
-            _ => Some((ch, run)),
-        },
-        None => code_fence(line),
+impl Directives {
+    fn of(src: &str) -> Directives {
+        Directives(src.contains("{{<").then(|| crate::lines::classify(src)))
+    }
+
+    /// The include target on 0-based line `idx` (whose text is `line`), if it is a directive.
+    fn at<'a>(&self, idx: usize, line: &'a str) -> Option<&'a str> {
+        let lines = self.0.as_ref()?;
+        lines
+            .line(idx)
+            .kind
+            .is_markdown()
+            .then(|| parse_include(line))?
     }
 }
 

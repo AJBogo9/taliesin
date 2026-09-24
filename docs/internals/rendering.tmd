@@ -67,6 +67,14 @@ flowchart TB
    table block. After that, `[@key]` citations and `@fig-`/`@sec-`/… cross-references
    are resolved against the bibliography and the cross-reference registry.
 
+Stages 1 to 3 read source line by line, and none of them decides for itself what is code.
+`lines.rs` does, by parsing the text with the renderer's own comrak options and labelling
+every line: markdown, front matter, fenced or indented code, or raw HTML (an HTML block of
+types 1 to 5, such as a comment or `<pre>`), with its block-quote and list-item depth. An
+include directive, a shortcode or a `:::` marker counts only on a markdown line, and a
+`:::` marker only at depth 0. The site's anchor scan and the prose count ask the same
+question the same way (`render::rendered_lines`).
+
 The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, subtitle, TOC
 flag, includes, the cross-reference number map, and any non-fatal `warnings`. Every
 block in it carries the three data attributes the rest of the system keys off,

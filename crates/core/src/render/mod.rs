@@ -18,7 +18,9 @@ pub use model::{
 };
 pub(crate) use model::{BufLine, CellRole, CodeFold};
 
-fn parse_options() -> Options<'static> {
+/// The comrak options every parse of `.tmd` source uses: the render's, and
+/// [`crate::lines::classify`]'s, which must see the same structure the page renders.
+pub(crate) fn parse_options() -> Options<'static> {
     let mut options = Options::default();
     options.extension.front_matter_delimiter = Some("---".to_string());
     options.extension.strikethrough = true;
@@ -63,8 +65,9 @@ mod divs;
 pub(crate) mod extension;
 mod validate;
 pub(crate) use divs::parse_attrs;
+pub(crate) use divs::rendered_lines;
 pub use divs::{CELL_OUT_SLOT_ATTR, tokenize_attrs};
-use divs::{group_divs, preprocess, scan_div_spans};
+use divs::{DivFences, group_divs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
@@ -169,6 +172,18 @@ pub fn no_exec_in_force() -> bool {
 /// anchor.
 pub fn executes_to_kernel(lang: &str) -> bool {
     lang == "python"
+}
+
+/// The `#| label:` of a fenced block the render runs as a cell: an executable fence
+/// (`{python}`, not the display-only `{.python}`) whose leading option block names one.
+/// The site's name-only anchor scan reads cell labels through this, so it cannot call a
+/// display sample a cross-reference target the page never anchors.
+pub(crate) fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
+    if is_executable_fence(info) && code_lang(info).is_some() {
+        cell_option(literal, "label")
+    } else {
+        None
+    }
 }
 
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
@@ -507,8 +522,9 @@ fn render_internal_impl(
     // then strip the fence markers in a line-preserving pass so sourcepos line
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
-    let (spans, unclosed_fences) = scan_div_spans(src);
-    let processed = preprocess(src);
+    let divs = DivFences::find(src);
+    let (spans, unclosed_fences) = scan_div_spans(&divs);
+    let processed = preprocess(src, &divs);
     let root = parse_document(&arena, &processed, &options);
 
     let lines: Vec<&str> = processed.lines().collect();
@@ -541,6 +557,19 @@ fn render_internal_impl(
             Warning::new(
                 "unterminated `:::` fenced div: add a closing `:::` \u{2014} the block is \
                  rendered without its wrapper",
+            )
+            .at(file, mapped as u32),
+        );
+    }
+    // A `:::` div opened inside a list item or block quote is text there (a div wraps
+    // top-level blocks only). Said once, at the opening marker, rather than as the "empty
+    // div" the wrapper used to report or the silence a quoted one got.
+    for at in divs.in_container() {
+        let (file, mapped) = map_origin(origins, at);
+        warnings.push(
+            Warning::new(
+                "`:::` inside a list item or block quote is not a fenced div, so it renders \
+                 as text: a div can only wrap top-level blocks",
             )
             .at(file, mapped as u32),
         );

@@ -1578,44 +1578,28 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
     }
 }
 
-/// Walk a raw `.tmd` source's *content* lines: those outside the leading front-matter
-/// block and outside fenced code (` ``` `/`~~~`). Each yielded line is already
-/// `trim_start`ed. This is the skeleton both raw-source scanners share —
-/// [`xref::scan_page_anchors`] (heading `{#id}` anchors + section numbers) and
-/// [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#` inside front matter
-/// or a `# comment` inside a code fence is never mistaken for a heading in either. It does
-/// NOT resolve `{{< include >}}`: that stays a deliberate caller choice (the xref scan
-/// resolves includes first so section numbers advance over included headings; chapter-title
-/// detection reads the file raw). A refactor of two ~identical pre-scans into one, not a
-/// behavior change.
+/// Walk a raw `.tmd` source's *content* lines: those comrak reads as markdown, so not the
+/// front matter, not code (fenced or indented) and not raw HTML (a comment, `<pre>`,
+/// `<script>`). Each yielded line is already `trim_start`ed. This is the skeleton both
+/// raw-source scanners share — [`xref::scan_page_anchors`] (heading `{#id}` anchors +
+/// section numbers) and [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#`
+/// inside front matter, a `# comment` inside a code sample or a heading the author commented
+/// out is never mistaken for a heading in either. It does NOT resolve `{{< include >}}`: that
+/// stays a deliberate caller choice (the xref scan resolves includes first so section
+/// numbers advance over included headings; chapter-title detection reads the file raw).
 pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
     content_lines_numbered(src).map(|(_, t)| t)
 }
 
 /// [`content_lines`] paired with each line's 1-based source line number, so a scan can point
-/// a diagnostic at exactly where an anchor lives.
+/// a diagnostic at exactly where an anchor lives. Lines are split as comrak splits them, so
+/// a raw file with a lone `\r` still lines up with its classification.
 pub(super) fn content_lines_numbered(src: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut in_front_matter = false;
-    let mut in_code = false;
-    src.lines().enumerate().filter_map(move |(i, line)| {
-        let t = line.trim_start();
-        if i == 0 && t == "---" {
-            in_front_matter = true;
-            return None;
-        }
-        if in_front_matter {
-            in_front_matter = t != "---";
-            return None;
-        }
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            return None;
-        }
-        if in_code {
-            return None;
-        }
-        Some((i + 1, t))
-    })
+    let lines = crate::render::rendered_lines(src);
+    crate::lines::split(src)
+        .enumerate()
+        .filter(move |(i, _)| lines.line(*i).kind.is_markdown())
+        .map(|(i, line)| (i + 1, line.trim_start()))
 }
 
 #[cfg(test)]

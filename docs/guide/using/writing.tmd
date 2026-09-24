@@ -126,7 +126,10 @@ nothing is emitted for either.
 
 ## Callouts
 
-Fenced divs become callouts, layout grids, or generic containers.
+Fenced divs become callouts, layout grids, or generic containers. A `:::` line opens or
+closes a div only at the top level of the document: inside code, an HTML comment, a list
+item or a block quote it is text, and a div opened in a list item or block quote draws a
+warning saying so.
 
 ::: {.callout-tip}
 ## Tip
@@ -216,9 +219,10 @@ its identity (a `@fig-` cross-reference still resolves through one).
 ```
 
 Splices another file's contents into this one before parsing, as if you had pasted
-it in place. The directive must be alone on its line, and it is left literal inside a
-fence or an inline code span (which is why the examples on this page do not fire). The
-path is resolved relative to the file that holds the directive.
+it in place. The directive must be alone on its line, and it is left literal inside
+code (a fence, an indented block or an inline code span) and inside an HTML comment,
+which is why the examples on this page do not fire and why commenting out an include
+turns it off. The path is resolved relative to the file that holds the directive.
 
 Use an include to keep an author bio, a license footer or a shared figure in a
 single file and pull it into many pages. Because the splice happens before the

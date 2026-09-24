@@ -8,22 +8,19 @@ use super::*;
 
 /// Expand declarative shortcodes (`{{< name args >}}`) to inline HTML. Line-preserving
 /// — each invocation opens and closes on one line — so the include source map stays
-/// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example* in a
-/// code fence stays literal; unknown shortcodes are left untouched (with a warning).
+/// valid. Code (fenced, indented, inline) and raw HTML are skipped, so a `{{< … >}}` shown
+/// as an *example* stays literal; unknown shortcodes are left untouched (with a warning).
 pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     let mut warnings: Vec<Warning> = Vec::new();
     if !src.contains("{{<") {
         return (src.to_string(), warnings);
     }
     let mut out = String::with_capacity(src.len());
-    // The fence state is `(fence_char, run_len)`, not a boolean: a `` ``` `` line inside a
-    // longer ```` ```` ```` sample is not a closing fence, and a boolean toggle read it as
-    // one. That desynced both ways — a shortcode shown inside a nested code sample got
-    // expanded into live markup, and an odd number of inner fence lines left the flag stuck
-    // "inside code" for the rest of the document, so a real control below silently vanished.
-    // `divs::next_code_state` is the helper the other two line-scanning passes over this
-    // same buffer already share.
-    let mut in_code: Option<(char, usize)> = None;
+    // What is code is comrak's answer, read off the buffer the render will parse. This pass
+    // tracked fences by hand until 2026-09-24 (a boolean toggle before 2026-08-13), and
+    // expanded a control into a sample indented in a list item, a block-quoted fence or an
+    // HTML comment, while a ```` ```x``` ```` line of prose stopped every control below it.
+    let lines = super::divs::rendered_lines(src);
     // Deduplicates `{{< input >}}` control ids across the document, so two controls that
     // bind the same reactive name get distinct DOM ids (`tali-in-rate`, `tali-in-rate-1`). Threaded
     // here (not per line) because the id must be name-based, not line-based — see
@@ -33,14 +30,17 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
         if i > 0 {
             out.push('\n');
         }
-        let next = super::divs::next_code_state(in_code, line);
-        // Literal on the fence marker itself (either end) and on every line between.
-        if in_code.is_some() || next.is_some() {
-            out.push_str(line); // it's an example, not an invocation
+        if lines.line(i).kind.is_markdown() {
+            out.push_str(&expand_in_line(
+                line,
+                i,
+                &lines,
+                &mut warnings,
+                &mut input_ids,
+            ));
         } else {
-            out.push_str(&expand_in_line(line, i + 1, &mut warnings, &mut input_ids));
+            out.push_str(line); // it's an example, not an invocation
         }
-        in_code = next;
     }
     if src.ends_with('\n') {
         out.push('\n');
@@ -57,35 +57,25 @@ pub const SHORTCODE_NAMES: &[&str] = &["input", "include"];
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
-/// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
-/// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.tmd >}}` ``)
-/// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
+/// One inside an inline code span (`` `{{< embed x.tmd >}}` ``, even a span that began on
+/// an earlier line) is an *example* and stays literal, as comrak's own spans say.
 fn expand_in_line(
     line: &str,
-    line_no: usize,
+    idx: usize,
+    lines: &crate::lines::Lines,
     warnings: &mut Vec<Warning>,
     input_ids: &mut std::collections::HashMap<String, u32>,
 ) -> String {
     if !line.contains("{{<") {
         return line.to_string();
     }
-    let bytes = line.as_bytes();
+    let line_no = idx + 1;
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
     while i < line.len() {
-        if bytes[i] == b'`' {
-            // An inline code span: copy through the matching backtick run verbatim
-            // so a `{{< … >}}` inside it is not expanded.
-            let run = line[i..].bytes().take_while(|&c| c == b'`').count();
-            let ticks = &line[i..i + run];
-            if let Some(rel) = line[i + run..].find(ticks) {
-                let close = i + run + rel + run;
-                out.push_str(&line[i..close]);
-                i = close;
-            } else {
-                out.push_str(ticks); // unterminated run: copy the backticks, keep scanning
-                i += run;
-            }
+        if line[i..].starts_with("{{<") && lines.in_code_span(idx, i) {
+            out.push_str("{{<");
+            i += 3;
         } else if line[i..].starts_with("{{<") {
             let Some(rel_end) = line[i + 3..].find(">}}") else {
                 out.push_str(&line[i..]); // no close on this line: leave as written
@@ -347,6 +337,17 @@ mod unknown_shortcode_tests {
             html.contains("data-tali-input=\"real\""),
             "the control after the sample must still expand: {html}"
         );
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    /// Audit 2026-09-24, scanners #12c: which `{{<` is inside inline code is comrak's answer,
+    /// so a code span that began on the line above still covers it. The hand-rolled backtick
+    /// matcher saw one line at a time and expanded a live control with stray backticks.
+    #[test]
+    fn a_shortcode_in_a_code_span_that_crosses_lines_stays_literal() {
+        let src = "To add a slider, write `the shortcode\n{{< input name=\"rate\" >}}` on its own line.\n";
+        let (html, warnings) = expand_shortcodes(src);
+        assert!(!html.contains("data-tali-input"), "{html}");
         assert!(warnings.is_empty(), "{warnings:?}");
     }
 
