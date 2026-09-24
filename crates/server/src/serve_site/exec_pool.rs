@@ -76,6 +76,14 @@ impl ExecPool {
             crate::exec::Executor::with_freeze(crate::freeze::page_path(&self.freeze_dir, rel))
         };
         let mut ex = ex.in_dir(work_dir);
+        // `_freeze/` sits at the project root, which is where published paths are relative to.
+        if let Some(root) = self
+            .freeze_dir
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+        {
+            ex = ex.in_project(root);
+        }
         if let Some(py) = &self.python {
             ex.set_interpreters(py.clone());
         }

@@ -78,7 +78,9 @@ gantt, and the rest); the syntax for each is in
 
 A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
 `#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`, and `@fig-`
-cross-references resolve to its number. @fig-scree is drawn by a matplotlib cell
+cross-references resolve to its number. An image without the attribute stays a plain
+image with its alt text. In a figure the caption is the description, so the image is
+marked presentational (`alt=""`) instead of being read out twice. @fig-scree is drawn by a matplotlib cell
 that sets no theme colours: inline figures default to a transparent background with
 neutral-grey axes, so they track the light/dark theme on their own.
 

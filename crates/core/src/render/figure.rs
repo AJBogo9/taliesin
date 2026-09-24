@@ -8,6 +8,8 @@ use super::*;
 /// A standalone-image paragraph recognized as a figure.
 pub(super) struct FigureParts {
     url: String,
+    /// The image's markdown title (`![alt](src "title")`), empty when it has none.
+    title: String,
     /// Rendered inline HTML of the caption (the image's alt content).
     caption: String,
     pub(super) attrs: DivAttrs,
@@ -45,20 +47,23 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
         }
     }
     let image = image?;
-    let url = match &image.data.borrow().value {
-        NodeValue::Image(link) => link.url.clone(),
+    let (url, title) = match &image.data.borrow().value {
+        NodeValue::Image(link) => (link.url.clone(), link.title.clone()),
         _ => return None,
     };
     let mut caption = String::new();
     emit_children(image, &mut caption);
     let attrs = parse_attrs(attr_str.as_deref().unwrap_or(""));
-    let has_fig_id = attrs.id.as_deref().is_some_and(|i| i.starts_with("fig-"));
-    // A bare image with neither a caption nor a `#fig-` id is decorative.
-    if caption.trim().is_empty() && !has_fig_id {
+    // Only a `#fig-` id makes a figure, as the guide documents. An image with alt text and
+    // no label used to become "Figure N" too, captioned with its alt: writing good alt text
+    // changed the page and shifted every `@fig-` number after it (audit images #9). An
+    // unlabelled image stays an image, with its alt.
+    if !attrs.id.as_deref().is_some_and(|i| i.starts_with("fig-")) {
         return None;
     }
     Some(FigureParts {
         url,
+        title,
         caption,
         attrs,
     })
@@ -96,10 +101,15 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     } else {
         format!(" style=\"{dims}\"")
     };
-    // `alt` is left empty here and filled from the rendered `<figcaption>` after the
-    // citation pass (`figure_alts_from_captions`): the caption's `[@key]` and `@fig-x` are
-    // still source at this point, and the alt is what a screen reader announces.
+    // `alt=""`: the figcaption is the image's description, so repeating it as alt made a
+    // screen reader read the same sentence twice (audit images #9). The executed-figure
+    // path has always done this (`kernel::render_media`).
     let alt = "";
+    // The markdown title, as an inline image carries it.
+    let title = match fig.title.as_str() {
+        "" => String::new(),
+        t => format!(" title=\"{}\"", escape_attr(t)),
+    };
     let img = |src: &str, class: &str| {
         let cls = if class.is_empty() {
             String::new()
@@ -107,7 +117,7 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
             format!(" class=\"{class}\"")
         };
         format!(
-            "<img{cls} src=\"{}\" alt=\"{alt}\"{style} />",
+            "<img{cls} src=\"{}\" alt=\"{alt}\"{title}{style} />",
             escape_attr(safe_url(src, true))
         )
     };
@@ -123,13 +133,17 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
     };
     // `fig.caption` is already rendered HTML (the image's alt content), so it does not go
     // through `numbered_caption`, which parses markdown — but the generated label is the same
-    // span, from the same helper, so the two paths cannot drift.
+    // span, from the same helper, and like it drops the colon when there is no caption, so
+    // the two paths cannot drift.
+    let label = super::caption_label("Figure", num);
+    let figcap = match fig.caption.trim() {
+        "" => label,
+        caption => format!("{label}: {caption}"),
+    };
     format!(
         "<figure{block_attrs}{id_attr} class=\"tali-figure{align_class}\">\
          {imgs}\
-         <figcaption>{}: {}</figcaption></figure>",
-        super::caption_label("Figure", num),
-        fig.caption,
+         <figcaption>{figcap}</figcaption></figure>"
     )
 }
 

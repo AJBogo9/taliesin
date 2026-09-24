@@ -54,9 +54,8 @@ use cell_extract::{
     parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
-pub use cell_numbered::caption_label;
-pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
+pub use cell_numbered::{caption_label, markdown_fragment, numbered_caption};
 mod client_lang;
 pub use client_lang::{
     ClientLang, client_lang, client_lang_runnable, has_client_cells, has_client_cells_of,
@@ -1284,9 +1283,6 @@ fn render_internal_impl(
         &xref_registry,
         unexpanded.then_some(src),
     ));
-    for b in &mut blocks {
-        b.html = figure_alts_from_captions(&b.html);
-    }
     // No gathered endnote section: each note renders beside its own reference (see the
     // splice in the walk above). Keeping a trailing list as well would put every note's
     // text in the DOM twice, which Ctrl-F and the search index would each report twice.
@@ -2843,45 +2839,6 @@ fn dedup_element_ids(blocks: &mut [Block], warnings: &mut Vec<Warning>) {
             });
         }
     }
-}
-
-/// Give each image in a numbered `tali-figure` the `alt` its caption reads as: the text of
-/// the rendered `<figcaption>`, less its "Figure N" label. Run AFTER the citation pass,
-/// because that is where a caption's `[@key]` and `@fig-x` become "[1]" and "Figure 2"; an
-/// alt built at emission read the source aloud to a screen reader. Read through the
-/// walker, with the figure's extent the images between its open tag and its caption.
-fn figure_alts_from_captions(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut cursor = 0;
-    // The `alt` value spans of the current figure's images, awaiting its caption.
-    let mut pending: Vec<(usize, usize)> = Vec::new();
-    let mut in_figure = false;
-    for tag in tags(html) {
-        if tag.name.eq_ignore_ascii_case("figure") {
-            in_figure = has_class(tag.text, |c| c == "tali-figure");
-            pending.clear();
-        } else if in_figure && tag.name.eq_ignore_ascii_case("img") {
-            if let Some(a) = attrs(&tag).find(|a| a.name.eq_ignore_ascii_case("alt")) {
-                pending.push((a.value_at, a.raw.len()));
-            }
-        } else if in_figure && tag.name.eq_ignore_ascii_case("figcaption") {
-            let from = tag.at + tag.text.len();
-            let to = html[from..]
-                .find("</figcaption>")
-                .map_or(html.len(), |n| from + n);
-            let text = unescape_html(&strip_tags(&html[from..to]));
-            // The label ("Figure 2.1") never holds ": ", which separates it from the caption.
-            let alt = escape_attr(text.split_once(": ").map_or("", |(_, c)| c));
-            for (at, len) in pending.drain(..) {
-                out.push_str(&html[cursor..at]);
-                out.push_str(&alt);
-                cursor = at + len;
-            }
-            in_figure = false;
-        }
-    }
-    out.push_str(&html[cursor..]);
-    out
 }
 
 /// Rewrite each `id` attribute in `html` whose value is already in `seen`, returning the new

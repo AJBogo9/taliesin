@@ -99,10 +99,9 @@ fn silence_timeout() -> Option<Duration> {
 /// enough for the `KeyboardInterrupt` + `Idle` that resync the channels, short enough that
 /// a cell which will never answer does not hold the page.
 ///
-/// One constant for both interrupt sites, but they read its expiry differently. A cell the
-/// **flood cap** interrupted is still talking, so a window that runs dry is the wanted
-/// outcome. A cell a **liveness cap** interrupted has already gone quiet, so a window that
-/// runs out means SIGINT was not honoured — see [`Output::interrupt_ignored`].
+/// One constant for both interrupt sites (a liveness cap, a flood cap), and one reading of
+/// its expiry: a cell that has not reached Idle when it runs out did not honour SIGINT,
+/// and its kernel is stopped; see [`Output::interrupt_ignored`].
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
 
 /// How long to wait before the next liveness check, and which cap owns that
@@ -141,18 +140,20 @@ fn cell_budget(
 }
 
 /// The prefix of every notice this module appends when a cell's output hits a cap
-/// (`… at 4096 items]`, `… at 512 KB]`, `… at 8 MB of rich output]`). Defined once here,
-/// beside the emitters, because `exec::is_uncacheable` matches on it to keep a truncated
-/// output out of the freeze cache: two copies of the literal could drift apart silently and
-/// the only symptom would be a silently-cached truncated result.
-///
-/// Matched in this **bracketed** form on purpose. A bare `taliesin: output truncated` also
-/// matches a cell that merely *prints* the phrase, which refuses that cell the cache
-/// forever, exactly the false-positive the `tali-error` check was hardened against.
+/// (`… at 4096 items]`, `… at 512 KB]`, `… at 8 MB of rich output]`). Only written, never
+/// read back: a truncated output is kept out of the freeze cache by [`Outputs::capped`],
+/// because a cell that merely prints this text is not truncated.
 pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
 
+/// Total text bytes of *stream* output one cell may retain, after carriage returns are
+/// applied (see [`Outputs`]).
+const MAX_STREAM_BYTES: usize = 512 * 1024;
+
+/// How many outputs one cell may retain, a run of one stream counting as one.
+const MAX_OUTPUTS: usize = 4096;
+
 /// Total bytes of *rich* output (rendered `ExecuteResult`/`DisplayData`) one cell may
-/// accumulate.
+/// retain.
 ///
 /// The stream cap counts text bytes and the output cap counts item *count*, so a handful of
 /// very large rich outputs sailed under both: a few base64-encoded images are only a few
@@ -161,28 +162,6 @@ pub(crate) const TRUNCATION_MARKER: &str = "[taliesin: output truncated at ";
 /// websocket. 8 MB is far above a legitimate figure (a detailed matplotlib PNG is a few
 /// hundred KB base64) while still bounding the blast radius.
 const MAX_RICH_BYTES: usize = 8 * 1024 * 1024;
-
-/// Append one rich output, or the truncation notice if it would cross [`MAX_RICH_BYTES`].
-///
-/// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
-/// `<table>` is broken markup. So an output that crosses the cap is dropped whole and the
-/// notice takes its place, which also keeps `is_uncacheable` honest (the truncated result is
-/// never frozen).
-fn push_rich(outputs: &mut Vec<Output>, rich_bytes: &mut usize, capped: &mut bool, html: String) {
-    if *rich_bytes + html.len() > MAX_RICH_BYTES {
-        outputs.push(Output::Stream {
-            stderr: true,
-            text: format!(
-                "\n{TRUNCATION_MARKER}{} MB of rich output]\n",
-                MAX_RICH_BYTES / (1024 * 1024)
-            ),
-        });
-        *capped = true;
-    } else {
-        *rich_bytes += html.len();
-        outputs.push(Output::Rich(html));
-    }
-}
 
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
@@ -211,6 +190,32 @@ def define(**kwargs):
 globals()["define"] = define
 "#;
 
+/// Start every thread in a copy of the context of the code that started it.
+///
+/// ipykernel keeps a cell's parent header in a `ContextVar` and stamps each output with the
+/// one the writing thread sees. A thread that did not inherit the cell's context (every
+/// ordinary `threading.Thread`) sees the GLOBAL header instead, which is whichever cell is
+/// running at the moment it prints: a background thread's output was published under, and
+/// frozen into, an unrelated later cell, and reset that cell's silence cap on every line
+/// (audit exec #13; the FA8 guard only held for a thread given a copied context by hand).
+/// With the context inherited, the output carries the header of the cell that started the
+/// thread, so the receive loop's parent filter keeps it out of every other cell. Output a
+/// thread prints after its cell finished is dropped: that cell's output is final.
+///
+/// This is what Python 3.14 does by default in free-threaded builds
+/// (`sys.flags.thread_inherit_context`). Threads the kernel started before this ran (its
+/// own I/O and heartbeat threads) are untouched.
+const THREAD_CONTEXT_PREAMBLE: &str = r#"
+import threading as _tali_threading, contextvars as _tali_contextvars
+_tali_thread_start = _tali_threading.Thread.start
+def _tali_start_in_context(self, *args, **kwargs):
+    _ctx = _tali_contextvars.copy_context()
+    _run = self.run
+    self.run = lambda: _ctx.run(_run)
+    return _tali_thread_start(self, *args, **kwargs)
+_tali_threading.Thread.start = _tali_start_in_context
+"#;
+
 /// Make inline matplotlib figures follow the page theme **without tainting the
 /// author's saved figures**. The previous approach set `InlineBackend.rc` globally,
 /// which leaks into `matplotlib.rcParams` and so into any `savefig` the author runs
@@ -233,10 +238,15 @@ globals()["define"] = define
 ///     the theme *background* (keeping the author's `framealpha`) rather than going
 ///     transparent, because the box is what makes a legend readable over the data.
 ///
-/// Data colours are never touched. The wrap installs lazily (on the first cell that
-/// mentions matplotlib) so non-plotting documents pay nothing.
+/// Data colours are never touched. The wrap installs lazily, so non-plotting documents pay
+/// nothing: before a cell that mentions matplotlib, and after any cell once matplotlib is
+/// loaded, however it got there. The second is what covers a figure a library draws
+/// without the cell naming matplotlib (pandas' `.plot()`): the transparent background
+/// applies to every inline figure from startup, so an unthemed one came out as black axis
+/// text on a transparent ground, unreadable on a dark page.
 const MPL_THEME_PREAMBLE: &str = r#"
 try:
+    import sys as _tali_sys
     _ip = get_ipython()
     if _ip is not None:
         # Transparency for the inline image only (not global rcParams).
@@ -443,18 +453,31 @@ try:
             _suppress._tali_suppress = True
             _png.for_type(Figure, _suppress)
 
+        def _tali_arm():
+            try:
+                import matplotlib.pyplot  # noqa: F401
+                _tali_ensure_inline()
+                _tali_install()
+            except Exception:
+                pass
+
         def _tali_pre(*_a, **_k):
             _info = _a[0] if _a else None
             _src = getattr(_info, 'raw_cell', '') or ''
-            if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src):
-                try:
-                    import matplotlib.pyplot  # noqa: F401
-                    _tali_ensure_inline()
-                    _tali_install()
-                except Exception:
-                    pass
+            if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src) \
+                    or ('matplotlib' in _tali_sys.modules):
+                _tali_arm()
+
+        def _tali_post(*_a, **_k):
+            # A figure a library drew without the cell naming matplotlib (pandas'
+            # `.plot()`) is displayed by the inline backend's own post_execute hook, which
+            # this one, registered at startup and so before it, runs ahead of.
+            if 'matplotlib' in _tali_sys.modules:
+                _tali_arm()
 
         _ip.events.register('pre_run_cell', _tali_pre)
+        _ip.events.register('post_execute', _tali_post)
+
 except Exception as _e:
     # Caught, because a kernel that cannot theme a figure must still run cells — but
     # SAID, on stderr, because the alternative is a `pass` that turns "this Python
@@ -532,6 +555,11 @@ impl KernelSpec {
                                palette",
                     code: MPL_THEME_PREAMBLE,
                 },
+                Preamble {
+                    provides: "a background thread's output lands in whichever cell is \
+                               running, and keeps that cell's silence cap from firing",
+                    code: THREAD_CONTEXT_PREAMBLE,
+                },
             ],
         }
     }
@@ -550,6 +578,10 @@ pub enum Output {
     },
     /// Rich output (execute_result / display_data) rendered to HTML.
     Rich(String),
+    /// A `define(...)` blob, the Python -> `{js}` bridge (`OJS_DEFINE_PREAMBLE` marks its
+    /// display with `tali_define` metadata). Markup like [`Output::Rich`], but a side
+    /// channel rather than output, so `#| include: false` keeps it (see `exec::CellOut`).
+    Bridge(String),
     Error {
         ename: String,
         evalue: String,
@@ -581,11 +613,10 @@ impl Output {
     }
 
     /// A liveness cap interrupted the cell and the cell **did not stop**: it outlived
-    /// [`INTERRUPT_GRACE`] without reaching Idle, so it is still running inside the warm
-    /// kernel and every later cell queues behind it. SIGINT is a request (a cell may
-    /// install its own handler, or sit in a C extension that never checks signals), and
-    /// there is no second signal that stops the cell without killing the kernel — so this
-    /// says what happened instead of letting it read as a plain cap expiry.
+    /// [`INTERRUPT_GRACE`] without reaching Idle. SIGINT is a request (a cell may install
+    /// its own handler, or sit in a C extension that never checks signals), and there is no
+    /// second signal that stops the cell without killing the kernel, so the kernel is
+    /// killed and this says so instead of letting it read as a plain cap expiry.
     ///
     /// **Carries no pid**, though the pid is the one thing an operator wants: this string
     /// is rendered into the built page, and a pid there makes two builds of the same
@@ -593,21 +624,22 @@ impl Output {
     pub(crate) fn interrupt_ignored() -> Self {
         Output::Error {
             ename: "InterruptIgnored".into(),
-            evalue: "cell ignored the interrupt and is still running in the kernel; restart \
-                     the kernel to reclaim it"
+            evalue: "cell ignored the interrupt, so the kernel was stopped; the cells after it \
+                     did not run"
                 .into(),
             traceback: vec![],
             not_run: Some(crate::exec::NOT_RUN_TIMEOUT),
         }
     }
 
-    /// The kernel process exited while this cell was in flight.
+    /// The kernel process exited while this cell was in flight, so this is the cell that
+    /// most likely crashed it.
     pub(crate) fn kernel_died() -> Self {
         Output::Error {
             ename: "KernelDied".into(),
             evalue: "kernel process exited mid-cell".into(),
             traceback: vec![],
-            not_run: Some(crate::exec::NOT_RUN_DIED),
+            not_run: Some(crate::exec::NOT_RUN_CRASHED),
         }
     }
 }
@@ -924,36 +956,29 @@ impl Kernel {
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).
     pub async fn execute(&mut self, code: &str) -> io::Result<Vec<Output>> {
-        self.execute_streaming(code, |_| {}).await
+        self.execute_streaming(code, |_| {})
+            .await
+            .map(Outputs::into_vec)
     }
 
-    /// [`Kernel::execute`], but `on_output` is called with each output **as it
-    /// arrives** rather than only with the finished vector (item 175b). The returned
-    /// vector is unchanged, so a caller that wants no streaming passes a no-op and
-    /// sees exactly the previous behavior.
+    /// [`Kernel::execute`], but `on_output` is handed what the live view needs **as the
+    /// outputs arrive** rather than only the finished list (item 175b). The list comes
+    /// back as the [`Outputs`] that built it, so the caller can also ask whether a cap cut
+    /// it.
     ///
-    /// The callback fires from one watermark flush rather than from each of the
-    /// seven `outputs.push` sites, so a push added later cannot silently stop being
-    /// streamed.
+    /// The callback fires from one [`Outputs::sync`] rather than from each site that
+    /// changes the list, so a change added later cannot silently stop being streamed.
     pub async fn execute_streaming(
         &mut self,
         code: &str,
-        mut on_output: impl FnMut(&Output),
-    ) -> io::Result<Vec<Output>> {
-        // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`. What
-        // happens after a cell fails is the EXECUTOR's decision — `exec.rs` keeps running the
-        // document and refuses to persist anything downstream (`failed_at`) — and a kernel
-        // holding a second opinion can only contradict it. `true` tells ipykernel to abort
-        // every execute_request already queued behind the failure: it answers with
-        // `_send_abort_reply` and a bare `busy`/`idle` pair, so the loop below breaks on that
-        // Idle with ZERO outputs and the cell reaches the page as a *successful empty* one.
-        //
-        // Taliesin normally queues nothing (it waits for Idle before sending the next cell),
-        // but the abandoned-cell path ends without one: a cell that swallows its interrupt
-        // outlives the cap, `INTERRUPT_GRACE` and the shell drain, and the next cell is sent
-        // into a kernel still running it. Reading the reply's `status` instead would only let
-        // us *report* the swallowed cell — and not reliably, since the drain below gives up
-        // after 5s — where this stops the kernel from swallowing it at all.
+        mut on_output: impl FnMut(LiveOp<'_>),
+    ) -> io::Result<Outputs> {
+        // `stop_on_error: false`, against `ExecuteRequest::new`'s default of `true`: what
+        // happens after a cell fails is the EXECUTOR's decision (`exec.rs` keeps running the
+        // document and refuses to persist anything downstream), and `true` would have
+        // ipykernel abort any request queued behind a failure as a successful empty cell.
+        // Nothing is queued today (a cell that ignores its interrupt has its kernel killed),
+        // so this only keeps the kernel from holding a second opinion.
         let request = JupyterMessage::new(
             JupyterMessageContent::ExecuteRequest(ExecuteRequest {
                 stop_on_error: false,
@@ -964,44 +989,34 @@ impl Kernel {
         let msg_id = request.header.msg_id.clone();
         self.shell.send(request).await.map_err(io::Error::other)?;
 
-        let mut outputs: Vec<Output> = Vec::new();
-        // Caps so a cell that emits a huge amount of output can't hang the renderer
-        // or blow memory (the output is later cloned into the block, the freeze
-        // cache, and the warm-state record, and HTML-escaped). We keep *draining* to
-        // Idle to stay in channel sync, but stop accumulating past the caps.
-        const MAX_STREAM_BYTES: usize = 512 * 1024;
-        const MAX_OUTPUTS: usize = 4096;
-        let mut stream_bytes = 0usize;
-        let mut rich_bytes = 0usize;
-        let mut capped = false;
+        // The caps on what `outputs` retains (see [`Outputs`]) keep a cell that emits a
+        // huge amount of output from hanging the renderer or blowing memory (the output is
+        // later cloned into the block, the freeze cache, and the warm-state record, and
+        // HTML-escaped). We keep *draining* to Idle to stay in channel sync, but stop
+        // accumulating once one fires.
+        let mut outputs = Outputs::default();
         // The two liveness caps (item 175a). Silence is the primary one and is on by
         // default; wall-clock is off unless `TALIESIN_CELL_TIMEOUT` is set. On hitting
         // either we SIGINT the kernel, then drain a short grace window so the resulting
         // KeyboardInterrupt + Idle resync the channels and the *next* cell still works.
         //
         // A streaming runaway (`while True: print(x)`) never goes silent, so it is NOT
-        // caught here: it is caught by the output caps below, which interrupt as soon as
-        // `capped` trips. That is why dropping the wall-clock default loses no protection.
+        // caught here: it is caught by the output caps, which interrupt as soon as one
+        // fires. That is why dropping the wall-clock default loses no protection.
         let wall = self.cell_cap;
         let silence = self.silence_cap;
         let started = Instant::now();
         // Set when we have interrupted and are draining the resulting KeyboardInterrupt +
-        // Idle. `grace_after_cap` records which of the two interrupt sites put us here,
-        // because they read the window's expiry differently (see [`INTERRUPT_GRACE`]).
+        // Idle, from either interrupt site (a liveness cap or a flood cap).
         let mut grace_until: Option<Instant> = None;
-        let mut grace_after_cap = false;
         // Last time THIS cell produced output: the silence cap measures from here, so it
         // resets on every output and a chatty long cell is never capped.
         let mut last_msg = Instant::now();
-        // How many outputs have been handed to `on_output`. Flushed at the top of
-        // every iteration and once after the loop, so every path that pushes and then
-        // either loops or breaks is covered without touching the push sites.
-        let mut streamed = 0usize;
+        // The live view is synced at the top of every iteration and once after the loop,
+        // so every path that changes the list and then either loops or breaks is covered
+        // without touching the sites that change it.
         loop {
-            while streamed < outputs.len() {
-                on_output(&outputs[streamed]);
-                streamed += 1;
-            }
+            outputs.sync(&mut on_output);
             let now = Instant::now();
             // Time left before this cell's REAL deadline: the post-interrupt grace window,
             // or whichever liveness cap expires first.
@@ -1014,21 +1029,30 @@ impl Kernel {
                     silence,
                 ),
             };
-            // A cap's grace window ran out with this cell still not Idle: the interrupt was
-            // not honoured. The cell is STILL RUNNING in the warm kernel — nothing else this
-            // process can send stops it without killing the kernel — so report that and stop
-            // waiting, rather than dropping out silently as if the cap had done its job. The
-            // pid goes to the console (an operator can act on it) and not into the page (two
-            // builds of one document must not differ by a pid).
-            if grace_after_cap && budget.is_zero() {
+            // A grace window ran out with this cell still not Idle: the interrupt was not
+            // honoured, whichever cap sent it. A flood cap's window used to be read as "the
+            // kernel stopped flooding us", but a cell that ignores SIGINT and keeps printing
+            // also lets it run dry at the first moment no message is waiting, and it was then
+            // abandoned still running (exec #19). Nothing short of killing the kernel stops
+            // such a cell. So the
+            // kernel is killed (E6): left running, it would hold every later cell behind the
+            // runaway, each of which would then wait out its own caps and be blamed for it.
+            // The executor's dead-kernel path fails the rest of the run fast, and the next
+            // run starts a fresh kernel. The pid goes to the console and not into the page
+            // (two builds of one document must not differ by a pid).
+            if grace_until.is_some() && budget.is_zero() {
                 if let Some(pid) = self.running_pid() {
                     crate::log::warn(&format!(
-                        "kernel (pid {pid}) ignored the interrupt: a cell is still running \
-                         there. Restart the kernel, or kill that process."
+                        "kernel (pid {pid}) ignored the interrupt, so it was stopped; the \
+                         cells after this one did not run"
                     ));
                 }
-                outputs.push(Output::interrupt_ignored());
-                break;
+
+                let _ = self.proc.start_kill();
+                let _ = timeout(Duration::from_secs(5), self.proc.wait()).await;
+                outputs.note(Output::interrupt_ignored());
+                outputs.sync(&mut on_output);
+                return Ok(outputs);
             }
             // Poll on a short interval (capped at the budget) so a kernel that EXITS
             // mid-cell is noticed within ~1s and reported as a distinct `KernelDied`,
@@ -1037,23 +1061,33 @@ impl Kernel {
             let poll = budget.min(Duration::from_secs(1));
             let msg = match timeout(poll, self.iopub.read()).await {
                 Ok(Ok(msg)) => msg,
+                // One message this side cannot decode (a lone surrogate from a non-UTF-8
+                // filename reaches the wire as invalid UTF-8; a raw display whose
+                // `text/plain` is not a string fails the typed parse) is that message
+                // lost, not the cell: the channel is intact and the cell is still running.
+                // Its parent header is unreadable too, so it is said where it most likely
+                // belongs, in the running cell.
+                Ok(Err(e)) if undecodable(&e) => {
+                    crate::log::warn(&format!("dropped an undecodable kernel message: {e}"));
+                    outputs.note(Output::Stream {
+                        stderr: true,
+                        text: format!(
+                            "[taliesin: an output from the kernel could not be decoded and \
+                             was dropped: {e}]\n"
+                        ),
+                    });
+                    continue;
+                }
                 Ok(Err(e)) => return Err(io::Error::other(e)),
                 Err(_) => {
                     // No output this interval. Did the kernel process die?
                     if !self.is_alive() {
-                        outputs.push(Output::kernel_died());
+                        outputs.note(Output::kernel_died());
                         break;
                     }
                     // Still alive: only act once the REAL budget (not just a poll) is spent.
                     if !budget.is_zero() {
                         continue;
-                    }
-                    if grace_until.is_some() {
-                        // The flood cap's grace window ran dry: the kernel has stopped
-                        // flooding us, which is what the interrupt was for. (A *liveness*
-                        // cap's window expiring is handled at the top of the loop, where a
-                        // quiet window means the interrupt was ignored.)
-                        break;
                     }
                     // A cap expired. Both paths interrupt: a wedged cell must actually be
                     // stopped, not just abandoned, or it keeps running in the warm kernel
@@ -1071,9 +1105,8 @@ impl Kernel {
                         CapKind::None => break,
                     };
                     self.interrupt();
-                    outputs.push(Output::timeout(note));
+                    outputs.note(Output::timeout(note));
                     grace_until = Some(Instant::now() + INTERRUPT_GRACE);
-                    grace_after_cap = true;
                     continue;
                 }
             };
@@ -1089,67 +1122,35 @@ impl Kernel {
             // one cell it exists to govern, and the silent runaway then runs forever —
             // nothing else stops it, since the wall-clock cap is off by default (FA8).
             last_msg = Instant::now();
-            // Past the item cap, stop accumulating (but keep draining): emit one
-            // marker. Only an *output-producing* message trips this — not an Error or
-            // the terminal Idle Status — so a cell that emits exactly MAX_OUTPUTS items
-            // and then finishes cleanly is not falsely marked as truncated.
-            let accumulating = matches!(
-                &msg.content,
-                JupyterMessageContent::StreamContent(_)
-                    | JupyterMessageContent::ExecuteResult(_)
-                    | JupyterMessageContent::DisplayData(_)
-            );
-            if !capped && accumulating && outputs.len() >= MAX_OUTPUTS {
-                outputs.push(Output::Stream {
-                    stderr: true,
-                    text: format!("\n{TRUNCATION_MARKER}{MAX_OUTPUTS} items]\n"),
-                });
-                capped = true;
-            }
             match msg.content {
-                JupyterMessageContent::StreamContent(s) if !capped => {
-                    let stderr = matches!(s.name, Stdio::Stderr);
-                    let remaining = MAX_STREAM_BYTES.saturating_sub(stream_bytes);
-                    if s.text.len() <= remaining {
-                        stream_bytes += s.text.len();
-                        outputs.push(Output::Stream {
-                            stderr,
-                            text: s.text,
-                        });
-                    } else {
-                        // Keep a char-boundary-safe prefix, then mark + stop.
-                        let mut cut = remaining;
-                        while cut > 0 && !s.text.is_char_boundary(cut) {
-                            cut -= 1;
-                        }
-                        if cut > 0 {
-                            outputs.push(Output::Stream {
-                                stderr,
-                                text: s.text[..cut].to_string(),
-                            });
-                        }
-                        outputs.push(Output::Stream {
-                            stderr: true,
-                            text: format!("\n{TRUNCATION_MARKER}{} KB]\n", MAX_STREAM_BYTES / 1024),
-                        });
-                        capped = true;
+                JupyterMessageContent::StreamContent(s) => {
+                    outputs.stream(matches!(s.name, Stdio::Stderr), &s.text)
+                }
+                JupyterMessageContent::ExecuteResult(r) => outputs.rich(
+                    render_media(&r.data, &r.metadata),
+                    display_id(r.transient.as_ref()),
+                ),
+                JupyterMessageContent::DisplayData(d)
+                    if d.metadata
+                        .get("tali_define")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(true) =>
+                {
+                    outputs.bridge(render_media(&d.data, &d.metadata))
+                }
+                JupyterMessageContent::DisplayData(d) => outputs.rich(
+                    render_media(&d.data, &d.metadata),
+                    display_id(d.transient.as_ref()),
+                ),
+                JupyterMessageContent::UpdateDisplayData(u) => {
+                    if let Some(id) = display_id(Some(&u.transient)) {
+                        outputs.update(id, render_media(&u.data, &u.metadata));
                     }
                 }
-                JupyterMessageContent::ExecuteResult(r) if !capped => push_rich(
-                    &mut outputs,
-                    &mut rich_bytes,
-                    &mut capped,
-                    render_media(&r.data),
-                ),
-                JupyterMessageContent::DisplayData(d) if !capped => push_rich(
-                    &mut outputs,
-                    &mut rich_bytes,
-                    &mut capped,
-                    render_media(&d.data),
-                ),
+                JupyterMessageContent::ClearOutput(c) => outputs.clear(c.wait),
                 // The interpreter raising about code that ran: a real traceback, so no
                 // not-run marker. This is the ONE site that may leave it `None`.
-                JupyterMessageContent::ErrorOutput(e) => outputs.push(Output::Error {
+                JupyterMessageContent::ErrorOutput(e) => outputs.error(Output::Error {
                     ename: e.ename,
                     evalue: e.evalue,
                     traceback: e.traceback,
@@ -1166,17 +1167,14 @@ impl Kernel {
             // cell otherwise keeps streaming megabytes we'd have to read + discard,
             // and the per-message receive is super-linear). Then drain a short grace
             // window for the resulting KeyboardInterrupt + Idle and stop.
-            if capped && grace_until.is_none() {
+            if outputs.capped() && grace_until.is_none() {
                 self.interrupt();
                 grace_until = Some(Instant::now() + INTERRUPT_GRACE);
             }
         }
-        // Anything pushed on the way out (a cap's notice, `kernel_died`) still reaches
+        // Anything added on the way out (a cap's notice, `kernel_died`) still reaches
         // the client, so a cell that dies mid-run says so in the live view too.
-        while streamed < outputs.len() {
-            on_output(&outputs[streamed]);
-            streamed += 1;
-        }
+        outputs.sync(&mut on_output);
         // Drain *our* shell execute_reply so the channel stays in sync. Match on
         // msg_id: after an interrupt a previous cell's late reply can still be in the
         // queue, and consuming it here would leave every later cell one reply behind.
@@ -1223,6 +1221,22 @@ impl Kernel {
     }
 }
 
+/// Whether an iopub read failed on ONE message's content rather than on the channel, so the
+/// loop can drop that message and keep reading. A socket error is not in this set: reading
+/// on after one would only spin.
+fn undecodable(e: &jupyter_zmq_client::RuntimeError) -> bool {
+    use jupyter_zmq_client::RuntimeError as E;
+    matches!(
+        e,
+        E::ParseError { .. }
+            | E::SerdeError(_)
+            | E::DecodeError(_)
+            | E::InsufficientMessageParts(_)
+            | E::MissingDelimiter
+            | E::MissingHmac
+    )
+}
+
 /// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
 /// `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both honour it).
 ///
@@ -1246,6 +1260,19 @@ pub(crate) fn interrupt_pid(pid: u32) {
     // which we ignore.
     unsafe {
         libc::kill(pid as libc::pid_t, libc::SIGINT);
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
+/// Send `SIGKILL` to a kernel process by PID: for a kernel that is being discarded anyway
+/// (a "Restart kernel"), where [`interrupt_pid`] would stop only the running cell and let
+/// the rest of the run go on in the doomed kernel. Unix-only; a no-op elsewhere.
+pub(crate) fn kill_pid(pid: u32) {
+    #[cfg(unix)]
+    // Safety: as for `interrupt_pid`.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGKILL);
     }
     #[cfg(not(unix))]
     let _ = pid;
@@ -1291,8 +1318,6 @@ impl Drop for Kernel {
     }
 }
 
-/// Render outputs into an HTML fragment (the inner content of an output block),
-/// or empty if there are none. The caller wraps this in the block element.
 /// Apply terminal carriage-return semantics to one text run: `\r` returns the cursor
 /// to column 0, so what follows replaces the current line. A line already committed
 /// by `\n` is never touched.
@@ -1301,112 +1326,344 @@ impl Drop for Kernel {
 /// new line is shorter. We clear instead, because the writers that use `\r` (tqdm and
 /// friends) redraw a full padded line each frame, and a stale tail would be a visual
 /// artefact of emulating the terminal too faithfully.
+///
+/// A `\r` (or a run of them) directly before `\n` is a line ending, not a redraw, as in
+/// JupyterLab: `csv.writer`, HTTP bodies and email end every line with `\r\n`, and clearing
+/// on the `\r` erased every one of those lines. So a `\r` only clears once something other
+/// than `\n` follows it, and one still waiting at the end of the text is kept there, so the
+/// next chunk of the same stream can finish the decision ([`append_stream_text`] re-collapses
+/// the current line with it). The result therefore holds no `\r` except possibly one trailing, which
+/// [`render_outputs`] drops.
 fn apply_carriage_returns(text: &str) -> String {
     let mut committed = String::new();
     let mut line = String::new();
+    let mut pending_cr = false;
     for ch in text.chars() {
         match ch {
-            '\r' => line.clear(),
+            '\r' => pending_cr = true,
             '\n' => {
                 committed.push_str(&line);
                 committed.push('\n');
                 line.clear();
+                pending_cr = false;
             }
-            c => line.push(c),
+            c => {
+                if std::mem::take(&mut pending_cr) {
+                    line.clear();
+                }
+                line.push(c);
+            }
         }
     }
     committed.push_str(&line);
+    if pending_cr {
+        committed.push('\r');
+    }
     committed
 }
 
-/// What the client should do with an arriving output.
+/// Append one chunk of a stream to the text already collapsed for it.
+///
+/// Only the current line can change: a `\r` never reaches back past a `\n`, and the text
+/// before the last `\n` holds no `\r` at all (see [`apply_carriage_returns`]). So only
+/// that line and the chunk are re-collapsed, which keeps a long log that arrives one
+/// flushed line at a time linear rather than quadratic in its length.
+fn append_stream_text(buf: &mut String, chunk: &str) {
+    let line_start = buf.rfind('\n').map_or(0, |i| i + 1);
+    let tail = apply_carriage_returns(&(buf[line_start..].to_string() + chunk));
+    buf.truncate(line_start);
+    buf.push_str(&tail);
+}
+
+/// What the client has to do to bring its live copy of a cell's outputs up to date. See
+/// [`Outputs::sync`].
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum LiveOp {
-    Append(Output),
-    ReplaceLast(Output),
+pub(crate) enum LiveOp<'a> {
+    Append(&'a Output),
+    ReplaceLast(&'a Output),
+    /// Drop everything shown so far; the appends that follow rebuild the list.
+    Reset,
 }
 
-/// Accumulates outputs the way the browser does, one at a time, deciding for each
-/// whether it extends the list or redraws its last element.
+/// One cell's outputs as a notebook front end holds them: the list the page renders,
+/// built message by message, with the flood caps applied to it.
 ///
-/// **Consecutive chunks of the same stream become one output.** A cell's stdout is
-/// one stream, and where the kernel chose to cut it into messages is an artefact of
-/// the kernel, not of the document: `print` in a loop may arrive as one message or as
-/// twenty depending on buffering and timing. Rendering each as its own `<pre>` turned
-/// a log into a stack of boxes and made the emitted HTML depend on that chunking.
+/// **Consecutive chunks of the same stream become one output**, with carriage returns
+/// applied as they arrive. A cell's stdout is one stream, and where the kernel cut it
+/// into messages is an artefact of buffering and timing: rendering a `<pre>` per message
+/// turned a log into a stack of boxes, and a `\r` progress bar into a stack of frames.
+/// stdout and stderr stay apart because they are styled differently, and a rich output
+/// breaks a run so text keeps its place around a figure.
 ///
-/// This is the single definition of the rule. [`collapse_carriage_returns`] is a fold
-/// over it, so the streamed view and the authoritative block **cannot** drift apart:
-/// a divergence would have to be a divergence from itself.
+/// **The caps count what is RETAINED, not what arrived** (audit E2). They exist to bound
+/// what a runaway can make the page, the cache and every websocket hold. Counting raw
+/// iopub messages and raw stream bytes instead SIGINTed a progress bar at its 4096th
+/// redraw although the page showed one line of it, and the cells after it then ran on
+/// partial state. A runaway that keeps printing new lines still fills these caps; one
+/// that only ever redraws a single line with `\r` retains nothing and is not a flood.
+///
+/// This is the single definition of the list: the live view is synced from it
+/// ([`Outputs::sync`]) and the authoritative block is rendered from it, so the two cannot
+/// drift apart.
 #[derive(Default)]
-pub(crate) struct LiveOutputs {
-    last: Option<Output>,
+pub(crate) struct Outputs {
+    list: Vec<Output>,
+    /// Total text length of the retained streams, against [`MAX_STREAM_BYTES`].
+    stream_bytes: usize,
+    /// Total length of the retained rich outputs, against [`MAX_RICH_BYTES`].
+    rich_bytes: usize,
+    /// A cap fired: the notice is in the list, and later kernel output is dropped.
+    capped: bool,
+    /// A `clear_output(wait=True)` waiting for the next output from the kernel.
+    clear_next: bool,
+    /// `(display_id, index)` for every rich output displayed under an id, so
+    /// `update_display_data` can replace it in place.
+    displays: Vec<(String, usize)>,
+    /// How many entries of `list` the live view holds (see [`Outputs::sync`]).
+    shown: usize,
+    /// The live view's last entry is out of date.
+    last_stale: bool,
+    /// The live view has to be rebuilt from nothing.
+    reset: bool,
 }
 
-impl LiveOutputs {
-    pub(crate) fn push(&mut self, next: Output) -> LiveOp {
-        // Same stream (stdout with stdout, stderr with stderr) merges; anything else
-        // starts a new output. stdout and stderr stay apart because they are styled
-        // differently and interleaving them would attribute one to the other.
-        let merge = matches!(
-            (&self.last, &next),
-            (
-                Some(Output::Stream { stderr: prev, .. }),
-                Output::Stream { stderr: now, .. },
-            ) if prev == now
-        );
-        if merge {
-            let (stderr, prev) = match self.last.take() {
-                Some(Output::Stream { stderr, text }) => (stderr, text),
-                _ => unreachable!("merge is only set when the last output is a stream"),
-            };
-            let Output::Stream { text, .. } = &next else {
-                unreachable!("merge is only set when the next output is a stream")
-            };
-            let merged = Output::Stream {
-                stderr,
-                text: apply_carriage_returns(&(prev + text)),
-            };
-            self.last = Some(merged.clone());
-            return LiveOp::ReplaceLast(merged);
-        }
-        let fresh = match &next {
-            Output::Stream { stderr, text } => Output::Stream {
-                stderr: *stderr,
-                text: apply_carriage_returns(text),
-            },
-            other => other.clone(),
-        };
-        self.last = Some(fresh.clone());
-        LiveOp::Append(fresh)
+impl Outputs {
+    /// Whether a cap has fired, so the kernel should be interrupted.
+    pub(crate) fn capped(&self) -> bool {
+        self.capped
     }
-}
 
-/// Batch form of [`LiveOutputs`]: what the whole output list looks like once
-/// carriage returns have been applied. Identity for any run containing no `\r`, so
-/// documents that do not draw progress bars render exactly as they did before.
-pub(crate) fn collapse_carriage_returns(outputs: &[Output]) -> Vec<Output> {
-    let mut acc: Vec<Output> = Vec::with_capacity(outputs.len());
-    let mut live = LiveOutputs::default();
-    for o in outputs {
-        match live.push(o.clone()) {
-            LiveOp::Append(o) => acc.push(o),
-            LiveOp::ReplaceLast(o) => {
-                acc.pop();
-                acc.push(o);
+    /// The finished list, as the page renders it.
+    pub(crate) fn into_vec(self) -> Vec<Output> {
+        self.list
+    }
+
+    /// The list so far.
+    pub(crate) fn list(&self) -> &[Output] {
+        &self.list
+    }
+
+    /// A stream chunk from the kernel.
+    pub(crate) fn stream(&mut self, stderr: bool, text: &str) {
+        if self.capped {
+            return;
+        }
+        self.take_clear();
+        self.push_stream(stderr, text);
+        if self.stream_bytes > MAX_STREAM_BYTES {
+            // Keep a char-boundary-safe prefix of the stream that crossed the line.
+            let over = self.stream_bytes - MAX_STREAM_BYTES;
+            let last = self.list.len() - 1;
+            if let Some(Output::Stream { text, .. }) = self.list.get_mut(last) {
+                let mut cut = text.len().saturating_sub(over);
+                while cut > 0 && !text.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                self.stream_bytes -= text.len() - cut;
+                text.truncate(cut);
+            }
+            self.touched(last);
+            self.cap(format!("{} KB", MAX_STREAM_BYTES / 1024));
+        } else {
+            self.cap_items();
+        }
+    }
+
+    /// A rich output from the kernel, already rendered to HTML.
+    ///
+    /// Unlike a stream, a rich output cannot be cut to a prefix: half a data URI or half a
+    /// `<table>` is broken markup. So one that would cross [`MAX_RICH_BYTES`] is dropped
+    /// whole and the notice takes its place.
+    pub(crate) fn rich(&mut self, html: String, display_id: Option<&str>) {
+        self.push_rich(Output::Rich(html), display_id);
+    }
+
+    /// A `define(...)` blob from the kernel ([`Output::Bridge`]), counted like rich output.
+    pub(crate) fn bridge(&mut self, html: String) {
+        self.push_rich(Output::Bridge(html), None);
+    }
+
+    fn push_rich(&mut self, o: Output, display_id: Option<&str>) {
+        if self.capped {
+            return;
+        }
+        self.take_clear();
+        let (Output::Rich(html) | Output::Bridge(html)) = &o else {
+            return;
+        };
+        if self.rich_bytes + html.len() > MAX_RICH_BYTES {
+            self.cap_rich();
+            return;
+        }
+        self.rich_bytes += html.len();
+        if let Some(id) = display_id {
+            self.displays.push((id.to_string(), self.list.len()));
+        }
+        self.list.push(o);
+        self.cap_items();
+    }
+
+    /// `update_display_data`: replace, in place, every output this cell displayed under
+    /// `display_id` (a handle's `update()`). An id this cell never displayed is ignored:
+    /// the display it names belongs to an earlier cell, whose output is already final.
+    pub(crate) fn update(&mut self, display_id: &str, html: String) {
+        if self.capped {
+            return;
+        }
+        let at: Vec<usize> = self
+            .displays
+            .iter()
+            .filter(|(id, _)| id == display_id)
+            .map(|&(_, i)| i)
+            .collect();
+        for i in at {
+            let Some(Output::Rich(old)) = self.list.get(i) else {
+                continue;
+            };
+            if self.rich_bytes - old.len() + html.len() > MAX_RICH_BYTES {
+                self.cap_rich();
+                return;
+            }
+            self.rich_bytes = self.rich_bytes - old.len() + html.len();
+            self.list[i] = Output::Rich(html.clone());
+            self.touched(i);
+        }
+    }
+
+    fn cap_rich(&mut self) {
+        self.cap(format!(
+            "{} MB of rich output",
+            MAX_RICH_BYTES / (1024 * 1024)
+        ));
+    }
+
+    /// A traceback the kernel raised. Like any output from the kernel it completes a pending
+    /// `clear_output(wait=True)`, and like a notice it is never dropped.
+    pub(crate) fn error(&mut self, e: Output) {
+        self.take_clear();
+        self.note(e);
+    }
+
+    /// `clear_output`: drop everything the cell has shown, the way a notebook does. With
+    /// `wait`, not until the kernel's next output arrives, which is what lets an animation
+    /// replace one frame with the next without an empty moment in between. The retained
+    /// bytes go with the entries, so a loop that clears before each frame holds one frame
+    /// against the caps, not all of them (audit E3). A no-op once a cap has fired, so its
+    /// notice stays on the page.
+    pub(crate) fn clear(&mut self, wait: bool) {
+        if self.capped {
+            return;
+        }
+        if wait {
+            self.clear_next = true;
+        } else {
+            self.clear_now();
+        }
+    }
+
+    fn take_clear(&mut self) {
+        if self.clear_next {
+            self.clear_now();
+        }
+    }
+
+    fn clear_now(&mut self) {
+        self.clear_next = false;
+        self.list.clear();
+        self.displays.clear();
+        self.stream_bytes = 0;
+        self.rich_bytes = 0;
+        if self.shown > 0 {
+            self.reset = true;
+        }
+        self.shown = 0;
+        self.last_stale = false;
+    }
+
+    /// An output nothing may drop: a traceback the kernel raised, or a notice the
+    /// executor itself writes (a cap expiring, the kernel dying). Never counted against the
+    /// caps, so the reason a cell stopped always reaches the page.
+    pub(crate) fn note(&mut self, o: Output) {
+        match o {
+            Output::Stream { stderr, text } => self.push_stream(stderr, &text),
+            other => self.list.push(other),
+        }
+    }
+
+    fn push_stream(&mut self, stderr: bool, chunk: &str) {
+        let last = self.list.len().wrapping_sub(1);
+        match self.list.last_mut() {
+            Some(Output::Stream { stderr: s, text }) if *s == stderr => {
+                let before = text.len();
+                append_stream_text(text, chunk);
+                self.stream_bytes = self.stream_bytes - before + text.len();
+                self.touched(last);
+            }
+            _ => {
+                let text = apply_carriage_returns(chunk);
+                self.stream_bytes += text.len();
+                self.list.push(Output::Stream { stderr, text });
             }
         }
     }
-    acc
+
+    /// Past [`MAX_OUTPUTS`] entries, the one just added gives way to the notice.
+    fn cap_items(&mut self) {
+        if self.list.len() <= MAX_OUTPUTS {
+            return;
+        }
+        match self.list.pop() {
+            Some(Output::Stream { text, .. }) => self.stream_bytes -= text.len(),
+            Some(Output::Rich(html) | Output::Bridge(html)) => self.rich_bytes -= html.len(),
+            _ => {}
+        }
+        let gone = self.list.len();
+        self.displays.retain(|&(_, i)| i != gone);
+        self.cap(format!("{MAX_OUTPUTS} items"));
+    }
+
+    fn cap(&mut self, what: String) {
+        self.note(Output::Stream {
+            stderr: true,
+            text: format!("\n{TRUNCATION_MARKER}{what}]\n"),
+        });
+        self.capped = true;
+    }
+
+    /// Entry `i` changed in place.
+    fn touched(&mut self, i: usize) {
+        if i + 1 == self.shown {
+            self.last_stale = true;
+        } else if i < self.shown {
+            self.reset = true;
+            self.shown = 0;
+        }
+    }
+
+    /// Hand `emit` what the live view needs to match the list: a `Reset` when it has to be
+    /// rebuilt, a `ReplaceLast` when its last entry changed in place, then an `Append` per
+    /// entry it does not hold yet. The live view is thereby a function of the list, not of
+    /// the history of messages that built it.
+    pub(crate) fn sync(&mut self, mut emit: impl FnMut(LiveOp<'_>)) {
+        if std::mem::take(&mut self.reset) {
+            emit(LiveOp::Reset);
+        } else if std::mem::take(&mut self.last_stale) && self.shown > 0 {
+            emit(LiveOp::ReplaceLast(&self.list[self.shown - 1]));
+        }
+        for o in &self.list[self.shown..] {
+            emit(LiveOp::Append(o));
+        }
+        self.shown = self.list.len();
+        self.last_stale = false;
+    }
 }
 
+/// Render a cell's outputs (as [`Outputs`] built them) into the HTML fragment that is the
+/// inner content of its output block, or empty if there are none. The caller wraps this in
+/// the block element.
 pub fn render_outputs(outputs: &[Output]) -> String {
     let mut s = String::new();
-    // Carriage returns are resolved here rather than at capture time, so the cached
-    // and replayed paths get the same treatment as a fresh run and a progress bar
-    // never renders as a stack of frames. Identity when no `\r` is present.
-    let collapsed = collapse_carriage_returns(outputs);
-    for o in &collapsed {
+    for o in outputs {
         match o {
             Output::Stream { stderr, text } => {
                 let class = if *stderr {
@@ -1414,17 +1671,20 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     "tali-stream"
                 };
+                // A trailing `\r` is a redraw nothing followed (see `apply_carriage_returns`):
+                // invisible on a terminal, but a line break once the HTML parser sees it.
+                let text = text.strip_suffix('\r').unwrap_or(text);
                 s.push_str(&format!(
                     "<pre class=\"{class}\">{}</pre>",
                     esc(&scrub_kernel_paths(&strip_ansi(text)))
                 ));
             }
-            Output::Rich(html) => s.push_str(html),
+            Output::Rich(html) | Output::Bridge(html) => s.push_str(html),
             Output::Error {
                 ename,
                 evalue,
                 traceback,
-                not_run,
+                not_run: _,
             } => {
                 let tb: String = traceback
                     .iter()
@@ -1436,23 +1696,30 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     tb
                 };
-                // An executor-authored error is the same HTML shape as a traceback on
-                // purpose (styled as an error, never cached), so the marker is what tells
-                // the console apart — without it a timeout-killed cell was reported as
-                // "raised an uncaught exception", which is false twice over.
-                let mark = not_run.map(crate::exec::not_run_mark).unwrap_or_default();
-                s.push_str(&format!(
-                    "<pre class=\"tali-error\"{mark}>{}</pre>",
-                    esc(&body)
-                ));
+                s.push_str(&format!("<pre class=\"tali-error\">{}</pre>", esc(&body)));
             }
         }
     }
     s
 }
 
+/// The `display_id` a rich output was published under, if any.
+fn display_id(transient: Option<&jupyter_protocol::Transient>) -> Option<&str> {
+    transient.and_then(|t| t.display_id.as_deref())
+}
+
 /// Pick the richest available representation of a rich output and render it.
-fn render_media(media: &Media) -> String {
+///
+/// In a notebook front end's order of preference: HTML, then Markdown and LaTeX, then an
+/// image, then JSON, then plain text. `display(Markdown(...))`, `Latex`, `Math` and `JSON`
+/// all also offer a `text/plain` repr, which is how the page used to publish
+/// `<IPython.core.display.Markdown object>`. Markdown goes through the document's own
+/// renderer ([`taliesin_core::render::markdown_fragment`]) and LaTeX through KaTeX in
+/// display mode, as a `$$...$$` block in prose would.
+///
+/// `metadata` carries per-type display hints; `Image(width=, height=)` puts them under the
+/// image's mime type, and they size the `<img>`.
+fn render_media(media: &Media, metadata: &serde_json::Map<String, serde_json::Value>) -> String {
     let c = &media.content;
     let pick = |f: &dyn Fn(&MediaType) -> Option<String>| c.iter().find_map(f);
 
@@ -1462,21 +1729,48 @@ fn render_media(media: &Media) -> String {
     }) {
         return h;
     }
-    if let Some(b) = pick(&|t| match t {
-        MediaType::Png(b) => Some(b.clone()),
+    if let Some(md) = pick(&|t| match t {
+        MediaType::Markdown(m) => Some(m.clone()),
         _ => None,
     }) {
-        // `alt=""`, not `alt="output"` (item 41). An executed cell's image is spliced into
-        // a captioned `<figure>`, so the caption is already the accessible description;
+        return taliesin_core::render::markdown_fragment(&md);
+    }
+    if let Some(tex) = pick(&|t| match t {
+        MediaType::Latex(l) => Some(l.clone()),
+        _ => None,
+    }) {
+        return taliesin_core::math::render(strip_math_delimiters(&tex), true);
+    }
+    // The `<img>` an image mime type becomes, sized by its metadata when the cell asked.
+    let img = |mime: &str, b64: &str| {
+        let dim = |k: &str| {
+            metadata
+                .get(mime)
+                .and_then(|m| m.get(k))
+                .and_then(serde_json::Value::as_u64)
+                .map(|n| format!(" {k}=\"{n}\""))
+                .unwrap_or_default()
+        };
+        // `alt=""`, not `alt="output"` (item 41). In a captioned `<figure>` the caption is
+        // the accessible description (and outside one the executor warns, see
+        // `exec::undescribed_image_warning`);
         // a second one reading "output" is noise a screen reader says out loud before it
         // gets to the sentence that means something. Empty alt marks it presentational,
         // which is the correct role for an image whose description sits beside it. The
         // matplotlib twin-render path has always emitted `alt=""`; this is the same
-        // treatment for every other inline image (R figures, PIL, anything else).
-        return format!(
-            "<img alt=\"\" src=\"data:image/png;base64,{}\" />",
-            b.trim()
-        );
+        // treatment for every other inline image (PIL, anything else).
+        format!(
+            "<img alt=\"\"{}{} src=\"data:{mime};base64,{}\" />",
+            dim("width"),
+            dim("height"),
+            b64.trim()
+        )
+    };
+    if let Some(b) = pick(&|t| match t {
+        MediaType::Png(b) => Some(b.clone()),
+        _ => None,
+    }) {
+        return img("image/png", &b);
     }
     if let Some(s) = pick(&|t| match t {
         MediaType::Svg(s) => Some(s.clone()),
@@ -1488,10 +1782,13 @@ fn render_media(media: &Media) -> String {
         MediaType::Jpeg(b) => Some(b.clone()),
         _ => None,
     }) {
-        return format!(
-            "<img alt=\"\" src=\"data:image/jpeg;base64,{}\" />",
-            b.trim()
-        );
+        return img("image/jpeg", &b);
+    }
+    if let Some(j) = pick(&|t| match t {
+        MediaType::Json(j) => serde_json::to_string_pretty(j).ok(),
+        _ => None,
+    }) {
+        return format!("<pre>{}</pre>", esc(&j));
     }
     if let Some(t) = pick(&|t| match t {
         MediaType::Plain(t) => Some(t.clone()),
@@ -1500,6 +1797,107 @@ fn render_media(media: &Media) -> String {
         return format!("<pre>{}</pre>", esc(&t));
     }
     String::new()
+}
+
+/// A `text/latex` output's body without the delimiters around it: IPython's `Latex` and
+/// `Math` and sympy's printer write `$$...$$`, `$...$`, `\[...\]` or `\(...\)`, which
+/// KaTeX would otherwise read as literal dollars. A bare environment passes through.
+fn strip_math_delimiters(tex: &str) -> &str {
+    let t = tex.trim();
+    for (open, close) in [("$$", "$$"), ("\\[", "\\]"), ("\\(", "\\)"), ("$", "$")] {
+        if let Some(inner) = t.strip_prefix(open).and_then(|r| r.strip_suffix(close))
+            && t.len() >= open.len() + close.len()
+        {
+            return inner.trim();
+        }
+    }
+    t
+}
+
+/// Where a published warning or traceback may not point: into the author's home.
+///
+/// A library warning names the file that raised it, absolutely
+/// (`/home/<user>/…/proj/helper.py:4: UserWarning`), and a traceback frame does too, in
+/// the `~/…` form IPython shortens `$HOME` to. Both put the author's home layout into a
+/// published page and make a build differ by machine (audit exec #14). So paths inside the
+/// project print relative to it, and the rest of `$HOME` as `~`.
+///
+/// Only stderr and tracebacks, which is where those paths come from: what a cell prints on
+/// stdout is what the author asked to print.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PathScrub {
+    /// `(prefix, replacement)`, most specific first; each prefix ends in `/`.
+    rules: Vec<(String, &'static str)>,
+}
+
+impl PathScrub {
+    /// The rules for a project at `root` (a lone document's own directory), with `$HOME`
+    /// read from the environment. `None` scrubs `$HOME` alone.
+    pub(crate) fn new(root: Option<&Path>) -> Self {
+        let forms = |p: &Path| -> Vec<PathBuf> {
+            let mut v = vec![p.to_path_buf()];
+            if let Ok(c) = p.canonicalize()
+                && c != p
+            {
+                v.push(c);
+            }
+            v
+        };
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|h| h.is_absolute() && h.parent().is_some());
+        let mut rules = Vec::new();
+        if let Some(root) = root.filter(|r| r.is_absolute()) {
+            for r in forms(root) {
+                rules.push((format!("{}/", r.display()), ""));
+                for h in home.iter().flat_map(|h| forms(h)) {
+                    if let Ok(rel) = r.strip_prefix(&h) {
+                        let tilde = match rel.as_os_str().is_empty() {
+                            true => "~/".to_string(),
+                            false => format!("~/{}/", rel.display()),
+                        };
+                        rules.push((tilde, ""));
+                    }
+                }
+            }
+        }
+        for h in home.iter().flat_map(|h| forms(h)) {
+            rules.push((format!("{}/", h.display()), "~/"));
+        }
+        PathScrub { rules }
+    }
+
+    fn text(&self, s: &str) -> String {
+        let mut out = s.to_string();
+        for (from, to) in &self.rules {
+            if out.contains(from.as_str()) {
+                out = out.replace(from.as_str(), to);
+            }
+        }
+        out
+    }
+
+    /// `o` as it may be published.
+    pub(crate) fn apply(&self, o: &Output) -> Output {
+        match o {
+            Output::Stream { stderr: true, text } => Output::Stream {
+                stderr: true,
+                text: self.text(text),
+            },
+            Output::Error {
+                ename,
+                evalue,
+                traceback,
+                not_run,
+            } => Output::Error {
+                ename: ename.clone(),
+                evalue: self.text(evalue),
+                traceback: traceback.iter().map(|l| self.text(l)).collect(),
+                not_run: *not_run,
+            },
+            other => other.clone(),
+        }
+    }
 }
 
 /// Replace a Jupyter cell's non-deterministic source path with a stable `<cell>` marker.
@@ -1564,20 +1962,39 @@ fn take_ascii_digits(b: &[u8], i: usize) -> Option<usize> {
     (j > i).then_some(j)
 }
 
-/// Strip ANSI SGR escape sequences (IPython colourises tracebacks).
+/// Strip terminal escape sequences and keep the text between them: CSI (`ESC [` up to a
+/// final byte in `@`..=`~`, which covers the SGR colour codes IPython puts in tracebacks),
+/// OSC (`ESC ]` up to BEL or `ESC \`: an OSC 8 hyperlink around its link text, a window
+/// title), and any other escape as `ESC` plus one character. Skipping from `ESC` to the
+/// next letter, as this used to, is right only for CSI and ate the text of an OSC 8 link.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            // Skip until the terminating letter of the escape sequence.
-            for c in chars.by_ref() {
-                if c.is_ascii_alphabetic() {
-                    break;
+        if ch != '\u{1b}' {
+            out.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('[') => {
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
                 }
             }
-        } else {
-            out.push(ch);
+            Some(']') => {
+                while let Some(c) = chars.next() {
+                    if c == '\u{7}' {
+                        break;
+                    }
+                    if c == '\u{1b}' && chars.peek() == Some(&'\\') {
+                        chars.next();
+                        break;
+                    }
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -1666,17 +2083,28 @@ mod tests {
         }
     }
 
+    /// Feed raw outputs, one message each, through [`Outputs`] the way the receive loop
+    /// does, and return the list the page renders.
+    fn collapse(raw: &[Output]) -> Vec<Output> {
+        let mut acc = Outputs::default();
+        for o in raw {
+            match o {
+                Output::Stream { stderr, text } => acc.stream(*stderr, text),
+                Output::Rich(html) => acc.rich(html.clone(), None),
+                other => acc.note(other.clone()),
+            }
+        }
+        acc.into_vec()
+    }
+
     #[test]
     fn a_carriage_return_overwrites_the_current_line() {
         // Terminal semantics: `\r` returns the cursor to column 0, so what follows
         // replaces the line. This is how a progress bar redraws itself in place.
-        assert_eq!(
-            collapse_carriage_returns(&[out("10%\r20%\r30%\n")]),
-            vec![out("30%\n")]
-        );
+        assert_eq!(collapse(&[out("10%\r20%\r30%\n")]), vec![out("30%\n")]);
         // A committed line (one ended by `\n`) is never touched by a later `\r`.
         assert_eq!(
-            collapse_carriage_returns(&[out("done\nbar 1\rbar 2")]),
+            collapse(&[out("done\nbar 1\rbar 2")]),
             vec![out("done\nbar 2")]
         );
     }
@@ -1689,7 +2117,7 @@ mod tests {
         // stack of boxes rather than a log). Verified against the whole corpus when
         // this landed: merging changed no existing document's output.
         assert_eq!(
-            collapse_carriage_returns(&[out("first\n"), out("second\n"), out("third\n")]),
+            collapse(&[out("first\n"), out("second\n"), out("third\n")]),
             vec![out("first\nsecond\nthird\n")]
         );
 
@@ -1700,7 +2128,7 @@ mod tests {
             text: t.into(),
         };
         assert_eq!(
-            collapse_carriage_returns(&[out("out 1\n"), err("warn\n"), out("out 2\n")]),
+            collapse(&[out("out 1\n"), err("warn\n"), out("out 2\n")]),
             vec![out("out 1\n"), err("warn\n"), out("out 2\n")],
             "stdout and stderr must stay separate outputs"
         );
@@ -1708,7 +2136,7 @@ mod tests {
         // A rich output (a figure) also breaks a run, so text keeps its position
         // relative to the image it was printed around.
         assert_eq!(
-            collapse_carriage_returns(&[
+            collapse(&[
                 out("before\n"),
                 Output::Rich("<img>".into()),
                 out("after\n"),
@@ -1730,7 +2158,7 @@ mod tests {
             .map(|c| out(c))
             .collect();
         assert_eq!(
-            collapse_carriage_returns(&chunks),
+            collapse(&chunks),
             vec![out("100%|####|\n")],
             "a 3-frame bar must render as one line, not three stacked ones"
         );
@@ -1743,14 +2171,148 @@ mod tests {
         // written-out expectation catches it, which is how the first version of these
         // tests let a mutant live through exactly this case.
         assert_eq!(
-            collapse_carriage_returns(&[out("\rbar 1"), out(" done\n"), out("next\n")]),
+            collapse(&[out("\rbar 1"), out(" done\n"), out("next\n")]),
             vec![out("bar 1 done\nnext\n")],
             "a redrawing run must keep absorbing plain chunks until something breaks it"
         );
         let mixed = vec![out("\rbar"), Output::Rich("<img>".into()), out("\rbar2")];
         assert_eq!(
-            collapse_carriage_returns(&mixed),
+            collapse(&mixed),
             vec![out("bar"), Output::Rich("<img>".into()), out("bar2")]
+        );
+    }
+
+    /// E1: a `\r\n` line ending is a newline, not "clear the line, then end it". The stdlib
+    /// `csv.writer` ends every row with `\r\n`, as do HTTP bodies and email, and reading the
+    /// `\r` as a redraw erased every row: the page showed blank lines and cached them.
+    /// The pair can also arrive split across two messages, so a trailing `\r` must wait for
+    /// the next character before it decides anything.
+    #[test]
+    fn a_crlf_line_ending_is_a_newline_not_a_line_clear() {
+        assert_eq!(collapse(&[out("a,b\r\n1,2\r\n")]), vec![out("a,b\n1,2\n")]);
+        assert_eq!(
+            collapse(&[out("x,y\r"), out("\n3,4\r"), out("\n")]),
+            vec![out("x,y\n3,4\n")],
+            "a `\\r\\n` split across two messages is still one newline"
+        );
+        // A `\r` followed by anything else still redraws, across the boundary too.
+        assert_eq!(collapse(&[out("10%\r"), out("20%\n")]), vec![out("20%\n")]);
+        // A stream that ENDS on `\r` shows the line it drew, and the `\r` itself (which the
+        // HTML parser would turn into a line break) never reaches the page.
+        assert_eq!(
+            render_outputs(&[out("50%\r")]),
+            "<pre class=\"tali-stream\">50%</pre>"
+        );
+    }
+
+    /// E2: the flood caps count what the page would hold, not what arrived. A progress
+    /// bar redrawn 10,000 times is one line of ~100 bytes, so it must not trip the item cap
+    /// (4096) or the stream byte cap (512 KB) that its raw messages cross; before, it was
+    /// interrupted at its 4096th redraw. A runaway still fills them: new lines fill the
+    /// byte cap, new items fill the item cap.
+    #[test]
+    fn the_flood_caps_count_what_is_retained_not_what_arrived() {
+        let mut bar = Outputs::default();
+        for i in 1..=10_000 {
+            bar.stream(false, &format!("\r{i:>5}/10000 {}", "#".repeat(90)));
+        }
+        assert!(!bar.capped(), "a redrawing bar tripped a flood cap");
+        let bar = bar.into_vec();
+        assert_eq!(bar.len(), 1, "one line of bar, one output: {bar:?}");
+        assert!(matches!(&bar[0], Output::Stream { text, .. } if text.starts_with("10000/10000")));
+
+        let mut log = Outputs::default();
+        let mut lines = 0;
+        while !log.capped() && lines < 100_000 {
+            log.stream(false, &format!("line {lines} {}\n", "x".repeat(40)));
+            lines += 1;
+        }
+        assert!(log.capped(), "a log flood never tripped the byte cap");
+        let log = render_outputs(&log.into_vec());
+        assert!(
+            log.contains(&format!("{TRUNCATION_MARKER}512 KB]")),
+            "{}",
+            &log[log.len() - 200..]
+        );
+        assert!(
+            log.len() < MAX_STREAM_BYTES + 4096,
+            "retained {} bytes",
+            log.len()
+        );
+
+        let mut items = Outputs::default();
+        for i in 0..MAX_OUTPUTS {
+            items.rich(format!("<b>{i}</b>"), None);
+        }
+        assert!(!items.capped(), "exactly MAX_OUTPUTS items is not a flood");
+        items.rich("<b>one more</b>".into(), None);
+        assert!(items.capped(), "the item past the cap must trip it");
+        let items = items.into_vec();
+        assert_eq!(
+            items.len(),
+            MAX_OUTPUTS + 1,
+            "the notice replaces the extra item"
+        );
+        assert!(
+            matches!(items.last(), Some(Output::Stream { text, .. }) if text.contains(TRUNCATION_MARKER))
+        );
+    }
+
+    /// E3, the cap half: a cleared frame leaves the list, so it leaves the budget too.
+    /// Twelve 1 MB frames are 12 MB published without the clear and one frame retained
+    /// with it, so an animation must not trip the 8 MB rich cap. The live view is told to
+    /// start over (`Reset`) rather than to append the next frame under the old ones.
+    #[test]
+    fn a_cleared_frame_leaves_the_caps_and_the_live_view() {
+        let mut acc = Outputs::default();
+        let mut client: Vec<Output> = Vec::new();
+        let mut resets = 0;
+        for i in 0..12 {
+            acc.clear(true);
+            acc.rich(format!("<b>frame {i}</b>{}", "x".repeat(1024 * 1024)), None);
+            acc.sync(|op| match op {
+                LiveOp::Append(o) => client.push(o.clone()),
+                LiveOp::ReplaceLast(o) => {
+                    client.pop();
+                    client.push(o.clone());
+                }
+                LiveOp::Reset => {
+                    resets += 1;
+                    client.clear();
+                }
+            });
+        }
+        assert!(
+            !acc.capped(),
+            "cleared frames still counted against the rich cap"
+        );
+        assert_eq!(
+            resets, 11,
+            "every frame after the first replaces what was shown"
+        );
+        let list = acc.into_vec();
+        assert_eq!(list.len(), 1);
+        assert!(matches!(&list[0], Output::Rich(h) if h.starts_with("<b>frame 11</b>")));
+        assert_eq!(client, list, "the live view diverged from the list");
+
+        // `wait=True` waits for the next output; a bare clear empties at once, and a cap's
+        // notice survives a clear so the page still says why the cell stopped.
+        let mut acc = Outputs::default();
+        acc.stream(false, "kept until replaced\n");
+        acc.clear(true);
+        assert_eq!(
+            acc.list.len(),
+            1,
+            "wait=True must not clear before new output"
+        );
+        acc.clear(false);
+        assert!(acc.list.is_empty(), "a bare clear empties at once");
+        acc.rich("x".repeat(MAX_RICH_BYTES + 1), None);
+        assert!(acc.capped());
+        acc.clear(false);
+        assert!(
+            render_outputs(&acc.into_vec()).contains(TRUNCATION_MARKER),
+            "a clear after a cap erased the notice that says why the cell stopped"
         );
     }
 
@@ -1774,28 +2336,30 @@ mod tests {
             },
         ];
 
-        // Replay the wire ops into the list a client would hold.
+        // Replay the wire ops into the list a client would hold, syncing after every
+        // message as the receive loop does.
         let mut client: Vec<Output> = Vec::new();
-        let mut state = LiveOutputs::default();
+        let mut acc = Outputs::default();
         for o in &raw {
-            match state.push(o.clone()) {
-                LiveOp::Append(o) => client.push(o),
+            match o {
+                Output::Stream { stderr, text } => acc.stream(*stderr, text),
+                Output::Rich(html) => acc.rich(html.clone(), None),
+                other => acc.note(other.clone()),
+            }
+            acc.sync(|op| match op {
+                LiveOp::Append(o) => client.push(o.clone()),
                 LiveOp::ReplaceLast(o) => {
                     client.pop();
-                    client.push(o);
+                    client.push(o.clone());
                 }
-            }
+                LiveOp::Reset => client.clear(),
+            });
         }
 
         assert_eq!(
             client,
-            collapse_carriage_returns(&raw),
-            "the replayed live view diverged from the batch collapse"
-        );
-        assert_eq!(
-            render_outputs(&client),
-            render_outputs(&raw),
-            "the live HTML diverged from the authoritative block HTML"
+            acc.into_vec(),
+            "the replayed live view diverged from the list the page renders"
         );
     }
 
@@ -1895,6 +2459,29 @@ mod tests {
         assert!(
             !out.contains("[31m") && !out.contains("[0m"),
             "ANSI SGR code leaked as visible text: {out}"
+        );
+    }
+
+    /// exec #17: `strip_ansi` skipped from ESC to the next ASCII letter, which is right for
+    /// a colour code (`ESC [ 31 m`) and wrong for every other escape. An OSC-8 hyperlink
+    /// (`ESC ] 8 ; ; url ST text ESC ] 8 ; ; ST`, what `rich` and modern tracebacks print)
+    /// ate the text after it: "link end" came out as `ttp://x.exampleinknd`. The link text
+    /// is what a reader should see; the escape sequences around it are not.
+    #[test]
+    fn strip_ansi_keeps_the_text_of_an_osc8_hyperlink() {
+        let st = "\u{1b}]8;;http://x.example\u{1b}\\link\u{1b}]8;;\u{1b}\\ end";
+        assert_eq!(strip_ansi(st), "link end", "ST-terminated OSC 8");
+        let bel = "\u{1b}]8;;http://x.example\u{7}link\u{1b}]8;;\u{7} end";
+        assert_eq!(strip_ansi(bel), "link end", "BEL-terminated OSC 8");
+        assert_eq!(
+            strip_ansi("\u{1b}[1;31mred\u{1b}[0m plain"),
+            "red plain",
+            "a colour code still goes"
+        );
+        assert_eq!(
+            strip_ansi("\u{1b}]0;title\u{7}after"),
+            "after",
+            "a window title goes"
         );
     }
 
@@ -2038,6 +2625,245 @@ mod tests {
         });
     }
 
+    // E3: `clear_output` replaces what the cell has shown, the standard animation idiom
+    // (`clear_output(wait=True)` then draw the next frame). It was ignored, so every frame
+    // was published, and past the 8 MB rich cap the training loop drawing them was
+    // interrupted. `wait=True` defers the clear to the next output; a bare call clears now.
+    #[test]
+    fn clear_output_replaces_what_the_cell_showed() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise clear_output.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+
+            let frames = render_outputs(
+                &k.execute(
+                    "from IPython.display import clear_output\n\
+                     for i in range(50):\n    \
+                         clear_output(wait=True)\n    \
+                         print(f'frame {i}', flush=True)",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                frames.contains("frame 49"),
+                "the last frame is missing: {frames}"
+            );
+            assert!(
+                !frames.contains("frame 48"),
+                "an earlier frame survived clear_output(wait=True): {frames}"
+            );
+
+            let now = render_outputs(
+                &k.execute(
+                    "from IPython.display import clear_output\n\
+                     print('gone', flush=True)\n\
+                     clear_output()\n\
+                     print('kept')",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                now.contains("kept") && !now.contains("gone"),
+                "an immediate clear_output() did not clear: {now}"
+            );
+        });
+    }
+
+    /// The delimiters a `text/latex` output arrives in are not part of the math: KaTeX
+    /// would print `$$` literally. A bare environment, and a lone `$`, pass through.
+    #[test]
+    fn a_latex_output_loses_its_delimiters_before_katex() {
+        assert_eq!(strip_math_delimiters("$$\\frac{a}{b}$$"), "\\frac{a}{b}");
+        assert_eq!(
+            strip_math_delimiters(" $\\displaystyle x^2$ "),
+            "\\displaystyle x^2"
+        );
+        assert_eq!(strip_math_delimiters("\\[ a+b \\]"), "a+b");
+        assert_eq!(strip_math_delimiters("\\(c\\)"), "c");
+        let env = "\\begin{aligned}a&=b\\end{aligned}";
+        assert_eq!(strip_math_delimiters(env), env);
+        assert_eq!(strip_math_delimiters("$"), "$");
+    }
+
+    // E5: three parts of the display protocol that published the wrong thing. An updated
+    // display kept its first value; `display(Markdown/Latex/JSON)` published the object's
+    // repr (`<IPython.core.display.Markdown object>`), because only `text/plain` was
+    // understood of what they offer; and `Image(width=)` was published at natural size.
+    #[test]
+    fn the_display_protocol_publishes_what_the_cell_displayed() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise display().");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            let html = render_outputs(
+                &k.execute(
+                    "import base64\n\
+                     from IPython.display import HTML, JSON, Image, Latex, Markdown, display\n\
+                     h = display(HTML('<b>initial-disp</b>'), display_id=True)\n\
+                     h.update(HTML('<b>updated-disp</b>'))\n\
+                     display(Markdown('some **bold** text and $x^2$'))\n\
+                     display(Latex(r'$$\\frac{a}{b}$$'))\n\
+                     display(JSON({'answer': 42}))\n\
+                     px = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==')\n\
+                     display(Image(data=px, format='png', width=200, height=120))",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(
+                html.contains("updated-disp") && !html.contains("initial-disp"),
+                "update_display kept the first value: {html}"
+            );
+            assert!(
+                !html.contains("IPython.core.display"),
+                "a display object published its repr instead of its content: {html}"
+            );
+            assert!(
+                html.contains("<strong>bold</strong>"),
+                "text/markdown was not rendered: {html}"
+            );
+            assert!(
+                html.matches("class=\"katex").count() >= 2,
+                "the markdown math and the text/latex output did not reach KaTeX: {html}"
+            );
+            assert!(
+                !html.contains("$$"),
+                "the text/latex delimiters reached KaTeX as literal dollars: {html}"
+            );
+            assert!(html.contains("42"), "application/json was not shown: {html}");
+            assert!(
+                html.contains("width=\"200\"") && html.contains("height=\"120\""),
+                "Image(width=, height=) was ignored: {html}"
+            );
+        });
+    }
+
+    // exec #15: one iopub message this side cannot decode used to end the cell's capture
+    // with "execution error", discarding everything else the cell printed while it kept
+    // running in the kernel. A lone surrogate (a non-UTF-8 filename from `os.listdir`)
+    // reaches the wire as invalid UTF-8, and a raw display with a non-string `text/plain`
+    // fails the typed parse; both are one message, not a broken channel.
+    #[test]
+    fn an_undecodable_message_costs_that_message_not_the_cell() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise decoding.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            let outs = k
+                .execute(
+                    "from IPython.display import display\n\
+                     print('before', flush=True)\n\
+                     print('sur-\\udcff', flush=True)\n\
+                     display({'text/plain': 5}, raw=True)\n\
+                     print('after', flush=True)",
+                )
+                .await;
+            let html = render_outputs(
+                &outs
+                    .expect("one undecodable message ended the whole cell's capture with an error"),
+            );
+            assert!(
+                html.contains("before") && html.contains("after"),
+                "the cell's decodable output was lost: {html}"
+            );
+            assert_eq!(
+                html.matches("could not be decoded").count(),
+                2,
+                "each dropped message must say so on the page: {html}"
+            );
+        });
+    }
+
+    // exec #13, FA8 without the copied context: a PLAIN thread an earlier cell started
+    // (no `contextvars.copy_context()`, which is how threads are written) had its output
+    // stamped with whichever cell was current, because ipykernel falls back to the global
+    // parent header for a thread that did not inherit the cell's context. So that output
+    // was published under, and frozen into, an unrelated later cell, and it kept that
+    // cell's silence cap from ever firing. Threads now inherit the context of the cell
+    // that started them, so their output belongs to that cell and the loop filters it.
+    #[test]
+    fn a_plain_threads_output_stays_with_the_cell_that_started_it() {
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            assert!(
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
+            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise threads.");
+            return;
+        };
+        let py = PathBuf::from(py);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let mut k = Kernel::start_with_retry(&KernelSpec::python(&py), None)
+                .await
+                .expect("kernel should start");
+            k.cell_cap = None;
+            k.silence_cap = Some(Duration::from_secs(1));
+            let first = render_outputs(
+                &k.execute(
+                    "import threading, time\n\
+                     def chat():\n    \
+                         for _ in range(300):\n        \
+                             print('tick', flush=True); time.sleep(0.1)\n\
+                     threading.Thread(target=chat, daemon=True).start()\n\
+                     print('started')",
+                )
+                .await
+                .unwrap(),
+            );
+            assert!(first.contains("started"), "cell 1 did not run: {first}");
+            let t = std::time::Instant::now();
+            let quiet = render_outputs(&k.execute("import time\ntime.sleep(8)").await.unwrap());
+            assert!(
+                !quiet.contains("tick"),
+                "a thread cell 1 started published its output under cell 2: {quiet}"
+            );
+            assert!(
+                quiet.contains("no output for 1s") && t.elapsed() < Duration::from_secs(6),
+                "cell 2's silence cap was kept from firing by another cell's thread \
+                 ({:?}): {quiet}",
+                t.elapsed()
+            );
+        });
+    }
+
     // FA8, second half: SIGINT is a request, not a guarantee. A cell that installs its own
     // handler (or sits in a C extension that never checks signals) outlives the interrupt,
     // and the loop then drops out of the grace window — which used to be SILENT, leaving a
@@ -2078,44 +2904,43 @@ mod tests {
                 "the silence cap did not fire: {out}"
             );
             assert!(
-                out.contains("still running"),
-                "the interrupt was swallowed and the cell is still running in the kernel, \
-                 but the page says only that a cap fired (FA8): {out}"
+                out.contains("ignored the interrupt"),
+                "the interrupt was swallowed, but the page says only that a cap fired \
+                 (FA8): {out}"
             );
-            // The cap (1s) plus the grace window plus the shell drain, and no longer: the
-            // point of the escalation is that it does not wait on a cell that will not stop.
+            // E6: a kernel still running a cell that will not stop is useless to every
+            // cell after it (each would queue behind the runaway, then wait out its own
+            // caps, and be blamed for it), so it is stopped, and the executor's dead-kernel
+            // path fails the rest of the run fast.
             assert!(
-                t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(15),
+                !k.is_alive(),
+                "the kernel that ignored its interrupt was left running the runaway cell"
+            );
+            // The cap (1s) plus the grace window, and no shell drain after a kill: the point
+            // of the escalation is that it does not wait on a cell that will not stop.
+            assert!(
+                t.elapsed() < INTERRUPT_GRACE + Duration::from_secs(5),
                 "the loop waited {:?} on a cell that ignored its interrupt",
                 t.elapsed()
             );
         });
     }
 
-    // The continuation policy after a failed cell is the EXECUTOR's (`exec.rs` keeps running
-    // and blocks the persist instead), so the kernel must not hold a second opinion. It did:
-    // `ExecuteRequest::new` defaults `stop_on_error` to `true`, which tells ipykernel to
-    // abort every execute_request already queued behind one that errors.
-    //
-    // Taliesin normally has nothing queued — it waits for Idle before sending the next cell —
-    // but the one path that ends without an Idle is exactly the one that reaches this bug: a
-    // cell that swallows its interrupt outlives the cap, the grace window AND the 5s shell
-    // drain, so the loop gives up while the kernel is still running it. The next cell is then
-    // sent into a busy kernel, and when the abandoned cell finally raises, ipykernel aborts
-    // it: `_send_abort_reply` plus a `busy`/`idle` pair, and NO outputs. This loop breaks on
-    // that Idle, returns an empty vector, and the page renders a cell that never ran as a
-    // successful cell with no output.
+    // exec #19: the FLOOD cap's grace window running dry was read as "the kernel stopped
+    // flooding us", and the loop gave up on the cell. But a cell that ignores SIGINT and
+    // keeps printing also lets the window run dry the moment no message happens to be
+    // waiting, and it was then abandoned still running, with the next cell queued behind
+    // it. A window that ends without the cell reaching Idle means the interrupt was not
+    // honoured, whichever cap sent it, so the kernel is stopped either way.
     #[test]
-    fn a_cell_queued_behind_a_failing_one_runs_instead_of_being_silently_aborted() {
+    fn a_flood_that_ignores_its_interrupt_is_stopped_not_abandoned() {
         let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
             assert!(
                 std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
                 "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
                  tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
             );
-            eprintln!(
-                "SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the abort policy."
-            );
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to exercise the flood cap.");
             return;
         };
         let py = PathBuf::from(py);
@@ -2125,44 +2950,33 @@ mod tests {
                 .await
                 .expect("kernel should start");
             k.cell_cap = None;
-            k.silence_cap = Some(Duration::from_secs(1));
-
-            // Cell A swallows SIGINT and then fails on its own schedule. The sleep is sized
-            // past the 1s cap + INTERRUPT_GRACE + the 5s shell drain (~11s), so the loop has
-            // provably given up and sent cell B before A raises — which is what puts B in the
-            // kernel's queue at the moment the abort fires. A plain `raise` is used rather
-            // than the deferred `KeyboardInterrupt` this was found as: both reach ipykernel
-            // as one event (`reply.status == "error"`), and this one does not depend on which
-            // thread the OS picks to deliver a signal to.
-            let first = render_outputs(
+            k.silence_cap = None;
+            let t = std::time::Instant::now();
+            let out = render_outputs(
                 &k.execute(
                     "import signal, time\n\
                      signal.signal(signal.SIGINT, lambda *a: None)\n\
-                     time.sleep(13)\n\
-                     raise ValueError('deferred failure')",
+                     for i in range(10_000_000):\n    \
+                         print('x' * 200, flush=True)\n    \
+                         if i % 100 == 0: time.sleep(0.01)",
                 )
                 .await
                 .unwrap(),
             );
-            // The desync this test needs really happened: the loop abandoned a cell that is
-            // still running. Without this, a green run could just mean A finished normally.
             assert!(
-                first.contains("still running"),
-                "cell A was not abandoned mid-flight, so cell B was never queued behind it \
-                 and this test proves nothing: {first}"
+                out.contains(TRUNCATION_MARKER),
+                "the flood cap did not fire: {out}"
             );
-
-            // B is sent into a kernel that is still chewing on A, and must wait for it: the
-            // 1s silence cap would interrupt B before A ever reached it.
-            k.silence_cap = Some(Duration::from_secs(30));
-            let t = std::time::Instant::now();
-            let second = render_outputs(&k.execute("print('B RAN')").await.unwrap());
             assert!(
-                second.contains("B RAN"),
-                "cell B produced nothing: ipykernel aborted it when the cell above it failed, \
-                 and an aborted cell reaches the page as a successful empty one ({:?} elapsed): \
-                 {second}",
+                !k.is_alive(),
+                "the flooding cell ignored its interrupt and was abandoned still running \
+                 in the kernel ({:?})",
                 t.elapsed()
+            );
+            assert!(
+                out.contains("ignored the interrupt"),
+                "the page must say why the kernel was stopped: {}",
+                &out[out.len().saturating_sub(400)..]
             );
         });
     }
@@ -2252,6 +3066,56 @@ mod tests {
     // cold/CI/cross-machine builds non-reproducible AND leak a local absolute path into the
     // published HTML. Scrub it to a stable `<cell>` marker (the IPython traceback arm already
     // reads `Cell In[N]`). Captured verbatim from a real ipykernel-7 build.
+    /// exec #14, the rule itself: inside the project a path goes relative, in either the
+    /// absolute form a warning prints or the `~/` form IPython gives a traceback frame;
+    /// elsewhere under `$HOME` it becomes `~/`; stdout is the author's and is left alone.
+    #[test]
+    fn a_published_path_is_relative_to_the_project_or_under_tilde() {
+        let paths = PathScrub {
+            rules: vec![
+                ("/home/u/proj/".into(), ""),
+                ("~/proj/".into(), ""),
+                ("/home/u/".into(), "~/"),
+            ],
+        };
+        let err = |t: &str| Output::Stream {
+            stderr: true,
+            text: t.into(),
+        };
+        assert_eq!(
+            paths.apply(&err("/home/u/proj/.venv/lib/x.py:3: RuntimeWarning\n")),
+            err(".venv/lib/x.py:3: RuntimeWarning\n")
+        );
+        assert_eq!(
+            paths.apply(&err("/home/u/other/y.py:1: UserWarning\n")),
+            err("~/other/y.py:1: UserWarning\n")
+        );
+        let tb = paths.apply(&Output::Error {
+            ename: "E".into(),
+            evalue: "no /home/u/proj/data.csv".into(),
+            traceback: vec!["File ~/proj/helper.py:5, in boom()".into()],
+            not_run: None,
+        });
+        assert_eq!(
+            tb,
+            Output::Error {
+                ename: "E".into(),
+                evalue: "no data.csv".into(),
+                traceback: vec!["File helper.py:5, in boom()".into()],
+                not_run: None,
+            }
+        );
+        let printed = out("/home/u/proj/results.csv\n");
+        assert_eq!(paths.apply(&printed), printed, "stdout is left as printed");
+        // Built from a root and a home, the rules come out most specific first.
+        let home = std::env::temp_dir().join(format!("tali-scrub-{}", std::process::id()));
+        let root = home.join("proj");
+        std::fs::create_dir_all(&root).unwrap();
+        let built = PathScrub::new(Some(&root));
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(built.rules[0], (format!("{}/", root.display()), ""));
+    }
+
     #[test]
     fn render_outputs_scrubs_nondeterministic_kernel_paths() {
         let out = render_outputs(&[Output::Stream {

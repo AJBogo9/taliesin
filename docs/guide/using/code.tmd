@@ -56,7 +56,10 @@ table but not the code that made it.
 `include: false` goes further and hides both source and output, but the cell
 still executes (kernel state is kept), so a later cell still sees its variables.
 This is the option for a setup cell whose result you never want to see but whose state
-you need downstream. To skip execution entirely, run the whole document with
+you need downstream, and a `define(...)` in it still reaches your `{js}` cells, since that
+bridge is not output. If it fails, its traceback is hidden along with the rest of its
+output, so the failure is reported as an error diagnostic at the cell instead, and it
+fails `build --strict`. To skip execution entirely, run the whole document with
 `--no-exec` / `TALIESIN_NO_EXEC`.
 
 `cache: false` is orthogonal to both: the cell runs and shows normally, but its
@@ -81,7 +84,8 @@ installed library you upgraded in place.
 
 Edit `data.csv` without touching a line of Python and the numbers on the page will
 not change, because the cache key has not changed. Mark any cell with an out-of-band
-input `#| cache: false`, as above.
+input `#| cache: false`, as above. The preview does not watch data files either, so a
+`cache: false` cell re-runs on the next save of the `.tmd`, not when `data.csv` changes.
 
 To force one fresh run without editing anything, use the dev-menu **Restart
 kernel** or run with `TALIESIN_NO_CACHE`.
@@ -97,7 +101,11 @@ and the [Configuration reference](../reference/frontmatter.tmd) for `execute:`.
 `#| fig-cap:` captions a cell's output and numbers it as a figure; `#| lst-cap:` and
 `#| tbl-cap:` do the same for a code listing and for a table the cell publishes. Pair
 any of them with a matching `#| label: fig-x` / `lst-x` / `tbl-x` and the output is
-cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. The
+cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. A
+caption is inline Markdown, so `*emphasis*`, `` `code` `` and `$x^2$` render in it the
+same way whichever kind of cell carries it. An executed image is published with an empty
+`alt`, since in a figure the caption describes it, so a cell whose output shows an image
+and has no `fig-cap` draws a warning. The
 [cell-options reference](../reference/cell-options.tmd#every-option) has the
 routing rules.
 

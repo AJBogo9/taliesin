@@ -119,3 +119,49 @@ fn a_carriage_return_progress_bar_builds_as_a_single_line() {
         "a raw carriage return leaked into the built HTML"
     );
 }
+
+/// E2: a progress bar that redraws more often than the flood caps allow still runs to
+/// completion. The caps counted RAW iopub messages (4096) and raw stream bytes (512 KB),
+/// while the page shows the `\r`-collapsed stream, which for a bar is one short line. So
+/// a tqdm loop was SIGINTed at its 4096th redraw (about seven minutes at tqdm's default
+/// rate), the page showed a KeyboardInterrupt, and the next cell ran on partial state:
+/// the opposite of "a long job that reports progress runs to completion". The caps now
+/// apply to what is retained after collapsing, so this bar is one item of a few bytes.
+#[test]
+fn a_progress_bar_longer_than_the_flood_caps_runs_to_completion() {
+    let Some(py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("long-bar");
+    let src = dir.join("long.tmd");
+    // 6000 flushed redraws of ~100 bytes: past the old item cap and, at 600 KB of raw
+    // text, past the old byte cap too.
+    fs::write(
+        &src,
+        "---\ntitle: E2 pin\n---\n\n\
+         ```{python}\n\
+         steps = 0\n\
+         for i in range(6000):\n    \
+             steps += 1\n    \
+             print(f\"\\r{steps:>5}/6000 \" + \"#\" * 80, end=\"\", flush=True)\n\
+         print()\n\
+         ```\n\n\
+         ```{python}\n\
+         print(\"steps completed:\", steps)\n\
+         ```\n",
+    )
+    .unwrap();
+
+    let html = build(&src, &dir.join("long.html"), &py);
+
+    assert!(
+        html.contains("steps completed: 6000"),
+        "the bar did not run to completion, so the next cell saw partial state:\n{html}"
+    );
+    for leak in ["output truncated", "KeyboardInterrupt"] {
+        assert!(
+            !html.contains(leak),
+            "a redrawing bar tripped a flood cap ({leak:?}) although it retains one line"
+        );
+    }
+}

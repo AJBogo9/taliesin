@@ -331,3 +331,156 @@ fn an_exec_only_defect_reaches_the_writing_builds_json() {
         "the empty-labelled-float warning reaches --format json: {v}"
     );
 }
+
+/// exec #11 / B3: whether a cell failed is a fact the executor knows, not something to read
+/// back out of the finished HTML. A cell that successfully PRINTS the error markup (a page
+/// documenting it, say) put a literal `class="tali-error"` into its escaped stream text,
+/// because the text escaper leaves `"` alone, so the substring readers took it for a
+/// crash: `--strict` failed with "raised an uncaught exception" and the cell was never
+/// cached, so every build re-ran it.
+#[test]
+fn a_cell_that_prints_the_error_markup_is_neither_a_failure_nor_uncached() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("spoof");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\n```{python}\n\
+         print('<div class=\"tali-output\"><pre class=\"tali-error\" \
+         data-tali-not-run=\"timeout\">not an error</pre></div>')\n```\n",
+    )
+    .unwrap();
+    let build = || {
+        taliesin()
+            .arg("build")
+            .arg(dir.join("doc.tmd"))
+            .args(["--strict", "--format", "json"])
+            .output()
+            .expect("run taliesin")
+    };
+    let first = build();
+    let stderr = String::from_utf8_lossy(&first.stderr).to_string();
+    assert!(
+        first.status.success(),
+        "a successful cell failed --strict because it printed the error markup:\n{stderr}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&first.stdout).expect("json");
+    assert!(
+        !messages(&v).iter().any(|m| m.contains("cell error")),
+        "a successful cell was reported as a cell error: {v}"
+    );
+    let second = build();
+    let stderr = String::from_utf8_lossy(&second.stderr).to_string();
+    assert!(
+        stderr.contains("restored 1 cached cell"),
+        "a successful cell was refused the cache:\n{stderr}"
+    );
+}
+
+/// E4: a `#| include: false` cell that fails was silent everywhere. Its output block (the
+/// traceback) is dropped by design, and that was the only place the failure lived, so the
+/// page, the console, `--strict` and `--format json` all said nothing while every cell
+/// after it ran without its state and caching quietly stopped for the rest of the page.
+/// The failure is now a located, error-severity diagnostic at the cell, and it counts.
+#[test]
+fn a_failing_hidden_cell_is_a_located_error_that_fails_strict() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("hidden-fail");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\nIntro.\n\n```{python}\n#| include: false\n\
+         import not_a_real_module_xyz\n```\n\n```{python}\nprint('after')\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(dir.join("doc.tmd"))
+        .args(["--strict", "--format", "json"])
+        .output()
+        .expect("run taliesin");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "a failing hidden cell passed --strict:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("not_a_real_module_xyz"),
+        "the console must name what the hidden cell raised:\n{stderr}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let hit = v["diagnostics"]
+        .as_array()
+        .expect("diagnostics array")
+        .iter()
+        .find(|d| {
+            d["message"]
+                .as_str()
+                .is_some_and(|m| m.contains("not_a_real_module_xyz"))
+        })
+        .unwrap_or_else(|| panic!("no diagnostic names the hidden cell's error: {v}"));
+    assert_eq!(hit["severity"], "error", "{hit}");
+    assert_eq!(
+        hit["line"], 7,
+        "located at the hidden cell's opening fence: {hit}"
+    );
+}
+
+/// exec #16: when a cell crashed the kernel, every console line (the crashing cell's
+/// included) read "did not run: the kernel exited first; it re-runs on the next save", so
+/// the author could not tell which cell to look at, and a headless build has no "save".
+/// The cell in flight when the kernel died is now named as the one that crashed it.
+#[test]
+fn the_cell_that_crashed_the_kernel_is_named_as_the_one() {
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        assert!(
+            std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+            "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: this test \
+             needs an interpreter with ipykernel"
+        );
+        return;
+    }
+    let dir = tmp_dir("crash");
+    fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: T\n---\n\n```{python}\nprint('one')\n```\n\n\
+         ```{python}\nimport os\nos._exit(1)\n```\n\n```{python}\nprint('three')\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(dir.join("doc.tmd"))
+        .args(["--format", "json"])
+        .output()
+        .expect("run taliesin");
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let lines: Vec<&str> = stderr
+        .lines()
+        .filter(|l| l.contains("cell error"))
+        .collect();
+    assert_eq!(lines.len(), 2, "one line per failed cell:\n{stderr}");
+    assert!(
+        lines[0].contains("@ 9:") && lines[0].contains("crashed the kernel"),
+        "the crashing cell (line 9) must be named as the one that crashed it:\n{stderr}"
+    );
+    assert!(
+        lines[1].contains("@ 14:") && lines[1].contains("did not run"),
+        "the cell after it did not run:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("next save"),
+        "a headless build has no save to wait for:\n{stderr}"
+    );
+}

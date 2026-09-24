@@ -138,3 +138,32 @@ fn a_document_with_no_executable_cells_is_unaffected() {
         "a document with no executable cells must still build:\n{stderr}"
     );
 }
+
+/// First-hour #12: a build that fails printed `built <file>` first and the error after it,
+/// so the last word a newcomer saw before the 15-line error was a success line. A build
+/// that fails says so and nothing else: no `built` line, whichever path failed it.
+#[test]
+fn a_failed_build_does_not_announce_that_it_built() {
+    let says_built = |stderr: &str| stderr.lines().any(|l| l.trim_start().starts_with("built "));
+    let dir = tmp_dir("no-built-single");
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, CELL).unwrap();
+    let outdir = dir.join("outdir");
+    for extra in [vec![], vec!["--out".into(), outdir.display().to_string()]] {
+        let (out, stderr) = run(taliesin().arg("build").arg(&doc).args(&extra));
+        assert!(!out.status.success(), "{stderr}");
+        assert!(
+            !says_built(&stderr),
+            "a failed single-document build announced `built` ({extra:?}):\n{stderr}"
+        );
+    }
+    let site = tmp_dir("no-built-site");
+    fs::write(site.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(site.join("index.tmd"), CELL).unwrap();
+    let (out, stderr) = run(taliesin().arg("build").arg(&site));
+    assert!(!out.status.success(), "{stderr}");
+    assert!(
+        !says_built(&stderr),
+        "a failed site build announced `built`:\n{stderr}"
+    );
+}

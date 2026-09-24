@@ -66,11 +66,13 @@ use serde::{Deserialize, Serialize};
 /// v4: the `{js}` runtime script types became `application/tali-js` / `tali-define`
 /// and the cell target id became `tali-js-<block_id>`; entries cached before that
 /// rename carry the old names, which the current runtime's exact-match selectors
-/// never ingest, so `{js}` cells would silently receive no data.
+/// never ingest, so `{js}` cells would silently receive no data. v5: a `\r\n` line ending
+/// stopped reading as "clear the line" (audit E1), so entries cached before hold blank lines
+/// where a `csv.writer` table or any other CRLF text was printed.
 ///
 /// (The v2/v3 notes deliberately describe the *change* rather than spelling the
 /// retired prefix, which `crates/core/tests/retired_names.rs` keeps out of the tree.)
-const FORMAT_VERSION: u32 = 4;
+const FORMAT_VERSION: u32 = 5;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
 /// back and forth restores instantly instead of re-running) up to this bound, then
@@ -132,8 +134,10 @@ struct OnDisk {
     version: u32,
     /// Oldest-first, so eviction drops from the front; rewritten on every save.
     entries: Vec<Entry>,
-    /// Language -> the package-set digest these outputs were produced under
-    /// ([`crate::packages`]). The axis the cumulative key structurally cannot see: an
+    /// Interpreter identity (the id that seeds the keys, `exec::interp_identity`) -> the
+    /// package-set digest its outputs were produced under ([`crate::packages`]). Per
+    /// interpreter because the entries are: two interpreters never share a key, and one
+    /// digest per language let a run under one relabel the other's entries. The axis the cumulative key structurally cannot see: an
     /// in-place `pip install --upgrade` is the same interpreter reporting the same
     /// `--version`, so every key is unchanged and the old numbers restore. This does not
     /// change what hits — folding it into the key would bust the whole cache on any
@@ -164,8 +168,8 @@ pub struct FreezeCache {
     entries: HashMap<String, String>,
     /// Keys oldest-first, kept in sync with `entries`, for bounded LRU-ish eviction.
     order: Vec<String>,
-    /// The package-set digests these entries were produced under, by language. See
-    /// [`OnDisk::packages`].
+    /// The package-set digests these entries were produced under, by interpreter identity.
+    /// See [`OnDisk::packages`].
     packages: HashMap<String, String>,
     /// Live total of `key.len() + value.len()` across `entries`, maintained on every
     /// insert and eviction so [`MAX_BYTES`] costs no walk of the map.
@@ -225,14 +229,14 @@ impl FreezeCache {
         self.entries.get(key).map(String::as_str)
     }
 
-    /// The package-set digest `lang`'s entries were produced under, or `None` for a cache
+    /// The package-set digest `interp`'s entries were produced under, or `None` for a cache
     /// written before this was recorded (or by a run that could not probe the interpreter).
     ///
     /// `None` is never an error and never a warning: "we do not know what this was produced
     /// under" is a different statement from "it was produced under something else", and only
     /// the second is worth telling an author about.
-    pub fn recorded_packages(&self, lang: &str) -> Option<&str> {
-        self.packages.get(lang).map(String::as_str)
+    pub fn recorded_packages(&self, interp: &str) -> Option<&str> {
+        self.packages.get(interp).map(String::as_str)
     }
 
     /// Record the digest this run's outputs were produced under. A no-op on a disabled cache,
@@ -241,12 +245,12 @@ impl FreezeCache {
     /// Only called when cells actually **executed**: a pure replay produced nothing, so
     /// stamping it with the current package set would relabel yesterday's outputs as today's
     /// and destroy the one signal this exists for.
-    pub fn record_packages(&mut self, lang: &str, digest: &str) {
+    pub fn record_packages(&mut self, interp: &str, digest: &str) {
         if self.path.is_none() {
             return;
         }
-        if self.packages.get(lang).map(String::as_str) != Some(digest) {
-            self.packages.insert(lang.to_string(), digest.to_string());
+        if self.packages.get(interp).map(String::as_str) != Some(digest) {
+            self.packages.insert(interp.to_string(), digest.to_string());
             self.dirty = true;
         }
     }
@@ -401,15 +405,10 @@ mod tests {
             reloaded.recorded_packages("python"),
             Some("deadbeefdeadbeef")
         );
-        // Deliberately a language that is NOT executed here. `{r}` was this row until it
-        // was withdrawn on 2026-08-08, and with only one live kernel language left this
-        // assertion is the last thing in the tree that can tell a correct per-language map
-        // from a scalar wearing one — so it is retargeted rather than deleted, at a token
-        // no interpreter will ever record.
         assert_eq!(
-            reloaded.recorded_packages("julia"),
+            reloaded.recorded_packages("python::/other/python::Python 3.12.0"),
             None,
-            "per language, not global"
+            "per interpreter, not global"
         );
         let _ = std::fs::remove_file(&path);
     }
@@ -617,7 +616,7 @@ mod tests {
         let digest = format!("{:016x}", fnv1a(&CACHED_OUTPUT_TOKENS.join("\u{1f}")));
         assert_eq!(
             (digest.as_str(), FORMAT_VERSION),
-            ("71f1fe21dc878fcd", 4),
+            ("71f1fe21dc878fcd", 5),
             "the cached-output token vocabulary changed. Bump FORMAT_VERSION, then \
              update BOTH values here. Skipping the bump makes every existing _freeze/ \
              entry replay markup the current runtime cannot read."

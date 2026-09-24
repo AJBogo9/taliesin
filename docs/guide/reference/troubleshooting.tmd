@@ -66,18 +66,19 @@ To bound a cell's *total* runtime regardless of output, set the optional
 **Restart kernel** drops and respawns the kernel if it's wedged.
 
 A cell can also ignore the interrupt, by installing its own SIGINT handler or by
-sitting inside a C extension that never checks for signals. The page then says
-**"cell ignored the interrupt and is still running in the kernel"**: the cell is
-occupying the warm kernel, every later cell queues behind it, and **Restart kernel**
-(or killing the interpreter, whose pid the server prints to the console) reclaims it.
+sitting inside a C extension that never checks for signals. Five seconds after the
+interrupt Taliesin then stops the kernel, and the page says **"cell ignored the interrupt,
+so the kernel was stopped; the cells after it did not run"**. The next run starts a fresh
+kernel and re-runs from the top.
 
 ## A cell ran, but I think the kernel crashed
 
 If a kernel process dies mid-session (a segfault in a native library, an
 out-of-memory kill), Taliesin recovers without hanging. The cell that was
-running when the kernel died gets a *"kernel exited before this cell ran; it will
-re-run on the next save"* placeholder, and the next run notices the dead
-process, drops it, respawns a fresh kernel, and re-runs every cell from the top
+running when the kernel died shows *"KernelDied: kernel process exited mid-cell"*, and
+the console names it as the cell that crashed the kernel; each cell after it shows
+*"kernel exited before this cell ran; it runs again next time"*. The next run notices the
+dead process, drops it, respawns a fresh kernel, and re-runs every cell from the top
 (the new kernel holds no state, so the warm prefix is gone). You don't have to
 touch **Restart kernel** for this.
 
@@ -90,9 +91,14 @@ the interpreter and the next save within a few tries recovers on its own; or hit
 
 ## Outputs look stale, or I want to force a clean re-run
 
-Cell outputs are cached in `_freeze/` (gitignored). Errors and `#| cache: false` cells
-are never persisted, and an edit to your code always busts the key, so there are no
-stale hits to clear by hand. If you suspect a stale output anyway:
+Cell outputs are cached in `_freeze/` (gitignored), keyed by the cell's code, every
+upstream cell's code and the interpreter. An edit to your code always moves the key, and
+errors, `#| cache: false` cells and re-runs inside a warm kernel are never written, so an
+edit to code cannot bring back an old output. What can go stale is what the key does not
+see: a data file, an environment variable, a URL, the clock, a library upgraded in place.
+Mark a cell that reads one `#| cache: false`. The preview does not watch data files, so
+after editing `data.csv` save the `.tmd` (or use **Restart kernel**) to re-run it. If you
+suspect a stale output anyway:
 
 - The dev menu's **Restart kernel** forces the next run to ignore disk-cache hits
   and re-execute every cell against a fresh kernel (then re-persist), so it doubles

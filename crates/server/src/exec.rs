@@ -42,24 +42,19 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
-/// Marks a `tali-error` block **the executor wrote itself**, about a cell that never ran
-/// (or never finished), as opposed to a traceback the interpreter raised about code that
-/// did. The two are deliberately the same HTML shape — a `tali-error` pre inside a
-/// `tali-output` div, so both are styled as errors and neither is ever cached — which left
-/// the only classifier keying on shape and reporting a missing interpreter to the console
-/// as "code cell raised an uncaught exception; its traceback is baked into the output"
-/// (AP11-1: both claims false). An extra attribute rather than an extra class, because
-/// several checks here and in `build.rs` match `class="tali-error"` literally, and
-/// uncacheability rides on one of them.
-///
-/// The value carries WHICH of the three (see the `NOT_RUN_*` consts) so the console can be
-/// specific without parsing the diagnostic's prose back out of the HTML — which is not
-/// reachable anyway once a `#| label:` cell wraps the block in a `<figure>`.
-pub(crate) const NOT_RUN_ATTR: &str = "data-tali-not-run";
+/// The kinds of [`Failure::NotRun`]: an error the **executor** wrote about a cell that never
+/// ran (or never finished), as opposed to a traceback the interpreter raised about code that
+/// did. The two share an HTML shape on purpose (a `tali-error` pre, styled as an error), so
+/// the kind travels as data beside the output rather than in it, and the console can say
+/// "did not run" instead of "raised an uncaught exception" (AP11-1).
 /// No kernel could be started for the cell's language (a missing/bad interpreter, a failed
 /// boot). The most likely setup failure there is.
 pub(crate) const NOT_RUN_UNAVAILABLE: &str = "kernel-unavailable";
-/// The kernel died mid-run, so this cell was skipped without being sent.
+/// The kernel process exited while THIS cell was running: most likely the cell crashed it
+/// (`os._exit`, a segfaulting extension, the OOM killer). Distinct from [`NOT_RUN_DIED`] so
+/// the console can name the one cell to look at.
+pub(crate) const NOT_RUN_CRASHED: &str = "kernel-crashed";
+/// The kernel died earlier in the run, so this cell was skipped without being sent.
 pub(crate) const NOT_RUN_DIED: &str = "kernel-died";
 /// The execute request itself failed (a ZMQ/protocol error, an interrupt), so the
 /// interpreter returned no result.
@@ -69,11 +64,6 @@ pub(crate) const NOT_RUN_REQUEST: &str = "request-failed";
 /// Distinct from [`NOT_RUN_REQUEST`] because the fix is different and knowable: raise the
 /// cap or shorten the cell, not repair the transport.
 pub(crate) const NOT_RUN_TIMEOUT: &str = "timeout";
-
-/// The `data-tali-not-run="<kind>"` attribute text, leading space included.
-pub(crate) fn not_run_mark(kind: &str) -> String {
-    format!(" {NOT_RUN_ATTR}=\"{kind}\"")
-}
 
 /// Console warnings already emitted this process, so a fact that cannot change between
 /// pages is stated once. Keyed on the whole message, which already carries the language,
@@ -108,7 +98,8 @@ pub(crate) fn reset_announcements() {
 
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
-pub(crate) const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\" data-tali-not-run=\"kernel-died\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+pub(crate) const KERNEL_DIED_HTML: &str =
+    "<pre class=\"tali-error\">kernel exited before this cell ran; it runs again next time</pre>";
 
 /// A callback the server hands the executor to stream build progress
 /// (`build-state` messages) to the previewing client: each call receives a
@@ -269,7 +260,97 @@ impl CellRef {}
 /// "what state does the live kernel hold" record the [`plan`]ner diffs against.
 struct Ran {
     hash: String,
-    output: String, // inner output HTML (may be empty)
+    output: CellOut,
+}
+
+/// Why a cell's output is not its code's answer, so it must never be cached and a build
+/// must report it. Carried beside the HTML from the moment the kernel returns, because
+/// reading it back out of the markup is spoofable: the text escaper leaves `"` alone, so a
+/// cell that merely PRINTS `<pre class="tali-error">` spelled the marker in its own output
+/// and was reported as a crash and never cached (audit exec #11).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Failure {
+    /// The interpreter raised about code that ran: a real traceback.
+    Raised,
+    /// The executor wrote the output about a cell that did not run or finish: one of the
+    /// `NOT_RUN_*` kinds.
+    NotRun(&'static str),
+    /// The output hit a flood cap and was cut, so it is not the whole answer.
+    Truncated,
+}
+
+/// One cell's rendered output and whether it failed.
+#[derive(Clone, Debug, Default)]
+struct CellOut {
+    html: String,
+    /// The cell's `define(...)` blobs alone ([`crate::kernel::Output::Bridge`]), rendered.
+    /// Part of `html` too; kept apart because it is the one part of the output that
+    /// `#| include: false` keeps, since it is a side channel to `{js}` cells, not output.
+    bridge: String,
+    failure: Option<Failure>,
+    /// The interpreter's `ename: evalue` when the cell raised, for the one place that has
+    /// to say it in words: a hidden cell's diagnostic, since its traceback is not on the page.
+    raised: Option<String>,
+}
+
+impl CellOut {
+    fn ok(html: String) -> Self {
+        CellOut {
+            html,
+            ..CellOut::default()
+        }
+    }
+
+    fn failed(html: String, failure: Failure) -> Self {
+        CellOut {
+            html,
+            failure: Some(failure),
+            ..CellOut::default()
+        }
+    }
+
+    /// What a cell restored from `_freeze` holds. A hidden (`include: false`) cell stores
+    /// only its bridge (see [`freeze_key`]), which is the only part of its output it shows.
+    fn restored(cell: &CellRef, value: String) -> Self {
+        match cell.include {
+            true => CellOut::ok(value),
+            false => CellOut {
+                bridge: value,
+                ..CellOut::default()
+            },
+        }
+    }
+
+    /// What a cell stores in `_freeze`: its output, or for a hidden cell only its bridge.
+    fn stored(&self, cell: &CellRef) -> String {
+        match cell.include {
+            true => self.html.clone(),
+            false => self.bridge.clone(),
+        }
+    }
+}
+
+/// The `_freeze` key a cell's output is stored under: its cumulative key, suffixed for a
+/// hidden (`#| include: false`) cell, which stores only its define bridge. The suffix keeps
+/// the two shapes apart, since the cumulative key strips cell options: toggling `include`
+/// on unchanged code would otherwise restore one shape where the other is expected.
+fn freeze_key(cell: &CellRef, hash: &str) -> String {
+    match cell.include {
+        true => hash.to_string(),
+        false => format!("{hash}:hidden"),
+    }
+}
+
+/// A cell of the last run that failed, located, for the build to report and count.
+#[derive(Clone, Debug)]
+pub(crate) struct CellFailure {
+    pub sourcepos: String,
+    pub source_file: Option<String>,
+    pub failure: Failure,
+    /// A `#| include: false` cell: its output (the traceback) is not on the page, so the
+    /// executor has already said so as a located error diagnostic, which the build must
+    /// count but not repeat.
+    pub hidden: bool,
 }
 
 /// How one run split between replay and re-execution, summed across languages so the
@@ -303,6 +384,15 @@ struct LangState {
     /// the warm-prefix reuse: a cell whose key still matches keeps its output and
     /// isn't re-run, because the kernel still holds its state.
     ran: Vec<Ran>,
+    /// How many cells the live kernel has been sent since it booted, re-runs included.
+    ///
+    /// `ran` says what the kernel's state is SUPPOSED to follow from; this says whether it
+    /// ran anything else. The kernel holds exactly the state of the shared prefix only when
+    /// it has executed that prefix once and nothing more, i.e. when `executed == shared`.
+    /// Any other count means an earlier version of some cell ran here too (a re-run after
+    /// an edit, a cell since deleted) and left names behind that no key mentions, so what
+    /// this run produces is not a function of its keys and is kept out of `_freeze`.
+    executed: usize,
     /// Whether this executor has already logged which interpreter this language runs
     /// (the "which python?" signal). Reset by `restart_kernel` (which clears `langs`),
     /// so a manual restart re-announces.
@@ -348,6 +438,9 @@ pub struct Executor {
     /// cell's relative writes land beside the source instead of in the server's
     /// launch dir. `None` inherits the server's cwd (the default; used by tests).
     work_dir: Option<PathBuf>,
+    /// How a warning or traceback is published without the author's home path: relative to
+    /// the project set by [`Executor::in_project`], `~` for the rest of `$HOME`.
+    paths: crate::kernel::PathScrub,
     /// Where to push `build-state` progress (set by a dev server before a build);
     /// `None` on the headless `build` path. Side-effect-free: never changes what
     /// runs or caches.
@@ -366,6 +459,9 @@ pub struct Executor {
     /// run and drained by [`Executor::take_warnings`], so the caller can merge them into
     /// the same per-page diagnostics channel the static validators feed.
     warnings: Vec<render::Warning>,
+    /// The cells of the LAST run that failed, in document order, drained by
+    /// [`Executor::take_failures`].
+    failures: Vec<CellFailure>,
 }
 
 impl Executor {
@@ -397,6 +493,15 @@ impl Executor {
         self
     }
 
+    /// The project this document belongs to (a lone document's own directory), so a
+    /// warning or traceback from a file inside it publishes a path relative to it rather
+    /// than the author's absolute one. See [`crate::kernel::PathScrub`].
+    pub fn in_project(mut self, root: &Path) -> Self {
+        let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        self.paths = crate::kernel::PathScrub::new(Some(&root));
+        self
+    }
+
     fn build(freeze: FreezeCache) -> Self {
         // Delegated, never re-implemented. This used to read `TALIESIN_PYTHON` and fall
         // back to `python3` inline — a second copy of a policy `interpreter.rs` owns,
@@ -412,10 +517,12 @@ impl Executor {
             force_next: false,
             no_exec: exec_disabled(),
             work_dir: None,
+            paths: crate::kernel::PathScrub::new(None),
             sink: None,
             page: None,
             interrupt: None,
             warnings: Vec::new(),
+            failures: Vec::new(),
         }
     }
 
@@ -498,6 +605,45 @@ impl Executor {
         std::mem::take(&mut self.warnings)
     }
 
+    /// A failed `#| include: false` cell drops its output by design, and with it the only
+    /// place the failure showed: the page, the console, `--strict` and the JSON all said
+    /// nothing while every later cell ran without its state (audit E4). So it becomes a
+    /// located, error-severity diagnostic at the cell, on the console and in the same
+    /// channel as the other execution-only defects.
+    fn hidden_failure(&mut self, cell: &CellRef, failure: Failure, raised: Option<&str>) {
+        let what = match failure {
+            Failure::Raised => format!("raised {}", raised.unwrap_or("an uncaught exception")),
+            Failure::NotRun(kind) => format!("did not complete ({kind})"),
+            Failure::Truncated => "had its output cut at an output cap".to_string(),
+        };
+        let message = format!(
+            "the `#| include: false` cell {what}; its output is hidden, so the page does not \
+             show this, and the cells after it ran without its state"
+        );
+        let place = cell
+            .source_file
+            .as_deref()
+            .map(|f| format!("{f} "))
+            .unwrap_or_default();
+        crate::log::warn(&format!(
+            "cell error in {} ({place}@ {}): {message}",
+            self.page.as_deref().unwrap_or("document"),
+            cell.sourcepos
+        ));
+        let warning = render::Warning::new(message).severity(render::Severity::Error);
+        self.warnings
+            .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                0 => warning,
+                line => warning.at(cell.source_file.clone(), line),
+            });
+    }
+
+    /// Drain the cells the last [`Executor::run`] saw fail (see [`Failure`]), in document
+    /// order. This, not the output HTML, is what a build counts as a cell error.
+    pub(crate) fn take_failures(&mut self) -> Vec<CellFailure> {
+        std::mem::take(&mut self.failures)
+    }
+
     /// The build-fatal report: this document had cells to execute, a kernel start was
     /// attempted for their language, and it failed. `None` when nothing needed a kernel
     /// or every kernel started — including the case where every cell replayed from
@@ -571,6 +717,7 @@ impl Executor {
     /// fresh kernel instead of replaying cached outputs.
     pub fn restart_kernel(&mut self) {
         reset_announcements();
+        crate::packages::forget(&self.python.path);
         self.langs.clear();
         self.force_next = true;
     }
@@ -591,9 +738,10 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
-        // Each run reports its own execution warnings: the last run's would otherwise
-        // outlive the edit that fixed them.
+        // Each run reports its own execution warnings and failures: the last run's would
+        // otherwise outlive the edit that fixed them.
         self.warnings.clear();
+        self.failures.clear();
         // `--no-exec`: never touch a kernel. The cells are already rendered as source
         // in `blocks`; returning them unchanged is exactly "preview as source".
         if self.no_exec {
@@ -639,10 +787,38 @@ impl Executor {
         for (lang, cells) in &by_lang {
             let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
             tally += lang_tally;
-            for (cell, inner) in cells.iter().zip(&outputs) {
+            for (cell, out) in cells.iter().zip(&outputs) {
+                if let Some(failure) = out.failure {
+                    self.failures.push(CellFailure {
+                        sourcepos: cell.sourcepos.clone(),
+                        source_file: cell.source_file.clone(),
+                        failure,
+                        hidden: !cell.include,
+                    });
+                    if !cell.include {
+                        self.hidden_failure(cell, failure, out.raised.as_deref());
+                    }
+                }
+                let inner = &out.html;
                 // `include: false` cells run (above) for their kernel-state side
-                // effects but contribute no visible output block.
-                if inner.trim().is_empty() || !cell.include {
+                // effects but contribute no visible output. Their define bridge is not
+                // output, so it goes out in a `hidden` block (or the container's slot).
+                if !cell.include {
+                    if !out.bridge.is_empty() {
+                        match &cell.out {
+                            OutTarget::Sibling => {
+                                output_blocks
+                                    .insert(cell.block_index, bridge_block(cell, &out.bridge));
+                            }
+                            OutTarget::Slot(id) => slot_fills
+                                .entry(cell.block_index)
+                                .or_default()
+                                .push((id.clone(), out.bridge.clone())),
+                        }
+                    }
+                    continue;
+                }
+                if inner.trim().is_empty() {
                     // A labelled figure/table cell that ran but emitted nothing left a
                     // dead `@fig-`/`@tbl-` anchor render already committed to — only
                     // knowable now, so warn (it can't be un-burned post-execution).
@@ -663,6 +839,15 @@ impl Executor {
                             });
                     }
                     continue;
+                }
+                if let Some(w) = undescribed_image_warning(cell, inner) {
+                    crate::log::warn(&w);
+                    let warning = render::Warning::new(w);
+                    self.warnings
+                        .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                            0 => warning,
+                            line => warning.at(cell.source_file.clone(), line),
+                        });
                 }
                 match &cell.out {
                     OutTarget::Sibling => {
@@ -708,7 +893,7 @@ impl Executor {
         &mut self,
         lang: &'static str,
         cells: &[CellRef],
-    ) -> (Vec<String>, CacheTally) {
+    ) -> (Vec<CellOut>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
@@ -741,7 +926,14 @@ impl Executor {
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
         // re-run (Restart kernel) treats everything as unknown.
         let force = self.force_next;
-        let known = |i: usize| !force && cells[i].cache && self.freeze.get(&hashes[i]).is_some();
+        let known = |i: usize| {
+            !force
+                && cells[i].cache
+                && self
+                    .freeze
+                    .get(&freeze_key(&cells[i], &hashes[i]))
+                    .is_some()
+        };
         let ran: Vec<String> = self
             .langs
             .get(lang)
@@ -815,6 +1007,12 @@ impl Executor {
         // kernel the execute loop below treats them as instant no-ops and would never
         // emit a terminal state for them). The cells still render as source.
         let boot_failed = to_run > 0 && !has_kernel;
+        // Whether the kernel this run executes in has run the shared prefix and nothing else
+        // (see `LangState::executed`). Read before the loop below adds this run's cells.
+        let pristine = self
+            .langs
+            .get(lang)
+            .is_some_and(|s| s.kernel.is_some() && s.executed == shared);
         if boot_failed {
             emit(
                 &self.sink,
@@ -826,7 +1024,7 @@ impl Executor {
         // Outputs already known without running, pulled out before the execute loop
         // so they don't hold a borrow on `self` across `exec_cell`: the warm prefix
         // from the live kernel's in-memory record, the tail from the disk cache.
-        let warm: Vec<String> = self
+        let warm: Vec<CellOut> = self
             .langs
             .get(lang)
             .map(|s| {
@@ -837,8 +1035,11 @@ impl Executor {
                     .collect()
             })
             .unwrap_or_default();
-        let tail: Vec<String> = (run_end..cells.len())
-            .map(|i| self.freeze.get(&hashes[i]).unwrap_or_default().to_string())
+        let tail: Vec<CellOut> = (run_end..cells.len())
+            .map(|i| {
+                let value = self.freeze.get(&freeze_key(&cells[i], &hashes[i]));
+                CellOut::restored(&cells[i], value.unwrap_or_default().to_string())
+            })
             .collect();
 
         // Cloned out of `self` so the execute loop can still borrow `self` mutably
@@ -868,16 +1069,22 @@ impl Executor {
                     // still honestly signals it did not run fresh. (`tali-error` => styled
                     // as an error AND uncacheable, so the diagnostic is never persisted.)
                     let cached = if !force && cell.cache {
-                        self.freeze.get(&hashes[i]).map(str::to_string)
+                        self.freeze
+                            .get(&freeze_key(cell, &hashes[i]))
+                            .map(str::to_string)
                     } else {
                         None
                     };
-                    outputs.push(cached.unwrap_or_else(|| {
-                        kernel_unavailable_html(
-                            lang,
-                            self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
-                        )
-                    }));
+                    outputs.push(match cached {
+                        Some(value) => CellOut::restored(cell, value),
+                        None => CellOut::failed(
+                            kernel_unavailable_html(
+                                lang,
+                                self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
+                            ),
+                            Failure::NotRun(NOT_RUN_UNAVAILABLE),
+                        ),
+                    });
                 } else if !self.kernel_alive(lang) {
                     // The kernel was up when this run started but has since exited (an
                     // earlier cell crashed it). Don't run the rest: each `execute`
@@ -901,7 +1108,10 @@ impl Executor {
                             None,
                         ),
                     );
-                    outputs.push(KERNEL_DIED_HTML.to_string());
+                    outputs.push(CellOut::failed(
+                        KERNEL_DIED_HTML.to_string(),
+                        Failure::NotRun(NOT_RUN_DIED),
+                    ));
                 } else {
                     // Progress only when the kernel is up; otherwise cells are instant
                     // no-ops and a "cell k/n" line would be misleading.
@@ -939,10 +1149,10 @@ impl Executor {
                         t0
                     });
                     let out = self
-                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref())
+                        .exec_cell(lang, &cell.code, &cell.id, page.as_deref(), t0)
                         .await;
                     if let Some(t0) = t0 {
-                        let state = if is_uncacheable(&out) {
+                        let state = if out.failure.is_some() {
                             "error"
                         } else {
                             "done"
@@ -990,7 +1200,7 @@ impl Executor {
         // signal landed. Every cell after it therefore ran against state that does not
         // follow from the upstream code, while its key says it does — and the entry outlives
         // the failure, because a re-run reaching the same code hits it. The upstream cell
-        // itself is never persisted (`is_uncacheable`), so it re-runs every time; if its
+        // itself is never persisted (it carries a `Failure`), so it re-runs every time; if its
         // failure is transient (a file that appears, a flaky fetch, an interrupt the author
         // does not repeat) the success case then restores the output computed while it was
         // still failing. Same shape as `first_uncacheable`, one range instead of two rules.
@@ -1003,7 +1213,7 @@ impl Executor {
         // `run_end` still bounds the scan because the disk-restored tail past it was never
         // produced by this run and is never re-persisted.
         let failed_at = (0..run_end)
-            .find(|&i| is_uncacheable(&outputs[i]))
+            .find(|&i| outputs[i].failure.is_some())
             .unwrap_or(run_end);
         // The digest on record BEFORE this run stamps its own. Read here, not at the
         // warning below, because `stamp_packages` overwrites it in between: the warning
@@ -1012,21 +1222,31 @@ impl Executor {
         // itself. `packages::manifest` is memoized process-wide, so the two strings were
         // identical by construction and the one axis the cumulative key structurally
         // cannot see had a warning that could never fire.
-        let packages_on_entry = self.freeze.recorded_packages(lang).map(str::to_string);
-        if has_kernel {
+        let packages_on_entry = self.freeze.recorded_packages(&interp).map(str::to_string);
+        // And nothing at all from a WARM re-run: a kernel that already executed an earlier
+        // version of some cell at or past `shared` (or a cell since deleted) still holds what
+        // it left behind, so a renamed variable's old name keeps resolving and the output is
+        // one a fresh kernel cannot produce. Its key describes the code, not that history.
+        // The preview therefore persists what a cold kernel computes and nothing after it;
+        // the cost is that the next cold run re-executes from the first edited cell, the
+        // cold-start cost `plan` already accepts.
+        if has_kernel && pristine {
             for i in shared..run_end {
                 if i > uncacheable_at || i > failed_at {
                     continue;
                 }
-                if cells[i].cache && !is_uncacheable(&outputs[i]) {
-                    self.freeze.put(hashes[i].clone(), outputs[i].clone());
+                if cells[i].cache && outputs[i].failure.is_none() {
+                    self.freeze.put(
+                        freeze_key(&cells[i], &hashes[i]),
+                        outputs[i].stored(&cells[i]),
+                    );
                 }
             }
             // What these outputs were produced under. Only after a real execution: a pure
             // replay produced nothing, and stamping it would relabel yesterday's outputs as
             // today's and destroy the one signal this exists for.
             if run_end > shared {
-                self.stamp_packages(lang);
+                self.stamp_packages(lang, &interp);
             }
         }
 
@@ -1107,10 +1327,14 @@ impl Executor {
         crate::packages::manifest(program)
     }
 
-    /// Record the package digest the outputs just executed were produced under.
-    fn stamp_packages(&mut self, lang: &'static str) {
+    /// Record the package digest the outputs just executed were produced under, under the
+    /// interpreter identity that seeds their keys (`interp`). Per interpreter, not per
+    /// language: the entries of two interpreters never share keys, so neither may their
+    /// digest, or a run under one relabels the other's and its next replay warns about a
+    /// change that never happened (audit exec #12).
+    fn stamp_packages(&mut self, lang: &'static str, interp: &str) {
         if let Some(m) = self.packages_now(lang) {
-            self.freeze.record_packages(lang, &m.digest);
+            self.freeze.record_packages(interp, &m.digest);
         }
     }
 
@@ -1223,6 +1447,7 @@ impl Executor {
             Ok(k) => {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
                 state.kernel = Some(k);
+                state.executed = 0;
                 state.failed_at = None;
                 state.last_error = None;
             }
@@ -1257,26 +1482,35 @@ impl Executor {
 
     /// Run one cell, streaming its output to the client as it arrives (item 175b).
     ///
-    /// `cell_id` and `page` only address the live messages; they do not affect the
-    /// returned HTML, which is still the authoritative render of the whole output
-    /// vector and is what gets cached and diffed into the block.
+    /// `cell_id`, `page` and `started_ms` (the cell's `running` stamp) only address the
+    /// live messages; they do not affect the returned HTML, which is still the
+    /// authoritative render of the whole output vector and is what gets cached and diffed
+    /// into the block.
     async fn exec_cell(
         &mut self,
         lang: &'static str,
         code: &str,
         cell_id: &str,
         page: Option<&str>,
-    ) -> String {
+        started_ms: Option<u64>,
+    ) -> CellOut {
         // Cloned before the kernel borrow so the callback can emit while `self` is
         // mutably borrowed by `execute_streaming`. The interrupt handle is cloned for the
         // same reason: it is read back after the borrow ends.
         let sink = self.sink.clone();
         let interrupt = self.interrupt.clone();
+        let paths = self.paths.clone();
         let page = page.map(str::to_string);
         let cell_id = cell_id.to_string();
-        let Some(kernel) = self.langs.get_mut(lang).and_then(|s| s.kernel.as_mut()) else {
-            return String::new(); // kernel unavailable: cell renders as source
+        let Some(state) = self.langs.get_mut(lang) else {
+            return CellOut::default(); // kernel unavailable: cell renders as source
         };
+        let Some(kernel) = state.kernel.as_mut() else {
+            return CellOut::default();
+        };
+        // Counted before the send: a cell that errors, is interrupted or never replies has
+        // still been handed to the kernel and may have changed its state.
+        state.executed += 1;
         // Publish the pid BEFORE the await, clear it after: for the whole window in which
         // this task is blocked, someone else can find the process to signal. Outside that
         // window the handle reads 0, so a late request cannot SIGINT a pid the OS has
@@ -1284,18 +1518,31 @@ impl Executor {
         if let (Some(h), Some(pid)) = (&interrupt, kernel.running_pid()) {
             h.store(pid, std::sync::atomic::Ordering::SeqCst);
         }
-        // Mirrors the list the browser is building, so each arriving output becomes
-        // either a new element or a redraw of the last one. Same rule the final
-        // `render_outputs` applies, by construction: both go through `LiveOutputs`.
-        let mut live = crate::kernel::LiveOutputs::default();
+        // Each op brings the browser's live copy up to the list the kernel module is
+        // building, the same list the final `render_outputs` renders, so the two cannot
+        // disagree. A reset (the list changed somewhere the browser cannot patch) re-sends
+        // the cell's `running` state, which is what makes the client empty the output
+        // block it streams into; the appends that follow rebuild it.
         let result = kernel
-            .execute_streaming(code, |o| {
+            .execute_streaming(code, |op| {
                 if sink.is_none() {
                     return; // a build has no websocket; skip the render entirely
                 }
-                let (op, shown) = match live.push(o.clone()) {
+                let (op, shown) = match op {
                     crate::kernel::LiveOp::Append(o) => ("append", o),
                     crate::kernel::LiveOp::ReplaceLast(o) => ("replace_last", o),
+                    crate::kernel::LiveOp::Reset => {
+                        let running = crate::protocol::cell_state(
+                            page.as_deref(),
+                            &cell_id,
+                            "running",
+                            started_ms,
+                            None,
+                            None,
+                        );
+                        emit(&sink, running);
+                        return;
+                    }
                 };
                 emit(
                     &sink,
@@ -1303,7 +1550,7 @@ impl Executor {
                         page.as_deref(),
                         &cell_id,
                         op,
-                        &render_outputs(std::slice::from_ref(&shown)),
+                        &render_outputs(&[paths.apply(shown)]),
                     ),
                 );
             })
@@ -1312,10 +1559,37 @@ impl Executor {
             h.store(0, std::sync::atomic::Ordering::SeqCst);
         }
         match result {
-            Ok(outs) => render_outputs(&outs),
+            Ok(outs) => {
+                let failure = failure_of(&outs);
+                let bridge: Vec<_> = outs
+                    .list()
+                    .iter()
+                    .filter(|o| matches!(o, crate::kernel::Output::Bridge(_)))
+                    .cloned()
+                    .collect();
+                let raised = outs.list().iter().find_map(|o| match o {
+                    crate::kernel::Output::Error {
+                        ename,
+                        evalue,
+                        not_run: None,
+                        ..
+                    } => Some(format!("{ename}: {evalue}")),
+                    _ => None,
+                });
+                let outs: Vec<_> = outs.into_vec().iter().map(|o| paths.apply(o)).collect();
+                CellOut {
+                    html: render_outputs(&outs),
+                    bridge: render_outputs(&bridge),
+                    failure,
+                    raised,
+                }
+            }
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
-                execution_error_html(&e.to_string())
+                CellOut::failed(
+                    execution_error_html(&e.to_string()),
+                    Failure::NotRun(NOT_RUN_REQUEST),
+                )
             }
         }
     }
@@ -1401,20 +1675,34 @@ pub(crate) fn exec_disabled() -> bool {
     taliesin_core::render::no_exec_in_force()
 }
 
-/// Whether an output must not be cached: any execution error (a cell error, a
-/// timeout, or the mid-run kernel-died marker — all rendered as a `tali-error` block),
-/// so a transient failure is never replayed and the cell re-runs next time. Matches
-/// the emitted `class="tali-error"` rather than a bare substring, so a *successful*
-/// cell whose output merely prints the text "tali-error" still caches. Also refuses to
-/// cache an output the kernel *truncated* at the size cap: if the cell completes
-/// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
-/// and replayed silently. The marker text comes from `kernel.rs`'s output caps, and is
-/// matched in its **bracketed emitted form** (`[taliesin: output truncated at …`) for the
-/// same reason as the `tali-error` half beside it: a cell that merely *prints* the phrase
-/// (a doc about this feature, a log line) was otherwise refused the cache forever and
-/// re-ran on every single build.
-fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"tali-error\"") || output.contains(crate::kernel::TRUNCATION_MARKER)
+/// Whether a finished cell failed, from the outputs the kernel module built, never from
+/// their HTML. A cell whose output list holds an executor-written error did not run or
+/// finish (the most specific kind wins, in the order the console explains them); one with
+/// only interpreter errors raised; one a flood cap cut short is truncated.
+fn failure_of(outs: &crate::kernel::Outputs) -> Option<Failure> {
+    let kinds: Vec<Option<&'static str>> = outs
+        .list()
+        .iter()
+        .filter_map(|o| match o {
+            crate::kernel::Output::Error { not_run, .. } => Some(*not_run),
+            _ => None,
+        })
+        .collect();
+    let not_run = [
+        NOT_RUN_UNAVAILABLE,
+        NOT_RUN_CRASHED,
+        NOT_RUN_DIED,
+        NOT_RUN_REQUEST,
+        NOT_RUN_TIMEOUT,
+    ]
+    .into_iter()
+    .find(|k| kinds.contains(&Some(*k)));
+    match not_run {
+        Some(k) => Some(Failure::NotRun(k)),
+        None if !kinds.is_empty() => Some(Failure::Raised),
+        None if outs.capped() => Some(Failure::Truncated),
+        None => None,
+    }
 }
 
 /// How long `<program> --version` may take before the probe gives up. This sits
@@ -1509,8 +1797,7 @@ pub(crate) fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> S
         _ => String::new(),
     };
     format!(
-        "<pre class=\"tali-error\"{}>{} kernel unavailable; this cell did not execute{detail}</pre>",
-        not_run_mark(NOT_RUN_UNAVAILABLE),
+        "<pre class=\"tali-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
         esc(lang)
     )
 }
@@ -1520,8 +1807,7 @@ pub(crate) fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> S
 /// reporting, not the author's code raising.
 pub(crate) fn execution_error_html(err: &str) -> String {
     format!(
-        "<pre class=\"tali-error\"{}>execution error: {}</pre>",
-        not_run_mark(NOT_RUN_REQUEST),
+        "<pre class=\"tali-error\">execution error: {}</pre>",
         esc(err)
     )
 }
@@ -1564,6 +1850,35 @@ fn empty_labelled_float_warning(cell: &CellRef, inner: &str) -> Option<String> {
     ))
 }
 
+/// A cell whose output shows an image with no text description, and no caption to give it
+/// one. An executed image is published with `alt=""` (`kernel::render_media`, the
+/// matplotlib hook): right inside a captioned figure, where the caption describes it, and
+/// an image a screen reader cannot see anywhere else (audit images #10). An authored image
+/// with no `alt` is a warning, so this is one too, pointing at the fix: a `fig-cap` wraps
+/// the output in a figure the caption describes. Read with the tag walker, so an image a
+/// cell merely prints as text is not one.
+fn undescribed_image_warning(cell: &CellRef, inner: &str) -> Option<String> {
+    let captioned = cell
+        .figure
+        .as_ref()
+        .and_then(|f| f.caption.as_deref())
+        .is_some_and(|c| !c.trim().is_empty());
+    if captioned {
+        return None;
+    }
+    let undescribed = render::tags(inner).any(|t| {
+        t.name.eq_ignore_ascii_case("img")
+            && render::attrs(&t)
+                .find(|a| a.name.eq_ignore_ascii_case("alt"))
+                .is_none_or(|a| a.value.trim().is_empty())
+    });
+    undescribed.then(|| {
+        "the cell's output shows an image with no text description (it is published with \
+         alt=\"\"), so a screen reader skips it: give the cell a `#| fig-cap:` describing it"
+            .to_string()
+    })
+}
+
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
@@ -1583,14 +1898,23 @@ fn output_inner(cell: &CellRef, inner: &str) -> String {
 }
 
 fn output_block(cell: &CellRef, inner: &str) -> Block {
+    wrapped_output(cell, &output_inner(cell, inner), "")
+}
+
+/// The block a hidden (`#| include: false`) cell's define bridge goes out in: `hidden`, so
+/// it shows nothing, while `{js}` cells still find its `tali-define` script element.
+fn bridge_block(cell: &CellRef, bridge: &str) -> Block {
+    wrapped_output(cell, bridge, " hidden")
+}
+
+fn wrapped_output(cell: &CellRef, inner: &str, extra: &str) -> Block {
     let id = format!("{}-out", cell.id);
     let source_file_attr = match &cell.source_file {
         Some(f) => format!(" data-source-file=\"{}\"", esc(f)),
         None => String::new(),
     };
-    let inner = output_inner(cell, inner);
     let html = format!(
-        "<div class=\"tali-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
+        "<div class=\"tali-output\"{extra} data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
         cell.sourcepos
     );
     Block {
@@ -1603,17 +1927,22 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
     }
 }
 
-/// An executed cell's caption, ready to sit in a `<figcaption>`/`<caption>`: escaped
-/// first (it is author text, never markup), then with its `@fig-`/`@tbl-`/`@sec-`
-/// cross-references linked.
+/// An executed cell's numbered caption (`Figure N: …`, `Table N: …`), ready to sit in a
+/// `<figcaption>`/`<caption>`: core's one caption function ([`render::numbered_caption`],
+/// the label span plus the caption as inline markdown, as every other caption renders),
+/// then with its `@fig-`/`@tbl-`/`@sec-` cross-references linked.
 ///
 /// The linking cannot happen at render time: this caption only exists once the kernel
 /// has returned, which is after `cite::process` has walked the document. So the refs are
 /// emitted as `data-tali-xref` markers and the site's `resolve_cross_refs` (via
 /// `finish_blocks`, which already runs over the executed blocks) resolves them to the
 /// number — the same path a cross-page reference to a cell-produced float already takes.
-fn caption_html(caption: &str) -> String {
-    taliesin_core::cite::link_xrefs_in_fragment(&esc(caption))
+fn caption_html(label: &str, number: &str, caption: &str) -> String {
+    taliesin_core::cite::link_xrefs_in_fragment(&render::numbered_caption(
+        label,
+        number,
+        Some(caption),
+    ))
 }
 
 /// Wrap a cell's rendered output in a numbered `<figure>` (caption below),
@@ -1623,12 +1952,7 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
         Some(a) => format!(" id=\"{}\"", esc(a)),
         None => String::new(),
     };
-    let caption = fig.caption.as_deref().unwrap_or("").trim();
-    let figcap = if caption.is_empty() {
-        format!("Figure&nbsp;{}", fig.number)
-    } else {
-        format!("Figure&nbsp;{}: {}", fig.number, caption_html(caption))
-    };
+    let figcap = caption_html("Figure", &fig.number, fig.caption.as_deref().unwrap_or(""));
     format!(
         "<figure{id_attr} class=\"tali-figure tali-figure-center\">{inner}\
          <figcaption>{figcap}</figcaption></figure>"
@@ -1645,21 +1969,18 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
         .as_deref()
         .map(|a| format!(" id=\"{}\"", esc(a)))
         .unwrap_or_default();
-    let caption = tbl.caption.as_deref().unwrap_or("").trim();
-    let sep = if caption.is_empty() { "" } else { ": " };
+    let caption = caption_html("Table", &tbl.number, tbl.caption.as_deref().unwrap_or(""));
     let Some(start) = inner.find("<table") else {
-        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+        return table_figure_wrap(inner, &id_attr, &caption);
     };
     let Some(rel_gt) = inner[start..].find('>') else {
-        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+        return table_figure_wrap(inner, &id_attr, &caption);
     };
     let gt = start + rel_gt + 1;
     let open = inner[start..gt].replacen("<table", &format!("<table{id_attr}"), 1);
     format!(
-        "{}{open}<caption>{}{sep}{}</caption>{}",
+        "{}{open}<caption>{caption}</caption>{}",
         &inner[..start],
-        render::caption_label("Table", &tbl.number.to_string()),
-        caption_html(caption),
         &inner[gt..],
     )
 }
@@ -1676,18 +1997,10 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
 /// the caption and the anchor on a wrapper instead, exactly as [`figure_wrap`] has
 /// always done for a figure cell that produced no image. The caption leads, because a
 /// table's caption sits above it.
-fn table_figure_wrap(
-    tbl: &CellTable,
-    inner: &str,
-    id_attr: &str,
-    caption: &str,
-    sep: &str,
-) -> String {
+fn table_figure_wrap(inner: &str, id_attr: &str, caption: &str) -> String {
     format!(
         "<figure{id_attr} class=\"tali-figure tali-table-figure\">\
-         <figcaption>{}{sep}{}</figcaption>{inner}</figure>",
-        render::caption_label("Table", &tbl.number.to_string()),
-        caption_html(caption),
+         <figcaption>{caption}</figcaption>{inner}</figure>"
     )
 }
 
@@ -1701,35 +2014,56 @@ mod tests {
     use super::*;
     use taliesin_core::render::Cell;
 
-    // AP4-3: `is_uncacheable` must match the *emitted* truncation notice, not the bare
-    // phrase. A cell that merely prints the phrase (a doc about output caps, a log line
-    // quoting one) was refused the cache forever and re-ran on every single build — the
-    // same false-positive the `tali-error` half was deliberately hardened against.
+    /// Whether a cell failed is read from the outputs the kernel module built, never from
+    /// their HTML (audit exec #11): an executor-written error is `NotRun` with its kind
+    /// (the most specific wins), an interpreter traceback is `Raised`, a capped list is
+    /// `Truncated`, and output that merely CONTAINS the error markup or the truncation
+    /// notice's words is no failure at all.
     #[test]
-    fn only_a_real_truncation_notice_blocks_caching() {
-        // What `kernel.rs` actually emits when a cap fires.
-        let items = format!(
-            "<pre>\n{}4096 items]\n</pre>",
-            crate::kernel::TRUNCATION_MARKER
+    fn a_failure_is_read_from_the_outputs_not_their_html() {
+        use crate::kernel::{Output, Outputs};
+        let of = |outs: Vec<Output>| {
+            let mut acc = Outputs::default();
+            for o in outs {
+                acc.note(o);
+            }
+            failure_of(&acc)
+        };
+        let traceback = Output::Error {
+            ename: "ValueError".into(),
+            evalue: "bad".into(),
+            traceback: vec![],
+            not_run: None,
+        };
+        assert_eq!(of(vec![traceback.clone()]), Some(Failure::Raised));
+        // A timeout note followed by the KeyboardInterrupt it provoked is the timeout.
+        assert_eq!(
+            of(vec![Output::timeout("capped".into()), traceback]),
+            Some(Failure::NotRun(NOT_RUN_TIMEOUT))
         );
-        let bytes = format!("<pre>\n{}512 KB]\n</pre>", crate::kernel::TRUNCATION_MARKER);
-        assert!(is_uncacheable(&items), "the item cap must block caching");
-        assert!(is_uncacheable(&bytes), "the byte cap must block caching");
-        assert!(
-            is_uncacheable(r#"<div class="tali-error">boom</div>"#),
-            "an execution error must block caching"
+        assert_eq!(
+            of(vec![Output::kernel_died()]),
+            Some(Failure::NotRun(NOT_RUN_CRASHED))
         );
-
-        // A successful cell whose output merely *talks about* truncation still caches.
-        assert!(
-            !is_uncacheable("<pre>taliesin: output truncated is the message it prints</pre>"),
-            "printing the phrase is not a truncation"
+        assert_eq!(
+            of(vec![Output::interrupt_ignored()]),
+            Some(Failure::NotRun(NOT_RUN_TIMEOUT))
         );
-        assert!(
-            !is_uncacheable("<pre>see the tali-error class for details</pre>"),
-            "printing the class name is not an error"
+        let spoof = Output::Stream {
+            stderr: false,
+            text: format!(
+                "<pre class=\"tali-error\">x</pre> {}4096 items]\n",
+                crate::kernel::TRUNCATION_MARKER
+            ),
+        };
+        assert_eq!(
+            of(vec![spoof]),
+            None,
+            "printing the markup is not a failure"
         );
-        assert!(!is_uncacheable("<pre>42</pre>"), "ordinary output caches");
+        let mut capped = Outputs::default();
+        capped.rich("x".repeat(9 * 1024 * 1024), None);
+        assert_eq!(failure_of(&capped), Some(Failure::Truncated));
     }
 
     #[test]
@@ -1978,6 +2312,272 @@ mod tests {
             interrupt.load(Ordering::SeqCst),
             0,
             "the executor must clear the pid once no cell is running"
+        );
+    }
+
+    /// E6: killing the running kernel (what "Restart kernel" now does to the requester's
+    /// own) ends the whole run at once. An interrupt stopped only the running cell, and the
+    /// run went on to execute every cell after it in the kernel about to be discarded, so
+    /// the restart waited behind all of them.
+    #[tokio::test]
+    async fn killing_the_running_kernel_ends_the_run_without_running_the_rest() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the restart kill; this run did not."
+            );
+            return;
+        }
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let marker =
+            std::env::temp_dir().join(format!("tali-restart-kill-{}-started", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let interrupt = Arc::new(AtomicU32::new(0));
+        let mut ex = Executor::new();
+        ex.set_interrupt_handle(interrupt.clone());
+        let blocks = vec![
+            python_cell_block_with(
+                "k-1",
+                &format!(
+                    "open(r'{}', 'w').close()\nimport time\ntime.sleep(120)",
+                    marker.display()
+                ),
+            ),
+            python_cell_block_with("k-2", "import time\ntime.sleep(30)\nprint('K2 RAN')"),
+        ];
+        let started = Instant::now();
+        let run = tokio::spawn(async move { ex.run(blocks).await });
+        while !marker.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let pid = interrupt.load(Ordering::SeqCst);
+        assert_ne!(pid, 0, "the executor must publish the running kernel's pid");
+        crate::kernel::kill_pid(pid);
+        let out = tokio::time::timeout(Duration::from_secs(60), run)
+            .await
+            .expect("the run must end")
+            .unwrap();
+        let _ = std::fs::remove_file(&marker);
+        let html: String = out.iter().map(|b| b.html.as_str()).collect();
+        assert!(
+            !html.contains("K2 RAN"),
+            "a cell after the killed one still ran in the doomed kernel: {html}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the run waited {:?}: the cells after the killed one were run anyway",
+            started.elapsed()
+        );
+    }
+
+    /// exec #12: the package digest behind `_freeze/` warned falsely, in two ways.
+    ///
+    /// (1) One digest per LANGUAGE. Build with interpreter A, then B, then A again: B's run
+    /// overwrote A's digest, so A's replay (of A's own entries, the key includes the
+    /// interpreter) compared A's packages with B's and announced a change that never
+    /// happened, on every alternation.
+    /// (2) The manifest is memoized for the process. Install a package, press "Restart
+    /// kernel": the fresh kernel's outputs were stamped with the digest from BEFORE the
+    /// install, so every later build (a new process, a fresh probe) warned forever, since a
+    /// replay never re-stamps.
+    ///
+    /// Two wrapper interpreters around the one real Python stand in for two environments:
+    /// each execs it, and adds a fake package to the manifest probe (`-c`) when its marker
+    /// file exists, which is how an install looks from here.
+    #[cfg(unix)]
+    #[test]
+    fn the_package_digest_is_kept_per_interpreter_and_re_probed_on_restart() {
+        let Some(real) = std::env::var_os("TALIESIN_PYTHON") else {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the package digest; this run did not."
+            );
+            return;
+        };
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-pkgdigest-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wrapper = |name: &str| {
+            let path = dir.join(name);
+            let marker = dir.join(format!("{name}.installed"));
+            write_exe(
+                &path,
+                &format!(
+                    "#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then \"{real}\" \"$@\"; \
+                     [ -f \"{marker}\" ] && printf 'zz-{name}\\t1.0\\n'; exit 0; fi\n\
+                     exec \"{real}\" \"$@\"\n",
+                    real = std::path::Path::new(&real).display(),
+                    marker = marker.display(),
+                ),
+            );
+            (path, marker)
+        };
+        let (py_a, _) = wrapper("py-a");
+        let (py_b, marker_b) = wrapper("py-b");
+        let page = dir.join("page.json");
+        let blocks = vec![python_cell_block_with("p-1", "print('pkg', 1)")];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let run_with = |py: &Path| {
+            let mut ex = Executor::with_freeze(page.clone());
+            ex.set_interpreters(crate::interpreter::Resolved::fixed(
+                py,
+                crate::interpreter::Provenance::Field,
+            ));
+            let _ = rt.block_on(ex.run(blocks.clone()));
+            let key = rt.block_on(interp_id("python", py));
+            (ex, key)
+        };
+        let digest = |py: &Path| crate::packages::probe(py).map(|m| m.digest);
+
+        // (1) A, then B: A's digest survives B's run, under A's own interpreter.
+        let (ex_a, key_a) = run_with(&py_a);
+        if ex_a.diagnostic().is_some() {
+            let _ = std::fs::remove_dir_all(&dir);
+            return; // no working python kernel here
+        }
+        let (_, key_b) = run_with(&py_b);
+        let reloaded = FreezeCache::for_page(page.clone());
+        assert_eq!(
+            reloaded.recorded_packages(&key_a).map(str::to_string),
+            digest(&py_a),
+            "interpreter B's run overwrote the digest A's entries were produced under"
+        );
+        assert_eq!(
+            reloaded.recorded_packages(&key_b).map(str::to_string),
+            digest(&py_b)
+        );
+
+        // (2) "Install" into B, restart its kernel: the fresh kernel's output is stamped
+        // with the environment it ran in, not the one memoized before the install.
+        let mut ex = Executor::with_freeze(page.clone());
+        ex.set_interpreters(crate::interpreter::Resolved::fixed(
+            &py_b,
+            crate::interpreter::Provenance::Field,
+        ));
+        let _ = rt.block_on(ex.run(blocks.clone()));
+        std::fs::write(&marker_b, "").unwrap();
+        ex.restart_kernel();
+        let _ = rt.block_on(ex.run(blocks.clone()));
+        drop(ex);
+        let after = digest(&py_b);
+        assert!(after.is_some());
+        assert_eq!(
+            FreezeCache::for_page(page.clone())
+                .recorded_packages(&key_b)
+                .map(str::to_string),
+            after,
+            "the restarted kernel's output was stamped with the pre-install digest"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `#| include: false` hides a cell's output, but the `define(...)` bridge is not output:
+    /// it is how Python state reaches `{js}` cells, and the guide recommends `include: false`
+    /// for exactly such setup cells. The whole output used to be dropped, blob included, so
+    /// a hidden `define(x=1)` left every `{js}` cell reading `x` with `undefined`. The blob
+    /// now survives in a `hidden` output block, the cell's visible output does not, and the
+    /// same holds when the cell is restored from `_freeze` instead of run.
+    #[test]
+    fn a_hidden_cells_define_bridge_survives_include_false() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise the define bridge; this run did not."
+            );
+            return;
+        }
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-hiddendefine-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let mut hidden = python_cell_block_with("h-1", "print('SECRET' + '-SETUP')\ndefine(x=41)");
+        if let Some(c) = hidden.cell.as_mut() {
+            c.include = false;
+        }
+        let blocks = vec![hidden, python_cell_block_with("h-2", "print('after')")];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for pass in ["executed", "restored from _freeze"] {
+            let mut ex = Executor::with_freeze(page.clone());
+            let out = rt.block_on(ex.run(blocks.clone()));
+            if ex.diagnostic().is_some() {
+                let _ = std::fs::remove_dir_all(&dir);
+                return; // no working python kernel here
+            }
+            let html: String = out.iter().map(|b| b.html.as_str()).collect();
+            let bridge = out.iter().find(|b| b.id == "h-1-out").unwrap_or_else(|| {
+                panic!("({pass}) the hidden cell's define blob was dropped: {html}")
+            });
+            assert!(
+                // Assembled, not literal: an opening script tag in this file would pull it
+                // into `token_contract`'s browser-attribute census as phantom vocabulary.
+                bridge
+                    .html
+                    .contains(&format!("<{} type=\"tali-define\">", "script"))
+                    && bridge.html.contains("\"x\"")
+                    && bridge.html.contains(" hidden"),
+                "({pass}) the bridge block must carry the blob and stay hidden: {}",
+                bridge.html
+            );
+            assert!(
+                !html.contains("SECRET-SETUP"),
+                "({pass}) include: false published the cell's visible output: {html}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Images #10: an executed image is published with `alt=""`, which is right inside a
+    /// captioned figure (the caption describes it) and wrong everywhere else: a plot with no
+    /// `fig-cap` was invisible to assistive technology, and nothing said so. It is now a
+    /// located warning at the cell, as a missing `alt` is for an authored image; a
+    /// captioned figure stays silent.
+    #[test]
+    fn an_executed_image_with_no_caption_is_a_located_warning() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise executed-image alt text; this run did not."
+            );
+            return;
+        }
+        let draw = "import base64\nfrom IPython.display import Image, display\n\
+                    display(Image(data=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), format='png'))";
+        let mut bare = python_cell_block_with("i-1", draw);
+        bare.sourcepos = "9:1-12:3".into();
+        let mut captioned = python_cell_block_with("i-2", draw);
+        if let Some(c) = captioned.cell.as_mut() {
+            c.figure = Some(CellFigure {
+                anchor: None,
+                caption: Some("A single pixel.".into()),
+                number: "1".into(),
+            });
+        }
+        let mut ex = Executor::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _ = rt.block_on(ex.run(vec![bare, captioned]));
+        if ex.diagnostic().is_some() {
+            return; // no working python kernel here
+        }
+        let warnings = ex.take_warnings();
+        let described: Vec<_> = warnings
+            .iter()
+            .filter(|w| w.message.contains("fig-cap"))
+            .collect();
+        assert_eq!(
+            described.len(),
+            1,
+            "exactly the uncaptioned image cell must warn: {warnings:?}"
+        );
+        assert_eq!(
+            described[0].line,
+            Some(9),
+            "located at the cell: {warnings:?}"
         );
     }
 
@@ -2562,7 +3162,7 @@ mod tests {
         // executed range — so an errored cell that had since slid into the WARM PREFIX was
         // invisible to it, and the cell after it was written to `_freeze` as if it followed
         // a clean upstream. That is the one entry this cache is designed never to hold:
-        // B is never persisted (`is_uncacheable`), so a later cold start re-runs it, and
+        // B is never persisted (it failed), so a later cold start re-runs it, and
         // if the failure was transient (the flaky fetch succeeds) C restores an output
         // computed while B was still raising — permanently, since a re-run reaching the
         // same code hits the same key.
@@ -2635,6 +3235,155 @@ mod tests {
              the warm prefix, so the downstream-persist guard never saw it"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Run `docs` in order through ONE warm executor over a fresh `_freeze` file (a preview
+    /// session), then build the last document from cold over that same file (what `build`
+    /// does afterwards). Returns the warm session's last render and the build's.
+    fn warm_session_then_build(
+        rt: &tokio::runtime::Runtime,
+        docs: &[Vec<Block>],
+    ) -> Option<(String, String)> {
+        let html = |out: Vec<Block>| -> String { out.iter().map(|b| b.html.as_str()).collect() };
+        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let mut ex = Executor::with_freeze(page.clone());
+        let mut warm = String::new();
+        for doc in docs {
+            warm = html(rt.block_on(ex.run(doc.clone())));
+            if ex.diagnostic().is_some() {
+                let _ = std::fs::remove_dir_all(&dir);
+                return None; // no working python kernel here
+            }
+        }
+        drop(ex);
+        let mut build = Executor::with_freeze(page);
+        let built = html(rt.block_on(build.run(docs.last().unwrap().clone())));
+        let _ = std::fs::remove_dir_all(&dir);
+        Some((warm, built))
+    }
+
+    /// A warm re-run executes in a kernel that still holds whatever the cells it ran before
+    /// left behind, so its output is not a function of its key and must never reach
+    /// `_freeze`. The audit's case (A3): rename a variable and leave a use of the old name
+    /// dangling. The warm kernel still has the old name, so the preview prints the old value;
+    /// persisting that let a later `build --strict` restore it with exit 0, while a fresh
+    /// kernel raises `NameError` on the same code.
+    ///
+    /// Every shape below ends the same way: the warm session shows a value only its
+    /// leftover state can produce (the precondition, so each case really exercises stale
+    /// state), and a cold build over the session's `_freeze` must compute the truth instead.
+    /// The shapes differ in how the warm prefix `ran` relates to what the kernel executed,
+    /// which is why the rule counts executions rather than keeping an index high-water mark:
+    /// (d) and (e) never run anything past the prefix `ran` records and are still stale.
+    #[test]
+    fn a_warm_rerun_never_persists_state_its_key_does_not_describe() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise warm-state persistence; this run did not."
+            );
+            return;
+        }
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test reads.");
+            return;
+        }
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let cell = python_cell_block_with;
+        let uncached = |id: &str, code: &str| {
+            let mut b = python_cell_block_with(id, code);
+            if let Some(c) = b.cell.as_mut() {
+                c.cache = false;
+            }
+            b
+        };
+        let case = |name: &str, docs: Vec<Vec<Block>>, stale: &str| {
+            let Some((warm, built)) = warm_session_then_build(&rt, &docs) else {
+                return;
+            };
+            assert!(
+                warm.contains(stale),
+                "({name}) precondition: the warm kernel's leftover state shows `{stale}`: {warm}"
+            );
+            assert!(
+                built.contains("NameError") && !built.contains(stale),
+                "({name}) a cold build over the preview's _freeze restored `{stale}`, an output \
+                 only the warm kernel's leftover state could produce: {built}"
+            );
+        };
+        let dat = "dat = 5";
+        let data = "data = 5";
+        let use_dat = "print('dat is', dat)";
+
+        // (a) Rename, leaving a use of the old name dangling below it.
+        case(
+            "a: rename",
+            vec![
+                vec![cell("a-1", dat), cell("a-2", use_dat)],
+                vec![cell("a-1", data), cell("a-2", use_dat)],
+            ],
+            "dat is 5",
+        );
+        // (b) Rename first, then append the cell that uses the old name.
+        case(
+            "b: append after a rename",
+            vec![
+                vec![cell("b-1", dat)],
+                vec![cell("b-1", data)],
+                vec![cell("b-1", data), cell("b-2", use_dat)],
+            ],
+            "dat is 5",
+        );
+        // (c) The same rename with a `#| cache: false` cell after the dangling use. The
+        // cells above it are inside the range `first_uncacheable` lets through, so this rule
+        // is what keeps them out. While the `cache: false` cell exists every cold run re-runs
+        // from the top, so the entries only surface once it is deleted: its keys never fed
+        // the ones above it.
+        let stamp = "import time\nstamp = time.time()";
+        case(
+            "c: with a cache: false cell",
+            vec![
+                vec![
+                    cell("c-1", dat),
+                    cell("c-2", use_dat),
+                    uncached("c-3", stamp),
+                ],
+                vec![
+                    cell("c-1", data),
+                    cell("c-2", use_dat),
+                    uncached("c-3", stamp),
+                ],
+                vec![cell("c-1", data), cell("c-2", use_dat)],
+            ],
+            "dat is 5",
+        );
+        // (d) Revert to a version whose key is already on disk: the replay runs nothing
+        // (`to_run == 0`) and truncates `ran` to empty, but the kernel still holds what the
+        // reverted-away version defined. The next edit below must not persist.
+        let base = "v = 1";
+        let newer = "v = 1\nw = 2";
+        case(
+            "d: revert to a cached version",
+            vec![
+                vec![cell("d-1", base), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", newer), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", base), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", base), cell("d-2", "print('w is', w)")],
+            ],
+            "w is 2",
+        );
+        // (e) Delete a cell, then add a different one at the same index.
+        case(
+            "e: delete then re-add",
+            vec![
+                vec![cell("e-1", "x = 1"), cell("e-2", "y = x + 1")],
+                vec![cell("e-1", "x = 1")],
+                vec![cell("e-1", "x = 1"), cell("e-3", "print('y is', y)")],
+            ],
+            "y is 2",
+        );
     }
 
     #[test]
@@ -2858,7 +3607,7 @@ mod tests {
             "both cells are the fresh kernel's warm record"
         );
         assert!(
-            ran.iter().all(|r| !r.output.trim().is_empty()),
+            ran.iter().all(|r| !r.output.html.trim().is_empty()),
             "an empty output must never be recorded as warm after an idle kernel death"
         );
     }
@@ -3231,7 +3980,10 @@ mod tests {
             "inner dropped: {html}"
         );
         assert!(
-            html.contains("<figcaption>Figure&nbsp;2: Cov &amp; vars</figcaption>"),
+            html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2</span>: Cov \
+                 &amp; vars</figcaption>"
+            ),
             "caption not numbered/escaped: {html}"
         );
     }
@@ -3274,29 +4026,47 @@ mod tests {
 
     /// The caption is escaped before cross-references are linked, so markup in a
     /// caption stays inert and an `&` still escapes exactly once.
+    /// B7: an executed figure's or table's caption is rendered like every other caption,
+    /// through core's one caption function: inline markdown and `$...$` math, and the
+    /// generated "Figure N" in its own upright label span. The executor escaped the caption
+    /// and hand-built an unwrapped "Figure N", so the same `fig-cap:` rendered `*emph*` and
+    /// `$x^2$` literally under a `{python}` cell, with an italic number, and as emphasis and
+    /// KaTeX under a `{mermaid}` one (visible on the guide, Figure 5.2 against 5.1 and 5.3).
     #[test]
-    fn executed_caption_still_escapes_html() {
-        // The tag is assembled rather than written literally on purpose: `token_contract`'s
-        // browser-attribute census pulls in a Rust file only when it contains an opening
-        // script tag, and a fixture holding that literal drags this whole module's `data-*`
-        // constants into the census as phantom browser vocabulary (measured — it failed
-        // exactly so, on `data-tali-not-run`). This comment avoids the literal for the same
-        // reason.
-        let tag = format!("<{}>alert(1)</{}>", "script", "script");
+    fn an_executed_caption_renders_like_every_other_caption() {
+        let caption = "Loss for *model A* & `B`, scaled by $x^2$.";
         let fig = CellFigure {
-            anchor: None,
-            caption: Some(format!("Cov & vars {tag}")),
+            anchor: Some("fig-loss".into()),
+            caption: Some(caption.into()),
             number: "3".into(),
         };
-        let html = figure_wrap(&fig, "out");
-        assert!(html.contains("Cov &amp; vars"), "escaping lost: {html}");
+        let html = figure_wrap(&fig, "<img src=\"l.png\">");
+        for (needle, what) in [
+            (
+                "<span class=\"tali-caption-label\">Figure&nbsp;3</span>: ",
+                "the label span",
+            ),
+            ("<em>model A</em>", "emphasis"),
+            ("<code>B</code>", "inline code"),
+            ("class=\"katex", "math"),
+            ("&amp;", "an escaped ampersand"),
+        ] {
+            assert!(
+                html.contains(needle),
+                "{what} missing from the figure caption: {html}"
+            );
+        }
+        let tbl = CellTable {
+            anchor: Some("tbl-loss".into()),
+            caption: Some(caption.into()),
+            number: "2".into(),
+        };
+        let html = table_wrap(&tbl, "<table><tr><td>x</td></tr></table>");
         assert!(
-            !html.contains(&tag),
-            "caption markup was not escaped: {html}"
-        );
-        assert!(
-            html.contains("&lt;script&gt;"),
-            "the tag should survive as escaped text: {html}"
+            html.contains("<span class=\"tali-caption-label\">Table&nbsp;2</span>: ")
+                && html.contains("<em>model A</em>")
+                && html.contains("class=\"katex"),
+            "the table caption is not rendered like the others: {html}"
         );
     }
 
@@ -3313,7 +4083,9 @@ mod tests {
             "an unlabelled figure must carry no id: {html}"
         );
         assert!(
-            html.contains("<figcaption>Figure&nbsp;1</figcaption>"),
+            html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span></figcaption>"
+            ),
             "bare number missing: {html}"
         );
         assert!(!html.contains(':'), "no caption -> no colon: {html}");
@@ -3413,8 +4185,10 @@ mod tests {
             b.html
         );
         assert!(
-            b.html
-                .contains("<figcaption>Figure&nbsp;3: Cap</figcaption>"),
+            b.html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;3</span>: \
+                 Cap</figcaption>"
+            ),
             "{}",
             b.html
         );

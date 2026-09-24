@@ -200,6 +200,14 @@ declared in `crates/core/src/diff.rs`.
 For the exact JSON shape of every message and when each is sent, read
 `crates/server/src/protocol.rs`; for how the client applies one, `web-client/client.js`.
 
+Two orderings matter to the live view. On a rebuild, each code cell the edit changed goes
+out as an `update` of the block it replaces (and its old output as a `remove`) before any
+cell runs: the edit changed the cell's id, and its `running` badge and live output are
+addressed to the new one. And a `cell-state` of `running` sent again for a cell that is
+already running empties its live output, which is how the server redraws it after
+`clear_output` or an in-place display update, which `append` / `replace_last` cannot
+express.
+
 ### Applying the ops (the client)
 
 The browser side (`web-client/client.js`) is thin: each op is one small DOM

@@ -584,6 +584,12 @@ fn collect_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
                     out.push_str(&code.literal);
                     false
                 }
+                // A line break inside the alt text separates two words; dropping it glued
+                // them together ("a small\nfit" became "a smallfit").
+                NodeValue::SoftBreak | NodeValue::LineBreak => {
+                    out.push(' ');
+                    false
+                }
                 _ => true,
             }
         };

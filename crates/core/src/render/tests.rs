@@ -798,8 +798,9 @@ fn text_and_attributes_share_one_escaper_that_escapes_the_quote() {
         "{}",
         doc.blocks[0].html
     );
-    // A figure's alt is its caption's plain text, escaped once: what the walker reads
-    // back is what the caption says, not `R&amp;D`.
+    // A figure's image carries `alt=""`: its `<figcaption>` is the description, and an alt
+    // repeating it was read twice by a screen reader (audit images #9). So no caption text
+    // is ever escaped into an attribute, and the alt the walker reads back is empty.
     let fig = render_document("![R&D, a < b](a.png){#fig-a}\n");
     let img = fig
         .blocks
@@ -807,7 +808,7 @@ fn text_and_attributes_share_one_escaper_that_escapes_the_quote() {
         .flat_map(|b| tags(&b.html).collect::<Vec<_>>())
         .find(|t| t.name == "img")
         .expect("the figure's image");
-    assert_eq!(attr_value(&img, "alt").as_deref(), Some("R&D, a < b"));
+    assert_eq!(attr_value(&img, "alt").as_deref(), Some(""));
 }
 
 #[test]
@@ -2088,6 +2089,78 @@ fn standalone_image_becomes_a_numbered_figure() {
     );
 }
 
+/// Images #9: only a `#fig-` id makes a numbered figure, as the guide says. Any standalone
+/// image with alt text used to become "Figure N" with its alt as the caption, so writing
+/// good alt text (which the a11y lint asks for) changed the page and shifted every `@fig-`
+/// number after it. And a figure's `<img>` repeated its caption as `alt`, so a screen
+/// reader read the same sentence twice; the figcaption is the description, the image is
+/// presentational (`alt=""`), as for an executed figure.
+#[test]
+fn only_a_fig_label_makes_a_numbered_figure_and_its_image_is_not_read_twice() {
+    let doc = render_document(
+        "![A grey cat asleep on a keyboard.](cat.png)\n\n\
+         ![Loss falls to zero.](loss.png){#fig-loss}\n\nSee @fig-loss.\n",
+    );
+    let cat = &doc.blocks[0].html;
+    assert!(
+        !cat.contains("<figure") && !cat.contains("Figure"),
+        "an image with alt text and no label became a figure: {cat}"
+    );
+    assert!(
+        cat.contains("alt=\"A grey cat asleep on a keyboard.\""),
+        "an unlabelled image keeps its alt: {cat}"
+    );
+    let fig = &doc.blocks[1].html;
+    assert!(
+        fig.contains("<span class=\"tali-caption-label\">Figure&nbsp;1</span>: Loss falls"),
+        "the unlabelled image burned a number, shifting @fig-loss: {fig}"
+    );
+    assert!(
+        fig.contains("alt=\"\"") && !fig.contains("alt=\"Loss falls"),
+        "the figure's image repeats its caption as alt, so it is read twice: {fig}"
+    );
+    let all: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        all.contains("Figure&nbsp;1"),
+        "@fig-loss resolves to Figure 1: {all}"
+    );
+}
+
+/// Images #13 leads: a labelled figure with no caption showed a dangling "Figure 1: ", and
+/// an inline image's alt text glued the words either side of a line break ("a smallfit"),
+/// since the alt collector dropped soft breaks instead of reading them as spaces.
+#[test]
+fn a_captionless_figure_has_no_dangling_colon_and_alt_keeps_its_line_breaks() {
+    let fig = render_document("![](plot.png){#fig-nocap}\n");
+    let h = &fig.blocks[0].html;
+    assert!(
+        h.contains(
+            "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span></figcaption>"
+        ),
+        "a captionless figure's label must stand alone: {h}"
+    );
+    let inline = render_document("A bare image: ![a small\nfit](f.png) in a sentence.\n");
+    let h = &inline.blocks[0].html;
+    assert!(
+        h.contains("alt=\"a small fit\""),
+        "a line break in alt text must read as a space: {h}"
+    );
+}
+
+/// An image's markdown title (`![alt](src "title")`) reached the `<img>` of an inline image
+/// but was dropped from a figure's, since the figure parts never carried it (audit,
+/// escaping "Adjacent").
+#[test]
+fn a_figure_keeps_its_images_title() {
+    let doc = render_document("![A loss curve.](loss.png \"Hover text\"){#fig-t dark=\"d.png\"}\n");
+    let h = &doc.blocks[0].html;
+    assert_eq!(
+        h.matches("title=\"Hover text\"").count(),
+        2,
+        "both theme variants carry the title: {h}"
+    );
+}
+
 #[test]
 fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
     // A `dark=` source ships a light + dark <img> pair (like `{{< video dark= >}}`); CSS
@@ -2104,10 +2177,11 @@ fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
         "dark variant: {h}"
     );
     assert_eq!(
-        h.matches("alt=\"A model fit.\"").count(),
+        h.matches("alt=\"\"").count(),
         2,
-        "alt on both: {h}"
+        "both variants are presentational beside the caption: {h}"
     );
+    assert!(h.contains("</span>: A model fit.</figcaption>"), "{h}");
     assert_eq!(
         h.matches("style=\"width:60%\"").count(),
         2,
@@ -7874,41 +7948,6 @@ fn an_html_comment_is_one_token_whatever_it_contains() {
     assert!(
         attr_values(para, "href").any(|h| h == "#ref-key"),
         "the citation after the comment was rendered: {para}"
-    );
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// A figure's `alt` is its caption as a reader hears it: citations and cross-references
-/// rendered, as they are in the `<figcaption>` beside it. The emitter built the alt from
-/// the caption before the citation pass ran, so a screen reader announced the source
-/// `[@key]` and `@fig-b` where a sighted reader saw "[1]" and "Figure 2".
-#[test]
-fn a_figure_alt_reads_its_caption_as_rendered() {
-    let dir = source_map_tmpdir("figure-alt");
-    std::fs::write(
-        dir.join("refs.bib"),
-        "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
-    )
-    .unwrap();
-    let doc = crate::render_document_with_includes(
-        "---\nbibliography: refs.bib\n---\n\n\
-         ![Chart after [@key] and @fig-b](a.png){#fig-a}\n\n![Second & last](b.png){#fig-b}\n",
-        &dir,
-    );
-    let alts: Vec<String> = doc
-        .blocks
-        .iter()
-        .flat_map(|b| {
-            attr_values(&b.html, "alt")
-                .map(|a| a.into_owned())
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    assert_eq!(
-        alts,
-        vec!["Chart after [1] and Figure\u{a0}2", "Second & last"],
-        "{:?}",
-        doc.blocks.iter().map(|b| &b.html).collect::<Vec<_>>()
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

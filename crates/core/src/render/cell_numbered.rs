@@ -31,6 +31,22 @@ fn caption_inline_html(caption: &str) -> String {
     html_escape(caption)
 }
 
+/// Render markdown that did not come from the document (an executed cell's
+/// `text/markdown` output, `display(Markdown(...))`) to an HTML fragment, through the same
+/// parse options and emitter the document's own blocks use, so `$...$` math, emphasis and
+/// code render as they do in prose. No block ids or source positions: the fragment sits
+/// inside the cell's output block, not beside it as a block of its own.
+pub fn markdown_fragment(md: &str) -> String {
+    let arena = Arena::new();
+    let options = parse_options();
+    let root = parse_document(&arena, md, &options);
+    let mut out = String::new();
+    for child in root.children() {
+        emit(child, "", &mut out);
+    }
+    out
+}
+
 /// The generated half of a caption — `Figure 3`, `Table 2`, `Listing 7` — wrapped so CSS can
 /// address it separately from the sentence beside it.
 ///
@@ -43,10 +59,12 @@ pub fn caption_label(label: &str, num: &str) -> String {
     format!("<span class=\"tali-caption-label\">{label}&nbsp;{num}</span>")
 }
 
-/// A numbered figure/listing caption: the label span, with `": <caption>"` appended
-/// (rendered as inline markdown) when a non-empty caption is given. Shared by the figure,
-/// listing, mermaid, and `{js}`-figure emitters.
-pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
+/// A numbered figure/listing/table caption: the label span, with `": <caption>"` appended
+/// (rendered as inline markdown) when a non-empty caption is given. THE caption function:
+/// the figure, listing, mermaid and `{js}`-figure emitters here and the executed figure and
+/// table captions in `crates/server` all go through it, so one `fig-cap:` renders the same
+/// whatever kind of cell carries it.
+pub fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
     let head = caption_label(label, num);
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("{head}: {}", caption_inline_html(c)),

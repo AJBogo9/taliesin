@@ -47,6 +47,13 @@ for n in sorted(seen):
     print(n + '\\t' + seen[n])
 ";
 
+/// The memo behind [`manifest`]: one probe per interpreter per process, until [`forget`].
+static MEMO: OnceLock<Mutex<BTreeMap<String, Manifest>>> = OnceLock::new();
+
+fn memo() -> &'static Mutex<BTreeMap<String, Manifest>> {
+    MEMO.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
 /// The manifest for `program`, memoized process-wide.
 ///
 /// `None` means *we could not ask* — the interpreter is missing, or the probe failed — and it
@@ -54,12 +61,29 @@ for n in sorted(seen):
 /// failed version probe: a transient failure must not become this process's permanent answer.
 /// A `None` here costs the environment warning and nothing else; it never changes what runs.
 pub(crate) fn manifest(program: &Path) -> Option<Manifest> {
-    static CACHE: OnceLock<Mutex<BTreeMap<String, Manifest>>> = OnceLock::new();
     let key = program.display().to_string();
-    let cache = CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
-    if let Some(m) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+    if let Some(m) = memo().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Some(m);
     }
+    let m = probe(program)?;
+    if let Ok(mut c) = memo().lock() {
+        c.insert(key, m.clone());
+    }
+    Some(m)
+}
+
+/// Drop `program`'s memoized manifest, so the next [`manifest`] asks again. "Restart
+/// kernel" calls it: the commonest reason to restart is having just installed something,
+/// and a stale memo stamped the restarted kernel's outputs with the digest from before the
+/// install, which every later build then reported as a package change (audit exec #12).
+pub(crate) fn forget(program: &Path) {
+    if let Ok(mut c) = memo().lock() {
+        c.remove(&program.display().to_string());
+    }
+}
+
+/// The manifest for `program`, asked afresh.
+pub(crate) fn probe(program: &Path) -> Option<Manifest> {
     let out = std::process::Command::new(program)
         .args(["-c", PYTHON_PROBE])
         .stdin(std::process::Stdio::null())
@@ -72,13 +96,7 @@ pub(crate) fn manifest(program: &Path) -> Option<Manifest> {
     // An interpreter with genuinely nothing installed is not a thing (Python ships its own
     // distributions), so an empty parse means the probe printed something we could not
     // read — which must not be memoized as "this environment is empty".
-    if m.packages.is_empty() {
-        return None;
-    }
-    if let Ok(mut c) = cache.lock() {
-        c.insert(key, m.clone());
-    }
-    Some(m)
+    (!m.packages.is_empty()).then_some(m)
 }
 
 /// Parse `name<TAB>version` lines into a manifest, computing the digest.

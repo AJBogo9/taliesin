@@ -109,3 +109,59 @@ fn a_cell_warning_builds_byte_identically_twice_and_leaks_no_temp_path() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// exec #14: a warning or a traceback raised from a module published the absolute path of
+/// the file that raised it: `/home/<user>/…/proj/helper.py:4: UserWarning` on stderr, and
+/// `File ~/…/proj/helper.py:5` in the traceback (IPython already shortens `$HOME` there).
+/// That is the author's home layout in a published page, and a build that differs by
+/// machine. Paths inside the project now print relative to it, and the rest of `$HOME` as
+/// `~`, in stderr and tracebacks alike.
+#[test]
+fn a_warning_or_traceback_from_a_project_module_publishes_no_home_path() {
+    let Some(py) = python_or_skip() else {
+        return;
+    };
+    let home = tmp_dir("home");
+    let proj = home.join("proj");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(
+        proj.join("helper.py"),
+        "import warnings\n\ndef boom():\n    warnings.warn(\"helper warning\")\n    \
+         raise ValueError(\"helper failed\")\n",
+    )
+    .unwrap();
+    let src = proj.join("doc.tmd");
+    fs::write(
+        &src,
+        "---\ntitle: exec 14 pin\n---\n\n```{python}\nimport helper\nhelper.boom()\n```\n",
+    )
+    .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
+    cmd.arg("build").arg(&src).arg(proj.join("doc.html"));
+    cmd.env("TALIESIN_PYTHON", &py);
+    cmd.env("TALIESIN_NO_CACHE", "1");
+    cmd.env("HOME", &home);
+    let out = cmd.output().expect("run build");
+    assert!(
+        out.status.success(),
+        "build failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let html = fs::read_to_string(proj.join("doc.html")).expect("read built html");
+    assert!(
+        html.contains("helper warning") && html.contains("helper failed"),
+        "the cell's warning and traceback must reach the page:\n{html}"
+    );
+    let abs = home.canonicalize().unwrap().display().to_string();
+    for leak in [abs.as_str(), "~/proj"] {
+        assert!(
+            !html.contains(leak),
+            "the page publishes the author's home path ({leak}):\n{html}"
+        );
+    }
+    assert!(
+        html.contains("helper.py"),
+        "the path should stay, relative to the project:\n{html}"
+    );
+    let _ = fs::remove_dir_all(&home);
+}
