@@ -685,6 +685,16 @@ fn render_internal_impl(
         if matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) {
             continue;
         }
+        // A `:::` marker reaches the parse as a thematic break, to end the blocks above it
+        // (`DivFences::replace_markers`); it is not a rule on the page.
+        {
+            let data = node.data.borrow();
+            if matches!(data.value, NodeValue::ThematicBreak)
+                && divs.is_marker_at(BufLine::new(data.sourcepos.start.line))
+            {
+                continue;
+            }
+        }
         // Which notes this block displays: every `[^a]` reference under it whose
         // `ref_num` is 1. A repeat reference to the same note keeps its `<sup>` but
         // carries no content — two copies would duplicate `id="fn-a"` in the DOM and

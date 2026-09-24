@@ -1,20 +1,20 @@
 //! `:::` fenced-div preprocessing and container building: scan div spans,
-//! strip the fence markers (line-preserving) so inner content parses as normal
+//! replace the fence markers (line-preserving) so inner content parses as normal
 //! blocks, then regroup blocks into callouts/columns/etc. Also `parse_attrs`, the
 //! fenced-div attribute parser. Split out of the render module; `use super::*` reaches
 //! the block model + helpers (Block, FlatBlock, DivAttrs, make_id, escaping).
 
 use super::*;
 
-/// Blank out the fenced-div markers `divs` found (line-preserving), so the inner content
-/// parses as ordinary blocks and every other block's sourcepos line numbers stay valid
-/// against the original source.
+/// Replace the fenced-div markers `divs` found (line-preserving, see
+/// [`DivFences::replace_markers`]), so the inner content parses as ordinary blocks and every
+/// other block's sourcepos line numbers stay valid against the original source.
 ///
 /// Also indents display-math continuation lines that would otherwise start a new
 /// block (see [`interrupts_paragraph`]). Both passes are line-preserving, which is
 /// what keeps every sourcepos honest.
 pub(crate) fn preprocess(src: &str, divs: &DivFences) -> String {
-    let blanked = divs.blank(src);
+    let blanked = divs.replace_markers(src);
     if !blanked
         .lines()
         .any(|line| display_math_open_indent(line).is_some())
@@ -23,7 +23,7 @@ pub(crate) fn preprocess(src: &str, divs: &DivFences) -> String {
     }
     // Display math is only display math where markdown is read: a `$$` shown in a code
     // sample, a comment or the front matter is text. Asked of the buffer comrak is about to
-    // parse, with its div markers already blank.
+    // parse, with its div markers already replaced.
     let lines = crate::lines::classify(&blanked);
     let mut out = String::with_capacity(blanked.len());
     // Indentation of the line that opened the display-math block we are inside.
@@ -57,14 +57,14 @@ pub(crate) fn preprocess(src: &str, divs: &DivFences) -> String {
 }
 
 /// The structure the render will parse from `src`: [`crate::lines::classify`] of the buffer
-/// with its div markers blank, which is exactly what comrak is handed. Blanking matters: a
+/// with its div markers replaced, which is exactly what comrak is handed. That matters: a
 /// `:::` line read as text is a paragraph line, and the four-space-indented line after it a
 /// lazy continuation of it rather than the indented code the page renders. A raw source is
 /// taken too: its lone `\r`s are normalized as the render's ingest does, so the numbering
 /// is comrak's either way.
 pub(crate) fn rendered_lines(src: &str) -> crate::lines::Lines {
     let src = crate::includes::normalize_line_endings(src);
-    crate::lines::classify(&DivFences::find(&src).blank(&src))
+    crate::lines::classify(&DivFences::find(&src).replace_markers(&src))
 }
 
 /// Indentation of `line` if it opens a multi-line display-math block: `$$` or a bare
@@ -155,7 +155,7 @@ fn parse_fence(s: &str) -> Option<Fence> {
 }
 
 /// The `:::` lines of a buffer that are fenced-div markers, found once and shared by
-/// [`scan_div_spans`] (which pairs them) and [`preprocess`] (which blanks them).
+/// [`scan_div_spans`] (which pairs them) and [`preprocess`] (which replaces them).
 ///
 /// A marker is a `:::` line indented at most three spaces (like every block start) that
 /// comrak reads as top-level markdown: not code, not raw HTML, not front matter, and not
@@ -166,6 +166,10 @@ fn parse_fence(s: &str) -> Option<Fence> {
 pub(crate) struct DivFences {
     /// `(0-based line, marker)`, in line order.
     markers: Vec<(usize, Fence)>,
+    /// `(0-based line, length of what precedes the colons)` of each marker the parse is
+    /// handed as a thematic break rather than a blank line: every one that was one when
+    /// [`DivFences::find`] asked comrak, in line order. See [`DivFences::replace_markers`].
+    breaks: Vec<(usize, usize)>,
     /// 0-based lines opening a div inside a list item or block quote: text there, and warned.
     in_container: Vec<usize>,
 }
@@ -176,12 +180,13 @@ impl DivFences {
     /// Where a marker sits is asked of comrak with the marker replaced by `***`, a thematic
     /// break at the same indentation. Not the raw line: a `:::` line read as text is a lazy
     /// continuation of a list item or paragraph above it, so the `:::` closing a callout
-    /// that ends in a list would sit inside the list. Not a blank line either, though a blank
-    /// is what the render will see: a blank after a list item's last line is outside the
-    /// item even when the marker was indented into it, so the closing marker of a div
-    /// written inside an item would close the div the whole list sits in. A thematic break
-    /// starts a block wherever a marker does and ends the list, quote or paragraph above it
-    /// unless indented into it, which is exactly the question.
+    /// that ends in a list would sit inside the list. Not a blank line either: a blank
+    /// after a list item's last line is outside the item even when the marker was indented
+    /// into it, so the closing marker of a div written inside an item would close the div
+    /// the whole list sits in. A thematic break starts a block wherever a marker does and
+    /// ends the list, quote or paragraph above it unless indented into it, which is exactly
+    /// the question, and it is what the render parses too
+    /// ([`DivFences::replace_markers`]).
     pub(crate) fn find(src: &str) -> DivFences {
         // `(line, length of what precedes the colons, quoted, marker)`.
         let candidates: Vec<(usize, usize, bool, Fence)> = src
@@ -209,13 +214,16 @@ impl DivFences {
         }
         let lines = crate::lines::classify(&marked);
         let mut divs = DivFences::default();
-        for (i, _, quoted, fence) in candidates {
+        for (i, prefix, quoted, fence) in candidates {
             let line = lines.line(i);
             if !line.kind.is_markdown() {
                 continue; // code, raw HTML or front matter: literal content, silently
             }
             if line.depth == 0 && !quoted {
                 divs.markers.push((i, fence));
+                if line.rule {
+                    divs.breaks.push((i, prefix));
+                }
             } else if line.depth > 0 && matches!(fence, Fence::Open(_)) {
                 divs.in_container.push(i);
             }
@@ -228,20 +236,37 @@ impl DivFences {
         self.markers.binary_search_by_key(&i, |(at, _)| *at).is_ok()
     }
 
+    /// Whether 1-based buffer line `at` is a marker, which the render parses as a thematic
+    /// break that ends the blocks above it and emits nothing.
+    pub(crate) fn is_marker_at(&self, at: BufLine) -> bool {
+        at.get().checked_sub(1).is_some_and(|i| self.is_marker(i))
+    }
+
     /// The 1-based buffer lines of a `:::` div opened inside a list item or block quote,
     /// which renders as text there.
     pub(crate) fn in_container(&self) -> impl Iterator<Item = BufLine> + '_ {
         self.in_container.iter().map(|&i| BufLine::new(i + 1))
     }
 
-    /// `src` with every marker line emptied, line-preserving.
-    fn blank(&self, src: &str) -> String {
+    /// `src` with every marker line replaced, line-preserving, by what ends the block open
+    /// above it: the thematic break `***` [`DivFences::find`] classified it as. A blank line
+    /// does not do that. A list continues across one, so the list closing one column and the
+    /// list opening the next were one list rendered in the first column, and an indented
+    /// code block or a list item's continuation ran on into the next div the same way. The
+    /// render skips the break (`is_marker_at`). A marker whose `***` did not parse as a
+    /// break was taken into an HTML block (a `<div>` line right above it), which only a
+    /// blank line ends, so that one stays blank.
+    fn replace_markers(&self, src: &str) -> String {
         let mut out = String::with_capacity(src.len());
+        let mut breaks = self.breaks.iter().peekable();
         for (i, line) in src.lines().enumerate() {
             if i > 0 {
                 out.push('\n');
             }
-            if !self.is_marker(i) {
+            if let Some(&(_, prefix)) = breaks.next_if(|(at, _)| *at == i) {
+                out.push_str(&line[..prefix]);
+                out.push_str("***");
+            } else if !self.is_marker(i) {
                 out.push_str(line);
             }
         }

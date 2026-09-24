@@ -1175,7 +1175,7 @@ impl Site {
     /// options — keeps one source of truth, so the two cannot drift on which fences
     /// count as cells (the same reason `xref::brace_id` reuses `parse_attrs`).
     /// It names them too: a target's `title` is the text its heading shows on this render
-    /// ([`xref::heading_titles`]), which is what an unnumbered cross-page `@sec-` reads.
+    /// (`xref::heading_titles`), which is what an unnumbered cross-page `@sec-` reads.
     ///
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.

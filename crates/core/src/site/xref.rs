@@ -19,7 +19,7 @@ pub struct XrefTarget {
     pub url: String,
     pub number: String,
     /// The text the target heading shows, read off its page's render by the harvest
-    /// ([`heading_titles`]); empty for an anchor on no heading (a figure/equation anchor,
+    /// (`heading_titles`); empty for an anchor on no heading (a figure/equation anchor,
     /// a cell label). Carried so an unnumbered cross-page `@sec-` can name what it points
     /// at instead of rendering the bare word "Section" — see [`rewrite_one_xref`].
     pub title: String,
@@ -219,7 +219,7 @@ pub struct ScannedAnchor {
 
 /// The `{#prefix-id}` cross-ref anchors in one page's source. It numbers and names
 /// nothing: a number or a title is what the page SHOWS, which only its render knows
-/// (`number_sections`, [`heading_titles`]), and reading them off source lines here
+/// (`number_sections`, `heading_titles`), and reading them off source lines here
 /// disagreed with it on setext headings, `##\t`, entities and a heading a callout took
 /// for its title.
 ///

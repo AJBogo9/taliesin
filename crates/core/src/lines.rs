@@ -61,6 +61,9 @@ pub struct Line {
     pub depth: u32,
     /// The level of the heading that starts on this line, ATX or setext.
     pub heading: Option<u8>,
+    /// Whether the line is a thematic break (`***`), which ends every paragraph, list,
+    /// quote and code block open above it.
+    pub rule: bool,
 }
 
 /// A line past the end of the text: top-level markdown, like a blank line.
@@ -68,6 +71,7 @@ const PAST_END: Line = Line {
     kind: Kind::Markdown,
     depth: 0,
     heading: None,
+    rule: false,
 };
 
 /// One fenced code block. Lines are 0-based.
@@ -195,6 +199,7 @@ fn classify_uncached(src: &str) -> Lines {
     // Container depth as a difference array: +1 where a container starts, -1 past its end.
     let mut depth_delta = vec![0i64; n + 1];
     let mut headings = vec![None; n];
+    let mut rules = vec![false; n];
     let mut out = Lines::default();
     // A node's last line, as the walk corrects it (see `leaf_end`), for each open ancestor:
     // a container ends no earlier than its last child.
@@ -241,6 +246,7 @@ fn classify_uncached(src: &str) -> Lines {
             // Only the lines strictly inside: the first and last also hold markdown.
             NodeValue::HtmlInline(_) if e > s + 1 => mark(&mut kinds, s + 1, e - 1, Kind::RawHtml),
             NodeValue::Heading(h) if s < n => headings[s] = Some(h.level),
+            NodeValue::ThematicBreak if s < n => rules[s] = true,
             NodeValue::Code(_) => {
                 let sp = data.sourcepos;
                 out.code_spans.push((
@@ -261,13 +267,15 @@ fn classify_uncached(src: &str) -> Lines {
     out.lines = kinds
         .into_iter()
         .zip(headings)
+        .zip(rules)
         .enumerate()
-        .map(|(i, (kind, heading))| {
+        .map(|(i, ((kind, heading), rule))| {
             depth += depth_delta[i];
             Line {
                 kind,
                 depth: depth.max(0) as u32,
                 heading,
+                rule,
             }
         })
         .collect();

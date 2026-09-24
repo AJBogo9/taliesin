@@ -14,7 +14,7 @@ flowchart TB
   src[".tmd source"] --> inc["includes::resolve<br/>{{< include >}} + source map"]
   inc --> sc["expand_shortcodes<br/>extension {{< name >}} templates"]
   sc --> spans["scan_div_spans<br/>record ::: fenced divs"]
-  spans --> pre["preprocess<br/>blank ::: markers (line-preserving)"]
+  spans --> pre["preprocess<br/>replace ::: markers (line-preserving)"]
   pre --> ast["comrak parse_document<br/>(+ sourcepos)"]
   ast --> walk["walk top-level nodes<br/>→ FlatBlock (emit HTML, hash id)"]
   walk --> group["group_divs<br/>rewrap into callouts/columns"]
@@ -39,9 +39,11 @@ flowchart TB
    `frontmatter::front_matter_block` is the one front-matter splitter: the block is read
    once as YAML (`render/fm_extract.rs`), then its lines are blanked, so comrak (whose own
    front-matter extension is off) parses the body alone. The `:::` fenced divs aren't
-   CommonMark, so their spans are recorded first, then the marker lines are blanked
-   without changing the line count (again preserving sourcepos). The inner content then
-   parses as ordinary blocks.
+   CommonMark, so their spans are recorded first, then each marker line is replaced
+   without changing the line count (again preserving sourcepos): by a thematic break
+   (`***`), which ends any list, quote or code block open above it and which the walk
+   skips, or by a blank line where raw HTML sits directly above it. The inner content
+   then parses as ordinary blocks.
 4. **Parse** (`comrak`, with `sourcepos` on). One AST for the whole document, with
    every node carrying its `startLine:col-endLine:col`. The parse and the walk that
    follows run on a worker thread with a 256 MB stack (`render_internal` spawns a
