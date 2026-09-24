@@ -15,13 +15,13 @@ server fills in their outputs.
 
 ## The executor (`exec.rs`)
 
-`Executor` holds one warm kernel per language, created lazily, plus the two
-output caches that let it skip work, one in memory and one on disk:
+`Executor` holds one warm kernel, created lazily, plus the two output caches that let
+it skip work, one in memory and one on disk:
 
 ```rust
 struct Executor {
     python: Resolved,           // interpreter.rs: path + provenance + search trail
-    langs: HashMap<&'static str, LangState>,  // "python" → warm kernel + ran-list
+    state: LangState,           // the warm kernel + the cells it has run (ran-list)
     freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
     no_exec: bool,              // TALIESIN_NO_EXEC / --no-exec: cells as source
     force_next: bool,           // "Restart kernel" forces a full re-run
@@ -43,8 +43,8 @@ no "kernel unavailable" notice. The render pass reads the same flag for `{js}` c
 It is a code-cell switch, not a sandbox: raw `<script>` in the document body still
 reaches the page. The [CLI reference](https://guide.taliesin.sh/reference/cli.html)
 covers what to do about a document you did not write. When the flag is not set, `run`
-groups the cells by language, preserving document order, runs each language's cells,
-and splices an **output block** after each cell.
+collects the `{python}` cells in document order, runs them, and splices an **output
+block** after each cell.
 
 An output block's id is derived from its cell's id, so when a cell re-runs only
 *its* output block changes: the diff swaps it in place (see
@@ -182,8 +182,8 @@ The format has these properties:
   the same interpreter reporting the same `--version`, so every key is unchanged and the
   old numbers restore. It is recorded only by a run that executed something (stamping a
   pure replay would relabel yesterday's outputs as today's) and compared when a restore
-  comes off disk, so a replay that crossed a package change reports it on stderr, once
-  per language. The set is probed once per process and again after "Restart kernel",
+  comes off disk, so a replay that crossed a package change reports it on stderr, once.
+  The set is probed once per process and again after "Restart kernel",
   since installing something is the usual reason to restart. It deliberately does not
   change what hits.
   `taliesin doctor --format json` prints the same manifest in full, every package and

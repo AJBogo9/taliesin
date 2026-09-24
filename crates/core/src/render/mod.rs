@@ -174,8 +174,8 @@ pub fn no_exec_in_force() -> bool {
 /// The languages Taliesin executes against a warm kernel, whose *output block* can
 /// therefore carry a figure/table anchor. This is the canonical set: the render pass
 /// reserves a `@fig-`/`@tbl-` number only for a lang that will actually produce the
-/// float, and `taliesin-server`'s `exec::kernel_lang` (which does the running) is
-/// drift-locked to it by a test. A lang that is neither executed here nor emitted at
+/// float, and `taliesin-server`'s executor (which does the running) picks its cells by
+/// this same function. A lang that is neither executed here nor emitted at
 /// render time (mermaid/`{js}`) — `{bash}`, `{sql}`, `{julia}`, … — produces no float,
 /// so labelling one as a figure/table must NOT burn a number or register a phantom
 /// anchor.
@@ -1010,7 +1010,7 @@ fn render_internal_impl(
                     // `include`. Registering an anchor + burning a number for one would
                     // point `@fig-x` at a "Figure N" no element carries and shift every
                     // later figure down by one. `executes_to_kernel` is the canonical
-                    // executable set (`exec::kernel_lang` is drift-locked to it).
+                    // executable set (the executor picks its cells by it too).
                     let include = cell.as_ref().is_none_or(|c| c.include);
                     // Under `--no-exec` a client-side figure (`{js}`, `{glsl}`) no longer
                     // materializes, so it must not burn a figure number or register an

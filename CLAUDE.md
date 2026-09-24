@@ -270,10 +270,11 @@ previous build's client), so the reload fetches the fresh bundle.
 `_site.yml` `python:` field, the project's own `.venv`, `TALIESIN_PYTHON`, a `.venv` found
 walking up from the project (the walk stops at a `.git` or `pyproject.toml` directory,
 after probing it), then `python3` (`interpreter.rs`; `doctor` names the one it picked).
-`{r}` was the second kernel language and was cut in Wave 6, so `Executor::langs` is a
-one-key map that **must stay a map**; `FreezeCache::packages` is keyed by interpreter
-identity (on-disk format). Without a kernel, cells
-render as source and the preview shows a "kernel unavailable" diagnostic.
+`{r}` was the second kernel language and was cut in Wave 6, so the executor holds one
+kernel state. `FreezeCache::packages` **stays a map**: it is keyed by interpreter identity
+and is on-disk format (`_freeze/*.json`), so a scalar would fail to parse every existing
+cache. Without a kernel, cells render as source and the preview shows a "kernel
+unavailable" diagnostic.
 
 A cell is capped on **silence, not runtime**: one that produces no output for
 `TALIESIN_CELL_SILENCE` seconds (default 600; `0` disables) is interrupted (SIGINT), while

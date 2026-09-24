@@ -629,9 +629,9 @@ fn build_container(
     // Only a cell in a language the *kernel* runs earns a slot. A `{js}` cell mounts its
     // own live target client-side and never produces a server-side output block, so a slot
     // after one would be an element that can never fill — which is exactly what the
-    // `explorable/` snapshots caught. `executes_to_kernel` is the canonical set
-    // (drift-locked to `exec::kernel_lang` by a test), so this asks it rather than
-    // re-listing the languages.
+    // `explorable/` snapshots caught. `executes_to_kernel` is the canonical set (the
+    // executor picks its cells by it too), so this asks it rather than re-listing the
+    // languages.
     let mut nested: Vec<Block> = Vec::new();
     for b in inner.iter_mut() {
         nested.append(&mut b.nested);

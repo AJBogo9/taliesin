@@ -169,7 +169,9 @@ pub struct FreezeCache {
     /// Keys oldest-first, kept in sync with `entries`, for bounded LRU-ish eviction.
     order: Vec<String>,
     /// The package-set digests these entries were produced under, by interpreter identity.
-    /// See [`OnDisk::packages`].
+    /// See [`OnDisk::packages`]. A map, and it stays one: it is keyed by interpreter
+    /// identity and it is the on-disk format, so a scalar would fail to parse every
+    /// existing `_freeze/` file.
     packages: HashMap<String, String>,
     /// Live total of `key.len() + value.len()` across `entries`, maintained on every
     /// insert and eviction so [`MAX_BYTES`] costs no walk of the map.

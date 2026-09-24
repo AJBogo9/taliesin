@@ -1632,8 +1632,7 @@ fn edited_cells(
 /// would run, `{{< include >}}` resolved and cell options applied, so the routing decision
 /// and the work it routes around cannot disagree about what a cell is.
 ///
-/// `executes_to_kernel` is the shared predicate the render pass and the executor already
-/// agree on (`exec::tests::kernel_lang_agrees_with_cores_executable_set` pins them equal),
+/// `executes_to_kernel` is the one predicate the render pass and the executor both ask,
 /// which is what makes a `{js}` page cell-free here: `{js}` runs in the browser, so a page
 /// full of reactive cells needs the kernel lane exactly as much as a prose page does.
 fn is_cell_free(blocks: &[Block]) -> bool {

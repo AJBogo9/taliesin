@@ -15,8 +15,8 @@ pub(crate) struct CellRegion {
     /// `python` display block, not a `{.python}` one, not one in a block quote or list item,
     /// and not `{bash}`.
     ///
-    /// Here rather than in the editor because the answer is the render's and
-    /// [`crate::exec::kernel_lang`]'s, and an editor deciding for itself would be a second
+    /// Here rather than in the editor because the answer is the render's
+    /// (`render::executes_to_kernel`), and an editor deciding for itself would be a second
     /// copy of the executable-language set — the drift that puts a Run button above a
     /// fence nothing can run.
     pub(crate) executable: bool,
@@ -60,7 +60,7 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
             }
             let executable = class.line(fence.open).depth == 0
                 && taliesin_core::render::is_executable_fence(&fence.info)
-                && crate::exec::kernel_lang(&language).is_some();
+                && taliesin_core::render::executes_to_kernel(&language);
             (end > start).then(|| CellRegion {
                 language,
                 start_line: start,
