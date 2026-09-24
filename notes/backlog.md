@@ -1,13 +1,13 @@
 # Taliesin backlog
 
-Single-author Rust `.tmd` to **HTML-only** dev server. **Scope: corpus-plus-roadmap** ("done" = the
-docs under `corpus/` render correctly; each new capability ships pinned by a target corpus doc).
+Single-author Rust `.tmd` to **HTML-only** dev server. **Scope: `CLAUDE.md`** ("done" = the docs
+under `corpus/` render correctly; a feature witness belongs in `crates/core/src/render/tests.rs`).
 Roadmap: [ROADMAP.md](ROADMAP.md).
 
 > **Only open tasks live here.** Completed work lives in git, [AUDITS.md](AUDITS.md) and
 > [ROADMAP.md](ROADMAP.md); **delete an item when it lands** — never a `[x]`, never a strikethrough.
-> Method lessons and detection gaps go to [LESSONS.md](LESSONS.md), and everything that must not be rebuilt, re-filed or
-> re-scoped goes to [DO-NOT-REBUILD.md](DO-NOT-REBUILD.md).
+> Method lessons and detection gaps go to [LESSONS.md](LESSONS.md), and everything that must
+> not be rebuilt, re-filed or re-scoped goes to [DO-NOT-REBUILD.md](DO-NOT-REBUILD.md).
 >
 > **Pruned to the release critical path on 2026-08-07** (owner instruction), the fourth cut-back and
 > the first for a reason other than rot: the previous three (1,767 lines on 2026-07-29; 1,298 on
@@ -22,16 +22,12 @@ Roadmap: [ROADMAP.md](ROADMAP.md).
 
 ## Start here
 
-> **⚠ THE DEFECT QUEUE IS NOT IN THIS FILE. It is
-> [2026-08-13-mvp-audit-backlog.md](2026-08-13-mvp-audit-backlog.md)**, the post-cut audit's 29
-> confirmed defects plus 18 shipping-surface items, in 12 branchable batches, each carrying its own
-> reproduction command and done-condition. **Batch 1 is data loss** (`build --out <dir>` deletes
-> files in the output directory and exits 0) and should be taken before anything else in either file.
-> That file also records what NOT to do: the audit found the scope itself sound and the document
-> vocabulary fully witnessed, so **do not cut another feature**.
->
-> **This file stays the release critical path.** The two sequences are independent; the audit queue
-> is about correctness, this one is about shipping.
+> **The defect queue is not in this file. It is
+> [2026-09-24-execution-verified-audit.md](2026-09-24-execution-verified-audit.md)**, whose
+> "Suggested sequence" orders it. The 2026-08-13 queue it replaces is superseded, not verified
+> empty: its register decision was mooted when the registers were cut on 2026-08-17, the flip it
+> deferred happened on 2026-08-20, and its "do not cut another feature" line was overridden by
+> the cuts that followed. An item from it comes back only if it bites.
 >
 > **The 2026-09-01 defect queue landed the same day it was filed:
 > [2026-09-01-product-audit-backlog.md](2026-09-01-product-audit-backlog.md)**, the
@@ -50,26 +46,9 @@ them cut or superseded). **`CLAUDE.md` remains the authority on any count**; tak
 from `./tools/gates.sh`'s own verdict line and never from prose here.
 
 **Taliesin 1.0.0 was published on 2026-08-20.** The repository is public, the history is
-published, the tag is cut and the release assets are verified. What remains is item 100's
-single un-runnable step (deleting `taliesin-old`, which needs an interactive `gh auth
-refresh`), then 149's README image and 170's marketing site. Items 103 and 148 are closed.
-
-**Pre-flight is DISCHARGED for the current tree, and it re-arms on every merge.**
-`./tools/gates.sh` ran green on 2026-08-07 (all 9 gates, twice: once at `87af6aa6` as a baseline and
-once on the finished `item-210-nested-cell-execution` branch). All 8 CI jobs still arm on the first
-push after the flip, against whatever tree exists then, so a red gate discovered *after* the repo is
-public is discovered by an audience: **re-run it immediately before Phase 2 of item 100**, not once
-and for all.
-
-**Release readiness, re-measured 2026-08-05.** Green: `git-filter-repo` is installed, the history
-rewrite is rehearsed end to end, the tree is clean and equal to `origin/main`, the repo has zero
-forks, and README's D9-3 claim is already softened to "no prebuilt binaries yet". Not green:
-everything in the sequence above.
-
-**The author's feature-first policy is discharged, and 170 is no longer last.** It said "finish
-framework features before marketing-site work"; the framework features it deferred to were all
-dropped in this prune, so the marketing site is now simply the last step of the release rather than
-a thing waiting its turn.
+published, and CI runs on every push to `main`. What remains below is item 100's last check and
+149's README image. The marketing site deploys with `tools/publish.sh` (four Cloudflare Pages
+projects), and its unshipped hero clip is `live-edit-hero-demo` in [ROADMAP.md](ROADMAP.md).
 
 - **Ask git, never this file, for git state.** No SHA, branch name or commit count is recorded here
   on purpose: the author and parallel sessions both push, and a recorded SHA is the line that rots
@@ -91,10 +70,8 @@ a thing waiting its turn.
   **broken probe** until proven otherwise; carry a known-positive row.
 - **There is no adoption-table instrument any more.** `taliesin features` was cut in wave 2, so
   answer "what does the tool support" from the **validator consts** directly, never from
-  `vocab.rs` (which is the *offered-completions* subset and under-reports: it offers 5 of the 12
-  `XREF_LABELS`).
-- **Nothing is owed by the author except the Phase 2 go-ahead.** Item 103 was ruled and closed
-  on 2026-08-20, and every other prerequisite is discharged and recorded in the go/no-go dossier.
+  `vocab.rs`, which is the *offered-completions* subset (today it offers all 5 `XREF_LABELS`,
+  but nothing requires it to).
 
 ## Standing constraints (read before working)
 
@@ -128,14 +105,12 @@ a thing waiting its turn.
   **Underivable is not the same as belonging in front matter**: `datasets:` passed the derive test
   and was still retired, because an annotation that describes one invocation belongs *on* that
   invocation.
-- **A new front-matter key trips FOUR drift gates; a RETIREMENT costs ONE line.** `CLAUDE.md` names
-  them and is the current count. **One of the four lives outside `taliesin-core`**
-  (`editor/vscode/schema/tali-site.schema.json`, a bundled copy gated only by the companion's own
-  `node --test`), so `cargo test --workspace` can be green while it is stale; only
-  `./tools/gates.sh` catches it. Retiring is now the cheap direction: add the `RETIRED_KEYS` entry
-  and stop — **do not write a tombstone test**, the register derives it. What the register cannot
-  derive is the *parser* still reading the key, which is the other half of a retirement and wants a
-  parser-side pin. That asymmetry is the standing argument for "derive, don't declare" above.
+- **A new front-matter key trips THREE drift gates, all inside `taliesin-core`.** `CLAUDE.md` names
+  them and is the current count (the companion's bundled schema copy, once a fourth, was cut on
+  2026-08-20). Withdrawing a key has no register to update: the retirement registers were cut on
+  2026-08-17. It means deleting the *read* as well as the vocabulary entry, and a parser-side pin is
+  the only thing that says the read is gone. That cost is the standing argument for "derive, don't
+  declare" above.
 - **Any new generated block owes the search-index sweep** or its text leaks into Cmd-K results.
   This was a *four*-projection sweep until `taliesin read`, `skim.rs` and `llms-full.txt` were all
   cut; the search index is the one that is left. Two known leaks were found only by building a real
@@ -195,71 +170,16 @@ anything client-side, and **delete the item from this file when it lands.**
 > **Item 103 is CLOSED**, ruled 2026-08-20: keep the name, accept the SEO cost, and always
 > publish as "Taliesin, the `.tmd` dev server" so the disambiguator travels.
 
-100. **The public flip: DONE 2026-08-20, except one step only the author can run.**
-     `AJBogo9/taliesin` is public at 2,122 commits with the full single-author history.
-     `AJBogo9/taliesin-private-archive` holds the complete record minus the third-party
-     material (D-8). Both were verified by cloning them back from GitHub: all 16 purged
-     paths at 0 commits, and every redaction key at 0 across BOTH surfaces, objects and
-     commit messages. One author, `321b658d` intact.
-     - **THE ONE THING LEFT, and it needs your hands.** `AJBogo9/taliesin-old` (the
-       original, still private) has NOT been deleted: the `gh` token lacks the
-       `delete_repo` scope and refreshing it is an interactive OAuth flow. It still holds
-       the un-rewritten history, which means **the co-author's joint work and the
-       university's assignment brief are still on GitHub's servers**, which is exactly
-       what ruling D-8 forbids. Not a public exposure (the repo is private), but it is a
-       rights question, so do it soon:
-       ```sh
-       gh auth refresh -h github.com -s delete_repo
-       gh repo delete AJBogo9/taliesin-old --yes
-       ```
-       Safe to do: the 36 MB un-rewritten bundle at
-       `~/Documents/personal/taliesin-private/taliesin-full-2026-08-20.bundle` was written
-       and verified (cloned back, identical tree hash) before anything was renamed, and the
-       archive repo carries 2,168 commits. Delete this item when that command returns.
-     - **Working-copy hazard, already defused, worth knowing.** After the rename the old
-       `origin` URL resolved to the NEW PUBLIC repo while the local tree still held the
-       un-rewritten history, so a force-push would have published the purge set.
-       `~/Documents/personal/taliesin`'s `origin` now points at the private archive
-       instead. **That directory is the pre-publication artifact, not the public repo.**
-       A clone of the public repo is at `~/Documents/personal/taliesin-public`; swap the
-       two directories when convenient.
+100. **Confirm `AJBogo9/taliesin-old` is gone, then delete this item.** It held the un-rewritten
+     history that ruling D-8 forbids keeping on GitHub. On 2026-09-24 `gh repo view
+     AJBogo9/taliesin-old` could not resolve it and `gh repo list AJBogo9 --visibility private`
+     listed only `taliesin-private-archive`, so it looks deleted; the author confirms. There is one
+     working copy, `~/Documents/personal/taliesin`, whose `origin` is the public `AJBogo9/taliesin`.
 
-149. **Launch presentation.** (The flip discharged most of it.) `homepageUrl` is set to
-     `https://taliesin.sh`, the description carries the disambiguator, `CODE_OF_CONDUCT.md`
-     and the issue templates shipped, and **v1.0.0 is released with all six assets**
-     (three targets, `.tar.gz` plus `.sha256`, tag-derived names correct). The Linux
-     binary was downloaded, checksum-verified, executed and used to render a document, so
-     the README's install section is now true and tested rather than asserted. **What is
-     left is the README's only-image-is-a-badge problem**: the four screencasts are MP4 and
-     need a GIF conversion or an uploaded asset URL.
-     - ~~**`homepageUrl` is empty**~~ although `taliesin.sh` is bought and already set as `url:` in
-       `site/_site.yml`. Re-measured 2026-08-05 via `gh repo view`: the description is a real
-       one-line description and there are **6 topics**, and the four screencasts **do** appear on
-       pages a visitor sees — both halves of the filed "dead first impression" were rot. Still true:
-       empty `homepageUrl`, zero releases (= 148), and the README's only image is the licence badge.
-       The screencasts are MP4, so putting one in the README needs a GIF conversion or an uploaded
-       asset URL, not a one-line embed.
-     - **Anything quoting the speed ratio reads `RESULTS.md`'s "why the ratio is 9x and not 83x"
-       section first.** The README led with a **wrong** pair until 2026-08-05 (3.2 KB against a
-       270 KB page — 3.2 KB is the other 54 ops, **not** the patch, overstating the shrink by ~10x).
-       The gated numbers are: payload **32,303 bytes vs a 291,691-byte page, 9x smaller**, 53
-       `SetMeta` / 1 `Update`, cold **135,010.4 µs** vs warm **13,403.9 µs**. One fenced div carries
-       90% of the payload on its own, and the honest headline is the op shape, not the ratio.
-     - **Still absent: a code of conduct and GitHub issue templates**, both only worth doing once the
-       repo is public. (`CONTRIBUTING.md` with the inbound relicensing grant and the platform matrix
-       both shipped 2026-07-28.)
-
-170. **Marketing site + a deploy mechanism.** (Last, and it is a build not a switch.) The
-     `live-edit-hero-demo` clip (= `ROADMAP.md` Wave 2's unshipped deliverable), a demo-led hero
-     rebuild, mobile embed refinement, and deploy. **"Swapping the `site/_site.yml` placeholders" is
-     rot** (2026-08-05): `url:` is already `https://taliesin.sh`, and placeholder/TBD/lorem greps
-     across `site/` return zero. **There is no deploy mechanism at all** to flip on:
-     `.github/workflows/` holds only `ci.yml` and `release.yml`. `site/build.sh` builds all 8
-     projects into one tree and **the ordering is load-bearing** — the parent build's `sweep_stale`
-     deletes anything under the output dir it did not write, so a mount built first is silently swept
-     away. Overlaps 149; do not build the same thing twice from both entries. Browser-verify at the
-     three project viewports (390x844, 1440x900, **900x1440** — the forgotten portrait band is where
-     layout defects show).
+149. **The README's only image is the licence badge.** The four screencasts are MP4, so putting
+     one in the README needs a GIF conversion or an uploaded asset URL, not a one-line embed.
+     Anything quoting the speed ratio reads `tools/live-edit-bench/RESULTS.md`'s "why the ratio is
+     9x and not 83x" section first.
 
 ## Product / distribution
 
