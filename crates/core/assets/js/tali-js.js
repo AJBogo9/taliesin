@@ -155,7 +155,7 @@
   }
 
   // Ingest `<script type="tali-define">` blobs (the Python ojs_define bridge): set
-  // the named values, then re-run every mounted cell — a define can land after
+  // the named values, then re-run every mounted cell: a define can land after
   // the cells first ran (live preview executes Python after the page mounts). Returns
   // that pass, or null when no define landed, so `enhance` can run its own passes after it.
   /** @returns {Promise<void> | null} */

@@ -42,7 +42,7 @@ exercises the walker. The `Pass` column below answers this per document.
 walks every corpus entry and asserts it is `machine` unless it is `tech-blog/`, so a new corpus
 project with no row here fails the test rather than sitting unclassified.
 
-This thins nothing. All 82 documents still render under the sweeps above, and the two that get
+This thins nothing. All 80 documents still render under the sweeps above, and the two that get
 stronger with every document added are untouched. The column governs a person's attention, not
 the regression net.
 

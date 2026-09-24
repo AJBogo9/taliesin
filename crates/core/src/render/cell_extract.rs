@@ -1,5 +1,5 @@
 //! Cell-option parsing: the `#|`/`//|`/`%%|` directive primitive and the pure leaf
-//! parsers that key off it — language detection, boolean flags, code-fold, option
+//! parsers that key off it: language detection, boolean flags, code-fold, option
 //! stripping, source slicing, and `{js}` option parsing.
 //! All take a code literal/lines + key and return derived strings/bools; none touches
 //! the orchestrator's shared state.

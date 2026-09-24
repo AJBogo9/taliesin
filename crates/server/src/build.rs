@@ -172,7 +172,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
                 // `--out <dir>` needs a real value. A missing one (end of args, or a flag
                 // follows) is a hard error rather than silently leaving out_dir None and
                 // writing `<stem>.html` to an unexpected place. (`--out` = output dir; the
-                // undocumented `--dir` alias was dropped — `--dir` is the scaffold-input flag.)
+                // undocumented `--dir` alias was dropped: `--dir` is the scaffold-input flag.)
                 "--out" => match value.take() {
                     Some(v) => out_dir = Some(v),
                     None => {
@@ -193,7 +193,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
                 // *fails* the build. This is that failure's opt-out.
                 "--no-exec" => no_exec = true,
                 // `--stdout`: the page to stdout rather than to a file. This is the whole of what
-                // the `render` verb was, minus a second code path — pair it with `--no-exec` for
+                // the `render` verb was, minus a second code path; pair it with `--no-exec` for
                 // `render`'s static, kernel-free dump.
                 "--stdout" => stdout = true,
                 // `--check-only`: lint, write nothing. Never executes a cell, so it needs no

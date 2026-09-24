@@ -273,7 +273,7 @@ fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<War
         format!(
             "`date: {val}` isn't a machine-readable date, so the sitemap carries no \
              `<lastmod>` for this page and the Atom feed leaves it out (the page still \
-             shows the date) — write `YYYY-MM-DD` to publish it"
+             shows the date); write `YYYY-MM-DD` to publish it"
         ),
         block_key_line(block, "date"),
     ));
