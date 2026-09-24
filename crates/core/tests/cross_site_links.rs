@@ -64,8 +64,34 @@ fn shipped_documents() -> Vec<PathBuf> {
     }
     let mut out = Vec::new();
     walk(&repo_root(), &mut out);
+    // The README is the first page a stranger reads, and its links into the guide are
+    // absolute URLs for the same reason the sites' are: GitHub shows a linked `.tmd` as
+    // plain text.
+    out.push(repo_root().join("README.md"));
     assert!(!out.is_empty(), "found no shipped documents");
     out
+}
+
+/// The README links the RENDERED guide, never a raw `.tmd`: GitHub has no renderer for the
+/// format, so a stranger following such a link reads front matter and shortcodes as text.
+#[test]
+fn the_readme_links_no_raw_tmd_source() {
+    let readme = std::fs::read_to_string(repo_root().join("README.md")).unwrap();
+    let raw: Vec<&str> = readme
+        .match_indices("](")
+        .filter_map(|(i, _)| {
+            let target = &readme[i + 2..];
+            let end = target.find(')')?;
+            let target = &target[..end];
+            let path = target.split('#').next().unwrap_or(target);
+            path.ends_with(".tmd").then_some(target)
+        })
+        .collect();
+    assert!(
+        raw.is_empty(),
+        "README.md links raw .tmd sources, which GitHub shows as plain text; link the \
+         page on https://guide.taliesin.sh/ instead: {raw:?}"
+    );
 }
 
 /// `origin -> project directory`, read from each `_site.yml`'s own `url:`. Derived, so a new

@@ -15,13 +15,13 @@ one author's workflow around three goals:
 3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
 
 Output is HTML only. The project's own manual is two sibling books authored in
-`.tmd`: the [User Guide](docs/guide/index.tmd) (how to use it) and the
-[Internals](docs/internals/index.tmd) book (the architecture, websocket protocol,
+`.tmd`: the [User Guide](https://guide.taliesin.sh/) (how to use it) and the
+[Internals](https://internals.taliesin.sh/) book (the architecture, websocket protocol,
 and block model).
 
 ## Before you adopt it
 
-[Choosing Taliesin](docs/guide/using/choosing.tmd) covers each point below at length, with
+[Choosing Taliesin](https://guide.taliesin.sh/using/choosing.html) covers each point below at length, with
 its sources and method.
 
 - **Portability.** Across the 81 documents / 7,202 lines of the project's own corpus,
@@ -222,7 +222,7 @@ every block.
 
 Mermaid and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
-See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
+See the [User Guide](https://guide.taliesin.sh/) and [Internals](https://internals.taliesin.sh/)
 books, authored in `.tmd` and built with Taliesin itself.
 
 ## Documents you did not write
@@ -233,13 +233,13 @@ anything the project injects through `_site.yml`'s `head:`) passes through
 verbatim. Opening a document someone sent you is the same kind of decision as running a
 script they sent you. `--no-exec` stops the code cells, both kinds, but it is not a
 sanitizer, and Taliesin has no sandbox. The full account is in
-[the CLI reference](docs/guide/reference/cli.tmd) and the trust model is in
+[the CLI reference](https://guide.taliesin.sh/reference/cli.html) and the trust model is in
 [`SECURITY.md`](SECURITY.md).
 
 ## Accessibility
 
 The HTML Taliesin generates has a published WCAG 2.1 AA conformance report
-([docs/guide/reference/accessibility.tmd](docs/guide/reference/accessibility.tmd)), the
+([Accessibility](https://guide.taliesin.sh/reference/accessibility.html)), the
 ACR half of a VPAT, in the form an institutional evaluator expects. It states what
 conforms, what only partially conforms, and (at equal length) what has not been
 evaluated: there has been no screen-reader pass and no full keyboard walkthrough, and the
