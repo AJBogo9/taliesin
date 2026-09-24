@@ -2845,6 +2845,41 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Math the harvest leaves untypeset must not reach the KaTeX thread at all. Typesetting
+    /// the empty string in its place is still a request of the one thread KaTeX runs on, and
+    /// in a fresh process that request waits out the thread's QuickJS boot: the preview's
+    /// startup harvest did, on every page with body math, which was 17 ms of `docs/guide`'s
+    /// time to ready (audit 2026-09-24, WP20). Witnessed through the memo every request
+    /// fills; nothing in this crate's tests typesets an empty expression.
+    #[test]
+    fn the_harvest_asks_the_katex_thread_for_nothing() {
+        let root = write_site(
+            "harvest-no-katex",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - one.tmd\n",
+                ),
+                ("index.tmd", "# Preface {.unnumbered}\n"),
+                (
+                    "one.tmd",
+                    "# One\n\nBody $y$ text.\n\n$$ z $$ {#eq-a}\n\n\
+                     \\begin{align}\nw\n\\end{align}\n",
+                ),
+            ],
+        );
+        let mut site = Site::discover_registry(&root);
+        site.harvest_xref_numbers();
+        assert_eq!(site.xref_targets["eq-a"].number, "1.1");
+        for display in [false, true] {
+            assert!(
+                !crate::math::is_memoized("", display),
+                "the harvest asked KaTeX to typeset an empty expression (display: {display})"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The harvest's render skips typesetting, so it must still agree with the served render
     /// on everything the harvest keeps: every number and every heading title, on every page
     /// of every project here (the corpus and both books).
