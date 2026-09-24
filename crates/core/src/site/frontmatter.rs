@@ -34,10 +34,7 @@ pub(crate) fn parse_front_matter(
     let Ok(src) = crate::includes::read_source(path) else {
         return FrontInfo::default();
     };
-    let Some(block) = crate::frontmatter::front_matter_block(&src) else {
-        return FrontInfo::default();
-    };
-    let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+    let Some(val) = crate::frontmatter::front_matter_value(&src) else {
         return FrontInfo::default();
     };
     // Parsed for its DIAGNOSTICS only. Nothing in the site layer reads a page's authors

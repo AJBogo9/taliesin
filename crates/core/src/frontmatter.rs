@@ -87,10 +87,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     let Some(block) = front_matter_block(src) else {
         return misplaced_front_matter(src).into_iter().collect();
     };
-    if block.trim().is_empty() {
-        return Vec::new();
-    }
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+    let Some(value) = parse_front_matter_block(block) else {
         return Vec::new();
     };
     let Some(map) = value.as_mapping() else {
@@ -159,7 +156,7 @@ pub(crate) fn value_bool(v: &serde_yaml::Value) -> Option<bool> {
 /// canonical `true`/`false` (case-insensitive, tolerant of surrounding quotes). Returns
 /// `None` for any non-boolean value (e.g. `echo: fenced`), so a caller keeps its own
 /// meaning for that. The single source of the boolean vocabulary shared by the
-/// front-matter (`site::frontmatter::bool_field`), cell-option
+/// front-matter (`site::frontmatter::draft_flag`, [`value_bool`]), cell-option
 /// (`render::cell_extract`), toc (`render::DocFront::toc`), and `_site.yml`
 /// readers, so `toc: yes` / `#| echo: no` take effect instead of silently no-oping.
 pub(crate) fn yaml_bool_word(s: &str) -> Option<bool> {
