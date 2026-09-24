@@ -548,7 +548,7 @@ impl Site {
             format!(
                 "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\";\
                  window.TALIESIN_SEARCH_URL=\"{up}search-index.js\"",
-                page.url
+                search::json_str(&page.url)
             )
         };
         SiteCtx {
@@ -1425,7 +1425,7 @@ impl Site {
     }
 
     fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
-        let href = format!("{up}{}", p.url);
+        let href = format!("{up}{}", esc(&p.url));
         // A post with an `image:` shows it; a post without simply does not. The monogram
         // placeholder that used to fill the empty slot went on 2026-08-15 with spec §9's cut
         // #12: it existed to keep a text-only post ALIGNED beside its imaged neighbours in a
@@ -1510,9 +1510,10 @@ impl Site {
                     } else {
                         "btn btn-lg"
                     };
+                    // Scheme-checked like a markdown link: `javascript:` is blanked.
                     format!(
                         "<a class=\"{cls}\" href=\"{}\">{}</a>",
-                        esc(&a.href),
+                        esc(render::safe_url(&a.href, false)),
                         esc(&a.text)
                     )
                 })

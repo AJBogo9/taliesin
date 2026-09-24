@@ -135,11 +135,15 @@ impl Site {
     /// title falls back to `Home` (what the website brand already prints) rather than
     /// shipping `alt=""` on an image that *is* the link.
     fn brand_content(&self, text: &str, up: &str) -> String {
+        // A script-bearing scheme is blanked like a markdown image's ([`safe_url`]), which
+        // leaves no logo, so the wordmark stands in.
+        //
+        // [`safe_url`]: crate::render::safe_url
         let Some(src) = self
             .config
             .logo
             .as_deref()
-            .map(str::trim)
+            .map(|v| crate::render::safe_url(v.trim(), true))
             .filter(|v| !v.is_empty())
         else {
             return esc(text);
@@ -170,7 +174,7 @@ impl Site {
         );
         s.push_str(&format!(
             "<a class=\"tali-nav-brand\" href=\"{up}{}\">{}</a>",
-            self.site_home_url(),
+            esc(&self.site_home_url()),
             self.brand_content(&brand_text, &up)
         ));
         // A real, focusable button toggles the mobile menu, so keyboard and
@@ -243,7 +247,9 @@ impl Site {
         let content = icon.unwrap_or_else(|| esc(label));
         format!(
             "<a class=\"{classes}\"{aria}{name_attr} href=\"{}\" data-label=\"{}\">{}</a>",
-            target, data_label, content
+            esc(&target),
+            data_label,
+            content
         )
     }
 
@@ -378,7 +384,7 @@ impl Site {
                     Some(h) => {
                         g.push_str(&format!(
                             "<a class=\"tali-foot-item\"{aria} href=\"{}\">{content}</a>",
-                            resolve_href(h, &up)
+                            esc(&resolve_href(h, &up))
                         ));
                     }
                     None => g.push_str(&format!("<span class=\"tali-foot-item\">{content}</span>")),
@@ -422,7 +428,7 @@ impl Site {
         }
         format!(
             "<a class=\"tali-book-brand\" href=\"{up}{}\">{}</a>",
-            self.book_home_url(),
+            esc(&self.book_home_url()),
             self.brand_content(title.map(String::as_str).unwrap_or(""), up)
         )
     }
@@ -558,7 +564,7 @@ impl Site {
             // include-expanding `word_count` pass this ran over every chapter at discovery.
             s.push_str(&format!(
                 "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}</a></li>",
-                e.url,
+                esc(&e.url),
                 esc(&e.title)
             ));
         }
@@ -593,7 +599,7 @@ impl Site {
                 format!(
                     "<a class=\"tali-book-prev\" href=\"{up}{}\">\
                      <span class=\"tali-back-glyph\">\u{2190}</span> {}</a>",
-                    p.url,
+                    esc(&p.url),
                     label(p)
                 )
             })
@@ -603,7 +609,7 @@ impl Site {
                 format!(
                     "<a class=\"tali-book-next\" href=\"{up}{}\">{} \
                      <span class=\"tali-fwd-glyph\">\u{2192}</span></a>",
-                    n.url,
+                    esc(&n.url),
                     label(n)
                 )
             })
@@ -634,7 +640,7 @@ impl Site {
             "<nav class=\"tali-listing-backnav\" data-block-id=\"{id}\" \
              aria-label=\"Back to listing\"><a class=\"tali-back-link\" href=\"{up}{}\">\
              <span class=\"tali-back-glyph\" aria-hidden=\"true\">\u{2190}</span> {}</a></nav>",
-            owner.url,
+            esc(&owner.url),
             esc(owner.title.as_deref().unwrap_or_default())
         );
         Some(Block {
@@ -686,6 +692,147 @@ fn social_icon(name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::site::{Site, tests::write_site};
+
+    /// Every `href`/`src` the rendered pages carry, decoded, plus every tag carrying an
+    /// event-handler attribute, all read through the walker.
+    fn links_and_handlers(html: &str) -> (Vec<String>, Vec<String>) {
+        let mut links = Vec::new();
+        let mut handler = Vec::new();
+        for tag in crate::render::tags(html) {
+            for a in crate::render::attrs(&tag) {
+                if a.name.to_ascii_lowercase().starts_with("on") {
+                    handler.push(tag.text.to_string());
+                }
+                if matches!(a.name, "href" | "src") {
+                    links.push(a.value.to_string());
+                }
+            }
+        }
+        (links, handler)
+    }
+
+    /// Chrome config and file names are author data emitted into attributes on every
+    /// page, and each such value is escaped and, for a link, scheme-checked like a markdown
+    /// link (`safe_url`). They were interpolated raw: a `"` in a nav or footer href, or in a
+    /// page's file name (brand, card, back link, cross-page reference), wrote a live event
+    /// handler; `javascript:` in a nav href, a hero action or `logo:` shipped as written;
+    /// `window.TALIESIN_PAGE_URL` broke its script; and a time in `date:` made the Atom feed
+    /// unparseable.
+    #[test]
+    fn chrome_values_and_file_names_are_escaped_and_scheme_checked() {
+        let root = write_site(
+            "chrome-escape",
+            &[
+                (
+                    "_site.yml",
+                    "title: S\nurl: https://ex.com\nfavicon: 'fav\"x.svg'\n\
+                     logo: 'javascript:alert(9)'\nnav:\n  left:\n    - text: Evil\n      \
+                     href: 'javascript:alert(1)'\n    - text: Quote\n      \
+                     href: 'q\"onmouseover=\"alert(2).tmd'\nfooter:\n  right:\n    - text: F\n      \
+                     href: 'f\"onfocus=\"alert(3).html'\n",
+                ),
+                (
+                    "blog\"&.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\nhero:\n  headline: Hi\n  \
+                     actions:\n    - text: Go\n      href: \"javascript:alert(4)\"\n---\n\n\
+                     See @sec-one.\n",
+                ),
+                (
+                    "posts/a\"b&c.tmd",
+                    "---\ntitle: Post\ndate: \"2026-01-02T09:30 & <later>\"\n---\n\n\
+                     ## One {#sec-one}\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let blog = site.render_page("blog\"&.tmd").expect("the listing page");
+        let post = site.render_page("posts/a\"b&c.tmd").expect("the post");
+        for (name, html) in [("blog", &blog), ("post", &post)] {
+            let (links, handler) = links_and_handlers(html);
+            assert!(handler.is_empty(), "{name}: an event handler: {handler:?}");
+            assert!(
+                !links.iter().any(|l| l.contains("javascript:")),
+                "{name}: a script URL shipped: {links:?}"
+            );
+        }
+        let (links, _) = links_and_handlers(&blog);
+        for want in [
+            "blog\"&.html",                   // the brand
+            "q\"onmouseover=\"alert(2).html", // the nav item, as a (broken) path
+            "f\"onfocus=\"alert(3).html",     // the footer item
+            "posts/a\"b&c.html",              // the listing card
+            "posts/a\"b&c.html#sec-one",      // the cross-page reference
+            "fav\"x.svg",                     // the favicon
+        ] {
+            assert!(links.iter().any(|l| l == want), "{want} missing: {links:?}");
+        }
+        let (links, _) = links_and_handlers(&post);
+        assert!(
+            links.iter().any(|l| l == "../blog\"&.html"),
+            "back link: {links:?}"
+        );
+        assert!(
+            post.contains("window.TALIESIN_PAGE_URL=\"posts/a\\\"b&c.html\""),
+            "the page url is a JS string literal"
+        );
+
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.first().expect("the listing's feed");
+        assert!(
+            xml.contains("<updated>2026-01-02T09:30 &amp; &lt;later&gt;</updated>"),
+            "{xml}"
+        );
+        assert!(!xml.contains("<later>"), "{xml}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The book chrome: chapter links, the pager and the book brand carry file names too.
+    #[test]
+    fn book_chrome_escapes_chapter_file_names() {
+        let root = write_site(
+            "book-escape",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - 'i\"x.tmd'\n  - 'c\"1&.tmd'\n",
+                ),
+                ("i\"x.tmd", "---\ntitle: Intro\n---\n\nx\n"),
+                ("c\"1&.tmd", "---\ntitle: One\n---\n\ny\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("i\"x.tmd").expect("the first chapter");
+        let (links, handler) = links_and_handlers(&html);
+        assert!(handler.is_empty(), "an event handler: {handler:?}");
+        assert!(
+            links.iter().filter(|l| *l == "c\"1&.html").count() >= 2,
+            "the drawer entry and the pager: {links:?}"
+        );
+        // Both brand slots (topbar and drawer head), read off the brand element itself.
+        let brands: Vec<String> = crate::render::tags(&html)
+            .filter(|t| crate::render::attr_value(t, "class").as_deref() == Some("tali-book-brand"))
+            .map(|t| {
+                crate::render::attr_value(&t, "href")
+                    .unwrap_or_default()
+                    .into_owned()
+            })
+            .collect();
+        assert!(
+            !brands.is_empty() && brands.iter().all(|h| h == "i\"x.html"),
+            "the brand: {brands:?}"
+        );
+        // The pager's other half, on the second chapter.
+        let second = site.render_page("c\"1&.tmd").expect("the second chapter");
+        let (links, handler) = links_and_handlers(&second);
+        assert!(handler.is_empty(), "an event handler: {handler:?}");
+        let prev = crate::render::tags(&second)
+            .find(|t| crate::render::attr_value(t, "class").as_deref() == Some("tali-book-prev"))
+            .and_then(|t| crate::render::attr_value(&t, "href").map(|h| h.into_owned()));
+        assert_eq!(prev.as_deref(), Some("i\"x.html"), "{links:?}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn footer_honors_local_xml_feed_link_when_url_set() {

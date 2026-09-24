@@ -16,9 +16,16 @@ pub(super) fn tmd_to_html(rel: &str) -> String {
 
 /// Resolve a config/author href for emission from a page at `up` depth: leave
 /// external/absolute/anchor links alone, map intra-site `.tmd` to `.html`, and
-/// prefix in-tree relative links with the page's `../` depth.
+/// prefix in-tree relative links with the page's `../` depth. A script-bearing scheme
+/// (`javascript:`) is blanked first, exactly as a markdown link's is ([`safe_url`]): these
+/// are `_site.yml` values emitted onto every page. The result is a URL, not markup; the
+/// caller escapes it into its attribute.
+///
+/// [`safe_url`]: crate::render::safe_url
 pub(super) fn resolve_href(href: &str, up: &str) -> String {
-    if href.starts_with('#')
+    let href = crate::render::safe_url(href, false);
+    if href.is_empty()
+        || href.starts_with('#')
         || href.starts_with("//")
         || href.contains("://")
         || href.starts_with("mailto:")
