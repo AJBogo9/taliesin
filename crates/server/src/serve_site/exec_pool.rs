@@ -44,7 +44,7 @@ pub(super) struct ExecPool {
     /// which interpreter runs. `None` (the unit-test `Default`) leaves each executor on
     /// the env/default that `Executor::build` computes, i.e. no override.
     python: Option<crate::interpreter::Resolved>,
-    /// Shared with [`super::SiteApp::interrupt`]: the pid of the cell currently executing
+    /// Shared with [`super::Project::interrupt`]: the pid of the cell currently executing
     /// anywhere in this pool, or 0. Handed to every executor this pool makes, so the
     /// websocket task can SIGINT a running cell without waiting for the serial builder to
     /// come back to it. `None` (the unit-test `Default`) publishes nothing.
