@@ -238,10 +238,15 @@ _tali_threading.Thread.start = _tali_start_in_context
 ///     the theme *background* (keeping the author's `framealpha`) rather than going
 ///     transparent, because the box is what makes a legend readable over the data.
 ///
-/// Data colours are never touched. The wrap installs lazily (on the first cell that
-/// mentions matplotlib) so non-plotting documents pay nothing.
+/// Data colours are never touched. The wrap installs lazily, so non-plotting documents pay
+/// nothing: before a cell that mentions matplotlib, and after any cell once matplotlib is
+/// loaded, however it got there. The second is what covers a figure a library draws
+/// without the cell naming matplotlib (pandas' `.plot()`): the transparent background
+/// applies to every inline figure from startup, so an unthemed one came out as black axis
+/// text on a transparent ground, unreadable on a dark page.
 const MPL_THEME_PREAMBLE: &str = r#"
 try:
+    import sys as _tali_sys
     _ip = get_ipython()
     if _ip is not None:
         # Transparency for the inline image only (not global rcParams).
@@ -448,18 +453,31 @@ try:
             _suppress._tali_suppress = True
             _png.for_type(Figure, _suppress)
 
+        def _tali_arm():
+            try:
+                import matplotlib.pyplot  # noqa: F401
+                _tali_ensure_inline()
+                _tali_install()
+            except Exception:
+                pass
+
         def _tali_pre(*_a, **_k):
             _info = _a[0] if _a else None
             _src = getattr(_info, 'raw_cell', '') or ''
-            if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src):
-                try:
-                    import matplotlib.pyplot  # noqa: F401
-                    _tali_ensure_inline()
-                    _tali_install()
-                except Exception:
-                    pass
+            if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src) \
+                    or ('matplotlib' in _tali_sys.modules):
+                _tali_arm()
+
+        def _tali_post(*_a, **_k):
+            # A figure a library drew without the cell naming matplotlib (pandas'
+            # `.plot()`) is displayed by the inline backend's own post_execute hook, which
+            # this one, registered at startup and so before it, runs ahead of.
+            if 'matplotlib' in _tali_sys.modules:
+                _tali_arm()
 
         _ip.events.register('pre_run_cell', _tali_pre)
+        _ip.events.register('post_execute', _tali_post)
+
 except Exception as _e:
     # Caught, because a kernel that cannot theme a figure must still run cells — but
     # SAID, on stderr, because the alternative is a `pass` that turns "this Python

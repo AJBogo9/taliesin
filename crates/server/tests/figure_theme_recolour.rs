@@ -286,3 +286,34 @@ fn extract_probe_lines(html: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+/// exec (pandas `.plot()` in dark mode): the theme hook armed only when the cell's SOURCE
+/// mentioned matplotlib (`matplotlib`, `pyplot`, `plt`, `seaborn`), while the transparent
+/// background is applied to every inline figure from startup. A figure reached indirectly
+/// (pandas' `.plot()`, any library that draws with matplotlib) with no earlier cell naming
+/// it was published as one PNG with black axis text on a transparent ground: unreadable
+/// for a dark-mode reader. The import is spelled indirectly here so no keyword appears,
+/// exactly as in a `df.plot()` cell, without depending on pandas.
+#[test]
+fn a_figure_drawn_without_naming_matplotlib_still_follows_the_theme() {
+    let Some(py) = python_or_skip() else {
+        return;
+    };
+    if !matplotlib_or_skip(&py) {
+        return;
+    }
+    let html = run_probe(
+        "indirect",
+        "import importlib\n\
+         lib = importlib.import_module('mat' + 'plotlib.py' + 'plot')\n\
+         figure = lib.figure()\n\
+         figure.gca().plot([1, 2, 3])",
+        &py,
+    );
+    // The classes also appear in the page's stylesheet, so match the emitted `<img>`s.
+    assert!(
+        html.contains("<img class=\"tali-fig tali-fig-light\"")
+            && html.contains("<img class=\"tali-fig tali-fig-dark\""),
+        "a figure from an indirect matplotlib import was not rendered for both themes"
+    );
+}

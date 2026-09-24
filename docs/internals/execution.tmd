@@ -335,8 +335,10 @@ directory (`PathScrub`, set per executor by `in_project`).
 ### Why matplotlib figures render twice
 
 A plain inline matplotlib PNG would bake one foreground colour into the image, so it
-would look wrong against the other theme. The Python startup preamble installs (lazily,
-the first time a cell touches matplotlib) a `text/html` figure formatter that renders
+would look wrong against the other theme. The Python startup preamble installs (lazily:
+before a cell whose source names matplotlib, and after any cell once matplotlib is
+loaded, which covers a library drawing with it, such as pandas' `.plot()`) a `text/html`
+figure formatter that renders
 each figure twice, once recoloured for the light theme and once for the dark, and
 emits them together as `<img class="tali-fig tali-fig-light">` + `<img class="tali-fig
 tali-fig-dark">`. The standalone `image/png` representation is suppressed so only the
