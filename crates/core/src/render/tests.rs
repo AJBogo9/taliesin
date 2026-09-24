@@ -3973,50 +3973,6 @@ fn base_css_aliases_the_conventional_sr_only_class() {
     );
 }
 
-/// `data-tali-cell` marks an EXECUTED cell's source listing, and only that: it is what the
-/// reader's show/hide-code control targets, so what it does *not* match is as load-bearing
-/// as what it does.
-///
-/// The distinction had no representation in the built HTML before this — `is_cell` was
-/// computed in `emit.rs` and discarded, and the preview's `data-tali-cell-state` is added at
-/// runtime by `client.js`, so a built page carried nothing. Byte-level snapshots do not
-/// cover it either: `body_html_snapshots` is deliberately `{js}`-only, and a `{js}` cell
-/// emits a script shell rather than a `<pre>`, so this path has no snapshot to drift.
-#[test]
-fn only_a_cells_source_listing_is_marked_for_the_reader_code_toggle() {
-    let doc = render_document(
-        "```{python}\n#| label: probe\nprint(1)\n```\n\n```python\nnot_a_cell = 1\n```\n",
-    );
-    let cell = &doc.blocks[0].html;
-    let fence = &doc.blocks[1].html;
-    assert!(
-        cell.contains("data-tali-cell=\"python\""),
-        "a cell's listing is marked, and carries its language: {cell}"
-    );
-    assert!(
-        !fence.contains("data-tali-cell"),
-        "a plain fence is prose the author wrote to be read, not a cell: {fence}"
-    );
-}
-
-/// A folded cell keeps the marker, and keeps it on the `<details>` — the element that
-/// actually wraps the listing. On the `<pre>` inside it, hiding would collapse the code and
-/// leave a bare disclosure triangle behind.
-#[test]
-fn a_folded_cell_carries_the_marker_on_the_element_that_wraps_the_listing() {
-    let doc = render_document("```{python}\n#| code-fold: true\nprint(1)\n```\n");
-    let html = &doc.blocks[0].html;
-    let at = html
-        .find("data-tali-cell=")
-        .expect("a folded cell is still a cell");
-    let open = html[..at].rfind('<').expect("an enclosing tag");
-    assert!(
-        html[open..].starts_with("<details"),
-        "the marker belongs on the <details> that wraps the listing, not the inner <pre>: {}",
-        &html[open..(open + 60).min(html.len())]
-    );
-}
-
 /// Cross-document view transitions ship in the BUNDLE, so every multi-page project gets a
 /// crossfade between pages without authoring a stylesheet (C-NAV-1; promoted out of the
 /// blog's `custom.css`).

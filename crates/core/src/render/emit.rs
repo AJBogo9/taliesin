@@ -66,36 +66,18 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                     Some(l) => format!(" class=\"language-{}\"", escape_attr(l)),
                     None => String::new(),
                 };
-                // Mark a CELL's source listing, so the reader's "show/hide code" control
-                // has something to target. `is_cell` was computed here already and thrown
-                // away: nothing in the built HTML distinguished ```{python} from ```python,
-                // and the preview's `data-tali-cell-state` is added at runtime by client.js,
-                // so a built page carried no marker at all.
-                //
-                // The distinction is the whole point of the control. A plain fence is prose
-                // the author wrote to be read; a cell's source is the computation behind an
-                // output, which is exactly what per-cell `echo:` already governs. The reader
-                // switch is that same axis, owned by the reader.
-                let cell_attr = if is_cell {
-                    format!(
-                        " data-tali-cell=\"{}\"",
-                        escape_attr(lang.as_deref().unwrap_or(""))
-                    )
-                } else {
-                    String::new()
-                };
                 // `code-fold` wraps the listing in a <details>; the block data
                 // attrs move to the <details> so click-to-source still keys off it.
                 let highlighted = crate::highlight::highlight(&literal, lang.as_deref());
                 if let Some(f) = &fold {
                     let open_attr = if f.open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs}{cell_attr} class=\"tali-code-fold\"{open_attr}>{}<pre><code{class}>{highlighted}</code></pre></details>",
+                        "<details{attrs} class=\"tali-code-fold\"{open_attr}>{}<pre><code{class}>{highlighted}</code></pre></details>",
                         f.summary_html()
                     ));
                 } else {
                     out.push_str(&format!(
-                        "<pre{attrs}{cell_attr}><code{class}>{highlighted}</code></pre>"
+                        "<pre{attrs}><code{class}>{highlighted}</code></pre>"
                     ));
                 }
             }

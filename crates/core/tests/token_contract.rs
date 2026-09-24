@@ -21,7 +21,6 @@ const EMITTED_DATA_ATTRS: &[&str] = &[
     "data-name",
     "data-source-file",
     "data-sourcepos",
-    "data-tali-cell",
     "data-tali-input",
     "data-tali-out",
     "data-tali-out-for",
@@ -64,9 +63,6 @@ const BROWSER_SELECTED_DATA_ATTRS: &[&str] = &[
     "data-src",
     "data-state",
     "data-tali-bound",
-    // `data-tali-cell` went on 2026-09-24, when the census stopped reading whole Rust files
-    // for one `<script` mention: `emit.rs` writes it on an executed cell's source listing,
-    // and names `<script` only in a comment. No browser code selects on it.
     "data-tali-cell-source",
     "data-tali-cell-state",
     "data-tali-done",
@@ -461,9 +457,7 @@ fn drop_test_modules(text: &str) -> String {
 /// A Rust file counts as browser code for what it SHIPS inline, nothing more. The whole
 /// file used to count as soon as `<script` appeared anywhere in it, a comment or a test
 /// fixture included, so three packages spelled the tag in pieces to keep a test out of the
-/// census, and an emitter's own attribute (`data-tali-cell`, which no browser code selects
-/// on) stood in the browser-selected pin because `emit.rs` mentions `<script` in a comment
-/// (audit 2026-09-24, WP13 leftover).
+/// census (audit 2026-09-24, WP13 leftover).
 #[test]
 fn only_what_a_rust_file_ships_inline_counts_as_browser_code() {
     let src = concat!(
