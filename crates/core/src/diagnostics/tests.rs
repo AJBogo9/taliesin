@@ -589,6 +589,50 @@ fn the_asset_check_reads_every_srcset_candidate() {
     }
 }
 
+/// A front-matter `image:` is the `og:image` a shared link unfurls with and the listing
+/// card's thumbnail, and the page itself never shows it, so a typo is a defect the author
+/// cannot see: it published an `og:image` that 404s under a clean `--strict`. It is held to
+/// the body-image rule, located at the `image:` line; a `%20` spelling, a root-absolute
+/// path (from the project root) and an external URL are all fine.
+#[test]
+fn a_front_matter_image_must_name_a_file_the_build_publishes() {
+    let dir = Tmp::new("fm-image");
+    let root = &dir.0;
+    std::fs::create_dir_all(root.join("posts")).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: S\n").unwrap();
+    std::fs::write(root.join("posts/my cover.png"), "x").unwrap();
+    std::fs::write(root.join("brand.png"), "x").unwrap();
+    let check = |image: &str| {
+        let src = format!("---\ntitle: P\nimage: {image}\nimage-alt: A.\n---\n\nBody.\n");
+        msgs_and_lines(&validate_front_matter_image(&src, &root.join("posts")))
+    };
+
+    let missing = check("typo-cover.png");
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert!(missing[0].0.contains("typo-cover.png"), "{missing:?}");
+    assert_eq!(
+        missing[0].1,
+        Some(3),
+        "located at the `image:` line: {missing:?}"
+    );
+    for fine in [
+        "my%20cover.png",
+        "\"my cover.png\"",
+        "/brand.png",
+        "https://cdn.example.com/card.png",
+    ] {
+        assert!(check(fine).is_empty(), "`image: {fine}` names a real file");
+    }
+    assert!(
+        validate_front_matter_image("---\ntitle: P\n---\n\nx\n", root).is_empty(),
+        "no `image:`, nothing to check"
+    );
+}
+
+fn msgs_and_lines(ws: &[Warning]) -> Vec<(String, Option<u32>)> {
+    ws.iter().map(|w| (w.message.clone(), w.line)).collect()
+}
+
 /// The same rule on the link and alt-text checks, which shared the scan.
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {

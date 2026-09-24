@@ -43,9 +43,9 @@ fn local_img_refs(html: &str) -> Vec<&str> {
     out
 }
 
-/// Local image references (`![](img.png)`, raw `<img>`, a `srcset`) that the published page will
-/// not have: a missing file, or one the build cannot publish. Absolute (`/...`) and
-/// external refs are out of scope; audio/video are skipped (see [`local_img_refs`]: a
+/// Local image references (`![](img.png)`, raw `<img>`, a `srcset`) that the published
+/// page will not have: a missing file, or one the build cannot publish. Absolute (`/...`)
+/// and external refs are out of scope; audio/video are skipped (see [`local_img_refs`]: a
 /// static check cannot resolve generated/streamed media).
 ///
 /// "Can be published" is the build's own rule, [`crate::includes::publishable`], judged
@@ -55,7 +55,6 @@ fn local_img_refs(html: &str) -> Vec<&str> {
 /// an image symlinked out of the checkout and one in a dot-folder passed `--strict` and
 /// shipped broken. An image a page references in an `_images/` folder is published.
 pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
-    use crate::includes::{Reach, Unpublishable, publishable};
     let root = crate::includes::single_doc_root(base);
     let mut out = Vec::new();
     for b in blocks {
@@ -70,28 +69,8 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
             if path.is_empty() || path.starts_with('/') {
                 continue;
             }
-            let message = match publishable(&root, base, Path::new(&path), Reach::Referenced) {
-                Ok(below) if root.join(&below).is_file() => continue,
-                Ok(_) => format!(
-                    "local asset not found: `{path}` (no such file under the document directory)"
-                ),
-                Err(Unpublishable::Outside) => format!(
-                    "local asset outside the project: `{path}` is not under {}, so the build \
-                     does not publish it",
-                    if root.join("_site.yml").is_file() {
-                        "the folder holding `_site.yml`"
-                    } else {
-                        "the document's own folder"
-                    }
-                ),
-                Err(Unpublishable::OutsideRepo) => format!(
-                    "local asset outside the repository: `{path}` is a symlink out of the \
-                     checkout, so the build does not publish it"
-                ),
-                Err(Unpublishable::Private) => format!(
-                    "local asset in a private path: `{path}` has a `.`-prefixed component, \
-                     which the build never publishes"
-                ),
+            let Some(message) = unpublished(&root, base, &path, "local asset") else {
+                continue;
             };
             let w = Warning::new(message).severity(Severity::Error);
             out.push(match line {
@@ -101,4 +80,71 @@ pub fn validate_local_assets(blocks: &[Block], base: &Path) -> Vec<Warning> {
         }
     }
     out
+}
+
+/// A page's front-matter `image:`, held to the same rule as a body image. It is the
+/// `og:image` a shared link unfurls with and the listing card's thumbnail, and the page
+/// never shows it itself, so a typo is a defect the author cannot see: it published an
+/// `og:image` that 404s under a clean `--strict`. Resolved the way discovery resolves it:
+/// against the page's directory, or from the project root for a root-absolute `/x.png`. An
+/// external URL is not ours to check. Located at the `image:` line.
+pub fn validate_front_matter_image(src: &str, base: &Path) -> Vec<Warning> {
+    let Some(block) = crate::frontmatter::front_matter_block(src) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+        return Vec::new();
+    };
+    let Some(image) = crate::site::scalar(value.get("image")) else {
+        return Vec::new();
+    };
+    let image = image.trim();
+    if !is_local_ref(image) {
+        return Vec::new();
+    }
+    let root = crate::includes::single_doc_root(base);
+    let path = crate::render::asset_fs_path(image);
+    let (from, rel) = match path.strip_prefix('/') {
+        Some(rooted) => (root.as_path(), rooted),
+        None => (base, path.as_str()),
+    };
+    let Some(message) = unpublished(&root, from, rel, "front-matter `image:`") else {
+        return Vec::new();
+    };
+    let w = Warning::new(message).severity(Severity::Error);
+    vec![match crate::frontmatter::block_key_line(block, "image") {
+        Some(l) => w.at(None, l),
+        None => w,
+    }]
+}
+
+/// Why the file `path` (decoded, relative to `base`) will not be in the published output,
+/// or `None` when it will: the one message set for every image check, spoken as `what`.
+fn unpublished(root: &Path, base: &Path, path: &str, what: &str) -> Option<String> {
+    use crate::includes::{Reach, Unpublishable, publishable};
+    Some(
+        match publishable(root, base, Path::new(path), Reach::Referenced) {
+            Ok(below) if root.join(&below).is_file() => return None,
+            Ok(_) => {
+                format!("{what} not found: `{path}` (no such file under the document directory)")
+            }
+            Err(Unpublishable::Outside) => format!(
+                "{what} outside the project: `{path}` is not under {}, so the build does not \
+                 publish it",
+                if root.join("_site.yml").is_file() {
+                    "the folder holding `_site.yml`"
+                } else {
+                    "the document's own folder"
+                }
+            ),
+            Err(Unpublishable::OutsideRepo) => format!(
+                "{what} outside the repository: `{path}` is a symlink out of the checkout, so \
+                 the build does not publish it"
+            ),
+            Err(Unpublishable::Private) => format!(
+                "{what} in a private path: `{path}` has a `.`-prefixed component, which the \
+                 build never publishes"
+            ),
+        },
+    )
 }

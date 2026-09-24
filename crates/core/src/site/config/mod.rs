@@ -392,7 +392,7 @@ impl ConfigSource<'_> {
 /// The 1-based line where `key` is written in `_site.yml`, at any nesting depth (a list
 /// item's `- key:` counts). First match wins: a duplicate key is a YAML error the parse
 /// step already reports.
-fn key_line(text: &str, key: &str) -> Option<usize> {
+pub(crate) fn key_line(text: &str, key: &str) -> Option<usize> {
     text.lines()
         .position(|l| {
             let t = l.trim_start().trim_start_matches("- ").trim_start();

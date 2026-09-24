@@ -49,10 +49,14 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
             if img.starts_with("http://") || img.starts_with("https://") {
                 Some(img.to_string())
             } else {
+                // Decoded before it is encoded: `my%20cover.png` names the file
+                // `my cover.png`, and encoding the value as written published `%2520`.
                 base.map(|b| {
                     format!(
                         "{b}/{}",
-                        super::feed::percent_encode_path(img.trim_start_matches('/'))
+                        super::feed::percent_encode_path(&crate::render::percent_decode(
+                            img.trim_start_matches('/')
+                        ))
                     )
                 })
             }
@@ -204,6 +208,33 @@ Body.
         assert!(
             html.contains(r#"content="https://ex.com/my%20posts/my%20thumb.webp""#),
             "and so must og:image: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `image: my%20cover.png` is the spelling the body-image rule accepts for a file named
+    /// `my cover.png` (the one VS Code inserts), and the listing card's `src` works with it.
+    /// `og:image` percent-encoded the value as written, so the `%` became `%25` and a shared
+    /// link unfurled with `my%2520cover.png`, a 404. It is decoded first, then encoded once.
+    #[test]
+    fn a_percent_encoded_image_is_not_encoded_twice() {
+        let root = write_site(
+            "ogpct",
+            &[
+                ("_site.yml", "title: J\nurl: https://ex.com\n"),
+                (
+                    "posts/two.tmd",
+                    "---\ntitle: Two\nimage: my%20cover.png\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/two.tmd").unwrap();
+        assert!(
+            html.contains(
+                r#"<meta property="og:image" content="https://ex.com/posts/my%20cover.png">"#
+            ),
+            "encoded once: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
