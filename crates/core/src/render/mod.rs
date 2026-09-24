@@ -708,6 +708,15 @@ fn render_internal_impl(
             text.to_string()
         }
     };
+    // Nor does it typeset a block's display math, not even as the empty string: that is still
+    // a request of the one KaTeX thread, which in a fresh process waits out its boot.
+    let typeset = |latex: &str| {
+        if numbers_only {
+            String::new()
+        } else {
+            crate::math::render(latex, true)
+        }
+    };
     for node in root.children() {
         // A definition renders at its reference, never in place (the pre-pass above
         // already holds it). comrak has moved them all to the document end.
@@ -862,8 +871,12 @@ fn render_internal_impl(
         // Emptied only now: every cell option this walk numbers by was read just above.
         if numbers_only {
             for d in node.descendants() {
-                match &mut d.data.borrow_mut().value {
-                    NodeValue::Math(m) if heading_level.is_none() => m.literal.clear(),
+                let mut data = d.data.borrow_mut();
+                match &mut data.value {
+                    // Dropped rather than emptied: an empty expression is still typeset.
+                    NodeValue::Math(_) if heading_level.is_none() => {
+                        data.value = NodeValue::Text("".into())
+                    }
                     NodeValue::CodeBlock(cb) => cb.literal.clear(),
                     _ => {}
                 }
@@ -953,7 +966,7 @@ fn render_internal_impl(
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
             html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
-            html.push_str(&crate::math::render(&shown(env), true));
+            html.push_str(&typeset(env));
             html.push_str("</div>");
         } else if let Some((latex, anchor)) = is_paragraph
             .then(|| labelled_display_eq(&block_src))
@@ -971,7 +984,7 @@ fn render_internal_impl(
                 source_file.as_deref(),
                 src_line as u32,
             );
-            html.push_str(&emit_equation(&shown(&latex), &anchor, &attrs, &eq_num));
+            html.push_str(&emit_equation(&typeset(&latex), &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
@@ -3922,14 +3935,13 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
         .then(|| (latex.trim().to_string(), anchor.to_string()))
 }
 
-/// Render a numbered display equation: the KaTeX body plus a right-aligned
+/// Render a numbered display equation: the typeset KaTeX `body` plus a right-aligned
 /// `(N)` number, carrying the `#eq-` id so `@eq-x` cross-refs link to it.
-fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: &str) -> String {
+fn emit_equation(body: &str, anchor: &str, block_attrs: &str, num: &str) -> String {
     format!(
         "<div id=\"{anchor}\"{block_attrs} class=\"tali-eqn\">\
-         <span class=\"tali-eqn-body\">{}</span>\
-         <span class=\"tali-eqn-number\">({num})</span></div>",
-        crate::math::render(latex, true)
+         <span class=\"tali-eqn-body\">{body}</span>\
+         <span class=\"tali-eqn-number\">({num})</span></div>"
     )
 }
 

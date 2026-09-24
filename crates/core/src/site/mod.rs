@@ -195,7 +195,7 @@ mod discovery;
 // `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
-pub use discovery::{collect_pages, discovery_digest};
+pub use discovery::{collect_pages, discovery_digest, discovery_digests};
 use discovery::{website_page, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
@@ -2854,6 +2854,41 @@ pub(crate) mod tests {
             site.xref_targets["sec-probe"].title,
             xref::heading_titles(&full.blocks)["sec-probe"]
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Math the harvest leaves untypeset must not reach the KaTeX thread at all. Typesetting
+    /// the empty string in its place is still a request of the one thread KaTeX runs on, and
+    /// in a fresh process that request waits out the thread's QuickJS boot: the preview's
+    /// startup harvest did, on every page with body math, which was 17 ms of `docs/guide`'s
+    /// time to ready (audit 2026-09-24, WP20). Witnessed through the memo every request
+    /// fills; nothing in this crate's tests typesets an empty expression.
+    #[test]
+    fn the_harvest_asks_the_katex_thread_for_nothing() {
+        let root = write_site(
+            "harvest-no-katex",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - one.tmd\n",
+                ),
+                ("index.tmd", "# Preface {.unnumbered}\n"),
+                (
+                    "one.tmd",
+                    "# One\n\nBody $y$ text.\n\n$$ z $$ {#eq-a}\n\n\
+                     \\begin{align}\nw\n\\end{align}\n",
+                ),
+            ],
+        );
+        let mut site = Site::discover_registry(&root);
+        site.harvest_xref_numbers();
+        assert_eq!(site.xref_targets["eq-a"].number, "1.1");
+        for display in [false, true] {
+            assert!(
+                !crate::math::is_memoized("", display),
+                "the harvest asked KaTeX to typeset an empty expression (display: {display})"
+            );
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

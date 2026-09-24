@@ -35,8 +35,9 @@ at length, with its sources and method.
   built pages are static HTML that needs no runtime.
 - **Speed** (figures re-measured 2026-09-24 on a 16-core machine). A 6-page book
   (`docs/internals`) builds in 0.16 s (26 ms/page); `preview` is serving in ≈40 ms for a
-  single document (spawn to first HTTP 200) and ≈130 ms for a 16-page book; a warm
-  keystroke-sized edit diffs in 0.45 ms and ships a 3.2 KB patch instead of a 288 KB page
+  single document (spawn to first HTTP 200) and ≈110 ms for a 16-page book (2026-09-25);
+  a warm keystroke-sized edit diffs in 0.45 ms and ships a 3.2 KB patch instead of a
+  288 KB page
   reload, and 54 of its 55 ops are metadata-only patches that never touch a DOM node,
   which is why live state survives the edit. These figures
   measure Taliesin's work only and are not comparable with a cold Pandoc pass by a batch
