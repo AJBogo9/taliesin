@@ -1,6 +1,6 @@
 //! IEEE per-type reference formatting (`Bibliography::format` + the `fmt_*` helpers).
 
-use super::author::format_authors;
+use super::author::{format_authors, format_editors};
 use super::clean::{clean, clean_url};
 use super::{Bibliography, Fields};
 use crate::render::escape_attr as esc;
@@ -12,7 +12,18 @@ impl Bibliography {
     /// (misc/online) = quoted title + `[Online]. Available:` link.
     pub(crate) fn format(&self, key: &str) -> Option<String> {
         let e = self.entries.get(key)?;
-        let f = &e.fields;
+        let inherited;
+        let f = match e
+            .fields
+            .get("crossref")
+            .and_then(|p| self.entries.get(p.trim()))
+        {
+            Some(parent) => {
+                inherited = crossref(&e.fields, &parent.fields);
+                &inherited
+            }
+            None => &e.fields,
+        };
         let body = match e.kind.as_str() {
             "article" => fmt_article(f),
             // A chapter in a book/collection, or a paper in conference proceedings:
@@ -28,11 +39,14 @@ impl Bibliography {
             "book" | "inbook" | "incollection" => fmt_book(f),
             _ => fmt_misc(f),
         };
-        // Authors lead the entry (IEEE: "A. B. Author, <rest>").
+        // Authors lead the entry (IEEE: "A. B. Author, <rest>"); an edited volume with no
+        // author is led by its editors ("A. Editor, Ed., <rest>").
         let mut out = String::new();
         if let Some(a) = f
             .get("author")
             .map(|a| format_authors(a))
+            .filter(|s| !s.is_empty())
+            .or_else(|| f.get("editor").map(|e| format_editors(e)))
             .filter(|s| !s.is_empty())
         {
             out.push_str(&a);
@@ -170,11 +184,13 @@ fn fmt_inbook(f: &Fields) -> String {
 fn fmt_misc(f: &Fields) -> String {
     let mut segs: Vec<String> = Vec::new();
     // A `@dataset`/`@online` often carries the issuing body (Kaggle, a standards org)
-    // as publisher/organization/institution — keep it rather than drop it.
+    // as publisher/organization/institution — keep it rather than drop it. A thesis names
+    // its university as `school`.
     if let Some(p) = f
         .get("publisher")
         .or_else(|| f.get("organization"))
         .or_else(|| f.get("institution"))
+        .or_else(|| f.get("school"))
         .filter(|s| !s.is_empty())
     {
         segs.push(esc(&clean(p)));
@@ -219,17 +235,60 @@ fn quoted_title(f: &Fields) -> String {
 }
 
 /// Append `[Online]. Available: <link>` from `url` (or a `\url{}` in
-/// `howpublished`) when present.
+/// `howpublished`) when present, else from `doi` as a `https://doi.org/` link: a DOI is
+/// often the only locator an export carries (Mendeley, Better BibTeX).
 fn append_url(out: &mut String, f: &Fields) {
     let url = f
         .get("url")
         .or_else(|| f.get("howpublished"))
         .map(|u| clean_url(u))
-        .filter(|u| u.starts_with("http"));
+        .filter(|u| u.starts_with("http"))
+        .or_else(|| f.get("doi").map(|d| doi_link(d)).filter(|d| !d.is_empty()));
     if let Some(u) = url {
         let u = esc(&u);
         out.push_str(&format!(" [Online]. Available: <a href=\"{u}\">{u}</a>"));
     }
+}
+
+/// A DOI as its resolver link. Exports write it bare (`10.1000/xyz`), with a `doi:`
+/// prefix, or as a URL already; every form ends up as one `https://doi.org/` link.
+fn doi_link(doi: &str) -> String {
+    let doi = clean_url(doi);
+    let bare = [
+        "https://doi.org/",
+        "http://doi.org/",
+        "https://dx.doi.org/",
+        "http://dx.doi.org/",
+        "doi:",
+    ]
+    .iter()
+    .find_map(|p| doi.strip_prefix(p))
+    .unwrap_or(&doi)
+    .trim();
+    if bare.is_empty() {
+        String::new()
+    } else {
+        format!("https://doi.org/{bare}")
+    }
+}
+
+/// A `crossref` child's fields: its own, plus every field it lacks from the parent, as
+/// BibTeX resolves it. DBLP's standard export puts a paper's venue, year and publisher
+/// only on the parent `@proceedings`. A parent that names its venue as `title` alone
+/// gives the child that as its `booktitle`, as BibLaTeX does.
+fn crossref(child: &Fields, parent: &Fields) -> Fields {
+    let mut f = child.clone();
+    for (k, v) in parent {
+        if k != "crossref" {
+            f.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    }
+    if !f.contains_key("booktitle")
+        && let Some(t) = parent.get("title")
+    {
+        f.insert("booktitle".to_string(), t.clone());
+    }
+    f
 }
 
 /// The IEEE page segment: "p. 42" for one page, "pp. 123–145" for a range or a list.

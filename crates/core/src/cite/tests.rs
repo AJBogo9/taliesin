@@ -1259,3 +1259,58 @@ fn a_biblatex_export_keeps_its_journal_year_and_place() {
     let both = b.format("both").unwrap();
     assert!(both.contains("BibTeX J") && both.contains("2001"), "{both}");
 }
+
+/// Four fields real exports rely on were never read (audit 2026-09-24, bibtex #15):
+/// `doi` (a DOI-only entry, as Mendeley and Better BibTeX write one, had no link),
+/// `editor` (an edited volume rendered with no names at all), `crossref` (DBLP's standard
+/// export puts a conference paper's venue, year and publisher on the parent entry, so the
+/// child lost them all, and its pages too) and `school` (a thesis lost its university).
+#[test]
+fn doi_editor_crossref_and_school_are_read() {
+    let b = parse_bib(concat!(
+        "@article{doi, author={Smith, John}, title={T}, journal={J}, year={2019}, doi={10.1000/xyz123}}\n",
+        "@misc{doiurl, title={T}, doi={https://doi.org/10.1000/xyz}}\n",
+        "@misc{both, title={T}, url={https://example.org/p}, doi={10.1000/xyz}}\n",
+        "@book{ed, title={Edited Volume}, editor={Keeper, Kay}, year={2018}, publisher={OUP}, address={Oxford}}\n",
+        "@book{eds, title={Two Editors}, editor={Keeper, Kay and Other, Olga}, year={2018}, publisher={OUP}}\n",
+        "@inproceedings{child, author={Poe, P.}, title={Crossref child}, crossref={conf20}, pages={1--10}}\n",
+        "@proceedings{conf20, title={Proceedings of Conf 2020}, booktitle={Proceedings of Conf 2020}, year={2020}, publisher={ACM}}\n",
+        "@phdthesis{thesis, author={Graves, Alex}, title={Supervised sequence labelling}, year={2008}, school={Technische Universit{\\\"a}t M{\\\"u}nchen}}\n",
+    ));
+    let f = |k: &str| b.format(k).unwrap();
+    assert!(
+        f("doi").ends_with(
+            "[Online]. Available: <a href=\"https://doi.org/10.1000/xyz123\">https://doi.org/10.1000/xyz123</a>"
+        ),
+        "{}",
+        f("doi")
+    );
+    assert!(
+        f("doiurl").contains("href=\"https://doi.org/10.1000/xyz\""),
+        "a DOI written as a URL is not doubled: {}",
+        f("doiurl")
+    );
+    assert!(
+        f("both").contains("href=\"https://example.org/p\"") && !f("both").contains("doi.org"),
+        "a url wins over the doi: {}",
+        f("both")
+    );
+    assert_eq!(
+        f("ed"),
+        "K. Keeper, Ed., <em>Edited Volume</em>. Oxford: OUP, 2018."
+    );
+    assert!(
+        f("eds").starts_with("K. Keeper and O. Other, Eds., "),
+        "{}",
+        f("eds")
+    );
+    assert_eq!(
+        f("child"),
+        "P. Poe, \u{201c}Crossref child,\u{201d} in <em>Proceedings of Conf 2020</em>, ACM, 2020, pp. 1\u{2013}10."
+    );
+    assert!(
+        f("thesis").contains("Technische Universität München, 2008."),
+        "{}",
+        f("thesis")
+    );
+}

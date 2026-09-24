@@ -43,6 +43,21 @@ pub(crate) fn format_authors(raw: &str) -> String {
     out
 }
 
+/// IEEE editor list, leading an entry that has no author: "K. Keeper, Ed." or
+/// "A. One and B. Two, Eds.".
+pub(crate) fn format_editors(raw: &str) -> String {
+    let names = format_authors(raw);
+    if names.is_empty() {
+        return names;
+    }
+    let many = split_on_and(raw)
+        .iter()
+        .filter(|n| !n.trim().is_empty())
+        .count()
+        > 1;
+    format!("{names}, {}", if many { "Eds." } else { "Ed." })
+}
+
 /// Split a BibTeX author list on its ` and ` separator at **brace depth 0**, the same
 /// depth-counting idiom `parse.rs` reads field values with.
 ///
