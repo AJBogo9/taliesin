@@ -354,7 +354,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         }
         return build_site(Path::new(path), out_dir, strict, jobs, json);
     }
-    let mode = taliesin_core::OutputMode::Build;
     // Through the one normalizing reader, like every other `.tmd` read: a lone-CR file was
     // one line to the front-matter scans here while the renderer split it, so its broken
     // front matter went unreported and the build passed.
@@ -395,7 +394,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         // `listing:`, its numbering and its table of contents (audit 2026-09-24,
         // config-seam #4), and on the project `_freeze/` entry and `python:` it runs with.
         let site = taliesin_core::Site::discover_document(p);
-        build_page_executing(&site, src, stem, path, mode, mermaid_src)
+        build_page_executing(&site, src, stem, path, mermaid_src)
     });
     let (html, mut problems, unparseable, mut diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
@@ -783,7 +782,6 @@ fn build_page_executing(
     src: String,
     stem: &str,
     label: &str,
-    mode: taliesin_core::OutputMode,
     mermaid_src: &str,
 ) -> std::io::Result<BuildResult> {
     let page = site
@@ -843,13 +841,8 @@ fn build_page_executing(
         unparseable += pass.unparseable;
         diagnostics.append(&mut pass.diags);
         diagnostics.extend(cells);
-        let html = if mermaid_src.is_empty() {
-            taliesin_core::render_doc_to_page(&pass.doc, stem, mode)
-        } else {
-            taliesin_core::render_doc_to_page_mermaid_file(&pass.doc, stem, mermaid_src)
-        };
         BuildResult::Page {
-            html: taliesin_core::site::rewrite_tmd_links(&html),
+            html: single_doc_page(&pass.doc, stem, mermaid_src),
             problems,
             unparseable,
             diagnostics,
@@ -859,6 +852,18 @@ fn build_page_executing(
             kernel_failure: pass.kernel_failure,
         }
     }))
+}
+
+/// The one page `build <file>` writes, from its finished document: self-contained, the
+/// mermaid library inline unless `mermaid_src` names the sibling file a `--out` folder
+/// carries, and its `.tmd` links written as the `.html` URLs the preview writes.
+fn single_doc_page(doc: &taliesin_core::RenderedDoc, stem: &str, mermaid_src: &str) -> String {
+    let html = if mermaid_src.is_empty() {
+        taliesin_core::render_doc_to_page(doc, stem, taliesin_core::OutputMode::Build)
+    } else {
+        taliesin_core::render_doc_to_page_mermaid_file(doc, stem, mermaid_src)
+    };
+    taliesin_core::site::rewrite_tmd_links(&html)
 }
 
 /// A page's own executor: its `_freeze/` entry under the project root, keyed by the page's
@@ -896,7 +901,6 @@ mod single_doc_toc_tests {
             src.to_string(),
             stem,
             file.to_str().expect("utf-8 path"),
-            taliesin_core::OutputMode::Build,
             "",
         )
         .expect("runtime");
