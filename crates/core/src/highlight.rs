@@ -182,6 +182,17 @@ pub fn highlight(code: &str, lang: Option<&str>) -> String {
     html.to_string()
 }
 
+/// Whether `code` has been highlighted as `lang` in this process, i.e. is in the memo.
+/// Test-only: the witness that a pass did or did not highlight something.
+#[cfg(test)]
+pub(crate) fn is_memoized(code: &str, lang: &str) -> bool {
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map
+        .contains_key(&key(code, alias(lang)))
+}
+
 fn highlight_uncached(code: &str, syntax: &SyntaxReference, ss: &SyntaxSet) -> String {
     let mut hl = ClassedHTMLGenerator::new_with_class_style(syntax, ss, CLASS_STYLE);
     for line in LinesWithEndings::from(code) {

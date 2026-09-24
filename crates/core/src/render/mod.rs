@@ -235,11 +235,12 @@ pub fn render_document_scoped_with_site(
 ///
 /// Every number comes from the same walk, so it is the number the served page shows. What is
 /// skipped is what the harvest threw away: math outside a heading is left untypeset (a heading
-/// keeps its math, because its text names a cross-page `@sec-` link), and images are not
-/// measured. Typesetting was most of a harvest render, directly and through every later pass
-/// that walks the HTML, and past the math memo's capacity each save re-typeset the whole
-/// project's math on the one KaTeX thread: 10.7 s per save at 9,693 expressions (audit
-/// 2026-09-24, F1). So the blocks are not the page: never serve them.
+/// keeps its math, because its text names a cross-page `@sec-` link), code is not highlighted,
+/// and images are not measured. Typesetting and highlighting were most of a harvest render,
+/// directly and through every later pass that walks the HTML, and past a memo's capacity each
+/// save redid the whole project's: 10.7 s per save at 9,693 math expressions, 0.9 s for 200
+/// pages of highlighted code (audit 2026-09-24, F1). So the blocks are not the page: never
+/// serve them.
 pub(crate) fn render_numbers_scoped_with_site(
     src: &str,
     base_dir: &Path,
@@ -715,13 +716,13 @@ fn render_internal_impl(
         .flatten();
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
-    // A numbers-only render typesets a heading's math and nothing else's (see
-    // `render_numbers_scoped_with_site`): the math a block shows is never a number.
-    let typeset = |latex: &str| {
+    // A numbers-only render shows a heading's math and nothing else a block shows (see
+    // `render_numbers_scoped_with_site`): none of it is a number.
+    let shown = |text: &str| {
         if numbers_only {
             String::new()
         } else {
-            latex.to_string()
+            text.to_string()
         }
     };
     for node in root.children() {
@@ -729,13 +730,6 @@ fn render_internal_impl(
         // already holds it). comrak has moved them all to the document end.
         if matches!(node.data.borrow().value, NodeValue::FootnoteDefinition(_)) {
             continue;
-        }
-        if numbers_only && !matches!(node.data.borrow().value, NodeValue::Heading(_)) {
-            for d in node.descendants() {
-                if let NodeValue::Math(m) = &mut d.data.borrow_mut().value {
-                    m.literal.clear();
-                }
-            }
         }
         // A `:::` marker reaches the parse as a thematic break, to end the blocks above it
         // (`DivFences::replace_markers`); it is not a rule on the page.
@@ -882,6 +876,16 @@ fn render_internal_impl(
                 cell_role,
             )
         };
+        // Emptied only now: every cell option this walk numbers by was read just above.
+        if numbers_only {
+            for d in node.descendants() {
+                match &mut d.data.borrow_mut().value {
+                    NodeValue::Math(m) if heading_level.is_none() => m.literal.clear(),
+                    NodeValue::CodeBlock(cb) => cb.literal.clear(),
+                    _ => {}
+                }
+            }
+        }
 
         // A block id is hashed from the block's SOURCE, and a note's source lives
         // somewhere else entirely (`[^a]: …`, anywhere in the document) while its text
@@ -966,7 +970,7 @@ fn render_internal_impl(
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
             html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
-            html.push_str(&crate::math::render(&typeset(env), true));
+            html.push_str(&crate::math::render(&shown(env), true));
             html.push_str("</div>");
         } else if let Some((latex, anchor)) = is_paragraph
             .then(|| labelled_display_eq(&block_src))
@@ -984,7 +988,7 @@ fn render_internal_impl(
                 source_file.as_deref(),
                 src_line as u32,
             );
-            html.push_str(&emit_equation(&typeset(&latex), &anchor, &attrs, &eq_num));
+            html.push_str(&emit_equation(&shown(&latex), &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
@@ -1004,7 +1008,7 @@ fn render_internal_impl(
         } else if let Some(role) = &cell_role {
             // A labelled/captioned code cell -> a numbered, anchored figure/listing.
             let lang = cell.as_ref().map(|c| c.lang.clone()).unwrap_or_default();
-            let code = cell.as_ref().map(|c| c.code.clone()).unwrap_or_default();
+            let code = cell.as_ref().map(|c| shown(&c.code)).unwrap_or_default();
             match role {
                 CellRole::Figure { anchor, caption } => {
                     // Register from what will EXIST, like the `Listing` arm below — not

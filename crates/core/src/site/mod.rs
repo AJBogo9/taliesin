@@ -2763,11 +2763,11 @@ pub(crate) mod tests {
     }
 
     /// The harvest renders every page on every save and keeps only the numbers and the
-    /// heading text, so a paragraph's math is typeset for nothing: it was most of a harvest
-    /// render, and past the math memo's capacity every save re-typeset the whole project on the
-    /// one KaTeX thread (10.7 s per save at 9,693 expressions, audit 2026-09-24, F1). A
+    /// heading text, so a paragraph's math and a block's code are typeset for nothing: they
+    /// were most of a harvest render, and past a memo's capacity every save redid the whole
+    /// project's (10.7 s per save at 9,693 math expressions, audit 2026-09-24, F1). A
     /// heading's math is still typeset, because its text names an unnumbered `@sec-` link.
-    /// Witnessed through the memo: an expression nothing typeset is not in it.
+    /// Witnessed through the memos: what nothing typeset is not in them.
     #[test]
     fn the_harvest_numbers_a_page_without_typesetting_its_body_math() {
         let root = write_site(
@@ -2781,7 +2781,9 @@ pub(crate) mod tests {
                 (
                     "one.tmd",
                     "# One\n\n## The $x_{h7731}$ case {#sec-probe}\n\n\
-                     Body $y_{b7731}$ text.\n\n$$ z_{e7731} $$ {#eq-probe}\n",
+                     Body $y_{b7731}$ text.\n\n$$ z_{e7731} $$ {#eq-probe}\n\n\
+                     ```python\nprobe_7731 = 1\n```\n\n\
+                     ```{python}\n#| label: lst-probe\n#| lst-cap: A listing.\nlisted_7731 = 2\n```\n",
                 ),
             ],
         );
@@ -2789,6 +2791,13 @@ pub(crate) mod tests {
         site.harvest_xref_numbers();
         assert_eq!(site.xref_targets["eq-probe"].number, "1.1");
         assert_eq!(site.xref_targets["sec-probe"].number, "1.1");
+        assert_eq!(site.xref_targets["lst-probe"].number, "1.1");
+        for code in ["probe_7731 = 1\n", "listed_7731 = 2\n"] {
+            assert!(
+                !crate::highlight::is_memoized(code, "python"),
+                "the harvest highlighted `{code}`, which only the served page shows"
+            );
+        }
         assert!(
             crate::math::is_memoized("x_{h7731}", false),
             "a heading's math names its section, so the harvest typesets it"
