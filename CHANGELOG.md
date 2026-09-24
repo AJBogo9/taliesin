@@ -20,6 +20,130 @@ and minor versions carried breaking changes; the 0.x entries below were written 
   reading grid, so on a wide screen the previous-chapter link was at the window's left edge
   and the next-chapter link at its right edge. Both links and the rule above them now span
   exactly the text column, including on chapters with margin notes.
+- **A single-file build never replaces a different file beside its output.** Two posts built
+  into one folder overwrote each other's figures; a clash is now a located error.
+- **A site build never publishes what a symlink reaches under a private path.** `vendor ->
+  ../.git` shipped `.git/config` and every object; page discovery follows the same rule.
+- **The freeze cache no longer stores what a warm kernel re-ran**, so `build --strict` can no
+  longer publish a value that a fresh kernel raises `NameError` on.
+- **The preview's port takeover** reads at most 64 KiB of a port holder's reply (an endless
+  reply drove it past 1 GB) and signals only the process listening on the probed port.
+- **The preview refuses a cross-site load that is not a navigation**: another site could read
+  every page's text, drafts included, through `/search-index.js`. It also serves only what a
+  build would publish (never a dotfile), answers only GET and HEAD, reads `Host` and `Origin`
+  as a host plus an optional port, and shows a static `.html` or `.txt` instead of
+  downloading it.
+- **Front matter is read as YAML everywhere, split by one rule.** Quotes, comments, block
+  scalars and wrapped values no longer publish literally, and a `--- ` line no longer
+  publishes the block as a heading. A trailing comment on a `#|` cell option is a comment.
+- **A value the tool cannot use is reported, not dropped**: a non-boolean `toc:`, `cache:` or
+  `draft:` (an unreadable `draft:` holds the page back), a `listing:` value, a `_site.yml`
+  number where text belongs, a nav entry with no `href:`, an unknown icon, a BOM.
+- **Posts sort, feed and stamp by calendar date**, and a file with lone-CR line endings is
+  read like any other (its `draft: true` used to be ignored).
+- **What is code is decided by the renderer's parser in every line pass**: a paragraph that
+  opens with inline code no longer hides the callouts below it, and a commented-out
+  `{{< include >}}` is no longer expanded.
+- **Includes and divs report what they used to drop in silence**: an include not alone on its
+  line, a partial ending inside an open fence, a `:::` close that closes nothing, a `:::` in
+  a list item. Expansion stops at 1,000 includes or 4 MiB, and a page including itself is a
+  cycle. In a `layout-ncol` grid each column keeps its own list.
+- **Names with `&`, `%20`, `#`, `?` or `%` resolve as the browser resolves them**: no false
+  "not found", no image left out of a portable folder, no broken page link.
+- **Markup cannot leak through text or values.** Prose that shows `<span class="katex">` no
+  longer ships KaTeX; a quote in a div class, callout kind, `_site.yml` value or file name
+  cannot write an attribute; `javascript:` is refused in nav, hero and logo hrefs; a `{js}`
+  cell's source cannot close its script element; the bib `edition` field is escaped.
+- **An HTML comment holding an apostrophe or `>`** no longer corrupts the search text and
+  citations after it, and a heading written with character references is slugged from the
+  characters it shows.
+- **The asset gate and the build agree on what ships.** The gate reports an image or link the
+  build cannot publish; a referenced file in an `_`-prefixed folder is deployed; every
+  `srcset` candidate is checked and shipped; front-matter `image:` and `_site.yml` `logo:`
+  and `favicon:` are checked; draft-only folders and editor residue stay out of a site; a
+  portable folder that cannot hold a referenced file is an error.
+- **A site build publishes the figures its cells write**, and such a file is no longer
+  reported missing on the first build.
+- **Book chapters**: `./a.tmd` is built and linked as `a.html`, a chapter listed twice is
+  reported, a chapter's `image:` is its unfurl image, and a book no longer judges `nav:`
+  links it never renders.
+- **An EXIF-rotated, misnamed or percent-encoded image reserves the box it really takes.**
+- **A preview of a loose document** resolves includes and bibliographies as its build does.
+- **BibTeX from Google Scholar, DBLP, arXiv, Zotero and Mendeley.** Braced accents, von
+  particles, Jr parts, hyphenated given names, ties and `AND` split as BibTeX splits them;
+  unknown LaTeX commands and math are kept; TeX quotes, dashes and ties print as typeset;
+  `doi`, `editor`, `crossref`, `school` and BibLaTeX's `journaltitle`, `date` and `location`
+  are read; IEEE punctuation follows the title's own mark; an unclosed entry, an uncitable
+  key, an undefined `@string` and a file that is not UTF-8 are reported.
+- **Citations**: a locator with `&`, `<` or emphasis keeps its text, a bracket cites only
+  when every item starts with `@`, a citation in a caption or in code is not a "bare key",
+  `[@key: note]` reads the colon as the separator, and a page inheriting the project
+  bibliography is not told none is declared.
+- **The live preview keeps the page right after an edit.** An edit touching raw HTML
+  re-mounts instead of misplacing blocks; a line shift above a callout or grid patches its
+  positions (sliders and open `<details>` keep their state); editing a section's last block
+  no longer flashes its headings; scripts an edit brings in run; one failing step no longer
+  stops later enhancement; a busy page no longer hides the cell error badge.
+- **`{js}` cells**: a consumer above its producer gets the value on load and in the build,
+  editing an input's default or removing a control re-runs what reads it, and a superseded
+  async run publishes nothing.
+- **Preview saves reach every page they affect.** A save is judged by what it changed, so an
+  atomic or `git checkout` save of a post's title updates its listing; a page rebuilds on
+  every file its render read (a `.bib` created later, a resized image); a `.md` partial
+  moving an anchor renumbers the pages citing it; a renamed folder is served and watched;
+  exactly the tabs whose chrome moved reload; a tab on the 404 page returns once its page is
+  back; a `python:` edited in `_site.yml` or a new `.venv` reaches the kernel.
+- **Cell output publishes what the cell showed.** `\r\n` is a newline; a progress bar longer
+  than the output caps runs to completion; `clear_output` keeps the last frame; display
+  handles update in place; Markdown, LaTeX, JSON and sized images publish as such; OSC 8
+  links keep their text; warning and traceback paths publish without the home directory.
+- **Cell failures are reported where they happen.** A cell that prints error markup is not a
+  failure; a failing `include: false` cell is a located error; the cell that crashed the
+  kernel is named; a cell stopped by an output cap says so; one undecodable kernel message
+  costs that message, not the cell's output.
+- **Kernels stop when they should.** Restart kernel kills the requesting page's own kernel,
+  a cell that ignores its interrupt is stopped, and a full-speed output flood in
+  `build <file>` stops at its cap (it used to hang).
+- **A background thread's output stays with the cell that started it**, a figure drawn
+  through pandas follows the page theme, and the package-digest warning no longer fires when
+  interpreters alternate or after Restart kernel.
+- **An edited cell shows its running badge and live output in the preview.**
+- **Captions**: an executed `fig-cap` or `tbl-cap` renders Markdown and math like every other
+  caption, a captionless figure has no dangling colon, a figure keeps its image's title,
+  wrapped alt text keeps its words apart, a hidden cell's `define(...)` still reaches `{js}`
+  cells, and a cell image nothing describes draws a warning.
+- **Every verb runs the same page pass.** `--check-only <file>` fails what `build <file>`
+  fails; a page built alone renders its `hero:`; the dev menu shows an error as an error;
+  project diagnostics are located and counted by `--strict` and `--format json`; a
+  diagnostic in an included file names the file; a nested `_site.yml` is reported.
+- **Section numbers agree.** A heading and every link to it read the same number, an
+  `.unnumbered` section takes none, chapters and cross-page sections are labelled by the
+  text their heading shows, an anchor in a quote, list item or footnote is no target, and
+  the TOC lists a heading inside a div.
+- **Cmd-K search** finds code as typed, forgives a typo beside punctuation, indexes executed
+  figure and table captions, leaves out commented-out headings and diagram source, opens a
+  closed `<details>` around a hit, and searches the same index in a single-file build as
+  in the preview. The palette is a named dialog.
+- **Accessibility and print**: the active TOC entry carries `aria-current`, navbar icon links
+  are named, highlights show under reduced motion, a diagram prints light from a dark page,
+  and the navbar, top bar and back link stay off paper.
+- **The language server** reads citations with the render's grammar and the shared
+  bibliography, reads block structure as the render does, jumps to the anchor a page
+  defines, completes front-matter values and `layout-ncol`, and offers a cell language on a
+  four-backtick fence. The VS Code companion starts one server at a time.
+- **The CLI reads every verb's arguments by one grammar** (`--flag=value`, a suggestion for
+  an unknown flag, an extra argument refused). `build notes.md` suggests renaming to `.tmd`;
+  `preview` says when the document is not a page and prints its startup notes after the
+  banner; `doctor` recommends a project `.venv` where a system `pip install` is refused;
+  `build` prints `built` only for a build that succeeded; `build doc.pdf` names the
+  browser's Print to PDF instead of a planned print track; `--help` points at the User
+  Guide.
+- **A listing lands in its empty `::: {#id}` block**; a listing whose `id:` matches nothing
+  warns, and a page built alone leaves its listing out with a note.
+
+### Added
+
+- **Releases attach the VS Code companion as a `.vsix`.**
 
 ### Changed
 
@@ -39,6 +163,26 @@ and minor versions carried breaking changes; the 0.x entries below were written 
   of 270 to 320 ms. Prefetch only, never prerender, so no page's `{js}` cells
   run for a hover. The live preview and single-file builds do not carry it, and browsers
   without speculation rules ignore it.
+
+- **A save reaches the open tab once its events stop** (15 ms of quiet) instead of after a
+  fixed 80 ms, and the preview rebuilds only the pages a tab is watching.
+
+- **Whole-project passes do less.** The cross-reference harvest typesets no math and
+  highlights no code, renders run on parked worker threads, the scans run across cores, the
+  search index is rebuilt after the open pages, and the language server holds the page
+  registry instead of rendering the project on every save. A preview's memory no longer grows
+  with each save that moves an anchor.
+
+- **Only a `{#fig-…}` label makes a numbered figure.** A standalone image with alt text stays
+  an image, and a figure's image carries `alt=""` beside its caption.
+
+### Removed
+
+- **`listing: type: grid`**, which rendered the same as `list` since 2026-08-15.
+- **The `ojs` highlighting alias and the bare `::: classname` div form**: write a `js`
+  fence for a highlighted listing and `::: {.classname}` for a div.
+- **A hero action's `class:`**, which was reported as unknown yet still honoured; use
+  `primary:`.
 
 ## [1.0.1] - 2026-08-21
 
