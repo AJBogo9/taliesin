@@ -450,10 +450,10 @@ pub(crate) fn safe_join_in(
 /// [`safe_join_in`] with the refusal reason kept, for callers that report it.
 pub(crate) fn try_join_in(
     base_dir: &Path,
-    rel: &str,
+    rel: impl AsRef<Path>,
     explicit_root: Option<&Path>,
 ) -> Result<PathBuf, Refused> {
-    let relp = Path::new(rel);
+    let relp = rel.as_ref();
     // An absolute path (incl. a Windows drive/UNC root) escapes immediately.
     if relp.has_root() || relp.is_absolute() {
         return Err(Refused::OutsideRoot);
@@ -619,6 +619,84 @@ pub fn repo_boundary(dir: &Path) -> PathBuf {
     let abs = absolutize(dir);
     let root = symlink_root(&abs, &abs);
     root.canonicalize().unwrap_or(root)
+}
+
+/// How a file reaches the published output, which decides how much of the `_` convention
+/// applies to it (see [`publishable`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// A page references it by path (`src=`, `href=`, `srcset=`, `poster=`, front matter).
+    Referenced,
+    /// A site build copies it because it sits in the project (`mirror_assets`).
+    Wholesale,
+}
+
+/// Why a local file cannot be published (see [`publishable`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unpublishable {
+    /// Absolute, or a `../` climb out of the directory it is published from.
+    Outside,
+    /// In that directory by name, but a symlink leads its real path out of the repository.
+    OutsideRepo,
+    /// A private component on its path, or on the real path a symlink leads it to.
+    Private,
+}
+
+/// **THE publication rule** for a local file: `rel` (a decoded path, see
+/// [`crate::render::asset_fs_path`]) written in a page whose directory is `base`, published
+/// from `root`. Returns the path relative to `root` it is published at, or why it cannot be.
+///
+/// One rule with four readers, so what the gate accepts, what the build ships and what the
+/// preview serves cannot disagree: the local-asset validator, the site build's mirror and
+/// its referenced-file pass, the single-file build's copier, and the preview's static file
+/// handler. It was three rules until the 2026-09-24 audit, and each disagreement was a
+/// defect: a `_images/` picture the preview served and the gate passed was never deployed;
+/// a `../outside.png` the gate passed never shipped; a symlink named `vendor` pointing at
+/// `.git` published the whole history because only the LINK's name was tested.
+///
+/// * **Containment** is [`try_join_in`]'s, with `root` as the explicit boundary: no absolute
+///   path, no climb above `root`, and a symlink may lead anywhere in the repository but not
+///   out of it (the repository is the unit of first-party trust, see [`symlink_root`]).
+/// * **`.`-prefixed components are private everywhere**: never mirrored, never shipped even
+///   when referenced, never served. That holds for the path as written and for the real
+///   path a symlink leads to, judged on the components it adds to what it shares with
+///   `root`, so a project that itself lives under a dot-directory still works.
+/// * **`_`-prefixed components are not mirrored wholesale** ([`Reach::Wholesale`]): they
+///   hold `_freeze/`, `_site/`, partials and `_site.yml`. A file a page REFERENCES there is
+///   intentional and is published ([`Reach::Referenced`]).
+///
+/// Existence is the caller's question: a missing file is `Ok`, so each reader says "not
+/// found" (or nothing) in its own voice.
+pub fn publishable(
+    root: &Path,
+    base: &Path,
+    rel: &Path,
+    reach: Reach,
+) -> Result<PathBuf, Unpublishable> {
+    let target = try_join_in(base, rel, Some(root)).map_err(|r| match r {
+        Refused::OutsideRoot => Unpublishable::Outside,
+        Refused::SymlinkOutsideRepo => Unpublishable::OutsideRepo,
+    })?;
+    let private = |c: Component| {
+        let name = c.as_os_str().to_string_lossy();
+        name.starts_with('.') || (reach == Reach::Wholesale && name.starts_with('_'))
+    };
+    let root = absolutize(root);
+    let below = target.strip_prefix(&root).unwrap_or(&target).to_path_buf();
+    if below.components().any(private) {
+        return Err(Unpublishable::Private);
+    }
+    if let (Ok(real), Ok(real_root)) = (target.canonicalize(), root.canonicalize()) {
+        let shared = real
+            .components()
+            .zip(real_root.components())
+            .take_while(|(a, b)| a == b)
+            .count();
+        if real.components().skip(shared).any(private) {
+            return Err(Unpublishable::Private);
+        }
+    }
+    Ok(below)
 }
 
 /// Lexically normalize a path (resolve `.` and `..`) without touching the
@@ -891,5 +969,102 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// The one publication rule, on each edge the four readers depend on. `Reach` is what
+    /// separates a referenced file from a wholesale mirror; privacy is judged on the path
+    /// as written AND on the real path a symlink leads to.
+    #[test]
+    #[cfg(unix)]
+    fn publishable_applies_one_rule_for_containment_and_privacy() {
+        use Reach::{Referenced, Wholesale};
+        use std::os::unix::fs::symlink;
+        let uniq = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        // The repository sits under a dot-directory on purpose: components ABOVE the
+        // project are never judged, or a project in `~/.local/share/...` could publish
+        // nothing at all.
+        let repo = std::env::temp_dir().join(format!("tali-publishable-{uniq}/.home/repo"));
+        let root = repo.join("site");
+        let _ = std::fs::remove_dir_all(&repo);
+        for d in [
+            "site/posts/a",
+            "site/_images",
+            "site/.hidden",
+            ".git",
+            "paper",
+        ] {
+            std::fs::create_dir_all(repo.join(d)).unwrap();
+        }
+        for f in [
+            "site/a.png",
+            "site/_images/hero.png",
+            "site/.hidden/x.png",
+            ".deploysecret",
+            ".git/config",
+            "paper/fig.png",
+        ] {
+            std::fs::write(repo.join(f), b"x").unwrap();
+        }
+        let outside = std::env::temp_dir().join(format!("tali-publishable-{uniq}/outside.png"));
+        std::fs::write(&outside, b"x").unwrap();
+        symlink("../.deploysecret", root.join("data.txt")).unwrap();
+        symlink("../.git", root.join("vendor")).unwrap();
+        symlink("../paper/fig.png", root.join("shared.png")).unwrap();
+        symlink(&outside, root.join("leak.png")).unwrap();
+        let posts = root.join("posts/a");
+        let check = |base: &Path, rel: &str, reach| publishable(&root, base, Path::new(rel), reach);
+
+        assert_eq!(check(&root, "a.png", Wholesale), Ok(PathBuf::from("a.png")));
+        // `_` is private only to the wholesale mirror; a reference ships it.
+        assert_eq!(
+            check(&posts, "../../_images/hero.png", Referenced),
+            Ok(PathBuf::from("_images/hero.png")),
+            "a reference from a nested page resolves against the project root"
+        );
+        assert_eq!(
+            check(&root, "_images/hero.png", Wholesale),
+            Err(Unpublishable::Private)
+        );
+        // `.` is private to every reader.
+        assert_eq!(
+            check(&root, ".hidden/x.png", Referenced),
+            Err(Unpublishable::Private)
+        );
+        // Containment: no climb above the project, no absolute path.
+        assert_eq!(
+            check(&root, "../paper/fig.png", Referenced),
+            Err(Unpublishable::Outside)
+        );
+        assert_eq!(
+            check(&root, "/etc/hostname", Referenced),
+            Err(Unpublishable::Outside)
+        );
+        // Symlinks: judged on what they reach.
+        assert_eq!(
+            check(&root, "shared.png", Wholesale),
+            Ok(PathBuf::from("shared.png")),
+            "a link to an ordinary sibling in the repository is first-party authoring"
+        );
+        assert_eq!(
+            check(&root, "data.txt", Referenced),
+            Err(Unpublishable::Private)
+        );
+        assert_eq!(
+            check(&root, "vendor/config", Referenced),
+            Err(Unpublishable::Private)
+        );
+        assert_eq!(
+            check(&root, "leak.png", Referenced),
+            Err(Unpublishable::OutsideRepo)
+        );
+
+        let _ = std::fs::remove_dir_all(repo.parent().unwrap().parent().unwrap());
     }
 }

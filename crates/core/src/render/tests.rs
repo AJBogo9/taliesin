@@ -7624,6 +7624,35 @@ fn the_attribute_value_reader_matches_names_and_skips_text() {
     );
 }
 
+/// One reading of a `srcset`, shared by every reader of one (the asset gate, both build
+/// copiers, the 404 page's root-absolute rewrite), and it is the browser's: a URL is a run
+/// of non-whitespace, so a `data:` URI keeps its own commas, a comma right after a URL ends
+/// the candidate, and the descriptor runs to the next comma.
+#[test]
+fn a_srcset_splits_into_candidates_the_way_a_browser_reads_it() {
+    assert_eq!(
+        srcset_candidates("a.png 1x, b.png 2x"),
+        [("a.png", "1x"), ("b.png", "2x")]
+    );
+    assert_eq!(
+        srcset_candidates("  a.png, b.png 2x ,  c.png  640w"),
+        [("a.png", ""), ("b.png", "2x"), ("c.png", "640w")]
+    );
+    assert_eq!(
+        srcset_candidates("data:image/png;base64,A,B 2x, c.png"),
+        [("data:image/png;base64,A,B", "2x"), ("c.png", "")]
+    );
+    assert!(srcset_candidates(" , ").is_empty());
+    // The URLs an attribute carries: the candidates of a `srcset`, the value of any other
+    // URL attribute, nothing for an attribute that holds no URL.
+    assert_eq!(
+        attr_urls("srcset", "a.png 1x, b.png 2x"),
+        ["a.png", "b.png"]
+    );
+    assert_eq!(attr_urls("SRC", "a b.png"), ["a b.png"]);
+    assert!(attr_urls("alt", "x.png").is_empty());
+}
+
 /// A tag the author never closed, and a raw-text element the author never closed, each end
 /// the walk instead of wedging it or reading the rest of the document as attributes.
 #[test]

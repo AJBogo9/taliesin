@@ -774,6 +774,23 @@ impl Site {
         })
     }
 
+    /// Whether a link target that is no page (site-root-relative, as [`Self::link_target_url`]
+    /// returns it) is a file the build publishes: `None` when no file is there, `Some(false)`
+    /// for one the build never ships (a `.`-prefixed path, a symlink out of the checkout).
+    /// The one publication rule, [`crate::includes::publishable`], so a link the gate
+    /// accepts is a file the referenced-file pass deploys.
+    pub(crate) fn raw_file_target(&self, target: &str) -> Option<bool> {
+        let on_disk = crate::render::asset_fs_path(target);
+        if !self.root.join(&on_disk).is_file() {
+            return None;
+        }
+        let reach = crate::includes::Reach::Referenced;
+        Some(
+            crate::includes::publishable(&self.root, &self.root, Path::new(&on_disk), reach)
+                .is_ok(),
+        )
+    }
+
     /// Resolve a page-relative link `path` (from the page at `from_url`) to a site-root
     /// relative `.html` url. `None` for a link that climbs above the site root.
     fn link_target_url(&self, from_url: &str, path: &str) -> Option<String> {
@@ -820,9 +837,28 @@ impl Site {
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
                     // A target outside the page registry is only "broken" if nothing
                     // on disk backs it: a raw source file that exists under the root
-                    // (`notes.md`, `data.csv`) is a legitimate target, and the build ships
-                    // it via `deploy_referenced_sources`.
-                    if self.root.join(&target_url).is_file() {
+                    // (`notes.md`, `data.csv`, an `_downloads/` PDF) is a legitimate target,
+                    // and the build ships it via `deploy_referenced_sources`. Judged by the
+                    // rule that build ships by (`includes::publishable`): a file in a
+                    // `.`-prefixed folder exists and is never published, so a link to it is
+                    // dead in the deploy.
+                    if let Some(published) = self.raw_file_target(&target_url) {
+                        if published {
+                            continue;
+                        }
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` resolves to `{target_url}`, a file the build \
+                             never publishes (a `.`-prefixed path, or a symlink out of the \
+                             checkout)"
+                        ))
+                        .severity(Severity::Error);
+                        out.push((
+                            rel.clone(),
+                            match line {
+                                Some(l) => w.at(source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
                         continue;
                     }
                     // What must NOT excuse it: the *source* of a page discovery held back.
@@ -1501,9 +1537,14 @@ impl Site {
         // heading-skip lint cannot see it, because the whole listing is ONE <ul> block
         // (T12, 2026-09-01). The stylesheet keys off `.tali-card-title`, never the tag,
         // so the rendering is unchanged.
+        //
+        // The thumbnail goes AFTER the body: the whole card is one link, whose accessible
+        // name is its text in DOM order, and emitting the image first opened every card's
+        // name with its alt text. `site.css` draws the image after the body already
+        // (`order: 1`), so the move changes nothing on screen.
         format!(
-            "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{draft_badge}{date}<h2 class=\"tali-card-title\">{title}</h2>{desc}</div></a></li>",
+            "<li class=\"tali-listing-item\"><a class=\"tali-card\" href=\"{href}\" data-tali-src=\"{src}\">\
+             <div class=\"tali-card-body\">{draft_badge}{date}<h2 class=\"tali-card-title\">{title}</h2>{desc}</div>{img}</a></li>",
             src = esc(&p.rel)
         )
     }
@@ -1860,6 +1901,40 @@ pub(crate) mod tests {
             "a raw source file on disk is still a legitimate target:\n{joined}"
         );
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file on disk is a legitimate link target only if the build publishes it. A link
+    /// into a `.`-prefixed folder was excused because the file existed, and the build never
+    /// ships one, so the deploy 404'd under a clean gate. An `_`-prefixed folder's file is
+    /// referenced, so it ships and the link is fine.
+    #[test]
+    fn a_link_to_a_file_the_build_never_publishes_is_broken() {
+        let root = write_site(
+            "private-link",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[notes](.notes/x.pdf) and [slides](_downloads/y.pdf).\n",
+                ),
+                (".notes/x.pdf", "x"),
+                ("_downloads/y.pdf", "y"),
+            ],
+        );
+        let msgs: Vec<String> = Site::discover(&root)
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert!(
+            msgs.iter().any(|m| m.contains(".notes/x.pdf")),
+            "a link into a dot folder is dead in the deploy: {msgs:?}"
+        );
+        assert!(
+            !msgs.iter().any(|m| m.contains("y.pdf")),
+            "a referenced `_downloads/` file ships: {msgs:?}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3266,6 +3341,40 @@ pub(crate) mod tests {
                 .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
             "{:?}",
             site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A card is one link, and a link's accessible name is its text in DOM order, so the
+    /// thumbnail's alt, emitted first, opened the name of every card ("A cover 1 September
+    /// 2026 Post One ..."). The image is emitted after the card body. `site.css` already
+    /// draws it there (`.tali-card-img { order: 1 }`), so nothing moves on screen.
+    #[test]
+    fn a_listing_card_names_its_post_before_its_thumbnail() {
+        let root = write_site(
+            "cardorder",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: list\n---\n\n# Posts\n",
+                ),
+                (
+                    "posts/p.tmd",
+                    "---\ntitle: Post One\nimage: pic.png\nimage-alt: A cover\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (html, _) = render_page(&site, "index.tmd");
+        let card = &html[html.find("class=\"tali-card\"").expect("a card")..];
+        let (title, img) = (
+            card.find("tali-card-title").expect("title"),
+            card.find("tali-card-img").expect("thumbnail"),
+        );
+        assert!(
+            title < img,
+            "the post's title comes before the thumbnail: {card}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

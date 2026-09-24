@@ -318,8 +318,8 @@ impl Site {
             if in_footer && target.ends_with(".xml") {
                 continue;
             }
-            // A raw file on disk: the same judgement the body-link resolver makes.
-            if self.root.join(&target).is_file() {
+            // A raw file the build publishes: the same judgement the body-link resolver makes.
+            if self.raw_file_target(&target) == Some(true) {
                 continue;
             }
             let where_ = if in_footer { "footer" } else { "nav" };
@@ -330,6 +330,40 @@ impl Site {
                 ))
                 .severity(Severity::Error)
                 .at(Some("_site.yml".to_string()), 1),
+            );
+        }
+        // `logo:` and `favicon:` name project files every page links, and a typo in either
+        // shipped a broken brand image or tab icon site-wide under a clean `--strict`. Held
+        // to the build's publication rule; a root-absolute `/brand.svg` is from the project
+        // root, which is where `site_asset_href` points every page at it.
+        let text = std::fs::read_to_string(self.root.join("_site.yml")).unwrap_or_default();
+        for (key, value) in [
+            ("logo", &self.config.logo),
+            ("favicon", &self.config.favicon),
+        ] {
+            let Some(v) = value.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+                continue;
+            };
+            if v.starts_with("//") || v.contains("://") || v.starts_with("data:") {
+                continue;
+            }
+            let path = crate::render::asset_fs_path(v);
+            let rel = std::path::Path::new(path.trim_start_matches('/'));
+            let reach = crate::includes::Reach::Referenced;
+            if crate::includes::publishable(&self.root, &self.root, rel, reach)
+                .is_ok_and(|below| self.root.join(below).is_file())
+            {
+                continue;
+            }
+            out.push(
+                Warning::new(format!(
+                    "`{key}: {v}` names no file the build publishes, and it ships on every page"
+                ))
+                .severity(Severity::Error)
+                .at(
+                    Some("_site.yml".to_string()),
+                    super::config::key_line(&text, key).unwrap_or(1) as u32,
+                ),
             );
         }
         out
@@ -684,6 +718,74 @@ pub(super) fn social_icon(name: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::site::{Site, tests::write_site};
+
+    /// A nav link to a file is judged by the rule the build ships files by: one under a
+    /// `.`-prefixed folder exists and is never deployed, so the link is dead on every page.
+    #[test]
+    fn a_nav_link_to_a_file_the_build_never_publishes_is_broken() {
+        let root = write_site(
+            "chromeprivate",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nnav:\n  left:\n    - { text: CV, href: .private/cv.pdf }\n    - { text: Slides, href: _files/s.pdf }\n",
+                ),
+                (".private/cv.pdf", "x"),
+                ("_files/s.pdf", "y"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert_eq!(ws.len(), 1, "{ws:?}");
+        assert!(ws[0].message.contains(".private/cv.pdf"), "{ws:?}");
+    }
+
+    /// `logo:` and `favicon:` ship on every page, and nothing checked either names a file:
+    /// a typo published a broken brand image (or a missing tab icon) site-wide under a clean
+    /// `--strict`. Each is held to the build's publication rule, located at its own
+    /// `_site.yml` line. A file in `_images/` ships (it is referenced), and an external URL
+    /// is not ours to check.
+    #[test]
+    fn a_logo_or_favicon_must_name_a_file_the_build_publishes() {
+        let root = write_site(
+            "chromeimg",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nlogo: nope-logo.svg\nfavicon: nope-icon.png\n",
+                ),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let ws = Site::discover(&root).validate_chrome_links();
+        let got: Vec<(bool, Option<u32>, Severity)> = ws
+            .iter()
+            .map(|w| (w.message.contains("nope-"), w.line, w.severity))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (true, Some(2), Severity::Error),
+                (true, Some(3), Severity::Error)
+            ],
+            "{ws:?}"
+        );
+        assert!(ws.iter().all(|w| w.file.as_deref() == Some("_site.yml")));
+
+        let root = write_site(
+            "chromeimg-ok",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nlogo: _images/logo.svg\nfavicon: https://cdn.example.com/i.png\n",
+                ),
+                ("_images/logo.svg", "<svg/>"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let ws = Site::discover(&root).validate_chrome_links();
+        assert!(ws.is_empty(), "{ws:?}");
+    }
 
     #[test]
     fn footer_honors_local_xml_feed_link_when_url_set() {

@@ -150,8 +150,8 @@ cannot reach esm.sh.
 
 ::: {.feature}
 ### Static output
-One command turns a document into a single self-contained HTML file, or a portable folder
-with its local assets copied alongside. Point it at a directory instead and you get a
+One command turns a document into a single HTML file, or a portable folder with its local
+assets copied alongside. Point it at a directory instead and you get a
 whole site or book as static files, with no server runtime and nothing to reproduce.
 :::
 :::

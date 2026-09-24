@@ -111,7 +111,7 @@ When you're happy, `build` produces output (executing code cells against the
 kernel, so the HTML carries the computed figures):
 
 ```sh
-taliesin build hello.tmd                 # -> hello.html (one self-contained file)
+taliesin build hello.tmd                 # -> hello.html (one file; local images stay beside it)
 taliesin build hello.tmd --out dist      # -> dist/index.html + copied local assets
 ```
 
@@ -127,17 +127,20 @@ taliesin build docs/         # -> docs/_book/  (a book, if _site.yml says so)
 
 | You build | Taliesin writes |
 |---|---|
-| `build doc.tmd` | `doc.html` next to the source: one self-contained file |
-| `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html` |
+| `build doc.tmd` | `doc.html` next to the source, one file that refers to the local images beside it |
+| `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html`, with the local files it references copied beside it |
 | `build doc.tmd --out dist` | `dist/index.html` plus the document's referenced local assets, a portable folder |
 | `build site/` | `site/_site/` (a website) or `site/_book/` (a book, when `_site.yml` declares `chapters:`) |
 | `build site/ --out public` | the same site, into `public/` instead of the default |
 
 A site/book build (and the `--out` form) copies the local files your pages
 *reference* (images, audio, videos, vendored scripts) next to the HTML and leaves
-behind what isn't deliverable (the source files nothing links to, and anything
-whose name starts with `_` or `.`, so `_freeze/` stays out), so the output folder
-is self-contained and you can copy or `rsync` it as-is. A built-in `404.html` is
+behind what isn't deliverable (the source files nothing links to, editor and merge
+leftovers such as `index.tmd~`, `#index.tmd#` and `.orig`, a folder whose only pages
+are drafts, and anything whose name starts with `_` or `.`, so `_freeze/` stays out),
+so the output folder is self-contained and you can copy or `rsync` it as-is. A file
+a page references is copied even from an `_`-prefixed folder such as `_images/` or a
+draft's folder; one under a `.`-prefixed folder never is. A built-in `404.html` is
 emitted unless you supply your own `404.tmd`. The full set of flags is in the
 [CLI reference](../reference/cli.tmd); common build-and-deploy patterns live in
 [Recipes](recipes.tmd).

@@ -38,8 +38,8 @@ pub(super) fn resolve_href(href: &str, up: &str) -> String {
 ///
 /// **Both suffixes, not just the fragment.** A `post.tmd?v=2` failed `strip_source_ext`,
 /// so the href round-tripped unrewritten — and a surviving `.tmd` href is what drives the
-/// build's `deploy_referenced_sources` to copy the raw markdown into the deploy (`.tmd` is
-/// in its `SKIP_EXT` source set). With a `draft: true` target that published the
+/// build's `deploy_referenced_sources` to copy the raw markdown into the deploy (it ships
+/// any referenced file the mirror left out). With a `draft: true` target that published the
 /// unpublished source, under a green `--check-only --strict`, because `manual_local_links`
 /// strips the query before resolving and so saw a link that was fine. `href_matches_page`
 /// already split on both characters for the same reason.
@@ -92,28 +92,25 @@ pub fn rewrite_tmd_links(html: &str) -> String {
 /// page keeps relative URLs, which the portable `file://` build depends on. It makes the
 /// same root-deploy assumption as the generated 404 ([`Site::not_found_doc`]).
 pub(super) fn root_absolute_urls(html: &str) -> String {
+    // The one list of URL attributes, and the one reading of a `srcset` candidate list
+    // (`a.avif 1x, b.avif 2x`), which also keeps a `data:` URI's own commas inside it.
     let mut html = html.to_string();
-    for name in ["href", "src", "poster"] {
-        html = crate::render::rewrite_attr_in_tags(&html, name, root_absolute);
+    for name in crate::render::URL_ATTRS {
+        html = crate::render::rewrite_attr_in_tags(&html, name, |v| {
+            if !name.eq_ignore_ascii_case("srcset") {
+                return root_absolute(v);
+            }
+            crate::render::srcset_candidates(v)
+                .into_iter()
+                .map(|(url, descriptor)| match descriptor {
+                    "" => root_absolute(url),
+                    d => format!("{} {d}", root_absolute(url)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
     }
-    // A candidate list (`a.avif 1x, b.avif 2x`). A data URI carries its own commas, so a
-    // srcset holding one is left as written rather than split through the middle of it.
-    crate::render::rewrite_attr_in_tags(&html, "srcset", |v| {
-        if v.contains("data:") {
-            return v.to_string();
-        }
-        v.split(',')
-            .map(
-                |candidate| match candidate.trim().split_once(char::is_whitespace) {
-                    Some((url, descriptor)) => {
-                        format!("{} {}", root_absolute(url), descriptor.trim())
-                    }
-                    None => root_absolute(candidate.trim()),
-                },
-            )
-            .collect::<Vec<_>>()
-            .join(", ")
-    })
+    html
 }
 
 fn root_absolute(v: &str) -> String {

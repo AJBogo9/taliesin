@@ -43,18 +43,7 @@ pub(super) fn website_pages(
                 excluded.push(rel);
                 return None;
             }
-            // `image` is relative to the page's own directory; store it
-            // site-root-relative so a listing card on another page can link it.
-            // An absolute/external URL (og:image social card, CDN-hosted thumb) is
-            // left untouched — `join_rel` would otherwise fold its scheme into a
-            // broken relative path (`posts/https:/cdn.example.com/card.png`).
-            let card_image = fm.image.map(|img| {
-                if is_external_or_special(&img) {
-                    img
-                } else {
-                    join_rel(&rel, &img)
-                }
-            });
+            let card_image = card_image(&rel, fm.image);
             // A page with no front-matter `title:` takes its leading `# H1` (as a book
             // chapter does), so <title>, og:title, listing cards, nav, and search — all of
             // which read `Page.title` — agree instead of falling back to the site name /
@@ -78,6 +67,22 @@ pub(super) fn website_pages(
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
+}
+
+/// A page's front-matter `image:`, stored site-root-relative so a listing card on another
+/// page and the `og:image` can link it (it is written relative to the page's own
+/// directory). An absolute/external URL (og:image social card, CDN-hosted thumb) is left
+/// untouched: `join_rel` would otherwise fold its scheme into a broken relative path
+/// (`posts/https:/cdn.example.com/card.png`). Shared by website pages and book chapters,
+/// which read the same front matter.
+pub(super) fn card_image(rel: &str, image: Option<String>) -> Option<String> {
+    image.map(|img| {
+        if is_external_or_special(&img) {
+            img
+        } else {
+            join_rel(rel, &img)
+        }
+    })
 }
 
 /// Recursively collect input `.tmd` pages under `dir`, skipping `_`-prefixed

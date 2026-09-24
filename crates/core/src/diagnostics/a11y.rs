@@ -125,10 +125,12 @@ fn placeholder_alt_message(tag: &Tag<'_>) -> Option<String> {
     }
     let is_placeholder = PLACEHOLDER_ALT_WORDS.contains(&alt.as_str())
         || attr_value(tag, "src").is_some_and(|src| {
+            // The file's own name: `my%20pic.png` is the file `my pic.png`.
+            let src = crate::render::asset_fs_path(src);
             let file = src
                 .rsplit(['/', '\\'])
                 .next()
-                .unwrap_or(src)
+                .unwrap_or(&src)
                 .to_ascii_lowercase();
             let stem = file.rsplit_once('.').map_or(file.as_str(), |(s, _)| s);
             alt == file || alt == stem

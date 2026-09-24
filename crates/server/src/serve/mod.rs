@@ -326,19 +326,29 @@ pub(crate) fn open_in_browser(url: &str) {
         .spawn();
 }
 
+/// Serve the file `rel` (a decoded request path) names under the project directory `base`.
+///
+/// Through the build's own publication rule ([`taliesin_core::includes::publishable`], as a
+/// reference), so the preview serves what a build ships and nothing else it happens to be
+/// able to read: no `../` climb out of the project and no symlink out of the repository,
+/// and no `.`-prefixed path, which the build never publishes. That last clause is what
+/// keeps `preview ~/scratch.tmd`, whose project is its parent directory, from handing
+/// `.git/config` and every other dotfile under it to any local process that asks.
 pub(crate) fn serve_asset_from(base: &Path, rel: &str) -> axum::response::Response {
     use axum::http::{StatusCode, header};
+    use taliesin_core::includes::{Reach, publishable};
     let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
-    if let (Ok(root), Ok(full)) = (base.canonicalize(), base.join(rel).canonicalize())
-        && full.starts_with(&root)
-        && full.is_file()
-    {
-        return match std::fs::read(&full) {
-            Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
-            Err(_) => not_found(),
-        };
+    let Ok(below) = publishable(base, base, Path::new(rel), Reach::Referenced) else {
+        return not_found();
+    };
+    let full = base.join(below);
+    if !full.is_file() {
+        return not_found();
     }
-    not_found()
+    match std::fs::read(&full) {
+        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
+        Err(_) => not_found(),
+    }
 }
 
 /// Guess a content type from a file extension (covers the asset types a doc
@@ -1518,6 +1528,53 @@ mod percent_decode_tests {
         assert_eq!(percent_decode("done%"), "done%");
         // A `%` followed by a non-hex ASCII pair is left literal (not mis-parsed).
         assert_eq!(percent_decode("%zz"), "%zz");
+    }
+}
+
+#[cfg(test)]
+mod static_asset_tests {
+    use super::serve_asset_from;
+    use axum::http::StatusCode;
+    use std::fs;
+
+    /// The preview's static handler applies the build's publication rule. It served every
+    /// file under its root, and a loose document's root is its parent directory, so
+    /// `preview ~/scratch.tmd` handed `.git/config` and every other dotfile under `$HOME`
+    /// to any local process. A `.`-prefixed component is private everywhere, including
+    /// through a symlink; an `_`-prefixed folder is not, because a page may reference an
+    /// image there and the build ships it.
+    #[test]
+    #[cfg(unix)]
+    fn the_preview_never_serves_a_private_path() {
+        let root = std::env::temp_dir().join(format!("tali-static-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for d in [".git", ".private", "_images", "img"] {
+            fs::create_dir_all(root.join(d)).unwrap();
+        }
+        for f in [
+            ".git/config",
+            ".private/key",
+            ".env",
+            "_images/hero.png",
+            "img/a.png",
+        ] {
+            fs::write(root.join(f), b"x").unwrap();
+        }
+        std::os::unix::fs::symlink(".git", root.join("vendor")).unwrap();
+        let status = |rel: &str| serve_asset_from(&root, rel).status();
+
+        for private in [
+            ".git/config",
+            ".private/key",
+            ".env",
+            "img/../.env",
+            "vendor/config",
+        ] {
+            assert_eq!(status(private), StatusCode::NOT_FOUND, "{private}");
+        }
+        assert_eq!(status("img/a.png"), StatusCode::OK);
+        assert_eq!(status("_images/hero.png"), StatusCode::OK);
+        let _ = fs::remove_dir_all(&root);
     }
 }
 

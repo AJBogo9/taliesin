@@ -344,6 +344,22 @@ fn a11y_flags_placeholder_alt_but_not_descriptive() {
     );
 }
 
+/// The filename echo is judged against the FILE's name, so `my%20pic.png` (the spelling VS
+/// Code inserts for `my pic.png`) is echoed by `my pic` exactly as `<my pic.png>` is. The
+/// check compared against the undecoded `my%20pic`, and let that one spelling through.
+#[test]
+fn a11y_hears_a_filename_echo_through_percent_encoding() {
+    let doc = render_document("![my pic](my%20pic.png)\n\n![my pic](<my pic.png>)\n");
+    let m = msgs(&validate_a11y(&doc.blocks));
+    assert_eq!(
+        m.iter()
+            .filter(|s| s.contains("looks like a placeholder"))
+            .count(),
+        2,
+        "both spellings echo the file name: {m:?}"
+    );
+}
+
 #[test]
 fn a11y_clean_document_is_silent() {
     // Markdown headings stepping by one, a markdown image (auto-alt), and a text link:
@@ -504,6 +520,133 @@ fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
         m[0].contains("still missing.png"),
         "flagged under its decoded, on-disk name: {m:?}"
     );
+}
+
+/// The gate applies the build's publication rule (`includes::publishable`). It accepted any
+/// file that existed, so `![x](../outside.png)`, an image symlinked out of the checkout and
+/// one in a dot-folder all passed `--check-only --strict` while the site build never
+/// shipped them: a broken image in the deploy behind a clean gate. Each is a located error
+/// that says why; an image a page references in an `_images/` folder ships, so it passes.
+#[test]
+#[cfg(unix)]
+fn the_asset_check_refuses_what_the_build_cannot_publish() {
+    //   <dir>/.git                     the checkout
+    //   <dir>/outside.png              in the checkout, above the project
+    //   <dir>/proj/_site.yml           the project root
+    //   <dir>/proj/.hidden/a.png       private
+    //   <dir>/proj/_images/hero.png    referenced from an underscore folder
+    //   <dir>/proj/posts/p/leak.png -> <elsewhere>/secret.png   out of the checkout
+    let dir = Tmp::new("assets-publish");
+    let elsewhere = Tmp::new("assets-publish-elsewhere");
+    let root = dir.0.join("proj");
+    let page = root.join("posts/p");
+    for d in [".hidden", "_images", "posts/p"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(dir.0.join(".git"), "").unwrap();
+    std::fs::write(root.join("_site.yml"), "title: P\n").unwrap();
+    for f in [
+        dir.0.join("outside.png"),
+        root.join(".hidden/a.png"),
+        root.join("_images/hero.png"),
+        elsewhere.0.join("secret.png"),
+    ] {
+        std::fs::write(f, "x").unwrap();
+    }
+    std::os::unix::fs::symlink(elsewhere.0.join("secret.png"), page.join("leak.png")).unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "![Above the project.](../../../outside.png)\n\n",
+            "![In a dot folder.](../../.hidden/a.png)\n\n",
+            "![Out of the checkout.](leak.png)\n\n",
+            "![Referenced, so it ships.](../../_images/hero.png)\n",
+        ),
+        &page,
+    );
+    let ws = validate_local_assets(&doc.blocks, &page);
+    let m = msgs(&ws);
+    assert_eq!(ws.len(), 3, "exactly the three unpublishable images: {m:?}");
+    for (w, (file, line)) in
+        ws.iter()
+            .zip([("outside.png", 1), (".hidden/a.png", 3), ("leak.png", 5)])
+    {
+        assert!(w.message.contains(file), "{file} missed: {m:?}");
+        assert_eq!(w.severity, crate::render::Severity::Error, "{w:?}");
+        assert_eq!(w.line, Some(line), "located at its own line: {w:?}");
+    }
+    assert!(
+        !m.iter().any(|s| s.contains("hero.png")),
+        "a referenced `_images/` file is published: {m:?}"
+    );
+}
+
+/// `srcset` and `<picture><source srcset>` name images as surely as `src` does: the 2x
+/// candidate a high-density screen fetches, the dark-mode source. The gate read `src` only,
+/// so a `srcset` naming a file that does not exist passed `--strict`.
+#[test]
+fn the_asset_check_reads_every_srcset_candidate() {
+    let dir = Tmp::new("assets-srcset");
+    std::fs::write(dir.0.join("fig.png"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "<img src=\"fig.png\" srcset=\"fig.png 1x, missing-2x.png 2x\" alt=\"A.\">\n\n",
+            "<picture><source srcset=\"missing-dark.png\" media=\"(prefers-color-scheme: dark)\">",
+            "<img src=\"fig.png\" alt=\"B.\"></picture>\n",
+        ),
+        &dir.0,
+    );
+    let m = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 2, "exactly the two missing candidates: {m:?}");
+    for missing in ["missing-2x.png", "missing-dark.png"] {
+        assert!(
+            m.iter().any(|s| s.contains(missing)),
+            "{missing} missed: {m:?}"
+        );
+    }
+}
+
+/// A front-matter `image:` is the `og:image` a shared link unfurls with and the listing
+/// card's thumbnail, and the page itself never shows it, so a typo is a defect the author
+/// cannot see: it published an `og:image` that 404s under a clean `--strict`. It is held to
+/// the body-image rule, located at the `image:` line; a `%20` spelling, a root-absolute
+/// path (from the project root) and an external URL are all fine.
+#[test]
+fn a_front_matter_image_must_name_a_file_the_build_publishes() {
+    let dir = Tmp::new("fm-image");
+    let root = &dir.0;
+    std::fs::create_dir_all(root.join("posts")).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: S\n").unwrap();
+    std::fs::write(root.join("posts/my cover.png"), "x").unwrap();
+    std::fs::write(root.join("brand.png"), "x").unwrap();
+    let check = |image: &str| {
+        let src = format!("---\ntitle: P\nimage: {image}\nimage-alt: A.\n---\n\nBody.\n");
+        msgs_and_lines(&validate_front_matter_image(&src, &root.join("posts")))
+    };
+
+    let missing = check("typo-cover.png");
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert!(missing[0].0.contains("typo-cover.png"), "{missing:?}");
+    assert_eq!(
+        missing[0].1,
+        Some(3),
+        "located at the `image:` line: {missing:?}"
+    );
+    for fine in [
+        "my%20cover.png",
+        "\"my cover.png\"",
+        "/brand.png",
+        "https://cdn.example.com/card.png",
+    ] {
+        assert!(check(fine).is_empty(), "`image: {fine}` names a real file");
+    }
+    assert!(
+        validate_front_matter_image("---\ntitle: P\n---\n\nx\n", root).is_empty(),
+        "no `image:`, nothing to check"
+    );
+}
+
+fn msgs_and_lines(ws: &[Warning]) -> Vec<(String, Option<u32>)> {
+    ws.iter().map(|w| (w.message.clone(), w.line)).collect()
 }
 
 /// The same rule on the link and alt-text checks, which shared the scan.

@@ -9,8 +9,8 @@ description: "Every subcommand and flag: preview and build, the pre-publish lint
 |---|---|
 | `preview <file.tmd> [port]` | Live preview server (default port 4321). The document is served as the project it belongs to (the nearest ancestor `_site.yml`), opened at its page, so nav and cross-page links work; with no such ancestor it is served on its own |
 | `preview <dir>` | Live multi-page site/book preview (cross-page nav + per-page hot reload); the directory needs a `_site.yml` |
-| `build <file.tmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
-| `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
+| `build <file.tmd> [out.html]` | Write one HTML file (default `<name>.html`); the local files it references are copied beside `out.html`, and a different file already at one of those paths is never replaced (an error names it) |
+| `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder); a referenced file above the document's own folder has no place in it and is an error |
 | `build <file.tmd> --stdout` | Write the page to stdout instead of a file (single document only); add `--no-exec` for a static, kernel-free dump |
 | `build <dir> [--out <dir>]` | Build a multi-page site/book to `_site/` / `_book/`; the directory needs a `_site.yml` |
 | `build <file.tmd\|dir> --check-only [--strict] [--format json]` | Lint and write nothing: list every located diagnostic and exit non-zero on any error or warning (the CI / pre-publish gate) |
@@ -145,7 +145,7 @@ Everything the lint looks at, grouped by what it protects:
 | **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcode names, YAML parse errors |
 | **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:`, a bare `@key` that renders as literal text |
 | **Links & anchors** | Broken relative `.tmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
-| **Local media** | Missing local images (`src`/`href`) |
+| **Local media** | A local image (an `<img src>`, a `srcset` candidate with `<picture><source>` included, a front-matter `image:`, or `_site.yml`'s `logo:`/`favicon:`) that is missing, or that the build cannot publish: outside the project, a symlink out of the checkout, or under a `.`-prefixed folder |
 | **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
 | **Accessibility** | An `<img>` with no `alt` or a placeholder one, a mid-document heading-level skip |
 | **Bibliography** | A duplicate key inside a `.bib` (the build silently keeps the last definition), and a `bibliography:` path that does not resolve |
@@ -312,8 +312,8 @@ published that way; none of them nests.
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
 `og:url` / `og:image` tags, `sitemap.xml`, `robots.txt`, and the Atom feeds are only
-emitted when a project `url:` is configured; the lint warns if a page sets a social
-`image:` with no `url:` to absolutize it against.
+emitted when a project `url:` is configured. Without it a page's `image:` still shows on
+its listing card, and no `og:image` is published.
 
 ## Starting a project: `init`
 
@@ -388,8 +388,8 @@ write, running `doctor` is running that program; `build --check-only`, `--no-exe
 `build --stdout` shows a document in a terminal instead of a browser, for piping,
 diffing, and debugging.
 
-It writes one complete, self-contained HTML page to stdout instead of
-to a file, so you can redirect or pipe it:
+It writes one complete HTML page to stdout instead of to a file (a local image
+stays a relative reference, and nothing is copied), so you can redirect or pipe it:
 
 ```sh
 taliesin build post.tmd --stdout > post.html

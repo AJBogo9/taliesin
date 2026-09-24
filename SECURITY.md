@@ -59,9 +59,14 @@ The following are by design:
   project directories can share one file. The document *text* is held to a narrower
   boundary: an absolute path or a `../` climb above the project root is refused, and
   so is a symlink whose target leaves the checkout. `build` applies the same rule when it
-  mirrors assets into the output, so a link out of the checkout is never published. The
-  `preview` server's asset endpoint is stricter still: it serves only what canonicalizes
-  under the document's own directory, so a symlinked image that builds fine may 404 there.
+  mirrors assets into the output, so a link out of the checkout is never published, and
+  it judges a link by what it reaches rather than by its own name: a link into a
+  `.`-prefixed path (`.git`, a dotfile) is never published, nor, when the whole project
+  is mirrored, one into an `_`-prefixed folder. The `preview` server's asset endpoint
+  applies the same rule to every request: it serves a file under the project (for a
+  document outside any project, the document's own directory) that a build would
+  publish, and never a `.`-prefixed path, so `.git/` and dotfiles next to a previewed
+  document are not readable through it.
 
   This allowance assumes you placed the symlink yourself, which is true of your own
   checkout and false of an archive someone sent you. A `.tmd` project you unpack can

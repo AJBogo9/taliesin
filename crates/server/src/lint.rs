@@ -259,6 +259,7 @@ pub(crate) fn page_static_diagnostics(
     out.extend(dx::validate_duplicate_heading_ids(blocks));
     out.extend(dx::validate_internal_anchors(blocks));
     out.extend(dx::validate_local_assets(blocks, base));
+    out.extend(dx::validate_front_matter_image(src, base));
     if scope == Scope::Standalone {
         out.extend(dx::validate_local_links(blocks, base));
     }
