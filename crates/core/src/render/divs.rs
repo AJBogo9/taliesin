@@ -328,7 +328,7 @@ fn unquote_value(v: &str) -> String {
 /// single container block whose HTML embeds them (they keep their own ids and
 /// sourcepos, so click-to-source still works inside).
 pub(crate) fn group_divs(
-    flat: Vec<FlatBlock>,
+    mut flat: Vec<FlatBlock>,
     spans: &[DivSpan],
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
@@ -354,6 +354,13 @@ pub(crate) fn group_divs(
     // dropping it. Position-independent (a span is empty when no flat block falls between its
     // fences), so a trailing or standalone empty feature div is caught too; a plain/custom
     // empty div stays silent (`validate_empty_feature_div` returns `None`).
+    //
+    // An empty PLAIN div that carries an `#id` is kept instead: it is an author's marker, the
+    // place a `listing:` with that `id:` fills (the guide's blog recipe), and dropping it
+    // sent the cards to the end of the page with nothing said. It becomes an empty
+    // container, slotted into `flat` at its opening line so the walk below nests it like any
+    // other block.
+    let mut markers: Vec<FlatBlock> = Vec::new();
     for span in spans {
         let has_content = flat
             .iter()
@@ -363,9 +370,18 @@ pub(crate) fn group_divs(
         }
         let (file, line) = map_origin(origins, span.open);
         let attrs = parse_attrs(&span.attrs);
-        if let Some(w) = super::validate::validate_empty_feature_div(&attrs.classes, line, file) {
-            warnings.push(w);
+        match super::validate::validate_empty_feature_div(&attrs.classes, line, file) {
+            Some(w) => warnings.push(w),
+            None if attrs.id.is_some() => markers.push(FlatBlock {
+                buf_start: span.open,
+                block: build_container(span, Vec::new(), origins, counts, warnings),
+            }),
+            None => {}
         }
+    }
+    if !markers.is_empty() {
+        flat.extend(markers);
+        flat.sort_by_key(|fb| fb.buf_start);
     }
 
     for (i, fb) in flat.iter().enumerate() {

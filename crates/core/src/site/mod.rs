@@ -1281,11 +1281,23 @@ impl Site {
                     let pos = blocks[i].html.rfind("</div>").unwrap();
                     blocks[i].html.insert_str(pos, &cards);
                 }
-                // An anchor (e.g. an auto-slugged heading sharing the id, since
-                // an empty fenced div emits no block) → cards go right after it.
+                // An anchor (e.g. an auto-slugged heading sharing the id) → cards go right
+                // after it. An empty `::: {#id}` is a container, so it takes the arm above.
                 Some(i) => blocks.insert(i + 1, listing_block(id, cards)),
-                // No target at all → append so the listing still renders.
-                None => blocks.push(listing_block(id, cards)),
+                // No target at all → append so the listing still renders, and say so when
+                // the author named one: the cards landing at the foot of the page is the
+                // only other sign.
+                None => {
+                    if let Some(want) = &spec.id {
+                        warnings.push(Warning::new(format!(
+                            "the listing on `{}` has `id: {want}`, but no element on the page \
+                             has that id, so its cards were added at the end; put a \
+                             `::: {{#{want}}}` block where they belong",
+                            page.rel
+                        )));
+                    }
+                    blocks.push(listing_block(id, cards));
+                }
             }
         }
         // The back-to-listing link opens the page, above the title. A book has none: each
@@ -2611,7 +2623,18 @@ pub(crate) mod tests {
                 ),
                 (
                     "anchored.tmd",
-                    "---\ntitle: Anchored\nlisting:\n  id: recent-posts\n  contents: posts\n---\n\n## Recent Posts\n\n::: {#recent-posts}\n:::\n\nTrailing paragraph.\n",
+                    "---\ntitle: Anchored\nlisting:\n  id: recent-posts\n  contents: posts\n---\n\n## Recent Posts\n\nTrailing paragraph.\n",
+                ),
+                // The guide's blog recipe verbatim: an EMPTY `::: {#recent}` under a heading
+                // whose slug is something else. It used to emit no element, so the cards were
+                // appended past "View all posts" with no diagnostic.
+                (
+                    "recipe.tmd",
+                    "---\ntitle: Recipe\nlisting:\n  id: recent\n  contents: posts\n---\n\n## Recent posts\n\n::: {#recent}\n:::\n\n[View all posts](blog.tmd)\n",
+                ),
+                (
+                    "missing.tmd",
+                    "---\ntitle: Missing\nlisting:\n  id: nowhere\n  contents: posts\n---\n\nBody.\n",
                 ),
                 ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
                 ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
@@ -2639,8 +2662,31 @@ pub(crate) mod tests {
             "an adopted listing must not carry its own block id: {filled}"
         );
 
-        // Placeholder shape: an empty fenced div emits no block, so the id is the heading's
-        // and the cards follow it, still ahead of the trailing prose.
+        // Placeholder shape: an empty `::: {#recent}` is still an element, so the cards are
+        // adopted into it, ahead of the link that follows, and nothing warns.
+        let (recipe, recipe_warnings) = render_page(&site, "recipe.tmd");
+        let div = at(&recipe, "id=\"recent\"");
+        assert!(
+            div < at(&recipe, "class=\"tali-card\"")
+                && at(&recipe, "class=\"tali-card\"") < at(&recipe, "View all posts"),
+            "cards must render inside the empty #recent div, before the link: {recipe}"
+        );
+        assert!(
+            recipe_warnings.iter().all(|w| !w.message.contains("listing")),
+            "a listing that found its target draws no listing warning: {recipe_warnings:?}"
+        );
+
+        // No target at all: the cards still render (appended), and the author is told.
+        let (_, missing_warnings) = render_page(&site, "missing.tmd");
+        assert!(
+            missing_warnings
+                .iter()
+                .any(|w| w.message.contains("`id: nowhere`") && w.message.contains("::: {#nowhere}")),
+            "a listing id that names nothing must warn: {missing_warnings:?}"
+        );
+
+        // Anchor shape: the id is the heading's own slug and no div exists, so the cards
+        // follow the heading, still ahead of the trailing prose.
         let (anchored, _) = render_page(&site, "anchored.tmd");
         assert!(
             at(&anchored, "id=\"recent-posts\"") < at(&anchored, "class=\"tali-card\"")
