@@ -2666,17 +2666,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Run `docs` in order through ONE warm executor over a fresh `_freeze` file (a preview
+    /// session), then build the last document from cold over that same file (what `build`
+    /// does afterwards). Returns the warm session's last render and the build's.
+    fn warm_session_then_build(
+        rt: &tokio::runtime::Runtime,
+        docs: &[Vec<Block>],
+    ) -> Option<(String, String)> {
+        let html = |out: Vec<Block>| -> String { out.iter().map(|b| b.html.as_str()).collect() };
+        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let page = dir.join("page.json");
+        let mut ex = Executor::with_freeze(page.clone());
+        let mut warm = String::new();
+        for doc in docs {
+            warm = html(rt.block_on(ex.run(doc.clone())));
+            if ex.diagnostic().is_some() {
+                let _ = std::fs::remove_dir_all(&dir);
+                return None; // no working python kernel here
+            }
+        }
+        drop(ex);
+        let mut build = Executor::with_freeze(page);
+        let built = html(rt.block_on(build.run(docs.last().unwrap().clone())));
+        let _ = std::fs::remove_dir_all(&dir);
+        Some((warm, built))
+    }
+
     /// A warm re-run executes in a kernel that still holds whatever the cells it ran before
     /// left behind, so its output is not a function of its key and must never reach
     /// `_freeze`. The audit's case (A3): rename a variable and leave a use of the old name
-    /// dangling. The warm kernel still has `threshold`, so the preview prints the old value;
+    /// dangling. The warm kernel still has the old name, so the preview prints the old value;
     /// persisting that let a later `build --strict` restore it with exit 0, while a fresh
     /// kernel raises `NameError` on the same code.
     ///
-    /// Two shapes, because the rule is "the kernel ran exactly the shared prefix and nothing
-    /// else", not an index high-water mark: the second deletes a cell and then adds one at the
-    /// same index, which never runs anything past the prefix `ran` records and is still stale.
-    /// Both end on a fresh executor over the same `_freeze` file, which is what a build is.
+    /// Every shape below ends the same way: the warm session shows a value only its
+    /// leftover state can produce (the precondition, so each case really exercises stale
+    /// state), and a cold build over the session's `_freeze` must compute the truth instead.
+    /// The shapes differ in how the warm prefix `ran` relates to what the kernel executed,
+    /// which is why the rule counts executions rather than keeping an index high-water mark:
+    /// (d) and (e) never run anything past the prefix `ran` records and are still stale.
     #[test]
     fn a_warm_rerun_never_persists_state_its_key_does_not_describe() {
         if std::env::var_os("TALIESIN_PYTHON").is_none() {
@@ -2691,88 +2720,99 @@ mod tests {
             return;
         }
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let html = |out: Vec<Block>| -> String { out.iter().map(|b| b.html.as_str()).collect() };
+        let cell = python_cell_block_with;
+        let uncached = |id: &str, code: &str| {
+            let mut b = python_cell_block_with(id, code);
+            if let Some(c) = b.cell.as_mut() {
+                c.cache = false;
+            }
+            b
+        };
+        let case = |name: &str, docs: Vec<Vec<Block>>, stale: &str| {
+            let Some((warm, built)) = warm_session_then_build(&rt, &docs) else {
+                return;
+            };
+            assert!(
+                warm.contains(stale),
+                "({name}) precondition: the warm kernel's leftover state shows `{stale}`: {warm}"
+            );
+            assert!(
+                built.contains("NameError") && !built.contains(stale),
+                "({name}) a cold build over the preview's _freeze restored `{stale}`, an output \
+                 only the warm kernel's leftover state could produce: {built}"
+            );
+        };
+        let dat = "dat = 5";
+        let data = "data = 5";
+        let use_dat = "print('dat is', dat)";
 
-        // (1) The rename. Run 1 is cold, so it may persist; run 2 re-runs both cells in the
-        // same kernel, which still holds `threshold`.
-        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let page = dir.join("page.json");
-        let setup = "threshold = 10";
-        let renamed = "limit = 10";
-        let usage = "print(f'threshold is {threshold}')";
-        let mut ex = Executor::with_freeze(page.clone());
-        rt.block_on(async {
-            let _ = ex
-                .run(vec![
-                    python_cell_block_with("r-1", setup),
-                    python_cell_block_with("r-2", usage),
-                ])
-                .await;
-        });
-        if ex.diagnostic().is_some() {
-            return; // no working python kernel here
-        }
-        let edited = vec![
-            python_cell_block_with("r-1", renamed),
-            python_cell_block_with("r-2", usage),
-        ];
-        let warm = html(rt.block_on(ex.run(edited.clone())));
-        assert!(
-            warm.contains("threshold is 10"),
-            "precondition: the warm kernel still holds the old name: {warm}"
+        // (a) Rename, leaving a use of the old name dangling below it.
+        case(
+            "a: rename",
+            vec![
+                vec![cell("a-1", dat), cell("a-2", use_dat)],
+                vec![cell("a-1", data), cell("a-2", use_dat)],
+            ],
+            "dat is 5",
         );
-        let interp = rt.block_on(interp_id("python", &ex.python.path.clone()));
-        let cold_keys = freeze::cumulative_hashes(&interp, &[setup, usage]);
-        assert!(
-            ex.freeze.get(&cold_keys[1]).is_some(),
-            "control: the COLD run's output is persisted, so the freeze is live and the keys \
-             line up"
+        // (b) Rename first, then append the cell that uses the old name.
+        case(
+            "b: append after a rename",
+            vec![
+                vec![cell("b-1", dat)],
+                vec![cell("b-1", data)],
+                vec![cell("b-1", data), cell("b-2", use_dat)],
+            ],
+            "dat is 5",
         );
-        drop(ex);
-        let mut build = Executor::with_freeze(page.clone());
-        let built = html(rt.block_on(build.run(edited)));
-        assert!(
-            built.contains("NameError") && !built.contains("threshold is 10"),
-            "a fresh executor over the same _freeze restored an output only the warm kernel's \
-             leftover state could produce: {built}"
+        // (c) The same rename with a `#| cache: false` cell after the dangling use. The
+        // cells above it are inside the range `first_uncacheable` lets through, so this rule
+        // is what keeps them out. While the `cache: false` cell exists every cold run re-runs
+        // from the top, so the entries only surface once it is deleted: its keys never fed
+        // the ones above it.
+        let stamp = "import time\nstamp = time.time()";
+        case(
+            "c: with a cache: false cell",
+            vec![
+                vec![
+                    cell("c-1", dat),
+                    cell("c-2", use_dat),
+                    uncached("c-3", stamp),
+                ],
+                vec![
+                    cell("c-1", data),
+                    cell("c-2", use_dat),
+                    uncached("c-3", stamp),
+                ],
+                vec![cell("c-1", data), cell("c-2", use_dat)],
+            ],
+            "dat is 5",
         );
-        let _ = std::fs::remove_dir_all(&dir);
-
-        // (2) Delete the second cell, then add a different one at the same index. No run
-        // after the first executes anything past index 1, yet the kernel still holds `y`.
-        let dir = std::env::temp_dir().join(format!("tali-warmstate-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let page = dir.join("page.json");
-        let mut ex = Executor::with_freeze(page.clone());
-        let a = "x = 1";
-        rt.block_on(async {
-            let _ = ex
-                .run(vec![
-                    python_cell_block_with("d-1", a),
-                    python_cell_block_with("d-2", "y = x + 1"),
-                ])
-                .await;
-            let _ = ex.run(vec![python_cell_block_with("d-1", a)]).await;
-        });
-        let readded = vec![
-            python_cell_block_with("d-1", a),
-            python_cell_block_with("d-3", "print('y is', y)"),
-        ];
-        let warm = html(rt.block_on(ex.run(readded.clone())));
-        assert!(
-            warm.contains("y is 2"),
-            "precondition: the deleted cell's state is still in the kernel: {warm}"
+        // (d) Revert to a version whose key is already on disk: the replay runs nothing
+        // (`to_run == 0`) and truncates `ran` to empty, but the kernel still holds what the
+        // reverted-away version defined. The next edit below must not persist.
+        let base = "v = 1";
+        let newer = "v = 1\nw = 2";
+        case(
+            "d: revert to a cached version",
+            vec![
+                vec![cell("d-1", base), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", newer), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", base), cell("d-2", "print('v is', v)")],
+                vec![cell("d-1", base), cell("d-2", "print('w is', w)")],
+            ],
+            "w is 2",
         );
-        drop(ex);
-        let mut build = Executor::with_freeze(page);
-        let built = html(rt.block_on(build.run(readded)));
-        assert!(
-            built.contains("NameError") && !built.contains("y is 2"),
-            "a deleted cell's leftover state was persisted under a key that does not \
-             mention it: {built}"
+        // (e) Delete a cell, then add a different one at the same index.
+        case(
+            "e: delete then re-add",
+            vec![
+                vec![cell("e-1", "x = 1"), cell("e-2", "y = x + 1")],
+                vec![cell("e-1", "x = 1")],
+                vec![cell("e-1", "x = 1"), cell("e-3", "print('y is', y)")],
+            ],
+            "y is 2",
         );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
