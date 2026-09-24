@@ -13,7 +13,7 @@
 //! colors, and map them to a palette in CSS with a `[data-theme=dark]` override,
 //! so the light/dark toggle restyles code with no re-highlight.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
@@ -95,10 +95,15 @@ fn alias(lang: &str) -> &str {
 /// different shapes: a rendered math expression is small and bounded, a code block's HTML
 /// is whatever the author pasted. An 8192-entry cap would be a memory leak with a
 /// respectable name.
+///
+/// Full, it keeps what it holds and takes nothing more, for the reason `math.rs`'s memo
+/// gives: evicting the oldest entry made every whole-project pass past the budget miss on
+/// every block. Highlighted HTML runs to about 44 times its source, so 200 pages of python
+/// were past it at 8 KB of code a page: 947 ms per save where a budget that held it all
+/// gave 64 ms (audit 2026-09-24).
 #[derive(Default)]
 struct HighlightCache {
     map: HashMap<Key, Arc<str>>,
-    order: VecDeque<Key>,
     bytes: usize,
 }
 
@@ -111,27 +116,14 @@ fn key(code: &str, token: &str) -> Key {
 }
 
 impl HighlightCache {
-    /// Insert `key -> html`, evicting oldest-first (FIFO) until `budget` bytes fit.
-    /// A no-op when the key is already present (so `order` never holds duplicates and a
-    /// re-render neither reorders the queue nor double-counts its bytes) and when one
-    /// entry alone exceeds the budget (which could otherwise evict the entire live set
-    /// to make room for something that still would not fit).
+    /// Insert `key -> html` if it fits in what is left of `budget` bytes. A no-op when the
+    /// key is already present (so a re-render never double-counts its bytes) and when it
+    /// does not fit.
     fn insert_bounded(&mut self, key: Key, html: Arc<str>, budget: usize) {
-        if self.map.contains_key(&key) || html.len() > budget {
+        if self.map.contains_key(&key) || self.bytes + html.len() > budget {
             return;
         }
-        while self.bytes + html.len() > budget {
-            match self.order.pop_front() {
-                Some(old) => {
-                    if let Some(v) = self.map.remove(&old) {
-                        self.bytes -= v.len();
-                    }
-                }
-                None => break,
-            }
-        }
         self.bytes += html.len();
-        self.order.push_back(key.clone());
         self.map.insert(key, html);
     }
 }
@@ -230,12 +222,12 @@ mod tests {
         assert_eq!(highlight("x < y", None), "x &lt; y");
     }
 
-    /// FIFO eviction under a BYTE budget, not an entry count: a code block's rendered
-    /// HTML is unbounded in a way a math expression's is not (one pasted file is worth
-    /// thousands of `$x$`), so the cap that matters is bytes held, and `math.rs`'s
-    /// entry-count cap would let 8192 large blocks sit in memory.
+    /// A BYTE budget, not an entry count: a code block's rendered HTML is unbounded in a
+    /// way a math expression's is not (one pasted file is worth thousands of `$x$`), so the
+    /// cap that matters is bytes held, and `math.rs`'s entry-count cap would let 8192 large
+    /// blocks sit in memory.
     #[test]
-    fn cache_evicts_oldest_first_and_stays_within_its_byte_budget() {
+    fn a_full_cache_keeps_what_it_holds_within_its_byte_budget() {
         let mut c = HighlightCache::default();
         for i in 0..3 {
             c.insert_bounded(key(&i.to_string(), "rust"), "0123456789".into(), 30);
@@ -243,19 +235,37 @@ mod tests {
         assert_eq!(c.map.len(), 3, "three 10-byte entries fit a 30-byte budget");
         c.insert_bounded(key("3", "rust"), "0123456789".into(), 30);
         assert_eq!(c.map.len(), 3, "stays bounded");
-        assert!(!c.map.contains_key(&key("0", "rust")), "oldest evicted");
-        assert!(c.map.contains_key(&key("3", "rust")), "newest kept");
-        assert!(c.map.contains_key(&key("2", "rust")), "recent kept");
-        // Re-inserting an existing key is a no-op: it must not reorder the queue or
-        // double-count its bytes (which would evict live entries on every re-render).
-        c.insert_bounded(key("2", "rust"), "different".into(), 30);
+        assert!(!c.map.contains_key(&key("3", "rust")), "not taken");
+        assert!(c.map.contains_key(&key("0", "rust")), "oldest kept");
+        // Re-inserting an existing key is a no-op: it must not double-count its bytes.
+        c.insert_bounded(key("2", "rust"), "different".into(), 40);
         assert_eq!(&*c.map[&key("2", "rust")], "0123456789");
-        assert_eq!(c.order.len(), 3, "no duplicate in the eviction queue");
         assert_eq!(c.bytes, 30, "bytes not double-counted");
     }
 
-    /// One entry larger than the whole budget must not spin the eviction loop forever
-    /// nor evict everything to make room for something that can never fit.
+    /// The math memo's cliff, in bytes: a whole-project pass highlights the project's code
+    /// in the same order every time, so evicting the oldest entry past the budget evicted
+    /// each block just before it came round again. Measured on 200 pages of python: 947 ms
+    /// per harvest where a budget that held it all gave 64 (audit 2026-09-24).
+    #[test]
+    fn a_full_cache_still_hits_on_every_repeated_pass() {
+        let mut c = HighlightCache::default();
+        let mut hits = 0;
+        for _pass in 0..3 {
+            for i in 0..10 {
+                let k = key(&i.to_string(), "rust");
+                if c.map.contains_key(&k) {
+                    hits += 1;
+                } else {
+                    c.insert_bounded(k, "0123456789".into(), 80);
+                }
+            }
+        }
+        assert_eq!(c.bytes, 80, "bounded");
+        assert_eq!(hits, 2 * 8, "each pass after the first hits all 8 held");
+    }
+
+    /// One entry larger than the whole budget is not cached and costs the live set nothing.
     #[test]
     fn an_entry_larger_than_the_budget_is_not_cached_and_evicts_nothing() {
         let mut c = HighlightCache::default();

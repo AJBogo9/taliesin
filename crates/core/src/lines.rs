@@ -141,8 +141,8 @@ pub fn classify(src: &str) -> Lines {
     lines
 }
 
-/// A `text -> classification` memo, bounded by the bytes of text it holds, evicted
-/// oldest-first: the shape of `highlight`'s memo, for the same reason.
+/// A `text -> classification` memo, bounded by the bytes of text it holds (as `highlight`'s
+/// memo is, for the same reason), evicted oldest-first.
 ///
 /// The same text is classified many times over. A site build renders every page in two
 /// whole-project passes before the page's own build, the anchor scan reads the same

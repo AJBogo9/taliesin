@@ -13,39 +13,34 @@
 //! (i.e. all of it but the block being edited) is a hashmap hit. The cache persists
 //! for the life of the process (and is shared across a site's pages).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{LazyLock, Mutex};
 
 type Key = (String, bool);
 
-/// A bounded `(latex, display_mode) -> rendered HTML` memo. On overflow it evicts the
-/// OLDEST-inserted entries (FIFO via `order`) one at a time rather than clearing the
-/// whole map, so a burst of distinct expressions past the cap doesn't drop the entire
-/// warm set (which the previous full-clear did, cold-starting every subsequent save).
+/// A bounded `(latex, display_mode) -> rendered HTML` memo that keeps what it holds: once
+/// full it takes nothing more, rather than evicting.
+///
+/// Evicting was a cliff. A whole-project pass (the Cmd-K index, a build) reads the project's
+/// math in page order, the same order every time, so a policy that makes room for the newest
+/// entry (oldest-first, or least-recently-used) evicts each expression just before the pass
+/// comes round to it again: past the cap no pass hit at all, and a save of a book with 9,693
+/// distinct expressions took 10.7 s where one with 6,723 took 128 ms (audit 2026-09-24, F1).
+/// Keeping the first `cap` holds a repeated pass at a `cap / distinct` hit rate. What that
+/// gives up is small: an expression first typed after the memo filled is typeset on every
+/// render of its own page. (A full clear, before FIFO, cold-started every later save.)
 #[derive(Default)]
 struct MathCache {
     map: HashMap<Key, String>,
-    order: VecDeque<Key>,
 }
 impl MathCache {
-    /// Insert `key -> html`, keeping at most `cap` entries by evicting the oldest-
-    /// inserted first (FIFO). A no-op if `key` is already present (so `order` never
-    /// holds duplicates and a re-render doesn't disturb the eviction order).
+    /// Insert `key -> html` while fewer than `cap` entries are held. A no-op once full, and
+    /// for a key already present.
     fn insert_bounded(&mut self, key: Key, html: String, cap: usize) {
-        if self.map.contains_key(&key) {
-            return;
+        if self.map.len() < cap {
+            self.map.entry(key).or_insert(html);
         }
-        while self.map.len() >= cap {
-            match self.order.pop_front() {
-                Some(old) => {
-                    self.map.remove(&old);
-                }
-                None => break,
-            }
-        }
-        self.order.push_back(key.clone());
-        self.map.insert(key, html);
     }
 }
 static CACHE: LazyLock<Mutex<MathCache>> = LazyLock::new(|| Mutex::new(MathCache::default()));
@@ -226,27 +221,48 @@ mod tests {
         );
     }
 
+    /// A whole-project pass (the Cmd-K index, a build) reads the project's math in page
+    /// order, the same order every time. Evicting the oldest entry, past the cap each
+    /// expression was evicted just before it came round again: no pass ever hit, and every
+    /// save re-typeset the whole project on the one KaTeX thread (audit 2026-09-24, F1).
     #[test]
-    fn cache_evicts_oldest_first_and_stays_bounded() {
-        // FIFO eviction (no KaTeX needed): at cap, the oldest-inserted key is dropped,
-        // recent keys survive, and the map never exceeds the cap (was a full clear).
+    fn a_full_cache_still_hits_on_every_repeated_pass() {
+        let (cap, distinct) = (8, 10);
+        let mut c = MathCache::default();
+        let mut hits = 0;
+        for _pass in 0..3 {
+            for i in 0..distinct {
+                let key = (i.to_string(), false);
+                if c.map.contains_key(&key) {
+                    hits += 1;
+                } else {
+                    c.insert_bounded(key, format!("h{i}"), cap);
+                }
+            }
+        }
+        assert_eq!(c.map.len(), cap, "bounded");
+        assert_eq!(
+            hits,
+            2 * cap,
+            "each pass after the first hits all {cap} held"
+        );
+    }
+
+    #[test]
+    fn a_full_cache_keeps_what_it_holds_and_stays_bounded() {
+        // No KaTeX needed: at cap, a new key is not taken, nothing held is dropped, and the
+        // map never exceeds the cap (it was a full clear, then oldest-first eviction).
         let mut c = MathCache::default();
         for i in 0..3 {
             c.insert_bounded((i.to_string(), false), format!("h{i}"), 3);
         }
-        assert_eq!(c.map.len(), 3);
-        c.insert_bounded(("3".into(), false), "h3".into(), 3); // over cap: evict "0"
+        c.insert_bounded(("3".into(), false), "h3".into(), 3);
         assert_eq!(c.map.len(), 3, "stays bounded, not cleared");
-        assert!(
-            !c.map.contains_key(&("0".to_string(), false)),
-            "oldest evicted"
-        );
-        assert!(c.map.contains_key(&("3".to_string(), false)), "newest kept");
-        assert!(c.map.contains_key(&("2".to_string(), false)), "recent kept");
-        // Re-inserting an existing key is a no-op (doesn't reorder or grow).
-        c.insert_bounded(("2".into(), false), "dup".into(), 3);
+        assert!(!c.map.contains_key(&("3".to_string(), false)), "not taken");
+        assert!(c.map.contains_key(&("0".to_string(), false)), "oldest kept");
+        // Re-inserting an existing key is a no-op: the first render stands.
+        c.insert_bounded(("2".into(), false), "dup".into(), 4);
         assert_eq!(c.map.get(&("2".to_string(), false)).unwrap(), "h2");
-        assert_eq!(c.order.len(), 3, "no duplicate in the eviction queue");
     }
 
     #[test]
