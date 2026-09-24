@@ -420,7 +420,7 @@ HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 
 **Table of contents.** `toc:` is a page key, not a `_site.yml` key. The site-wide
 form was retired on 2026-08-02: it overrode the per-page gate, which answers the same
-question better. Writing `toc:` in a `_site.yml` is an unknown config key error, in a
+question better. Writing `toc:` in a `_site.yml` is reported as an unknown config key, in a
 website and a book alike; delete it.
 
 Left out of a page's front matter, the rail is automatic: an article page gets one when
@@ -432,7 +432,8 @@ screen to the article and keeps the contents one tap away.
 
 A book never shows one, whatever any page says: the Chapters drawer is its navigation,
 and it is strictly more detailed than the rail was. That rule takes precedence over the
-page key, so a chapter's `toc: true` cannot bring the rail back.
+page key, so a chapter's `toc: true` cannot bring the rail back. A chapter built on its
+own (`taliesin build chapter.tmd`) has no drawer, so it gets the rail like any page.
 
 **Validation.** `_site.yml` keys get the same closed, located, warn-only "did you
 mean" check as front matter (see [Closed vocabulary](#closed-vocabulary)). That check is

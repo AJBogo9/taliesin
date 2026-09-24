@@ -790,71 +790,26 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
     site_page_html(project, page)
 }
 
-/// Render a page's source the way `build` renders the same page, before execution: a page
-/// of a project through the project path (its `chapter` number, the project's shared
-/// `bibliography:` in `defaults`, the containment root its `_site.yml` declares), and a
-/// document outside any project through [`taliesin_core::render_single_doc`], confined to
-/// its own folder. The preview rendered the second kind through the project path too,
-/// whose missing root is inferred from the nearest `.git`, so it resolved an include or a
-/// `bibliography:` the build refuses (PT-2 reopened in the preview alone).
-///
-/// `root` is the project directory. One previewed as a project always holds `_site.yml`
-/// (`resolve_target` refuses one that does not), so its absence marks a single document's
-/// own project. Takes the site's answers rather than the site, so a caller holding the site
-/// lock can release it before the render.
-fn render_page_source(
-    root: &Path,
-    chapter: Option<u32>,
-    defaults: &taliesin_core::render::SiteDefaults,
-    src: &str,
-    base: &Path,
-) -> taliesin_core::RenderedDoc {
-    if !root.join("_site.yml").is_file() {
-        return taliesin_core::render_single_doc(src, base);
-    }
-    taliesin_core::render_document_scoped_with_site(src, base, chapter, Some(defaults))
-}
-
-/// A first-paint render without code execution (the worker fills outputs after).
-/// Listing cards are expanded here so the blog index paints with its posts.
+/// A first-paint render without code execution (the worker fills outputs after): the one
+/// page pass ([`crate::lint::PagePass`]) with no executor, so the page paints finished
+/// exactly as the build finishes it (numbering, cross-references, `listing:` cards). The
+/// caller holds the site lock across it.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
-    let Ok(src) = std::fs::read_to_string(&page.input) else {
+    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
         return PageDoc {
             errored: true,
             ..Default::default()
         };
     };
-    let base = page.input.parent().unwrap_or(Path::new("."));
-    let mut doc = render_page_source(
-        &site.root,
-        site.chapter_for(page),
-        &site.render_defaults(),
-        &src,
-        base,
-    );
-    // One shared finishing step (numbering, cross-refs + broken-ref warnings,
-    // listing/about expansion, post decoration) so preview matches the build. It owns the
-    // `toc` decision too, so the four callers cannot compute it at four different points.
-    let mut warnings = std::mem::take(&mut doc.warnings);
-    let toc = site.finish_blocks(
-        page,
-        &mut doc.blocks,
-        &mut warnings,
-        Some(&src),
-        doc.toc_explicit,
-    );
-    // Resolved off the *finished* doc, exactly as the static build resolves it
-    // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
-    // `_site/` cannot name one tab three ways.
-    let tab_title = site.page_title(page, &doc);
-    let label = page_label(page);
-    let diagnostics = warnings.iter().map(|w| diag_from(w, &label)).collect();
+    let pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
     PageDoc {
-        tab_title,
-        toc,
-        includes: doc.includes,
-        blocks: doc.blocks,
-        diagnostics,
+        // Resolved off the *finished* doc, exactly as the static build resolves it, so the
+        // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
+        tab_title: site.page_title(page, &pass.doc),
+        toc: pass.toc,
+        includes: pass.doc.includes,
+        blocks: pass.doc.blocks,
+        diagnostics: pass.diags,
         errored: false,
         generation: 0, // first paint; the exec pass bumps it when it splices outputs
         // The first-paint render never runs cells, so it learns nothing about this page's
@@ -1495,7 +1450,7 @@ async fn build_page(
     let Some(page) = page else {
         return BuildOutcome::Done;
     };
-    let Ok(src) = std::fs::read_to_string(&page.input) else {
+    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
         let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
@@ -1507,15 +1462,18 @@ async fn build_page(
         return BuildOutcome::Done;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let (chapter, site_defaults) = {
+    let label = page_label(&page);
+    // THE page pass every verb runs. What it needs of the site is taken under the lock and
+    // the lock released before the render; the cells run with no lock held.
+    let render = {
         let site = project.site.lock();
-        (site.chapter_for(&page), site.render_defaults())
+        crate::lint::PageRender::of(&site, &page)
     };
-    let mut doc = render_page_source(&project.dir, chapter, &site_defaults, &src, &base);
+    let mut pass = crate::lint::PagePass::begin(&render, &page, src, &label);
 
     // Which lane this page actually belongs on, decided from the rendered blocks rather
     // than a guess about the source: exactly the cells the executor would run.
-    let cell_free = is_cell_free(&doc.blocks);
+    let cell_free = is_cell_free(&pass.doc.blocks);
     if pool.is_none() && !cell_free {
         // The bypass lane picked this page up (its last build had no cells) and the edit
         // has just added one. Publish nothing — the exec lane redoes this pass with a
@@ -1540,49 +1498,31 @@ async fn build_page(
         exec.set_progress(sink, Some(rel.to_string()));
         exec
     });
-    // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
-    // cross-page check below covers those). Collected now, pushed after `diags` is built.
-    let label = page_label(&page);
-    let static_diags = crate::preview_diag::static_diagnostics(
-        &src,
-        &doc.blocks,
-        &base,
-        crate::lint::Scope::InSite,
-        &label,
-    );
     let mut exec = exec;
-    // Exec-phase defects (an empty-output labelled figure/table cell) are only knowable
-    // after execution; carried out of the run so they merge into the same per-page
-    // `Warning -> Diagnostic` mapping the render and finish warnings take below, and the
-    // dev-menu panel shows them located instead of terminal-only.
-    let mut exec_warnings = Vec::new();
     if let Some(exec) = exec.as_mut() {
-        publish_pre_exec_body(project, rel, &page, &doc.blocks);
-        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
-        exec_warnings = exec.take_warnings();
+        publish_pre_exec_body(project, rel, &page, &pass.doc.blocks);
+        // A failed cell is not repeated among the diagnostics: the dev menu lists each one
+        // from the page itself, clickable to the cell.
+        pass.execute(exec).await;
     }
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
     // whole site, so it needs the site lock.
-    let mut warnings = doc.warnings.clone();
-    warnings.append(&mut exec_warnings);
-    let (toc, tab_title) = {
+    let tab_title = {
         let site = project.site.lock();
-        let toc = site.finish_blocks(
-            &page,
-            &mut doc.blocks,
-            &mut warnings,
-            Some(&src),
-            doc.toc_explicit,
-        );
-        (
-            toc,
-            // Re-resolved every build: an edit can add, change, or remove the front-matter
-            // title or the leading `# H1` that names the tab.
-            site.page_title(&page, &doc),
-        )
+        pass.finish(&site, &page);
+        // Re-resolved every build: an edit can add, change, or remove the front-matter
+        // title or the leading `# H1` that names the tab.
+        site.page_title(&page, &pass.doc)
     };
-    let mut diags = page_diagnostics(&page.input, exec.as_deref(), &label);
+    let toc = pass.toc;
+    let mut diags = std::mem::take(&mut pass.diags);
+    // The kernel's availability, which the dev menu shows and the build does not repeat
+    // (it reports a missing kernel as its own failure).
+    if let Some(message) = exec.as_deref().and_then(|e| e.diagnostic()) {
+        let notice = taliesin_core::render::Warning::new(message);
+        diags.push(diag_from(&notice, &label));
+    }
     // A cell of this page's may have been SIGINTed to let another page's kernel restart
     // through (A17). Read AFTER `exec.run`, which is what the interrupt aborts, so this is
     // the very build that shows the traceback — and the page says where it came from
@@ -1591,17 +1531,18 @@ async fn build_page(
         let notice = taliesin_core::render::Warning::new(interrupted_notice(&by));
         diags.push(diag_from(&notice, &label));
     }
-    diags.extend(static_diags);
-    // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
-    // re-renders the whole site (~27 ms), so scope the site lock tightly.
+    // Cross-page links (this page only, and the pages it links to: the whole-site pass would
+    // render every page on every save, PERF-1) and the project's own diagnostics, located
+    // for this page: the client resolves a `file` from the page's own folder, so they climb
+    // to the site root first. Scoped tightly under the site lock.
     {
         let site = project.site.lock();
-        diags.extend(crate::preview_diag::cross_page_diagnostics(
-            &site, rel, &label,
-        ));
-        diags.extend(crate::preview_diag::site_config_diagnostics(&site, rel));
+        let cross = site.validate_cross_page_links_for(rel);
+        diags.extend(cross.iter().map(|w| diag_from(w, &label)));
+        let config = format!("{}_site.yml", "../".repeat(rel.matches('/').count()));
+        diags.extend(crate::lint::project_diagnostics(&site, &config));
     }
-    diags.extend(warnings.iter().map(|w| diag_from(w, &label)));
+    let doc = pass.doc;
 
     let mut pages = project.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
@@ -1655,40 +1596,6 @@ async fn build_page(
     // that sees the new value is always looking at a finished build (AP3-1).
     ps.doc.cell_free = cell_free;
     BuildOutcome::Done
-}
-
-/// Per-page diagnostics: a framed front-matter parse error + kernel availability.
-///
-/// A missing `{{< include >}}` is deliberately *not* checked here. The render pass already
-/// emits a located `IncludeWarning` on the directive's own line, which reaches this same
-/// channel through `doc.warnings`; checking again produced two diagnostics for one defect,
-/// and the extra one had no line to click.
-/// `exec` is `None` on the bypass lane (AP3-1), which has no executor — and needs none:
-/// the only thing it contributes is the kernel-availability notice, which is about cells
-/// this page does not have.
-fn page_diagnostics(
-    input: &Path,
-    exec: Option<&crate::exec::Executor>,
-    label: &str,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    if let Ok(src) = std::fs::read_to_string(input) {
-        // Broken front matter: a located, framed error (same as the single-doc server).
-        // (Front-matter key warnings now arrive via `doc.warnings` from the render pass.)
-        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-            diags.push(
-                Diagnostic::new(label.to_string(), Some(line), message)
-                    .with_frame(crate::serve::code_frame(&src, line)),
-            );
-        }
-    }
-    if let Some(message) = exec.and_then(|e| e.diagnostic()) {
-        diags.push(diag_from(
-            &taliesin_core::render::Warning::new(message),
-            label,
-        ));
-    }
-    diags
 }
 
 /// The name the dev menu locates a page's own diagnostics by: its file name, which the
@@ -2958,7 +2865,7 @@ mod project_tests {
         std::fs::write(dir.join("notes/a.tmd"), src).unwrap();
         let file = dir.join("notes/a.tmd").canonicalize().unwrap();
 
-        let site = taliesin_core::site::Site::discover_single(&file);
+        let site = taliesin_core::site::Site::discover_document(&file);
         let page = site
             .pages
             .first()

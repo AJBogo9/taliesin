@@ -115,3 +115,40 @@ fn stdout_conflicts_are_loud() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A document built on its own is the same page its preview shows: a `hero:` replaces the
+/// title block and a `listing:` renders its list, because both verbs finish the page through
+/// the one `Site` it belongs to. The single-file build never asked the site and dropped
+/// both, silently (audit 2026-09-24, config-seam #4).
+#[test]
+fn a_lone_document_builds_its_hero_and_listing_as_the_preview_does() {
+    let dir = std::env::temp_dir().join(format!("tali-stdout-{}-hero", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let doc = dir.join("land.tmd");
+    fs::write(
+        &doc,
+        "---\ntitle: Land\nhero:\n  headline: A headline\n  lead: The lead sentence.\n\
+         listing:\n  - contents: .\n---\n\nLanding body.\n",
+    )
+    .unwrap();
+    let (ok, html, stderr) = build(&[doc.to_str().unwrap(), "--stdout", "--no-exec"]);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(ok, "build --stdout exited non-zero: {stderr}");
+    let classes: Vec<String> = taliesin_core::render::tags(&html)
+        .flat_map(|t| {
+            taliesin_core::render::attrs(&t)
+                .filter(|a| a.name == "class")
+                .map(|a| a.value.to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert!(
+        classes.iter().any(|c| c == "hero"),
+        "the hero block is on the page: {classes:?}"
+    );
+    assert!(
+        classes.iter().any(|c| c.contains("tali-listing")),
+        "the listing is on the page: {classes:?}"
+    );
+}

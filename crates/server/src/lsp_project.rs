@@ -130,7 +130,7 @@ impl SiteCache {
     /// The project enclosing `page`, or `None` when no `_site.yml` sits above it.
     ///
     /// Whether `page` is a *page* of that project is settled by the caller
-    /// (`lint::collect_file_diagnostics_in_site`), so that one place decides it: a deck and
+    /// (`lint::buffer_diagnostics_in_site`), so that one place decides it: a deck and
     /// a `draft: true` chapter are both inside a project and are both linted standalone.
     ///
     /// `DraftMode::Exclude` matches `build --check-only`, the parity this whole path claims.

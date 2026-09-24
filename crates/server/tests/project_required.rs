@@ -279,7 +279,7 @@ fn build_and_preview_report_the_ancestor_in_the_same_spelling_as_the_subject() {
 // `build <file.tmd>` (`build.rs` -> `render_doc_to_page` -> `page.rs` with `site: None`)
 // never constructs a `SiteCtx` and never reaches `page_chrome`'s `navbar_html: if book ||
 // self.standalone` gate. The bug this whole plan exists to catch lived in `preview
-// <file.tmd>`'s `Site::discover_single` -> `page_chrome` path
+// <file.tmd>`'s `Site::discover_document` -> `page_chrome` path
 // (`serve_site/mod.rs::site_page_html`'s `let chrome = { project.site.lock().page_chrome
 // (page) };`), so only a test that drives `preview` over HTTP can regress-guard it. The
 // `build` half below stays as the control: it pins the half of the contract that was

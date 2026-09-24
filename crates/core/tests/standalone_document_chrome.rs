@@ -1,7 +1,8 @@
-//! A document that belongs to no project gets no project chrome. `preview <file>` used to
-//! wrap a lone .tmd in a site header carrying a brand link to itself labelled "Home", a
-//! burger over an empty nav, a search button and a site footer, none of which
-//! `build <file>` has ever emitted.
+//! A document discovered for itself gets no project chrome. `preview <file>` used to wrap a
+//! lone .tmd in a site header carrying a brand link to itself labelled "Home", a burger over
+//! an empty nav, a search button and a site footer, none of which `build <file>` has ever
+//! emitted. A page of a project discovered for itself (`build <file>`) is the same case: the
+//! build writes that one page, so the project's navigation would link pages it never wrote.
 
 use std::path::Path;
 use taliesin_core::Site; // re-exported at the crate root (`pub use site::{DraftMode, Page, Site}`)
@@ -14,7 +15,7 @@ fn corpus(rel: &str) -> std::path::PathBuf {
 
 #[test]
 fn a_lone_document_is_marked_standalone() {
-    let site = Site::discover_single(&corpus("agent/executed-read.tmd"));
+    let site = Site::discover_document(&corpus("agent/executed-read.tmd"));
     assert!(
         site.standalone,
         "corpus/agent has no _site.yml, so this document belongs to no project"
@@ -22,17 +23,25 @@ fn a_lone_document_is_marked_standalone() {
 }
 
 #[test]
-fn a_document_inside_a_project_is_not_standalone() {
-    let site = Site::discover_single(&corpus("shared-bib/index.tmd"));
+fn a_project_page_built_alone_is_standalone_and_its_project_is_not() {
+    let alone = Site::discover_document(&corpus("shared-bib/index.tmd"));
     assert!(
-        !site.standalone,
+        alone.standalone,
+        "a page built on its own publishes nothing its project's nav links to"
+    );
+    assert!(
+        alone.config.title.is_some(),
+        "and it is still built with its project's config"
+    );
+    assert!(
+        !Site::discover(&corpus("shared-bib")).standalone,
         "corpus/shared-bib HAS an _site.yml, so its pages keep project chrome"
     );
 }
 
 #[test]
 fn a_standalone_document_renders_no_site_header_or_footer() {
-    let site = Site::discover_single(&corpus("agent/executed-read.tmd"));
+    let site = Site::discover_document(&corpus("agent/executed-read.tmd"));
     let page = site.pages.first().expect("the one scoped page");
     let ctx = site.page_chrome(page);
     assert_eq!(ctx.navbar_html, "", "no site navbar: {:?}", ctx.navbar_html);

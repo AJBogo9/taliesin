@@ -127,7 +127,9 @@ never ships it.
 
 The button itself is a **connection light**: a coloured dot that reads *live* while
 the websocket is connected, *reconnecting* while the server restarts, and *error*
-on a failed render. A small badge appears on it when there are diagnostics waiting.
+on a failed render or while an error stands among the diagnostics (each is marked
+`error` or `warning` exactly as `build --check-only` reports it). A small badge appears
+on it when there are diagnostics waiting.
 
 Click it to expand a panel with the preview-only tools:
 

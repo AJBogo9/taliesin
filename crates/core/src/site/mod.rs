@@ -157,20 +157,17 @@ pub struct Site {
     /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
     /// `Include`). Drives the build's "N drafts not published" report.
     pub excluded_drafts: Vec<String>,
-    /// True when this is a one-document project synthesized by
-    /// [`Site::discover_single`] because the file's own parent directory has no
-    /// `_site.yml`. The check is local to that one directory, not a walk up the
-    /// tree: a caller that invokes `discover_single` on a file already nested
-    /// inside a real project still gets `standalone: true` here (harmlessly, e.g.
-    /// `crates/server/src/query.rs`'s `map`, which never reads this field).
-    /// `preview`/`build` only reach `discover_single` after their own ancestor
-    /// walk ([`enclosing_site_root`]) found no `_site.yml` anywhere above the
-    /// file, which is what makes the field mean "no project at all" for them.
+    /// True when this site is discovered for ONE document ([`Site::discover_document`]): a
+    /// document with no project, or one page of a project
+    /// built on its own (`build <file>`). Either way nothing else of the project is
+    /// published beside it.
     ///
-    /// Such a document belongs to no project, so it gets no project chrome: the navbar
-    /// would brand it "Home" and link to the page you are already on, the burger would
-    /// open an empty nav, and the footer would credit a site that does not exist.
-    /// `build <file>` has never emitted any of it; this is what makes `preview` agree.
+    /// Such a document gets no project navigation: for one with no project the navbar
+    /// would brand it "Home" and link to the page you are already on, the burger would open
+    /// an empty nav, and the footer would credit a site that does not exist; for a page
+    /// built alone every link in them names a page that build does not write. And a book
+    /// chapter built alone keeps its table of contents ([`Site::page_toc`]): the book's
+    /// chapter drawer that stands in for it is not there either.
     pub standalone: bool,
 }
 
@@ -334,47 +331,38 @@ impl Site {
         Self::discover_scoped(root, drafts, None)
     }
 
-    /// The project for a single `.tmd` previewed on its own: its parent directory carrying
-    /// exactly that one document, plus whatever that document `{{< embed >}}`s.
-    ///
-    /// This is what `taliesin preview <file.tmd>` builds when the file has no ancestor
-    /// `_site.yml`. Scoping to the one file (rather than discovering the whole parent
-    /// directory) is the point: previewing a scratch note must not pull thirty unrelated
-    /// siblings into the nav, and must not parse them to find that out.
-    pub fn discover_single(file: &Path) -> Site {
-        let root = file.parent().unwrap_or_else(|| Path::new("."));
-        Self::discover_scoped(root, DraftMode::Include, Some(file))
-    }
-
     /// The project a document named on its own belongs to, scoped to that one document:
-    /// THE discovery every verb that is handed a `.tmd` rather than a directory starts from.
-    /// The project is the nearest `_site.yml` above the document's folder; with none, the
-    /// folder is a project of just that document ([`discover_single`](Self::discover_single)).
+    /// THE discovery every verb that is handed a `.tmd` rather than a directory starts from
+    /// (`build <file>`, `build <file> --check-only`, and `preview <file>` for a document with
+    /// no project). The project is the nearest `_site.yml` above the document's folder; with
+    /// none, the folder is a project of just that document. Scoping to the one file (rather
+    /// than discovering the whole directory) is the point: a scratch note must not pull
+    /// thirty unrelated siblings into its page, and must not parse them to find that out.
     ///
     /// **The folder is canonicalized, not the file**, which is what the site walker keeps:
     /// a symlinked page belongs to the project its link sits in, as the site build that
     /// publishes it there says. Resolving the link first made the preview serve the TARGET's
     /// folder as a project of one document, with no nav, while the page's own URL answered
     /// 404 (audit 2026-09-24, config-seam #14).
+    ///
+    /// The published view of the project around it ([`DraftMode::Exclude`]): a book chapter
+    /// built alone carries the number the published book gives it, and the document itself
+    /// is its one page whatever its own `draft:` says, since it was named.
     pub fn discover_document(file: &Path) -> Site {
         let file = document_path(file);
         let dir = file.parent().unwrap_or_else(|| Path::new("."));
         let root = enclosing_site_root(dir).unwrap_or_else(|| dir.to_path_buf());
-        Self::discover_scoped(&root, DraftMode::Include, Some(&file))
+        Self::discover_scoped(&root, DraftMode::Exclude, Some(&file))
     }
 
     /// [`discover_with`](Self::discover_with), optionally narrowed to one document
-    /// (see [`discover_single`](Self::discover_single)). The narrowing happens before
+    /// (see [`discover_document`](Self::discover_document)). The narrowing happens before
     /// cross-references and the search index are computed, so every downstream artifact is
-    /// built from the scoped page set rather than filtered afterwards.
-    ///
-    /// Public because a single-page `build` inside a project needs that project's *config*
-    /// (its `python:` pin) while building exactly one page. Reaching it through
-    /// [`discover`](Self::discover) works but pays the whole project's two render passes —
-    /// measured at +80 ms on `docs/guide`, 16 pages, release, 2026-09-02 — for a page set it
-    /// then throws away. The alternative is a second reader of `_site.yml` in the server
-    /// crate, and one policy with two readers is what put that bug there to begin with.
-    pub fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
+    /// built from the scoped page set rather than filtered afterwards; a single-page `build`
+    /// inside a project gets that project's config (its `python:` pin) without paying the
+    /// whole project's two render passes (+80 ms on `docs/guide`, 16 pages, release,
+    /// measured 2026-09-02) for a page set it would throw away.
+    fn discover_scoped(root: &Path, drafts: DraftMode, only: Option<&Path>) -> Site {
         let mut warnings = Vec::new();
         let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
@@ -446,7 +434,7 @@ impl Site {
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
 
-        let standalone = only.is_some() && !root.join("_site.yml").is_file();
+        let standalone = only.is_some();
 
         let mut site = Site {
             root: root.to_path_buf(),
@@ -704,17 +692,29 @@ impl Site {
     ) -> (String, Vec<Warning>) {
         let mut warnings = std::mem::take(&mut doc.warnings);
         doc.toc = self.finish_blocks(page, &mut doc.blocks, &mut warnings, None, doc.toc_explicit);
+        (self.page_html_external(page, &doc, assets), warnings)
+    }
+
+    /// The page HTML for a page whose blocks are already FINISHED ([`Self::finish_blocks`]),
+    /// wrapped in its chrome and linking the shared `_assets/` bundle: what the site build
+    /// writes once the page pass is done with the page.
+    pub fn page_html_external(
+        &self,
+        page: &Page,
+        doc: &render::RenderedDoc,
+        assets: render::ExternalAssets,
+    ) -> String {
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
-        let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
+        let html = render::html_page_from_doc_in_site_external(doc, fallback, &ctx, assets);
         let html = rewrite_tmd_links(&html);
         // The host serves the author's 404 for any unknown path, at any depth, so its
         // depth-relative URLs (assets, navbar, favicon, the author's own links) would
         // resolve against the directory the reader mistyped.
         if is_not_found_page(page) {
-            return (root_absolute_urls(&html), warnings);
+            return root_absolute_urls(&html);
         }
-        (html, warnings)
+        html
     }
 
     /// Static `check` cross-page link validation: for every page, resolve each manual
@@ -895,6 +895,23 @@ impl Site {
                 let line = lk.line;
                 let source_file = &lk.source_file;
                 let Some(target_url) = self.link_target_url(url, path) else {
+                    // Above the site root. In a project that may be a mounted sibling, so it
+                    // is left alone; a document built on its own has none, and the link names
+                    // a file beside it on disk, which is dead in its page when it is missing.
+                    let dir = Path::new(rel).parent().unwrap_or(Path::new(""));
+                    if self.standalone && !self.root.join(dir).join(path).exists() {
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` (no such file under the document directory)"
+                        ))
+                        .severity(Severity::Error);
+                        out.push((
+                            rel.clone(),
+                            match line {
+                                Some(l) => w.at(source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
+                    }
                     continue;
                 };
                 let Some(target_ids) = ids_by_url.get(target_url.as_str()) else {
@@ -939,6 +956,11 @@ impl Site {
                     {
                         let why = if self.excluded_drafts.contains(&src) {
                             format!("`{src}` is a draft, so no page is built for it")
+                        } else if self.standalone {
+                            // A site discovered for one document builds that page alone
+                            // (`build <file>`, a lone document's own project): the target may
+                            // well be a page of the project, just not of this build.
+                            format!("`{src}` is not built with this document")
                         } else {
                             format!("this project does not publish `{src}`")
                         };
@@ -1152,7 +1174,9 @@ impl Site {
     /// assembler (both static builds, both previews) on one decision instead of four.
     /// What is lost is scrollspy; the ruling accepts that.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>, blocks: &[Block]) -> bool {
-        if self.is_book() {
+        // The drawer this rule leans on is a book's chrome, which a chapter built on its
+        // own does not have.
+        if self.is_book() && !self.standalone {
             return false;
         }
         doc_toc.unwrap_or_else(|| {
@@ -2754,7 +2778,7 @@ pub(crate) mod tests {
     /// exactly that document — not its whole parent directory. Thirty unrelated notes next
     /// to it must not become nav entries (nor be parsed to discover that they are not).
     #[test]
-    fn discover_single_scopes_the_project_to_one_document() {
+    fn a_document_s_discovery_scopes_the_project_to_that_document() {
         let root = write_site(
             "single",
             &[
@@ -2766,7 +2790,7 @@ pub(crate) mod tests {
                 ),
             ],
         );
-        let site = Site::discover_single(&root.join("note.tmd"));
+        let site = Site::discover_document(&root.join("note.tmd"));
         assert_eq!(
             site.pages.iter().map(|p| &p.rel).collect::<Vec<_>>(),
             vec!["note.tmd"],
@@ -2793,7 +2817,7 @@ pub(crate) mod tests {
             "singleroot",
             &[("note.tmd", "---\ntitle: Note\n---\n\nBody.\n")],
         );
-        let site = Site::discover_single(&root.join("note.tmd"));
+        let site = Site::discover_document(&root.join("note.tmd"));
         assert_eq!(site.pages.len(), 1);
         assert_eq!(
             site.pages[0].url, "note.html",
@@ -3743,6 +3767,87 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The per-page cross-page link check the preview runs on every save judges only the
+    /// page asked about, so a broken link is reported on the page that carries it and not
+    /// on the page it points at. (It lived beside the preview's bridge module until that
+    /// module went, with the preview's second diagnostic type.)
+    #[test]
+    fn a_broken_cross_page_link_is_reported_only_on_the_linking_page() {
+        let root = write_site(
+            "xpage-for",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "# Home\n\nSee [the other page](other.tmd#nope).\n",
+                ),
+                ("other.tmd", "# Real Heading\n\nBody.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            !site.validate_cross_page_links_for("index.tmd").is_empty(),
+            "index links a nonexistent anchor"
+        );
+        assert!(
+            site.validate_cross_page_links_for("other.tmd").is_empty(),
+            "other.tmd has no broken outgoing link"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A document built on its own has no sibling book beside it to link into: a link out of
+    /// its folder names a file on disk, and a missing one is dead in the page the build
+    /// writes. The project rule skips a link above the root (it may point into a mounted
+    /// sibling), which for one document's own project would have dropped the check the
+    /// single-file gate always ran.
+    #[test]
+    fn a_lone_document_s_link_out_of_its_folder_is_checked() {
+        let root = write_site(
+            "lone-climb",
+            &[
+                (
+                    "doc/a.tmd",
+                    "# A\n\n[there](../there.pdf) and [gone](../gone.pdf)\n",
+                ),
+                ("there.pdf", "%PDF"),
+            ],
+        );
+        let site = Site::discover_document(&root.join("doc/a.tmd"));
+        let broken: Vec<String> = site
+            .validate_cross_page_links_for("a.tmd")
+            .into_iter()
+            .map(|w| w.message)
+            .collect();
+        assert_eq!(broken.len(), 1, "{broken:?}");
+        assert!(broken[0].contains("../gone.pdf"), "{broken:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A book chapter built on its own carries the number the published book gives it: a
+    /// draft chapter ahead of it is not in the book, so it does not count.
+    #[test]
+    fn a_chapter_built_alone_carries_its_published_number() {
+        let root = write_site(
+            "chapter-alone",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - a.tmd\n  - b.tmd\n",
+                ),
+                ("index.tmd", "# Preface\n"),
+                ("a.tmd", "---\ndraft: true\n---\n\n# A\n"),
+                ("b.tmd", "# B\n"),
+            ],
+        );
+        let book = Site::discover(&root);
+        let alone = Site::discover_document(&root.join("b.tmd"));
+        let number = |site: &Site| site.chapter_for(site.page("b.tmd").unwrap());
+        assert_eq!(number(&book), Some(1), "the published book skips the draft");
+        assert_eq!(number(&alone), number(&book));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A site warning as `file:line: message`, the form every verb prints it in.
     fn loc(w: &Warning) -> String {
         let file = w.file.as_deref().unwrap_or("_site.yml");
@@ -3834,7 +3939,7 @@ pub(crate) mod tests {
                 ),
             ],
         );
-        let site = Site::discover_single(&root.join("note.tmd"));
+        let site = Site::discover_document(&root.join("note.tmd"));
         assert!(
             site.warnings.iter().all(|w| !loc(w).contains("other.tmd")),
             "{:?}",

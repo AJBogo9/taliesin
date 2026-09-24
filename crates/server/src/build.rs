@@ -355,7 +355,10 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         return build_site(Path::new(path), out_dir, strict, jobs, json);
     }
     let mode = taliesin_core::OutputMode::Build;
-    let src = match std::fs::read_to_string(path) {
+    // Through the one normalizing reader, like every other `.tmd` read: a lone-CR file was
+    // one line to the front-matter scans here while the renderer split it, so its broken
+    // front matter went unreported and the build passed.
+    let src = match taliesin_core::includes::read_source(Path::new(path)) {
         Ok(s) => s,
         Err(e) => {
             log::error(&crate::lint::cannot_read(Path::new(path), &e));
@@ -386,8 +389,14 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // single-file spellings (`build doc.tmd`, `build doc.tmd out.html`, `--stdout`) keep
     // inlining: each is one file, and one file that renders a diagram offline is the point.
     let mermaid_src = if out_dir.is_some() { MERMAID_FILE } else { "" };
-    let executed =
-        crate::serve::guarded(|| build_page_executing(&src, base, stem, path, mode, mermaid_src));
+    let executed = crate::serve::guarded(|| {
+        // The project this document belongs to, discovered for this one document: the same
+        // `Site` its preview finishes the page through, so the two agree on its `hero:`, its
+        // `listing:`, its numbering and its table of contents (audit 2026-09-24,
+        // config-seam #4), and on the project `_freeze/` entry and `python:` it runs with.
+        let site = taliesin_core::Site::discover_document(p);
+        build_page_executing(&site, src, stem, path, mode, mermaid_src)
+    });
     let (html, mut problems, unparseable, mut diagnostics, kernel_failure) = match executed {
         Ok(Ok(BuildResult::Page {
             html,
@@ -501,11 +510,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 /// renderer could not place. `fallback` names the document the warning came from; one
 /// located in an `{{< include >}}`d file names that file beside it ([`crate::lint::diag_from`]).
 pub(crate) fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
-    let d = crate::lint::diag_from(w, fallback);
-    match d.line {
-        Some(l) => format!("{}:{l}: {}", d.file, d.message),
-        None => format!("{}: {}", d.file, d.message),
-    }
+    crate::lint::diag_from(w, fallback).located()
 }
 
 /// Print one located diagnostic at the severity its validator gave it.
@@ -517,8 +522,13 @@ pub(crate) fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> Stri
 /// deciding what fails the run — so a reporting channel that discards it is the channel
 /// that has to be fixed, not the exit code alone.
 pub(crate) fn log_located(w: &taliesin_core::render::Warning, fallback: &str) {
-    let line = locate(w, fallback);
-    match w.severity {
+    log_diag(&crate::lint::diag_from(w, fallback));
+}
+
+/// Print one diagnostic, located, at its severity.
+fn log_diag(d: &crate::lint::Diagnostic) {
+    let line = d.located();
+    match d.severity {
         taliesin_core::Severity::Error => log::error(&line),
         _ => log::warn(&line),
     }
@@ -658,20 +668,6 @@ fn warn_nonstrict_problems(problems: usize) {
     ));
 }
 
-/// Log a located warning per cell the run saw fail, so a crashing cell isn't baked into
-/// the build silently, and return the count. The executor says which cells failed
-/// ([`exec::Executor::take_failures`]); reading it back out of the HTML was spoofable by a
-/// cell that merely printed the error markup (audit exec #11).
-///
-/// A hidden (`#| include: false`) cell's failure is counted but not logged here: the
-/// executor already said it, located, with what the cell raised.
-fn report_cell_errors(failures: &[exec::CellFailure], page_label: &str) -> usize {
-    for f in failures.iter().filter(|f| !f.hidden) {
-        log::warn(&cell_error_message(page_label, f));
-    }
-    failures.len()
-}
-
 /// The located "cell error" message for a failed cell — one string shape shared by
 /// the single-doc and site build paths (and their structured-diagnostic mirror).
 ///
@@ -725,8 +721,13 @@ fn failure_reason(failure: exec::Failure) -> &'static str {
     }
 }
 
-/// Structured "cell error" diagnostics (build-only additions over `check`'s superset), in
-/// document order, for `--format json`.
+/// The "cell error" diagnostics (build-only additions over `check`'s superset), in document
+/// order: each failed cell's own sentence, for the console and for `--format json` alike.
+///
+/// A hidden (`#| include: false`) cell's failure is counted but not repeated here: the
+/// executor already reported it, located, with what the cell raised. The executor says which
+/// cells failed ([`exec::Executor::take_failures`]); reading it back out of the HTML was
+/// spoofable by a cell that merely printed the error markup (audit exec #11).
 fn cell_error_diagnostics(
     failures: &[exec::CellFailure],
     page_label: &str,
@@ -767,228 +768,114 @@ enum BuildResult {
     },
 }
 
-/// Build one document, executing its cells.
+/// Build one document, executing its cells: [`crate::lint::PagePass`], the one page pass,
+/// over the one page `site` (the document's own discovery) holds.
 ///
-/// Two names, deliberately: `stem` is the document's *identity* (the `_freeze/` cache key
-/// and the page-title fallback), while `label` is what a diagnostic is prefixed with and so
-/// must be a path an editor can open. They used to be one `fallback` argument carrying
-/// `file_stem()`, which made every single-doc diagnostic read `pca-geometry:12:` — a name no
-/// tool resolves. Swapping `stem` for the path instead would have renamed the freeze entry
-/// and the page title, which is why this is a second parameter and not a substitution.
+/// Two names, deliberately: `stem` is the page-title fallback, while `label` is what a
+/// diagnostic is prefixed with and so must be a path an editor can open (the path as the
+/// user typed it). They used to be one `fallback` argument carrying `file_stem()`, which made
+/// every single-doc diagnostic read `pca-geometry:12:`, a name no tool resolves.
 ///
 /// `mermaid_src` is [`MERMAID_FILE`] on the `--out <dir>` path and `""` everywhere else; see
 /// [`build_dir`], which writes the file this names.
 fn build_page_executing(
-    src: &str,
-    base: &Path,
+    site: &taliesin_core::Site,
+    src: String,
     stem: &str,
     label: &str,
     mode: taliesin_core::OutputMode,
     mermaid_src: &str,
 ) -> std::io::Result<BuildResult> {
+    let page = site
+        .pages
+        .first()
+        .expect("a document's own discovery holds exactly its page");
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
-        // `problems` is what `--strict` fails on: located render warnings, broken
-        // cross-refs, and crashed code cells — each already logged below.
-        let mut problems = 0usize;
-        // The `error`-severity subset of `problems`, which fails the build with no
-        // `--strict`. Counted here rather than off `diagnostics` because
-        // `Diagnostic::new` hard-codes `Severity::Error` and the cell-error diagnostics
-        // added at the end of this function are deliberately NOT build failures.
-        let mut unparseable = 0usize;
-        // The same diagnostics, structured, for `--format json` — collected in the exact
-        // order they are logged so the two channels agree.
+        // The located diagnostics, structured, for `--format json`: the same set the human log
+        // prints.
         let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
-        // Malformed front-matter YAML: the live servers + `check` report this, but a
-        // single-doc `build` used to skip it, so a typo'd `---` block built clean and
-        // even passed `--strict`. Surface it (located) and fail on it: every key in the
-        // block is dropped, so the page ships without the `title:`, `bibliography:` or
-        // `listing:` the author wrote. It has no `render::Warning` behind it to carry a
-        // severity, so the classification is made here.
-        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
-            log::error(&format!("{label}:{line}: {message}"));
-            diagnostics.push(crate::lint::Diagnostic::new(
-                label.to_string(),
-                Some(line),
-                message,
-            ));
-            problems += 1;
-            unparseable += 1;
+        // The project's own diagnostics: its `_site.yml` (whose `python:`, `bibliography:` and
+        // book order this page is built with) and this page's front matter as discovery reads
+        // it, counted as the site build counts them. A malformed `_site.yml` fails the build
+        // like a malformed front matter: nothing in it was read.
+        let config = crate::lint::project_label(label, page, site);
+        let mut problems = crate::lint::blocking(&site.warnings);
+        let mut unparseable = site
+            .warnings
+            .iter()
+            .filter(|w| taliesin_core::site::is_malformed_config_warning(w))
+            .count();
+        for d in crate::lint::project_diagnostics(site, &config) {
+            log_diag(&d);
+            diagnostics.push(d);
         }
-        // Single-document build: confine includes/resources to the document's own project
-        // (its nearest `_site.yml`, else its own directory), so this emits the same
-        // document the site build emits for the same page (PP-3) without re-opening the
-        // climb-out-of-a-checkout escape PT-2 closed.
-        let mut doc = taliesin_core::render_single_doc(src, base);
-        // Located render warnings (front-matter typos, broken refs, and now
-        // unresolved `{{< include … >}}` directives — the path-resolution channel)
-        // are logged here so a `build` never ships a silently dropped include.
-        for w in &doc.warnings {
-            // Located, as `check` reports them: a `--strict` failure should name the line.
-            log_located(w, label);
-            diagnostics.push(crate::lint::diag_from(w, label));
-        }
-        // Advice (severity `suggestion`) is reported but never blocks: a rule that suggests
-        // a reword must not fail a build, or the only way to keep CI green is to leave the
-        // rule off. Same classification `check` gates on, so the two cannot disagree.
-        problems += crate::lint::blocking(&doc.warnings);
-        // Broken cross-refs (a single doc has no site to resolve them across pages),
-        // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
-        let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks, Some(src));
-        for w in &xrefs {
-            log_located(w, label);
-            diagnostics.push(crate::lint::diag_from(w, label));
-        }
-        problems += xrefs.len();
-        // The rest of the check-superset. These ran only in `check`, so a `--strict` build
-        // exited 0 while shipping a missing image, a broken anchor or a dangling link —
-        // and a green `--strict` reasonably reads as "safe to ship". Run *before* the code
-        // cells execute, exactly as `check` does, so a figure a cell generates is never
-        // linted as if the author had written it.
-        let statics = crate::lint::page_static_diagnostics(
-            src,
-            &doc.blocks,
-            base,
-            crate::lint::Scope::Standalone,
-        );
-        for w in &statics {
-            log_located(w, label);
-            diagnostics.push(crate::lint::diag_from(w, label));
-        }
-        problems += crate::lint::blocking(&statics);
-        // Persistent execution cache, rooted at the ENCLOSING PROJECT when there is one.
-        //
-        // This used to be `base.join("_freeze")` keyed on the doc's stem, unconditionally —
-        // `cmd_build` branches only on `is_dir()`, so the single-file path did no project
-        // resolution at all. `preview <file.tmd>` has resolved a file to its enclosing
-        // `_site.yml` since wave 1.1, so the two disagreed about what document this is:
-        //
-        //   build <project>              -> <project>/_freeze/posts/p.json
-        //   build <project>/posts/p.tmd  -> <project>/posts/_freeze/p.json  (a SECOND cache)
-        //
-        // which re-executed every time and left a stray `_freeze/` in a project
-        // subdirectory that no sweep removes (audit finding 03). It also made wave 13's
-        // `run` retirement note false where it promises "a later `build` still replays
-        // without one".
-        //
-        // The interpreter moves with the root for the same reason: its identity seeds every
-        // cumulative key, so resolving a project `.venv` from `posts/` instead of the
-        // project root would bust the cache on the axis the freeze path just fixed. A file
-        // with no ancestor `_site.yml` keeps exactly the old behaviour.
-        let project_root = taliesin_core::site::enclosing_site_root(base);
-        let (freeze_file, interp_dir) = match &project_root {
-            Some(root) => {
-                // The key must be the page's path RELATIVE TO THE PROJECT, because that is
-                // what the site build writes (`page_path(freeze_dir, &page.rel)`). Both
-                // sides are canonical here — `enclosing_site_root` canonicalizes as it
-                // climbs — so the strip cannot miss on a `..` or a symlink.
-                let rel = Path::new(label)
-                    .canonicalize()
-                    .ok()
-                    .and_then(|abs| abs.strip_prefix(root).ok().map(Path::to_path_buf))
-                    .unwrap_or_else(|| Path::new(stem).to_path_buf());
-                (
-                    freeze::page_path(&root.join("_freeze"), &rel.to_string_lossy()),
-                    root.as_path(),
-                )
+        let render = crate::lint::PageRender::of(site, page);
+        let mut pass = crate::lint::PagePass::begin(&render, page, src, label);
+        // What the page says as written prints before any cell runs.
+        pass.diags.iter().for_each(log_diag);
+        let mut exec = page_executor(site, page);
+        pass.execute(&mut exec).await;
+        // Execution's own findings are already on the console: the executor printed each at
+        // its cell. They ride `--format json` only.
+        let executed = pass.diags.len();
+        pass.finish(site, page);
+        // The links this page carries, judged against the one page it is. This build writes
+        // nothing else, so a link to another page of its project, or to a sibling document,
+        // is dead in the file it writes: it is reported, and written as the `.html` URL the
+        // preview writes, rather than passed as a link to the raw source (audit 2026-09-24,
+        // config-seam #15).
+        pass.add(&site.validate_cross_page_links_for(&page.rel));
+        pass.diags[executed..].iter().for_each(log_diag);
+        // A crashed cell bakes its traceback into the page; name it and count it.
+        let cells = cell_error_diagnostics(&pass.failures, label);
+        for d in &cells {
+            match d.severity {
+                taliesin_core::Severity::Error => log::error(&d.message),
+                _ => log::warn(&d.message),
             }
-            None => (freeze::page_path(&base.join("_freeze"), stem), base),
+        }
+        problems += pass.problems;
+        unparseable += pass.unparseable;
+        diagnostics.append(&mut pass.diags);
+        diagnostics.extend(cells);
+        let html = if mermaid_src.is_empty() {
+            taliesin_core::render_doc_to_page(&pass.doc, stem, mode)
+        } else {
+            taliesin_core::render_doc_to_page_mermaid_file(&pass.doc, stem, mermaid_src)
         };
-        let mut ex = exec::Executor::with_freeze(freeze_file)
-            .in_dir(base)
-            .in_project(interp_dir);
-        // The project's `python:` moves with the root, for the same reason the root itself
-        // does. Passing `None` here read the pin as "not set" and fell through to
-        // `<root>/.venv` / `TALIESIN_PYTHON` / `python3` — so the author got an interpreter
-        // they had explicitly overruled (and `doctor`'s fix line recommends setting exactly
-        // this key), and the freeze file the two verbs deliberately SHARE was written under
-        // two different interpreter ids, which is a guaranteed miss on both sides.
-        //
-        // Only when there is a project: a lone file has no config to read and must keep the
-        // old resolution exactly. The config comes from its one owner rather than a second
-        // YAML parse here, because one policy with two readers is what put this bug here in
-        // the first place — and it is asked SCOPED TO THIS PAGE, which is the page set this
-        // command is building anyway. Plain `discover` gives the same answer but pays the
-        // whole project's two render passes for a page set it then throws away (+80 ms on
-        // `docs/guide`, 16 pages, release, 2026-09-02).
-        let pinned = project_root.as_deref().and_then(|root| {
-            taliesin_core::Site::discover_scoped(
-                root,
-                taliesin_core::DraftMode::Include,
-                Some(Path::new(label)),
-            )
-            .config
-            .python
-        });
-        ex.set_interpreters(crate::interpreter::resolve_python(
-            pinned.as_deref(),
-            interp_dir,
-        ));
-        doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
-        // Executable cells that could not execute: fatal, not a warning (see
-        // `kernel_failure_report`). Carried out rather than reported here so the page is
-        // still written first — same shape as `--strict`, which writes and then fails.
-        let kernel_failure = ex.kernel_failure_report();
-        // No re-log of `ex.diagnostic()` here: the executor already announced this exact
-        // message at the point of failure, so repeating it printed the same fact twice.
-        // The dev-menu channel (`serve`/`serve_site`) still reads `diagnostic()`, which is
-        // a different surface, not a duplicate.
-        // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
-        // before this); log it located and count it toward `--strict`.
-        let failures = ex.take_failures();
-        problems += report_cell_errors(&failures, label);
-        diagnostics.extend(cell_error_diagnostics(&failures, label));
-        // Exec-phase defects (an empty-output labelled float): into the structured
-        // channel, so `--format json` sees what the console sees — the executor already
-        // printed the terminal warn line at the cell, so no re-log here. Never counted
-        // into `problems`, exactly like the offline carve-out.
-        for w in &ex.take_warnings() {
-            diagnostics.push(crate::lint::diag_from(w, label));
-        }
-        // The AUTO table-of-contents gate. It lives on `Site` (`Site::page_toc`), and the
-        // single-file build is the one page path that never constructs a `Site`, so it kept
-        // `render`'s standalone default — `toc: toc_explicit.unwrap_or(false)`, a TOC only
-        // when the front matter said so in as many words. `preview <file.tmd>` has resolved
-        // a lone file through `Site::discover_single` since wave 1.1 and therefore DID
-        // auto-gate, so the same three-heading paper listed two entries in the preview and
-        // none in the build, and `docs/guide/reference/frontmatter.tmd` documented the
-        // preview's answer ("leave it out and it is automatic") for both. Wave 13 aligned the
-        // two verbs on the navbar and the footer through this same call and did not finish
-        // the job; this is the rest of it.
-        //
-        // Only the auto case: an explicit `toc:` already decided and this path already
-        // honours it, so asking the site would be re-deciding a settled question (and a book
-        // root would answer `false` for a chapter built on its own, which has no chapter nav
-        // to make up for it). Run after execution, exactly as the site path does, so a
-        // heading a cell emitted is counted the same way on both sides.
-        //
-        // CANONICALIZED FIRST, exactly as `preview` does before its own `discover_single`
-        // (`serve_site::resolve`): `discover_single` roots its page walk at `file.parent()`,
-        // and `Path::new("paper.tmd").parent()` is `Some("")` — not `None`, so the `"."`
-        // fallback inside it never fires — which walks nothing and finds no page at all.
-        // Handing it the path as typed would therefore have left the gate silently dead for
-        // `taliesin build paper.tmd` run from the file's own directory, which is the
-        // commonest spelling of the command.
-        if doc.toc_explicit.is_none() {
-            let file = Path::new(label);
-            let file = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
-            let single = taliesin_core::Site::discover_single(&file);
-            if let Some(page) = single.pages.first() {
-                doc.toc = single.page_toc(page, None, &doc.blocks);
-            }
-        }
         BuildResult::Page {
-            html: if mermaid_src.is_empty() {
-                taliesin_core::render_doc_to_page(&doc, stem, mode)
-            } else {
-                taliesin_core::render_doc_to_page_mermaid_file(&doc, stem, mermaid_src)
-            },
+            html: taliesin_core::site::rewrite_tmd_links(&html),
             problems,
             unparseable,
             diagnostics,
-            kernel_failure,
+            // Executable cells that could not execute: fatal, not a warning. Carried out
+            // rather than reported here so the page is still written first, the same shape as
+            // `--strict`, which writes and then fails.
+            kernel_failure: pass.kernel_failure,
         }
     }))
+}
+
+/// A page's own executor: its `_freeze/` entry under the project root, keyed by the page's
+/// path in the project (`<root>/_freeze/posts/p.json`, the entry the preview and the site
+/// build use for the same page), cwd its own folder, and the interpreter the project's
+/// `python:` names, resolved from the project root. A page built on its own and the same page
+/// in its project's build SHARE this cache, so both name it the same way; the single-file
+/// build used to key it by the file's canonical path, which a symlinked page resolved out
+/// of the project, writing a second `_freeze/<stem>.json` (audit 2026-09-24,
+/// config-seam #14).
+fn page_executor(site: &taliesin_core::Site, page: &taliesin_core::site::Page) -> exec::Executor {
+    let base = page.input.parent().unwrap_or(&site.root);
+    let mut exec =
+        exec::Executor::with_freeze(freeze::page_path(&site.root.join("_freeze"), &page.rel))
+            .in_dir(base)
+            .in_project(&site.root);
+    exec.set_interpreters(crate::interpreter::resolve_python(
+        site.config.python.as_deref(),
+        &site.root,
+    ));
+    exec
 }
 
 #[cfg(test)]
@@ -1001,8 +888,8 @@ mod single_doc_toc_tests {
         std::fs::write(&file, src).expect("write doc");
         let stem = name.strip_suffix(".tmd").unwrap_or(name);
         let BuildResult::Page { html, .. } = build_page_executing(
-            src,
-            dir,
+            &taliesin_core::Site::discover_document(&file),
+            src.to_string(),
             stem,
             file.to_str().expect("utf-8 path"),
             taliesin_core::OutputMode::Build,
@@ -1542,22 +1429,21 @@ struct PageOutcome {
     used: AssetUse,
 }
 
-/// Build one page: render its markdown, execute its code cells on a *fresh, page-private*
-/// executor (own kernel + own `_freeze/<rel>.json`, cwd = the page's own dir), render the
-/// chrome-wrapped HTML, then write it and copy its resources. Pure w.r.t. shared state:
-/// the only writes are to this page's own output file + freeze file, so it is safe to run
-/// many of these at once. All logging is deferred into the returned [`PageOutcome`].
+/// Build one page: [`crate::lint::PagePass`] on a *fresh, page-private* executor (own
+/// kernel + own `_freeze/<rel>.json` under the project root, which the preview shares,
+/// cwd = the page's own dir), then the chrome-wrapped HTML, written. Pure w.r.t. shared
+/// state: the only writes are to this page's own output file + freeze file, so it is safe
+/// to run many of these at once. All logging is deferred into the returned
+/// [`PageOutcome`].
 async fn build_one_page(
     site: &taliesin_core::Site,
     page: &taliesin_core::site::Page,
-    freeze_dir: &Path,
     out: &Path,
-    root: &Path,
     bundle: &AssetBundle,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
     let mut diagnostics: Vec<crate::lint::Diagnostic> = Vec::new();
-    let Ok(src) = std::fs::read_to_string(&page.input) else {
+    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
         let msg = format!("cannot read {}", page.input.display());
         diagnostics.push(crate::lint::Diagnostic::new(
             page.rel.clone(),
@@ -1576,83 +1462,26 @@ async fn build_one_page(
             used: AssetUse::default(),
         };
     };
-    let base = page.input.parent().unwrap_or(root);
-    let mut doc = taliesin_core::render_document_scoped_with_site(
-        &src,
-        base,
-        site.chapter_for(page),
-        Some(&site.render_defaults()),
-    );
-    let mut problems = 0usize;
-    let mut unparseable = 0usize;
-    // Malformed front-matter YAML: the lenient line-parser silently mis-extracts fields, so
-    // the page builds with the wrong title/format. `check` reports it; the site build did not.
-    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-        problems += 1;
-        unparseable += 1;
-        warnings.push((
-            taliesin_core::Severity::Error,
-            format!("{}:{line}: {message}", page.rel),
-        ));
-        diagnostics.push(crate::lint::Diagnostic::new(
-            page.rel.clone(),
-            Some(line),
-            message,
-        ));
-    }
-    // The check-superset, over the page's blocks *before* its cells execute (as `check`
-    // does). `Scope::InSite` omits the single-doc link rule: an intra-site `[x](other.tmd)`
-    // rewrites to `other.html`, so only `validate_cross_page_links` can judge it, and that
-    // runs once for the whole project after every page is built.
-    let statics =
-        crate::lint::page_static_diagnostics(&src, &doc.blocks, base, crate::lint::Scope::InSite);
-    problems += crate::lint::blocking(&statics);
-    for w in &statics {
-        warnings.push((w.severity, locate(w, &page.rel)));
-        diagnostics.push(crate::lint::diag_from(w, &page.rel));
-    }
-    let mut exec = exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel))
-        .in_dir(base)
-        .in_project(root);
+    let mut exec = page_executor(site, page);
     // No progress sink (a build has no client), but name the page: a cold site build runs
     // pages concurrently, so bare interleaved `cell 2/4` lines belong to nobody.
     exec.set_progress(None, Some(page.rel.clone()));
-    // Resolve this project's interpreter (from _site.yml python:, a .venv, env, or
-    // default) against the site root.
-    exec.set_interpreters(crate::interpreter::resolve_python(
-        site.config.python.as_deref(),
-        root,
-    ));
-    doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
-    let kernel_failure = exec.kernel_failure_report();
-    // Exec-phase defects (an empty-output labelled float) are only knowable after
-    // execution: merge them into the same located channel the render warnings take
-    // below, so the deploy console and `--format json` see what the terminal warn line
-    // printed. Advice-shaped, never counted into `problems`, exactly like the offline
-    // carve-out. The preview drains the same source in `serve_site::build_page`.
-    for w in &exec.take_warnings() {
-        warnings.push((w.severity, locate(w, &page.rel)));
-        diagnostics.push(crate::lint::diag_from(w, &page.rel));
+    // THE page pass, as every verb runs it, deferred: nothing is printed here, and the
+    // caller replays each page's lines in page order.
+    let mut pass = crate::lint::PagePass::run(site, page, src, &page.rel, Some(&mut exec)).await;
+    for d in &pass.diags {
+        warnings.push((d.severity, d.located()));
     }
-    // A crashed cell bakes its traceback into the page; collect a located line + count it
-    // (same shape/order as the sequential `report_cell_errors`, but deferred).
-    for f in &exec.take_failures() {
-        problems += 1;
-        if f.hidden {
-            continue; // already a located diagnostic among the exec warnings above
-        }
-        let msg = cell_error_message(&page.rel, f);
-        diagnostics.push(crate::lint::Diagnostic::new(
-            page.rel.clone(),
-            None,
-            msg.clone(),
-        ));
-        warnings.push((taliesin_core::Severity::Warning, msg));
+    // A crashed cell bakes its traceback into the page: its own sentence names it.
+    let cells = cell_error_diagnostics(&pass.failures, &page.rel);
+    for d in &cells {
+        warnings.push((d.severity, d.message.clone()));
     }
-    // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
-    // silently (these previously only showed in the preview dev menu). Every page links
-    // the shared `_assets/` bundle instead of inlining its own copy of the framework
-    // CSS/JS; hrefs are depth-adjusted so a nested page's `../` prefix count matches.
+    diagnostics.append(&mut pass.diags);
+    diagnostics.extend(cells);
+    // Every page links the shared `_assets/` bundle instead of inlining its own copy of the
+    // framework CSS/JS; hrefs are depth-adjusted so a nested page's `../` prefix count
+    // matches.
     let app_css = asset_href(&page.url, &bundle.app_css);
     let katex_css = asset_href(&page.url, &bundle.katex_css);
     let app_js = asset_href(&page.url, &bundle.app_js);
@@ -1667,14 +1496,7 @@ async fn build_one_page(
         jslibs_js: &jslibs_js,
         font_preload: &font_preload,
     };
-    let (html, render_warnings) = site.render_page_doc_external(page, doc, ext);
-    for w in &render_warnings {
-        // Located, the way `check` reports them. These carry a file + line and were being
-        // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
-        warnings.push((w.severity, locate(w, &page.rel)));
-        diagnostics.push(crate::lint::diag_from(w, &page.rel));
-    }
-    problems += crate::lint::blocking(&render_warnings);
+    let html = site.page_html_external(page, &pass.doc, ext);
     // Offline-guarantee, per page: flag any external reference this page keeps, exactly like the
     // single-doc build, so the common multi-page deploy (`build <dir>`) is covered too.
     // Informational — deferred into the page's warnings and carried into the structured
@@ -1706,9 +1528,9 @@ async fn build_one_page(
     PageOutcome {
         warnings,
         diagnostics,
-        problems,
-        unparseable,
-        kernel_failure,
+        problems: pass.problems,
+        unparseable: pass.unparseable,
+        kernel_failure: pass.kernel_failure,
         io_failed: !written,
         written,
         used,
@@ -2171,11 +1993,6 @@ async fn build_site_async(
     }
     claim_output(&out);
 
-    // Persistent execution cache, rooted at the project source (not the build
-    // output), so a `build` and the `preview` server share it and it survives a
-    // clean of `_site/`.
-    let freeze_dir = root.join("_freeze");
-
     // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
     // (dedups what would otherwise be a copy inlined into every page); every page below
     // links to it instead of shipping its own inline blob.
@@ -2234,16 +2051,12 @@ async fn build_site_async(
     // write each page does is on its own paths, so no lock is held across the `.await`.
     let site = std::sync::Arc::new(site);
     let out = std::sync::Arc::new(out);
-    let freeze_dir = std::sync::Arc::new(freeze_dir);
-    let root_arc = std::sync::Arc::new(root.to_path_buf());
     let bundle = std::sync::Arc::new(bundle);
     let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(build_cap));
     let mut set: tokio::task::JoinSet<(usize, PageOutcome)> = tokio::task::JoinSet::new();
     for (idx, _page) in site.pages.iter().enumerate() {
         let site = site.clone();
         let out = out.clone();
-        let freeze_dir = freeze_dir.clone();
-        let root_arc = root_arc.clone();
         let bundle = bundle.clone();
         let sem = sem.clone();
         set.spawn(async move {
@@ -2252,7 +2065,7 @@ async fn build_site_async(
             // shared data structure, so nothing is locked across the build's `.await`.
             let _permit = sem.acquire().await.expect("build semaphore not closed");
             let page = &site.pages[idx];
-            let outcome = build_one_page(&site, page, &freeze_dir, &out, &root_arc, &bundle).await;
+            let outcome = build_one_page(&site, page, &out, &bundle).await;
             (idx, outcome)
         });
     }
@@ -3937,10 +3750,10 @@ mod build_diag_tests {
             "a genuine crash keeps its wording: {msg}"
         );
 
-        // Both are still *problems*: they count toward `--strict` and reach `--format json`,
-        // which is what AP11 verified as correct. Only the wording was wrong.
+        // Both are still *problems*: they reach `--format json` (and the page pass counts
+        // every failed cell toward `--strict`), which is what AP11 verified as correct. Only
+        // the wording was wrong.
         let failures = vec![unavailable, raised];
-        assert_eq!(report_cell_errors(&failures, "p.tmd"), 2);
         assert_eq!(cell_error_diagnostics(&failures, "p.tmd").len(), 2);
     }
 

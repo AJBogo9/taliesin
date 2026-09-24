@@ -734,3 +734,127 @@ fn a_book_part_the_config_drops_fails_a_strict_build() {
     );
     assert!(err.contains("DROPPED"), "names what went missing:\n{err}");
 }
+
+/// The single-file gate predicts the single-file build of the same argument: a cross-page
+/// reference is dead in the one page `build <file>` writes, so `--check-only` on that file
+/// reports it too. It used to lint the page as part of its project and pass, then the
+/// build failed (audit 2026-09-24 B4, config-seam #6).
+#[test]
+fn the_single_file_gate_fails_what_the_single_file_build_fails() {
+    let dir = tmp_dir("single-gate");
+    fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+    fs::write(
+        dir.join("other.tmd"),
+        "---\ntitle: Other\n---\n\n## The other section {#sec-other}\n\nBody.\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("posts")).unwrap();
+    let page = dir.join("posts/p.tmd");
+    fs::write(&page, "---\ntitle: P\n---\n\nSee @sec-other.\n").unwrap();
+
+    let check = taliesin()
+        .arg("build")
+        .arg(&page)
+        .args(["--check-only", "--strict"])
+        .output()
+        .unwrap();
+    let build = taliesin()
+        .arg("build")
+        .arg(&page)
+        .args(["--stdout", "--no-exec", "--strict"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let (check_err, build_err) = (
+        String::from_utf8_lossy(&check.stderr),
+        String::from_utf8_lossy(&build.stderr),
+    );
+    assert!(
+        !build.status.success() && build_err.contains("@sec-other"),
+        "precondition: the single-file build fails on the dead reference:\n{build_err}"
+    );
+    assert!(
+        !check.status.success(),
+        "--check-only on the same file must fail too:\n{check_err}"
+    );
+    assert!(
+        check_err.contains("@sec-other"),
+        "and name it:\n{check_err}"
+    );
+}
+
+/// A document with no project is a project of one page: its link to a sibling `.tmd` is
+/// written as that page's `.html` URL by `build` exactly as by `preview`, and both gates
+/// report it, because the single-file build publishes no such page. The build wrote a link
+/// to the raw source and `--check-only` passed it (audit 2026-09-24, config-seam #15).
+#[test]
+fn a_link_to_a_sibling_source_is_one_answer_and_reported() {
+    let dir = tmp_dir("sibling-link");
+    let doc = dir.join("a.tmd");
+    fs::write(&doc, "---\ntitle: A\n---\n\nSee [b](b.tmd).\n").unwrap();
+    fs::write(dir.join("b.tmd"), "---\ntitle: B\n---\n\nB.\n").unwrap();
+    let check = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--check-only")
+        .output()
+        .unwrap();
+    let page = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .args(["--stdout", "--no-exec"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let check_err = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        !check.status.success() && check_err.contains("b.tmd"),
+        "the gate reports the dead link:\n{check_err}"
+    );
+    let html = String::from_utf8_lossy(&page.stdout);
+    let hrefs: Vec<String> = taliesin_core::render::tags(&html)
+        .filter(|t| t.name.eq_ignore_ascii_case("a"))
+        .flat_map(|t| {
+            taliesin_core::render::attrs(&t)
+                .filter(|a| a.name == "href")
+                .map(|a| a.value.to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|h| h.starts_with('b'))
+        .collect();
+    assert_eq!(hrefs, ["b.html"], "the same href the preview writes");
+}
+
+/// A lone-CR document is read through the one normalizing reader, so its front matter is
+/// front matter to the gate and the build as it is to the renderer: a broken block is
+/// reported and fails the build. The server read the raw bytes, found no block, and
+/// passed it (audit 2026-09-24, WP7 residual).
+#[test]
+fn a_lone_cr_document_s_broken_front_matter_fails_the_build() {
+    let dir = tmp_dir("lone-cr");
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, "---\rtitle: [unclosed\r---\r\rBody.\r").unwrap();
+    let check = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--check-only")
+        .output()
+        .unwrap();
+    let build = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .args(["--stdout", "--no-exec"])
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    let check_err = String::from_utf8_lossy(&check.stderr);
+    assert!(
+        !check.status.success() && check_err.contains("not valid YAML"),
+        "the gate reports the broken block:\n{check_err}"
+    );
+    assert!(
+        !build.status.success(),
+        "and the build fails on it:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+}
