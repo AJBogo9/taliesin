@@ -622,3 +622,40 @@ fn a_cell_after_a_failed_one_is_not_persisted() {
         "a clean two-cell document must persist both: {text}"
     );
 }
+
+/// Images #12: a site build mirrored the project's files into `_site/` BEFORE the pages
+/// ran their cells, so a figure a cell writes to disk (`savefig("gen.png")`, then
+/// `![…](gen.png)`) was missing from the first build's deploy, which is every CI build
+/// from a fresh clone, while the page referenced it. The mirror now runs after the pages
+/// are built, so a file a cell wrote during this build is published with it.
+#[test]
+fn a_file_a_cell_writes_is_published_by_the_build_that_wrote_it() {
+    let Some(py) = python_or_skip() else {
+        return;
+    };
+    let dir = tmp_dir("cell-written");
+    let site = dir.join("site");
+    fs::create_dir_all(&site).unwrap();
+    fs::write(site.join("_site.yml"), "title: G\n").unwrap();
+    fs::write(
+        site.join("index.tmd"),
+        "---\ntitle: G\n---\n\n```{python}\nimport base64\n\
+         open('gen.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='))\n\
+         ```\n\n![A pixel the cell wrote.](gen.png){#fig-gen}\n",
+    )
+    .unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
+    cmd.arg("build").arg(&site);
+    cmd.env("TALIESIN_PYTHON", &py);
+    cmd.env("TALIESIN_NO_CACHE", "1");
+    let out = cmd.output().expect("run build");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        site.join("gen.png").exists(),
+        "the cell did not run, so this test proves nothing:\n{stderr}"
+    );
+    assert!(
+        site.join("_site/gen.png").exists(),
+        "the figure the cell wrote is missing from the deploy that references it:\n{stderr}"
+    );
+}

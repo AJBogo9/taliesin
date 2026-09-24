@@ -2058,16 +2058,6 @@ async fn build_site_async(
     // clean of `_site/`.
     let freeze_dir = root.join("_freeze");
 
-    // 1. Mirror non-source assets (images, etc.) preserving the tree.
-    let (asset_paths, skipped_residue) = mirror_assets(root, &out);
-    if !skipped_residue.is_empty() {
-        log::warn(&format!(
-            "skipped {} build-cache dir(s) (not deployed): {}",
-            skipped_residue.len(),
-            skipped_residue.join(", ")
-        ));
-    }
-
     // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
     // (dedups what would otherwise be a copy inlined into every page); every page below
     // links to it instead of shipping its own inline blob.
@@ -2088,7 +2078,7 @@ async fn build_site_async(
         }
     };
 
-    // 2. Render each page with chrome + rewritten links. Code cells run against a
+    // Render each page with chrome + rewritten links. Code cells run against a
     //    fresh kernel per page (clean state per document; pages with no cells never
     //    boot one), so the static `_site/` carries real computed outputs.
     //
@@ -2288,6 +2278,19 @@ async fn build_site_async(
     } else {
         format!("  ·  {} SEO file(s)", seo_written.len())
     };
+    // Mirror non-source assets (images, etc.) preserving the tree. AFTER the pages are
+    // built, not before: a figure a cell writes to disk while its page builds
+    // (`savefig("gen.png")` then `![…](gen.png)`) is then published by the build that
+    // wrote it, where mirroring first left the first build of every fresh clone without it
+    // (audit images #12).
+    let (asset_paths, skipped_residue) = mirror_assets(root, &out);
+    if !skipped_residue.is_empty() {
+        log::warn(&format!(
+            "skipped {} build-cache dir(s) (not deployed): {}",
+            skipped_residue.len(),
+            skipped_residue.join(", ")
+        ));
+    }
     // Sweep stale output: a page or asset removed/renamed in the source must not linger
     // across rebuilds (the output tree is a mirror of what this build produced). Anything
     // in `out` that this build didn't write — and isn't dot/underscore deploy metadata —
