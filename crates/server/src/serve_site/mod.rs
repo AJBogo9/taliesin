@@ -102,6 +102,27 @@ impl SiteApp {
         };
         let _ = tx.send(BuildMsg::Build(rel));
     }
+
+    /// Queue [`BuildMsg::IfMoved`] on the lane that fits the page, as [`queue_build`]
+    /// routes. On the exec lane it waits behind the page's own build in flight, so it is
+    /// judged against what that build left.
+    ///
+    /// [`queue_build`]: SiteApp::queue_build
+    fn queue_if_moved(&self, rel: String, paths: Vec<PathBuf>) {
+        let cell_free = self
+            .root
+            .pages
+            .lock()
+            .get(&rel)
+            .map(|ps| ps.doc.cell_free)
+            .unwrap_or(false);
+        let tx = if cell_free {
+            &self.fast_tx
+        } else {
+            &self.build_tx
+        };
+        let _ = tx.send(BuildMsg::IfMoved(rel, paths));
+    }
 }
 
 /// The served project. Owns the live state the builder and router act on: the discovered
@@ -356,11 +377,13 @@ fn interrupted_notice(by: &str) -> String {
     )
 }
 
-/// A job for the executor worker: rebuild a page, or restart its kernel first
-/// (the dev-menu "Restart kernel" action) then rebuild.
+/// A job for the executor worker: rebuild a page, restart its kernel first (the dev-menu
+/// "Restart kernel" action) then rebuild, or rebuild it if one of the files it only looked
+/// at is not as its last build left it ([`probes_moved`]).
 enum BuildMsg {
     Build(String),
     Restart(String),
+    IfMoved(String, Vec<PathBuf>),
 }
 
 struct PageState {
@@ -403,6 +426,45 @@ struct PageDoc {
     /// this is read from the last build rather than the current source, and why that cannot
     /// race. Deliberately `false` by default: an unbuilt page takes the safe lane.
     cell_free: bool,
+    /// Every file this page's last render read or looked for, recorded by the read sites
+    /// themselves ([`taliesin_core::reads`]) and keyed as [`record_key`] keys them: its
+    /// source, each `{{< include >}}` it tried, each `.bib` it loaded (the project's shared
+    /// one too), each image it measured or checked, each page a link of its points at. A
+    /// change to any of them rebuilds the page ([`rebuild_project`]).
+    reads: taliesin_core::reads::Reads,
+    /// Each file this page's last build only looked at ([`Access::Probed`]: an image, a
+    /// linked file), as that build left it: its [`stamp`] once the page's cells had run.
+    ///
+    /// [`Access::Probed`]: taliesin_core::reads::Access::Probed
+    stamps: HashMap<PathBuf, Option<Stamp>>,
+}
+
+/// What a file looked like: its length and modification time.
+type Stamp = (u64, std::time::SystemTime);
+
+/// The [`Stamp`] of the file at `path`, `None` when there is none.
+fn stamp(path: &Path) -> Option<Stamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
+}
+
+/// Whether one of `paths`, files page `rel` only looked at, is not as its last build left
+/// it ([`PageDoc::stamps`]).
+///
+/// Asked instead of rebuilding outright, because such a file can be the page's own
+/// output: a cell writes `gen.png` for the `![…](gen.png)` below it. Rebuilding the page
+/// for that write ran its cells again, and a `#| cache: false` cell, which re-runs on
+/// every build, wrote the file again: measured, 77 runs in 8 s of an idle preview. The
+/// write lands before the build that made it ends, so that build's stamp already holds
+/// it, and asking after the build is what tells the page's own write from a later one.
+fn probes_moved(project: &Project, rel: &str, paths: &[PathBuf]) -> bool {
+    let pages = project.pages.lock();
+    let Some(ps) = pages.get(rel) else {
+        return false;
+    };
+    paths
+        .iter()
+        .any(|p| ps.doc.stamps.get(p).is_none_or(|was| *was != stamp(p)))
 }
 
 impl PageDoc {
@@ -870,13 +932,17 @@ fn ensure_and_render_page(app: &SiteApp, project: &Arc<Project>, page: &Page) ->
 /// exactly as the build finishes it (numbering, cross-references, `listing:` cards). The
 /// caller holds the site lock across it.
 fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
-    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
+    let (src, read) =
+        taliesin_core::reads::record(|| taliesin_core::includes::read_source(&page.input));
+    let Ok(src) = src else {
         return PageDoc {
             errored: true,
+            reads: keyed(read),
             ..Default::default()
         };
     };
-    let pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
+    let mut pass = crate::lint::PagePass::run_static(site, page, src, &page_label(page));
+    taliesin_core::reads::merge(&mut pass.reads, read);
     PageDoc {
         // Resolved off the *finished* doc, exactly as the static build resolves it, so the
         // first paint, every `full_render`, and `_site/` cannot name one tab three ways.
@@ -890,7 +956,19 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         // The first-paint render never runs cells, so it learns nothing about this page's
         // lane: leave it on the safe one until a real build reports back (AP3-1).
         cell_free: false,
+        reads: keyed(pass.reads),
+        stamps: HashMap::new(),
     }
+}
+
+/// `reads` keyed as the watcher's changed paths are ([`record_key`]), so the two compare.
+fn keyed(reads: taliesin_core::reads::Reads) -> taliesin_core::reads::Reads {
+    let mut out = taliesin_core::reads::Reads::new();
+    let keyed = reads
+        .into_iter()
+        .map(|(path, access)| (record_key(&path), access));
+    taliesin_core::reads::merge(&mut out, keyed.collect());
+    out
 }
 
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
@@ -1305,6 +1383,11 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                 BuildMsg::Build(rel) => {
                     build_on_exec_lane(&project, &rel, &mut pool).await;
                 }
+                BuildMsg::IfMoved(rel, paths) => {
+                    if probes_moved(&project, &rel, &paths) {
+                        build_on_exec_lane(&project, &rel, &mut pool).await;
+                    }
+                }
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes every
                     // cell against the fresh kernel).
@@ -1352,8 +1435,12 @@ async fn build_on_exec_lane(
 fn spawn_fast_builder(app: Arc<SiteApp>, mut fast_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         while let Some(msg) = fast_rx.recv().await {
-            let (BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = msg;
             let project = app.root.clone();
+            let rel = match msg {
+                BuildMsg::Build(rel) | BuildMsg::Restart(rel) => rel,
+                BuildMsg::IfMoved(rel, paths) if probes_moved(&project, &rel, &paths) => rel,
+                BuildMsg::IfMoved(..) => continue,
+            };
             if build_page_guarded(&project, &rel, None).await == BuildOutcome::NeedsKernel {
                 let _ = app.build_tx.send(BuildMsg::Build(rel));
             }
@@ -1585,10 +1672,14 @@ async fn build_page(
     let Some(page) = page else {
         return BuildOutcome::Done;
     };
-    let Ok(src) = taliesin_core::includes::read_source(&page.input) else {
+    let (src, mut reads) =
+        taliesin_core::reads::record(|| taliesin_core::includes::read_source(&page.input));
+    let Ok(src) = src else {
         let mut pages = project.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
+            // Still a dependency: writing the source again rebuilds the page.
+            ps.doc.reads = keyed(reads);
             let _ = ps.tx.send(protocol::error(&format!(
                 "cannot read {}",
                 page.input.display()
@@ -1672,11 +1763,23 @@ async fn build_page(
     // to the site root first. Scoped tightly under the site lock.
     {
         let site = project.site.lock();
-        let cross = site.validate_cross_page_links_for(rel);
+        // The pages this one links to are read to judge its links, so they are dependencies.
+        let (cross, read) =
+            taliesin_core::reads::record(|| site.validate_cross_page_links_for(rel));
+        taliesin_core::reads::merge(&mut reads, read);
         diags.extend(cross.iter().map(|w| diag_from(w, &label)));
         let config = format!("{}_site.yml", "../".repeat(rel.matches('/').count()));
         diags.extend(crate::lint::project_diagnostics(&site, &config));
     }
+    taliesin_core::reads::merge(&mut reads, std::mem::take(&mut pass.reads));
+    let reads = keyed(reads);
+    // After the cells ran, and before the lock: the files this page only looked at, as it
+    // leaves them ([`probes_moved`]).
+    let stamps: HashMap<PathBuf, Option<Stamp>> = reads
+        .iter()
+        .filter(|(_, access)| **access == taliesin_core::reads::Access::Probed)
+        .map(|(path, _)| (path.clone(), stamp(path)))
+        .collect();
     let doc = pass.doc;
 
     let mut pages = project.pages.lock();
@@ -1710,6 +1813,8 @@ async fn build_page(
     }
     ps.doc.blocks = doc.blocks;
     ps.doc.diagnostics = diags;
+    ps.doc.reads = reads;
+    ps.doc.stamps = stamps;
     // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
     // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
     let generation = ps.doc.generation;
@@ -1874,11 +1979,6 @@ fn pages_citing_a_moved_anchor(
 /// moves what discovery reads of a page re-discovers and rebuilds every open page;
 /// otherwise rebuild every *open* page whose source or include set touches a changed file.
 fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<PathBuf>) {
-    let changed_canon: HashSet<PathBuf> = changed
-        .iter()
-        .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
-        .collect();
-
     let config_changed = changed
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
@@ -1948,57 +2048,48 @@ fn rebuild_project(app: &SiteApp, project: &Arc<Project>, changed: &HashSet<Path
 
     let mut to_rebuild: Vec<String> = if rediscovered {
         // Every open page renders some part of the moved page's metadata or of the page
-        // set, or could: a listing card, a nav label, a prev/next arrow. The set is the pages a tab is
-        // watching, so this is a handful of renders on an edit that is rare next to body
-        // edits, and it is the same shape as the moved-anchor rebuild below.
+        // set, or could: a listing card, a nav label, a prev/next arrow. The set is the
+        // pages a tab is watching, so this is a handful of renders on an edit that is rare
+        // next to body edits, and it is the same shape as the moved-anchor rebuild below.
         open.clone()
     } else {
-        let site = project.site.lock();
-        // The project-wide `bibliography:` from `_site.yml` is a render input of EVERY page
-        // (`Site::render_defaults` lays it under each page's own) and is named in no page's
-        // own source, so neither walk below — both of which read the PAGE — can ever see it.
-        // That left a shared `.bib` save with no way in at all: it is not `_site.yml` by
-        // name, it moves no page and no front matter, it is not a `.tmd` so
-        // it skips `refresh_xrefs`, and it moves no anchor. Every branch declined it, the
-        // open tab kept serving the citation it had, and a browser reload served the same
-        // one — `ensure_and_render_page` only re-renders a page with no live state.
+        // A page depends on every file its last render read or looked for
+        // ([`PageDoc::reads`]), recorded by the read sites themselves rather than re-derived
+        // from its source: two re-derivations (the include walk, the front-matter
+        // `bibliography:`) plus a special case for `_site.yml`'s shared one each missed a
+        // file the render read, so a shared `.bib` declared before it existed, an image
+        // added or re-exported at a new size, never rebuilt the page that showed it (audit
+        // 2026-09-24 C4, C7). A changed directory takes every file under it along.
         //
-        // Canonicalized once here rather than per page: `Site::bibliography` is the same set
-        // for all of them, already resolved to absolute readable paths at discovery, but
-        // *lexically* (`includes::try_join_in` returns the un-canonicalized join), so it
-        // still needs the same treatment `changed_canon` gave the event paths.
-        let shared: Vec<PathBuf> = site
-            .bibliography
-            .iter()
-            .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
-            .collect();
-        open.iter()
-            .filter(|rel| {
-                let Some(page) = site.page(rel) else {
-                    return false;
-                };
-                let mut deps: HashSet<PathBuf> = shared.iter().cloned().collect();
-                deps.insert(
-                    page.input
-                        .canonicalize()
-                        .unwrap_or_else(|_| page.input.clone()),
-                );
-                if let Ok(src) = std::fs::read_to_string(&page.input) {
-                    let base = page.input.parent().unwrap_or(Path::new("."));
-                    for dep in taliesin_core::includes::dependencies(&src, base) {
-                        deps.insert(dep.canonicalize().unwrap_or(dep));
-                    }
-                    // A page also depends on the resources its front matter names. Without
-                    // these, a `.bib`/`.csl`/`.css` edit was a watched event that matched no
-                    // page, so the preview kept rendering the stale citation.
-                    for dep in taliesin_core::includes::resource_dependencies(&src, base) {
-                        deps.insert(dep.canonicalize().unwrap_or(dep));
-                    }
-                }
-                deps.intersection(&changed_canon).next().is_some()
-            })
-            .cloned()
-            .collect()
+        // A file the page only looked at (an image) is asked about first: it can be the
+        // page's own output ([`probes_moved`]).
+        let changed: Vec<PathBuf> = changed.iter().map(|p| record_key(p)).collect();
+        let mut read = Vec::new();
+        let mut ask = Vec::new();
+        let pages = project.pages.lock();
+        for rel in &open {
+            let Some(ps) = pages.get(rel.as_str()) else {
+                continue;
+            };
+            let (text, probed): (Vec<_>, Vec<_>) = ps
+                .doc
+                .reads
+                .iter()
+                .filter(|(path, _)| changed.iter().any(|c| path.starts_with(c)))
+                .partition(|(_, access)| **access == taliesin_core::reads::Access::Read);
+            if !text.is_empty() {
+                read.push(rel.clone());
+            } else if !probed.is_empty() {
+                let probed = probed.into_iter().map(|(path, _)| path.clone()).collect();
+                ask.push((rel.clone(), probed));
+            }
+        }
+        // Queued with the pages lock released: routing reads it.
+        drop(pages);
+        for (rel, probed) in ask {
+            app.queue_if_moved(rel, probed);
+        }
+        read
     };
     // Re-derive the cross-reference registry FIRST: everything below reads it, and both its
     // producers ran only at discovery, so a warm preview froze every cross-page number at
@@ -3266,9 +3357,10 @@ mod project_tests {
         );
     }
 
-    /// A tab open on `rel` holding the page as it really renders (so its cross-references
-    /// are in its blocks), with a receiver on its channel.
-    fn open_citing(project: &Arc<Project>, rel: &str) -> broadcast::Receiver<String> {
+    /// A tab open on `rel` holding the page as it really renders: its cross-references in
+    /// its blocks and the files it read in [`PageDoc::reads`], with a receiver on its
+    /// channel.
+    fn open_rendered(project: &Arc<Project>, rel: &str) -> broadcast::Receiver<String> {
         let page = project.site.lock().page(rel).cloned().unwrap();
         let doc = render_markdown_only(&project.site.lock(), &page);
         let (tx, rx) = broadcast::channel(256);
@@ -3425,7 +3517,10 @@ mod project_tests {
     ) -> Vec<String> {
         let mut out = Vec::new();
         for rx in [build_rx, fast_rx] {
-            while let Ok(BuildMsg::Build(rel) | BuildMsg::Restart(rel)) = rx.try_recv() {
+            while let Ok(
+                BuildMsg::Build(rel) | BuildMsg::Restart(rel) | BuildMsg::IfMoved(rel, _),
+            ) = rx.try_recv()
+            {
                 out.push(rel);
             }
         }
@@ -3435,15 +3530,9 @@ mod project_tests {
 
     /// Finding 16. `_site.yml`'s project-wide `bibliography:` is a render input of every
     /// page (`Site::render_defaults` lays it under each page's own), and it is named in no
-    /// page's own source — so neither `includes::dependencies` nor
-    /// `includes::resource_dependencies`, which both read the PAGE, can see it.
-    ///
-    /// That left the save with no way in at all: `refs.bib` is not `_site.yml` by name, a
-    /// write is not structural, it moves no front matter, it is not a `.tmd` so it skips
-    /// `refresh_xrefs`, and it moves no cross-reference anchor. Every branch of
-    /// `rebuild_project` declined it and the open tab kept serving the citation it had —
-    /// and a browser reload served the same one, because `ensure_and_render_page` only
-    /// re-renders a page that has no live state.
+    /// page's own source, so a dependency walk that read the PAGE could never see it: the
+    /// open tab kept serving the citation it had, and a browser reload served the same one.
+    /// The page's render reads the file, and what a render reads is what it depends on.
     #[test]
     fn a_shared_bibliography_save_rebuilds_the_pages_that_inherit_it() {
         let dir = scratch("shared-bib");
@@ -3465,7 +3554,7 @@ mod project_tests {
             1,
             "the project must actually resolve its shared `.bib`, or this proves nothing"
         );
-        let _tab = watch(&project, "index.tmd");
+        let _tab = open_rendered(&project, "index.tmd");
 
         // The author fixes a wrong year and saves. Nothing else on disk moves.
         std::fs::write(
@@ -3531,8 +3620,8 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A page that does NOT resolve any shared `.bib` must stay off the rebuild list: the
-    /// seed is a dependency, not a licence to rebuild every open tab on any save. Without
+    /// A page that does NOT read a `.bib` must stay off the rebuild list when it changes: a
+    /// dependency, not a licence to rebuild every open tab on any save. Without
     /// this, the fix above would read as correct while quietly rebuilding the whole warm
     /// set on every image or stylesheet write.
     #[test]
@@ -3544,7 +3633,7 @@ mod project_tests {
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
         assert!(project.site.lock().bibliography.is_empty());
-        let _tab = watch(&project, "index.tmd");
+        let _tab = open_rendered(&project, "index.tmd");
 
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
         rebuild_project(&app, &project, &changed);
@@ -3745,7 +3834,7 @@ mod project_tests {
         let number =
             |project: &Project| project.site.lock().xref_targets["fig-alpha"].number.clone();
         assert_eq!(number(&project), "2");
-        let _tab = open_citing(&project, "index.tmd");
+        let _tab = open_rendered(&project, "index.tmd");
 
         std::fs::write(&partial, "No figure here any more.\n").unwrap();
         rebuild_project(&app, &project, &std::iter::once(partial).collect());
@@ -3755,6 +3844,225 @@ mod project_tests {
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()],
             "the page citing the renumbered figure is rebuilt"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C4. The natural order is to declare `bibliography: refs.bib` in
+    /// `_site.yml`, then create `refs.bib`. Discovery dropped a declared file that did not
+    /// exist yet, so no page depended on it: creating it rebuilt nothing, citations stayed
+    /// raw keys, and the dev menu went on saying the file was not found while it existed,
+    /// even after the page itself was rebuilt. A file a render looked for and did not find
+    /// is a dependency like any other.
+    #[test]
+    fn a_shared_bibliography_created_after_it_was_declared_is_picked_up() {
+        let dir = scratch("late-bib");
+        std::fs::write(dir.join("_site.yml"), "title: T\nbibliography: refs.bib\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nAs shown in [@k].\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+
+        std::fs::write(
+            dir.join("refs.bib"),
+            "@article{k,\n title = {Late Title},\n year = {2021}\n}\n",
+        )
+        .unwrap();
+        rebuild_project(
+            &app,
+            &project,
+            &std::iter::once(dir.join("refs.bib")).collect(),
+        );
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page looked for the file, so creating it rebuilds the page"
+        );
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        let pages = project.pages.lock();
+        let doc = &pages["index.tmd"].doc;
+        assert!(
+            doc.body_html().contains("Late Title"),
+            "the citation resolves"
+        );
+        assert!(
+            !doc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("not found")),
+            "and nothing says the file is missing: {:?}",
+            doc.diagnostics
+        );
+        drop(pages);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C7 (images #5). The render reads each local raster image it shows,
+    /// for the `width`/`height` that reserve its box, and checks that every local asset
+    /// exists, but no image was a dependency of its page: adding a missing image left its
+    /// "not found" error on screen after a reload, and re-exporting a figure at a new size
+    /// kept the old dimensions baked into the page, tab and fresh GET alike.
+    #[test]
+    fn adding_or_replacing_an_image_rebuilds_the_page_that_shows_it() {
+        let dir = scratch("image");
+        std::fs::create_dir_all(dir.join("img")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\n![A picture](img/pic.png)\n",
+        )
+        .unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let pic = dir.join("img/pic.png");
+
+        // Added: the page reported it missing.
+        std::fs::copy(corpus.join("diagnostics/logo.png"), &pic).unwrap();
+        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()]
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock()["index.tmd"]
+                .doc
+                .body_html()
+                .contains("width=\"1\""),
+            "the added image is measured"
+        );
+
+        // Replaced by a figure of another size.
+        std::fs::copy(corpus.join("media/fit-small.png"), &pic).unwrap();
+        rebuild_project(&app, &project, &std::iter::once(pic.clone()).collect());
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()]
+        );
+        assert!(
+            probes_moved(&project, "index.tmd", &[record_key(&pic)]),
+            "not as the last build left it, so the lane rebuilds"
+        );
+        rt.block_on(build_page(&project, "index.tmd", None));
+        assert!(
+            project.pages.lock()["index.tmd"]
+                .doc
+                .body_html()
+                .contains("width=\"320\""),
+            "the new size replaces the old one"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A figure a page's own cells write (`savefig("gen.png")`, shown as `![…](gen.png)`) is
+    /// the page's output. With images a dependency (C7), rebuilding the page for it ran its
+    /// cells again, and a `#| cache: false` cell re-runs on every build, so it wrote the file
+    /// again: 77 runs in 8 s of an idle preview. A file the page only looked at is asked
+    /// about after the page's build instead: the page's own write is already in what that
+    /// build left, a later write by the author is not, and a file the page reads as text
+    /// (its source, which an author edits while cells run) is rebuilt outright.
+    #[test]
+    fn a_file_the_pages_own_cells_wrote_does_not_rebuild_it() {
+        let dir = scratch("own-output");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let page = dir.join("index.tmd");
+        std::fs::write(&page, "---\ntitle: Home\n---\n\n![Generated](gen.png)\n").unwrap();
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = open_rendered(&project, "index.tmd");
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let figure = dir.join("gen.png");
+        let saved =
+            |path: &Path| -> HashSet<PathBuf> { std::iter::once(path.to_path_buf()).collect() };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+
+        // Written during the page's build, as its cells would: the build ends with it there.
+        std::fs::copy(corpus.join("diagnostics/logo.png"), &figure).unwrap();
+        rt.block_on(build_page(&project, "index.tmd", None));
+        rebuild_project(&app, &project, &saved(&figure));
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the page is asked about"
+        );
+        let figure_key = record_key(&figure);
+        assert!(
+            !probes_moved(&project, "index.tmd", std::slice::from_ref(&figure_key)),
+            "the page's own output is no change to it"
+        );
+
+        // Replaced by the author afterwards: the page shows it, so it is rebuilt.
+        std::thread::sleep(Duration::from_millis(20));
+        std::fs::copy(corpus.join("media/fit-small.png"), &figure).unwrap();
+        assert!(probes_moved(
+            &project,
+            "index.tmd",
+            std::slice::from_ref(&figure_key)
+        ));
+
+        // The source is read as text, so saving it rebuilds the page with no question.
+        std::fs::write(
+            &page,
+            "---\ntitle: Home\n---\n\n![Generated](gen.png)\n\nMore.\n",
+        )
+        .unwrap();
+        rebuild_project(&app, &project, &saved(&page));
+        let mut outright = Vec::new();
+        for rx in [&mut build_rx, &mut fast_rx] {
+            while let Ok(msg) = rx.try_recv() {
+                outright.push(matches!(msg, BuildMsg::Build(rel) if rel == "index.tmd"));
+            }
+        }
+        assert_eq!(outright, vec![true]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The loop above, live: a `#| cache: false` cell that writes the figure its page
+    /// shows runs once per save, not once per build it causes. Gated on a live kernel.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_cell_writing_the_figure_its_page_shows_does_not_rebuild_forever() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise a cell that writes its page's figure; this run did not."
+            );
+            return;
+        }
+        let dir = scratch("own-output-live");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        let logo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../corpus/diagnostics/logo.png")
+            .canonicalize()
+            .unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            format!(
+                "---\ntitle: Loop\n---\n\n```{{python}}\n#| cache: false\nimport os, shutil\n\
+                 os.makedirs('_freeze', exist_ok=True)\n\
+                 open('_freeze/runs.txt', 'a').write('x')\n\
+                 shutil.copy({logo:?}, 'gen.png')\n```\n\n![Generated](gen.png)\n"
+            ),
+        )
+        .unwrap();
+        let runs = || {
+            std::fs::read_to_string(dir.join("_freeze/runs.txt"))
+                .map(|s| s.len())
+                .unwrap_or(0)
+        };
+        let live = Live::start(&dir);
+        let _tab = live.open("index.tmd");
+        until("the cell's first run", || runs() >= 1);
+        std::thread::sleep(Duration::from_secs(3));
+        assert!(
+            runs() <= 2,
+            "the cell ran {} times in 3 s with nothing saved",
+            runs()
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3772,7 +4080,7 @@ mod project_tests {
         std::fs::write(&page, "---\ntitle: Home\n---\n\n# Home\n\nOld body.\n").unwrap();
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
-        let _tab = watch(&project, "index.tmd");
+        let _tab = open_rendered(&project, "index.tmd");
         // A mark only this `Site` carries: a re-discovery replaces it with one without.
         project
             .site

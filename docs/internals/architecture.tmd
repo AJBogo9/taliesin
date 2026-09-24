@@ -111,6 +111,24 @@ stopped hot reload silently while each page still served 200. Unrelated saves (a
 editor swap file, a build-output write) are filtered out, and a burst of saves is
 debounced.
 
+### What a save rebuilds
+
+A save reaches only the pages a tab is watching. A page depends on every file its last
+render read or looked for: its source, each `{{< include >}}` it tried, each `.bib` it
+loaded (the project's shared one too), each image it measured or checked, and each page
+it links to. The read sites record those paths themselves (`crates/core/src/reads.rs`),
+so no second reader has to agree with them, and a file looked for and not found counts:
+creating it rebuilds the page. `every_corpus_doc_records_the_files_its_render_reads`
+holds the recorded set to the includes, bibliographies and images of every corpus page.
+
+A save is judged by what it changed, not by how the editor wrote it. Other pages render a
+page's front matter and its leading `# H1` (a listing card, a nav label, a book's drawer
+and chapter numbers), so a save that moves either re-discovers the project, and so does a
+page added, renamed or deleted; a save that moves neither, whether written in place or
+renamed over the old file, rebuilds the pages that read it. After a re-discovery, a tab
+whose chrome (navbar, drawer, pager, footer) moved reloads, and every other tab takes the
+change as block ops and keeps its live state. A `_site.yml` change reloads every tab.
+
 ### Panic isolation
 
 The render → execute → diff pipeline above runs inside a spawned task per page, so a

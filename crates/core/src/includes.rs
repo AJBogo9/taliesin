@@ -58,6 +58,7 @@ pub fn normalize_line_endings(src: &str) -> Cow<'_, str> {
 /// raw, so a lone-CR file was one line to them while the render path split it: discovery
 /// found no front matter and published a `draft: true` page.
 pub fn read_source(path: &Path) -> std::io::Result<String> {
+    crate::reads::note(path);
     let text = std::fs::read_to_string(path)?;
     Ok(match normalize_line_endings(&text) {
         Cow::Borrowed(_) => text,
@@ -240,7 +241,9 @@ impl Expansion<'_> {
             let refused: Option<String> = match safe_join_in(base_dir, raw, self.root) {
                 None => Some("path escapes the project root (or is absolute)".into()),
                 Some(target) if self.stack.contains(&target) => Some("include cycle".into()),
-                Some(target) => match std::fs::read_to_string(&target) {
+                // `read_source` records the target as read whether or not it is there:
+                // creating a missing one changes the page.
+                Some(target) => match read_source(&target) {
                     Ok(content) if self.is_primary(&target, &content) => {
                         Some("include cycle".into())
                     }
@@ -292,90 +295,6 @@ impl Expansion<'_> {
                 file: file_label,
                 line: open + 1,
             });
-        }
-    }
-}
-
-/// All files transitively pulled in by `{{< include >}}` from `src` (absolute,
-/// normalized). Used by the dev server to watch the right files.
-pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let mut stack = Vec::new();
-    collect_deps(src, base_dir, &mut stack, &mut out);
-    out
-}
-
-/// Every local file a document's **front matter** points at as a resource. `bibliography:`
-/// is the whole list. Absolute + normalized, resolved with the same containment rule as
-/// `{{< include >}}`.
-///
-/// `css:`, the three `include-*-body`/`-in-header` keys and `csl:` were listed here until
-/// 2026-08-20, after the last of their reads was retired — so the dev server was watching
-/// files that nothing parses, and a save on one rebuilt a page that could not have changed.
-///
-/// Read-only, and deliberately separate from [`dependencies`], which tracks only
-/// `{{< include >}}`. The site dev server watches both: it filtered its rebuild set by
-/// `{{< include >}}` alone, so a `.bib` edit matched no page and the preview kept showing
-/// the stale citation (the single-doc server rebuilds on any relevant event, so it was
-/// never affected). Nothing here reads or parses the referenced files.
-pub fn resource_dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
-    let Some(fm) = crate::frontmatter::front_matter_block(src) else {
-        return Vec::new();
-    };
-    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(fm) else {
-        return Vec::new(); // malformed front matter is reported elsewhere
-    };
-    let mut out = Vec::new();
-    collect_resource_paths(v.get("bibliography"), base_dir, &mut out);
-    out
-}
-
-/// Walk a front-matter value that may be a path, a `{ file: … }` map, or a sequence of
-/// either, pushing each safely-resolvable path. Mirrors the shapes `doc_includes` and
-/// `bibliography_paths` accept; a `{ text: … }` inline block names no file.
-fn collect_resource_paths(v: Option<&serde_yaml::Value>, base_dir: &Path, out: &mut Vec<PathBuf>) {
-    use serde_yaml::Value;
-    let mut push = |s: &str| {
-        if let Some(p) = safe_join(base_dir, s.trim())
-            && !out.contains(&p)
-        {
-            out.push(p);
-        }
-    };
-    match v {
-        Some(Value::String(s)) => push(s),
-        Some(Value::Mapping(_)) => {
-            if let Some(Value::String(f)) = v.and_then(|v| v.get("file")) {
-                push(f);
-            }
-        }
-        Some(Value::Sequence(seq)) => {
-            for item in seq {
-                collect_resource_paths(Some(item), base_dir, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
-    let lines = FileLines::of(src, false);
-    for (idx, line) in src.lines().enumerate() {
-        let Some(raw) = lines.directive(idx, line) else {
-            continue;
-        };
-        let Some(target) = safe_join(base_dir, raw) else {
-            continue;
-        };
-        if stack.contains(&target) || out.contains(&target) {
-            continue;
-        }
-        out.push(target.clone());
-        if let Ok(content) = std::fs::read_to_string(&target) {
-            let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
-            stack.push(target.clone());
-            collect_deps(&content, &child_base, stack, out);
-            stack.pop();
         }
     }
 }
@@ -434,7 +353,7 @@ pub(crate) fn parse_include(line: &str) -> Option<&str> {
 
 /// A label for an included file, **always relative to the primary document's
 /// directory**, climbing with `..` when the include lives outside it. `target` is
-/// absolute (it comes from [`safe_join`]), so `primary_base` is absolutized to the
+/// absolute (it comes from [`safe_join_in`]), so `primary_base` is absolutized to the
 /// same coordinate system first.
 ///
 /// The relative form is not cosmetic: it is the contract `data-source-file` carries.
@@ -471,17 +390,6 @@ fn relative_from(base: &Path, target: &Path) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("/"))
 }
 
-/// Resolve `rel` against `base_dir`, refusing path-traversal escapes. An absolute
-/// `rel`, or a result that climbs above the *project root* (the nearest ancestor of
-/// `base_dir` holding a `.git` or `_site.yml`, else `base_dir` itself), returns
-/// `None` so the caller can refuse it. This blocks `{{< include /etc/passwd >}}`
-/// and `../../../../etc/...` while still allowing the corpus's `../../_includes/...`
-/// (the repo root contains both the doc and `_includes/`). Shared by include
-/// resolution, theme/CSS includes, and format-resource reads.
-pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
-    try_join_in(base_dir, rel, None).ok()
-}
-
 /// Why [`try_join_in`] refused a path. Callers that report to the author use this to
 /// separate "the file is not there" (their own read fails) from "the file is there and
 /// was deliberately not read" — different problems with different fixes, and reporting
@@ -496,14 +404,20 @@ pub(crate) enum Refused {
     SymlinkOutsideRepo,
 }
 
-/// Like [`safe_join`], but the containment boundary can be given explicitly as `root`
-/// instead of being inferred by walking to the nearest ancestor `.git`/`_site.yml`.
-/// First-party single-document invocations (preview/build of one `.tmd`) pass the
-/// invoked doc's own directory here so an untrusted document dropped inside a larger
-/// checkout cannot `../`-climb to a sibling repo-local file (the walk would otherwise
-/// widen the boundary to that ancestor's marker). `None` keeps the walk, which the
-/// site path relies on (its `_site.yml` marker bounds the walk to the project) and the
-/// corpus's loose `../../_includes/` fixture depends on.
+/// Resolve `rel` against `base_dir`, refusing path-traversal escapes. An absolute
+/// `rel`, or a result that climbs above the containment root, returns `None` so the
+/// caller can refuse it. This blocks `{{< include /etc/passwd >}}` and
+/// `../../../../etc/...` while still allowing the corpus's `../../_includes/...` (the
+/// repo root contains both the doc and `_includes/`).
+///
+/// The boundary is `explicit_root` when given, else inferred by walking to the nearest
+/// ancestor `.git`/`_site.yml` of `base_dir` (else `base_dir` itself). First-party
+/// single-document invocations (preview/build of one `.tmd`) pass the invoked doc's own
+/// directory here so an untrusted document dropped inside a larger checkout cannot
+/// `../`-climb to a sibling repo-local file (the walk would otherwise widen the boundary
+/// to that ancestor's marker). `None` keeps the walk, which the site path relies on (its
+/// `_site.yml` marker bounds the walk to the project) and the corpus's loose
+/// `../../_includes/` fixture depends on.
 pub(crate) fn safe_join_in(
     base_dir: &Path,
     rel: &str,
@@ -614,12 +528,12 @@ fn symlink_root(base_dir: &Path, root: &Path) -> PathBuf {
     }
 }
 
-/// The containment boundary for [`safe_join`]: the nearest ancestor of `base_dir`
-/// that looks like a project root (`.git` or `_site.yml`), falling back to
+/// The inferred containment boundary for [`safe_join_in`]: the nearest ancestor of
+/// `base_dir` that looks like a project root (`.git` or `_site.yml`), falling back to
 /// `base_dir` itself when none is found.
 ///
 /// Expects an **absolute, normalized** `base_dir` (see [`absolutize`] in
-/// [`safe_join`]). The parent-walk must start absolute: when the CLI is given a
+/// [`try_join_in`]). The parent-walk must start absolute: when the CLI is given a
 /// relative path (e.g. `corpus/posts/x/index.tmd`), a relative parent-walk hits an
 /// empty path before ever seeing the absolute ancestor that actually holds
 /// `.git`/`_site.yml`, so it would fall back to `base_dir` itself and then reject a
@@ -945,62 +859,6 @@ mod tests {
     }
 
     #[test]
-    fn resource_dependencies_finds_the_bibliography() {
-        let root = std::env::temp_dir().join(format!("tali-resdeps-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join(".git"), b"").unwrap(); // project-root marker for safe_join
-
-        let src = "---\ntitle: T\nbibliography:\n  - refs.bib\n  - more.bib\n---\n\nBody.\n";
-        let deps = resource_dependencies(src, &root);
-        let names: Vec<String> = deps
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(
-            names,
-            ["refs.bib", "more.bib"],
-            "every front-matter resource, in declaration order"
-        );
-        assert!(deps.iter().all(|p| p.is_absolute()), "absolute: {deps:?}");
-
-        // `css:` and `csl:` were watched here until 2026-08-20; neither names a read now,
-        // so a watcher entry would rebuild pages that cannot have changed.
-        for retired in [
-            "---\ncss:\n  file: a.css\n---\n",
-            "---\ncsl: ieee.csl\n---\n",
-        ] {
-            assert!(
-                resource_dependencies(retired, &root).is_empty(),
-                "a withdrawn key names no resource: {retired:?}"
-            );
-        }
-
-        // A scalar `bibliography:` and a `{ file: … }` map are the other accepted shapes.
-        // The collector is deliberately more permissive about shape than the reader: a
-        // watcher that missed a file because it could not parse the spelling would show a
-        // stale page, which is worse than watching one file too many.
-        let one = resource_dependencies("---\nbibliography: refs.bib\n---\n", &root);
-        assert_eq!(one.len(), 1);
-        let mapped = resource_dependencies("---\nbibliography:\n  file: a.bib\n---\n", &root);
-        assert_eq!(mapped.len(), 1);
-        // An inline `{ text: … }` block names no file.
-        assert!(
-            resource_dependencies("---\nbibliography:\n  text: 'p{}'\n---\n", &root).is_empty()
-        );
-
-        // No front matter, malformed front matter, and an escaping path yield nothing.
-        assert!(resource_dependencies("# Just prose\n", &root).is_empty());
-        assert!(resource_dependencies("---\nbib: \"unterminated\n---\n", &root).is_empty());
-        assert!(
-            resource_dependencies("---\nbibliography: /etc/passwd\n---\n", &root).is_empty(),
-            "an absolute path escapes the project root"
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
     fn label_for_a_sibling_include_is_relative_to_the_primary_doc() {
         // `data-source-file` is *defined* as "relative to the primary document's
         // directory": the companion resolves it with `path.resolve(dirname(doc), label)`
@@ -1058,13 +916,13 @@ mod tests {
         let base = root.join("post");
         // A sibling include under the marked root resolves.
         assert!(
-            safe_join(&base, "../_includes/x.tmd").is_some(),
+            safe_join_in(&base, "../_includes/x.tmd", None).is_some(),
             "a sibling include under the project root must resolve"
         );
         // Climbing above the root is refused.
-        assert!(safe_join(&base, "../../escape.tmd").is_none());
+        assert!(safe_join_in(&base, "../../escape.tmd", None).is_none());
         // An absolute target is always refused.
-        assert!(safe_join(&base, "/etc/passwd").is_none());
+        assert!(safe_join_in(&base, "/etc/passwd", None).is_none());
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -1072,7 +930,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn safe_join_refuses_an_in_tree_symlink_that_escapes_the_root() {
-        // PT-1: `safe_join` confined only *lexically* (no symlink resolution), so an
+        // PT-1: the include join confined only *lexically* (no symlink resolution), so an
         // in-tree symlink whose target is OUTSIDE the project root passed the
         // `starts_with(root)` check and the bytes were read + inlined verbatim into the
         // rendered page (arbitrary-file disclosure, surviving `--no-exec`). The canonical
@@ -1099,11 +957,11 @@ mod tests {
 
         let base = root.join("post");
         assert!(
-            safe_join(&base, "real.css").is_some(),
+            safe_join_in(&base, "real.css", None).is_some(),
             "a real in-root file must still resolve"
         );
         assert!(
-            safe_join(&base, "theme.css").is_none(),
+            safe_join_in(&base, "theme.css", None).is_none(),
             "an in-tree symlink whose target escapes the root must be refused"
         );
 
@@ -1150,7 +1008,7 @@ mod tests {
         // Contrast: the walk (None) climbs to `<tmp>/.git`, so the SAME escape is allowed.
         // That widening is exactly what the explicit root closes.
         assert!(
-            safe_join(&doc, "../sibling.txt").is_some(),
+            safe_join_in(&doc, "../sibling.txt", None).is_some(),
             "sanity: the inferred-marker walk still permits the climb (the behavior PT-2 bounds)"
         );
 

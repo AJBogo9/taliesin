@@ -43,6 +43,7 @@ pub mod math;
 mod math_vocab;
 pub mod minify;
 pub mod prose;
+pub mod reads;
 pub mod render;
 pub mod schema;
 pub mod site;

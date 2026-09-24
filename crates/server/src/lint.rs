@@ -471,6 +471,10 @@ pub(crate) struct PagePass {
     /// Whether the local-file check has run: after the cells when they run, else before
     /// the finish (see [`static_diagnostics_but_local_assets`]).
     assets_checked: bool,
+    /// Every file this pass read or looked for ([`taliesin_core::reads`]): its includes, its
+    /// bibliographies, the images it measured and the local files it checked. What the
+    /// preview rebuilds the page on.
+    pub(crate) reads: taliesin_core::reads::Reads,
 }
 
 impl PagePass {
@@ -491,7 +495,7 @@ impl PagePass {
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
-        let doc = render.render(&src, &base);
+        let (doc, reads) = taliesin_core::reads::record(|| render.render(&src, &base));
         let mut pass = PagePass {
             src,
             doc,
@@ -504,6 +508,7 @@ impl PagePass {
             label: label.to_string(),
             base,
             assets_checked: false,
+            reads,
         };
         // A front matter that does not parse: every key in it was dropped, so the page
         // lost its `title:`, `bibliography:` or `listing:`. No validator is behind it to
@@ -515,12 +520,15 @@ impl PagePass {
             pass.problems += 1;
             pass.unparseable += 1;
         }
-        let statics = static_diagnostics_but_local_assets(
-            &pass.src,
-            &pass.doc.blocks,
-            &pass.base,
-            Scope::InSite,
-        );
+        let (statics, probed) = taliesin_core::reads::record(|| {
+            static_diagnostics_but_local_assets(
+                &pass.src,
+                &pass.doc.blocks,
+                &pass.base,
+                Scope::InSite,
+            )
+        });
+        taliesin_core::reads::merge(&mut pass.reads, probed);
         pass.add(&statics);
         pass
     }
@@ -529,7 +537,10 @@ impl PagePass {
     /// once.
     fn check_local_assets(&mut self, blocks: &[taliesin_core::Block]) {
         if !std::mem::replace(&mut self.assets_checked, true) {
-            let assets = taliesin_core::diagnostics::validate_local_assets(blocks, &self.base);
+            let (assets, probed) = taliesin_core::reads::record(|| {
+                taliesin_core::diagnostics::validate_local_assets(blocks, &self.base)
+            });
+            taliesin_core::reads::merge(&mut self.reads, probed);
             self.add(&assets);
         }
     }
@@ -570,13 +581,17 @@ impl PagePass {
             self.doc.blocks = blocks;
         }
         let mut warnings = std::mem::take(&mut self.doc.warnings);
-        self.toc = site.finish_blocks(
-            page,
-            &mut self.doc.blocks,
-            &mut warnings,
-            Some(&self.src),
-            self.doc.toc_explicit,
-        );
+        let (toc, probed) = taliesin_core::reads::record(|| {
+            site.finish_blocks(
+                page,
+                &mut self.doc.blocks,
+                &mut warnings,
+                Some(&self.src),
+                self.doc.toc_explicit,
+            )
+        });
+        self.toc = toc;
+        taliesin_core::reads::merge(&mut self.reads, probed);
         self.doc.toc = self.toc;
         self.add(&warnings);
     }

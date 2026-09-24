@@ -429,6 +429,7 @@ fn render_internal(
         include_root,
         chapter,
         site,
+        reads: crate::reads::current(),
     });
     let big_stack = || std::thread::Builder::new().stack_size(256 * 1024 * 1024);
 
@@ -479,18 +480,23 @@ struct RenderInput {
     include_root: Option<PathBuf>,
     chapter: Option<u32>,
     site: Option<SiteDefaults>,
+    /// The caller's recording of the files the render reads ([`crate::reads`]), carried to
+    /// the worker thread the render runs on.
+    reads: Option<crate::reads::Recording>,
 }
 
 impl RenderInput {
     fn render(&self) -> RenderedDoc {
-        render_internal_impl(
-            &self.src,
-            self.origins.as_deref(),
-            self.base_dir.as_deref(),
-            self.include_root.as_deref(),
-            self.chapter,
-            self.site.as_ref(),
-        )
+        crate::reads::within(self.reads.clone(), || {
+            render_internal_impl(
+                &self.src,
+                self.origins.as_deref(),
+                self.base_dir.as_deref(),
+                self.include_root.as_deref(),
+                self.chapter,
+                self.site.as_ref(),
+            )
+        })
     }
 }
 

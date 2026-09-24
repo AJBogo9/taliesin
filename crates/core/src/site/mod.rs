@@ -129,8 +129,9 @@ pub struct Site {
     /// so a `@sec-x` on one page resolves to its section on another (the book case).
     pub xref_targets: HashMap<String, XrefTarget>,
     /// The project-wide `bibliography:` (`_site.yml`), resolved once at discovery against
-    /// the site root: readable absolute `.bib` paths, in declaration order. Empty for a
-    /// project that declares none. Laid **under** each page's own `bibliography:`, so a
+    /// the site root: absolute `.bib` paths, in declaration order, a file not written yet
+    /// included (see `bibliography::resolve_shared`). Empty for a project that declares
+    /// none. Laid **under** each page's own `bibliography:`, so a
     /// page can override a shared entry (`site::bibliography`).
     pub bibliography: Vec<PathBuf>,
     /// Diagnostics about the project itself, gathered during discovery: its `_site.yml`,
@@ -866,7 +867,9 @@ impl Site {
     /// accepts is a file the referenced-file pass deploys.
     pub(crate) fn raw_file_target(&self, target: &str) -> Option<bool> {
         let on_disk = crate::render::asset_fs_path(target);
-        if !self.root.join(&on_disk).is_file() {
+        let file = self.root.join(&on_disk);
+        crate::reads::probe(&file);
+        if !file.is_file() {
             return None;
         }
         let reach = crate::includes::Reach::Referenced;

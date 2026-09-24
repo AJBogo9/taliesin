@@ -157,7 +157,8 @@ The preview reports what is happening, so you do not have to watch the terminal:
   last good content, so a broken save is impossible to miss. It clears on the
   next successful render.
 - The watcher follows the whole document, not just the served file: editing an
-  included subsection or the `.bib` re-renders the pages that depend on it.
+  included subsection, a `.bib` or an image re-renders the pages that use it, and so
+  does creating one a page names but could not find yet.
 
 ## Reading on any screen
 

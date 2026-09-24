@@ -125,7 +125,9 @@ fn intrinsic_size(src: &str, base: &Path) -> Option<(u32, u32)> {
     // with the header: a phone photo stores its pixels sideways and asks to be shown rotated
     // a quarter turn (orientations 5 to 8), so the box the reader sees is the header's
     // transposed. Reserving the header's box was a 373 px layout shift on a portrait photo.
-    let mut decoder = image::ImageReader::open(base.join(&path))
+    let file = base.join(&path);
+    crate::reads::probe(&file);
+    let mut decoder = image::ImageReader::open(&file)
         .ok()?
         .with_guessed_format()
         .ok()?
