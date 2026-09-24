@@ -410,8 +410,9 @@ mod tests {
 
     /// A model of the preview client's apply semantics (web-client/client.js), over a
     /// list of block ids standing in for the DOM:
-    ///  - `update`: the FIRST element matching `target_id` (document order, as
-    ///    `elById`'s `querySelector` resolves it) is replaced by the html's own id.
+    ///  - `update`: the FIRST element matching `target_id` (document order among the
+    ///    root's children, which `elById` asks before any descendant) is replaced by the
+    ///    html's own id.
     ///  - `insert`: the stale-duplicate defense first removes the FIRST element already
     ///    carrying the incoming id, then the node lands after `after_id` (first match),
     ///    or is prepended when `after_id` is None.
@@ -665,8 +666,9 @@ mod tests {
         let client_js = include_str!("../../../web-client/client.js");
         for needle in [
             "const elById",
-            "root.querySelector(`[data-block-id=",
-            "const stale = newId && elById(newId);",
+            "root.querySelector(`:scope > [data-block-id=",
+            "childById(id) || root.querySelector(`[data-block-id=",
+            "const stale = newId && childById(newId);",
             "if (stale) stale.remove();",
             "const el = elById(msg.target_id);",
             "if (!el || !node) return resync();",

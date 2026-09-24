@@ -748,8 +748,16 @@
   const cssEscape = (/** @type {string} */ s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
+  // A block op names a TOP-LEVEL block (the server diffs `#tali-root`'s children), so a
+  // direct child answers first. Mid-burst, an Update of a `:::` container can bring in a
+  // nested element carrying an id a later op in the same burst still means at the top
+  // level (the container's inner paragraph now reads like a top-level one), and a
+  // first-match descendant search edited the container instead. The descendant search
+  // stays as the fallback for blocks a raw-HTML wrapper holds and for nested cell outputs.
+  const childById = (/** @type {string} */ id) =>
+    root.querySelector(`:scope > [data-block-id="${cssEscape(id)}"]`);
   const elById = (/** @type {string} */ id) =>
-    root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
+    childById(id) || root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
 
   const fragment = (/** @type {string} */ html) => {
     const t = document.createElement("template");
@@ -1025,7 +1033,7 @@
         // duplicate if ops ever arrive out of order (a reorder splits a moved
         // block into Remove+Insert of the same id).
         const newId = node.getAttribute && node.getAttribute("data-block-id");
-        const stale = newId && elById(newId);
+        const stale = newId && childById(newId);
         if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
         keepScroll(() => {
           if (stale) stale.remove();
