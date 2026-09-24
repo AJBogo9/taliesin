@@ -482,3 +482,46 @@ fn startup_findings_print_after_the_banner() {
         "the port fallback prints after the banner:\n{text}"
     );
 }
+
+/// The takeover says so after the banner too: printed from inside the bind, before the
+/// banner's screen clear, "replacing an existing preview" went into the scrollback with the
+/// other startup lines (audit 2026-09-24, WP11 residual).
+#[test]
+fn a_takeover_prints_after_the_banner() {
+    let dir = tmp_dir("takeover-order");
+    write_site(&dir);
+    let port = free_run(2);
+    let mut first = Server::spawn(&dir, port);
+    assert!(
+        wait_until_ready(port, Duration::from_secs(30)),
+        "first preview never came up on {port}"
+    );
+    let log = dir.join("stderr.log");
+    let child = taliesin()
+        .arg("preview")
+        .arg(&dir)
+        .arg(port.to_string())
+        .stdout(Stdio::null())
+        .stderr(fs::File::create(&log).unwrap())
+        .spawn()
+        .expect("spawn preview");
+    let second = Server(child);
+    first
+        .exited_within(Duration::from_secs(30))
+        .expect("the first preview is replaced");
+    assert!(
+        wait_until_ready(port, Duration::from_secs(30)),
+        "the second preview holds {port}"
+    );
+    drop(second);
+    let text = fs::read_to_string(&log).unwrap();
+    let at = |needle: &str| {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no line mentions {needle:?}:\n{text}"))
+    };
+    assert!(
+        at("replacing an existing preview") > at("taliesin"),
+        "the takeover prints after the banner:\n{text}"
+    );
+}

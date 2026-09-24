@@ -237,13 +237,17 @@ async fn try_bind(
 /// same sources, on a port nobody is looking at. Or the port belongs to something
 /// else, and we fall back to the next free one, so a second project can be previewed
 /// alongside the first.
+///
+/// Also returns what the caller should say about a replaced preview. The caller prints it
+/// after its banner: printed here, it went before the banner's screen clear and into the
+/// scrollback (audit 2026-09-24, WP11 residual).
 pub(crate) async fn bind_with_fallback(
     port: u16,
     root: &Path,
-) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+) -> std::io::Result<(tokio::net::TcpListener, SocketAddr, Vec<String>)> {
     let host = [127, 0, 0, 1];
     let mut last_err = match try_bind(host, port).await {
-        Ok(bound) => return Ok(bound),
+        Ok((listener, addr)) => return Ok((listener, addr, Vec::new())),
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => Some(e),
         Err(e) => return Err(e),
     };
@@ -264,12 +268,17 @@ pub(crate) async fn bind_with_fallback(
             .filter(|i| i.root == root && holds_the_port(i.pid, i.port))
             .collect();
 
-    if !mine.is_empty() {
-        for inc in &mine {
-            crate::log::warn(&format!(
+    let replaced: Vec<String> = mine
+        .iter()
+        .map(|inc| {
+            format!(
                 "port {}: replacing an existing preview of this project (pid {})",
                 inc.port, inc.pid
-            ));
+            )
+        })
+        .collect();
+    if !mine.is_empty() {
+        for inc in &mine {
             // SAFETY: SIGTERM to the pid that owns the port which just identified itself,
             // over loopback, as a preview of the very root we are about to serve, i.e. this
             // user's own server.
@@ -283,7 +292,7 @@ pub(crate) async fn bind_with_fallback(
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
                 match try_bind(host, port).await {
-                    Ok(bound) => return Ok(bound),
+                    Ok((listener, addr)) => return Ok((listener, addr, replaced)),
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                         if Instant::now() >= deadline {
                             last_err = Some(e);
@@ -301,7 +310,7 @@ pub(crate) async fn bind_with_fallback(
         match try_bind(host, p).await {
             // The caller says so, after its banner: printed here, it went before the screen
             // clear and into the scrollback.
-            Ok(bound) => return Ok(bound),
+            Ok((listener, addr)) => return Ok((listener, addr, replaced)),
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
         }

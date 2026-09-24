@@ -741,7 +741,7 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
     let router = with_identity(router, &session_key);
     let router = with_host_guard(router);
 
-    let (listener, addr) = bind_with_fallback(port, &session_key)
+    let (listener, addr, replaced) = bind_with_fallback(port, &session_key)
         .await
         .map_err(|e| std::io::Error::new(e.kind(), format!("cannot listen on port {port}: {e}")))?;
     let requested = port;
@@ -758,8 +758,11 @@ async fn serve(target: Target, port: u16, open: bool) -> std::io::Result<()> {
         &format!("site, {page_count} pages"),
     );
     // After the banner, never before it: the soft clear pushes whatever came first up into
-    // the scrollback, where the project's own diagnostics and the port fallback used to go
-    // (audit 2026-09-24, WP2 residual).
+    // the scrollback, where the project's own diagnostics, the port fallback and the
+    // takeover of an earlier preview used to go (audit 2026-09-24, WP2 and WP11 residuals).
+    for line in &replaced {
+        crate::log::warn(line);
+    }
     // (Port 0 asks for any free port, so the one bound is not a fallback.)
     if requested != 0 && port != requested {
         crate::log::warn(&format!("port {requested} in use; using {port}"));
