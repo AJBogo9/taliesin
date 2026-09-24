@@ -247,8 +247,9 @@ partial with a relative climb, exactly as the corpus does:
 :::
 
 An include that cannot be expanded is left visible and reported: an unsafe path
-(absolute, or one that climbs above the project root), an include cycle, and a
-missing or unreadable file each draw their own located warning instead of failing
+(absolute, or one that climbs above the project root), an include cycle, a missing or
+unreadable file, and a directive that does not stand alone on its line (written inline,
+or after a list or quote marker) each draw their own located warning instead of failing
 the build outright.
 
 ## Raw HTML passthrough

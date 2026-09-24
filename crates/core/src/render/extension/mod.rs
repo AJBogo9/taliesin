@@ -95,13 +95,24 @@ fn expand_in_line(
             // Nothing else expands here. Keep the invocation verbatim (nothing is lost),
             // but warn: a typo'd shortcode name should be visible in the build log /
             // preview diagnostics, not shipped as literal text into the page. `include` is
-            // handled in an earlier pass (`includes::resolve`); a leftover one means that
-            // pass already reported it, so don't double-warn. The `{{<` opener stays in the
-            // message because it is what the author typed; it keyed a `TAL-SHORTCODE` code
-            // through `codes::classify` until wave 9 cut the code catalogue, and severity is
-            // a field on the warning now.
+            // handled in an earlier pass (`includes::resolve`), which expands a directive
+            // standing alone on its line and reports one it could not, so a leftover of that
+            // shape is already reported; any other leftover `include` it never looked at.
+            // The `{{<` opener stays in the message because it is what the author typed; it
+            // keyed a `TAL-SHORTCODE` code through `codes::classify` until wave 9 cut the
+            // code catalogue, and severity is a field on the warning now.
             let name = inner.split_whitespace().next().unwrap_or(inner);
-            if name != "include" {
+            if name == "include" {
+                if crate::includes::parse_include(line).is_none() {
+                    warnings.push(
+                        Warning::new(
+                            "`{{< include >}}` is expanded only on a line of its own, with no \
+                             list or quote marker before it (left as literal text)",
+                        )
+                        .at(None, line_no as u32),
+                    );
+                }
+            } else {
                 // The line is carried by the warning's LOCATION, not repeated in its prose.
                 // It used to be both, and the copy in the message could not be corrected: the
                 // caller maps `.line` back through the include source map (`origins`), so a
@@ -356,6 +367,34 @@ mod unknown_shortcode_tests {
         // `includes::resolve` runs a whole pass earlier and already reported anything it
         // could not expand, so this pass must stay silent about it.
         assert!(warn_msgs("{{< include nope.tmd >}}\n").is_empty());
+    }
+
+    /// Audit 2026-09-24, scanners #12b and lead `extension/mod.rs:114`: the include pass
+    /// expands a directive that stands alone on its line and nothing else, so one written
+    /// inline, in a block quote or on a list item's first line was shipped as literal text
+    /// with no diagnostic (this pass assumed every leftover had already been reported).
+    #[test]
+    fn an_include_that_does_not_stand_alone_is_reported() {
+        for src in [
+            "See {{< include p.md >}} inline.\n",
+            "> {{< include p.md >}}\n",
+            "- {{< include p.md >}}\n",
+        ] {
+            let (html, warnings) = expand_shortcodes(src);
+            assert!(
+                html.contains("{{< include p.md >}}"),
+                "kept verbatim: {html}"
+            );
+            assert_eq!(warnings.len(), 1, "{src:?}: {warnings:?}");
+            assert!(
+                warnings[0].message.contains("on a line of its own"),
+                "{}",
+                warnings[0].message
+            );
+            assert_eq!(warnings[0].line, Some(1));
+        }
+        // An example in inline code is still an example.
+        assert!(warn_msgs("Write `{{< include p.md >}}` on its own line.\n").is_empty());
     }
 }
 

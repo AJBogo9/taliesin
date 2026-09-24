@@ -318,7 +318,7 @@ impl Directives {
 }
 
 /// If `line` is solely a `{{< include PATH >}}` shortcode, return PATH.
-fn parse_include(line: &str) -> Option<&str> {
+pub(crate) fn parse_include(line: &str) -> Option<&str> {
     let t = line.trim();
     let inner = t.strip_prefix("{{<")?.strip_suffix(">}}")?.trim();
     let rest = inner.strip_prefix("include")?;
