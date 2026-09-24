@@ -1614,6 +1614,30 @@ fn a_locator_drops_the_separator_its_key_ended_with() {
     }
 }
 
+/// A locator may carry inline markup. `[@knuth:1984, *p. 5*]` is a citation group to the
+/// editor, which reads the source, but the page read groups one HTML text run at a time
+/// and the emphasis splits the run: the bracket was published as text and the key failed
+/// the gate as a bare `@key` (audit 2026-09-24, WP10 leftover). A group now reads on across
+/// the phrasing tags inside it, and the markup stays on its locator.
+#[test]
+fn a_citation_group_reads_across_the_inline_markup_in_its_locator() {
+    let b = parse_bib("@misc{knuth:1984, title={K}}\n@misc{j, title={J}}\n");
+    let mut blocks = vec![block(
+        "<p>A [@knuth:1984, <em>p. 5</em>] and [@j, <strong>ch. 2</strong>; @knuth:1984]. \
+         B [see <em>this</em>] stays.</p>",
+    )];
+    let w = process(&mut blocks, &b, &HashMap::new(), None);
+    let html = &blocks[0].html;
+    for want in [
+        "A [<a href=\"#ref-knuth:1984\">1</a>, <em>p. 5</em>] and",
+        "[<a href=\"#ref-j\">2</a>, <strong>ch. 2</strong>, <a href=\"#ref-knuth:1984\">1</a>].",
+        "B [see <em>this</em>] stays.",
+    ] {
+        assert!(html.contains(want), "{want} in {html}");
+    }
+    assert!(w.is_empty(), "{w:?}");
+}
+
 /// The key under a cursor, read by the render's own group grammar (audit 2026-09-24,
 /// bibtex #11): every key of a group, a locator after the key, `-@` and every character a
 /// key may hold. The editor's hover and go-to-definition used a scanner of their own that
