@@ -17,7 +17,6 @@ its ratio. Drag to orbit, scroll to zoom.
 
 ```{js}
 //| name: gears
-//| echo: false
 
 // A "once" cell: no `//| input:`, so the DAG builds it a single time and never tears it
 // down. The sliders reach it through tali.value() + tali.onInput() instead, because a

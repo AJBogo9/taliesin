@@ -271,10 +271,11 @@ fn an_include_false_cell_without_a_label_does_not_warn() {
 }
 
 #[test]
-fn a_plainly_labelled_include_false_setup_cell_does_not_warn() {
-    // The commonest real usage, and the only shape the corpus actually contains
-    // (`#| label: setup` + `#| include: false`). A plain label takes no CellRole and
-    // registers nothing, so it must stay silent.
+fn a_plainly_labelled_include_false_setup_cell_raises_no_cross_reference_warning() {
+    // A common shape (`#| label: setup` + `#| include: false`). A plain label takes no
+    // CellRole and registers nothing, so no cross-reference warning fires. The bare label
+    // does draw the inert-label warning (`label: setup` makes no anchor), which is a
+    // different family and not what this pins.
     let src = "---\ntitle: T\n---\n\n\
                ```{r}\n#| label: setup\n#| include: false\nlibrary(tidyverse)\n```\n\n\
                Text.\n";

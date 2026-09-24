@@ -139,7 +139,6 @@ For deducing whether one protocol produces less pain than another, we don't need
 
 ```{js}
 //| viewof: transform_t
-//| echo: false
 
 const wrap = document.createElement("label");
 wrap.className = "tali-input";
@@ -157,7 +156,6 @@ return wrap;
 ```{js}
 //| label: fig-rank-transform
 //| input: transform_t
-//| echo: false
 //| fig-cap: "Each dot is one of the 45 patients, coloured by protocol. Drag to 1: each pain score is replaced by its rank in the pooled dataset, spreading the dots uniformly. The pooled row fades in to show all 45 ranks in sequence."
 
 const pain_groups = tali.defines.pain_groups;
@@ -292,7 +290,6 @@ The factor $12/[N(N+1)]$ scales $H$ so that its expected value under $H_0$ equal
 Now that we've shown the mathematical difference between ANOVA and the Kruskal-Wallis test, we can compute the p-values using both of the tests and compare them. 
 
 ```{python}
-#| label: pain-kw
 
 import numpy as np
 from scipy import stats

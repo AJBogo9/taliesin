@@ -105,11 +105,13 @@ fn js_reactive_graph_flags_dangling_input() {
     );
     let m = msgs(&validate_js_reactive_graph(&doc.blocks));
     assert_eq!(
-        m.len(),
-        1,
-        "only `missing` is dangling (`n` is defined): {m:?}"
+        m,
+        [
+            "unknown reactive input `missing`: no `{js}` cell, `{{< input >}}` or Python \
+          `define(...)` defines it"
+        ],
+        "only `missing` is dangling (`n` is defined)"
     );
-    assert!(m[0].contains("unknown reactive input `missing`"), "{m:?}");
 }
 
 /// A `{js}` cell inside a `:::` container is invisible to the block model: `Block::nested`
@@ -160,10 +162,11 @@ fn js_reactive_graph_sees_cells_folded_into_a_container() {
     assert!(m.is_empty(), "two folded cells are not a cycle: {m:?}");
 }
 
-/// The `runtime_defines` escape hatch has the same blind spot. A `{python}` bridge cell that
-/// calls `define(` publishes names the static pass cannot enumerate, so it suppresses the
-/// dangling-input half — but asked as `b.cell` it missed a bridge cell inside a container,
-/// leaving the check armed and the page drawing a false error.
+/// The `runtime_defines` escape hatch has the same blind spot. A `{python}` bridge cell whose
+/// `define(...)` passes a positional argument publishes names the static pass cannot
+/// enumerate, so that call suppresses the dangling-input half, but asked as `b.cell` it
+/// missed a bridge cell inside a container, leaving the check armed and the page drawing a
+/// false error.
 #[test]
 fn a_kernel_define_bridge_inside_a_container_still_suppresses_dangling_inputs() {
     let doc = render_document(
@@ -218,17 +221,175 @@ fn js_reactive_graph_detects_cycle() {
     );
 }
 
-/// The suppressing half of the pair. A Python cell that CALLS `define(` really can publish
-/// `runtime_name` at runtime through a blob no static pass can enumerate, so the
-/// dangling-input check must stay quiet.
+/// `define` is `def define(**kwargs)` (the kernel preamble), so every name it can publish is
+/// a keyword spelled in the call, and the static pass reads it there. Suppressing the check
+/// page-wide whenever a cell called `define(` switched it off on most of the real blog
+/// posts, exactly the pages where a typo'd `//| input:` is likeliest.
 #[test]
-fn js_dangling_input_suppressed_when_a_python_cell_calls_define() {
+fn a_keyword_define_is_read_statically_so_a_typo_still_draws_did_you_mean() {
     let doc = render_document(
         "```{python}\ndefine(runtime_name=5)\n```\n\n\
-         ```{js}\n//| input: runtime_name\nreturn runtime_name;\n```\n",
+         ```{js}\n//| input: runtim_name\nreturn runtim_name;\n```\n",
+    );
+    let w = validate_js_reactive_graph(&doc.blocks);
+    assert_eq!(
+        msgs(&w),
+        [
+            "unknown reactive input `runtim_name`: no `{js}` cell, `{{< input >}}` or Python \
+          `define(...)` defines it (did you mean `runtime_name`?)"
+        ]
+    );
+    assert_eq!(w[0].severity, crate::render::Severity::Error);
+    assert_eq!(w[0].line, Some(5), "located at the consuming cell");
+}
+
+/// The call shapes the real posts write: multi-line, a trailing comma, spaces around `=`,
+/// nested brackets, an f-string with braces, and comments that carry commas and brackets
+/// of their own. Every keyword is read, and nothing inside a string or a comment is taken
+/// for an argument or a closing parenthesis.
+#[test]
+fn a_multi_line_keyword_define_publishes_every_keyword() {
+    let doc = render_document(
+        "```{python}\nx = 1  # not a define(call)\n\
+         define(\n    pts = X.tolist(),  # pcs[0] = PC1 vector, etc.\n\
+         \x20   # a comment line, with (a paren\n\
+         \x20   ticks=[f\"{m + 2:.0f} cm)\" for m in mu],\n\
+         \x20   pair={\"k\": (1, 2)},\n)\nredefine(ghost=1)\n```\n\n\
+         ```{js}\n//| input: pts, ticks, pair\nreturn pts;\n```\n\n\
+         ```{js}\n//| input: ghost\nreturn ghost;\n```\n",
     );
     let m = msgs(&validate_js_reactive_graph(&doc.blocks));
-    assert!(m.is_empty(), "dangling-input must be suppressed: {m:?}");
+    assert_eq!(
+        m.len(),
+        1,
+        "every keyword resolves, and `redefine(` is not the bridge: {m:?}"
+    );
+    assert!(m[0].contains("unknown reactive input `ghost`"), "{m:?}");
+}
+
+/// The fallback: a `**` splat publishes names no static pass can enumerate, so the
+/// dangling-input half stays suppressed page-wide, exactly as before.
+#[test]
+fn a_splat_define_still_suppresses_dangling_inputs() {
+    let doc = render_document(
+        "```{python}\nd = {\"n\": 1}\ndefine(**d)\n```\n\n\
+         ```{js}\n//| input: anything\nreturn anything;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(m.is_empty(), "a splat must suppress: {m:?}");
+}
+
+/// A call the static read cannot finish (no balancing `)`) is treated like a splat.
+#[test]
+fn an_unparseable_define_still_suppresses_dangling_inputs() {
+    let doc = render_document(
+        "```{python}\ndefine(a=1\n```\n\n\
+         ```{js}\n//| input: anything\nreturn anything;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(m.is_empty(), "an unparseable call must suppress: {m:?}");
+}
+
+/// The dangling-input messages for a page holding `fence` and then one `{js}` cell that
+/// reads `x`.
+fn dangling_x_after(fence: &str) -> Vec<String> {
+    let doc = render_document(&format!(
+        "{fence}\n\n```{{js}}\n//| input: x\nreturn x;\n```\n"
+    ));
+    msgs(&validate_js_reactive_graph(&doc.blocks))
+        .into_iter()
+        .filter(|m| m.contains("unknown reactive input"))
+        .collect()
+}
+
+/// Only a cell that runs on a kernel executes its `define`. A display fence's text is never
+/// run, so it neither defines `x` nor switches the check off: a Scheme `(define (f y) …)`
+/// used to read as a positional call and silence the whole page.
+#[test]
+fn a_define_in_a_display_fence_neither_defines_nor_suppresses() {
+    for fence in [
+        "```{scheme}\n(define (f y) (* y y))\n```",
+        "```{bash}\ndefine(x=1)\n```",
+        "```{c}\nint define(int q);\n```",
+    ] {
+        assert_eq!(dangling_x_after(fence).len(), 1, "for {fence:?}");
+    }
+}
+
+/// The define bridge is a side channel, not visible output: the `<script type="tali-define">`
+/// blob survives `include: false`, so a define in an `include: false` cell still publishes
+/// its names. A keyword call defines them, so a typo beside one is still reported, and a
+/// splat still suppresses the check.
+#[test]
+fn an_include_false_define_still_publishes_its_names() {
+    for body in ["define(x=1)", "d = {\"x\": 1}\ndefine(**d)"] {
+        let fence = format!("```{{python}}\n#| include: false\n{body}\n```");
+        assert!(dangling_x_after(&fence).is_empty(), "for {body:?}");
+    }
+    let doc = render_document(
+        "```{python}\n#| include: false\ndefine(x=1)\n```\n\n\
+         ```{js}\n//| input: x, nope\nreturn x;\n```\n",
+    );
+    let m = msgs(&validate_js_reactive_graph(&doc.blocks));
+    assert!(
+        m.len() == 1 && m[0].contains("`nope`"),
+        "`x` is defined and `nope` is reported: {m:?}"
+    );
+}
+
+/// `obj.define(...)` is some object's method, not the kernel bridge.
+#[test]
+fn a_method_named_define_is_not_the_bridge() {
+    for call in ["obj.define(x=1)", "obj.define(**d)", "obj . define(1)"] {
+        let fence = format!("```{{python}}\n{call}\n```");
+        assert_eq!(dangling_x_after(&fence).len(), 1, "for {call:?}");
+    }
+}
+
+/// A `#` comment is never code, so a `define` in one is not a call.
+#[test]
+fn a_define_in_a_comment_is_ignored() {
+    assert_eq!(
+        dangling_x_after("```{python}\n# define(x=1) later\ny = 1\n```").len(),
+        1
+    );
+}
+
+/// An f-string field is code the static read skips as a string, so the call inside it
+/// could run unseen.
+#[test]
+fn a_define_inside_an_f_string_field_suppresses() {
+    assert!(dangling_x_after("```{python}\nprint(f\"{define(x=1)}\")\n```").is_empty());
+}
+
+/// A string handed to `exec` runs too.
+#[test]
+fn a_define_inside_an_exec_string_suppresses() {
+    assert!(dangling_x_after("```{python}\nexec(\"define(x=1)\")\n```").is_empty());
+}
+
+/// An alias calls the bridge under a name the static read does not follow.
+#[test]
+fn an_aliased_define_suppresses() {
+    assert!(dangling_x_after("```{python}\nd = define\nd(x=1)\n```").is_empty());
+}
+
+/// A backslash continuation puts the call's `(` on the next line.
+#[test]
+fn a_define_continued_by_a_backslash_suppresses() {
+    assert!(dangling_x_after("```{python}\ndefine \\\n    (x=1)\n```").is_empty());
+}
+
+/// Inside brackets a call's `(` may sit on the next line with no backslash.
+#[test]
+fn a_define_with_its_paren_on_the_next_line_suppresses() {
+    assert!(dangling_x_after("```{python}\nr = (define\n     (x=1))\n```").is_empty());
+}
+
+/// A call nested in another call's arguments publishes too, and the outer read skips it.
+#[test]
+fn a_define_nested_in_another_define_suppresses() {
+    assert!(dangling_x_after("```{python}\ndefine(y=define(x=1))\n```").is_empty());
 }
 
 /// The other half, and the one the narrowing bought. A Python cell that does NOT call

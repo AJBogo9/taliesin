@@ -9,8 +9,9 @@
 //! reported as unknown (with the closest known key when within edit distance 2). This
 //! is deliberate: taliesin is its own tool, not a compatibility shim.
 
-use super::Warning;
+use super::{CellRole, Warning};
 use crate::frontmatter::{closest, unknown_key_message};
+use std::collections::HashMap;
 
 /// Cell options taliesin recognizes on a code cell's leading `#|` / `//|` / `%%|`
 /// lines (the union across all cell languages; each is read in `cell_option` /
@@ -29,6 +30,22 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "viewof", // {js}
     "input",  // {js}
 ];
+
+/// Options only a client-language cell reads (`parse_js_opts` answers empty for every
+/// other language), so each is inert on a kernel or display cell.
+const CLIENT_ONLY: &[&str] = &["name", "viewof", "input"];
+
+/// Options a client-language cell never reads, so each is inert on one. A running client
+/// cell hands its source to the browser before the `echo` check, the Figure and Table arms
+/// read only `include` for a non-kernel language, and `cache` keys `_freeze/`, which only a
+/// kernel cell reaches. `include` is NOT here: it hides a `lst-`/`tbl-` cell of any
+/// language. (`echo` on a listing is inert in every language, and a client table cell
+/// never runs, so each has its own reason in `inert_option_message`.)
+const NOT_ON_CLIENT: &[&str] = &["echo", "cache"];
+
+/// The label prefixes the cell-role test in `render_internal` reads. Any other `label:`
+/// feeds no anchor, number, element id or freeze key.
+const NUMBERED_LABEL_PREFIXES: &[&str] = &["fig-", "lst-", "tbl-"];
 
 /// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
 ///
@@ -62,39 +79,111 @@ pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &["column-margin", "column-page"
 /// its own fixture used it, so it bought a synonym in five registration sites.
 pub(crate) const INPUT_TYPES: &[&str] = &["slider", "number", "checkbox", "text", "select"];
 
-/// Enumerate a cell's leading option keys with each key's 0-based line offset within
-/// `literal` (the fence body). Mirrors `cell_option`'s scan: only the contiguous
-/// leading `#|` / `//|` / `%%|` block, stopping at the first code line.
-pub(crate) fn cell_option_keys(literal: &str) -> Vec<(String, usize)> {
+/// Enumerate a cell's leading options, each as its key, its unquoted value (as
+/// `cell_option` reads it) and its 0-based line offset within `literal` (the fence body).
+/// Mirrors `cell_option`'s scan: only the contiguous leading `#|` / `//|` / `%%|` block,
+/// stopping at the first code line.
+pub(crate) fn cell_option_keys(literal: &str) -> Vec<(String, &str, usize)> {
     let mut keys = Vec::new();
     for (i, line) in literal.lines().enumerate() {
         let Some(opt) = super::option_directive(line) else {
             break;
         };
-        if let Some((k, _)) = opt.split_once(':') {
-            keys.push((k.trim().to_string(), i));
+        if let Some((k, v)) = opt.split_once(':') {
+            keys.push((k.trim().to_string(), v.trim().trim_matches(['"', '\'']), i));
         }
     }
     keys
 }
 
-/// Validate a code cell's `#|` options against [`CELL_OPTION_KEYS`]. `fence_line` is
-/// the 1-based source line of the cell's opening fence (in `file`'s coordinates); an
-/// option on the cell's i-th body line is at `fence_line + 1 + i`.
+/// Validate a code cell's `#|` options against [`CELL_OPTION_KEYS`], and report a known
+/// option that does nothing on this cell: one its `lang` or its `role` never reads, a
+/// `label` no cross-reference can reach, or a key set again after its first line.
+/// `role` is the role `render_internal` resolved for the cell. `fence_line` is the 1-based
+/// source line of the cell's opening fence (in `file`'s coordinates); an option on the
+/// cell's i-th body line is at `fence_line + 1 + i`.
+///
+/// `cell_option` reads the FIRST line that sets a key, so only that line is judged, and
+/// each later line setting a known key is reported with the line that is read. An unknown
+/// key is reported as unknown on every line, since none of them is read.
 pub(crate) fn validate_cell_options(
     literal: &str,
+    lang: &str,
+    role: Option<&CellRole>,
     fence_line: usize,
     file: Option<String>,
 ) -> Vec<Warning> {
+    let mut read_at: HashMap<String, u32> = HashMap::new();
     cell_option_keys(literal)
         .into_iter()
-        .filter(|(k, _)| !CELL_OPTION_KEYS.contains(&k.as_str()))
-        .map(|(k, offset)| {
+        .filter_map(|(k, value, offset)| {
             let line = (fence_line + 1 + offset) as u32;
-            Warning::new(unknown_key_message("cell option", &k, CELL_OPTION_KEYS))
-                .at(file.clone(), line)
+            let message = if !CELL_OPTION_KEYS.contains(&k.as_str()) {
+                unknown_key_message("cell option", &k, CELL_OPTION_KEYS)
+            } else if let Some(first) = read_at.get(&k) {
+                format!("repeated `{k}:`: only the first, on line {first}, is read")
+            } else {
+                read_at.insert(k.clone(), line);
+                inert_option_message(&k, value, lang, role)?
+            };
+            Some(Warning::new(message).at(file.clone(), line))
         })
         .collect()
+}
+
+/// Why known option `key`, read as `value`, does nothing on a `{lang}` cell in `role`, or
+/// `None` when it acts.
+fn inert_option_message(
+    key: &str,
+    value: &str,
+    lang: &str,
+    role: Option<&CellRole>,
+) -> Option<String> {
+    let client = super::is_client_lang(lang);
+    if key == "label" {
+        return (!NUMBERED_LABEL_PREFIXES.iter().any(|p| value.starts_with(p))).then(|| {
+            format!(
+                "`label: {value}` makes no anchor: only fig-, lst- and tbl- labels are numbered"
+            )
+        });
+    }
+    if key == "echo" {
+        match role {
+            // The Listing arm reads only `include`, whatever the language.
+            Some(CellRole::Listing { .. }) => {
+                return Some(
+                    "`echo` has no effect on a listing: a listing always shows its source \
+                     (`include: false` hides it)"
+                        .to_string(),
+                );
+            }
+            // The Table arm runs, and reads `echo` for, only a kernel language. A client
+            // table cell keeps its source instead, which only `include: false` hides.
+            Some(CellRole::Table { .. }) if client => {
+                return Some(format!(
+                    "`echo` has no effect on a `{{{lang}}}` table cell: it never runs, so it \
+                     always shows its source (`include: false` hides it)"
+                ));
+            }
+            _ => {}
+        }
+    }
+    if !client && CLIENT_ONLY.contains(&key) {
+        return Some(format!(
+            "`{key}` has no effect on a `{{{lang}}}` cell: it is a `{{js}}` cell option"
+        ));
+    }
+    if client && NOT_ON_CLIENT.contains(&key) {
+        let why = if key == "echo" {
+            format!("a running `{{{lang}}}` cell never shows its source")
+        } else {
+            "only a kernel cell's output is kept in `_freeze/`".to_string()
+        };
+        return Some(format!(
+            "`{key}` has no effect on a `{{{lang}}}` cell: {why}"
+        ));
+    }
+    None
 }
 
 /// Validate a callout kind (the `<kind>` in `.callout-<kind>`) against
@@ -206,13 +295,40 @@ mod tests {
     fn enumerates_only_the_leading_option_block() {
         let lit = "#| echo: false\n#| labl: x\nprint(1)\n#| late: y\n";
         let keys: Vec<_> = cell_option_keys(lit).into_iter().collect();
-        assert_eq!(keys, vec![("echo".to_string(), 0), ("labl".to_string(), 1)]);
+        assert_eq!(
+            keys,
+            vec![
+                ("echo".to_string(), "false", 0),
+                ("labl".to_string(), "x", 1)
+            ]
+        );
+    }
+
+    fn listing() -> CellRole {
+        CellRole::Listing {
+            anchor: None,
+            caption: None,
+            fold: None,
+        }
+    }
+
+    fn table() -> CellRole {
+        CellRole::Table {
+            anchor: None,
+            caption: None,
+        }
     }
 
     #[test]
     fn flags_unknown_cell_option_with_did_you_mean_and_location() {
         // Fence is on file line 20, so the option on body line 1 is file line 22.
-        let w = validate_cell_options("#| echo: false\n#| labl: x\n", 20, Some("p.tmd".into()));
+        let w = validate_cell_options(
+            "#| echo: false\n#| labl: x\n",
+            "python",
+            None,
+            20,
+            Some("p.tmd".into()),
+        );
         assert_eq!(w.len(), 1, "only `labl` is unknown, got: {w:?}");
         assert_eq!(
             w[0].message,
@@ -224,12 +340,227 @@ mod tests {
 
     #[test]
     fn recognized_cell_options_are_silent() {
-        let lit =
-            "#| echo: false\n#| label: fig-x\n#| fig-cap: A\n#| code-fold: true\n//| name: n\n";
+        let py = "#| echo: false\n#| include: false\n#| cache: false\n#| label: fig-x\n\
+                  #| fig-cap: A\n#| code-fold: true\n#| code-summary: S\n";
         assert!(
-            validate_cell_options(lit, 1, None).is_empty(),
-            "all keys recognized"
+            validate_cell_options(py, "python", None, 1, None).is_empty(),
+            "every key acts on a {{python}} cell"
         );
+        let reactive = "//| name: n\n//| viewof: v\n//| input: a, b\n";
+        assert!(
+            validate_cell_options(reactive, "js", None, 1, None).is_empty(),
+            "every reactive key acts on a running {{js}} cell"
+        );
+        let lst = "//| label: lst-x\n//| lst-cap: A\n//| include: false\n//| code-fold: true\n";
+        assert!(
+            validate_cell_options(lst, "js", Some(&listing()), 1, None).is_empty(),
+            "every key acts on a {{js}} listing"
+        );
+    }
+
+    /// `echo` and `cache` are never read for a client-language cell: the Figure and Table
+    /// arms read only `include` for a non-kernel language, the plain arm hands the source to
+    /// the browser before the echo check, and `cache` keys `_freeze/`, which only a kernel
+    /// cell reaches.
+    #[test]
+    fn echo_and_cache_on_a_client_cell_warn_located() {
+        let w = validate_cell_options(
+            "//| echo: false\n//| cache: false\nlet x = 1;\n",
+            "js",
+            None,
+            10,
+            Some("p.tmd".into()),
+        );
+        let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "`echo` has no effect on a `{js}` cell: a running `{js}` cell never shows \
+                     its source",
+                    Some(11)
+                ),
+                (
+                    "`cache` has no effect on a `{js}` cell: only a kernel cell's output is \
+                     kept in `_freeze/`",
+                    Some(12)
+                ),
+            ]
+        );
+        assert!(w.iter().all(|w| w.file.as_deref() == Some("p.tmd")
+            && w.severity == crate::render::Severity::Warning));
+    }
+
+    /// The Listing arm reads only `include`, for every language, so `echo` on a listing is
+    /// inert whether the cell is `{js}`, `{python}` or a display fence. The reason names the
+    /// listing, not the language, because the language is not why.
+    #[test]
+    fn echo_on_a_listing_warns_with_the_listing_reason_in_any_language() {
+        for lang in ["js", "python", "bash"] {
+            let w = validate_cell_options(
+                "#| label: lst-a\n#| echo: false\n",
+                lang,
+                Some(&listing()),
+                1,
+                None,
+            );
+            let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+            assert_eq!(
+                got,
+                [(
+                    "`echo` has no effect on a listing: a listing always shows its source \
+                     (`include: false` hides it)",
+                    Some(3)
+                )],
+                "for {{{lang}}}"
+            );
+        }
+    }
+
+    /// The Table arm reads `echo` only for a kernel language. A `{js}` table cell never
+    /// runs there: it keeps its source, which only `include: false` hides, so the reason is
+    /// the table's, not the running cell's.
+    #[test]
+    fn echo_on_a_js_table_cell_warns_with_the_table_reason() {
+        let w = validate_cell_options(
+            "//| label: tbl-a\n//| echo: false\n",
+            "js",
+            Some(&table()),
+            1,
+            None,
+        );
+        let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+        assert_eq!(
+            got,
+            [(
+                "`echo` has no effect on a `{js}` table cell: it never runs, so it always shows \
+                 its source (`include: false` hides it)",
+                Some(3)
+            )]
+        );
+    }
+
+    /// A `{python}` table cell runs on the kernel and hides its source on `echo: false` (the
+    /// Table arm's kernel branch), so `echo` acts there and draws nothing.
+    #[test]
+    fn echo_on_a_python_table_cell_is_silent() {
+        let lit = "#| label: tbl-a\n#| echo: false\n";
+        assert!(validate_cell_options(lit, "python", Some(&table()), 1, None).is_empty());
+    }
+
+    /// The reactive options are read only by `parse_js_opts`, which answers empty for every
+    /// language but `{js}`, kernel and display cells alike.
+    #[test]
+    fn reactive_options_on_a_non_client_cell_warn() {
+        for lang in ["python", "mermaid", "bash"] {
+            let w = validate_cell_options(
+                "#| name: n\n#| viewof: v\n#| input: a\n",
+                lang,
+                None,
+                1,
+                None,
+            );
+            let got: Vec<_> = w.iter().map(|w| (w.message.clone(), w.line)).collect();
+            assert_eq!(
+                got,
+                ["name", "viewof", "input"]
+                    .iter()
+                    .zip(2..)
+                    .map(|(k, line)| (
+                        format!(
+                            "`{k}` has no effect on a `{{{lang}}}` cell: it is a `{{js}}` cell \
+                             option"
+                        ),
+                        Some(line)
+                    ))
+                    .collect::<Vec<_>>(),
+                "for {{{lang}}}"
+            );
+        }
+    }
+
+    /// A deliberate false negative. `include` on a plain `{js}` cell is inert (the plain
+    /// client arm never reads it), but it acts on a `{js}` listing or table cell, and the
+    /// validator stays silent on the plain case rather than re-derive each arm's reading.
+    /// `include_false_hides_a_js_listing_and_is_not_reported` pins the case where it acts.
+    #[test]
+    fn include_on_a_plain_client_cell_is_a_deliberate_false_negative() {
+        assert!(validate_cell_options("//| include: false\n", "js", None, 1, None).is_empty());
+    }
+
+    /// Only a `fig-`/`lst-`/`tbl-` label is read (the cell-role test in `render_internal`);
+    /// any other label feeds no anchor, number, element id or freeze key.
+    #[test]
+    fn a_label_without_a_numbered_prefix_warns() {
+        for (lit, shown) in [
+            ("#| label: setup\n", "setup"),
+            ("#| label: \"setup\"\n", "setup"),
+            ("#| echo: false\n#| label: sec-intro\n", "sec-intro"),
+        ] {
+            let w = validate_cell_options(lit, "python", None, 4, None);
+            assert_eq!(w.len(), 1, "for {lit:?}: {w:?}");
+            assert_eq!(
+                w[0].message,
+                format!(
+                    "`label: {shown}` makes no anchor: only fig-, lst- and tbl- labels are numbered"
+                )
+            );
+            assert_eq!(w[0].line, Some(4 + lit.lines().count() as u32));
+        }
+        for label in ["fig-a", "lst-a", "tbl-a"] {
+            let lit = format!("#| label: {label}\n");
+            assert!(
+                validate_cell_options(&lit, "python", None, 1, None).is_empty(),
+                "{label} is numbered"
+            );
+        }
+    }
+
+    /// `cell_option` reads the FIRST line that sets a key, so only that line's value is
+    /// judged, and every later line setting the same key is reported, located, with the line
+    /// that is read. A bare first label warns and the `fig-` one after it is the repeat; a
+    /// `fig-` label first is read, so the bare one after it is only a repeat.
+    #[test]
+    fn a_repeated_key_is_judged_on_its_first_line_and_reported_on_each_later_one() {
+        let bare = "`label: setup` makes no anchor: only fig-, lst- and tbl- labels are numbered";
+        let repeated = "repeated `label:`: only the first, on line 11, is read";
+        for (lit, want) in [
+            (
+                "#| label: setup\n#| label: fig-z\n",
+                vec![(bare, Some(11)), (repeated, Some(12))],
+            ),
+            (
+                "#| label: fig-z\n#| label: setup\n",
+                vec![(repeated, Some(12))],
+            ),
+        ] {
+            let w = validate_cell_options(lit, "python", None, 10, Some("p.tmd".into()));
+            let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+            assert_eq!(got, want, "for {lit:?}");
+            assert!(w.iter().all(|w| w.file.as_deref() == Some("p.tmd")));
+        }
+
+        // Each later line is reported, and each names the first line, not the one before it.
+        let w = validate_cell_options(
+            "#| echo: false\n#| cache: false\n#| echo: true\n#| echo: false\n",
+            "python",
+            None,
+            1,
+            None,
+        );
+        let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+        let echo = "repeated `echo:`: only the first, on line 2, is read";
+        assert_eq!(got, [(echo, Some(4)), (echo, Some(5))]);
+    }
+
+    /// No line of an unknown key is read, so "only the first is read" would be false for one:
+    /// each line draws the unknown-key warning instead.
+    #[test]
+    fn a_repeated_unknown_key_is_unknown_on_every_line() {
+        let w = validate_cell_options("#| labl: a\n#| labl: b\n", "python", None, 1, None);
+        let got: Vec<_> = w.iter().map(|w| (w.message.as_str(), w.line)).collect();
+        let unknown = "unknown cell option `labl` (did you mean `label`?)";
+        assert_eq!(got, [(unknown, Some(2)), (unknown, Some(3))]);
     }
 
     #[test]

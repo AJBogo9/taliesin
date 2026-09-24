@@ -15,7 +15,6 @@ fullscreen. Every atom and bond is a three.js mesh built by the `{js}` cell belo
 
 ```{js}
 //| name: caffeineXYZ
-//| echo: false
 // 24 atoms, Ångström, from PubChem CID 2519 (Caffeine, public-domain 3D conformer).
 return `O 0.4700 2.5688 0.0006
 O -3.1271 -0.4436 -0.0003
@@ -45,7 +44,6 @@ H -2.9346 2.1021 -0.8849`;
 
 ```{js}
 //| name: molecules
-//| echo: false
 
 const makeScene3D = tali.get("makeScene3D");
 

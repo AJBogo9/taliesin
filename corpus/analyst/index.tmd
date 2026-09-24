@@ -41,7 +41,6 @@ Both objectives are evaluated per region-week, which is also the grain of the da
 thirteen ISO weeks (27 through 39), three regions, two channels, so 78 rows.
 
 ```{python}
-#| label: setup
 #| echo: false
 
 import matplotlib
@@ -187,7 +186,6 @@ week 27, and $\varepsilon_i \sim \mathcal{N}(0, \sigma^2)$. This is deliberately
 simplest model that can answer the question; @sec-next says what it does not cover.
 
 ```{python}
-#| label: fit
 #| echo: false
 #| include: false
 

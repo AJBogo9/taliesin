@@ -16,15 +16,6 @@ struct JsNode {
     label: String,
 }
 
-/// Static mirror of `tali-js.js`'s `buildGraph`: flag (a) a `//| input: x` referencing a
-/// name that no cell/`{{< input >}}` *defines*, and (b) a dependency cycle among `{js}`
-/// cells (Kahn's topo-sort over `define -> consumer` edges; any cell left undrained is in
-/// a cycle). Read-only — never touches the reactive runtime.
-///
-/// Conservative, matching `validate_internal_anchors`: a Python `define(...)` publishes
-/// names at *runtime* via a blob a static pass can't enumerate, so a cell that calls it
-/// suppresses the *dangling-input* half. The *cycle* half is a structural fact among
-/// `{js}` cells, so it always runs.
 /// The reactive wiring of the client cells a `:::` container folded away, read back off the
 /// container's emitted HTML.
 ///
@@ -96,6 +87,17 @@ fn folded_client_nodes(container: &Block) -> Vec<JsNode> {
     out
 }
 
+/// Static mirror of `tali-js.js`'s `buildGraph`: flag (a) a `//| input: x` referencing a
+/// name that no cell/`{{< input >}}`/Python `define(...)` *defines*, and (b) a dependency
+/// cycle among `{js}` cells (Kahn's topo-sort over `define -> consumer` edges; any cell
+/// left undrained is in a cycle). Read-only: it never touches the reactive runtime.
+///
+/// A Python `define(...)` publishes its names at *runtime*, but the kernel preamble
+/// declares it `def define(**kwargs)`, so every name it can publish is a keyword spelled in
+/// the call, and [`define_keywords`] reads them there. Only a call whose names a static
+/// read cannot know suppresses the *dangling-input* half, page-wide, conservative like
+/// `validate_internal_anchors`. The *cycle* half is a structural fact among `{js}` cells,
+/// so it always runs.
 pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     // A block that IS a cell contributes itself, with its own file and line. A block that is
     // not may be a container that folded client cells away, and those are recoverable only
@@ -154,18 +156,20 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
         }
     }
 
-    let mut out = Vec::new();
-
-    // (a) Dangling inputs — suppressed only where a name really could appear at runtime.
+    // (a) Dangling inputs, suppressed only where a name really could appear unseen.
     //
-    // The predicate is "a KERNEL cell that CALLS `define(`", narrowed from "any kernel
-    // cell" on 2026-08-03. Two earlier spellings were each wrong in their own direction.
-    // `lang != "js"` suppressed the check on any page carrying a second CLIENT language,
-    // which publishes nothing at runtime. Then "any kernel cell" suppressed it on every page
-    // with a `{python}` cell at all — which is every real blog post in the corpus, so the
-    // check was off exactly where documents are longest and a typo'd input most likely.
-    // Reading the cell's own literal is what distinguishes "this document uses the bridge"
-    // from "this document runs Python", and only the first can define a name invisibly.
+    // A KERNEL cell's `define(name=…)` keywords are defined names like any other. Three
+    // earlier spellings each suppressed the whole check instead. `lang != "js"` did it on
+    // any page carrying a second CLIENT language, which publishes nothing at runtime. "Any
+    // kernel cell" did it on every page with a `{python}` cell at all. "A kernel cell whose
+    // code contains `define(`" still did it on every real blog post that uses the bridge,
+    // although every call there is keyword form and names exactly what it publishes.
+    //
+    // Only a cell that runs on a kernel publishes anything. A display fence (`{bash}`,
+    // `{scheme}`, `{c}`) never runs, so its `define` neither defines a name nor switches the
+    // check off. A define in an `include: false` cell still publishes its names: the
+    // `<script type="tali-define">` blob is a side channel, not the cell's visible output,
+    // so hiding the output does not drop it.
     //
     // Asked through `Block::cells()`, not `b.cell`: a bridge cell inside a `.callout-note`
     // or a `layout-ncol` grid executes and publishes its name at runtime exactly like a
@@ -173,10 +177,18 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
     // (`Block::cells`: "reading `self.cell` directly instead is the bug"), leaving the
     // dangling-input check armed and the page drawing a false error. A KERNEL cell is
     // always recorded in `nested`, since it is the class of cell that earns an output slot.
-    let runtime_defines = blocks.iter().any(|b| {
-        b.cells()
-            .any(|c| !crate::render::is_client_lang(&c.lang) && c.code.contains("define("))
-    });
+    let mut runtime_defines = false;
+    for c in blocks.iter().flat_map(Block::cells) {
+        if !crate::render::executes_to_kernel(&c.lang) {
+            continue;
+        }
+        match define_keywords(&c.code) {
+            Some(names) => defined.extend(names),
+            None => runtime_defines = true,
+        }
+    }
+
+    let mut out = Vec::new();
     if !runtime_defines {
         let candidates: Vec<String> = defined.iter().cloned().collect();
         for n in &nodes {
@@ -187,10 +199,10 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
                 let suggestion = closest_owned(inp, &candidates);
                 let msg = match suggestion {
                     Some(s) => format!(
-                        "unknown reactive input `{inp}`: no `{{js}}` cell or `{{{{< input >}}}}` defines it (did you mean `{s}`?)"
+                        "unknown reactive input `{inp}`: no `{{js}}` cell, `{{{{< input >}}}}` or Python `define(...)` defines it (did you mean `{s}`?)"
                     ),
                     None => format!(
-                        "unknown reactive input `{inp}`: no `{{js}}` cell or `{{{{< input >}}}}` defines it"
+                        "unknown reactive input `{inp}`: no `{{js}}` cell, `{{{{< input >}}}}` or Python `define(...)` defines it"
                     ),
                 };
                 let w = Warning::new(msg).severity(Severity::Error);
@@ -263,4 +275,154 @@ pub fn validate_js_reactive_graph(blocks: &[Block]) -> Vec<Warning> {
 /// the suggestion differ between runs of the same unchanged document.
 fn closest_owned(key: &str, candidates: &[String]) -> Option<String> {
     crate::closest_of(key, candidates.iter().map(String::as_str)).map(str::to_string)
+}
+
+/// The names a kernel cell's `define(...)` calls publish, read off the calls themselves:
+/// each `name=` keyword argument. `None` when the cell may publish a name this read cannot
+/// see, which is the one case the caller still suppresses the dangling-input check for: a
+/// `*`/`**` splat or a positional argument, a call with no balancing `)`, a `define` nested
+/// in another call's arguments, a `define` not immediately called (an alias `d = define`, a
+/// `\` continuation, a `(` on the next line), or the word `define` inside a string literal,
+/// which an f-string field or an `exec` could still run.
+///
+/// A lexical read of Python, not a parse: strings and `#` comments are skipped, so a comma,
+/// bracket or `define(` inside either is never taken for code, and brackets nest. `define`
+/// must stand alone as an identifier, so `redefine(` and `defined(` are other functions, and
+/// `obj.define(...)` is some object's method, not the bridge.
+fn define_keywords(code: &str) -> Option<Vec<String>> {
+    let b = code.as_bytes();
+    let mut names = Vec::new();
+    let mut i = 0;
+    while let Some(at) = next_define(b, i, b.len())? {
+        let mut open = at + "define".len();
+        while b.get(open).is_some_and(|&c| c == b' ' || c == b'\t') {
+            open += 1;
+        }
+        if b.get(open) != Some(&b'(') {
+            return None; // not immediately a call
+        }
+        let (args, end) = call_args(code, open + 1)?;
+        if next_define(b, open + 1, end)?.is_some() {
+            return None; // a call nested in this one's arguments
+        }
+        for arg in args {
+            let arg = skip_blank_and_comments(arg);
+            if arg.is_empty() {
+                continue; // `define()`, or a trailing comma
+            }
+            let (name, rest) =
+                arg.split_at(arg.find(|c: char| !(c.is_alphanumeric() || c == '_'))?);
+            let rest = rest.trim_start();
+            if name.is_empty()
+                || name.starts_with(|c: char| c.is_ascii_digit())
+                || !rest.starts_with('=')
+                || rest.starts_with("==")
+            {
+                return None; // a splat or a positional argument
+            }
+            names.push(name.to_string());
+        }
+        i = end;
+    }
+    Some(names)
+}
+
+/// Where the next bare `define` identifier in `b[i..end]` starts, skipping strings, `#`
+/// comments and an attribute `obj.define`: `Some(None)` when there is none, `None` when the
+/// word sits inside a string literal.
+fn next_define(b: &[u8], mut i: usize, end: usize) -> Option<Option<usize>> {
+    while i < end {
+        if let Some(stop) = skip_string_or_comment(b, i) {
+            if b[i] != b'#' && (i..stop).any(|j| is_define_at(b, j)) {
+                return None;
+            }
+            i = stop;
+            continue;
+        }
+        if is_define_at(b, i)
+            && b[..i].iter().rev().find(|&&c| c != b' ' && c != b'\t') != Some(&b'.')
+        {
+            return Some(Some(i));
+        }
+        i += 1;
+    }
+    Some(None)
+}
+
+/// Whether `define` starts at `b[i]` as a whole identifier.
+fn is_define_at(b: &[u8], i: usize) -> bool {
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c >= 0x80;
+    b[i..].starts_with(b"define")
+        && (i == 0 || !is_ident(b[i - 1]))
+        && !b.get(i + "define".len()).is_some_and(|&c| is_ident(c))
+}
+
+/// The arguments of a call whose `(` ends just before `start`, split at top-level commas,
+/// and the index just past its balancing `)`. `None` when nothing balances it.
+fn call_args(code: &str, start: usize) -> Option<(Vec<&str>, usize)> {
+    let b = code.as_bytes();
+    let (mut depth, mut arg_start, mut i) = (0usize, start, start);
+    let mut args = Vec::new();
+    while i < b.len() {
+        if let Some(end) = skip_string_or_comment(b, i) {
+            i = end;
+            continue;
+        }
+        match b[i] {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' if depth > 0 => depth -= 1,
+            b')' => {
+                args.push(&code[arg_start..i]);
+                return Some((args, i + 1));
+            }
+            b']' | b'}' => return None,
+            b',' if depth == 0 => {
+                args.push(&code[arg_start..i]);
+                arg_start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// If a Python string literal or `#` comment starts at `b[i]`, the index just past it
+/// (a line comment stops before its newline; an unterminated literal runs to the end of
+/// its line, or of the code for a triple-quoted one). A prefix such as `f`/`r`/`b` is an
+/// ordinary identifier byte to the caller and needs no handling here.
+fn skip_string_or_comment(b: &[u8], i: usize) -> Option<usize> {
+    match b[i] {
+        b'#' => Some(
+            b[i..]
+                .iter()
+                .position(|&c| c == b'\n')
+                .map_or(b.len(), |n| i + n),
+        ),
+        q @ (b'"' | b'\'') => {
+            let triple = b[i..].starts_with(&[q, q, q]);
+            let mut j = i + if triple { 3 } else { 1 };
+            while j < b.len() {
+                match b[j] {
+                    b'\\' => j += 2,
+                    c if c == q && (!triple || b[j..].starts_with(&[q, q, q])) => {
+                        return Some(j + if triple { 3 } else { 1 });
+                    }
+                    b'\n' if !triple => return Some(j),
+                    _ => j += 1,
+                }
+            }
+            Some(b.len())
+        }
+        _ => None,
+    }
+}
+
+/// `arg` with its leading whitespace and whole-line `#` comments removed.
+fn skip_blank_and_comments(mut arg: &str) -> &str {
+    arg = arg.trim_start();
+    while let Some(rest) = arg.strip_prefix('#') {
+        arg = rest.split_once('\n').map_or("", |(_, r)| r).trim_start();
+    }
+    arg
 }

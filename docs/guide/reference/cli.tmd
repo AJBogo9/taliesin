@@ -60,14 +60,16 @@ publish `build` is what proves that, and the two-stage
 `taliesin build . --check-only && taliesin build . --strict` below runs both.
 
 It reports unknown front-matter / `_site.yml` / cell-option / container keys (with
-did-you-mean), unknown callout kinds, broken `@xref` cross-references, unknown shortcodes, a
-missing `bibliography:`, duplicate heading `{#id}`s, and broken in-page `#anchor` links.
+did-you-mean), a known cell option that does nothing on its cell, a cell `label` without a
+`fig-` / `lst-` / `tbl-` prefix, unknown callout kinds, broken `@xref` cross-references,
+unknown shortcodes, a missing `bibliography:`, duplicate heading `{#id}`s, and broken
+in-page `#anchor` links.
 It also catches these publish-blocking mistakes:
 
 | Rule | Flags |
 |---|---|
 | Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose local target file is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. External `http(s)://` links are never checked: the lint stays offline and deterministic, and a cross-book / mounted link (one that climbs above the site root) is left alone. |
-| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a `{python}` cell that calls `define(` (a runtime `define` may publish the name). |
+| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`), `{{< input >}}` control or Python `define(x=...)` keyword defines, with a did-you-mean over the known names. Only a `define` whose names the static read cannot know (a `**` splat, a positional argument, or a call it cannot parse) suppresses the check, page-wide. |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"). |
 | Missing or placeholder alt text | A hand-written / passthrough `<img>` with no `alt` attribute, so a screen reader can't describe it (a decorative image should set `alt=""`); or an `alt` that names the medium rather than the content (`alt="image"`, or an echo of the filename). Markdown `![…](…)` always emits an `alt`, so the first half catches raw `<img>` only. |

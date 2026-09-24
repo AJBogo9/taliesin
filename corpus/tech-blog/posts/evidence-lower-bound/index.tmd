@@ -148,7 +148,6 @@ We optimise $(\mu_q, \sigma_q)$ by gradient ascent on the ELBO and compare with 
 
 
 ```{python}
-#| label: vi-setup
 np.random.seed(42)
 x_obs   = 1.8
 sigma_l = 1.2
@@ -188,7 +187,6 @@ define(
 
 ```{js}
 //| viewof: iter
-//| echo: false
 const wrap = document.createElement("label");
 wrap.className = "tali-input";
 wrap.append("VI iteration ");
@@ -205,7 +203,6 @@ return wrap;
 ```{js}
 //| label: fig-vi-convergence
 //| input: iter
-//| echo: false
 //| fig-cap: "VI convergence: the variational q approaches the true posterior. Drag the slider to step through iterations. Dashed blue line is the true posterior; solid orange line is the current q."
 
 const history = tali.defines.history; if (!history) return;
@@ -269,7 +266,6 @@ return Plot.plot({
 ```{js}
 //| label: fig-vi-elbo
 //| input: iter
-//| echo: false
 //| fig-cap: "ELBO rises monotonically during VI optimisation."
 
 const history = tali.defines.history; if (!history) return;
@@ -298,7 +294,6 @@ return Plot.plot({
 ```
 
 ```{python}
-#| label: elbo-verification
 
 # True log evidence via numerical integration
 z_grid = np.linspace(-10, 10, 10000)

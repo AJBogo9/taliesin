@@ -31,7 +31,7 @@
   "JavaScript cell": {
     "prefix": "jscell",
     "description": "A reactive {js} cell, run in the browser.",
-    "body": ["```{js}", "//| name: ${1:value}", "$0", "```"]
+    "body": ["```{js}", "$0", "```"]
   },
   "Folded code cell": {
     "prefix": "foldcell",

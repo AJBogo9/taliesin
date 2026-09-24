@@ -155,7 +155,6 @@ In this code demo, we'll use the example from the introduction. We'll create a d
 ## Setup and data generation
 
 ```{python}
-#| label: setup
 
 import numpy as np
 import json
@@ -208,7 +207,6 @@ There are 220 exam scores in the dataset sampled from two overlapping Gaussian d
 ## EM implementation
 
 ```{python}
-#| label: em-algorithm
 
 def em_gmm(X, K=2, n_iter=30, seed=0):
     rng_init = np.random.default_rng(seed)
@@ -272,7 +270,6 @@ The slider steps through the iterations of the EM algorithm. The top plot shows 
 
 ```{js}
 //| viewof: iter
-//| echo: false
 // Slider over EM iterations; its range comes from the Python `history` length
 // (the cell re-runs when that define lands). Returns a labeled range input.
 const n = (tali.defines.history || []).length || 1;
@@ -287,7 +284,6 @@ return wrap;
 
 ```{js}
 //| viewof: showTrue
-//| echo: false
 const wrap = document.createElement("label");
 wrap.className = "tali-input";
 const input = document.createElement("input");
@@ -299,7 +295,6 @@ return wrap;
 ```{js}
 //| label: fig-em-fit
 //| input: iter, showTrue
-//| echo: false
 //| fig-cap: "The two curves are the fitted Gaussians and the rug marks show each data point coloured by its soft assignment (blue = component 1, orange = component 2, yellow = uncertain). Grey dashed lines are the true means."
 
 const { gaussPDF, makeCurve, makeResp, linspace } = await import("./em-helpers.js");
@@ -385,7 +380,6 @@ return fig;
 ```{js}
 //| label: fig-em-loglik
 //| input: iter
-//| echo: false
 //| fig-cap: "Log-likelihood across iterations. It can only ever increase."
 
 const { makeLLData } = await import("./em-helpers.js");

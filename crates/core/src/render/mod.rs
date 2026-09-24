@@ -843,11 +843,13 @@ fn render_internal_impl(
             // Validate this code cell's `#|` options against taliesin's vocabulary
             // (a typo or a legacy key becomes a located, click-to-source warning;
             // the cell still renders unchanged).
-            if cell.is_some()
+            if let Some(c) = &cell
                 && let NodeValue::CodeBlock(cb) = &data.value
             {
                 warnings.extend(validate::validate_cell_options(
                     &cb.literal,
+                    &c.lang,
+                    cell_role.as_ref(),
                     start_line,
                     file.clone(),
                 ));

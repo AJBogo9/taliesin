@@ -90,7 +90,6 @@ the model behind @tbl-coefs, and the reason @fig-p95 is read the way it is. Thre
 assumptions carry it, and the residuals are where they show.
 
 ```{python}
-#| label: diag-fit
 #| include: false
 
 import matplotlib

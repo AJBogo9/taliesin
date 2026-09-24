@@ -21,7 +21,6 @@ esm.sh, so the two scenes need network access.
 {{< input name="amplitude" type="slider" min="0" max="1.4" step="0.05" value="0.7" label="amplitude" >}}
 
 ```{js}
-//| echo: false
 const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const host = document.createElement("div");
@@ -97,7 +96,6 @@ $$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
 
 ```{js}
 //| input: harmonics
-//| echo: false
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce(
@@ -115,7 +113,6 @@ is reprinted here as it appears in the `.tmd`:
 
 ```js
 //| input: harmonics
-//| echo: false
 const N = tali.value("harmonics");
 const ys = Array.from({ length: 500 }, (_, t) =>
   d3.range(1, N + 1).reduce(
@@ -133,7 +130,6 @@ orbit, and move the σ / ρ / β sliders to watch a deterministic system fold in
 two-winged strange attractor, and then collapse.
 
 ```{js}
-//| echo: false
 
 const makeScene3D = tali.get("makeScene3D");
 

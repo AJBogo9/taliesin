@@ -1,6 +1,5 @@
 ```{js}
 //| name: makeScene3D
-//| echo: false
 
 return async function makeScene3D(buildScene, invalidation, opts = {}) {
   const THREE = await import("https://esm.sh/three@0.163.0");

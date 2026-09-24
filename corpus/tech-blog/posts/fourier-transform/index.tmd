@@ -18,7 +18,6 @@ A **pure tone** (a tuning fork or a whistle) is a sinusoid. A sinusoid is a smoo
 Below you can hear three different pure tones and the chord they produce when combined. Then below the media players, you can see the wave forms of the signals individually and then the signal that is produced when combining the three pure tones. 
 
 ```{python}
-#| label: setup
 #| echo: false
 
 import numpy as np
@@ -152,7 +151,6 @@ When $k$ matches a hidden frequency, the wound samples bunch up on one side of t
 
 ```{js}
 //| viewof: wind_f
-//| echo: false
 const wrap = document.createElement("div");
 wrap.style.cssText = "font-family:inherit;font-size:13px;";
 wrap.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -186,7 +184,6 @@ return wrap;
 
 ```{js}
 //| name: layout
-//| echo: false
 return {
   W: 520, flatH: 148, gapY: 14, circD: 300, gapY2: 18, specH: 150,
   totalH: 148 + 14 + 300 + 18 + 150
@@ -195,7 +192,6 @@ return {
 
 ```{js}
 //| name: drawSignalPanel
-//| echo: false
 return (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
   const layout = tali.get("layout");
   const { W, flatH } = layout;
@@ -248,7 +244,6 @@ return (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
 
 ```{js}
 //| name: drawWindingPanel
-//| echo: false
 return (svg, { wound, cm_x, cm_y, wind_f }) => {
   const { W, flatH, gapY, circD } = tali.get("layout");
   const circY0 = flatH + gapY;
@@ -291,7 +286,6 @@ return (svg, { wound, cm_x, cm_y, wind_f }) => {
 
 ```{js}
 //| name: drawSpectrumPanel
-//| echo: false
 return (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
   const { W, flatH, gapY, circD, gapY2, specH } = tali.get("layout");
   const specY0     = flatH + gapY + circD + gapY2;
@@ -367,7 +361,6 @@ return (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
 ```{js}
 //| label: fig-winding
 //| input: wind_f
-//| echo: false
 //| fig-cap: "Three-panel interactive: signal x[n] (top), signal wound around a circle at frequency k (middle), full spectrum |X[k]| (bottom). Drag the slider to k = 3, 7, or 12 and watch the winding bunch up while the orange dot in the spectrum jumps to a peak."
 const N          = tali.defines.winding_N;
 const comp_freqs = tali.defines.winding_freqs;

@@ -17,7 +17,6 @@ process has a gentle downward drift in it, a canary penalty that decays to nothi
 a storage incident in `ap-south` in week 33. The analysis below looks for all three.
 
 ```{python}
-#| label: setup
 
 import matplotlib
 import matplotlib.pyplot as plt

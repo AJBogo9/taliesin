@@ -105,9 +105,15 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
 
 fn cell_option_descriptions() -> &'static [(&'static str, &'static str)] {
     &[
-        ("echo", "Show the cell's source code."),
+        (
+            "echo",
+            "Show the cell's source code (no effect on a `{js}` cell).",
+        ),
         ("include", "Include the cell's output."),
-        ("cache", "Persist the cell's output in `_freeze/`."),
+        (
+            "cache",
+            "Persist the cell's output in `_freeze/` (no effect on a `{js}` cell).",
+        ),
         ("label", "Cross-reference id (for example `fig-scree`)."),
         ("fig-cap", "Figure caption."),
         ("lst-cap", "Listing (code) caption."),

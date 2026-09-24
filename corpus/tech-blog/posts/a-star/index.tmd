@@ -153,7 +153,6 @@ Start with Dijkstra and then swap to A\* with the Manhattan heuristic. Also, tes
 
 ```{js}
 //| viewof: heuristic
-//| echo: false
 
 // ── controls ─────────────────────────────────────────────────────────────────
 const wrap = document.createElement("label");
@@ -172,7 +171,6 @@ return wrap;
 
 ```{js}
 //| viewof: weight
-//| echo: false
 
 const wrap = document.createElement("label");
 wrap.className = "tali-input";
@@ -185,7 +183,6 @@ return wrap;
 
 ```{js}
 //| viewof: speed
-//| echo: false
 
 const wrap = document.createElement("label");
 wrap.className = "tali-input";
@@ -197,7 +194,6 @@ return wrap;
 ```
 
 ```{js}
-//| echo: false
 
 // ── A* demo (built once; mounted here; exposes s/draw/resetSearch for the
 //    slider watcher cell below via tali.set) ────────────────────────────────────
@@ -652,7 +648,6 @@ return root;
 
 ```{js}
 //| input: heuristic, weight, speed
-//| echo: false
 
 // ── watcher: slider changes re-run only this cell; the app is never rebuilt ────
 const astar = tali.get("astar");

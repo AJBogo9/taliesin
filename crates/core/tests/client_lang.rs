@@ -131,18 +131,26 @@ fn a_js_only_page_still_reports_its_dangling_input() {
     );
 }
 
-/// A kernel cell suppresses the check only when it CALLS `define(`, narrowed from "any
-/// kernel cell" on 2026-08-03. The conservatism is right where the bridge is really used
-/// and wrong everywhere else: spelled `lang != "js"` it went silent on any page carrying a
-/// second client language, and spelled "any kernel cell" it went silent on every real blog
-/// post in the corpus, which is precisely where a typo'd input hides best.
+/// A kernel cell suppresses the check only when it calls `define(` with names a static read
+/// cannot know. Spelled `lang != "js"` the check went silent on any page carrying a second
+/// client language, spelled "any kernel cell" on every real blog post in the corpus, and
+/// spelled "any cell that calls `define(`" on every post that uses the bridge, which is
+/// precisely where a typo'd input hides best. `define` is `def define(**kwargs)`, so a
+/// keyword call names exactly what it publishes.
 #[test]
-fn only_a_python_cell_that_calls_define_suppresses_the_dangling_input_check() {
+fn only_a_define_with_unknowable_names_suppresses_the_dangling_input_check() {
+    let keyword =
+        dangling("```{python}\ndefine(x=1)\n```\n\n```{js}\n//| input: x, nope\nreturn 1;\n```\n");
+    assert!(
+        keyword.len() == 1 && keyword[0].contains("`nope`"),
+        "a keyword define resolves `x` and leaves `nope` reported: {keyword:?}"
+    );
+
     let suppressed =
-        dangling("```{python}\ndefine(x=1)\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
+        dangling("```{python}\ndefine(**d)\n```\n\n```{js}\n//| input: nope\nreturn 1;\n```\n");
     assert!(
         suppressed.is_empty(),
-        "a cell using the bridge must keep the check suppressed: {suppressed:?}"
+        "a splat's names are unknowable, so it keeps the check suppressed: {suppressed:?}"
     );
 
     let reported =

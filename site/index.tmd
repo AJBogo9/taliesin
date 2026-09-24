@@ -17,7 +17,6 @@ left it, and the Python kernel keeps the variables it has already computed.
 {{< include _includes/three-scene.tmd >}}
 
 ```{js}
-//| echo: false
 const makeScene3D = tali.get("makeScene3D");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const host = document.createElement("div");
