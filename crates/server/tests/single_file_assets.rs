@@ -99,7 +99,7 @@ fn a_portable_folder_that_cannot_hold_a_referenced_file_is_an_error() {
     fs::write(proj.join("img/i.png"), "png").unwrap();
     fs::write(
         proj.join("posts/p.tmd"),
-        "---\ntitle: P\n---\n\n![A project image.](../img/i.png)\n",
+        "---\ntitle: P\n---\n\n![A project image.](../img/i.png)\n\n![From the root.](/img/i.png)\n",
     )
     .unwrap();
     let page = proj.join("posts/p.tmd");
@@ -117,6 +117,10 @@ fn a_portable_folder_that_cannot_hold_a_referenced_file_is_an_error() {
     assert!(
         err.contains("p.tmd:5:") && err.contains("error") && err.contains("../img/i.png"),
         "an error located at the reference, naming it:\n{err}"
+    );
+    assert!(
+        err.contains("p.tmd:7:") && err.contains("`/img/i.png`"),
+        "a root-absolute reference to a project file is one too:\n{err}"
     );
 
     let (ok, err) = build(&[page.as_os_str(), "--strict".as_ref()]);

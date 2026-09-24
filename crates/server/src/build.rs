@@ -1139,11 +1139,18 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> Bundled {
         // resolves the emitted src to. Decoded BEFORE the rule is asked, so an encoded
         // `..` cannot slip past it.
         let path = taliesin_core::render::asset_fs_path(&r);
+        // The file a reference names in place: a root-absolute `/img/i.png` is served from
+        // the project root (the preview's, and a root deploy's), which a folder built from
+        // one page cannot reproduce.
+        let on_disk = match path.strip_prefix('/') {
+            Some(rooted) => taliesin_core::single_doc_root(base).join(rooted),
+            None => base.join(&path),
+        };
         let why = match publishable(base, base, Path::new(&path), Reach::Referenced) {
             Ok(rel) => Ok(rel),
             // A reference that names no file (a link to a page URL, `/`) has nothing to
             // bundle; the link validator speaks for a missing target.
-            Err(_) if !base.join(&path).is_file() => continue,
+            Err(_) if !on_disk.is_file() => continue,
             Err(Unpublishable::Outside) => Err("is outside the document's folder"),
             Err(Unpublishable::OutsideRepo) => Err("is a symlink out of the checkout"),
             Err(Unpublishable::Private) => {
