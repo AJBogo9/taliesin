@@ -3798,9 +3798,14 @@ fn push_text(out: &mut String, pending: &mut bool, text: &str) {
 /// carrying `&amp;` would otherwise ship as `&amp;amp;`.
 fn leading_h1_text(blocks: &[Block]) -> Option<String> {
     let first = blocks.first()?;
-    (block_heading_level(&first.html)? == 1)
-        .then(|| unescape_html(&strip_tags(&first.html)))
-        .filter(|t| !t.is_empty())
+    if block_heading_level(&first.html)? != 1 {
+        return None;
+    }
+    // Past the opening tag, so a book chapter's number span (a chapter built alone is
+    // numbered as its book numbers it) is not read as part of the title.
+    let inner = &first.html[first.html.find('>')? + 1..];
+    let text = unescape_html(&strip_tags(crate::site::strip_section_number(inner)));
+    (!text.is_empty()).then_some(text)
 }
 
 /// Reverse [`escape_html`], and the one character-reference decoder for text or an

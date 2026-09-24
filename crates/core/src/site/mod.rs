@@ -190,7 +190,7 @@ mod frontmatter;
 pub use config::*;
 pub(crate) use frontmatter::*;
 mod chapter;
-pub(crate) use chapter::{number_sections, section_number_span};
+pub(crate) use chapter::{number_sections, section_number_span, strip_section_number};
 mod discovery;
 // `collect_pages` is not called here: `xref.rs` reaches it through this binding (a
 // private `use` is still visible to a descendant module), so the project-wide anchor

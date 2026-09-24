@@ -141,6 +141,18 @@ pub(crate) fn section_number_span(number: &str) -> String {
     format!("<span class=\"tali-section-number\">{number}</span> ")
 }
 
+/// A numbered heading's inner HTML without the leading number span: a chapter's heading
+/// opens with its number, which is not its title. Inner HTML with no number comes back as
+/// it was.
+pub(crate) fn strip_section_number(inner: &str) -> &str {
+    match inner.strip_prefix("<span class=\"tali-section-number\">") {
+        Some(rest) => rest
+            .split_once("</span>")
+            .map_or(rest, |(_, t)| t.trim_start()),
+        None => inner,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

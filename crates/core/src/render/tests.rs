@@ -5683,6 +5683,18 @@ fn leading_h1_text_reads_only_a_first_level_one_heading() {
     assert_eq!(h1("## Hello\n"), None);
     assert_eq!(h1("Prose\n\n# Hello\n"), None);
     assert_eq!(h1(""), None);
+    // A book chapter built alone is numbered as its book numbers it, so its heading opens
+    // with the number span; the page title is still the heading's text, as in the book
+    // build (`<title>1 Chapter One</title>` before the fix).
+    let mut blocks = super::render_document("# Chapter One\n").blocks;
+    let at = blocks[0].html.find('>').unwrap() + 1;
+    blocks[0]
+        .html
+        .insert_str(at, &crate::site::section_number_span("1"));
+    assert_eq!(
+        super::leading_h1_text(&blocks).as_deref(),
+        Some("Chapter One")
+    );
 }
 
 #[test]

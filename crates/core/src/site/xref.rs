@@ -246,11 +246,7 @@ pub(super) fn heading_titles(blocks: &[Block]) -> HashMap<String, String> {
                 .find(&format!("</{}", tag.name))
                 .map_or(b.html.len(), |n| from + n);
             let inner = &b.html[from..to];
-            // A numbered chapter's heading opens with its number, which is not its title.
-            let inner = match inner.strip_prefix("<span class=\"tali-section-number\">") {
-                Some(rest) => rest.split_once("</span>").map_or(rest, |(_, t)| t),
-                None => inner,
-            };
+            let inner = super::strip_section_number(inner);
             out.insert(id.into_owned(), crate::render::indexable_text(inner));
         }
     }
