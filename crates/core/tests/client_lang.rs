@@ -11,7 +11,8 @@
 
 use taliesin_core::OutputMode;
 use taliesin_core::render::{
-    JS_CELL_MIME, code_scripts_for, executes_to_kernel, has_js_cells, is_client_lang,
+    JS_CELL_MIME, JS_CELL_PARAMS, code_scripts_for, executes_to_kernel, has_js_cells,
+    is_client_lang,
 };
 
 fn render(src: &str) -> taliesin_core::RenderedDoc {
@@ -35,6 +36,23 @@ fn the_cell_mime_is_looked_up_by_the_client_runtime() {
         "`{{js}}` cells are written as `{JS_CELL_MIME}` but the client runtime never looks \
          that mime up"
     );
+}
+
+/// The editor wraps each `{js}` cell in a function over these names (`lsp_cells.rs`), so a
+/// renamed or added parameter in the runtime has to change the const too, or the editor
+/// types a name the cell never receives.
+#[test]
+fn the_cell_parameters_are_the_ones_the_runtime_passes() {
+    let runtime = include_str!("../assets/js/tali-js.js");
+    let calls: Vec<&str> = runtime.split("new AsyncFunction(").skip(1).collect();
+    assert_eq!(calls.len(), 1, "expected one AsyncFunction constructor");
+    let args: Vec<&str> = calls[0][..calls[0].find(')').expect("a closing paren")]
+        .split(',')
+        .map(str::trim)
+        .collect();
+    let mut want: Vec<String> = JS_CELL_PARAMS.iter().map(|p| format!("\"{p}\"")).collect();
+    want.push("src".into());
+    assert_eq!(args, want);
 }
 
 /// A client-side language's kernel is the browser, so it must never be in the set the

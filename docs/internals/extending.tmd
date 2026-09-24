@@ -136,11 +136,15 @@ The file lives in a private temp directory and is only ever written on disk, nev
 as a buffer, so VS Code never sees it as unsaved and never shows it as a tab (an untitled
 buffer, the first design, surfaced as a background `Untitled-N` tab). A definition that
 lands in that file is moved back onto the `.tmd`, so go-to-definition never takes the
-author into it. Every `{js}` cell runs as its own function, but the file joins them into
-one script, so a name declared in another `{js}`
-cell resolves although it is out of scope at run time, and a name declared in several
-resolves to all of them. Plain display fences (a bare `python` or `js` info string) are
-kept too, although they never run, so a definition can land on a display sample.
+author into it. Every `{js}` cell runs as its own function, and `taliesin/cellRegions`
+gives the editor that function's first and last line, which go on the line above the cell's
+body (its fence or last option line) and on its closing fence: a name declared in another
+`{js}` cell is out of scope there, as it is at run time, and `tali`, `container` and the
+cell's other arguments read as parameters. A cell whose fence is the document's first line
+and that has no `//|` option line stays unwrapped, because that line holds the comment that
+keeps the file's own diagnostics out of the Problems panel. Plain display fences (a bare
+`python` or `js` info string) are kept too, unwrapped, although they never run, so a
+definition can land on a display sample.
 
 ## Byte-identity for refactors
 

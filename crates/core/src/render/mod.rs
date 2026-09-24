@@ -60,7 +60,7 @@ mod cell_numbered;
 use cell_numbered::{FloatLabel, emit_client_cell, emit_client_figure, emit_code_listing};
 pub use cell_numbered::{caption_label, markdown_fragment, numbered_caption};
 mod client_lang;
-pub use client_lang::{JS_CELL_MIME, has_js_cells, is_client_lang};
+pub use client_lang::{JS_CELL_MIME, JS_CELL_PARAMS, has_js_cells, is_client_lang};
 // `pub(crate)` only so `frontmatter` can reach `extension::dataset::DATASET_KEYS`: the
 // front-matter linter validates `datasets:` sub-keys against the same closed list the
 // renderer reads, rather than a second copy that could drift from it.

@@ -854,9 +854,10 @@ fn resolve_definition(
     Some(lsp_types::GotoDefinitionResponse::Scalar(location))
 }
 
-/// The custom request a client calls to learn where a document's code cells are, so it can
-/// route completion, hover, signature help and go-to-definition inside one to whoever owns
-/// that language. Namespaced, because it is not an LSP method and must never collide with one.
+/// The custom request a client calls to learn where a document's code cells are (and the
+/// function a `{js}` cell runs in), so it can route completion, hover, signature help and
+/// go-to-definition inside one to whoever owns that language. Namespaced, because it is not an
+/// LSP method and must never collide with one.
 pub(crate) const CELL_REGIONS_METHOD: &str = "taliesin/cellRegions";
 
 /// Where each of a project's pages is served, so the companion can open the preview webview
@@ -2953,7 +2954,8 @@ mod tests {
         name: &'static str,
         /// The outline title the context itself adds, when comrak reads a heading in it.
         heading: Option<&'static str>,
-        /// `(language, executable)` of every cell region the context itself holds.
+        /// `(language, wrapped)` of every cell region the context itself holds: whether it
+        /// is a `{js}` cell the render runs, with a scope of its own.
         regions: &'static [(&'static str, bool)],
     }
 
@@ -3037,18 +3039,18 @@ mod tests {
             ),
             (
                 "L18 commented-out cell",
-                ["<!--", "```{python}", "z = 2", "```", "-->"]
+                ["<!--", "```{js}", "z = 2", "```", "-->"]
                     .iter()
                     .map(|l| l.to_string())
                     .collect(),
             ),
             (
                 "L19 cell in indented code",
-                with("    ", &["```{python}", "z = 2", "```"]),
+                with("    ", &["```{js}", "z = 2", "```"]),
             ),
             (
                 "L20 cell in a block quote",
-                with("> ", &["```{python}", "z = 2", "```"]),
+                with("> ", &["```{js}", "z = 2", "```"]),
             ),
             (
                 "L21 a line of inline code that opens with a fence",
@@ -3158,7 +3160,7 @@ mod tests {
             Class {
                 name: "L20",
                 heading: None,
-                regions: &[("python", false)],
+                regions: &[("js", false)],
             },
             Class {
                 name: "L21",
@@ -3192,8 +3194,8 @@ mod tests {
                 "x",
                 ":::",
                 "",
-                "```{python}",
-                "#| echo: false",
+                "```{js}",
+                "//| echo: false",
                 "y = 1",
                 "```",
                 "",
@@ -3242,14 +3244,14 @@ mod tests {
                 regions.iter().partition(|r| r.start_line == cell_opt + 1);
             assert_eq!(
                 cell.iter()
-                    .map(|r| (r.language.as_str(), r.end_line, r.executable))
+                    .map(|r| (r.language.as_str(), r.end_line, r.wrap.is_some()))
                     .collect::<Vec<_>>(),
-                [("python", cell_opt + 1, true)],
+                [("js", cell_opt + 1, true)],
                 "{name}: the real cell"
             );
             assert_eq!(
                 rest.iter()
-                    .map(|r| (r.language.as_str(), r.executable))
+                    .map(|r| (r.language.as_str(), r.wrap.is_some()))
                     .collect::<Vec<_>>(),
                 class.regions,
                 "{name}: the context's own regions"
@@ -3259,7 +3261,7 @@ mod tests {
                 |line: usize| resolve_completion(&docs, &complete_params(&uri, line as u32, 3));
             assert!(
                 complete(cell_opt).is_some(),
-                "{name}: `#|` completion inside the real cell"
+                "{name}: `//|` completion inside the real cell"
             );
             assert!(
                 complete(prose_opt).is_none(),
@@ -3277,7 +3279,8 @@ mod tests {
         handshake(&client);
 
         let uri = Url::parse("file:///tmp/tali-lsp-cells.tmd").unwrap();
-        let text = "intro\n\n```{python}\nimport os\nos.getcwd()\n```\n".to_string();
+        let text = "intro\n\n```{python}\nimport os\nos.getcwd()\n```\n\n```{js}\nreturn 1;\n```\n"
+            .to_string();
         did_open(&client, &uri, text);
         let _ = recv_publish(&client);
 
@@ -3294,14 +3297,21 @@ mod tests {
 
         assert_eq!(
             regions,
-            serde_json::json!([{
-                "language": "python",
-                "startLine": 3,
-                "endLine": 4,
-                // The editor hangs its Run buttons off this, so it is part of the wire
-                // contract, not an internal detail.
-                "executable": true,
-            }]),
+            serde_json::json!([
+                // No `wrap`: a `{python}` cell's scope is the whole document's.
+                { "language": "python", "startLine": 3, "endLine": 4 },
+                // The editor writes these around a `{js}` cell's body to give it the scope
+                // `tali-js.js` runs it in: part of the wire contract, spelled out.
+                {
+                    "language": "js",
+                    "startLine": 8,
+                    "endLine": 8,
+                    "wrap": {
+                        "open": "(async function (tali, Plot, d3, container, invalidation) {",
+                        "close": "});",
+                    },
+                },
+            ]),
             "got {regions}"
         );
 

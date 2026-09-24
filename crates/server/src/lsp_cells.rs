@@ -11,15 +11,25 @@ pub(crate) struct CellRegion {
     /// 0-based first and last body lines, inclusive. An empty body yields no region.
     pub(crate) start_line: usize,
     pub(crate) end_line: usize,
-    /// Whether a kernel actually runs this fence: a top-level `{python}` cell, not a plain
-    /// `python` display block, not a `{.python}` one, not one in a block quote or list item,
-    /// and not `{bash}`.
+    /// The scope the body runs in, when it is not the document's: `tali-js.js` compiles each
+    /// `{js}` cell the render runs as its own function over `render::JS_CELL_PARAMS`, so a
+    /// name declared in another cell is out of scope and a top-level `return` or `await` is
+    /// legal. An editor that projects every cell into one file writes `open` on the line
+    /// above the body (the fence or an option line) and `close` on the line below it (the
+    /// closing fence, or one past the end of an unterminated block), so no line moves.
+    /// `None` for a `{python}` cell (one kernel, shared state) and for a display fence.
     ///
-    /// Here rather than in the editor because the answer is the render's
-    /// (`render::executes_to_kernel`), and an editor deciding for itself would be a second
-    /// copy of the executable-language set — the drift that puts a Run button above a
-    /// fence nothing can run.
-    pub(crate) executable: bool,
+    /// Here rather than in the editor because which fences run is the render's answer, and
+    /// the parameter list is the runtime's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) wrap: Option<CellWrap>,
+}
+
+/// The text that encloses a cell body in the scope it runs in (see [`CellRegion::wrap`]).
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct CellWrap {
+    pub(crate) open: String,
+    pub(crate) close: String,
 }
 
 /// Every fenced code block in `text` that names a language.
@@ -58,14 +68,22 @@ pub(crate) fn cell_regions(text: &str) -> Vec<CellRegion> {
             while start < end && taliesin_core::render::option_directive(lines[start]).is_some() {
                 start += 1;
             }
-            let executable = class.line(fence.open).depth == 0
+            // A `{js}` cell the render runs: top level, braced, the browser's language.
+            let wrap = (class.line(fence.open).depth == 0
                 && taliesin_core::render::is_executable_fence(&fence.info)
-                && taliesin_core::render::executes_to_kernel(&language);
+                && taliesin_core::render::is_client_lang(&language))
+            .then(|| CellWrap {
+                open: format!(
+                    "(async function ({}) {{",
+                    taliesin_core::render::JS_CELL_PARAMS.join(", ")
+                ),
+                close: "});".to_string(),
+            });
             (end > start).then(|| CellRegion {
                 language,
                 start_line: start,
                 end_line: end - 1,
-                executable,
+                wrap,
             })
         })
         .collect()
@@ -76,28 +94,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_braced_kernel_languages_are_executable() {
-        // The Run button hangs off this flag, so the distinction has to be exact: a
-        // display block, a `{bash}` cell and a RETIRED cell language all look like code
-        // and none of them runs. `{r}` is the retired row, kept here on purpose: it was
-        // executable until 2026-08-08, so it is the case a stale executable-language list
-        // would get wrong.
-        // `{.python}` is the documented display-only spelling (`render::is_executable_fence`).
-        let src = "```{python}\nx=1\n```\n\n```python\nx=1\n```\n\n```{bash}\nls\n```\n\n```{r}\nx<-1\n```\n\n```{.python}\nx=1\n```\n";
+    fn a_js_cell_is_wrapped_in_the_function_the_runtime_compiles_it_into() {
+        // `tali-js.js` compiles each `{js}` cell as its own AsyncFunction over
+        // `JS_CELL_PARAMS`, so a name declared in one cell is out of scope in the next, and
+        // a `return` or `await` at the top of a cell is legal.
+        let params = taliesin_core::render::JS_CELL_PARAMS.join(", ");
+        let got: Vec<(String, Option<CellWrap>)> =
+            cell_regions("```{js}\n//| echo: false\nreturn tali;\n```\n")
+                .into_iter()
+                .map(|r| (r.language, r.wrap))
+                .collect();
+        assert_eq!(
+            got,
+            vec![(
+                "js".to_string(),
+                Some(CellWrap {
+                    open: format!("(async function ({params}) {{"),
+                    close: "});".to_string(),
+                })
+            )]
+        );
+    }
+
+    #[test]
+    fn only_a_js_cell_the_render_runs_is_wrapped() {
+        // A `{python}` cell shares one kernel with the others, so its scope is the
+        // document's. A plain `js` fence, a `{.js}` one and a `{js}` fence in a block quote
+        // are samples the page shows and never runs. A `{js}` cell in a `:::` div runs.
+        let src = "```{python}\nx=1\n```\n\n```js\nx\n```\n\n```{.js}\nx\n```\n\n\
+                   > ```{js}\n> x\n> ```\n\n::: {.callout-note}\n```{js}\nx\n```\n:::\n";
         let got: Vec<(String, bool)> = cell_regions(src)
             .into_iter()
-            .map(|r| (r.language, r.executable))
+            .map(|r| (r.language, r.wrap.is_some()))
             .collect();
         assert_eq!(
             got,
             vec![
-                ("python".to_string(), true),
                 ("python".to_string(), false),
-                ("bash".to_string(), false),
-                ("r".to_string(), false),
-                ("python".to_string(), false),
-            ],
-            "executable must mean `a kernel runs this`, not `this is code`"
+                ("js".to_string(), false),
+                ("js".to_string(), false),
+                ("js".to_string(), false),
+                ("js".to_string(), true),
+            ]
         );
     }
 

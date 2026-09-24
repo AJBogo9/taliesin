@@ -19,6 +19,10 @@
 /// The `<script type>` a `{js}` cell's source rides in, and the type `tali-js.js` runs.
 pub const JS_CELL_MIME: &str = "application/tali-js";
 
+/// The parameters a `{js}` cell body receives, in order: `tali-js.js` compiles each cell as
+/// its own `AsyncFunction` over these names and the source.
+pub const JS_CELL_PARAMS: &[&str] = &["tali", "Plot", "d3", "container", "invalidation"];
+
 /// The `{js}` cell wrapper `<div>`'s class (after the shared `cell`).
 pub(super) const JS_CELL_CLASS: &str = "tali-js-cell";
 

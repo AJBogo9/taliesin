@@ -4,6 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/node";
+import { CellRegion, LANGUAGE_IDS, project } from "./projection";
 import { remapDefinitions } from "./shadowlinks";
 
 // Completion, hover, signature help and go-to-definition inside a code cell, answered by
@@ -44,37 +45,19 @@ import { remapDefinitions } from "./shadowlinks";
 // forwarded TypeScript hover can still open the shadow if clicked. Auto-import edits are
 // dropped (see `embeddedCompletions`).
 //
-// KNOWN LIMITATIONS: every `{js}` cell runs as its own AsyncFunction (tali-js.js), but the
-// shadow joins them into one script. A name declared in ANOTHER `{js}` cell therefore
-// resolves here although it is out of scope at run time, and a name declared in several
-// resolves to all of them. The shadow also keeps plain display fences (```python, ```js),
-// which never run, so a definition can land on a display sample.
-
-interface CellRegion {
-  language: string;
-  startLine: number;
-  endLine: number;
-}
+// Each `{js}` cell runs as its own AsyncFunction (tali-js.js), so the shadow wraps each one in
+// that function (`projection.ts`, from the server's `wrap`): a name declared in another `{js}`
+// cell is out of scope, as it is at run time, and F12 on a name declared in several cells
+// lands on the declaration in the cell it was asked from.
+//
+// KNOWN LIMITATIONS: the shadow also keeps plain display fences (```python, ```js), which never
+// run and are projected unwrapped, so a definition can land on a display sample. A `{js}` cell
+// whose fence is the document's first line and that has no `//|` option line (its body starts
+// on line 1) stays unwrapped too, because line 0 holds the comment that keeps the shadow out of
+// the Problems panel, so its names resolve in the cells below it.
 
 /** The custom request the server answers. Must match `lsp::CELL_REGIONS_METHOD`. */
 const CELL_REGIONS = "taliesin/cellRegions";
-
-// A cell language as the DOCUMENT spells it -> the language id VS Code registers providers
-// under. The server deliberately does not know these: `javascript` is VS Code's name for
-// what a `.tmd` calls `js`, and the same server also answers Neovim and Helix.
-const LANGUAGE_IDS: Record<string, string> = {
-  python: "python",
-  py: "python",
-  js: "javascript",
-  javascript: "javascript",
-  ts: "typescript",
-  typescript: "typescript",
-  julia: "julia",
-  sql: "sql",
-  bash: "shellscript",
-  sh: "shellscript",
-  shell: "shellscript",
-};
 
 /**
  * Shadow documents, keyed by `<parent uri>::<language id>`. A promise, and each refresh
@@ -87,54 +70,6 @@ const shadows = new Map<string, Promise<vscode.TextDocument>>();
 function shadowKey(parent: vscode.Uri, languageId: string): string {
   return `${parent.toString()}::${languageId}`;
 }
-
-/**
- * The parent document reprojected so that only the lines belonging to `languageId` cells
- * survive; every other line becomes empty.
- *
- * Blanking rather than slicing is what makes positions map 1:1 — a completion at line 6 of
- * the `.tmd` is a completion at line 6 of the shadow, with no offset arithmetic to get wrong.
- * Keeping EVERY cell of that language (not just the one under the cursor) is what makes
- * `import os` in the first cell visible to `os.` in the third, which matches how Taliesin
- * runs `{python}`: one warm kernel, shared state. `{js}` does not (the KNOWN LIMITATION above).
- */
-function project(
-  parent: vscode.TextDocument,
-  regions: CellRegion[],
-  languageId: string
-): string {
-  const keep = new Set<number>();
-  for (const r of regions) {
-    if (LANGUAGE_IDS[r.language.toLowerCase()] !== languageId) continue;
-    for (let l = r.startLine; l <= r.endLine && l < parent.lineCount; l++) keep.add(l);
-  }
-  const lines: string[] = [];
-  for (let l = 0; l < parent.lineCount; l++) {
-    lines.push(keep.has(l) ? parent.lineAt(l).text : "");
-  }
-  // Line 0 is never inside a cell (a cell's region starts after its opening fence), so it is
-  // free for a comment that silences the shadow's own diagnostics without moving anything.
-  if (lines[0] === "") lines[0] = QUIET_HEADER[languageId] ?? "";
-  // Every JS shadow sits in one directory as a loose script, and TypeScript puts loose scripts
-  // in one global scope, so a name declared in one `.tmd`'s `{js}` cell resolved in another's
-  // (measured: hover in b.tmd typed a const declared only in a.tmd). A line appended AFTER the
-  // last one moves nothing, and `export {}` makes the file a module, whose names stay its own.
-  if (languageId === "javascript" || languageId === "typescript") lines.push("export {};");
-  return lines.join("\n");
-}
-
-/**
- * A shadow's diagnostics are about text the author never wrote (the blanked lines around the
- * cells), so none may reach the Problems panel. By default neither server reports on a document
- * that is not in a tab, but Pylance's `diagnosticMode: "workspace"` and TypeScript's project
- * diagnostics with `checkJs` do (measured: 2 Warnings, and 2 `2451` Errors). The first line of
- * the file silences them. A syntax error in a `{js}` cell still reaches TypeScript's list.
- */
-const QUIET_HEADER: Record<string, string> = {
-  python: "# type: ignore",
-  javascript: "// @ts-nocheck",
-  typescript: "// @ts-nocheck",
-};
 
 /**
  * The shadow directory: a fresh private one per extension host, made by `mkdtemp` under the OS
@@ -256,7 +191,8 @@ async function inShadow(
   if (!region) return undefined;
   const languageId = LANGUAGE_IDS[region.language.toLowerCase()];
   if (!languageId) return undefined;
-  return shadowFor(document, languageId, project(document, regions, languageId));
+  const lines = Array.from({ length: document.lineCount }, (_, l) => document.lineAt(l).text);
+  return shadowFor(document, languageId, project(lines, regions, languageId));
 }
 
 /**

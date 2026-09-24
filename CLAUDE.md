@@ -159,8 +159,10 @@ editor/vscode/   the VS Code companion: NO language features (`src/client.ts` is
                  the preview webview + source sync, editor commands, and `src/embedded.ts`
                  (completion, hover, signature help and go-to-definition inside a cell,
                  routed to that language's own provider; cells located by
-                 `taliesin/cellRegions`, never a fence scan in TS; `src/shadowlinks.ts`
-                 moves a definition out of the hidden shadow back onto the `.tmd`).
+                 `taliesin/cellRegions`, never a fence scan in TS; the vscode-free
+                 `src/projection.ts` builds the hidden shadow, each `{js}` cell wrapped in
+                 the function the server's `wrap` names, and `src/shadowlinks.ts` moves a
+                 definition out of it back onto the `.tmd`).
                  **Add an editor feature in Rust, not here.**
 web-client/      browser scripts: client.js is the preview client (never ships in a
                  build); search.js (Cmd-K) and toc-spy.js ship in built pages too
