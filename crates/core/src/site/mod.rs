@@ -582,7 +582,7 @@ impl Site {
     /// to their `.html` targets. Returns `None` if the page isn't part of the site.
     pub fn render_page(&self, rel_or_url: &str) -> Option<String> {
         let page = self.page(rel_or_url)?;
-        let src = std::fs::read_to_string(&page.input).ok()?;
+        let src = crate::includes::read_source(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
         // A numbered book chapter scopes its theorems to its chapter number
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
@@ -733,7 +733,7 @@ impl Site {
     /// the element ids it defines, whether it runs cells, and its outgoing local links.
     /// One render, not three passes, so the ids and the links cannot disagree.
     fn page_link_facts(&self, page: &Page) -> Option<PageLinkFacts> {
-        let src = std::fs::read_to_string(&page.input).ok()?;
+        let src = crate::includes::read_source(&page.input).ok()?;
         self.page_link_facts_from_src(page, &src)
     }
 
@@ -1137,7 +1137,7 @@ impl Site {
         // rule below is "first definition wins", so completion order would let the winner
         // depend on which page rendered fastest. See `fanout::map_ordered`.
         let per_page = fanout::map_ordered(&self.pages, |page| {
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
+            let Ok(src) = crate::includes::read_source(&page.input) else {
                 return Vec::new();
             };
             let base = page.input.parent().unwrap_or(&self.root);
@@ -2113,6 +2113,52 @@ pub(crate) mod tests {
             "a `draft: yes` page must warn to use `true`: {warnings:?}"
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A file whose lines end in a lone CR (a classic-Mac tool, pasted terminal output) is
+    /// one line to `str::lines`, while comrak and the render path split it. Discovery read
+    /// such a file raw, found no front matter, and PUBLISHED a `draft: true` page, listed it
+    /// and indexed its body. Every raw `.tmd` reader now goes through
+    /// `includes::read_source`, which normalizes line endings the way the render path does.
+    #[test]
+    fn a_lone_cr_file_is_read_like_any_other() {
+        let root = write_site(
+            "lonecr",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHome.\n"),
+                (
+                    "posts/d.tmd",
+                    "---\rtitle: Draft\rdraft: true\r---\r\rSecret draft body.\r",
+                ),
+                ("posts/p.tmd", "---\rtitle: Kept\r---\r\rPublished.\r"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            !site.pages.iter().any(|p| p.rel == "posts/d.tmd"),
+            "a lone-CR `draft: true` is a draft: {:?}",
+            site.pages.iter().map(|p| &p.rel).collect::<Vec<_>>()
+        );
+        let kept = site.pages.iter().find(|p| p.rel == "posts/p.tmd").unwrap();
+        assert_eq!(kept.title.as_deref(), Some("Kept"));
+        let _ = std::fs::remove_dir_all(&root);
+
+        // A book chapter's title fallback reads the file too.
+        let root = write_site(
+            "lonecrbook",
+            &[
+                ("_site.yml", "title: B\nchapters:\n  - one.tmd\n"),
+                (
+                    "one.tmd",
+                    "---\rdescription: x\r---\r\r# The first chapter\r\rText.\r",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let chapters = site.book.as_ref().unwrap().chapters();
+        assert_eq!(chapters[0].title, "The first chapter");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

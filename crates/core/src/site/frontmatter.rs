@@ -31,7 +31,7 @@ pub(crate) fn parse_front_matter(
     label: &str,
     warnings: &mut Vec<String>,
 ) -> FrontInfo {
-    let Ok(src) = std::fs::read_to_string(path) else {
+    let Ok(src) = crate::includes::read_source(path) else {
         return FrontInfo::default();
     };
     let Some(block) = crate::frontmatter::front_matter_block(&src) else {

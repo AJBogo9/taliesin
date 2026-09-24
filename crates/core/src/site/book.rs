@@ -178,7 +178,7 @@ fn push_chapter(
 ) {
     let input = root.join(file);
     let rel = file.to_string();
-    let src = std::fs::read_to_string(&input).unwrap_or_default();
+    let src = crate::includes::read_source(&input).unwrap_or_default();
     let (h1, unnumbered) = chapter_heading_in(&src);
     // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
     // warnings: `book_pages` re-parses this file with the real sink, so a
@@ -221,7 +221,7 @@ fn push_chapter(
 /// unnumbered (`{.unnumbered}` / `{-}`). Used for a book chapter's title fallback and,
 /// via the `.0`, for a titleless website page's title ([`discovery::website_pages`]).
 pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
-    let Ok(src) = std::fs::read_to_string(input) else {
+    let Ok(src) = crate::includes::read_source(input) else {
         return (None, false);
     };
     chapter_heading_in(&src)
