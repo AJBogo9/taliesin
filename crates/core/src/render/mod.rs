@@ -3138,7 +3138,21 @@ impl DivAttrs {
 ///
 /// `pub` because the server's build-time HTML scanners need the same answer and a second
 /// hand-rolled quote-aware scan is how the two would drift.
+///
+/// A comment (`<!-- … -->`) is one token and ends at its `-->` (or at once, for the
+/// abrupt `<!-->` and `<!--->`): its text is not attributes, so an apostrophe in it
+/// (`don't`) opens no quote and a `>` in it (`->`) ends nothing. Read as a tag, a comment
+/// with one apostrophe swallowed the rest of the page for every reader that skips tags.
 pub fn tag_end(html: &str) -> Option<usize> {
+    if let Some(body) = html.strip_prefix("<!--") {
+        if body.starts_with('>') {
+            return Some(4);
+        }
+        if body.starts_with("->") {
+            return Some(5);
+        }
+        return body.find("-->").map(|n| 4 + n + 2);
+    }
     let mut quote: Option<u8> = None;
     for (i, &b) in html.as_bytes().iter().enumerate() {
         match quote {
@@ -3563,95 +3577,71 @@ enum Separate {
 fn strip_tags_inner(html: &str, separate: Separate) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
-    let mut chars = html.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '<' {
-            // Consume the tag body up to the closing `>` (quote-aware: a `>` inside a
-            // quoted attribute value does not end the tag).
-            let mut tag = String::new();
-            let mut quote: Option<char> = None;
-            for c in chars.by_ref() {
-                match quote {
-                    Some(q) => {
-                        if c == q {
-                            quote = None;
-                        }
-                        tag.push(c);
-                    }
-                    None => match c {
-                        '"' | '\'' => {
-                            quote = Some(c);
-                            tag.push(c);
-                        }
-                        '>' => break,
-                        _ => tag.push(c),
-                    },
-                }
-            }
-            // Enter/exit the KaTeX `<math>` MathML subtree (depth-tracked for safety).
-            let body = tag.trim_start();
-            let is_close = body.starts_with('/');
-            let name: String = body
-                .trim_start_matches('/')
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .flat_map(|c| c.to_lowercase())
-                .collect();
-            // Decided from the tag NAME, so it has to follow the parse above rather than
-            // precede it. Nothing else is pushed in between, so the space still lands
-            // exactly where the tag was.
-            let boundary = match separate {
-                Separate::Never => false,
-                Separate::EveryTag => true,
-            };
-            // Never double a boundary that is already there. `</span> <span>` carries a
-            // real space of its own, and pushing a second one publishes "models.  14 April".
-            if boundary && !out.ends_with(char::is_whitespace) {
-                out.push(' ');
-            }
-            if name == "math" {
-                if is_close {
-                    skip_math = skip_math.saturating_sub(1);
-                } else if !tag.trim_end().ends_with('/') {
-                    skip_math += 1;
-                }
-            } else if !is_close
-                && RAW_TEXT_ELEMENTS.contains(&name.as_str())
-                && !tag.trim_end().ends_with('/')
-            {
-                // A `<script>`/`<style>` body is not visible text — same reason `<math>`
-                // is dropped above. A `{js}`/`{glsl}` cell ships its author source in a
-                // `<script type="…">` in the page BODY, and that source was reaching the
-                // Cmd-K index, so a query for a variable name returned a snippet appearing
-                // nowhere on the page (measured live on gallery.taliesin.sh).
-                //
-                // Consumed to the matching close by NAME rather than by the depth counter
-                // math uses: a raw-text body is CDATA, so a `"<style>"` inside a JS string
-                // is text, and a counter would take it for an open tag and silently drop
-                // the whole rest of the page from the index. This is the HTML raw-text
-                // rule, which is also why `emit_client_cell` escapes `</script` in the
-                // source it ships — the close below is unambiguous.
-                let close = format!("</{name}");
-                let mut window = String::new();
-                while let Some(c) = chars.next() {
-                    window.push(c.to_ascii_lowercase());
-                    while window.len() > close.len() {
-                        window.remove(0);
-                    }
-                    if window == close {
-                        // Swallow the rest of the close tag (`>` or ` foo>`).
-                        for c in chars.by_ref() {
-                            if c == '>' {
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        } else if skip_math == 0 {
-            out.push(ch);
+    let mut i = 0;
+    while let Some(rel) = html[i..].find('<') {
+        let lt = i + rel;
+        if skip_math == 0 {
+            out.push_str(&html[i..lt]);
         }
+        // The tag body up to the `>` that closes it, through [`tag_end`]: quote-aware (a
+        // `>` inside a quoted attribute value does not end the tag), and a comment is one
+        // token, so its apostrophes and `>`s are neither quotes nor ends. Unterminated, it
+        // runs to the end of the input, as it always did.
+        let gt = tag_end(&html[lt..]).map_or(html.len(), |n| lt + n);
+        let tag = &html[lt + 1..gt.max(lt + 1)];
+        i = (gt + 1).min(html.len());
+        // Enter/exit the KaTeX `<math>` MathML subtree (depth-tracked for safety).
+        let body = tag.trim_start();
+        let is_close = body.starts_with('/');
+        let name: String = body
+            .trim_start_matches('/')
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+        // Decided from the tag NAME, so it has to follow the parse above rather than
+        // precede it. Nothing else is pushed in between, so the space still lands
+        // exactly where the tag was.
+        let boundary = match separate {
+            Separate::Never => false,
+            Separate::EveryTag => true,
+        };
+        // Never double a boundary that is already there. `</span> <span>` carries a
+        // real space of its own, and pushing a second one publishes "models.  14 April".
+        if boundary && !out.ends_with(char::is_whitespace) {
+            out.push(' ');
+        }
+        if name == "math" {
+            if is_close {
+                skip_math = skip_math.saturating_sub(1);
+            } else if !tag.trim_end().ends_with('/') {
+                skip_math += 1;
+            }
+        } else if !is_close
+            && RAW_TEXT_ELEMENTS.contains(&name.as_str())
+            && !tag.trim_end().ends_with('/')
+        {
+            // A `<script>`/`<style>` body is not visible text — same reason `<math>`
+            // is dropped above. A `{js}`/`{glsl}` cell ships its author source in a
+            // `<script type="…">` in the page BODY, and that source was reaching the
+            // Cmd-K index, so a query for a variable name returned a snippet appearing
+            // nowhere on the page (measured live on gallery.taliesin.sh).
+            //
+            // Skipped to the matching close by NAME rather than by the depth counter
+            // math uses: a raw-text body is CDATA, so a `"<style>"` inside a JS string
+            // is text, and a counter would take it for an open tag and silently drop
+            // the whole rest of the page from the index. This is the HTML raw-text
+            // rule ([`raw_text_end`], the walker's), which is also why
+            // `emit_client_cell` escapes `</script` in the source it ships.
+            let close = raw_text_end(html, i, &name);
+            // Swallow the close tag too (`>` or ` foo>`).
+            i = html[close..]
+                .find('>')
+                .map_or(html.len(), |n| close + n + 1);
+        }
+    }
+    if skip_math == 0 {
+        out.push_str(&html[i..]);
     }
     out.trim().to_string()
 }

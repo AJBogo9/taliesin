@@ -7602,6 +7602,41 @@ fn the_attribute_value_reader_matches_names_and_skips_text() {
     );
 }
 
+/// An HTML comment is one token whatever it holds. `tag_end` read `<!--` as a tag and its
+/// text as attribute values, so an apostrophe (`don't`) opened a "quote" that ran to the
+/// next one on the page and a `>` (`->`) ended it early. Every reader built on it drifted:
+/// the search text dropped the prose after `<!-- don't forget -->` for the rest of its
+/// section and published a comment's tail after its `>`, and the citation walk treated the
+/// rest of a paragraph as the inside of a tag, so a `[@key]` after the comment stayed raw.
+#[test]
+fn an_html_comment_is_one_token_whatever_it_contains() {
+    let html = "<!-- don't > forget -->after";
+    assert_eq!(tag_end(html), Some(html.find("-->").unwrap() + 2));
+    assert_eq!(tag_end("<!-->x"), Some(4), "an abruptly closed comment");
+    assert_eq!(
+        indexable_text("<p>One</p><!-- don't forget -> x --><p>After it</p>"),
+        "One After it"
+    );
+    assert_eq!(strip_tags("<h2>A<!-- it's -->B</h2>"), "AB");
+
+    let dir = source_map_tmpdir("comment-cite");
+    std::fs::write(
+        dir.join("refs.bib"),
+        "@article{key, author = {A. Person}, title = {T}, journal = {J}, year = {2020}}\n",
+    )
+    .unwrap();
+    let doc = crate::render_document_with_includes(
+        "---\nbibliography: refs.bib\n---\n\nBefore <!-- don't --> after [@key].\n",
+        &dir,
+    );
+    let para = &doc.blocks[0].html;
+    assert!(
+        attr_values(para, "href").any(|h| h == "#ref-key"),
+        "the citation after the comment was rendered: {para}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A tag the author never closed, and a raw-text element the author never closed, each end
 /// the walk instead of wedging it or reading the rest of the document as attributes.
 #[test]
