@@ -5788,6 +5788,28 @@ fn the_palettes_fuzzy_tier_forgives_a_transposition() {
     );
 }
 
+/// A heading inside a `:::` div is a section (a book numbers it), so the TOC lists it too.
+/// The TOC read each block's LEADING tag only, and a div is one block whose html holds its
+/// headings, so a `## Inside` wrapped in `.column-page` was missing from a website page's
+/// TOC (audit 2026-09-24, WP13 leftover). The candidates are the headings the render's walk
+/// emitted as blocks, which carry a `data-block-id`: a quoted heading and a callout's title
+/// are not among them.
+#[test]
+fn the_toc_lists_a_heading_inside_a_div_in_document_order() {
+    let doc = render_document(
+        "## One\n\n::: {.column-page}\n## Inside **bold**\n\nText.\n:::\n\n> ## Quoted\n\n\
+         ::: {.callout-note}\n## Title\n\nBody.\n:::\n\n## Two\n",
+    );
+    let toc = toc_html(&doc.blocks);
+    let hrefs: Vec<String> = attr_values(&toc, "href").map(|v| v.into_owned()).collect();
+    assert_eq!(hrefs, ["#one", "#inside-bold", "#two"], "{toc}");
+    assert!(
+        toc.contains(">Inside bold</a>"),
+        "the heading's own text: {toc}"
+    );
+    assert_eq!(toc_entry_count(&doc.blocks), 3);
+}
+
 #[test]
 fn toc_filter_is_relative_to_the_shallowest_heading() {
     // A titleless document whose sections start at <h2> (shallowest level = 2): the TOC

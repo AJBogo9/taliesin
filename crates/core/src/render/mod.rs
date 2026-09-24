@@ -3054,15 +3054,27 @@ fn parse_table_caption(p_html: &str) -> Option<(String, Option<String>)> {
 /// of the shallowest heading present (`level - base <= 2`). `toc_entry_count` and
 /// `toc_html` share this so their filters cannot drift, and so a title-demoted page
 /// (whose sections start at `<h2>`) still surfaces three levels instead of two.
+///
+/// The candidates are the headings the render's walk emitted as blocks, which carry a
+/// `data-block-id`: a block that is one, and one folded into a `:::` div, which a book
+/// numbers as a section too. A heading in a quote or list item, a callout's title and a
+/// heading in cell output are none of them.
 fn toc_items(blocks: &[Block]) -> Vec<(u8, String, String)> {
     let all: Vec<(u8, String, String)> = blocks
         .iter()
-        .filter_map(|b| {
-            Some((
-                block_heading_level(&b.html)?,
-                extract_attr(&b.html, "id")?,
-                strip_tags(&b.html),
-            ))
+        .flat_map(|b| {
+            let html = b.html.as_str();
+            tags(html).filter_map(move |t| {
+                let level = block_heading_level(t.text)?;
+                attr_value(&t, "data-block-id")?;
+                let id = attr_value(&t, "id")?.into_owned();
+                // Headings do not nest, so the first close of this level ends this one.
+                let close = format!("</h{level}>");
+                let end = html[t.at..]
+                    .find(&close)
+                    .map_or(html.len(), |e| t.at + e + close.len());
+                Some((level, id, strip_tags(&html[t.at..end])))
+            })
         })
         .collect();
     let Some(base) = all.iter().map(|(l, _, _)| *l).min() else {

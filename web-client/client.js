@@ -673,23 +673,19 @@
   const tocEl = window.TALIESIN_TOC === true ? document.getElementById("TOC") : null;
   const buildToc = () => {
     if (!tocEl) return;
-    // Match the build's `render::toc_items` exactly: every ANCHORED TOP-LEVEL heading,
-    // then a window of two levels below the shallowest one present. Selecting `h1,h2,h3`
-    // by tag instead dropped the third level from any page whose sections start below
-    // `<h1>` — a title-block page (sections at h2) listed h2/h3 in the preview and h2/h3/h4
-    // in the build, so the author was tuning navigation against a TOC no reader ever sees.
+    // Match the build's `render::toc_items` exactly: every ANCHORED section heading, then
+    // a window of two levels below the shallowest one present. Selecting `h1,h2,h3` by tag
+    // instead dropped the third level from any page whose sections start below `<h1>`: a
+    // title-block page (sections at h2) listed h2/h3 in the preview and h2/h3/h4 in the
+    // build, so the author was tuning navigation against a TOC no reader ever sees.
     //
-    // TOP-LEVEL is the other half of that same agreement, and `querySelectorAll` gets it
-    // wrong by default: `toc_items` iterates the block list, so a heading folded into a
-    // `:::` container block (which is ONE block whose html happens to contain headings) is
-    // not in it, while a descendant search finds it. Measured: a `## Inside a width escape`
-    // in a `.column-page` listed 4 entries in the preview against the build's 3. Top-level
-    // blocks are exactly `root`'s element children (`<main id="tali-root">{blocks}</main>`,
-    // and every op appends/replaces at that level), so the children are the block list.
-    // Callout divs never showed it — a callout consumes its headings into its title and
-    // they never get an id.
+    // A section heading is one the render emitted as a block, which carries a
+    // `data-block-id`: a top-level heading, or one folded into a `:::` container (a book
+    // numbers it as a section, so the TOC lists it too). A heading in a quote or list item,
+    // in cell output, or taken for a callout's title carries none, so `querySelectorAll`
+    // on that attribute is the build's candidate set, in document order.
     const lvl = (/** @type {Element} */ h) => +h.tagName[1];
-    const anchored = [...root.children].filter(
+    const anchored = [...root.querySelectorAll("[data-block-id]")].filter(
       (h) => /^H[1-6]$/.test(h.tagName) && h.id,
     );
     tocEl.textContent = "";
