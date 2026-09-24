@@ -1791,20 +1791,24 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
     }
 }
 
-/// Walk a raw `.tmd` source's *content* lines: those comrak reads as markdown, so not the
-/// front matter, not code (fenced or indented) and not raw HTML (a comment, `<pre>`,
-/// `<script>`). Each yielded line is already `trim_start`ed, paired with its 1-based source
-/// line number so a scan can point a diagnostic at exactly where an anchor lives. The
-/// skeleton of the raw-source anchor scan, [`xref::scan_page_anchors`], so a `{#sec-x}`
-/// inside front matter, a code sample or a heading the author commented out is never taken
-/// for an anchor. It does NOT resolve `{{< include >}}`: the caller does, so an anchor in a
+/// Walk a raw `.tmd` source's *content* lines: those comrak reads as top-level markdown, so
+/// not the front matter, not code (fenced or indented), not raw HTML (a comment, `<pre>`,
+/// `<script>`) and nothing inside a block quote, list item or footnote, where the render
+/// gives no `{#…}` an id. Each yielded line is already `trim_start`ed, paired with its
+/// 1-based source line number so a scan can point a diagnostic at exactly where an anchor
+/// lives. The skeleton of the raw-source anchor scan, [`xref::scan_page_anchors`], so a
+/// `{#sec-x}` inside front matter, a code sample, a quote or a heading the author commented
+/// out is never taken for an anchor. It does NOT resolve `{{< include >}}`: the caller does, so an anchor in a
 /// partial belongs to its page. Lines are split as comrak splits them, so a raw file with a
 /// lone `\r` still lines up with its classification.
 pub(super) fn content_lines_numbered(src: &str) -> impl Iterator<Item = (usize, &str)> {
     let lines = crate::render::rendered_lines(src);
     crate::lines::split(src)
         .enumerate()
-        .filter(move |(i, _)| lines.line(*i).kind.is_markdown())
+        .filter(move |(i, _)| {
+            let line = lines.line(*i);
+            line.kind.is_markdown() && line.depth == 0
+        })
         .map(|(i, line)| (i + 1, line.trim_start()))
 }
 
