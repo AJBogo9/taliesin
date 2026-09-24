@@ -20,9 +20,7 @@ pub(super) fn website_pages(
     let mut pages: Vec<Page> = inputs
         .into_iter()
         .filter_map(|input| {
-            let rel = rel_str(root, &input);
-            let url = tmd_to_html(&rel);
-            let fm = parse_front_matter(&input, &rel, warnings);
+            let page = website_page(root, input, warnings);
             // `draft: true`: dropped from the published set (Exclude) — recorded so the
             // build can report it — or kept and tagged for the preview view (Include).
             // (Listings + prev/next nav derive from `self.pages`, so an Include draft
@@ -39,34 +37,44 @@ pub(super) fn website_pages(
             // omission was *silent*; `check` now names the held-back drafts (`scope_note`
             // in `check.rs`), the way `build` always has. Do not "fix" this by linting
             // drafts here — that reverses the ruling and re-opens the noise it avoids.
-            if fm.draft && mode == DraftMode::Exclude {
-                excluded.push(rel);
+            if page.draft && mode == DraftMode::Exclude {
+                excluded.push(page.rel);
                 return None;
             }
-            let card_image = card_image(&rel, fm.image);
-            // A page with no front-matter `title:` takes its leading `# H1` (as a book
-            // chapter does), so <title>, og:title, listing cards, nav, and search — all of
-            // which read `Page.title` — agree instead of falling back to the site name /
-            // rel-path. Front matter still wins when present.
-            let title = fm.title.or_else(|| chapter_heading(&input).0);
-            Some(Page {
-                input,
-                rel,
-                url,
-                title,
-                date: fm.date,
-                description: fm.description,
-                card_image,
-                card_image_alt: fm.image_alt,
-                categories: fm.categories,
-                listings: fm.listings,
-                hero: fm.hero,
-                draft: fm.draft,
-            })
+            Some(page)
         })
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
+}
+
+/// The website [`Page`] for one `input` under `root`, from its front matter: what
+/// [`website_pages`] makes of each file it walks, and what a single-document discovery
+/// makes of the one file it was handed, without walking anything else.
+pub(super) fn website_page(root: &Path, input: PathBuf, warnings: &mut Vec<Warning>) -> Page {
+    let rel = rel_str(root, &input);
+    let url = tmd_to_html(&rel);
+    let fm = parse_front_matter(&input, &rel, warnings);
+    let card_image = card_image(&rel, fm.image);
+    // A page with no front-matter `title:` takes its leading `# H1` (as a book
+    // chapter does), so <title>, og:title, listing cards, nav, and search — all of
+    // which read `Page.title` — agree instead of falling back to the site name /
+    // rel-path. Front matter still wins when present.
+    let title = fm.title.or_else(|| chapter_heading(&input).0);
+    Page {
+        input,
+        rel,
+        url,
+        title,
+        date: fm.date,
+        description: fm.description,
+        card_image,
+        card_image_alt: fm.image_alt,
+        categories: fm.categories,
+        listings: fm.listings,
+        hero: fm.hero,
+        draft: fm.draft,
+    }
 }
 
 /// A page's front-matter `image:`, stored site-root-relative so a listing card on another

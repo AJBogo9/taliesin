@@ -149,7 +149,7 @@ impl Project {
     /// Re-discover this project the same way it was discovered, scope included.
     fn rediscover(&self) -> Site {
         match &self.scope {
-            Some(file) => Site::discover_single(file),
+            Some(file) => Site::discover_document(file),
             None => Site::discover_with(&self.dir, taliesin_core::DraftMode::Include),
         }
     }
@@ -398,15 +398,15 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
             // A missing document gets the one "cannot read" message every front door prints,
             // with its did-you-mean for a near-miss sibling (`build` answers the same typo
             // the same way).
-            let file = match file.canonicalize() {
-                Ok(file) => file,
-                Err(e) => {
-                    return Err(std::io::Error::new(
-                        e.kind(),
-                        crate::lint::cannot_read(&typed, &e),
-                    ));
-                }
-            };
+            if let Err(e) = file.canonicalize() {
+                return Err(std::io::Error::new(
+                    e.kind(),
+                    crate::lint::cannot_read(&typed, &e),
+                ));
+            }
+            // Named by its canonical FOLDER, not resolved through a symlink: a linked page
+            // belongs to the project its link sits in, where the site build publishes it.
+            let file = taliesin_core::site::document_path(&file);
             if !file.is_file() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -423,17 +423,16 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
                     crate::serve::not_a_source_error(&typed, "preview"),
                 ));
             }
-            match taliesin_core::site::enclosing_site_root(&file) {
+            let dir = file
+                .parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf();
+            match taliesin_core::site::enclosing_site_root(&dir) {
                 // In a project: serve the project, open at this page.
                 Some(root) => (root, Some(file)),
                 // Not in a project: a project of exactly this document, rooted at its
                 // directory so relative images/includes/assets resolve as they always did.
-                None => (
-                    file.parent()
-                        .unwrap_or(std::path::Path::new("."))
-                        .to_path_buf(),
-                    Some(file),
-                ),
+                None => (dir, Some(file)),
             }
         }
     };
@@ -458,10 +457,14 @@ fn resolve_target(target: Target) -> std::io::Result<Resolved> {
     // this routing exists to prevent.
     let scoped = scope
         .as_deref()
-        .filter(|f| taliesin_core::site::enclosing_site_root(f).is_none())
+        .filter(|f| {
+            f.parent()
+                .and_then(taliesin_core::site::enclosing_site_root)
+                .is_none()
+        })
         .map(|f| f.to_path_buf());
     let site = match &scoped {
-        Some(file) => Site::discover_single(file),
+        Some(file) => Site::discover_document(file),
         None => Site::discover_with(&root, taliesin_core::DraftMode::Include),
     };
     Ok(Resolved {
@@ -527,7 +530,9 @@ struct Resolved {
 /// The URL a scoped document lives at. Used both to open the browser at it and to answer
 /// the project root with it.
 fn focus_url(site: &Site, file: &std::path::Path) -> Option<String> {
-    let same = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf()) == file;
+    let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let file = canon(file);
+    let same = |p: &std::path::Path| canon(p) == file;
     site.pages
         .iter()
         .find(|p| same(&p.input))
@@ -3742,6 +3747,42 @@ mod session_key_tests {
         assert_eq!(listed.unpublished_doc_warning(), None);
         let whole = resolve_target(Target::at(dir.clone())).unwrap();
         assert_eq!(whole.unpublished_doc_warning(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A symlinked page belongs to the project its link sits in, for every verb: the site
+    /// build publishes it there, so the preview opens it there. The preview resolved the
+    /// link to its target first and served the target's folder as a project of one
+    /// document, with no nav, while the page's own URL answered 404 (audit 2026-09-24,
+    /// config-seam #14).
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_page_is_previewed_in_the_project_of_its_link() {
+        let dir = tmp("symlinked");
+        std::fs::create_dir_all(dir.join("site/posts")).unwrap();
+        std::fs::create_dir_all(dir.join("shared")).unwrap();
+        std::fs::write(dir.join(".git"), "").unwrap();
+        std::fs::write(dir.join("site/_site.yml"), "title: S\n").unwrap();
+        std::fs::write(dir.join("site/index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        std::fs::write(
+            dir.join("shared/real.tmd"),
+            "---\ntitle: Real\n---\n\nBody.\n",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink("../../shared/real.tmd", dir.join("site/posts/link.tmd"))
+            .unwrap();
+
+        let served = resolve_target(Target::at(dir.join("site/posts/link.tmd"))).unwrap();
+        assert_eq!(
+            served.root,
+            dir.join("site"),
+            "served as a page of its project"
+        );
+        assert_eq!(
+            focus_url(&served.site, served.doc.as_deref().unwrap()).as_deref(),
+            Some("posts/link.html"),
+            "and opened at the URL the build publishes it at"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

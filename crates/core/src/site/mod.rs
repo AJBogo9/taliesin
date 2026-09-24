@@ -203,7 +203,7 @@ mod discovery;
 // private `use` is still visible to a descendant module), so the project-wide anchor
 // scan walks exactly the page set discovery does.
 pub use discovery::collect_pages;
-use discovery::website_pages;
+use discovery::{website_page, website_pages};
 /// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
 /// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
 const MIN_TOC_HEADINGS: usize = 3;
@@ -222,6 +222,24 @@ use links::{
     join_rel, join_rel_in_root, manual_local_links, resolve_href, root_absolute_urls,
     sourcepos_start_line, tmd_to_html,
 };
+
+/// A document's path as every verb names it: its folder canonicalized, its own name kept. A
+/// symlinked page keeps the name its link has in the project, which is the page the site
+/// walker discovers; canonicalizing the whole path resolved the link and put the page in
+/// whatever folder its target happens to sit in (see [`Site::discover_document`]).
+pub fn document_path(file: &Path) -> PathBuf {
+    let dir = file
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let dir = dir
+        .canonicalize()
+        .unwrap_or_else(|_| crate::includes::absolutize(dir));
+    match file.file_name() {
+        Some(name) => dir.join(name),
+        None => dir,
+    }
+}
 
 /// Walk up from `start` (a directory) for an enclosing `_site.yml`, stopping at a `.git`
 /// boundary or the filesystem root, so a tool handed ONE file can still find the project it
@@ -328,6 +346,23 @@ impl Site {
         Self::discover_scoped(root, DraftMode::Include, Some(file))
     }
 
+    /// The project a document named on its own belongs to, scoped to that one document:
+    /// THE discovery every verb that is handed a `.tmd` rather than a directory starts from.
+    /// The project is the nearest `_site.yml` above the document's folder; with none, the
+    /// folder is a project of just that document ([`discover_single`](Self::discover_single)).
+    ///
+    /// **The folder is canonicalized, not the file**, which is what the site walker keeps:
+    /// a symlinked page belongs to the project its link sits in, as the site build that
+    /// publishes it there says. Resolving the link first made the preview serve the TARGET's
+    /// folder as a project of one document, with no nav, while the page's own URL answered
+    /// 404 (audit 2026-09-24, config-seam #14).
+    pub fn discover_document(file: &Path) -> Site {
+        let file = document_path(file);
+        let dir = file.parent().unwrap_or_else(|| Path::new("."));
+        let root = enclosing_site_root(dir).unwrap_or_else(|| dir.to_path_buf());
+        Self::discover_scoped(&root, DraftMode::Include, Some(&file))
+    }
+
     /// [`discover_with`](Self::discover_with), optionally narrowed to one document
     /// (see [`discover_single`](Self::discover_single)). The narrowing happens before
     /// cross-references and the search index are computed, so every downstream artifact is
@@ -351,23 +386,40 @@ impl Site {
 
         // A book takes its page set + order from the explicit `chapters:` list;
         // a website discovers every `.tmd` and orders by path.
-        let (mut pages, book) = if config.is_book {
-            let book = build_book(root, &config, drafts, &mut excluded_drafts);
-            let pages = book_pages(root, &book, &mut warnings);
-            (pages, Some(book))
-        } else {
-            (
-                website_pages(root, drafts, &mut warnings, &mut excluded_drafts),
-                None,
-            )
+        //
+        // Scoped to one document, the page set is that document and nothing else is read,
+        // so xrefs and search are built from it rather than filtered after the fact, and no
+        // other page's front matter is parsed to find that out: a loose note beside 4000
+        // others parsed all 4000 and reported each one's problems against it (leads
+        // site/mod.rs:340). A book still parses its chapters (their order numbers this one)
+        // but keeps only this page's diagnostics; a file that is no chapter is a page of its
+        // own, so the one document named is always the one page.
+        let book = config
+            .is_book
+            .then(|| build_book(root, &config, drafts, &mut excluded_drafts));
+        let pages = match (only, &book) {
+            (None, Some(book)) => book_pages(root, book, &mut warnings),
+            (None, None) => website_pages(root, drafts, &mut warnings, &mut excluded_drafts),
+            (Some(only), book) => {
+                let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
+                let same =
+                    |p: &Page| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want;
+                let mut sink = Vec::new();
+                let chapter = book
+                    .as_ref()
+                    .map(|book| book_pages(root, book, &mut sink))
+                    .and_then(|pages| pages.into_iter().find(same));
+                let page = match chapter {
+                    Some(page) => {
+                        let rel = Some(page.rel.as_str());
+                        warnings.extend(sink.into_iter().filter(|w| w.file.as_deref() == rel));
+                        page
+                    }
+                    None => website_page(root, only.to_path_buf(), &mut warnings),
+                };
+                vec![page]
+            }
         };
-
-        // Scoped to one document: drop every other page BEFORE xrefs/search are computed,
-        // so they are built from the one page and not filtered after the fact.
-        if let Some(only) = only {
-            let want = only.canonicalize().unwrap_or_else(|_| only.to_path_buf());
-            pages.retain(|p| p.input.canonicalize().unwrap_or_else(|_| p.input.clone()) == want);
-        }
 
         // A `chapters:` entry naming a file that does not exist: the chapter is silently
         // skipped (its title falls back to the file stem, its body is empty), so a typo
@@ -3764,6 +3816,30 @@ pub(crate) mod tests {
             .find(|l| l.contains("duplicate cross-reference label"))
             .unwrap_or_else(|| panic!("the duplicate is reported: {:?}", site.warnings));
         assert!(dup.starts_with("posts/one/index.tmd:7: "), "{dup}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Previewing or building one loose document reads that document and nothing else: a
+    /// sibling's front matter is not parsed, so a sibling's problem is not reported against
+    /// it (leads site/mod.rs:340, measured at 4000 sibling warnings for one note).
+    #[test]
+    fn a_single_document_project_reads_no_sibling() {
+        let root = write_site(
+            "no-siblings",
+            &[
+                ("note.tmd", "---\ntitle: Note\n---\n\nThe note.\n"),
+                (
+                    "other.tmd",
+                    "---\ntitle: Other\ndraft: maybe\n---\n\nUnrelated.\n",
+                ),
+            ],
+        );
+        let site = Site::discover_single(&root.join("note.tmd"));
+        assert!(
+            site.warnings.iter().all(|w| !loc(w).contains("other.tmd")),
+            "{:?}",
+            site.warnings
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
