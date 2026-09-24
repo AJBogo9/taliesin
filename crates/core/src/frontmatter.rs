@@ -106,6 +106,20 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         }
     }
     validate_date_value(map, block, &mut out);
+    validate_bool_value(
+        map.get("toc"),
+        "toc",
+        block_key_span(block, "toc"),
+        &mut out,
+    );
+    if let Some(serde_yaml::Value::Mapping(execute)) = map.get("execute") {
+        validate_bool_value(
+            execute.get("cache"),
+            "cache",
+            nested_key_span(block, "execute", "cache"),
+            &mut out,
+        );
+    }
     validate_image_alt(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
@@ -316,6 +330,30 @@ fn validate_child_keys(
             ));
         }
     }
+}
+
+/// A boolean key (`toc:`, `execute: cache:`) whose value [`value_bool`] cannot read. The
+/// renderer ignores such a value, so the page quietly got the automatic TOC (or kept the
+/// cache on) with nothing reported. A null value is unset, not wrong.
+fn validate_bool_value(
+    v: Option<&serde_yaml::Value>,
+    key: &str,
+    span: Option<(u32, u32, u32)>,
+    out: &mut Vec<Warning>,
+) {
+    let Some(v) = v.filter(|v| !v.is_null() && value_bool(v).is_none()) else {
+        return;
+    };
+    let written = match crate::site::scalar(Some(v)) {
+        Some(s) => format!("`{key}: {s}`"),
+        None => format!("`{key}:` with a list or a mapping"),
+    };
+    out.push(located_span(
+        format!(
+            "{written} is not a boolean, so it is ignored: write `{key}: true` or `{key}: false`"
+        ),
+        span,
+    ));
 }
 
 /// A `listing:` value its parser cannot use: a `type:` outside [`LISTING_TYPES`], which
@@ -1073,6 +1111,37 @@ mod tests {
         assert_eq!(d.line, Some(4));
         assert_eq!(d.col, Some(3)); // 2-space indent -> column 3
         assert_eq!(d.end_col, Some(8));
+    }
+
+    /// `toc:` and `execute: cache:` are booleans. Any other value (`toc: 0`, `toc: n`, a
+    /// list) was ignored in silence, so the page quietly got the automatic TOC (or kept the
+    /// cache on); it is located now. The YAML-1.1 words (`yes`/`off`) are read as booleans
+    /// and stay silent, and so does a null.
+    #[test]
+    fn a_boolean_key_with_a_value_that_is_not_one_is_diagnosed() {
+        for (fm, line, needle) in [
+            ("toc: 0\n", 3, "`toc: 0`"),
+            ("toc: n\n", 3, "`toc: n`"),
+            ("toc: [a]\n", 3, "`toc:`"),
+            ("execute:\n  cache: 0\n", 4, "`cache: 0`"),
+        ] {
+            let ws = validate_front_matter(&format!("---\ntitle: X\n{fm}---\n"));
+            let w = ws
+                .iter()
+                .find(|w| w.message.contains("not a boolean"))
+                .unwrap_or_else(|| panic!("{fm:?}: {ws:?}"));
+            assert!(w.message.contains(needle), "{fm:?}: {}", w.message);
+            assert_eq!(w.line, Some(line), "{fm:?}: {w:?}");
+        }
+        for fm in [
+            "toc: yes\n",
+            "toc: false\n",
+            "toc:\n",
+            "execute:\n  cache: off\n",
+        ] {
+            let ws = validate_front_matter(&format!("---\ntitle: X\n{fm}---\n"));
+            assert!(ws.is_empty(), "{fm:?}: {ws:?}");
+        }
     }
 
     /// A hero action is written as a flow mapping on its own line, and a typo in one used
