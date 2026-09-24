@@ -27,7 +27,10 @@ pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
     // authority", so the two guards cannot disagree about what loopback is. A hand-rolled
     // `split(':').next()` lived here and could never return a string containing a colon,
     // which made the `::1` arm unreachable for every input: `[::1]:9999` came out as `"["`.
-    matches!(host_name(authority), "localhost" | "127.0.0.1" | "::1")
+    matches!(
+        host_name(authority),
+        Some("localhost" | "127.0.0.1" | "::1")
+    )
 }
 
 /// Apply [`origin_allowed`] to a request's headers; the websocket handler gates the
@@ -52,17 +55,27 @@ pub(crate) fn host_allowed(host: Option<&str>) -> bool {
     let Some(host) = host else {
         return true; // no Host => not a browser => can't be a rebinding attack
     };
-    matches!(host_name(host), "localhost" | "127.0.0.1" | "::1")
+    matches!(host_name(host), Some("localhost" | "127.0.0.1" | "::1"))
 }
 
-/// The host portion of a `Host` header value, dropping an optional `:port` and IPv6
-/// brackets: `localhost:4388` -> `localhost`, `[::1]:4388` -> `::1`, `192.168.1.5:4388`
-/// -> `192.168.1.5`.
-fn host_name(host: &str) -> &str {
-    if let Some(rest) = host.strip_prefix('[') {
-        return rest.split(']').next().unwrap_or(rest); // `[::1]:4388` -> `::1`
-    }
-    host.rsplit_once(':').map_or(host, |(h, _)| h)
+/// The host portion of an authority (a `Host` header value, or an origin's part after the
+/// scheme), dropping an optional `:port` and IPv6 brackets: `localhost:4388` ->
+/// `localhost`, `[::1]:4388` -> `::1`, `192.168.1.5:4388` -> `192.168.1.5`. `None` when
+/// anything but a `:port` of digits follows the host, so `[localhost]evil.example` and
+/// `localhost:4388evil` name no host at all rather than a loopback one.
+fn host_name(authority: &str) -> Option<&str> {
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(rest) => {
+            let (host, after) = rest.split_once(']')?; // `[::1]:4388` -> `::1`, `:4388`
+            if after.is_empty() {
+                (host, "")
+            } else {
+                (host, after.strip_prefix(':')?)
+            }
+        }
+        None => authority.split_once(':').unwrap_or((authority, "")),
+    };
+    port.bytes().all(|b| b.is_ascii_digit()).then_some(host)
 }
 
 /// Axum middleware enforcing [`host_allowed`], the DNS-rebinding defense. Unconditional:
@@ -168,5 +181,41 @@ mod tests {
         // A host that merely *contains* a loopback name is not loopback.
         assert!(!host_allowed(Some("127.0.0.1.evil.example:4388")));
         assert!(!host_allowed(Some("localhost.evil.example")));
+    }
+
+    /// An authority is a host and an optional `:port`, nothing else. The bracket branch
+    /// kept whatever preceded `]` and ignored the rest, and the other branch kept whatever
+    /// preceded the last `:`, so `[localhost]evil.example` and `localhost:4388evil` both
+    /// read as loopback, in the `Host` check and the `Origin` check alike. No browser sends
+    /// either (audit 2026-09-24, security info 10), so this is hygiene, not an exploit.
+    #[test]
+    fn an_authority_is_a_host_and_an_optional_port_and_nothing_else() {
+        for bogus in [
+            "[localhost]evil.example",
+            "[::1]evil.example",
+            "[::1]:4388evil",
+            "localhost:4388evil",
+            "localhost:evil.example",
+        ] {
+            assert!(!host_allowed(Some(bogus)), "Host {bogus}");
+            assert!(
+                !origin_allowed(Some(&format!("http://{bogus}")), Some("127.0.0.1:4388")),
+                "Origin http://{bogus}"
+            );
+        }
+        // The real spellings still pass, with and without a port.
+        for real in [
+            "localhost",
+            "localhost:4388",
+            "127.0.0.1:4388",
+            "[::1]",
+            "[::1]:4388",
+        ] {
+            assert!(host_allowed(Some(real)), "Host {real}");
+            assert!(
+                origin_allowed(Some(&format!("http://{real}")), Some("127.0.0.1:4388")),
+                "Origin http://{real}"
+            );
+        }
     }
 }
