@@ -25,8 +25,8 @@
 //! - a **network resource** it fetches,
 //! - the **wall clock** or anything else nondeterministic,
 //! - the interpreter's **installed packages**: upgrading a library in place
-//!   (`pip install --upgrade …` / `install.packages()`) is the same interpreter reporting
-//!   the same `--version`, so every key is unchanged.
+//!   (`pip install --upgrade …`) is the same interpreter reporting the same `--version`,
+//!   so every key is unchanged.
 //!
 //! This was previously written as "the lone by-design stale-hit path = packages", which
 //! overclaims: packages are one member of the class, not the class. There is deliberately no
@@ -105,12 +105,11 @@ const MAX_BYTES: usize = 16 * 1024 * 1024;
 /// keys are independent of any other document's cells.
 pub use taliesin_core::hash::fnv1a;
 
-/// Cumulative per-cell cache keys for one language's cells, in document order.
+/// Cumulative per-cell cache keys for a page's `{python}` cells, in document order.
 ///
-/// `interp` seeds the chain (so a different interpreter/version busts every cell,
-/// and a `{python}` chain never collides with an `{r}` one). Each step folds the
-/// previous digest and the cell's (options-stripped) code into the next, so cell
-/// `i`'s key reflects all of `cells[0..=i]`.
+/// `interp` seeds the chain (so a different interpreter/version busts every cell). Each
+/// step folds the previous digest and the cell's (options-stripped) code into the next, so
+/// cell `i`'s key reflects all of `cells[0..=i]`.
 pub fn cumulative_hashes(interp: &str, codes: &[&str]) -> Vec<String> {
     let mut out = Vec::with_capacity(codes.len());
     let mut acc = format!("{:016x}", fnv1a(interp));

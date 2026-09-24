@@ -21,12 +21,13 @@
 // `publish` is deliberately absent from that list: it is a language-only hook, passed to a
 // language's `setup` as a fourth argument and never placed on the author-facing scope.
 //
-// This file is also the CLIENT HALF of the cell-language registry (`render/client_lang.rs`
-// is the server half). `{js}` is its one entry in `languages` below. Everything outside a
-// language's own `setup` — mounting the returned node, publishing `//| name`, registering
-// `//| viewof`, the dependency graph, the live region, the error box, teardown — is written
-// once against the shared wrapper contract, so a second language is a registration and not
-// surgery.
+// The server names the cell in `render/client_lang.rs`: `is_client_lang` decides a fence is
+// a `{js}` cell, and its source rides in a `<script type="application/tali-js">`
+// (`JS_CELL_MIME`) inside a `.tali-js-cell` wrapper (`JS_CELL_CLASS`). `languages` below
+// maps that script type to the function that runs it, and `{js}` is its one entry.
+// Everything outside that function (mounting the returned node, publishing `//| name`,
+// registering `//| viewof`, the dependency graph, the live region, the error box, teardown)
+// is written once against the shared wrapper contract.
 (function () {
   "use strict";
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -154,7 +155,7 @@
     });
   }
 
-  // Ingest `<script type="tali-define">` blobs (the Python ojs_define bridge): set
+  // Ingest `<script type="tali-define">` blobs (the Python `define` bridge): set
   // the named values, then re-run every mounted cell: a define can land after
   // the cells first ran (live preview executes Python after the page mounts). Returns
   // that pass, or null when no define landed, so `enhance` can run its own passes after it.

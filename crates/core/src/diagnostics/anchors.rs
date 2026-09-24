@@ -30,7 +30,7 @@ fn same_page_manual_fragments(html: &str) -> Vec<String> {
 /// valid-target set is every `id="..."` the page emits, so it never false-flags a real
 /// anchor. (`@fig-`/`@sec-` cross-references are covered separately by `validate_xrefs`.)
 pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
-    // Static check never executes cells; a {python}/{r}/{js} cell can emit the target id at
+    // Static check never executes cells; a {python} or {js} cell can emit the target id at
     // runtime (e.g. `HTML('<div id="x">')`). Conservatively skip the manual-anchor check for
     // any doc with executable cells, so a green check stays a no-false-positive promise.
     if blocks.iter().any(|b| b.cells().next().is_some()) {

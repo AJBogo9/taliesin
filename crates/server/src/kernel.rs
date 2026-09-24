@@ -500,19 +500,19 @@ struct Preamble {
     code: &'static str,
 }
 
-/// How to launch a Jupyter kernel for one language. The ZMQ protocol is
-/// language-agnostic, so only the spawn command, the kernel-spec name, and any
-/// startup preambles differ between Python (ipykernel) and R (IRkernel).
+/// How to launch a Jupyter kernel: the spawn command, the kernel-spec name and the
+/// startup preambles. Python (ipykernel) is the one kernel language since `{r}` was
+/// withdrawn in wave 6.
 pub struct KernelSpec {
-    /// The interpreter binary (`python3`, `R`, …).
+    /// The interpreter binary (`python3`, a `.venv`'s `python`, …).
     program: PathBuf,
     /// `kernel_name` reported in the connection info.
     kernel_name: &'static str,
     /// Builds the process argv given the path to the written connection file
-    /// (ipykernel takes `-f <conn>`, IRkernel takes `--args <conn>`).
+    /// (ipykernel takes `-f <conn>`).
     argv: fn(&Path) -> Vec<String>,
-    /// Code run once at startup (the Python->JS `define` bridge + matplotlib theme
-    /// for Python; nothing for R yet).
+    /// Code run once at startup (the Python->JS `define` bridge, the matplotlib theme
+    /// and the thread-context hook).
     preambles: &'static [Preamble],
 }
 
@@ -678,7 +678,7 @@ pub(crate) fn start_error_is_transient(msg: &str) -> bool {
     let m = msg.to_ascii_lowercase();
     !(m.contains("cannot launch") // spawn failed: the interpreter binary is missing
         || m.contains("no such file") // ditto (the OS error for a missing program)
-        || m.contains("no module named")) // the kernel module (ipykernel/IRkernel) is absent
+        || m.contains("no module named")) // the kernel module (ipykernel) is absent
 }
 
 /// Run a spec's startup preambles against a live kernel and return one console line per
@@ -865,11 +865,11 @@ impl Kernel {
         }
     }
 
-    /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
+    /// Spawn the kernel described by `spec` (Python's ipykernel) and
     /// connect to it. The kernel stays warm for the lifetime of this value.
     ///
     /// `cwd` is the kernel process's working directory: a cell's relative file I/O
-    /// (`scipy.io.wavfile.write`, matplotlib's `savefig`, R's `ggsave`)
+    /// (`scipy.io.wavfile.write`, matplotlib's `savefig`)
     /// resolves against it, so generated media lands beside the document rather
     /// than wherever the server was launched. `None` inherits the server's cwd.
     pub async fn start(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
@@ -883,7 +883,7 @@ impl Kernel {
         let dir_guard = ConnDirGuard::arm(conn_dir);
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
-        // ipykernel/IRkernel module) can be reported instead of swallowed.
+        // ipykernel module) can be reported instead of swallowed.
         let mut cmd = Command::new(&spec.program);
         cmd.args((spec.argv)(&conn_file))
             .stdin(std::process::Stdio::null())
@@ -1173,9 +1173,9 @@ impl Kernel {
                 _ => {}
             }
             // Once capped, interrupt the kernel so it stops flooding us (a huge-output
-            // cell otherwise keeps streaming megabytes we'd have to read + discard,
-            // and the per-message receive is super-linear). Then drain a short grace
-            // window for the resulting KeyboardInterrupt + Idle and stop.
+            // cell otherwise keeps streaming megabytes we'd have to read and discard).
+            // Then drain a short grace window for the resulting KeyboardInterrupt + Idle
+            // and stop.
             if outputs.capped() && grace_until.is_none() {
                 self.interrupt();
                 grace_until = Some(Instant::now() + INTERRUPT_GRACE);
@@ -1247,7 +1247,7 @@ fn undecodable(e: &jupyter_zmq_client::RuntimeError) -> bool {
 }
 
 /// Send `SIGINT` to a kernel process by PID: the `interrupt_mode: signal` path that raises
-/// `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both honour it).
+/// `KeyboardInterrupt` in the running cell (ipykernel honours it).
 ///
 /// Free-standing, and the single implementation of "interrupt a kernel". It stays a named
 /// function because the non-Unix no-op is the part that must not be duplicated, and because
@@ -1918,7 +1918,7 @@ impl PathScrub {
 /// already reads `Cell In[N]` (IPython rewrites the frame filename), so only these stream
 /// paths and the legacy `<ipython-input-…>` form remain. Mirrors nbconvert/Quarto; the
 /// trailing `:<line>:` is deterministic (the cell's own line) and is kept. Applies to every
-/// stream regardless of language — R streams simply carry no such path to match.
+/// stream; one that carries no such path passes through unchanged.
 fn scrub_kernel_paths(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut rest = s;
@@ -2449,7 +2449,7 @@ mod tests {
         assert!(tb.contains("a &lt; b"), "traceback not escaped: {tb}");
     }
 
-    // Regression: R's `message()`/`warning()` (and Python `rich`/coloured output)
+    // Regression: coloured output (Python `rich`, a coloured logger)
     // write ANSI SGR codes to a *stream*, not just to a traceback. The error path
     // already strips them; the stream path must match, or the codes leak into the
     // page as visible `[31m…[0m` garbage (the ESC char is invisible, its argument
