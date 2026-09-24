@@ -1068,3 +1068,28 @@ fn a_lowercase_particle_in_first_last_order_is_part_of_the_surname() {
         assert_eq!(super::author::format_authors(raw), want, "{raw}");
     }
 }
+
+/// The rest of BibTeX's name grammar that exporters rely on (audit 2026-09-24, bibtex #3):
+/// the three-part "von Last, Jr, First" form (Better BibTeX), hyphenated given names
+/// (`Klaus-Robert`, DBLP's `Ming{-}Wei`), a tie between initials, and an ` AND ` in
+/// capitals, which BibTeX reads case-insensitively.
+#[test]
+fn bibtex_name_forms_the_exporters_use_are_split_like_bibtex() {
+    let cases = [
+        ("King, Jr., Martin Luther", "M. L. King, Jr."),
+        (r#"Klaus-Robert M{\"u}ller"#, "K.-R. Müller"),
+        (
+            r#"M{\"u}ller, Klaus-Robert and Serre, Jean-Pierre"#,
+            "K.-R. Müller and J.-P. Serre",
+        ),
+        ("Ming{-}Wei Chang", "M.-W. Chang"),
+        ("D.~E. Knuth", "D. E. Knuth"),
+        ("Smith, John AND Doe, Jane", "J. Smith and J. Doe"),
+        ("SMITH AND JONES", "SMITH and JONES"),
+        // Unchanged: a Jr written inside the surname stays there.
+        ("Steele Jr, Guy L", "G. L. Steele Jr"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(super::author::format_authors(raw), want, "{raw}");
+    }
+}

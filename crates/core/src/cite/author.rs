@@ -62,7 +62,12 @@ fn split_on_and(raw: &str) -> Vec<&str> {
         match c {
             '{' => depth += 1,
             '}' => depth = depth.saturating_sub(1),
-            ' ' if depth == 0 && raw[i..].starts_with(SEP) => {
+            // BibTeX reads the separator case-insensitively: `A AND B` is two names.
+            ' ' if depth == 0
+                && raw
+                    .get(i..i + SEP.len())
+                    .is_some_and(|w| w.eq_ignore_ascii_case(SEP)) =>
+            {
                 out.push(&raw[start..i]);
                 skip_to = i + SEP.len();
                 start = skip_to;
@@ -84,38 +89,59 @@ fn format_one_author(name: &str) -> String {
     if super::parse::one_brace_group(name).is_some() {
         return clean(name);
     }
-    if let Some((last, first)) = name.split_once(',') {
-        format!("{}{}", initials(first), clean(last.trim()))
+    // The comma forms, "von Last, First" and "von Last, Jr, First", split at commas
+    // outside braces. The surname part prints whole, so its particle needs no rule here.
+    let (last, jr, first) = match split_outside_braces(name, ',').as_slice() {
+        [last, first] => (*last, "", *first),
+        [last, jr, .., first] => (*last, *jr, *first),
+        _ => return first_von_last(name),
+    };
+    let jr = clean(jr.trim());
+    let jr = if jr.is_empty() {
+        String::new()
     } else {
-        // BibTeX's von rule: the surname starts at the first lowercase word before the
-        // last one (`Laurens van der Maaten`), else it is the last word. The particle is
-        // printed as written; only the words before it are initials.
-        let words = words(name);
-        match words.split_last() {
-            Some((_, firsts)) if !firsts.is_empty() => {
-                let von = firsts
-                    .iter()
-                    .position(|w| starts_lowercase(w))
-                    .unwrap_or(firsts.len());
-                format!(
-                    "{}{}",
-                    initials(&words[..von].join(" ")),
-                    clean(&words[von..].join(" "))
-                )
-            }
-            _ => clean(name),
+        format!(", {jr}")
+    };
+    format!("{}{}{jr}", initials(first), clean(last.trim()))
+}
+
+/// The comma-less "First von Last" form. BibTeX's von rule: the surname starts at the
+/// first lowercase word before the last one (`Laurens van der Maaten`), else it is the
+/// last word. The particle is printed as written; only the words before it are initials.
+fn first_von_last(name: &str) -> String {
+    let words = words(name);
+    match words.split_last() {
+        Some((_, firsts)) if !firsts.is_empty() => {
+            let von = firsts
+                .iter()
+                .position(|w| starts_lowercase(w))
+                .unwrap_or(firsts.len());
+            format!(
+                "{}{}",
+                initials(&words[..von].join(" ")),
+                clean(&words[von..].join(" "))
+            )
         }
+        _ => clean(name),
     }
 }
 
 /// First/middle names -> space-terminated initials: "Daniel M." -> "D. M. ".
 /// Each word is `clean`ed first so an accented initial (`{\'E}mile` -> `Émile`)
 /// initials as its Unicode letter (`É.`), not a stray brace/backslash.
+/// A hyphenated given name keeps its hyphen between initials, as BibTeX does:
+/// `Klaus-Robert` -> "K.-R.".
 fn initials(first: &str) -> String {
     words(first)
         .into_iter()
-        .filter_map(|w| clean(w).chars().find(|c| c.is_alphabetic()))
-        .map(|c| format!("{}. ", c.to_uppercase()))
+        .filter_map(|w| {
+            let parts: Vec<String> = clean(w)
+                .split('-')
+                .filter_map(|p| p.chars().find(|c| c.is_alphabetic()))
+                .map(|c| format!("{}.", c.to_uppercase()))
+                .collect();
+            (!parts.is_empty()).then(|| format!("{} ", parts.join("-")))
+        })
         .collect()
 }
 
@@ -142,8 +168,9 @@ fn starts_lowercase(word: &str) -> bool {
     false
 }
 
-/// The words of a name part, split at whitespace outside braces: a brace group is part
-/// of its word even when it holds a space, as Better BibTeX's `Ay{\c s}e` does.
+/// The words of a name part, split at whitespace (or a `~` tie) outside braces: a brace
+/// group is part of its word even when it holds a space, as Better BibTeX's `Ay{\c s}e`
+/// does.
 fn words(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let (mut depth, mut start) = (0usize, None);
@@ -151,7 +178,7 @@ fn words(s: &str) -> Vec<&str> {
         match c {
             '{' => depth += 1,
             '}' => depth = depth.saturating_sub(1),
-            c if c.is_whitespace() && depth == 0 => {
+            c if (c.is_whitespace() || c == '~') && depth == 0 => {
                 if let Some(st) = start.take() {
                     out.push(&s[st..i]);
                 }
@@ -164,6 +191,25 @@ fn words(s: &str) -> Vec<&str> {
     if let Some(st) = start {
         out.push(&s[st..]);
     }
+    out
+}
+
+/// `s` split at each `sep` outside braces.
+fn split_outside_braces(s: &str, sep: char) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0usize, 0usize);
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            c if c == sep && depth == 0 => {
+                out.push(&s[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(&s[start..]);
     out
 }
 

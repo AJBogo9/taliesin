@@ -111,9 +111,11 @@ fn cite_coverage_corpus_doc_renders_all_fixes() {
     let html = render_post("posts/cite-coverage/index.tmd");
     let refs = references_section(&html);
 
-    // Fix 1: LaTeX accents -> composed Unicode in author names.
+    // Fix 1: LaTeX accents -> composed Unicode in author names. (`Klaus-Robert` keeps
+    // both initials, as BibTeX gives them: this line pinned "K. Müller" until the
+    // 2026-09-24 audit, bibtex #3.)
     assert!(
-        refs.contains("[1] K. Müller and B. Schölkopf,"),
+        refs.contains("[1] K.-R. Müller and B. Schölkopf,"),
         "accents not composed: {refs}"
     );
     assert!(
