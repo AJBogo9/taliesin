@@ -1,6 +1,6 @@
 //! Cell-option parsing: the `#|`/`//|`/`%%|` directive primitive and the pure leaf
-//! parsers that key off it — language detection, boolean flags, document execute
-//! defaults, code-fold, option stripping, source slicing, and `{js}` option parsing.
+//! parsers that key off it — language detection, boolean flags, code-fold, option
+//! stripping, source slicing, and `{js}` option parsing.
 //! All take a code literal/lines + key and return derived strings/bools; none touches
 //! the orchestrator's shared state.
 
@@ -50,66 +50,6 @@ pub(super) fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
         Some(v) => crate::frontmatter::yaml_bool_word(v) != Some(false),
         None => default,
     }
-}
-
-/// The document-level `cache:` default from a front-matter `execute:` block:
-///
-/// ```yaml
-/// execute:
-///   cache: false
-/// ```
-///
-/// Defaults to `true`; a per-cell `#| cache:` overrides it.
-///
-/// `echo:` and `include:` used to live here too and were retired on 2026-08-02. They were
-/// document-wide defaults for something every real document states per cell (`#| echo:`),
-/// and a default that silently suppresses every listing in a file reads worse than saying
-/// it on the cells you mean. `cache:` stays because it is genuinely a whole-document
-/// property: it is about the freeze cache, not about how any one cell reads.
-pub(super) fn detect_execute_cache(front_matter: &str) -> bool {
-    // Off only for a recognized false word (`false`/`no`/`off`); everything else stays on.
-    // Coerces the YAML-1.1 words so `execute: {cache: no}` takes effect.
-    fn apply_kv(k: &str, v: &str, cache: &mut bool) {
-        if k.trim() == "cache" {
-            *cache = crate::frontmatter::yaml_bool_word(v.trim().trim_matches(['"', '\'']))
-                != Some(false);
-        }
-    }
-
-    let mut cache = true;
-    let mut in_block = false;
-    for line in front_matter.lines() {
-        let indent = line.len() - line.trim_start().len();
-        let t = line.trim();
-        if !in_block {
-            if indent == 0
-                && let Some(rest) = t.strip_prefix("execute:")
-            {
-                let rest = rest.trim();
-                if let Some(inner) = rest.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                    // Flow form on one line: `execute: {cache: false}`.
-                    for pair in inner.split(',') {
-                        if let Some((k, v)) = pair.split_once(':') {
-                            apply_kv(k, v, &mut cache);
-                        }
-                    }
-                } else if rest.is_empty() {
-                    in_block = true; // block form: indented lines follow
-                }
-            }
-            continue;
-        }
-        if t.is_empty() {
-            continue;
-        }
-        if indent == 0 {
-            break; // dedent ends the block
-        }
-        if let Some((k, v)) = t.split_once(':') {
-            apply_kv(k, v, &mut cache);
-        }
-    }
-    cache
 }
 
 /// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)

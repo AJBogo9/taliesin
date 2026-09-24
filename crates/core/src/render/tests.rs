@@ -293,6 +293,111 @@ fn a_structured_author_still_reaches_the_byline_at_all() {
     );
 }
 
+/// The page renderer reads its front matter as YAML, the same parse the site layer uses
+/// for og:title, the listing card and the feed. It used to read `title`, `subtitle`,
+/// `date` and `description` with a line scan that trimmed every quote character from both
+/// ends, so one page carried two titles (`It''s here` in `<h1>`, `It's here` in og:title),
+/// a `# comment` was published as part of the value, and a folded `>-` block published
+/// the two characters `>-`, all with `--check-only --strict` green.
+#[test]
+fn front_matter_fields_are_read_as_yaml_not_line_scanned() {
+    let doc = render_document(
+        "---\ntitle: 'It''s here'\nsubtitle: \"Say \\\"hi\\\"\"\ndate: 2026-05-15 # updated\n\
+         description: >-\n  A folded\n  description.\n---\n\nBody.\n",
+    );
+    assert_eq!(
+        doc.title.as_deref(),
+        Some("It's here"),
+        "YAML single-quote escape"
+    );
+    assert_eq!(
+        doc.subtitle.as_deref(),
+        Some("Say \"hi\""),
+        "YAML double-quote escape"
+    );
+    assert_eq!(
+        doc.description.as_deref(),
+        Some("A folded description."),
+        "a folded block scalar is its text, not `>-`"
+    );
+    let tb = &doc.blocks[0].html;
+    assert!(
+        tb.contains("<time datetime=\"2026-05-15\">"),
+        "a trailing YAML comment is not part of the date: {tb}"
+    );
+    // A plain scalar wrapped onto a second line is one value, and a trailing quoted word
+    // keeps its closing quote.
+    let wrapped = render_document(
+        "---\ntitle: On \"Worse is Better\"\nsubtitle: A title that\n  wraps onto a second line\n---\n\nx\n",
+    );
+    assert_eq!(wrapped.title.as_deref(), Some("On \"Worse is Better\""));
+    assert_eq!(
+        wrapped.subtitle.as_deref(),
+        Some("A title that wraps onto a second line")
+    );
+    // A comment after a plain title is a comment, and `~` is YAML's null (no title at all).
+    assert_eq!(
+        render_document("---\ntitle: My Post # draft\n---\n\nx\n")
+            .title
+            .as_deref(),
+        Some("My Post")
+    );
+    assert_eq!(render_document("---\ntitle: ~\n---\n\nx\n").title, None);
+}
+
+/// The settings the renderer acts on come from the same YAML value, so a trailing comment
+/// or quotes no longer turn them into no-ops: `toc: false  # no rail` showed the TOC,
+/// `title-block-style: "none"` showed the title block, and `execute: cache: false  # live
+/// data` kept the freeze cache on.
+#[test]
+fn front_matter_settings_are_read_as_yaml_not_line_scanned() {
+    let toc = |fm: &str| render_document(&format!("---\n{fm}---\n\nx\n")).toc_explicit;
+    assert_eq!(toc("title: X\ntoc: false  # no rail\n"), Some(false));
+    assert_eq!(toc("title: X\ntoc: true\n"), Some(true));
+    assert_eq!(
+        toc("title: X\n"),
+        None,
+        "unset stays distinguishable from false"
+    );
+    // The YAML-1.1 words serde reads as strings still coerce.
+    assert_eq!(toc("toc: yes\n"), Some(true));
+    assert_eq!(toc("toc: OFF\n"), Some(false));
+    // Only the TOP-LEVEL key is the document's: a `toc:` nested under another block is
+    // that block's sub-key.
+    assert_eq!(toc("title: X\nhero:\n  headline: Hi\n  toc: true\n"), None);
+    assert_eq!(
+        toc("format:\n  html:\n    toc: false\ntoc: true\n"),
+        Some(true)
+    );
+
+    let hidden = render_document("---\ntitle: T\ntitle-block-style: \"none\"\n---\n\nx\n");
+    assert!(
+        !hidden.blocks.iter().any(|b| b.id == "tali-title-block"),
+        "a quoted `none` hides the title block"
+    );
+    let nested =
+        render_document("---\ntitle: T\nformat:\n  html:\n    title-block-style: none\n---\n\nx\n");
+    assert!(
+        nested.blocks.iter().any(|b| b.id == "tali-title-block"),
+        "a nested title-block-style is a sub-key, not the document's"
+    );
+
+    let cache = |fm: &str| {
+        render_document(&format!("---\n{fm}---\n\n```{{python}}\nx = 1\n```\n"))
+            .blocks
+            .iter()
+            .find_map(|b| b.cell.as_ref().map(|c| c.cache))
+            .expect("a python cell")
+    };
+    assert!(!cache("execute:\n  cache: false  # live data\n"));
+    assert!(!cache("execute: {cache: off}\n"));
+    assert!(!cache("execute:\n  cache: no\n"));
+    assert!(cache("execute:\n  cache: true\n"));
+    assert!(cache("title: X\n"), "absent: on");
+    // A retired `echo:`/`include:` changes nothing about `cache`.
+    assert!(cache("execute:\n  echo: off\n  include: no\n"));
+}
+
 #[test]
 fn html_is_escaped_in_text() {
     let doc = render_document("a < b & c\n");
@@ -2213,59 +2318,6 @@ fn missing_bibliography_file_warns() {
 }
 
 #[test]
-fn detect_toc_is_tristate_so_explicit_false_can_override_a_site_default() {
-    // Unset, on, and off must be distinguishable: a plain bool can't tell an
-    // explicit `toc: false` (which should beat the site default) from "unset".
-    assert_eq!(detect_toc("title: X\n"), None);
-    assert_eq!(detect_toc("title: X\ntoc: true\n"), Some(true));
-    assert_eq!(detect_toc("title: X\ntoc: false\n"), Some(false));
-    // The YAML-1.1 boolean words (which serde reads as strings) must coerce too, so
-    // `toc: yes` doesn't silently no-op into the inherited site default.
-    assert_eq!(detect_toc("toc: yes\n"), Some(true));
-    assert_eq!(detect_toc("toc: on\n"), Some(true));
-    assert_eq!(detect_toc("toc: no\n"), Some(false));
-    assert_eq!(detect_toc("toc: OFF\n"), Some(false));
-    // `toc-depth:`/`toc-title:` are not the `toc:` key and must not match.
-    assert_eq!(detect_toc("toc-depth: 2\ntoc-title: Contents\n"), None);
-}
-
-/// `toc:` is a TOP-LEVEL key. An indented `toc:` is some other block's sub-key and must
-/// not reach through — this scan used to trim every line before matching, so a `toc:`
-/// nested under ANY block set the document's TOC: `hero:`/`listing:`/`execute:` alike,
-/// none of which own a `toc`. `extract_field`/`detect_format` already skip indented
-/// lines ("top-level keys only"); this brings the tristate scan in line with them.
-#[test]
-fn detect_toc_reads_only_a_top_level_key() {
-    assert_eq!(
-        detect_toc("title: X\nhero:\n  headline: Hi\n  toc: true\n"),
-        None,
-        "a `toc:` nested under `hero:` is not the document's toc"
-    );
-    assert_eq!(
-        detect_toc("title: X\nformat:\n  html:\n    toc: true\n"),
-        None,
-        "a `toc:` nested under `format:` is not the document's toc (`format:` sub-keys are inert)"
-    );
-    // The top-level key still wins from anywhere in the block, including after a nested one.
-    assert_eq!(
-        detect_toc("format:\n  html:\n    toc: false\ntoc: true\n"),
-        Some(true),
-        "the top-level key is the only one read"
-    );
-}
-
-/// Same rule for `title-block-style:`: the other scan that trimmed before matching, so a
-/// nested `title-block-style: none` silently suppressed the title block.
-#[test]
-fn detect_title_block_hidden_reads_only_a_top_level_key() {
-    assert!(detect_title_block_hidden("title-block-style: none\n"));
-    assert!(
-        !detect_title_block_hidden("format:\n  html:\n    title-block-style: none\n"),
-        "a nested title-block-style is a sub-key, not the document's"
-    );
-}
-
-#[test]
 fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
     // `#| echo: no` / `execute: {echo: off}` are STRINGS in YAML 1.2; without
     // coercion they read as truthy and the cell echoes anyway (a silent no-op).
@@ -2278,21 +2330,8 @@ fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
     // Unset falls back to the document default.
     assert!(cell_flag_or("1 + 1", "echo", true));
     assert!(!cell_flag_or("1 + 1", "echo", false));
-
-    // The document-level `execute: cache:` default, both flow and block form.
-    assert!(!detect_execute_cache("execute: {cache: off}\n"));
-    assert!(!detect_execute_cache("execute:\n  cache: no\n"));
-    assert!(detect_execute_cache("execute:\n  cache: true\n"));
-    // Absent -> on.
-    assert!(detect_execute_cache("title: X\n"));
-    // A leftover `echo:`/`include:` (retired 2026-08-02) must not reach `cache`. They warn
-    // as unknown `execute` sub-keys; here the point is that they change nothing.
-    assert!(detect_execute_cache(
-        "execute:\n  echo: off\n  include: no\n"
-    ));
-    assert!(!detect_execute_cache(
-        "execute:\n  echo: off\n  cache: off\n"
-    ));
+    // The document-level `execute: cache:` default is read from the YAML value:
+    // `front_matter_settings_are_read_as_yaml_not_line_scanned`.
 }
 
 #[test]
@@ -3255,20 +3294,10 @@ fn bibliography_paths_accepts_scalar_seq_and_spaced_path() {
         s(&["a.bib", "b.bib"])
     );
     assert!(bibliography_paths("title: X").is_empty());
-
-    // The REAL caller passes the comrak FrontMatter node, which includes the `---`
-    // fences; without stripping them the serde parse fails and a block-sequence
-    // bibliography is silently dropped by the fence-less fallback.
-    assert_eq!(
-        bibliography_paths("---\ntitle: X\nbibliography:\n  - a.bib\n  - b.bib\n---"),
-        s(&["a.bib", "b.bib"])
-    );
-    // A block sequence in front matter that won't parse as YAML at all (unterminated
-    // quote below) still resolves via the block-sequence fallback.
-    assert_eq!(
-        bibliography_paths("bibliography:\n  - a.bib\n  - b.bib\nauthor: \"oops"),
-        s(&["a.bib", "b.bib"])
-    );
+    // A block YAML cannot read names no bibliography: there is no line-scan fallback to
+    // recover a guess from, because `yaml_error` fails the build on that block and says
+    // every key in it was dropped.
+    assert!(bibliography_paths("bibliography:\n  - a.bib\n  - b.bib\nauthor: \"oops").is_empty());
 }
 
 // --- accessibility regressions (Batch 3) ---

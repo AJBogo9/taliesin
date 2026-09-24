@@ -1,150 +1,113 @@
-//! Front-matter FIELD extraction: lightweight key scans over the raw front-matter
-//! string (toc / title-block detection + a generic top-level field reader).
+//! The renderer's read of a document's front matter: ONE serde_yaml parse of the block
+//! [`crate::frontmatter::front_matter_block`] splits off, and typed accessors over it.
 //!
-//! Distinct from crate-level `frontmatter.rs` (a full YAML parse + lint): these are
-//! read-only string classifiers the render orchestrator runs before any heavy parse.
-//! None touches the orchestrator's shared state.
+//! This used to be a family of line scans (`extract_field`, `detect_toc`,
+//! `detect_title_block_hidden`, `detect_execute_cache`) running beside the YAML parse the
+//! site layer and `author:` already used. The two readers disagreed on ordinary YAML: the
+//! scan trimmed every quote character from both ends and knew nothing of comments, escapes,
+//! block scalars or a value wrapped onto a second line, so one page published `It''s here`
+//! in its `<h1>` and `It's here` in og:title, `toc: false  # no rail` showed the TOC and
+//! `execute: cache: false  # live data` kept the cache on, all under a green `--strict`.
+//! A front matter that is not valid YAML reads as empty here: `frontmatter::yaml_error`
+//! reports it, located, and the build fails on it.
 
-/// The **top-level** front-matter `toc:` setting as a tri-state: `Some(true)`/
-/// `Some(false)` when the page sets it, `None` when absent. Returning `Option` lets a
-/// site distinguish an explicit `toc: false` (which overrides the site default) from an
-/// unset toc (which inherits it).
-///
-/// Indented lines are skipped, like [`extract_field`] and [`detect_format`]: an indented
-/// `toc:` belongs to whatever block encloses it, and no block owns a `toc`. This scan
-/// used to trim every line first — a Quarto-era accommodation for `format: html: toc:` —
-/// so a `toc:` under ANY block (`hero:`, `listing:`, `execute:`) silently set the
-/// document's TOC. Top-level is also the only form the guide teaches and the vocab
-/// documents.
-pub(super) fn detect_toc(front_matter: &str) -> Option<bool> {
-    top_level_lines(front_matter).find_map(|l| {
-        // Coerce the YAML-1.1 boolean words too (`toc: yes`/`no`/`on`/`off`), which
-        // serde reads as strings — otherwise an explicit `toc: yes` silently no-ops
-        // and inherits the site default. See `crate::frontmatter::yaml_bool_word`.
-        l.strip_prefix("toc:")
-            .and_then(crate::frontmatter::yaml_bool_word)
-    })
+use crate::frontmatter::{front_matter_value, parse_front_matter_block, yaml_bool_word};
+
+/// A document's parsed front matter (YAML `null` when it has none, or none that parses).
+#[derive(Default)]
+pub(crate) struct DocFront(serde_yaml::Value);
+
+impl DocFront {
+    /// The front matter of the document `src`.
+    pub(super) fn of(src: &str) -> Self {
+        Self(front_matter_value(src).unwrap_or_default())
+    }
+
+    /// A top-level key's raw value, for the readers that take a YAML value (`author:`).
+    pub(super) fn get(&self, key: &str) -> Option<&serde_yaml::Value> {
+        self.0.get(key)
+    }
+
+    /// A top-level scalar as display text: a string as the YAML parser decoded it, a number
+    /// or bool in its YAML spelling (`crate::site::scalar`, the site layer's own reader, so
+    /// og:title and the `<h1>` cannot disagree). `None` when absent, null, blank or not a
+    /// scalar.
+    pub(super) fn text(&self, key: &str) -> Option<String> {
+        crate::site::scalar(self.get(key)).filter(|s| !s.trim().is_empty())
+    }
+
+    /// The top-level `toc:` setting as a tri-state: `Some` when the page sets it, `None`
+    /// when absent. `Option` lets a site tell an explicit `toc: false` (which overrides the
+    /// site default) from an unset toc (which inherits it). Catches the YAML-1.1 words serde
+    /// reads as strings (`toc: yes`), so they take effect instead of silently no-oping.
+    pub(super) fn toc(&self) -> Option<bool> {
+        as_bool(self.get("toc")?)
+    }
+
+    /// `title-block-style: none` suppresses the visible title-block header while keeping
+    /// the `title` metadata. Used by nav landing pages (Blog/Projects/Publications) where a
+    /// big `<h1>` repeats the navbar.
+    pub(super) fn title_block_hidden(&self) -> bool {
+        self.text("title-block-style").as_deref() == Some("none")
+    }
+
+    /// Whether a render of this document emits a visible title block, and therefore
+    /// demotes every body heading one level so the page keeps a single `<h1>`.
+    pub(super) fn emits_title_block(&self) -> bool {
+        !self.title_block_hidden() && self.text("title").is_some()
+    }
+
+    /// The document-level `execute: cache:` default (`true` unless a recognized false
+    /// word); a cell's own `#| cache:` overrides it.
+    ///
+    /// `echo:` and `include:` used to live here too and were retired on 2026-08-02. They
+    /// were document-wide defaults for something every real document states per cell
+    /// (`#| echo:`), and a default that silently suppresses every listing in a file reads
+    /// worse than saying it on the cells you mean. `cache:` stays because it is genuinely a
+    /// whole-document property: it is about the freeze cache, not about how any one cell
+    /// reads.
+    pub(super) fn exec_cache(&self) -> bool {
+        self.get("execute")
+            .and_then(|e| e.get("cache"))
+            .and_then(as_bool)
+            != Some(false)
+    }
+
+    /// The `bibliography:` value as a list of paths: a scalar (a quoted path with spaces
+    /// included) or a sequence.
+    pub(super) fn bibliography(&self) -> Vec<String> {
+        match self.get("bibliography") {
+            Some(serde_yaml::Value::Sequence(seq)) => seq
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            Some(serde_yaml::Value::String(s)) => vec![s.clone()],
+            _ => Vec::new(),
+        }
+    }
 }
 
-/// `title-block-style: none` suppresses the visible title-block header while
-/// keeping the `title` metadata. Used by nav landing pages
-/// (Blog/Projects/Publications) where a big `<h1>` repeats the navbar.
-/// Top-level only, for the same reason as [`detect_toc`].
-pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
-    top_level_lines(front_matter)
-        .any(|l| l.strip_prefix("title-block-style:").map(str::trim) == Some("none"))
+/// A YAML value as a boolean: a real bool, or one of the YAML-1.1 words serde reads as a
+/// string (`crate::frontmatter::yaml_bool_word`). `None` for anything else.
+fn as_bool(v: &serde_yaml::Value) -> Option<bool> {
+    match v {
+        serde_yaml::Value::Bool(b) => Some(*b),
+        serde_yaml::Value::String(s) => yaml_bool_word(s),
+        _ => None,
+    }
 }
 
-/// Whether a render of a document with this front matter emits a visible title block —
-/// and therefore demotes every body heading one level so the page keeps a single `<h1>`.
+/// [`DocFront::emits_title_block`] for a front-matter BLOCK (fences already split off).
 ///
-/// `pub(crate)` because the site's *source-side* section numbering (`site/xref.rs`) has
-/// to answer the same question without rendering: a demoted chapter numbers its sections
-/// from one level deeper, so a scan that guessed differently would resolve `@sec-x` to a
-/// number the heading does not show.
+/// `pub(crate)` because the site's *source-side* section numbering (`site/xref.rs`) has to
+/// answer the same question without rendering: a demoted chapter numbers its sections from
+/// one level deeper, so a scan that guessed differently would resolve `@sec-x` to a number
+/// the heading does not show.
 pub(crate) fn emits_title_block(front_matter: &str) -> bool {
-    !detect_title_block_hidden(front_matter) && extract_field(front_matter, "title").is_some()
+    DocFront(parse_front_matter_block(front_matter).unwrap_or_default()).emits_title_block()
 }
 
-/// The un-indented (top-level) front-matter lines, trimmed. The shared primitive behind
-/// every top-level key scan, so they cannot drift on what "top-level" means.
-fn top_level_lines(front_matter: &str) -> impl Iterator<Item = &str> {
-    front_matter
-        .lines()
-        .filter(|l| !l.starts_with(char::is_whitespace))
-        .map(str::trim)
-}
-
-/// The `bibliography:` front-matter value as a list of paths. Accepts a scalar
-/// (`bibliography: refs.bib`, INCLUDING a quoted path with spaces), an inline seq
-/// (`[a.bib, b.bib]`), or a block seq (`- a.bib` / `- b.bib`). Strips the `---` fences
-/// (which the real caller's comrak node carries) and parses as YAML for a faithful read;
-/// when the YAML won't parse it falls back to the lenient scanner — `,[]`-split for the
-/// scalar/inline form, plus a block-sequence read — so a malformed-but-linted doc still
-/// resolves what it can.
+/// [`DocFront::bibliography`] for a front-matter BLOCK (fences already split off).
 pub(crate) fn bibliography_paths(front_matter: &str) -> Vec<String> {
-    // comrak's FrontMatter node includes the `---` fences, which serde_yaml reads as
-    // document markers and rejects — so the faithful parse below would ALWAYS fail on the
-    // real caller's input and silently fall through to the lenient scanner (which can't
-    // read a block sequence). Strip the fences first (a no-op on a fence-free string).
-    let body = front_matter.trim();
-    let body = body.strip_prefix("---").unwrap_or(body);
-    let body = body.strip_suffix("---").unwrap_or(body);
-    if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(body) {
-        match val.get("bibliography") {
-            Some(serde_yaml::Value::Sequence(seq)) => {
-                return seq
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect();
-            }
-            Some(serde_yaml::Value::String(s)) => return vec![s.clone()],
-            _ => {}
-        }
-    }
-    // Lenient fallback for a front matter that won't parse as YAML at all: the scalar /
-    // inline-seq form via `extract_field`, plus a block sequence (`- a.bib` lines) it
-    // can't reach — so a malformed-but-linted doc still resolves what it can.
-    match extract_field(front_matter, "bibliography") {
-        Some(raw) => raw
-            .split([',', '[', ']'])
-            .map(|t| t.trim().trim_matches(['"', '\'']).to_string())
-            .filter(|t| !t.is_empty())
-            .collect(),
-        None => block_seq_items(front_matter, "bibliography"),
-    }
-}
-
-/// Read a top-level block-sequence value (`key:` on its own line, then indented `- item`
-/// lines) from raw front matter — the one shape [`extract_field`] can't reach. Used as
-/// the last-resort fallback when the YAML won't parse. Stops at the first dedent or
-/// non-sequence line.
-fn block_seq_items(front_matter: &str, key: &str) -> Vec<String> {
-    let prefix = format!("{key}:");
-    let mut lines = front_matter.lines();
-    // The block opens at a top-level `key:` with an empty inline value.
-    let opened = lines.by_ref().any(|l| {
-        !l.starts_with(char::is_whitespace)
-            && l.trim().strip_prefix(&prefix).map(str::trim) == Some("")
-    });
-    if !opened {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for l in lines {
-        let t = l.trim();
-        if t.is_empty() {
-            continue;
-        }
-        if !l.starts_with(char::is_whitespace) {
-            break; // dedent to a new top-level key ends the block
-        }
-        let Some(item) = t.strip_prefix('-') else {
-            break; // an indented non-item line is not part of the sequence
-        };
-        let v = item.trim().trim_matches(['"', '\'']).trim();
-        if !v.is_empty() {
-            out.push(v.to_string());
-        }
-    }
-    out
-}
-
-/// Extract a top-level `key:` value from raw front matter. Lightweight scan,
-/// not a YAML parse; returns the inline value (empty for block/list values).
-pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
-    let prefix = format!("{key}:");
-    for line in front_matter.lines() {
-        // top-level keys only (not indented sub-keys)
-        if line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        if let Some(rest) = line.trim().strip_prefix(&prefix) {
-            let v = rest.trim().trim_matches(['"', '\'']).trim();
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
+    DocFront(parse_front_matter_block(front_matter).unwrap_or_default()).bibliography()
 }

@@ -33,7 +33,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // (output, nav, listings); the live preview still shows it, badged.
     "draft",
     // Title block: `title-block-style: none` is honored (suppresses the visible
-    // header); see `render::detect_title_block_hidden`.
+    // header); see `render::DocFront::title_block_hidden`.
     "title-block-style",
     // Table of contents
     "toc",
@@ -47,7 +47,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
 ];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
-/// `render::detect_execute_defaults`).
+/// `render::DocFront::exec_cache`).
 ///
 /// One key, and that is the whole set on purpose: `echo`/`include` were document-wide
 /// defaults for something every real document says per cell (`#| echo:`), so they were
@@ -129,7 +129,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
 /// `None` for any non-boolean value (e.g. `echo: fenced`), so a caller keeps its own
 /// meaning for that. The single source of the boolean vocabulary shared by the
 /// front-matter (`site::frontmatter::bool_field`), cell-option
-/// (`render::cell_extract`), toc (`render::fm_extract::detect_toc`), and `_site.yml`
+/// (`render::cell_extract`), toc (`render::DocFront::toc`), and `_site.yml`
 /// readers, so `toc: yes` / `#| echo: no` take effect instead of silently no-oping.
 pub(crate) fn yaml_bool_word(s: &str) -> Option<bool> {
     match s
@@ -412,6 +412,24 @@ pub fn yaml_error(src: &str) -> Option<(String, u32)> {
             Some((format!("front matter is not valid YAML: {e}"), line))
         }
     }
+}
+
+/// A document's front matter parsed as YAML, the one parse every field reader goes
+/// through (the renderer's `render::DocFront` and the site's `parse_front_matter`).
+/// `None` when the document has no front matter, when the block is blank, or when it is
+/// not valid YAML: [`yaml_error`] reports that last case, located, and the build fails
+/// on it, so nothing here recovers a guess from a block YAML cannot read.
+pub(crate) fn front_matter_value(src: &str) -> Option<serde_yaml::Value> {
+    parse_front_matter_block(front_matter_block(src)?)
+}
+
+/// [`front_matter_value`] for a block the caller already split off with
+/// [`front_matter_block`].
+pub(crate) fn parse_front_matter_block(block: &str) -> Option<serde_yaml::Value> {
+    if block.trim().is_empty() {
+        return None;
+    }
+    serde_yaml::from_str(block).ok()
 }
 
 /// The leading `---` ... `---`/`...` block of a document, without the fences.
