@@ -48,7 +48,11 @@ function taliMermaidConfig() {
 function taliRunMermaid(nodes) {
   try {
     window.mermaid.initialize(taliMermaidConfig());
-    window.mermaid.run({ nodes: nodes });
+    // `run` is async, so a diagram with a syntax error rejects rather than throws, and the
+    // `catch` below never saw it: every save logged an unhandled rejection. Mermaid has
+    // already drawn its error graphic into the diagram's place by then, which is where
+    // the author looks.
+    Promise.resolve(window.mermaid.run({ nodes: nodes })).catch(function () {});
   } catch (e) {}
 }
 
