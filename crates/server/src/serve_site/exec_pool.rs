@@ -122,6 +122,11 @@ impl ExecPool {
         self.execs.get_mut(rel).unwrap()
     }
 
+    /// The interpreter this pool's executors run, `None` for the unit-test `Default`.
+    pub(super) fn python(&self) -> Option<&Path> {
+        self.python.as_ref().map(|p| p.path.as_path())
+    }
+
     /// Restart `rel`'s kernel if it currently has one (the dev-menu action).
     pub(super) fn restart(&mut self, rel: &str) {
         if let Some(ex) = self.execs.get_mut(rel) {

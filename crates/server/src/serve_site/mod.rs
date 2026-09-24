@@ -1370,15 +1370,14 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
     tokio::spawn(async move {
         // The project's one ExecPool. `exec_pool.rs` is used verbatim. Interpreters come
         // from the project's own `_site.yml`/root (python:, a project .venv, env, or
-        // default). The pool is owned by this task and dropped on channel close (server
-        // shutdown), which kills every kernel it holds.
+        // default), asked again before every job ([`repoint`]). The pool is owned by this
+        // task and dropped on channel close (server shutdown), which kills every kernel it
+        // holds.
         let project = app.root.clone();
-        let py = {
-            let s = project.site.lock();
-            crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
-        };
+        let py = resolve_python_for(&project);
         let mut pool = ExecPool::new(project.dir.join("_freeze"), py, app.interrupt.clone());
         while let Some(msg) = build_rx.recv().await {
+            repoint(&mut pool, &project, &app.interrupt);
             match msg {
                 BuildMsg::Build(rel) => {
                     build_on_exec_lane(&project, &rel, &mut pool).await;
@@ -1403,6 +1402,30 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             }
         }
     });
+}
+
+/// The interpreter `project` runs its cells with, resolved as of now (`_site.yml` `python:`,
+/// the project's `.venv`, `TALIESIN_PYTHON`, an ancestor `.venv`, else `python3`).
+fn resolve_python_for(project: &Project) -> crate::interpreter::Resolved {
+    let site = project.site.lock();
+    crate::interpreter::resolve_python(site.config.python.as_deref(), &project.dir)
+}
+
+/// Point the exec lane's `pool` at the interpreter the project resolves to now: a fresh pool
+/// when it changed, the old one dropped with every kernel it holds.
+///
+/// It was resolved once, when the preview started, so a `python:` edited in `_site.yml`
+/// never reached a kernel, not even through Restart kernel, and a `.venv` created while the
+/// preview ran was ignored, though the guide says to fix the kernel and save (audit
+/// 2026-09-24 C8, first-hour #9). Asked before every job on the lane, so a save or a Restart
+/// kernel picks the change up; resolving is a handful of `exists` calls. The pool's warm
+/// cap and eviction order are its own and untouched.
+fn repoint(pool: &mut ExecPool, project: &Project, interrupt: &Arc<std::sync::atomic::AtomicU32>) {
+    let python = resolve_python_for(project);
+    // The new pool's first kernel says which interpreter it runs, and from where.
+    if pool.python() != Some(python.path.as_path()) {
+        *pool = ExecPool::new(project.dir.join("_freeze"), python, interrupt.clone());
+    }
 }
 
 /// Build `rel` on the exec lane, publishing which page the lane is running cells for while
@@ -4342,6 +4365,42 @@ mod project_tests {
         until("the missing file is reported", broken);
         std::fs::write(dir.join("report.pdf"), b"%PDF-1.4\n").unwrap();
         until("creating it clears the report", || !broken());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit 2026-09-24 C8 and first-hour #9. The interpreter was resolved once, when the
+    /// preview started, so a `python:` edited in `_site.yml` never reached a kernel, not
+    /// even through Restart kernel, and a `.venv` created while the preview ran was ignored,
+    /// though the guide says to fix the kernel and save. The exec lane re-resolves before
+    /// every job and moves to a fresh pool when the answer changed.
+    #[test]
+    fn the_exec_lane_follows_the_interpreter_the_project_resolves_to_now() {
+        let dir = scratch("python");
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+        let (project, app, _b, _f) = project_and_app(&dir);
+        let before = {
+            let s = project.site.lock();
+            crate::interpreter::resolve_python(s.config.python.as_deref(), &project.dir)
+        };
+        let mut pool = ExecPool::new(dir.join("_freeze"), before, app.interrupt.clone());
+
+        // A `.venv` created while the preview runs.
+        let venv = dir.join(".venv/bin/python");
+        std::fs::create_dir_all(venv.parent().unwrap()).unwrap();
+        std::fs::write(&venv, "").unwrap();
+        repoint(&mut pool, &project, &app.interrupt);
+        assert_eq!(pool.python(), Some(venv.as_path()));
+
+        // `python:` set in `_site.yml`, adopted by the re-discovery its save causes.
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: T\npython: /opt/py/bin/python\n",
+        )
+        .unwrap();
+        *project.site.lock() = project.rediscover();
+        repoint(&mut pool, &project, &app.interrupt);
+        assert_eq!(pool.python(), Some(Path::new("/opt/py/bin/python")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

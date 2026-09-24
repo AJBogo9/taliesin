@@ -47,7 +47,9 @@ on current Debian, Ubuntu and Homebrew Pythons (`externally-managed-environment`
 
 The diagnostics note usually quotes the kernel's own error (e.g. *"No module
 named ipykernel"*), so fix that and save: the server respawns the kernel and
-re-runs automatically, no restart needed.
+re-runs automatically, no restart needed. That includes a `.venv` created while the
+preview runs and a `python:` changed in `_site.yml`. `TALIESIN_PYTHON` is read from the
+environment the preview was started in, so a change to it needs a restart.
 
 ## A cell hangs / runs forever
 
