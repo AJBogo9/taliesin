@@ -325,7 +325,9 @@ project type is inferred (the presence of `chapters:` makes it a book). A nested
 config (a `project:` / `website:` / `book:` / `format:` block) is no longer parsed:
 its unknown top-level keys warn, and its nested values are ignored. Flatten it (see
 the key table below). There is no `_metadata.yml` cascade: the root config sets
-defaults, a page's own front matter overrides them.
+defaults, a page's own front matter overrides them. A project does not contain another:
+a folder inside it with its own `_site.yml` is walked as part of the outer project, and
+that `_site.yml` is reported as ignored; build or preview the folder on its own to use it.
 
 A **website**:
 

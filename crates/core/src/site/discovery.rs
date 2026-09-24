@@ -17,6 +17,7 @@ pub(super) fn website_pages(
     let mut inputs = Vec::new();
     collect_pages(root, &mut inputs);
     inputs.sort();
+    nested_projects(root, &inputs, warnings);
     let mut pages: Vec<Page> = inputs
         .into_iter()
         .filter_map(|input| {
@@ -46,6 +47,33 @@ pub(super) fn website_pages(
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
+}
+
+/// Report every folder under `root` holding its own `_site.yml` that `inputs` (the pages the
+/// walk found) sit in. A project never contains another (nested projects were cut): the walk
+/// publishes such a folder's pages as this project's own, under its chrome, and nothing
+/// reads the inner `_site.yml`. That was silent, so an author who dropped a project inside
+/// another got its pages under the wrong navbar and its config ignored (audit 2026-09-24,
+/// config-seam #18). Each is reported once, located at the ignored file.
+fn nested_projects(root: &Path, inputs: &[PathBuf], warnings: &mut Vec<Warning>) {
+    let mut seen = HashSet::new();
+    for input in inputs {
+        let mut dir = input.parent();
+        while let Some(d) = dir.filter(|d| *d != root && d.starts_with(root)) {
+            if seen.insert(d.to_path_buf()) && d.join("_site.yml").is_file() {
+                let rel = rel_str(root, &d.join("_site.yml"));
+                let folder = rel_str(root, d);
+                let mut w = Warning::new(format!(
+                    "`{rel}` is ignored: a project cannot contain another, so the pages under \
+                     `{folder}/` are built as this project's own pages, with its navigation \
+                     (build `{folder}` on its own to publish it as a project)"
+                ));
+                w.file = Some(rel);
+                warnings.push(w);
+            }
+            dir = d.parent();
+        }
+    }
 }
 
 /// The website [`Page`] for one `input` under `root`, from its front matter: what

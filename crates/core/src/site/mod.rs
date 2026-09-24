@@ -3848,6 +3848,31 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A project never contains another: `build <parent>` publishes a nested project's pages
+    /// as its own, under its own chrome, and ignores the nested `_site.yml`. Saying so is the
+    /// honest minimum (nested projects were cut); it was silent (config-seam #18).
+    #[test]
+    fn a_nested_project_s_config_is_reported() {
+        let root = write_site(
+            "nested",
+            &[
+                ("_site.yml", "title: Outer\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("sub/_site.yml", "title: Inner\n"),
+                ("sub/s.tmd", "---\ntitle: S\n---\n\nS.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| loc(w).contains("sub/_site.yml")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// A site warning as `file:line: message`, the form every verb prints it in.
     fn loc(w: &Warning) -> String {
         let file = w.file.as_deref().unwrap_or("_site.yml");
