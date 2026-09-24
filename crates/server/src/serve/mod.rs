@@ -114,6 +114,11 @@ struct Incumbent {
 /// connections and never replies must not stall startup.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// The most of a port holder's reply the probe reads. A real answer is under 300 bytes;
+/// the timeout bounds how long a holder can talk, not how much, and a holder streaming
+/// bytes forever grew the probe past 2 GB in about a second, ten probes at once.
+const PROBE_READ_CAP: u64 = 64 * 1024;
+
 /// Accept a reported pid only if signalling it could mean one process. Any local user
 /// can bind a loopback port, so this number is untrusted input on its way to `kill`, and
 /// the non-positive range is where it gets dangerous: `kill(-1, ...)` signals *every*
@@ -172,7 +177,11 @@ async fn identify(port: u16) -> Option<Incumbent> {
             format!("GET {IDENTITY_PATH} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         sock.write_all(req.as_bytes()).await.ok()?;
         let mut raw = Vec::new();
-        sock.read_to_end(&mut raw).await.ok()?;
+        (&mut sock)
+            .take(PROBE_READ_CAP)
+            .read_to_end(&mut raw)
+            .await
+            .ok()?;
         let raw = String::from_utf8(raw).ok()?;
         let (_head, body) = raw.split_once("\r\n\r\n")?;
         let v: serde_json::Value = serde_json::from_str(body).ok()?;
@@ -1264,7 +1273,61 @@ mod percent_decode_tests {
 
 #[cfg(test)]
 mod takeover_tests {
-    use super::plausible_pid;
+    use super::{PROBE_TIMEOUT, identify, plausible_pid};
+    use std::time::Instant;
+
+    /// Any local process can hold a port in the fallback range and answer the identity
+    /// probe, so the reply is untrusted input, and its size is part of that. A holder that
+    /// streams bytes forever drove the probe past a 2 GB memory cap in about a second (audit
+    /// 2026-09-24, A4), and ten probes run at once. The probe must stop reading at a cap far
+    /// above a real answer (under 300 bytes) and give up at once, not at the timeout.
+    #[tokio::test]
+    async fn the_identity_probe_stops_reading_an_endless_reply() {
+        use std::io::{Read, Write};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        // Bounded, so a regression costs this test BUDGET bytes of memory rather than
+        // whatever loopback can deliver before the probe's timeout.
+        const BUDGET: u64 = 256 << 20;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let sent = Arc::new(AtomicU64::new(0));
+        let counter = sent.clone();
+        std::thread::spawn(move || {
+            let Ok((mut s, _)) = listener.accept() else {
+                return;
+            };
+            let _ = s.read(&mut [0u8; 1024]);
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n");
+            let chunk = vec![b' '; 1 << 16];
+            while counter.load(Ordering::SeqCst) < BUDGET {
+                if s.write_all(&chunk).is_err() {
+                    return;
+                }
+                counter.fetch_add(chunk.len() as u64, Ordering::SeqCst);
+            }
+            // Hold the connection open: only a read cap, never an EOF, may end the probe.
+            std::thread::sleep(PROBE_TIMEOUT * 2);
+        });
+
+        let started = Instant::now();
+        assert!(
+            identify(port).await.is_none(),
+            "a stream of spaces is not a preview"
+        );
+        let took = started.elapsed();
+        let streamed = sent.load(Ordering::SeqCst);
+        assert!(
+            streamed < 48 << 20,
+            "the probe kept reading an endless reply: {} MiB went into it",
+            streamed >> 20
+        );
+        assert!(
+            took < PROBE_TIMEOUT / 2,
+            "the probe waited out its timeout ({took:?}) instead of stopping at its read cap"
+        );
+    }
 
     #[test]
     fn only_a_pid_that_means_one_process_survives_the_takeover_check() {
