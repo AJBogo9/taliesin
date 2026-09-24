@@ -1093,3 +1093,56 @@ fn bibtex_name_forms_the_exporters_use_are_split_like_bibtex() {
         assert_eq!(super::author::format_authors(raw), want, "{raw}");
     }
 }
+
+/// A LaTeX control word the cleaner does not know is kept, not deleted, and a math span
+/// is left as the TeX the author wrote (audit 2026-09-24 G5).
+///
+/// Unknown macros used to be dropped with their name, which is harmless for a formatting
+/// command whose argument follows (`\emph{x}`) and destroys text for everything else:
+/// arXiv titles keep their math verbatim, so `{$\alpha$}-Synuclein` published as
+/// "$$-Synuclein", `$O(n \log n)$` lost its `\log`, and `The {\TeX}book` became "The book".
+#[test]
+fn unknown_control_words_and_math_are_kept_not_deleted() {
+    let cases = [
+        // Math spans are verbatim, braces and all.
+        (r"{$\alpha$}-Synuclein", r"$\alpha$-Synuclein"),
+        (r"{\(\ell_1\)}-Regularized", r"\(\ell_1\)-Regularized"),
+        (
+            r"An {$O(n \log n)$} Algorithm",
+            r"An $O(n \log n)$ Algorithm",
+        ),
+        (r"$\frac{a}{b}$-norm", r"$\frac{a}{b}$-norm"),
+        (r"{\ensuremath{\beta}}-VAE", r"$\beta$-VAE"),
+        // An escaped dollar is a dollar, not math.
+        (r"\$5 and \$6", "$5 and $6"),
+        // The symbols and logos exporters write.
+        (r"The {\TeX}book", "The TeXbook"),
+        (r"\LaTeX{} and \BibTeX", "LaTeX and BibTeX"),
+        (
+            r"Deep Learning \textendash{} A Survey",
+            "Deep Learning \u{2013} A Survey",
+        ),
+        (r"1990\textemdash{}2000", "1990\u{2014}2000"),
+        (r"Alzheimer\textquoteright{}s", "Alzheimer\u{2019}s"),
+        (
+            r"37{\textdegree}C and 5{\texttimes}",
+            "37\u{b0}C and 5\u{d7}",
+        ),
+        (r"Wait\ldots", "Wait\u{2026}"),
+        (
+            r"\S 3, \copyright{} 2020, \textregistered",
+            "\u{a7}3, \u{a9} 2020, \u{ae}",
+        ),
+        (r"a \textless{} b \textgreater{} c", "a < b > c"),
+        // Declarations that print nothing still print nothing.
+        (r"{\em Emphasised} and {\sc Caps}", "Emphasised and Caps"),
+        // A command with an argument keeps its argument, as before.
+        (r"\emph{Deep} \textit{learning}", "Deep learning"),
+        // Anything else stays visible, so the author sees what was not understood.
+        (r"a \foo b", r"a \foo b"),
+        (r"a \foo{} b", r"a \foo b"),
+    ];
+    for (raw, want) in cases {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+}
