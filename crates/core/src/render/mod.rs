@@ -2951,16 +2951,13 @@ fn toc_html(blocks: &[Block]) -> String {
             }
         }
         out.push_str(&format!(
-            // NEITHER half may be escaped again. `text` is `strip_tags` output and `id`
-            // is `extract_attr` output: both are read back out of already-escaped heading
-            // HTML, so a second pass turns `&amp;` into `&amp;amp;`. On `text` that is a
-            // visible typo; on `id` it is a DEAD LINK in the published build, because the
-            // href stops matching the anchor the heading actually carries
-            // (`## R&D notes {#r&d-notes}` -> anchor `r&amp;d-notes`, href
-            // `#r&amp;amp;d-notes`). `escape_attr_from_html` is the attribute-context
-            // counterpart: it escapes `"` and leaves existing entities alone.
+            // `text` is `strip_tags` output, read back out of already-escaped heading HTML,
+            // so it is NOT escaped again: a second pass turns `&amp;` into a visible
+            // `&amp;amp;`. `id` is `extract_attr` output, which the walker DECODES, so it is
+            // escaped exactly once here; leaving it encoded twice was a dead TOC link in the
+            // published build (`## R&D notes {#r&d-notes}` -> href `#r&amp;amp;d-notes`).
             "<li><a href=\"#{}\">{text}</a>",
-            escape_attr_from_html(id),
+            escape_attr(id),
         ));
         open_li = true;
     }
@@ -2983,7 +2980,7 @@ fn toc_html(blocks: &[Block]) -> String {
 /// single-quoted spelling of the real thing.
 fn extract_attr(html: &str, name: &str) -> Option<String> {
     let tag = tags(html).next()?;
-    attr_value(&tag, name).map(str::to_string)
+    attr_value(&tag, name).map(std::borrow::Cow::into_owned)
 }
 
 // --- emitter -------------------------------------------------------------
@@ -3164,19 +3161,29 @@ pub struct Tag<'a> {
 }
 
 /// One attribute of one [`Tag`], as [`attrs`] read it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attr<'a> {
     /// The attribute name as written. Compare case-insensitively.
     pub name: &'a str,
-    /// The value without its quotes, exactly as written — still entity-escaped, since
-    /// every caller compares it against markup the same pass emitted. Empty for a
-    /// valueless attribute (`defer`).
-    pub value: &'a str,
+    /// The value without its quotes, with its character references decoded once:
+    /// `R&amp;D.png` reads `R&D.png`, which is the file, the url or the id a browser takes
+    /// it to name. Empty for a valueless attribute (`defer`).
+    ///
+    /// Decoded because every reader resolves the value against something that is not
+    /// markup: a file on disk, a page url, an id another element carries. It came back
+    /// still encoded until 2026-09-24, and each reader then compared markup with a file
+    /// name: an image `img/R&D.png` was "not found" as `img/R&amp;D.png` and left out of a
+    /// portable build, and a link to `R&D.tmd` drew three false broken-link errors.
+    pub value: std::borrow::Cow<'a, str>,
+    /// The value exactly as written, still entity-encoded: the span [`Attr::value_at`]
+    /// starts. Only a caller that writes a replacement back into the page wants it
+    /// ([`rewrite_attr_in_tags`]), because what it splices in must be encoded too.
+    pub raw: &'a str,
     /// Byte offset of the attribute NAME in the page, for a caller that has to locate the
     /// reference it just read.
     pub at: usize,
     /// Byte offset of the VALUE in the page — past the opening quote, when there is one.
-    /// With [`Attr::value`]'s length this is the exact span to splice a replacement into,
+    /// With [`Attr::raw`]'s length this is the exact span to splice a replacement into,
     /// which is what lets [`rewrite_attr_in_tags`] rewrite every quoting form in place
     /// rather than re-find a `name="` needle it can only spell one way. Points just past
     /// the name for a valueless attribute, where the empty value notionally sits.
@@ -3356,7 +3363,8 @@ impl<'a> Iterator for Attrs<'a> {
                 // name, so the next loop resumes correctly.
                 return Some(Attr {
                     name,
-                    value: "",
+                    value: std::borrow::Cow::Borrowed(""),
+                    raw: "",
                     at: self.base + name_at,
                     value_at: self.base + self.i,
                 });
@@ -3385,7 +3393,12 @@ impl<'a> Iterator for Attrs<'a> {
             self.i = next;
             return Some(Attr {
                 name,
-                value,
+                value: if value.contains('&') {
+                    std::borrow::Cow::Owned(unescape_html(value))
+                } else {
+                    std::borrow::Cow::Borrowed(value)
+                },
+                raw: value,
                 at: self.base + name_at,
                 value_at: self.base + value_at,
             });
@@ -3394,8 +3407,9 @@ impl<'a> Iterator for Attrs<'a> {
 }
 
 /// The value of the attribute called `name` on `tag`, matched case-insensitively as HTML
-/// does. `None` when the tag does not carry it; `Some("")` for a valueless one.
-pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<&'a str> {
+/// does, and decoded ([`Attr::value`]). `None` when the tag does not carry it; `Some("")`
+/// for a valueless one.
+pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<std::borrow::Cow<'a, str>> {
     attrs(tag)
         .find(|a| a.name.eq_ignore_ascii_case(name))
         .map(|a| a.value)
@@ -3408,7 +3422,10 @@ pub(crate) fn attr_value<'a>(tag: &Tag<'a>, name: &str) -> Option<&'a str> {
 /// Two things a needle scan cannot do, and both are defects this tree has had: the name is
 /// matched as a NAME, so `data-block-id="…"` is not an `id`, and the value is read in
 /// whichever of HTML's three quoting forms the author wrote it in.
-pub(crate) fn attr_values<'a>(html: &'a str, name: &'a str) -> impl Iterator<Item = &'a str> {
+pub(crate) fn attr_values<'a>(
+    html: &'a str,
+    name: &'a str,
+) -> impl Iterator<Item = std::borrow::Cow<'a, str>> {
     tags(html)
         .flat_map(|t| attrs(&t))
         .filter(move |a| a.name.eq_ignore_ascii_case(name))
@@ -3464,8 +3481,9 @@ pub fn asset_fs_path(r: &str) -> String {
 }
 
 /// Rewrite the value of every attribute called `name` that sits inside a real element tag,
-/// leaving the document's visible TEXT untouched. `rewrite` is handed each value and
-/// returns its replacement, which is spliced in between the delimiters the author used.
+/// leaving the document's visible TEXT untouched. `rewrite` is handed each value AS WRITTEN
+/// ([`Attr::raw`], still entity-encoded) and returns its replacement, which is spliced in
+/// verbatim between the delimiters the author used, so the replacement must be encoded too.
 ///
 /// Tag-versus-text is [`tags`]'s job — see there for the defects that made it one — and the
 /// three quoting forms are [`attrs`]'s, which is why this takes a NAME and not a `name="`
@@ -3484,12 +3502,12 @@ pub(crate) fn rewrite_attr_in_tags(
     for tag in tags(html) {
         for a in attrs(&tag) {
             // A valueless attribute has nothing to rewrite and no span to rewrite it into.
-            if a.value.is_empty() || !a.name.eq_ignore_ascii_case(name) {
+            if a.raw.is_empty() || !a.name.eq_ignore_ascii_case(name) {
                 continue;
             }
             out.push_str(&html[cursor..a.value_at]);
-            out.push_str(&rewrite(a.value));
-            cursor = a.value_at + a.value.len();
+            out.push_str(&rewrite(a.raw));
+            cursor = a.value_at + a.raw.len();
         }
     }
     out.push_str(&html[cursor..]);
@@ -3637,9 +3655,17 @@ fn leading_h1_text(blocks: &[Block]) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-/// Reverse [`escape_html`]: decode the entities the renderer itself emits (`&amp;`,
-/// `&lt;`, `&gt;`, `&quot;`, `&#39;`). Not a general HTML entity decoder — it exists so
-/// text lifted back out of emitted HTML can be re-escaped exactly once.
+/// Reverse [`escape_html`], and the one character-reference decoder for text or an
+/// attribute value lifted back out of finished HTML ([`Attr::value`], the search index, a
+/// page title). Decodes the named references the renderer emits (`&amp;`, `&lt;`, `&gt;`,
+/// `&quot;`, `&apos;`, `&nbsp;`) and every numeric one (`&#39;`, `&#x2019;`), in ONE pass,
+/// as HTML does: a literal, double-encoded `&amp;#8217;` is the text `&#8217;`, where a
+/// numeric pass after the named one would decode it twice.
+///
+/// Any other named reference (`&eacute;`) is left as written. The renderer never emits
+/// one, so only hand-written raw HTML can carry it, and a full table is 2,000 entries for
+/// that. An unterminated, over-long or out-of-range numeric reference is left as written
+/// rather than guessed at.
 fn unescape_html(s: &str) -> String {
     if !s.contains('&') {
         return s.to_string();
@@ -3649,20 +3675,13 @@ fn unescape_html(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
-        let decoded = [
-            ("&amp;", '&'),
-            ("&lt;", '<'),
-            ("&gt;", '>'),
-            ("&quot;", '"'),
-            ("&#39;", '\''),
-        ]
-        .into_iter()
-        .find(|(ent, _)| tail.starts_with(ent));
-        match decoded {
-            Some((ent, ch)) => {
+        match char_ref(tail) {
+            Some((ch, len)) => {
                 out.push(ch);
-                rest = &tail[ent.len()..];
+                rest = &tail[len..];
             }
+            // Not a reference this decodes: emit the `&` and rescan after it, so a valid
+            // reference later in the same string is still found.
             None => {
                 out.push('&');
                 rest = &tail[1..];
@@ -3671,6 +3690,37 @@ fn unescape_html(s: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// The character the reference opening `s` (which starts with `&`) names, and the
+/// reference's length in bytes. `None` when it is not one [`unescape_html`] decodes.
+fn char_ref(s: &str) -> Option<(char, usize)> {
+    const NAMED: [(&str, char); 6] = [
+        ("&amp;", '&'),
+        ("&lt;", '<'),
+        ("&gt;", '>'),
+        ("&quot;", '"'),
+        ("&apos;", '\''),
+        ("&nbsp;", '\u{a0}'),
+    ];
+    if let Some((ent, ch)) = NAMED.iter().find(|(ent, _)| s.starts_with(ent)) {
+        return Some((*ch, ent.len()));
+    }
+    let body = s.strip_prefix("&#")?;
+    let hex = body.starts_with(['x', 'X']);
+    let digits = if hex { &body[1..] } else { body };
+    let radix = if hex { 16 } else { 10 };
+    // Bounded: the longest legal code point is 7 decimal digits (0x10FFFF = 1114111).
+    let len = digits
+        .chars()
+        .take(8)
+        .take_while(|c| c.is_digit(radix))
+        .count();
+    if len == 0 || !digits[len..].starts_with(';') {
+        return None;
+    }
+    let ch = char::from_u32(u32::from_str_radix(&digits[..len], radix).ok()?)?;
+    Some((ch, s.len() - digits.len() + len + 1))
 }
 
 /// Escape a string for HTML *text* content (`&`, `<`, `>`). For attribute values

@@ -55,8 +55,9 @@ fn folded_client_nodes(container: &Block) -> Vec<JsNode> {
     for tag in crate::render::tags(&container.html) {
         if let Some(pos) = crate::render::attr_value(&tag, "data-sourcepos") {
             here = (
-                crate::render::attr_value(&tag, "data-source-file").map(str::to_string),
-                start_line(pos),
+                crate::render::attr_value(&tag, "data-source-file")
+                    .map(std::borrow::Cow::into_owned),
+                start_line(&pos),
             );
         }
         if !tag.name.eq_ignore_ascii_case("script") {

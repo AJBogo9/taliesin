@@ -8,17 +8,17 @@ use crate::render::{Block, Severity, Warning};
 /// they are validated by `validate_xrefs`, resolved cross-page by the site layer, and may
 /// target an id emitted only by code-cell execution (which static `check` does not run).
 /// Cross-page `href="page.html#x"` and empty `href="#"` are also skipped.
-fn same_page_manual_fragments(html: &str) -> Vec<&str> {
+fn same_page_manual_fragments(html: &str) -> Vec<String> {
     let mut out = Vec::new();
     for tag in crate::render::tags(html) {
         if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
             continue; // not a link, or a cross-reference validated separately
         }
-        if let Some(frag) =
-            crate::render::attr_value(&tag, "href").and_then(|v| v.strip_prefix('#'))
+        if let Some(href) = crate::render::attr_value(&tag, "href")
+            && let Some(frag) = href.strip_prefix('#')
             && !frag.is_empty()
         {
-            out.push(frag);
+            out.push(frag.to_string());
         }
     }
     out
@@ -35,7 +35,7 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
     if blocks.iter().any(|b| b.cells().next().is_some()) {
         return Vec::new();
     }
-    let mut ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut ids = std::collections::HashSet::new();
     for b in blocks {
         collect_attr_values(&b.html, "id", &mut ids);
     }
@@ -43,7 +43,7 @@ pub fn validate_internal_anchors(blocks: &[Block]) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
         for frag in same_page_manual_fragments(&b.html) {
-            if ids.contains(frag) {
+            if ids.contains(frag.as_str()) {
                 continue;
             }
             let w = Warning::new(format!(

@@ -269,7 +269,7 @@ pub(super) fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
 /// every block's content hash was registered as a linkable anchor, and it matched inside
 /// prose and code samples that merely showed the attribute.
 pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<String>) {
-    out.extend(crate::render::attr_values(html, "id").map(str::to_string));
+    out.extend(crate::render::attr_values(html, "id").map(std::borrow::Cow::into_owned));
 }
 
 /// Manual relative `<a href>` links in a block's HTML, as `(path, Option<fragment>)`.
@@ -277,7 +277,7 @@ pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<S
 /// `#frag`, and cross-reference (`tali-xref`) links are skipped — the cross-page checker
 /// only resolves intra-site file links (anchors handled per target page). The path keeps
 /// its authored form (`other.tmd`, `../sec/page.html`); the fragment is split off.
-pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
+pub(super) fn manual_local_links(html: &str) -> Vec<(String, Option<String>)> {
     let mut out = Vec::new();
     for tag in crate::render::tags(html) {
         if !tag.name.eq_ignore_ascii_case("a") || tag.text.contains("tali-xref") {
@@ -287,19 +287,19 @@ pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
             continue;
         };
         // Skip external / non-file / bare-anchor links.
-        if val.is_empty() || is_external_or_special(val) {
+        if val.is_empty() || is_external_or_special(&val) {
             continue;
         }
         let (path, frag) = match val.split_once('#') {
             Some((p, f)) => (p, Some(f)),
-            None => (val, None),
+            None => (&*val, None),
         };
         // Strip a `?query` so a cache-busting / signed link (`page.tmd?v=2`) still
         // resolves to its page instead of false-flagging — mirrors the single-doc
         // checker (`diagnostics::validate_local_links`).
         let path = &path[..path.find('?').unwrap_or(path.len())];
         if !path.is_empty() {
-            out.push((path, frag));
+            out.push((path.to_string(), frag.map(str::to_string)));
         }
     }
     out
@@ -481,7 +481,13 @@ mod tests {
     fn manual_local_links_skips_external_anchor_and_xref() {
         let html = r##"<a href="other.tmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="tali-xref">r</a>"##;
         let links = manual_local_links(html);
-        assert_eq!(links, vec![("other.tmd", None), ("page.html", Some("sec"))]);
+        assert_eq!(
+            links,
+            vec![
+                ("other.tmd".to_string(), None),
+                ("page.html".to_string(), Some("sec".to_string()))
+            ]
+        );
     }
 
     #[test]
@@ -499,7 +505,10 @@ mod tests {
         let links = manual_local_links(html);
         assert_eq!(
             links,
-            vec![("report.tmd", None), ("dash.html", Some("sec"))]
+            vec![
+                ("report.tmd".to_string(), None),
+                ("dash.html".to_string(), Some("sec".to_string()))
+            ]
         );
     }
 

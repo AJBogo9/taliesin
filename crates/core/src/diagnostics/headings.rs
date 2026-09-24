@@ -8,7 +8,7 @@ use crate::render::{Block, Severity, Warning};
 /// `data-block-id="…"` is not an `id` (it is a different attribute NAME, which is what the
 /// leading-space needle here used to approximate) and a `>` inside an attribute value does
 /// not end the tag early.
-fn heading_id(html: &str) -> Option<&str> {
+fn heading_id(html: &str) -> Option<std::borrow::Cow<'_, str>> {
     super::helpers::heading_level(html)?;
     crate::render::attr_value(&crate::render::tags(html).next()?, "id")
 }
@@ -19,13 +19,13 @@ fn heading_id(html: &str) -> Option<&str> {
 /// collision the renderer does not catch.
 pub fn validate_duplicate_heading_ids(blocks: &[Block]) -> Vec<Warning> {
     use std::collections::HashSet;
-    let mut seen: HashSet<&str> = HashSet::new();
+    let mut seen: HashSet<std::borrow::Cow<'_, str>> = HashSet::new();
     let mut out = Vec::new();
     for b in blocks {
         let Some(id) = heading_id(&b.html) else {
             continue;
         };
-        if !seen.insert(id) {
+        if !seen.insert(id.clone()) {
             let w = Warning::new(format!(
                 "duplicate heading id `{id}`: an earlier heading already uses it, so anchors, the TOC, and cross-references jump to the first"
             ))

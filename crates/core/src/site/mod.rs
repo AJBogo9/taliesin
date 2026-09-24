@@ -749,8 +749,8 @@ impl Site {
             let line = sourcepos_start_line(&b.sourcepos);
             for (path, frag) in manual_local_links(&b.html) {
                 links.push(LinkRef {
-                    path: path.to_string(),
-                    frag: frag.map(str::to_string),
+                    path,
+                    frag,
                     line,
                     source_file: b.source_file.clone(),
                 });
@@ -1826,6 +1826,36 @@ pub(crate) mod tests {
             !joined.contains("notes.md"),
             "a raw source file on disk is still a legitimate target:\n{joined}"
         );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An `&` in a page's file name, in an anchor and in a query is ordinary text to the
+    /// reader's browser, and the cross-page check read all three still entity-encoded: a
+    /// working link to `R&D.tmd` was reported three times as "resolves to `R&amp;D.html`,
+    /// which is no page in this site", failing the publish gate.
+    #[test]
+    fn a_link_to_a_page_with_an_ampersand_in_its_name_resolves() {
+        let root = write_site(
+            "amp-link",
+            &[
+                ("_site.yml", "title: S\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n[page](R&D.tmd) [section](R&D.tmd#q&a) \
+                     [query](R&D.tmd?x=1&y=2) [gone](R&D.tmd#nope&x)\n",
+                ),
+                ("R&D.tmd", "---\ntitle: RD\n---\n\n## Q&A {#q&a}\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let msgs: Vec<String> = site
+            .validate_cross_page_links()
+            .into_iter()
+            .map(|(_rel, w)| w.message)
+            .collect();
+        assert_eq!(msgs.len(), 1, "only the missing anchor: {msgs:?}");
+        assert!(msgs[0].contains("`#nope&x`"), "{msgs:?}");
 
         let _ = std::fs::remove_dir_all(&root);
     }

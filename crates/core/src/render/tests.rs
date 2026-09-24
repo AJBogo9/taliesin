@@ -557,11 +557,14 @@ fn toc_href_matches_an_explicit_heading_id_containing_an_entity() {
     let doc = render_document("## R&D notes {#r&d-notes}\n\nBody.\n");
     let heading = &doc.blocks[0].html;
     let toc = toc_html(&doc.blocks);
-    // The anchor the browser resolves against, read back out of the emitted heading.
+    // The anchor the browser resolves against, and the href it follows, both read back the
+    // way the browser reads them: decoded, through the one walker.
     let anchor = extract_attr(heading, "id").expect("heading carries an explicit id");
-    assert_eq!(anchor, "r&amp;d-notes", "heading anchor changed: {heading}");
-    assert!(
-        toc.contains(&format!("href=\"#{anchor}\"")),
+    assert_eq!(anchor, "r&d-notes", "heading anchor changed: {heading}");
+    let href = extract_attr(&toc[toc.find("<a ").unwrap()..], "href").unwrap();
+    assert_eq!(
+        href,
+        format!("#{anchor}"),
         "TOC href must equal the heading's own id, got: {toc}"
     );
     assert!(
@@ -7330,7 +7333,7 @@ fn the_tag_walker_reads_markup_and_never_text() {
     // `<p>`, `<code>` and `<img>` are real; the doctype, the comment and `</p>` are not.
     assert_eq!(names, vec!["p", "code", "script", "style", "img"]);
 
-    let values: Vec<&str> = tags(html)
+    let values: Vec<_> = tags(html)
         .flat_map(|t| attrs(&t).collect::<Vec<_>>())
         .map(|a| a.value)
         .collect();
@@ -7349,17 +7352,17 @@ fn the_attribute_reader_takes_every_value_form_and_whole_names() {
     let html = "<video src='single.mp4' poster=\"double.png\" data-tali-src=\"post.tmd\" \
                 width=640 controls></video>";
     let tag = tags(html).next().unwrap();
-    let got: Vec<(&str, &str)> = attrs(&tag).map(|a| (a.name, a.value)).collect();
-    assert_eq!(
-        got,
-        vec![
-            ("src", "single.mp4"),
-            ("poster", "double.png"),
-            ("data-tali-src", "post.tmd"),
-            ("width", "640"),
-            ("controls", ""),
-        ]
-    );
+    let got: Vec<(&str, String)> = attrs(&tag)
+        .map(|a| (a.name, a.value.into_owned()))
+        .collect();
+    let want = [
+        ("src", "single.mp4"),
+        ("poster", "double.png"),
+        ("data-tali-src", "post.tmd"),
+        ("width", "640"),
+        ("controls", ""),
+    ];
+    assert_eq!(got, want.map(|(n, v)| (n, v.to_string())));
     // Each attribute is located at its own name, which is what a caller reporting the
     // reference it just read needs.
     for a in attrs(&tag) {
@@ -7376,8 +7379,8 @@ fn every_attribute_locates_its_own_value() {
     let tag = tags(html).next().unwrap();
     for a in attrs(&tag) {
         assert_eq!(
-            &html[a.value_at..a.value_at + a.value.len()],
-            a.value,
+            &html[a.value_at..a.value_at + a.raw.len()],
+            a.raw,
             "{a:?} does not locate its own value"
         );
     }
@@ -7385,6 +7388,47 @@ fn every_attribute_locates_its_own_value() {
     // rather than a stale or out-of-range one.
     let hidden = attrs(&tag).find(|a| a.name == "hidden").unwrap();
     assert!(hidden.value.is_empty() && hidden.value_at <= html.len());
+}
+
+/// A value comes back DECODED, the way a browser reads it: `&amp;` is `&`. Every consumer
+/// resolves the value against something that is not markup (a file on disk, a page url, an
+/// id another element carries), and until 2026-09-24 each was handed the entity-encoded
+/// text instead: `![](img/R&D.png)` drew "local asset not found: `img/R&amp;D.png`" and was
+/// left out of a portable build, and a link to `R&D.tmd` drew three false broken-link
+/// errors. The raw span stays, for the one caller that writes a value back into the page.
+#[test]
+fn attribute_values_come_back_decoded_and_keep_their_raw_span() {
+    let html = "<img src=\"img/R&amp;D.png\" alt='a &quot;b&quot; &#39;c&#x27; &lt;d&gt;' \
+                title=x&amp;y name=\"&amp;#38;\" lang=\"&#38;lt;\">";
+    let tag = tags(html).next().unwrap();
+    let got: Vec<(&str, String, &str)> = attrs(&tag)
+        .map(|a| (a.name, a.value.to_string(), a.raw))
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            ("src", "img/R&D.png".to_string(), "img/R&amp;D.png"),
+            (
+                "alt",
+                "a \"b\" 'c' <d>".to_string(),
+                "a &quot;b&quot; &#39;c&#x27; &lt;d&gt;"
+            ),
+            ("title", "x&y".to_string(), "x&amp;y"),
+            // Decoded ONCE, as HTML does: an encoded reference stays a reference.
+            ("name", "&#38;".to_string(), "&amp;#38;"),
+            ("lang", "&lt;".to_string(), "&#38;lt;"),
+        ]
+    );
+    assert_eq!(attr_value(&tag, "src").as_deref(), Some("img/R&D.png"));
+    assert_eq!(
+        attr_values(html, "title").collect::<Vec<_>>(),
+        vec!["x&y"],
+        "the page-wide reader decodes too"
+    );
+    // The rewriter hands its callback the RAW span and splices the answer back verbatim, so
+    // what it writes is still an encoded value.
+    let out = rewrite_attr_in_tags(html, "src", |v| v.replace(".png", ".webp"));
+    assert!(out.contains("src=\"img/R&amp;D.webp\""), "{out}");
 }
 
 /// The rewriter takes an attribute NAME, so it rewrites whichever quoting form the author
@@ -7433,7 +7477,7 @@ fn the_attribute_value_reader_matches_names_and_skips_text() {
     let html = "<h2 id=\"double\">h</h2><div id='single'>d</div><span id=bare>s</span>\
                 <p data-block-id=\"b-abc\">quoting <code>id=\"in-text\"</code></p>\
                 <script>var s = '<div id=\"in-script\">';</script>";
-    let got: Vec<&str> = attr_values(html, "id").collect();
+    let got: Vec<_> = attr_values(html, "id").collect();
     assert_eq!(got, vec!["double", "single", "bare"]);
     assert_eq!(
         attr_values(html, "data-block-id").collect::<Vec<_>>(),

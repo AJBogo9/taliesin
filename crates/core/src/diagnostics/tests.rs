@@ -506,6 +506,32 @@ fn the_asset_check_percent_decodes_a_ref_before_resolving_it() {
     );
 }
 
+/// An `&` in a file name is an ordinary file name. The walker used to hand the checks the
+/// value still entity-encoded, so a present `img/R&D.png` was reported missing as
+/// `img/R&amp;D.png` and a working link to `Q&A data.csv` failed the gate. A really missing
+/// file is still reported, under the name the author wrote.
+#[test]
+fn the_asset_and_link_checks_resolve_an_ampersand_in_a_file_name() {
+    let dir = Tmp::new("amp");
+    std::fs::create_dir_all(dir.0.join("img")).unwrap();
+    std::fs::write(dir.0.join("img/R&D.png"), "x").unwrap();
+    std::fs::write(dir.0.join("Q&A data.csv"), "x").unwrap();
+    let doc = render_document_with_includes(
+        concat!(
+            "---\ntitle: T\n---\n\n",
+            "![Chart of spend](img/R&D.png)\n\n",
+            "Download [the data](<Q&A data.csv>).\n\n",
+            "![gone](img/X&Y.png)\n",
+        ),
+        &dir.0,
+    );
+    let assets = msgs(&validate_local_assets(&doc.blocks, &dir.0));
+    assert_eq!(assets.len(), 1, "only the truly missing image: {assets:?}");
+    assert!(assets[0].contains("`img/X&Y.png`"), "{assets:?}");
+    let links = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert!(links.is_empty(), "the linked file exists: {links:?}");
+}
+
 /// The same rule on the link and alt-text checks, which shared the scan.
 #[test]
 fn the_link_and_alt_checks_read_tags_not_a_substring_scan() {

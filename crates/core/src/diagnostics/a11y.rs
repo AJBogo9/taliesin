@@ -128,7 +128,7 @@ fn placeholder_alt_message(tag: &Tag<'_>) -> Option<String> {
             let file = src
                 .rsplit(['/', '\\'])
                 .next()
-                .unwrap_or(src)
+                .unwrap_or(&src)
                 .to_ascii_lowercase();
             let stem = file.rsplit_once('.').map_or(file.as_str(), |(s, _)| s);
             alt == file || alt == stem
