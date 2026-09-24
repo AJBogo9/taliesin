@@ -398,6 +398,88 @@ fn front_matter_settings_are_read_as_yaml_not_line_scanned() {
     assert!(cache("execute:\n  echo: off\n  include: no\n"));
 }
 
+/// ONE splitter decides what the front matter is. comrak's own front-matter extension
+/// accepted only an exact `---` line and closed at the first `\n---\n` anywhere, while
+/// `frontmatter::front_matter_block` (the lint, the card, the feed, `<title>`, heading
+/// demotion) also takes trailing whitespace and a `...` closer. On `--- ` the page
+/// published its YAML as a heading, and with a later `---` rule comrak's node ran on to
+/// that rule and every paragraph in between vanished from the page.
+#[test]
+fn one_splitter_decides_what_front_matter_is() {
+    let body_of = |doc: &RenderedDoc| {
+        doc.blocks
+            .iter()
+            .map(|b| b.html.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let doc = render_document(
+        "---\ntitle: My Post\n--- \n\nFirst paragraph.\n\n## Setup\n\nInstall it.\n\n---\n\nAfter.\n",
+    );
+    assert_eq!(doc.title.as_deref(), Some("My Post"));
+    let body = body_of(&doc);
+    for text in ["First paragraph.", "Install it.", "After."] {
+        assert!(body.contains(text), "`{text}` must survive: {body}");
+    }
+    assert!(
+        !body.contains("title: My Post"),
+        "the YAML is not body text: {body}"
+    );
+    // Blanking the block keeps every later line's number: click-to-source still lands.
+    let first = doc
+        .blocks
+        .iter()
+        .find(|b| b.html.contains("First paragraph."))
+        .unwrap();
+    assert_eq!(first.sourcepos, "5:1-5:16");
+
+    for closer in ["...", "---\t", "...  "] {
+        let doc = render_document(&format!("---\ntitle: Closed\n{closer}\n\nBody para.\n"));
+        assert_eq!(doc.title.as_deref(), Some("Closed"), "closer {closer:?}");
+        let body = body_of(&doc);
+        assert!(!body.contains("title: Closed"), "closer {closer:?}: {body}");
+        let para = doc
+            .blocks
+            .iter()
+            .find(|b| b.html.contains("Body para."))
+            .unwrap();
+        assert_eq!(para.sourcepos, "5:1-5:10", "closer {closer:?}");
+    }
+}
+
+/// A block that only LOOKS like front matter (a blank line above its `---`, or no closing
+/// fence) is body text by the one splitter's rule, so every key in it is dropped and the
+/// YAML is published. That used to pass `--check-only --strict` in silence; it is a located
+/// error now, and a document that merely opens with a thematic break stays silent.
+#[test]
+fn a_block_that_only_looks_like_front_matter_is_diagnosed() {
+    let fm_error = |src: &str| {
+        render_document(src)
+            .warnings
+            .into_iter()
+            .find(|w| w.message.contains("front matter"))
+    };
+    let w = fm_error("\n---\ntitle: Blank first\n---\n\nBody.\n").expect("leading blank line");
+    assert_eq!((w.line, w.severity), (Some(2), Severity::Error), "{w:?}");
+    assert!(w.message.contains("first line"), "{}", w.message);
+
+    let w =
+        fm_error("---\ntitle: Unclosed\ndate: 2026-01-02\n\nBody.\n").expect("no closing fence");
+    assert_eq!((w.line, w.severity), (Some(1), Severity::Error), "{w:?}");
+    assert!(w.message.contains("never closed"), "{}", w.message);
+
+    // A thematic break, a setext heading or plain prose after one is not an attempt at
+    // front matter.
+    for src in [
+        "---\n\nJust a rule above.\n",
+        "\n---\n\nText.\n",
+        "Intro.\n\n---\ntitle: not front matter, a paragraph\n---\n",
+        "---\nA note: set in prose\n",
+    ] {
+        assert!(fm_error(src).is_none(), "{src:?}: {:?}", fm_error(src));
+    }
+}
+
 #[test]
 fn html_is_escaped_in_text() {
     let doc = render_document("a < b & c\n");

@@ -16,7 +16,8 @@ second. For per-cell `#|` options, see the
 # Document front matter {#document-front-matter}
 
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`
-fenced header that sets the document's metadata and behaviour. This
+fenced header that sets the document's metadata and behaviour. The opening `---` is the
+file's first line, and the block ends at the next `---` (or `...`) line. This
 section is the full vocabulary, every top-level key Taliesin reads, plus the
 nested blocks (`execute:`, `listing:`, `hero:`) and their children.
 

@@ -8,7 +8,7 @@
 //! blocks, each suggesting the closest known key. It only warns (located
 //! for click-to-source); rendering is unaffected, an unknown key still renders.
 
-use crate::render::Warning;
+use crate::render::{Severity, Warning};
 
 /// Top-level front-matter keys taliesin recognizes: the closed set of keys it
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
@@ -81,7 +81,7 @@ pub(crate) const HERO_ACTION_KEYS: &[&str] = &["text", "href", "primary"];
 /// parse (the parse error is reported separately by [`yaml_error`]).
 pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     let Some(block) = front_matter_block(src) else {
-        return Vec::new();
+        return misplaced_front_matter(src).into_iter().collect();
     };
     if block.trim().is_empty() {
         return Vec::new();
@@ -433,29 +433,113 @@ pub(crate) fn parse_front_matter_block(block: &str) -> Option<serde_yaml::Value>
 }
 
 /// The leading `---` ... `---`/`...` block of a document, without the fences.
-/// `None` if the source doesn't open with a front-matter fence. The one canonical
-/// front-matter splitter (BOM- and `...`-terminator-aware); the site parser and the
-/// shortcode/extension scanner reuse it so every path agrees on edge cases.
+/// `None` if the source doesn't open with a front-matter fence. THE front-matter splitter:
+/// the renderer blanks this block before comrak sees the source ([`blank_front_matter`];
+/// comrak's own front-matter extension is off), and the lint, site discovery, the listing
+/// card, the feed and the dev server's digest all read it, so every path agrees on what the
+/// block is. A fence line may carry trailing whitespace, a BOM may precede the opening
+/// fence, and the block closes at `---` or `...`, as in Pandoc and Quarto.
 ///
 /// `pub` because the dev server digests this block to tell a body edit from a change to
 /// what DISCOVERY reads, and a second hand-rolled `---` splitter is how the two would come
 /// to disagree about a BOM or a `...` terminator.
 pub fn front_matter_block(src: &str) -> Option<&str> {
-    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
-    let first = src.split_inclusive('\n').next()?;
+    front_matter_span(src).map(|(inner, _)| &src[inner])
+}
+
+/// Where [`front_matter_block`]'s block sits in `src`: the byte range between the fences,
+/// and the offset just past the closing fence line.
+fn front_matter_span(src: &str) -> Option<(std::ops::Range<usize>, usize)> {
+    let bom = if src.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    let first = src[bom..].split_inclusive('\n').next()?;
     if first.trim_end() != "---" {
         return None;
     }
-    let after = first.len();
+    let after = bom + first.len();
     let mut pos = after;
     for line in src[after..].split_inclusive('\n') {
         let trimmed = line.trim_end();
         if trimmed == "---" || trimmed == "..." {
-            return Some(&src[after..pos]);
+            return Some((after..pos, pos + line.len()));
         }
         pos += line.len();
     }
     None
+}
+
+/// `src` with its front matter, fences included, blanked line for line: every character
+/// but the line breaks goes, so comrak parses the body alone while every later line keeps
+/// its number (click-to-source, `data-sourcepos` and every diagnostic stay in the author's
+/// own numbering). Borrows when there is no front matter.
+pub(crate) fn blank_front_matter(src: &str) -> std::borrow::Cow<'_, str> {
+    let Some((_, end)) = front_matter_span(src) else {
+        return std::borrow::Cow::Borrowed(src);
+    };
+    let mut out: String = src[..end]
+        .chars()
+        .filter(|c| matches!(c, '\n' | '\r'))
+        .collect();
+    out.push_str(&src[end..]);
+    std::borrow::Cow::Owned(out)
+}
+
+/// A block that is meant as front matter but that [`front_matter_block`] does not accept,
+/// as a located error: a blank line above the opening `---`, or no closing fence. Either
+/// way the block is body text, so every key in it is ignored and the YAML is published on
+/// the page. Only a block whose keys include a real front-matter key counts as meant, so a
+/// document that opens with a thematic break stays silent.
+fn misplaced_front_matter(src: &str) -> Option<Warning> {
+    let src = src.strip_prefix('\u{feff}').unwrap_or(src);
+    let meant = |yaml: &str| {
+        parse_front_matter_block(yaml)
+            .as_ref()
+            .and_then(serde_yaml::Value::as_mapping)
+            .is_some_and(|m| {
+                m.keys()
+                    .filter_map(|k| k.as_str())
+                    .any(|k| KNOWN_KEYS.contains(&k))
+            })
+    };
+    let blank = src.lines().take_while(|l| l.trim().is_empty()).count();
+    let (message, line) = if blank > 0 {
+        let rest = src.split_inclusive('\n').skip(blank).collect::<String>();
+        if !front_matter_block(&rest).is_some_and(meant) {
+            return None;
+        }
+        (
+            "front matter must start on the first line: a blank line above this `---` makes \
+             the block body text, so every key in it is ignored and the YAML is published \
+             on the page (delete the blank line)",
+            blank + 1,
+        )
+    } else {
+        let mut lines = src.lines();
+        if lines.next()?.trim_end() != "---" {
+            return None;
+        }
+        let head = lines
+            .take_while(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !meant(&head) {
+            return None;
+        }
+        (
+            "front matter opened on this line is never closed, so it is body text: every key \
+             in it is ignored and the YAML is published on the page (end the block with a \
+             `---` line)",
+            1,
+        )
+    };
+    Some(
+        Warning::new(message)
+            .at(None, line as u32)
+            .severity(Severity::Error),
+    )
 }
 
 /// The candidate within edit distance 2 of `key` (a "did you mean"), or `None`.

@@ -20,7 +20,9 @@ pub(crate) use model::{BufLine, CellRole, CodeFold};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
-    options.extension.front_matter_delimiter = Some("---".to_string());
+    // No `front_matter_delimiter`: `frontmatter::front_matter_block` is the one splitter,
+    // so a WHOLE document goes through `frontmatter::blank_front_matter` before it is
+    // parsed with these options.
     options.extension.strikethrough = true;
     options.extension.table = true;
     options.extension.autolink = true;
@@ -507,8 +509,15 @@ fn render_internal_impl(
     // then strip the fence markers in a line-preserving pass so sourcepos line
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
-    let (spans, unclosed_fences) = scan_div_spans(src);
-    let processed = preprocess(src);
+    //
+    // The front matter is blanked first, line for line: `frontmatter::front_matter_block`
+    // is the ONE splitter, and comrak's own front-matter extension is off, because the two
+    // disagreed (comrak took only an exact `---` and closed at the first `---` anywhere, so
+    // a `--- ` fence published the YAML as a heading, or swallowed the body up to a later
+    // `---` rule).
+    let body = crate::frontmatter::blank_front_matter(src);
+    let (spans, unclosed_fences) = scan_div_spans(&body);
+    let processed = preprocess(&body);
     let root = parse_document(&arena, &processed, &options);
 
     let lines: Vec<&str> = processed.lines().collect();
@@ -683,10 +692,6 @@ fn render_internal_impl(
             cell_role,
         ) = {
             let data = node.data.borrow();
-            // Read above, as YAML: the node is comrak's own copy of the block.
-            if let NodeValue::FrontMatter(_) = &data.value {
-                continue;
-            }
             let sp = data.sourcepos;
             // Translate the buffer line range back to the originating file/line.
             let (file, start_line, end_line) = map_span(
