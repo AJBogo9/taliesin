@@ -205,8 +205,9 @@ fn front_matter_digest(path: &Path) -> u64 {
 /// page in this project.
 ///
 /// The `None` case is load-bearing: the ws handler refuses such a connection instead of
-/// creating a `PageState` for it. A `PageState` is a 256-slot broadcast ring and nothing
-/// evicts it, so allocating one per unrecognized key let any peer that can reach the socket
+/// creating a `PageState` for it. A `PageState` is a 256-slot broadcast ring that only a
+/// save finding no tab on it evicts ([`watched_pages`]), so allocating one per unrecognized
+/// key let any peer that can reach the socket
 /// grow the map without bound by reconnecting with fresh garbage. Nothing is lost by
 /// refusing: `build_page` already returns immediately for a key `Site::page` cannot resolve,
 /// so the entry could only ever hold an empty document.
@@ -1016,7 +1017,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, page_key: String) {
     // A `?page=` the owning project cannot resolve names no page at all, so there is
     // nothing to render, subscribe to, or rebuild — `build_page` already returns
     // immediately on such a key. Allocating a `PageState` for it anyway (a 256-slot
-    // broadcast ring that is never evicted) let anyone who can reach this socket grow the
+    // broadcast ring that only a save finding no tab on it evicts) let anyone who can reach this socket grow the
     // map without bound just by reconnecting with a fresh bogus key, clearable only by
     // restarting the preview. Refuse the key instead of allocating for it.
     let Some(rel) = rel else {
@@ -1877,14 +1878,14 @@ fn rebuild_project(
         project.seed_front_matter();
     }
 
-    // Rebuild only pages that are open (have live state) and depend on a change.
-    let open: Vec<String> = project.pages.lock().keys().cloned().collect();
+    // Rebuild only pages a tab is watching and that depend on a change.
+    let open = watched_pages(project);
     let mut to_rebuild: Vec<String> = if front_matter_moved {
         // Every open page renders some part of the moved page's metadata, or could: a
-        // listing card, a nav label, a prev/next arrow. The set is capped by
-        // `MAX_WARM_PAGES`, so this is a handful of renders on an edit that is rare next to
-        // body edits — and it is the same shape as the moved-anchor rebuild below.
-        project.pages.lock().keys().cloned().collect()
+        // listing card, a nav label, a prev/next arrow. The set is the pages a tab is
+        // watching, so this is a handful of renders on an edit that is rare next to body
+        // edits, and it is the same shape as the moved-anchor rebuild below.
+        open.clone()
     } else {
         let site = project.site.lock();
         // The project-wide `bibliography:` from `_site.yml` is a render input of EVERY page
@@ -2038,6 +2039,20 @@ fn rebuild_project(
     for rel in to_rebuild {
         app.queue_build(rel);
     }
+}
+
+/// The pages a tab is watching, after dropping the state of every other page.
+///
+/// A page's state outlives its tab: a GET creates one, and every page a reader ever opened
+/// kept one. Rebuilding those on every save made a front-matter edit cost one render per
+/// page ever visited (2544 ms after one visit of each of 221 pages, audit 2026-09-24
+/// invalidation #9). A page nobody watches renders fresh on its next visit instead, as a
+/// page never visited does; a build of it already queued finds no state and publishes
+/// nothing (see `build_page`).
+fn watched_pages(project: &Project) -> Vec<String> {
+    let mut pages = project.pages.lock();
+    pages.retain(|_, ps| ps.tx.receiver_count() > 0);
+    pages.keys().cloned().collect()
 }
 
 /// Rebuild the project against a batch of changed files.
@@ -3141,6 +3156,16 @@ mod project_tests {
         );
     }
 
+    /// A tab open on `rel`: a state (as [`page_state_with_blocks`] makes it) and a receiver
+    /// on its channel, which is what keeps the page rebuilt on a save. Hold the receiver for
+    /// as long as the tab should count as open.
+    fn watch(project: &Project, rel: &str) -> broadcast::Receiver<String> {
+        let ps = page_state_with_blocks("<p>x</p>");
+        let rx = ps.tx.subscribe();
+        project.pages.lock().insert(rel.to_string(), ps);
+        rx
+    }
+
     fn page_state_with_blocks(html: &str) -> PageState {
         PageState {
             doc: PageDoc {
@@ -3317,10 +3342,7 @@ mod project_tests {
             1,
             "the project must actually resolve its shared `.bib`, or this proves nothing"
         );
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+        let _tab = watch(&project, "index.tmd");
 
         // The author fixes a wrong year and saves. Nothing else on disk moves.
         std::fs::write(
@@ -3339,6 +3361,53 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Audit 2026-09-24 invalidation #9. A page's state outlives its tab: every page a
+    /// reader ever opened kept one, and a front-matter save rebuilt all of them, so a save
+    /// took 453 ms with two pages visited and 2544 ms after one visit of each of 221 pages.
+    /// A page nobody is watching is not rebuilt: its state is dropped, and its next visit
+    /// renders it fresh, which is what a visit to a never-opened page does anyway.
+    #[test]
+    fn a_save_rebuilds_only_the_pages_a_tab_is_watching() {
+        let dir = scratch("watched");
+        std::fs::create_dir_all(dir.join("posts")).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: T\n").unwrap();
+        std::fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+        )
+        .unwrap();
+        let post = dir.join("posts/a.tmd");
+        std::fs::write(&post, "---\ntitle: Old\n---\n\nBody.\n").unwrap();
+        std::fs::write(dir.join("posts/b.tmd"), "---\ntitle: B\n---\n\nBody.\n").unwrap();
+
+        let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
+        let _tab = watch(&project, "index.tmd");
+        // Visited and left: a state with nobody on its channel.
+        for rel in ["posts/a.tmd", "posts/b.tmd"] {
+            project
+                .pages
+                .lock()
+                .insert(rel.to_string(), page_state_with_blocks("<p>x</p>"));
+        }
+
+        std::fs::write(&post, "---\ntitle: New\n---\n\nBody.\n").unwrap();
+        rebuild_project(&app, &project, &std::iter::once(post).collect(), false);
+
+        assert_eq!(
+            queued(&mut build_rx, &mut fast_rx),
+            vec!["index.tmd".to_string()],
+            "the listing a tab shows is rebuilt, and no page nobody is watching"
+        );
+        let mut kept: Vec<String> = project.pages.lock().keys().cloned().collect();
+        kept.sort();
+        assert_eq!(
+            kept,
+            vec!["index.tmd".to_string()],
+            "an unwatched page's state is dropped, so its next visit renders it fresh"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A page that does NOT resolve any shared `.bib` must stay off the rebuild list: the
     /// seed is a dependency, not a licence to rebuild every open tab on any save. Without
     /// this, the fix above would read as correct while quietly rebuilding the whole warm
@@ -3352,10 +3421,7 @@ mod project_tests {
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
         assert!(project.site.lock().bibliography.is_empty());
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
+        let _tab = watch(&project, "index.tmd");
 
         let changed: HashSet<PathBuf> = std::iter::once(dir.join("refs.bib")).collect();
         rebuild_project(&app, &project, &changed, false);
@@ -3434,11 +3500,7 @@ mod project_tests {
         std::fs::write(dir.join("notes.tmd"), "---\ntitle: Notes\n---\n\nProse.\n").unwrap();
 
         let (project, app, mut build_rx, mut fast_rx) = project_and_app(&dir);
-        project
-            .pages
-            .lock()
-            .insert("index.tmd".to_string(), page_state_with_blocks("<p>x</p>"));
-        let mut tab = project.pages.lock()["index.tmd"].tx.subscribe();
+        let mut tab = watch(&project, "index.tmd");
 
         std::fs::rename(dir.join("notes.tmd"), dir.join("journal.tmd")).unwrap();
         // Exactly what the watcher hands `dispatch_changes` for that rename: both paths,
