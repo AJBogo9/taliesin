@@ -1,10 +1,10 @@
 # live-edit benchmark results (indicative)
 
-> Numbers from the author's machine (16 threads), measured **2026-09-24**, release build, on
-> a machine shared with other work (1-minute load average 0.59 before the run; it is
-> recorded in `RESULTS.json`). Absolute times vary by machine and load. Regenerate with
-> `cargo build --release -p taliesin-server` and then `cargo run --release -p
-> live-edit-bench`, which rewrites `RESULTS.json`; without the release binary the
+> Numbers from the author's machine (16 threads), measured **2026-09-24**, release build,
+> with no other build or test running (1-minute load average 1.15 before the run, from the
+> desktop session; it is recorded in `RESULTS.json`). Absolute times vary by machine and
+> load. Regenerate with `cargo build --release -p taliesin-server` and then `cargo run
+> --release -p live-edit-bench`, which rewrites `RESULTS.json`; without the release binary the
 > end-to-end table is skipped. The structural rows (op counts, payload bytes, payload
 > ratio, DOM preservation) are deterministic and gated
 > (`tools/live-edit-bench/tests/regression.rs`); the timing rows are not, because a wall
@@ -39,11 +39,11 @@ Quarto, MyST) can match.
 
 | metric | value |
 |---|---|
-| cold full render | 126920.8 us |
-| warm edit (render + diff) | 2712.6 us |
-| diff only | 464.2 us |
+| cold full render | 107352.2 us |
+| warm edit (render + diff) | 2855.4 us |
+| diff only | 448.6 us |
 | ops emitted | 55 (insert 1, set_meta 54, update 0, remove 0) |
-| full page HTML | 287755 bytes |
+| full page HTML | 287683 bytes |
 | warm-edit payload | 3241 bytes |
 | payload shrink vs full reload | 89x smaller |
 | open `<details>` survives as same DOM node | yes |
@@ -52,16 +52,17 @@ Quarto, MyST) can match.
 
 Median of the runs, in-process, release build. A save of a page runs
 `refresh_xrefs`; one that moves an anchor also rebuilds the search index; one that
-changes the page set or a page's front matter runs `discover` instead. The language
-server runs `discover_registry` on every save.
+changes the page set or what discovery reads of a page (its front matter and leading
+`# H1`) runs `discover` instead. The language server runs `discover_registry` on every
+save.
 
 | project | pages | save: refresh_xrefs | anchor moved: + search index | front matter: discover | language server: registry |
 |---|---|---|---|---|---|
-| `docs/guide` | 16 | 2.7 ms | 3.5 ms | 7.2 ms | 2.3 ms |
-| `docs/internals` | 6 | 1.5 ms | 1.8 ms | 4.1 ms | 1.2 ms |
-| `corpus/tech-blog` | 17 | 2.0 ms | 5.3 ms | 7.9 ms | 1.8 ms |
-| `synthetic book` | 100 | 4.3 ms | 9.6 ms | 16.7 ms | 3.2 ms |
-| `synthetic book` | 500 | 21.0 ms | 52.0 ms | 81.3 ms | 12.8 ms |
+| `docs/guide` | 16 | 3.0 ms | 3.4 ms | 8.0 ms | 2.4 ms |
+| `docs/internals` | 6 | 1.6 ms | 2.6 ms | 4.5 ms | 1.3 ms |
+| `corpus/tech-blog` | 17 | 2.2 ms | 5.3 ms | 8.4 ms | 2.0 ms |
+| `synthetic book` | 100 | 4.6 ms | 10.4 ms | 17.4 ms | 3.2 ms |
+| `synthetic book` | 500 | 23.5 ms | 54.9 ms | 87.0 ms | 14.7 ms |
 
 What the second table shows. Every save of a page runs `refresh_xrefs`, whose harvest renders
 every page for its cross-page numbers and heading titles. Since 2026-09-24 that render
@@ -82,18 +83,21 @@ edited page's own build are all inside; the language server column is the save t
 
 | project | pages | body | heading (moves anchors) | title | atomic save | preview RSS after | language server |
 |---|---|---|---|---|---|---|---|
-| `docs/guide` | 16 | 105 ms | 111 ms | 120 ms | 114 ms | 114 MB | 148 ms |
-| `corpus/tech-blog` | 17 | 122 ms | 109 ms | 109 ms | 110 ms | 139 MB | 148 ms |
-| `synthetic book` | 100 | 95 ms | 109 ms | 114 ms | 112 ms | 74 MB | 134 ms |
-| `synthetic book` | 500 | 113 ms | 167 ms | 180 ms | 180 ms | 137 MB | 150 ms |
+| `docs/guide` | 16 | 26 ms | 30 ms | 31 ms | 27 ms | 134 MB | 129 ms |
+| `corpus/tech-blog` | 17 | 35 ms | 47 ms | 48 ms | 35 ms | 146 MB | 135 ms |
+| `synthetic book` | 100 | 25 ms | 36 ms | 41 ms | 24 ms | 88 MB | 127 ms |
+| `synthetic book` | 500 | 45 ms | 105 ms | 114 ms | 45 ms | 132 MB | 138 ms |
 
-What the third table shows. Every preview column includes the watcher's debounce, so on a
-small project that wait is most of the row; compare a row with the second table to see what
-the project adds. The heading row moves
-anchors, so it rebuilds the search index on top of `refresh_xrefs`; the title and atomic
-rows rediscover the project. The language server column includes its 120 ms coalescing
-window. The RSS column is the preview's resident memory after all forty saves: until
-2026-09-24 every search index rebuild kept its per-page fragments alive, scattered through
+What the third table shows. Every preview column includes the watcher's wait for a save's
+events to stop (15 ms of quiet); compare a row with the second table to see what the project
+adds. The body and atomic rows are the same prose edit written in place and renamed over the
+file, and a save is judged by what it changed, not how it was written, so neither
+rediscovers. The heading row moves anchors, so it rebuilds the search index on top of
+`refresh_xrefs`. The title row rediscovers the project; where the title shows in the page's
+chrome (a book's drawer and pager), the first message is the `reload` that tab is sent, and
+the bench reconnects as the browser would. The language server column includes its 120 ms
+coalescing window. The RSS column is the preview's resident memory after all forty saves:
+until 2026-09-24 every search index rebuild kept its per-page fragments alive, scattered through
 the allocator arenas of the threads that built them, and a preview's memory grew with each
 save that moved an anchor.
 

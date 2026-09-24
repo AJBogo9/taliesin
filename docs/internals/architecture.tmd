@@ -1,10 +1,11 @@
 ---
 title: "Architecture"
-description: "How a save flows from the file watcher to a repainted block in a few milliseconds, and where each crate sits."
+description: "How a save flows from the file watcher to a repainted block, and where each crate sits."
 ---
 
-Saving `post.tmd` updates the browser in a few milliseconds, with no page reload and
-no cold start, and the scroll position holds. That works because all of the
+Saving `post.tmd` updates the browser in tens of milliseconds ([the
+measurements](https://guide.taliesin.sh/using/choosing.html#sec-speed)), with no page reload
+and no cold start, and the scroll position holds. That works because all of the
 intelligence lives in the Rust core behind a stable websocket protocol, and the
 browser preview is a thin client (@fig-architecture).
 
