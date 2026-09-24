@@ -251,7 +251,10 @@ An include that cannot be expanded is left visible and reported: an unsafe path
 unreadable file, and a directive that does not stand alone on its line (written inline,
 or after a list or quote marker) each draw their own located warning instead of failing
 the build outright. So does a partial that ends inside a code fence it never closed,
-since everything after the include would render inside that code block.
+since everything after the include would render inside that code block. A page stops
+expanding, with one warning, where it would pass 1,000 includes or 4 MiB of source: no
+real page comes near either, and a file that includes the next one twice at every level
+passes both within a few levels.
 
 ## Raw HTML passthrough
 

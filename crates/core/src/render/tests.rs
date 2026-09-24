@@ -7928,17 +7928,20 @@ fn a_sample_in_a_four_space_list_item_is_not_rewritten() {
     assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
 }
 
-/// Audit 2026-09-24, scanners #12d: the front matter is YAML, not markdown, so the shortcode
-/// pass leaves it alone. A title that mentions a shortcode is text, not escaped control
-/// markup in the `<h1>` and `<title>`.
+/// Audit 2026-09-24, scanners #12d: the front matter is YAML, not markdown, so neither the
+/// include pass nor the shortcode pass touches it. A title that mentions a shortcode is text,
+/// not escaped control markup in the `<h1>` and `<title>`, and an include directive quoted
+/// in a YAML value does not splice a file into the YAML.
 #[test]
 fn a_shortcode_in_the_front_matter_is_left_as_written() {
     let d = source_map_tmpdir("fm-shortcode");
-    let doc = render_document_with_includes(
-        "---\ntitle: \"How {{< input name=k >}} works\"\n---\n\nBody.\n",
-        &d,
-    );
+    std::fs::write(d.join("_x.md"), "INJECTED\n").unwrap();
+    let src = "---\ntitle: \"How {{< input name=k >}} works\"\ndescription: |\n  \
+{{< include _x.md >}}\n---\n\nBody.\n";
+    let doc = render_document_with_includes(src, &d);
+    let (expanded, _) = crate::includes::resolve(src, &d);
     let _ = std::fs::remove_dir_all(&d);
     assert_eq!(doc.title.as_deref(), Some("How {{< input name=k >}} works"));
+    assert!(!expanded.contains("INJECTED"), "{expanded}");
     assert!(doc.warnings.is_empty(), "{:?}", doc.warnings);
 }

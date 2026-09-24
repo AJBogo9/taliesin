@@ -27,7 +27,9 @@ flowchart TB
 1. **Include resolution** (`includes.rs`). `{{< include path >}}` shortcodes are
    expanded inline, and a `Vec<LineOrigin>` source map records, for every line of
    the expanded text, which file + line it came from. Cycles are detected and left
-   in place. Click-to-source relies on this map to work across files.
+   in place, and a page stops expanding at a budget (1,000 includes, 4 MiB of source)
+   that only a runaway include tree reaches. Click-to-source relies on this map to work
+   across files.
 2. **Shortcode expansion** (`render/extension/`). The built-in `{{< input >}}` tag
    expands to its HTML template, the only shortcode that expands here since
    `{{< include >}}` was resolved a pass earlier. It is

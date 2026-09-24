@@ -103,9 +103,53 @@ pub fn resolve_warned_in(
     base_dir: &Path,
     root: Option<&Path>,
 ) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
+    resolve_within(src, base_dir, root, Budget::DEFAULT)
+}
+
+/// How far one document may expand: includes performed, and bytes of expanded source.
+///
+/// Both, because each bounds what the other cannot. A diamond (every file including the
+/// next one twice) doubles per level, so a handful of small files expand past any memory;
+/// the byte cap stops that. With an EMPTY leaf nothing is ever emitted, so no byte count
+/// grows while the expansions still double: measured 2026-09-24 (release), 16 levels ran
+/// 65,536 includes in 2.5 s with "no problems found", and each level doubles that. The
+/// include cap stops that.
+///
+/// Generous against real pages: on 2026-09-24 the most includes any page in this repo made
+/// was 7 and the largest page was 40 KB, so 1,000 includes and 4 MiB are over 100 times
+/// either. Tight against the worst shape: one-line paragraphs cost the most per byte, and
+/// 0.59 MB of them took 201 MB and 0.8 s to render (release, 2026-09-24), so 4 MiB is about
+/// 1.4 GB where 16 MiB would be about 5.6 GB.
+#[derive(Clone, Copy)]
+struct Budget {
+    includes: usize,
+    bytes: usize,
+}
+
+impl Budget {
+    const DEFAULT: Budget = Budget {
+        includes: 1_000,
+        bytes: 4 * 1024 * 1024,
+    };
+}
+
+fn resolve_within(
+    src: &str,
+    base_dir: &Path,
+    root: Option<&Path>,
+    budget: Budget,
+) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
+    let primary = normalize_line_endings(src);
     let mut x = Expansion {
         primary_base: base_dir,
+        primary: (&primary, absolutize(base_dir)),
         root,
+        budget,
+        used: Budget {
+            includes: 0,
+            bytes: 0,
+        },
+        spent: false,
         stack: Vec::new(),
         lines: Vec::new(),
         origins: Vec::new(),
@@ -123,8 +167,18 @@ pub fn resolve_warned_in(
 struct Expansion<'a> {
     /// Directory of the primary document (for nice labels).
     primary_base: &'a Path,
+    /// The primary document's text and absolute directory. Nothing hands this pass the
+    /// primary's PATH, so the cycle guard cannot hold it; a file in that directory with that
+    /// text is the primary all the same (see [`Expansion::is_primary`]).
+    primary: (&'a str, PathBuf),
     /// Explicit containment root, constant across the recursion.
     root: Option<&'a Path>,
+    budget: Budget,
+    /// What the expansion has used of `budget`.
+    used: Budget,
+    /// Set when a directive would pass `budget`: it and every later one are left as written,
+    /// and only the first says so.
+    spent: bool,
     /// Cycle guard: absolute paths currently expanding.
     stack: Vec<PathBuf>,
     lines: Vec<String>,
@@ -133,6 +187,14 @@ struct Expansion<'a> {
 }
 
 impl Expansion<'_> {
+    /// Whether the file at `target`, holding `content`, is the primary document. Including
+    /// it can only repeat the page from the top: its includes resolve exactly as the
+    /// primary's did, back to this same file.
+    fn is_primary(&self, target: &Path, content: &str) -> bool {
+        let (text, dir) = &self.primary;
+        target.parent() == Some(dir.as_path()) && normalize_line_endings(content) == *text
+    }
+
     /// Append `src` (the file labelled `file_label`, `None` for the primary document, whose
     /// includes resolve against `base_dir`) with its includes expanded.
     fn expand(&mut self, src: &str, base_dir: &Path, file_label: Option<String>) {
@@ -152,19 +214,39 @@ impl Expansion<'_> {
                 file: file_label.clone(),
                 line: idx + 1,
             });
+            self.used.bytes += line.len() + 1;
             let Some(raw) = lines.directive(idx, line) else {
                 continue;
             };
+            if self.spent {
+                continue; // the one budget warning has been given
+            }
             // Unsafe path (absolute or escaping the project root), or an include cycle:
             // leave the directive visible rather than reading outside the project / looping.
-            let refused = match safe_join_in(base_dir, raw, self.root) {
-                None => Some("path escapes the project root (or is absolute)"),
-                Some(target) if self.stack.contains(&target) => Some("include cycle"),
+            let refused: Option<String> = match safe_join_in(base_dir, raw, self.root) {
+                None => Some("path escapes the project root (or is absolute)".into()),
+                Some(target) if self.stack.contains(&target) => Some("include cycle".into()),
                 Some(target) => match std::fs::read_to_string(&target) {
+                    Ok(content) if self.is_primary(&target, &content) => {
+                        Some("include cycle".into())
+                    }
+                    Ok(content)
+                        if self.used.includes + 1 > self.budget.includes
+                            || self.used.bytes + content.len() > self.budget.bytes =>
+                    {
+                        self.spent = true;
+                        Some(format!(
+                            "the document passes the include budget: at most {} includes and {} MiB",
+                            self.budget.includes,
+                            self.budget.bytes / (1024 * 1024)
+                        ))
+                    }
                     Ok(content) => {
                         // The directive line is replaced by the file it names.
                         self.lines.pop();
                         self.origins.pop();
+                        self.used.bytes -= line.len() + 1;
+                        self.used.includes += 1;
                         let label = label_for(&target, self.primary_base);
                         let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
                         self.stack.push(target);
@@ -172,7 +254,7 @@ impl Expansion<'_> {
                         self.stack.pop();
                         None
                     }
-                    Err(_) => Some("file not found or unreadable"),
+                    Err(_) => Some("file not found or unreadable".into()),
                 },
             };
             // Record a located warning for an include that couldn't be expanded, so the
@@ -661,6 +743,97 @@ mod tests {
             "{}",
             warnings[0].message
         );
+    }
+
+    /// Audit 2026-09-24, Part H: `main.tmd` including `_a.md`, which includes `main.tmd`,
+    /// rendered the page twice (`# main`, then `# main` again as `main-1`) before the stack
+    /// caught the cycle one level deeper, because the primary document is not on the stack:
+    /// nothing hands this pass its path. A file in the primary's own directory whose text IS
+    /// the primary's text is the primary, and expanding it can only repeat the page.
+    #[test]
+    fn including_the_primary_document_is_a_cycle_at_once() {
+        let main = "# main\n\n{{< include _a.md >}}\n";
+        let d = partials(
+            "selfcycle",
+            &[
+                ("main.tmd", main),
+                ("_a.md", "In a.\n\n{{< include main.tmd >}}\n"),
+            ],
+        );
+        let (text, _, warnings) = resolve_warned(main, &d);
+        let _ = std::fs::remove_dir_all(&d);
+        assert_eq!(text.matches("# main").count(), 1, "{text}");
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert_eq!(
+            (warnings[0].file.as_deref(), warnings[0].line),
+            (Some("_a.md"), 3)
+        );
+        assert!(
+            warnings[0].message.contains("include cycle"),
+            "{}",
+            warnings[0].message
+        );
+    }
+
+    /// Audit 2026-09-24, Part H and leads `includes.rs:111/201`: a diamond (each file
+    /// including the next one twice) doubles per level, so 16 tiny files expanded 65k times
+    /// and a few more levels exhaust memory, with "no problems found". An empty leaf makes
+    /// it worse: nothing is ever emitted, so no byte count grows while the expansions run
+    /// for minutes. The expansion stops at the budget, once, with a located warning, and
+    /// leaves the remaining directives literal.
+    #[test]
+    fn an_include_diamond_stops_at_the_budget_with_one_warning() {
+        let mut files: Vec<(String, String)> = (0..12)
+            .map(|i| {
+                let next = format!("{{{{< include _d{}.md >}}}}", i + 1);
+                (format!("_d{i}.md"), format!("L{i}\n\n{next}\n\n{next}\n"))
+            })
+            .collect();
+        files.push(("_d12.md".to_string(), String::new()));
+        let files: Vec<(&str, &str)> = files
+            .iter()
+            .map(|(n, t)| (n.as_str(), t.as_str()))
+            .collect();
+        let d = partials("diamond", &files);
+        let src = "Top.\n\n{{< include _d0.md >}}\n";
+        let unbounded = Budget {
+            includes: usize::MAX,
+            bytes: usize::MAX,
+        };
+        let (_, _, full) = resolve_within(src, &d, None, unbounded);
+        assert!(
+            full.is_empty(),
+            "the unbounded expansion is clean: {full:?}"
+        );
+        for budget in [
+            Budget {
+                includes: 100,
+                bytes: usize::MAX,
+            },
+            Budget {
+                includes: usize::MAX,
+                bytes: 1000,
+            },
+        ] {
+            let (text, _, warnings) = resolve_within(src, &d, None, budget);
+            assert!(text.len() < 2000, "{}", text.len());
+            assert!(
+                text.matches("L11").count() < 100,
+                "{}",
+                text.matches("L11").count()
+            );
+            assert_eq!(warnings.len(), 1, "{warnings:?}");
+            assert!(
+                warnings[0].message.contains("budget"),
+                "{}",
+                warnings[0].message
+            );
+            assert!(
+                warnings[0].file.is_some(),
+                "located in the partial that hit it"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

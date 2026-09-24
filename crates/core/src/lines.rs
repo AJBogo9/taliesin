@@ -183,17 +183,9 @@ fn classify_uncached(src: &str) -> Lines {
     let n = starts.len();
     let fm_lines = crate::frontmatter::front_matter_block(src)
         .map_or(0, |yaml| yaml.matches('\n').count() + 2);
-    let parsed = if fm_lines > 0 {
-        // Line-preserving: the front matter's lines become empty lines.
-        let body = starts.get(fm_lines).map_or("", |&s| &src[s..]);
-        let mut blanked = "\n".repeat(fm_lines);
-        blanked.push_str(body);
-        std::borrow::Cow::Owned(blanked)
-    } else {
-        std::borrow::Cow::Borrowed(src)
-    };
+    let parsed = blank_front_matter(src, &starts, fm_lines);
     let arena = Arena::new();
-    let root = parse_document(&arena, &parsed, &crate::render::parse_options());
+    let root = parse_document(&arena, &parsed[..], &crate::render::parse_options());
 
     let mut kinds = vec![Kind::Markdown; n];
     for kind in kinds.iter_mut().take(fm_lines) {
@@ -290,6 +282,24 @@ pub fn split(src: &str) -> impl Iterator<Item = &str> {
         let end = starts.get(i + 1).copied().unwrap_or(src.len());
         src[starts[i]..end].trim_end_matches(['\n', '\r'])
     })
+}
+
+/// `src` with its first `fm_lines` lines (the front matter, both fences) blanked line for
+/// line, so comrak parses the body alone while every line keeps its number.
+///
+/// MERGE NOTE (audit 2026-09-24, WP7): `frontmatter::blank_front_matter` is the one
+/// blanker the render uses once the front-matter work lands; this local copy goes then, and
+/// the call above becomes `crate::frontmatter::blank_front_matter(src)`.
+fn blank_front_matter<'a>(
+    src: &'a str,
+    starts: &[usize],
+    fm_lines: usize,
+) -> std::borrow::Cow<'a, str> {
+    if fm_lines == 0 {
+        return std::borrow::Cow::Borrowed(src);
+    }
+    let body = starts.get(fm_lines).map_or("", |&s| &src[s..]);
+    std::borrow::Cow::Owned("\n".repeat(fm_lines) + body)
 }
 
 /// A node's first and last line, 0-based. comrak ends a block that a later line closed at
