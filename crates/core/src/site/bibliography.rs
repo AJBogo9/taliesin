@@ -6,12 +6,13 @@
 //! - **Resolution** ([`resolve_shared`]) happens once, at `Site::discover`, against the
 //!   site root. Doing it per page would report the same bad path N times and would make
 //!   "relative to what?" depend on which page happened to be rendering.
-//! - **The unused-entry lint** ([`Site::validate_shared_bibliography`]) is a *site-wide*
-//!   pass, because a shared entry cited by one page is used even though every other page
-//!   leaves it alone. The per-page mirror of this check (`cite::process`) is deliberately
-//!   scoped to what the page itself declared, for the same reason.
+//! - **The hygiene check** ([`Site::validate_shared_bibliography`]) reads the shared files
+//!   once and reports what is wrong inside them (a duplicate key, an entry never closed, a
+//!   key no citation can name, an undefined `@string` macro, a file that is not UTF-8)
+//!   against `_site.yml`, where they are declared. Reported per page, one mistake would
+//!   print once per page, which is why a page render drops the shared layer's diagnostics.
 //!
-//! Neither touches the BibTeX parser or the CSL formatter.
+//! Both read the files through `cite::read_bib_files`, the one `.bib` reader.
 
 use super::Site;
 use crate::render::Warning;
