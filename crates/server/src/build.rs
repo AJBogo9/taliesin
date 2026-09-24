@@ -1005,9 +1005,12 @@ struct Bundled {
 /// Which files it may place is the one publication rule,
 /// [`taliesin_core::includes::publishable`], with the page's own folder as the boundary:
 /// the output mirrors that folder, so a file above it (a project image a page reaches as
-/// `../img/i.png`) has nowhere to go. Each existing file it cannot place is an
-/// error-severity warning located at its reference, because the output then points at a
-/// file it does not have: a warning `--strict` ignored until the 2026-09-24 audit.
+/// `../img/i.png`) has nowhere to go. Each existing file it cannot place for THAT reason is
+/// an error-severity warning located at its reference, because the output then points at a
+/// file it does not have: a warning `--strict` ignored until the 2026-09-24 audit. A file
+/// no build publishes (a `.`-prefixed path, a symlink out of the checkout) is the page's
+/// defect, not the folder's: the lint reports it for every verb, so saying it here too
+/// printed one defect twice.
 ///
 /// **It never replaces a different file.** The destination is a directory the author
 /// chose, not one this build owns, so a file already at the target path with other bytes
@@ -1046,23 +1049,14 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> Bundled {
             Some(rooted) => taliesin_core::single_doc_root(base).join(rooted),
             None => base.join(&path),
         };
-        let why = match publishable(base, base, Path::new(&path), Reach::Referenced) {
-            Ok(rel) => Ok(rel),
-            // A reference that names no file (a link to a page URL, `/`) has nothing to
-            // bundle; the link validator speaks for a missing target.
-            Err(_) if !on_disk.is_file() => continue,
-            Err(Unpublishable::Outside) => Err("is outside the document's folder"),
-            Err(Unpublishable::OutsideRepo) => Err("is a symlink out of the checkout"),
-            Err(Unpublishable::Private) => {
-                Err("has a `.`-prefixed component, which is never published")
-            }
-        };
-        let rel = match why {
+        let rel = match publishable(base, base, Path::new(&path), Reach::Referenced) {
             Ok(rel) => rel,
-            Err(why) => {
+            // Above the document's folder: the one thing the folder cannot hold that the
+            // project publishes.
+            Err(Unpublishable::Outside) if on_disk.is_file() => {
                 let mut w = taliesin_core::render::Warning::new(format!(
-                    "asset not bundled: `{path}` {why}, so the output points at a file it \
-                     does not have"
+                    "asset not bundled: `{path}` is outside the document's folder, so the \
+                     output points at a file it does not have"
                 ))
                 .severity(taliesin_core::Severity::Error);
                 w.file = source_file_before(html, at);
@@ -1070,6 +1064,9 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> Bundled {
                 problems.push(w);
                 continue;
             }
+            // A reference that names no file (a link to a page URL, `/`) has nothing to
+            // bundle, and one no build publishes is reported by the lint.
+            Err(_) => continue,
         };
         let from = base.join(&rel);
         if !from.is_file() {
@@ -1337,15 +1334,35 @@ fn copy_js_imports(
     let mut copied = 0usize;
     let mut visited = std::collections::HashSet::new();
     let mut queue: Vec<String> = Vec::new();
-    let enqueue = |queue: &mut Vec<String>, dir: &str, spec: &str| match normalize_rel(dir, spec) {
-        Some(rel) => queue.push(rel),
-        None => log::warn(&format!(
-            "{{js}} import escapes the doc tree, not bundled: {spec}"
-        )),
+    // An import that climbs out of the folder cannot be copied into it, so the cell fails
+    // to load it: an error `--strict` counts, like every file the copier cannot place. It
+    // was an uncounted notice (audit 2026-09-24, WP1 residual). `at` locates it at the cell
+    // that imports it; a module's own import has no line in this page.
+    let enqueue = |queue: &mut Vec<String>,
+                   problems: &mut Vec<taliesin_core::render::Warning>,
+                   dir: &str,
+                   spec: &str,
+                   at: Option<usize>| {
+        match normalize_rel(dir, spec) {
+            Some(rel) => queue.push(rel),
+            None => {
+                let mut w = taliesin_core::render::Warning::new(format!(
+                    "{{js}} import not bundled: `{spec}` climbs out of the document's folder, \
+                     so the output has no copy of it and the cell cannot load it"
+                ))
+                .severity(taliesin_core::Severity::Error);
+                if let Some(at) = at {
+                    w.file = source_file_before(html, at);
+                    w.line = sourcepos_line_before(html, at);
+                }
+                problems.push(w);
+            }
+        }
     };
     for body in tali_js_cell_sources(html) {
+        let at = body.as_ptr() as usize - html.as_ptr() as usize;
         for spec in relative_specifiers(body) {
-            enqueue(&mut queue, "", &spec);
+            enqueue(&mut queue, problems, "", &spec, Some(at));
         }
     }
     while let Some(rel) = queue.pop() {
@@ -1375,7 +1392,7 @@ fn copy_js_imports(
         {
             let dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
             for spec in relative_specifiers(&src) {
-                enqueue(&mut queue, dir, &spec);
+                enqueue(&mut queue, problems, dir, &spec, None);
             }
         }
     }

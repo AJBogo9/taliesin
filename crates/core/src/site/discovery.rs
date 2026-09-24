@@ -125,27 +125,30 @@ pub(super) fn card_image(rel: &str, image: Option<String>) -> Option<String> {
 /// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
 ///
 /// The walk reads directories directly rather than resolving paths through
-/// [`crate::includes::safe_join`], so it applies that function's symlink boundary by
-/// hand: a link is followed only while it stays inside the repository.
+/// [`crate::includes::safe_join`], so a symlink is held to the one publication rule,
+/// [`crate::includes::publishable`] (as the build's asset mirror holds every entry): it is
+/// followed only while its real path stays inside the repository and adds no `.`/`_`
+/// component to the path it shares with the project. Testing the link's own NAME let an
+/// ordinary `vendor -> ../.private` publish every page under it (audit 2026-09-24, WP1
+/// residual).
 /// Public so the editor's project walk enumerates pages exactly the way discovery does,
-/// symlink boundary included. A second walk would let the sidebar list a page the build does
+/// symlink rule included. A second walk would let the sidebar list a page the build does
 /// not publish, or miss one it does.
 pub fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
-    let boundary = crate::includes::repo_boundary(dir);
     let mut walked = HashSet::new();
     // Seed with the root itself, so a link pointing back at it is a repeat, not a
     // second copy of every page beneath it.
     if let Ok(c) = dir.canonicalize() {
         walked.insert(c);
     }
-    collect_pages_in(dir, &boundary, &mut walked, out);
+    collect_pages_in(dir, dir, &mut walked, out);
 }
 
-/// `boundary` is the repository the walk may not leave; `walked` holds the canonical
-/// directories already visited.
+/// `root` is the project the walk publishes from; `walked` holds the canonical directories
+/// already visited.
 fn collect_pages_in(
+    root: &Path,
     dir: &Path,
-    boundary: &Path,
     walked: &mut HashSet<PathBuf>,
     out: &mut Vec<PathBuf>,
 ) {
@@ -159,20 +162,22 @@ fn collect_pages_in(
             continue;
         }
         // Checking the link itself is enough: anything deeper can only leave the
-        // repository through a link that this same test already refused.
-        if entry.file_type().is_ok_and(|t| t.is_symlink())
-            && !p.canonicalize().is_ok_and(|c| c.starts_with(boundary))
-        {
-            continue;
+        // repository, or reach a private path, through a link this same test refused.
+        if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+            let rel = p.strip_prefix(root).unwrap_or(&p);
+            let reach = crate::includes::Reach::Wholesale;
+            if crate::includes::publishable(root, root, rel, reach).is_err() {
+                continue;
+            }
         }
         if p.is_dir() {
-            // A link back up the tree stays inside the repository, so the boundary above
+            // A link back up the tree stays inside the repository, so the rule above
             // permits it and only this cycle guard ends the walk. Without it the recursion
             // ran until the path outgrew `PATH_MAX`, emitting one output page per level.
             if p.canonicalize().is_ok_and(|c| !walked.insert(c)) {
                 continue;
             }
-            collect_pages_in(&p, boundary, walked, out);
+            collect_pages_in(root, &p, walked, out);
         } else if crate::ext::is_source_path(&p) {
             out.push(p);
         }

@@ -783,6 +783,65 @@ fn the_single_file_gate_fails_what_the_single_file_build_fails() {
     );
 }
 
+/// A `{js}` import the portable folder cannot hold is an error that `--strict` counts, like
+/// every other file the copier cannot place. It was an uncounted notice, so a `--strict`
+/// build shipped a folder whose cell failed to load (audit 2026-09-24, WP1 residual).
+#[test]
+fn a_js_import_the_folder_cannot_hold_fails_strict() {
+    let dir = tmp_dir("js-escape");
+    fs::create_dir_all(dir.join("sub")).unwrap();
+    fs::write(dir.join("lib.js"), "export const x = 1;\n").unwrap();
+    let doc = dir.join("sub/doc.tmd");
+    fs::write(
+        &doc,
+        "---\ntitle: J\n---\n\n```{js}\nconst m = await import(\"../lib.js\");\nm.x\n```\n",
+    )
+    .unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--strict")
+        .env_remove("TALIESIN_NO_EXEC")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !out.status.success(),
+        "a folder whose cell cannot load its import must fail --strict:\n{err}"
+    );
+    assert!(
+        err.lines()
+            .any(|l| l.contains("error") && l.contains("../lib.js")),
+        "reported as a located error naming the import:\n{err}"
+    );
+}
+
+/// One defect, one diagnostic: an image in a `.`-prefixed folder is reported by the asset
+/// validator, and the copier refusing the same file said it a second time.
+#[test]
+fn a_private_image_in_an_out_build_is_reported_once() {
+    let dir = tmp_dir("dot-image");
+    fs::create_dir_all(dir.join(".hidden")).unwrap();
+    fs::write(dir.join(".hidden/i.png"), "PNG").unwrap();
+    let doc = dir.join("doc.tmd");
+    fs::write(&doc, "---\ntitle: D\n---\n\n![an image](.hidden/i.png)\n").unwrap();
+    let out = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--out")
+        .arg(dir.join("out"))
+        .arg("--no-exec")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    let reports = err.lines().filter(|l| l.contains(".hidden/i.png")).count();
+    assert_eq!(reports, 1, "reported exactly once:\n{err}");
+}
+
 /// A document with no project is a project of one page: its link to a sibling `.tmd` is
 /// written as that page's `.html` URL by `build` exactly as by `preview`, and both gates
 /// report it, because the single-file build publishes no such page. The build wrote a link
