@@ -59,10 +59,12 @@ pub fn caption_label(label: &str, num: &str) -> String {
     format!("<span class=\"tali-caption-label\">{label}&nbsp;{num}</span>")
 }
 
-/// A numbered figure/listing caption: the label span, with `": <caption>"` appended
-/// (rendered as inline markdown) when a non-empty caption is given. Shared by the figure,
-/// listing, mermaid, and `{js}`-figure emitters.
-pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
+/// A numbered figure/listing/table caption: the label span, with `": <caption>"` appended
+/// (rendered as inline markdown) when a non-empty caption is given. THE caption function:
+/// the figure, listing, mermaid and `{js}`-figure emitters here and the executed figure and
+/// table captions in `crates/server` all go through it, so one `fig-cap:` renders the same
+/// whatever kind of cell carries it.
+pub fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
     let head = caption_label(label, num);
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("{head}: {}", caption_inline_html(c)),

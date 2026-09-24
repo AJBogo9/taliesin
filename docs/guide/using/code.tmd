@@ -100,7 +100,9 @@ and the [Configuration reference](../reference/frontmatter.tmd) for `execute:`.
 `#| fig-cap:` captions a cell's output and numbers it as a figure; `#| lst-cap:` and
 `#| tbl-cap:` do the same for a code listing and for a table the cell publishes. Pair
 any of them with a matching `#| label: fig-x` / `lst-x` / `tbl-x` and the output is
-cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. The
+cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. A
+caption is inline Markdown, so `*emphasis*`, `` `code` `` and `$x^2$` render in it the
+same way whichever kind of cell carries it. The
 [cell-options reference](../reference/cell-options.tmd#every-option) has the
 routing rules.
 

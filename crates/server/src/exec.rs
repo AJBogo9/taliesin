@@ -1807,17 +1807,22 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
     }
 }
 
-/// An executed cell's caption, ready to sit in a `<figcaption>`/`<caption>`: escaped
-/// first (it is author text, never markup), then with its `@fig-`/`@tbl-`/`@sec-`
-/// cross-references linked.
+/// An executed cell's numbered caption (`Figure N: …`, `Table N: …`), ready to sit in a
+/// `<figcaption>`/`<caption>`: core's one caption function ([`render::numbered_caption`],
+/// the label span plus the caption as inline markdown, as every other caption renders),
+/// then with its `@fig-`/`@tbl-`/`@sec-` cross-references linked.
 ///
 /// The linking cannot happen at render time: this caption only exists once the kernel
 /// has returned, which is after `cite::process` has walked the document. So the refs are
 /// emitted as `data-tali-xref` markers and the site's `resolve_cross_refs` (via
 /// `finish_blocks`, which already runs over the executed blocks) resolves them to the
 /// number — the same path a cross-page reference to a cell-produced float already takes.
-fn caption_html(caption: &str) -> String {
-    taliesin_core::cite::link_xrefs_in_fragment(&esc(caption))
+fn caption_html(label: &str, number: &str, caption: &str) -> String {
+    taliesin_core::cite::link_xrefs_in_fragment(&render::numbered_caption(
+        label,
+        number,
+        Some(caption),
+    ))
 }
 
 /// Wrap a cell's rendered output in a numbered `<figure>` (caption below),
@@ -1827,12 +1832,7 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
         Some(a) => format!(" id=\"{}\"", esc(a)),
         None => String::new(),
     };
-    let caption = fig.caption.as_deref().unwrap_or("").trim();
-    let figcap = if caption.is_empty() {
-        format!("Figure&nbsp;{}", fig.number)
-    } else {
-        format!("Figure&nbsp;{}: {}", fig.number, caption_html(caption))
-    };
+    let figcap = caption_html("Figure", &fig.number, fig.caption.as_deref().unwrap_or(""));
     format!(
         "<figure{id_attr} class=\"tali-figure tali-figure-center\">{inner}\
          <figcaption>{figcap}</figcaption></figure>"
@@ -1849,21 +1849,18 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
         .as_deref()
         .map(|a| format!(" id=\"{}\"", esc(a)))
         .unwrap_or_default();
-    let caption = tbl.caption.as_deref().unwrap_or("").trim();
-    let sep = if caption.is_empty() { "" } else { ": " };
+    let caption = caption_html("Table", &tbl.number, tbl.caption.as_deref().unwrap_or(""));
     let Some(start) = inner.find("<table") else {
-        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+        return table_figure_wrap(inner, &id_attr, &caption);
     };
     let Some(rel_gt) = inner[start..].find('>') else {
-        return table_figure_wrap(tbl, inner, &id_attr, caption, sep);
+        return table_figure_wrap(inner, &id_attr, &caption);
     };
     let gt = start + rel_gt + 1;
     let open = inner[start..gt].replacen("<table", &format!("<table{id_attr}"), 1);
     format!(
-        "{}{open}<caption>{}{sep}{}</caption>{}",
+        "{}{open}<caption>{caption}</caption>{}",
         &inner[..start],
-        render::caption_label("Table", &tbl.number.to_string()),
-        caption_html(caption),
         &inner[gt..],
     )
 }
@@ -1880,18 +1877,10 @@ fn table_wrap(tbl: &CellTable, inner: &str) -> String {
 /// the caption and the anchor on a wrapper instead, exactly as [`figure_wrap`] has
 /// always done for a figure cell that produced no image. The caption leads, because a
 /// table's caption sits above it.
-fn table_figure_wrap(
-    tbl: &CellTable,
-    inner: &str,
-    id_attr: &str,
-    caption: &str,
-    sep: &str,
-) -> String {
+fn table_figure_wrap(inner: &str, id_attr: &str, caption: &str) -> String {
     format!(
         "<figure{id_attr} class=\"tali-figure tali-table-figure\">\
-         <figcaption>{}{sep}{}</figcaption>{inner}</figure>",
-        render::caption_label("Table", &tbl.number.to_string()),
-        caption_html(caption),
+         <figcaption>{caption}</figcaption>{inner}</figure>"
     )
 }
 
@@ -3764,7 +3753,10 @@ mod tests {
             "inner dropped: {html}"
         );
         assert!(
-            html.contains("<figcaption>Figure&nbsp;2: Cov &amp; vars</figcaption>"),
+            html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;2</span>: Cov \
+                 &amp; vars</figcaption>"
+            ),
             "caption not numbered/escaped: {html}"
         );
     }
@@ -3807,29 +3799,47 @@ mod tests {
 
     /// The caption is escaped before cross-references are linked, so markup in a
     /// caption stays inert and an `&` still escapes exactly once.
+    /// B7: an executed figure's or table's caption is rendered like every other caption,
+    /// through core's one caption function: inline markdown and `$...$` math, and the
+    /// generated "Figure N" in its own upright label span. The executor escaped the caption
+    /// and hand-built an unwrapped "Figure N", so the same `fig-cap:` rendered `*emph*` and
+    /// `$x^2$` literally under a `{python}` cell, with an italic number, and as emphasis and
+    /// KaTeX under a `{mermaid}` one (visible on the guide, Figure 5.2 against 5.1 and 5.3).
     #[test]
-    fn executed_caption_still_escapes_html() {
-        // The tag is assembled rather than written literally on purpose: `token_contract`'s
-        // browser-attribute census pulls in a Rust file only when it contains an opening
-        // script tag, and a fixture holding that literal drags this whole module's `data-*`
-        // constants into the census as phantom browser vocabulary (measured — it failed
-        // exactly so, on `data-tali-not-run`). This comment avoids the literal for the same
-        // reason.
-        let tag = format!("<{}>alert(1)</{}>", "script", "script");
+    fn an_executed_caption_renders_like_every_other_caption() {
+        let caption = "Loss for *model A* & `B`, scaled by $x^2$.";
         let fig = CellFigure {
-            anchor: None,
-            caption: Some(format!("Cov & vars {tag}")),
+            anchor: Some("fig-loss".into()),
+            caption: Some(caption.into()),
             number: "3".into(),
         };
-        let html = figure_wrap(&fig, "out");
-        assert!(html.contains("Cov &amp; vars"), "escaping lost: {html}");
+        let html = figure_wrap(&fig, "<img src=\"l.png\">");
+        for (needle, what) in [
+            (
+                "<span class=\"tali-caption-label\">Figure&nbsp;3</span>: ",
+                "the label span",
+            ),
+            ("<em>model A</em>", "emphasis"),
+            ("<code>B</code>", "inline code"),
+            ("class=\"katex", "math"),
+            ("&amp;", "an escaped ampersand"),
+        ] {
+            assert!(
+                html.contains(needle),
+                "{what} missing from the figure caption: {html}"
+            );
+        }
+        let tbl = CellTable {
+            anchor: Some("tbl-loss".into()),
+            caption: Some(caption.into()),
+            number: "2".into(),
+        };
+        let html = table_wrap(&tbl, "<table><tr><td>x</td></tr></table>");
         assert!(
-            !html.contains(&tag),
-            "caption markup was not escaped: {html}"
-        );
-        assert!(
-            html.contains("&lt;script&gt;"),
-            "the tag should survive as escaped text: {html}"
+            html.contains("<span class=\"tali-caption-label\">Table&nbsp;2</span>: ")
+                && html.contains("<em>model A</em>")
+                && html.contains("class=\"katex"),
+            "the table caption is not rendered like the others: {html}"
         );
     }
 
@@ -3846,7 +3856,9 @@ mod tests {
             "an unlabelled figure must carry no id: {html}"
         );
         assert!(
-            html.contains("<figcaption>Figure&nbsp;1</figcaption>"),
+            html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;1</span></figcaption>"
+            ),
             "bare number missing: {html}"
         );
         assert!(!html.contains(':'), "no caption -> no colon: {html}");
@@ -3946,8 +3958,10 @@ mod tests {
             b.html
         );
         assert!(
-            b.html
-                .contains("<figcaption>Figure&nbsp;3: Cap</figcaption>"),
+            b.html.contains(
+                "<figcaption><span class=\"tali-caption-label\">Figure&nbsp;3</span>: \
+                 Cap</figcaption>"
+            ),
             "{}",
             b.html
         );
