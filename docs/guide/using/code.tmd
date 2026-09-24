@@ -81,7 +81,8 @@ installed library you upgraded in place.
 
 Edit `data.csv` without touching a line of Python and the numbers on the page will
 not change, because the cache key has not changed. Mark any cell with an out-of-band
-input `#| cache: false`, as above.
+input `#| cache: false`, as above. The preview does not watch data files either, so a
+`cache: false` cell re-runs on the next save of the `.tmd`, not when `data.csv` changes.
 
 To force one fresh run without editing anything, use the dev-menu **Restart
 kernel** or run with `TALIESIN_NO_CACHE`.

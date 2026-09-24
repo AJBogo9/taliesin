@@ -86,9 +86,14 @@ the interpreter and the next save within a few tries recovers on its own; or hit
 
 ## Outputs look stale, or I want to force a clean re-run
 
-Cell outputs are cached in `_freeze/` (gitignored). Errors and `#| cache: false` cells
-are never persisted, and an edit to your code always busts the key, so there are no
-stale hits to clear by hand. If you suspect a stale output anyway:
+Cell outputs are cached in `_freeze/` (gitignored), keyed by the cell's code, every
+upstream cell's code and the interpreter. An edit to your code always moves the key, and
+errors, `#| cache: false` cells and re-runs inside a warm kernel are never written, so an
+edit to code cannot bring back an old output. What can go stale is what the key does not
+see: a data file, an environment variable, a URL, the clock, a library upgraded in place.
+Mark a cell that reads one `#| cache: false`. The preview does not watch data files, so
+after editing `data.csv` save the `.tmd` (or use **Restart kernel**) to re-run it. If you
+suspect a stale output anyway:
 
 - The dev menu's **Restart kernel** forces the next run to ignore disk-cache hits
   and re-execute every cell against a fresh kernel (then re-persist), so it doubles
