@@ -169,6 +169,10 @@ pub(super) fn page_fragment(
 /// does. Getting the order wrong indexes text the page never shows: Ship A found every
 /// heading indexed unnumbered under a page reading "5.2 How nulls behave", when the
 /// numbering was a separate step this skipped.
+///
+/// The one thing the served page has that a render cannot is what its cells print, since
+/// nothing here runs them. Each executed figure's and table's numbered caption is added
+/// after its cell ([`executed_captions`]), before the registry resolves refs in it.
 pub(super) fn render_finished(
     page: &Page,
     chapter: Option<u32>,
@@ -178,8 +182,42 @@ pub(super) fn render_finished(
     let src = crate::includes::read_source(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
     let mut doc = render::render_document_scoped_with_site(&src, base, chapter, site_defaults);
+    if !render::no_exec_in_force() {
+        for b in &mut doc.blocks {
+            let captions = executed_captions(b);
+            b.html.push_str(&captions);
+        }
+    }
     super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
     Some((src, doc))
+}
+
+/// The numbered captions the executor puts under `block`'s cells' output ("Figure 5.2:
+/// Variance explained…"), built as `exec.rs` builds them: core's one caption function, then
+/// its cross-references marked for the registry to resolve. A caption is written in the
+/// source and its number is reserved at render, so it is known without running the cell;
+/// the output itself is not, and is not indexed. Only a cell whose output the page keeps
+/// carries a `figure`/`table` (the render leaves both unset for `include: false`), and
+/// `--no-exec` shows none of them.
+fn executed_captions(block: &render::Block) -> String {
+    block
+        .cells()
+        .filter_map(|c| {
+            let (label, number, caption) = match (&c.figure, &c.table) {
+                (Some(f), _) => ("Figure", &f.number, &f.caption),
+                (None, Some(t)) => ("Table", &t.number, &t.caption),
+                (None, None) => return None,
+            };
+            Some(format!(
+                "<figcaption>{}</figcaption>",
+                crate::cite::link_xrefs_in_fragment(&render::numbered_caption(
+                    label,
+                    number,
+                    caption.as_deref(),
+                ))
+            ))
+        })
+        .collect()
 }
 
 /// Scan rendered HTML for `<h1..6 id="…">text</hN>`, returning, per anchored

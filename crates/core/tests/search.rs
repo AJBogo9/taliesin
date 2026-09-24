@@ -119,3 +119,45 @@ fn index_captures_page_title_heading_and_section_body_prose() {
         "section body prose not indexed (headings-only regression?): {idx}"
     );
 }
+
+/// An executed figure's or table's numbered caption is on the page, so it is searchable.
+/// The index renders each page without running its cells, and the executor is what puts the
+/// caption under the output, so "Figure 5.2: Variance explained per principal component"
+/// was on the Guide's page and in no index. The caption is written in the source and the
+/// number is reserved at render, so the index carries it as the page shows it. Cell OUTPUT
+/// is still not indexed: that is not known without running the cell.
+#[test]
+fn an_executed_figure_or_table_caption_is_indexed() {
+    let d = TempProj::new();
+    d.file("_site.yml", "title: S\n");
+    d.file(
+        "index.tmd",
+        "---\ntitle: Cells\n---\n\n## Results {#sec-results}\n\nProse.\n\n\
+         ```{python}\n#| label: fig-var\n#| fig-cap: Variance explained per component\n\
+         plot()\n```\n\n\
+         ```{python}\n#| label: tbl-stats\n#| tbl-cap: Mean of the draws, by seed\n\
+         #| echo: false\ntable()\n```\n\n\
+         ```{python}\n#| label: fig-gone\n#| fig-cap: Dropped caption\n#| include: false\n\
+         plot()\n```\n\n## Next\n\nMore.\n",
+    );
+    let idx = Site::discover(&d.0).search_index_json;
+    let results = idx
+        .split("},{")
+        .find(|r| r.contains("\"i\":\"sec-results\""))
+        .expect("the section is indexed");
+    for caption in [
+        "Figure 1",
+        "Variance explained per component",
+        "Table 1",
+        "Mean of the draws, by seed",
+    ] {
+        assert!(
+            results.contains(caption),
+            "{caption:?} is under the cell's output, in its section: {results}"
+        );
+    }
+    assert!(
+        !idx.contains("Dropped caption"),
+        "an `include: false` cell shows no figure, so its caption is not on the page: {idx}"
+    );
+}
