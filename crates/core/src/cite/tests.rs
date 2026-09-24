@@ -917,3 +917,62 @@ fn a_broken_citation_is_columned_to_its_own_token() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An entry whose closing `}` was lost ends where the next entry starts, and says so.
+///
+/// It used to swallow that next entry whole: the field loop read `@article{smith2020` as a
+/// field name, found no `=`, broke, and the outer scan resumed past the `@` it had already
+/// consumed. `[@smith2020]` then became a broken citation whose did-you-mean offered
+/// `@smith2019` as a one-click fix, which cites a different paper (audit 2026-09-24 G3).
+#[test]
+fn an_unclosed_entry_ends_where_the_next_one_starts_and_is_reported() {
+    let (b, w) = parse_bib_warned(
+        "@article{smith2019,\n  author = {Smith, John},\n  title = {First},\n  year = {2019}\n\n\
+         @article{smith2020,\n  author = {Smith, John},\n  title = {Second},\n  year = {2020}\n}\n",
+    );
+    let second = b.format("smith2020").expect("the next entry survives");
+    assert!(
+        second.contains("Second") && second.contains("2020"),
+        "{second}"
+    );
+    let first = b
+        .format("smith2019")
+        .expect("the unclosed entry keeps what it read");
+    assert!(first.contains("First") && first.contains("2019"), "{first}");
+    assert!(
+        w.iter()
+            .any(|m| m.contains("smith2019") && m.contains("not closed") && m.contains("line 1")),
+        "the lost brace is reported, naming the entry and its line: {w:?}"
+    );
+
+    // An unbalanced `{` inside a value is the same failure one level down: the value runs
+    // on until the next entry starts, and that entry must still be read.
+    let (b, w) = parse_bib_warned(
+        "@article{good1, title={Before}, year={2000}}\n\n\
+         @article{broken, title={Missing close {brace}, year={2001}}\n\n\
+         @article{good2, title={After}, year={2002}}\n",
+    );
+    assert!(
+        b.format("good2").is_some_and(|f| f.contains("After")),
+        "good2 lost"
+    );
+    assert!(
+        w.iter()
+            .any(|m| m.contains("broken") && m.contains("not closed")),
+        "{w:?}"
+    );
+
+    // Reaching the end of the file inside an entry is reported too.
+    let (_, w) = parse_bib_warned("@article{last, title={T}, year={2002}\n");
+    assert!(
+        w.iter()
+            .any(|m| m.contains("last") && m.contains("not closed")),
+        "{w:?}"
+    );
+
+    // A well-formed file draws nothing.
+    let (_, w) = parse_bib_warned(
+        "@article{a, title={A}, year={1}}\n@misc(b, title={B})\n@string{j = {J}}\n",
+    );
+    assert!(w.is_empty(), "{w:?}");
+}

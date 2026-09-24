@@ -83,3 +83,44 @@ fn non_bib_bibliography_is_flagged_not_silently_ignored() {
         "warning should point at `bibliography:` (line 3)"
     );
 }
+
+/// Two `.bib` files are two files: an entry left unclosed at the end of the first cannot
+/// swallow the first entry of the second, and the diagnostic names the file it is in.
+/// The page's files used to be concatenated and parsed as one text (audit 2026-09-24 G3),
+/// so `b1` vanished and the only message was "broken citation: @b1".
+#[test]
+fn an_unclosed_entry_is_confined_to_its_own_file_and_reported_there() {
+    let dir = tmp("unclosed");
+    fs::write(
+        dir.join("a.bib"),
+        "@article{a1, title={From a}, year={2001}}\n@article{a2, title={Unclosed}, year={2002}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("b.bib"),
+        "@article{b1, title={First in b}, year={2003}}\n",
+    )
+    .unwrap();
+    let src = "---\ntitle: T\nbibliography: [a.bib, b.bib]\n---\n\nSee [@a2] and [@b1].\n";
+    let doc = render_document_with_includes(src, &dir);
+    let html = doc.body_html();
+    assert!(html.contains("First in b"), "b1 resolves:\n{html}");
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("broken citation")),
+        "{:?}",
+        doc.warnings
+    );
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("not closed"))
+        .unwrap_or_else(|| panic!("no unclosed-entry warning: {:?}", doc.warnings));
+    assert!(
+        w.message.contains("a.bib") && w.message.contains("a2"),
+        "{}",
+        w.message
+    );
+    assert_eq!(w.line, Some(3), "located at `bibliography:`");
+}

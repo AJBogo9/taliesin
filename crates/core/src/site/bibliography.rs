@@ -99,25 +99,8 @@ impl Site {
         }
     }
 
-    /// The project-wide bibliography as text, concatenated in declaration order. Empty
-    /// when `_site.yml` declares none, which is every project that predates the key.
-    ///
-    /// Read per page render rather than parsed once and shared: a [`crate::cite::Bibliography`]
-    /// is built per document (the page's own entries are laid over this one), and the files
-    /// are a handful of kilobytes next to a full markdown render.
-    pub fn shared_bibliography_text(&self) -> String {
-        let mut text = String::new();
-        for p in &self.bibliography {
-            if let Ok(content) = std::fs::read_to_string(p) {
-                text.push_str(&content);
-                text.push('\n');
-            }
-        }
-        text
-    }
-
     /// Site-wide hygiene for the shared `.bib`, reported against `_site.yml`: duplicate
-    /// keys within it.
+    /// keys within it, and an entry that is never closed (named by file and line).
     ///
     /// Read-only — it never edits a `.bib` and never changes what renders. Empty for a
     /// project with no `_site.yml` `bibliography:`, so it costs nothing to call
@@ -133,9 +116,22 @@ impl Site {
         if self.bibliography.is_empty() {
             return Vec::new();
         }
-        let text = self.shared_bibliography_text();
-        let (_bib, dup_warnings) = crate::cite::parse_bib_warned(&text);
-        dup_warnings.into_iter().map(Warning::new).collect()
+        // Named relative to the project root, the way `_site.yml` declared them
+        // (`resolve_shared` joined each onto the absolutized root).
+        let root = crate::includes::absolutize(&self.root);
+        let files: Vec<(String, PathBuf)> = self
+            .bibliography
+            .iter()
+            .map(|p| {
+                let name = p.strip_prefix(&root).unwrap_or(p);
+                (name.display().to_string(), p.clone())
+            })
+            .collect();
+        let mut bib = crate::cite::Bibliography::default();
+        crate::cite::read_bib_files(&mut bib, &files, &mut Default::default())
+            .into_iter()
+            .map(Warning::new)
+            .collect()
     }
 }
 
@@ -166,6 +162,35 @@ mod tests {
         assert!(
             w.iter().any(|m| m.contains("duplicate bibliography key")),
             "a duplicate inside the shared file is the project's problem: {w:?}"
+        );
+    }
+
+    /// The shared files are read one by one, so an entry left unclosed at the end of
+    /// `a.bib` cannot eat the first entry of `b.bib`; the project check names the file. The
+    /// files used to be concatenated into one text first (audit 2026-09-24 G3).
+    #[test]
+    fn an_unclosed_entry_in_one_shared_file_does_not_swallow_the_next_file() {
+        let root = write_site(
+            "shared-bib-unclosed",
+            &[
+                ("_site.yml", "title: T\nbibliography: [a.bib, b.bib]\n"),
+                (
+                    "a.bib",
+                    "@article{a1, title={From a}, year={2001}}\n\
+                     @article{a2, title={Unclosed}, year={2002}\n",
+                ),
+                ("b.bib", "@article{b1, title={First in b}, year={2003}}\n"),
+                ("index.tmd", "---\ntitle: A\n---\n\nSee [@b1].\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").expect("renders");
+        assert!(html.contains("First in b"), "b1 resolves:\n{html}");
+        let w = messages(&site.validate_shared_bibliography());
+        assert!(
+            w.iter()
+                .any(|m| m.contains("a.bib") && m.contains("a2") && m.contains("not closed")),
+            "{w:?}"
         );
     }
 

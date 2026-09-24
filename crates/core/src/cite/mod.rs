@@ -92,6 +92,29 @@ impl Bibliography {
     }
 }
 
+/// Read `.bib` files, in order, into `bib`, one file at a time (see `parse::read_into`),
+/// returning every diagnostic. Each file is `(name, path)`: the name is how a message
+/// refers to it, the path is where it is read from.
+///
+/// The one reader of `.bib` files. A page's own files and the project's shared files both
+/// come through here, so a file that cannot be read, and an entry that never closes, read
+/// the same wherever the file was declared. `strings` is the `@string` table the files
+/// share, in the order they are read.
+pub(crate) fn read_bib_files(
+    bib: &mut Bibliography,
+    files: &[(String, std::path::PathBuf)],
+    strings: &mut HashMap<String, String>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for (name, path) in files {
+        match std::fs::read_to_string(path) {
+            Ok(text) => warnings.extend(parse::read_into(bib, name, &text, strings)),
+            Err(_) => warnings.push(format!("bibliography file not found: {name}")),
+        }
+    }
+    warnings
+}
+
 /// Largest edit distance at which a name is a plausible typo rather than a different
 /// name. Matches the front-matter did-you-mean ceiling (`frontmatter::closest`).
 const MAX_TYPO_DISTANCE: usize = 2;
