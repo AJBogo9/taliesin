@@ -1162,3 +1162,31 @@ fn an_accent_on_a_braced_dotless_i_is_the_precomposed_letter() {
         assert_eq!(clean(raw), want, "{raw}");
     }
 }
+
+/// TeX's input ligatures print as TeX typesets them, in text fields and never in a URL:
+/// ``` ``quoted'' ``` as curly quotes (the renderer's smart typography gives prose the
+/// same), `--` and `---` as en and em dashes, `~` as a no-break space. They printed
+/// literally: "``double''", "1990--2000", "Proc.~of", "E.~coli" (audit 2026-09-24,
+/// bibtex #16 and the escaping lens's adjacent note).
+#[test]
+fn tex_ligatures_in_text_fields_print_as_typeset() {
+    for (raw, want) in [
+        ("``Quoted'' title", "\u{201c}Quoted\u{201d} title"),
+        ("1990--2000", "1990\u{2013}2000"),
+        ("a---b", "a\u{2014}b"),
+        ("Proc.~of the ACM", "Proc.\u{a0}of the ACM"),
+        // Not a ligature: an accent, a braced break, a symbol macro, and math.
+        (r"Espa\~na", "Espa\u{f1}a"),
+        ("-{}-", "--"),
+        (r"\textasciitilde", "~"),
+        ("$a--b$", "$a--b$"),
+    ] {
+        assert_eq!(clean(raw), want, "{raw}");
+    }
+    let b = parse_bib("@misc{u, title={A--B}, url={http://example.org/~user/a--b}}\n");
+    let f = b.format("u").unwrap();
+    assert!(
+        f.contains("href=\"http://example.org/~user/a--b\""),
+        "a URL is not text: {f}"
+    );
+}

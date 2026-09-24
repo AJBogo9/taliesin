@@ -17,16 +17,59 @@
 /// A math span (`$…$`, `\(…\)`, `\ensuremath{…}`) is kept as the TeX the author wrote,
 /// braces and all: references are not typeset, and TeX text is the honest fallback where
 /// resolving its macros one by one would change the formula (`$O(n \log n)$`).
+///
+/// TeX's input ligatures print as TeX typesets them (see [`tex_ligatures`]). That makes
+/// this the cleaner for TEXT: a URL goes through [`clean_url`], where `~` and `--` are
+/// characters of the address.
 pub(crate) fn clean(s: &str) -> String {
     let mut out = String::new();
     for (part, math) in split_math(s) {
         if math {
             out.push_str(&part);
         } else {
-            out.push_str(&latex_accents(&part).replace(['{', '}'], ""));
+            out.push_str(&latex_accents(&tex_ligatures(&part)).replace(['{', '}'], ""));
         }
     }
     out.trim().to_string()
+}
+
+/// [`clean`] for a URL: escapes resolved (`\_`, `\%`, `\url{}` unwrapped) and braces
+/// stripped, with no ligatures and no math, since every character is the address's.
+pub(crate) fn clean_url(s: &str) -> String {
+    latex_accents(s).replace(['{', '}'], "").trim().to_string()
+}
+
+/// TeX's input ligatures in text: ``` `` ``` and `''` as curly double quotes, `--` and
+/// `---` as en and em dashes, and the `~` tie as a no-break space. A character after a
+/// backslash is a macro's (`\~n` is an accent), and a brace between two hyphens breaks
+/// the ligature (`-{}-` prints two), both as in TeX. Run before macros are resolved, so
+/// `\textasciitilde` still prints a tilde.
+fn tex_ligatures(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(c) = rest.chars().next() {
+        let (text, len) = match c {
+            '\\' => {
+                let next = rest[1..].chars().next().map_or(0, char::len_utf8);
+                out.push_str(&rest[..1 + next]);
+                rest = &rest[1 + next..];
+                continue;
+            }
+            '`' if rest.starts_with("``") => ("\u{201c}", 2),
+            '\'' if rest.starts_with("''") => ("\u{201d}", 2),
+            '-' if rest.starts_with("---") => ("\u{2014}", 3),
+            '-' if rest.starts_with("--") => ("\u{2013}", 2),
+            '~' => ("\u{a0}", 1),
+            _ => {
+                out.push(c);
+                rest = &rest[c.len_utf8()..];
+                continue;
+            }
+        };
+        out.push_str(text);
+        rest = &rest[len..];
+    }
+    out
 }
 
 /// `s` cut into text and math parts, in order, each flagged `true` for math. The math

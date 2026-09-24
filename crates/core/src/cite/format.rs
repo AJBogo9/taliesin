@@ -1,7 +1,7 @@
 //! IEEE per-type reference formatting (`Bibliography::format` + the `fmt_*` helpers).
 
 use super::author::format_authors;
-use super::clean::clean;
+use super::clean::{clean, clean_url};
 use super::{Bibliography, Fields};
 use crate::render::escape_attr as esc;
 
@@ -208,7 +208,7 @@ fn append_url(out: &mut String, f: &Fields) {
     let url = f
         .get("url")
         .or_else(|| f.get("howpublished"))
-        .map(|u| clean(u))
+        .map(|u| clean_url(u))
         .filter(|u| u.starts_with("http"));
     if let Some(u) = url {
         let u = esc(&u);
@@ -216,11 +216,10 @@ fn append_url(out: &mut String, f: &Fields) {
     }
 }
 
-/// Page ranges use an en dash (`12--34` -> `12\u{2013}34`).
+/// Page ranges use an en dash (`12--34` -> `12\u{2013}34`), `---` included: before
+/// [`clean`], which would read that one as an em dash.
 fn clean_pages(s: &str) -> String {
-    clean(s)
-        .replace("---", "\u{2013}")
-        .replace("--", "\u{2013}")
+    clean(&s.replace("---", "\u{2013}").replace("--", "\u{2013}"))
 }
 
 /// `4` -> `4th`, `21` -> `21st`; passes non-numeric editions through unchanged.
