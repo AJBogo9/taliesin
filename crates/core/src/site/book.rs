@@ -176,8 +176,13 @@ fn push_chapter(
     mode: DraftMode,
     excluded: &mut Vec<String>,
 ) {
-    let input = root.join(file);
-    let rel = file.to_string();
+    // One spelling per file, decided where the path is read: `./a.tmd` and `x/../a.tmd` are
+    // `a.tmd`. A rel that kept its `./` built the page to `./a.html`, which the stale sweep
+    // (keyed on `a.html`) deleted, so the book linked a chapter it did not publish.
+    let rel = crate::includes::normalize(Path::new(file))
+        .to_string_lossy()
+        .replace('\\', "/");
+    let input = root.join(&rel);
     let src = std::fs::read_to_string(&input).unwrap_or_default();
     let (h1, unnumbered) = chapter_heading_in(&src);
     // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
@@ -332,5 +337,31 @@ mod tests {
         );
         let nums: Vec<Option<u32>> = book.chapters().iter().map(|c| c.number).collect();
         assert_eq!(nums, [Some(1), Some(2), Some(3)]);
+    }
+
+    /// `- ./a.tmd` names the same file as `- a.tmd`, but its rel kept the `./`: the page was
+    /// built to `./a.html`, which the stale sweep (comparing against `a.html`) then deleted,
+    /// so the published book linked a chapter it did not have and the sitemap listed
+    /// `https://site/./a.html`, under a clean `--strict`. And `./index.tmd` was numbered as a
+    /// chapter, because the preface rule compared against `index`. One spelling per file.
+    #[test]
+    fn a_chapter_path_is_normalized_where_it_is_read() {
+        let book = book_of(
+            "chapters:\n  - ./index.tmd\n  - ./a.tmd\n  - { file: x/../b.tmd }\n",
+            &["index.tmd", "a.tmd", "b.tmd"],
+        );
+        let got: Vec<(&str, &str, Option<u32>)> = book
+            .chapters()
+            .iter()
+            .map(|c| (c.rel.as_str(), c.url.as_str(), c.number))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("index.tmd", "index.html", None),
+                ("a.tmd", "a.html", Some(1)),
+                ("b.tmd", "b.html", Some(2))
+            ]
+        );
     }
 }
