@@ -5368,6 +5368,23 @@ fn syntax_comment_token_meets_wcag_aa() {
     );
 }
 
+/// The palette is a modal: the shared focus trap marks the overlay `aria-modal`, which is
+/// meaningful only on a dialog, and a screen reader announces a dialog by its name. The
+/// overlay had neither, so it read as an unnamed generic container (audit 2026-09-24, search
+/// #9d); the book drawer, the other modal, has been a named dialog since 2369d80.
+#[test]
+fn the_cmd_k_overlay_is_a_named_dialog() {
+    assert!(
+        SEARCH_JS.contains("overlay.setAttribute(\"role\", \"dialog\");")
+            && SEARCH_JS.contains("overlay.setAttribute(\"aria-label\", \"Search\");"),
+        "the overlay the focus trap marks aria-modal must be a named role=dialog"
+    );
+    assert!(
+        SEARCH_JS.contains("window.taliFocusTrap(overlay, input)"),
+        "the dialog is the node the trap marks aria-modal"
+    );
+}
+
 #[test]
 fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
     // Batch 3a: the selected row + match marks used raw `--tali-accent`, failing AA

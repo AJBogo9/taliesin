@@ -269,6 +269,10 @@
     overlay = document.createElement("div");
     overlay.id = "tali-search";
     overlay.hidden = true;
+    // A modal: the focus trap marks it `aria-modal`, which only a dialog carries, and a
+    // screen reader announces a dialog by its name.
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-label", "Search");
     overlay.innerHTML =
       '<div class="tali-s-backdrop"></div>' +
       '<div class="tali-s-box">' +
