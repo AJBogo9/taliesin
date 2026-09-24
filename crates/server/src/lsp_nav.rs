@@ -309,11 +309,7 @@ fn nested_parent_of(lines: &[&str], line: usize, indent: usize) -> Option<String
                 .take_while(|c| is_word(*c) || *c == '-')
                 .collect();
             let has_colon = trimmed[key.len()..].starts_with(':');
-            return if has_colon
-                && crate::lsp_complete::nested_parents()
-                    .iter()
-                    .any(|p| p == &key)
-            {
+            return if has_colon && taliesin_core::vocab::nested_parents().any(|p| p == key) {
                 Some(key)
             } else {
                 None

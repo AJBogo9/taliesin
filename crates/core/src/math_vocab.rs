@@ -1,5 +1,4 @@
-//! The math command vocabulary offered to editors, for `$…$` / `$$…$$` completion and the
-//! symbol picker.
+//! The math command vocabulary offered to editors, for `$…$` / `$$…$$` completion.
 //!
 //! **Why this can be authoritative rather than a wish list.** Every other vocabulary here is
 //! sourced from the const the validator reads, so a completion cannot offer something
@@ -12,18 +11,16 @@
 //!
 //! `snippet` is LSP snippet syntax (`$1`, `${1:x}`), used verbatim by the completion item;
 //! it is present exactly when the command takes arguments or needs a closing half.
-//! `category` groups the symbol picker.
-
-use serde_json::{Value, json};
+//! `category` groups the completion detail.
 
 /// One offered math command: `(name, description, category, snippet)`.
 ///
 /// `snippet` is `""` for a bare symbol, whose insert text is the name itself.
-pub(crate) struct MathCommand {
-    pub(crate) name: &'static str,
-    pub(crate) description: &'static str,
-    pub(crate) category: &'static str,
-    pub(crate) snippet: &'static str,
+pub struct MathCommand {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub category: &'static str,
+    pub snippet: &'static str,
 }
 
 const fn sym(name: &'static str, description: &'static str, category: &'static str) -> MathCommand {
@@ -427,23 +424,6 @@ pub(crate) const MATH_COMMANDS: &[MathCommand] = &[
         "\\begin{array}{${1:cc}}\n  $2 & $3 \\\\\\\\\n  $4 & $5\n\\end{array}",
     ),
 ];
-
-/// The vocabulary as JSON, for `taliesin vocab` and the LSP.
-pub(crate) fn math_commands() -> Value {
-    Value::Array(
-        MATH_COMMANDS
-            .iter()
-            .map(|c| {
-                json!({
-                    "name": c.name,
-                    "description": c.description,
-                    "category": c.category,
-                    "snippet": c.snippet,
-                })
-            })
-            .collect(),
-    )
-}
 
 /// The LaTeX an entry actually inserts, with snippet placeholders resolved to a plain
 /// symbol — what [`tests::every_command_renders`] feeds KaTeX. `${1:cc}` keeps its default

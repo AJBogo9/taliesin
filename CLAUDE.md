@@ -365,8 +365,8 @@ cross-checks the hook, `gates.sh` and `ci.yml`
 - **`vocab.rs` is the OFFERED-completions subset, not the implemented set.** It agrees
   with the validators for div classes (`DIV_CLASS_NAMES` and `render::DIV_FEATURE_CLASSES`
   are the same **2** width escapes, and a test pins the subset relation) and, since
-  2026-08-18, for cross-references too: `xrefPrefixes` is `XREF_LABELS` entire, all **5** of
-  them, with no filter. The seven theorem prefixes the table used to carry (and `vocab`
+  2026-08-18, for cross-references too: `vocab::xref_prefixes()` is `XREF_LABELS` entire, all
+  **5** of them, with no filter. The seven theorem prefixes the table used to carry (and `vocab`
   subtract back out) were CUT with the backwards-compatibility argument that kept them —
   `@thm-x` is now literal text that reports nothing, exactly like the `@figg-x` typo and the
   `@Fig-x` wrong case that always were. **An unknown xref prefix is silent, always, and

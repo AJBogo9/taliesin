@@ -1,39 +1,40 @@
 //! The language server's static vocabulary: every closed-set construct taliesin recognizes,
 //! with the human description its tooltip shows.
 //!
-//! Front-matter keys (top-level + nested), cell options, callout/theorem kinds, structural
-//! div classes, input types, cross-reference prefixes, math commands. The lists are sourced
-//! from the SAME consts the validator uses, so a completion can never drift from what the
-//! validator enforces. Human descriptions are additive doc text authored here (the consts
-//! carry none), which `descriptions_present` requires for every name.
+//! Front-matter keys (top-level + nested) and their closed values, cell options, callout
+//! kinds, structural div classes and attributes, input types, cross-reference prefixes, math
+//! commands, cell languages. The lists are sourced from the SAME consts the validator uses,
+//! so a completion can never drift from what the validator enforces. Human descriptions are
+//! additive doc text authored here (the consts carry none), which `descriptions_present`
+//! requires for every name.
 //!
-//! [`vocab`] builds this as one `serde_json::Value` and `lsp.rs` reads keys out of it —
-//! `resolve_completion`, `xref_label`, `frontmatter_key_doc`, the math picker's table.
-//! It used to be dumped verbatim by a `taliesin vocab` verb and golden-locked against a
-//! committed `tali-vocab.json`; Wave 2 cut both. The JSON shape stays because it is what the
-//! wire carries, not because anything is written to disk.
+//! `lsp.rs` reads these typed tables in-process (`resolve_completion`, `xref_label`,
+//! `frontmatter_key_doc`). They were one `serde_json::Value` until 2026-09-24, the dump
+//! format of a `taliesin vocab` verb Wave 2 cut, and a string-keyed read of a key that had
+//! left it answered `Null` in silence twice (`theoremKinds`, `frontmatterValues`).
 //!
 //! **This is the OFFERED subset, not the implemented set** — see `render::DIV_FEATURE_CLASSES`
 //! and the validator consts for what the tool actually supports.
 
-use serde_json::{Value, json};
+use crate::frontmatter::{EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS};
 
-/// `[{ "name", "description" }]` for each key in `names`, looking each description up in
-/// `desc` (missing -> empty string, which the `descriptions_present` test forbids).
-fn named(names: &[&str], desc: &[(&str, &str)]) -> Value {
-    Value::Array(
-        names
-            .iter()
-            .map(|n| {
-                let d = desc
-                    .iter()
-                    .find(|(k, _)| k == n)
-                    .map(|(_, d)| *d)
-                    .unwrap_or("");
-                json!({ "name": n, "description": d })
-            })
-            .collect(),
-    )
+pub use crate::math_vocab::MathCommand;
+
+/// One offered name and the description its tooltip shows.
+pub type Named = (&'static str, &'static str);
+
+/// `(name, description)` for each key in `names`, looking each description up in `desc`
+/// (missing -> empty string, which the `descriptions_present` test forbids).
+fn named(names: &[&'static str], desc: &[Named]) -> Vec<Named> {
+    names
+        .iter()
+        .map(|n| {
+            (
+                *n,
+                desc.iter().find(|(k, _)| k == n).map_or("", |(_, d)| *d),
+            )
+        })
+        .collect()
 }
 
 fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
@@ -136,7 +137,8 @@ fn callout_descriptions() -> &'static [(&'static str, &'static str)] {
 /// Keep in sync with the `.class` dispatch in `render/divs.rs`.
 const DIV_CLASS_NAMES: &[&str] = &["column-margin", "column-page"];
 
-fn div_classes() -> Value {
+/// The structural div classes offered, with their descriptions.
+pub fn div_classes() -> Vec<Named> {
     named(
         DIV_CLASS_NAMES,
         &[
@@ -173,9 +175,9 @@ enum DivScope {
 /// `width` is deliberately ABSENT. `validate::validate_column_width` warns that the
 /// equal-width grid ignores it, so completing it would recommend the exact thing `check`
 /// flags.
-struct DivAttribute {
-    name: &'static str,
-    description: &'static str,
+pub struct DivAttribute {
+    pub name: &'static str,
+    pub description: &'static str,
     /// The value half as an LSP snippet body: `$1` for free text, `${1|a,b|}` for a closed set.
     value: &'static str,
     scope: &'static [DivScope],
@@ -221,7 +223,7 @@ impl DivAttribute {
     /// The class names this attribute is offered on. **Empty means "a div with no feature
     /// class"** ([`DivScope::Generic`]), which is how the editor reads it — no entry below
     /// mixes `Generic` with a named class, so the two readings cannot collide.
-    fn classes(&self) -> Vec<String> {
+    pub fn classes(&self) -> Vec<String> {
         let mut out = Vec::new();
         for s in self.scope {
             match s {
@@ -235,31 +237,25 @@ impl DivAttribute {
         }
         out
     }
+
+    /// The completion's insert text: `name="value"`, the value an LSP snippet body.
+    pub fn snippet(&self) -> String {
+        format!("{}=\"{}\"", self.name, self.value)
+    }
 }
 
-fn div_attributes() -> Value {
-    Value::Array(
-        DIV_ATTRIBUTES
-            .iter()
-            .map(|a| {
-                json!({
-                    "name": a.name,
-                    "description": a.description,
-                    "snippet": format!("{}=\"{}\"", a.name, a.value),
-                    "classes": a.classes(),
-                })
-            })
-            .collect(),
-    )
+/// The fenced-div attributes offered, each narrowed to the classes that read it.
+pub fn div_attributes() -> &'static [DivAttribute] {
+    DIV_ATTRIBUTES
 }
 
 /// The languages offered for a ` ```{lang} ` cell, as `(name, description)`.
 ///
 /// Two of these have behaviour and the rest are highlighting. The split is not cosmetic —
-/// `executes_to_kernel` decides whether a cell can produce a numbered float — so
-/// `kernel_languages_are_marked_as_executed` pins the executed pair against that function
-/// rather than against this table's prose.
-const CELL_LANGUAGES: &[(&str, &str)] = &[
+/// `render::executes_to_kernel` decides whether a cell can produce a numbered float, and the
+/// completion marks the executed ones by asking it — so `kernel_languages_are_offered` pins
+/// that every language it accepts is in this table.
+pub const CELL_LANGUAGES: &[Named] = &[
     (
         "python",
         "Executed by a Jupyter kernel; output is spliced in.",
@@ -275,73 +271,98 @@ const CELL_LANGUAGES: &[(&str, &str)] = &[
     ("rust", "Highlighted only; not executed."),
 ];
 
-fn cell_languages() -> Value {
-    Value::Array(
-        CELL_LANGUAGES
-            .iter()
-            .map(|(name, description)| {
-                json!({
-                    "name": name,
-                    "description": description,
-                    "executes": crate::render::executes_to_kernel(name),
-                })
-            })
-            .collect(),
-    )
-}
-
-/// The `@`-prefixes offered to an author and to an agent: [`XREF_LABELS`] entire, with no
-/// filter. It used to subtract a `RETIRED_XREF_PREFIXES` list of seven theorem prefixes the
-/// renderer still resolved a label for but nothing could define a target for; those tuples
-/// were deleted on 2026-08-18, so the table is a positive live list again and "what resolves"
-/// and "what is offered" are the same set by construction rather than by subtraction.
+/// The `@`-prefixes offered to an author and to an agent: [`XREF_LABELS`] entire, as
+/// `(prefix, label)`, with no filter. It used to subtract a `RETIRED_XREF_PREFIXES` list of
+/// seven theorem prefixes the renderer still resolved a label for but nothing could define a
+/// target for; those tuples were deleted on 2026-08-18, so "what resolves" and "what is
+/// offered" are the same slice.
 ///
 /// [`XREF_LABELS`]: crate::cite::XREF_LABELS
-fn xref_prefixes() -> Value {
-    Value::Array(
-        crate::cite::XREF_LABELS
-            .iter()
-            .map(|(prefix, label)| json!({ "prefix": prefix, "label": label }))
-            .collect(),
-    )
+pub fn xref_prefixes() -> &'static [Named] {
+    crate::cite::XREF_LABELS
 }
 
-/// Build the vocabulary JSON from the validator's consts.
-pub fn vocab() -> Value {
-    use crate::frontmatter::{EXECUTE_KEYS, HERO_ACTION_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS};
-    use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES};
+/// The nested front-matter blocks whose children have their own vocabulary, as `(path,
+/// keys)`. `hero.actions` is a path into `hero:` (one entry of its `actions:` list), not a
+/// parent word.
+const NESTED: &[(&str, &[&str])] = &[
+    ("execute", EXECUTE_KEYS),
+    ("listing", LISTING_KEYS),
+    ("hero", HERO_KEYS),
+    ("hero.actions", HERO_ACTION_KEYS),
+];
 
-    // Every known key is offered. There was an exclusion here until 2026-08-20, for the one
-    // key taliesin recognized but ignored (`csl:`) -- completing it would have been the tool
-    // recommending a no-op. That key was withdrawn rather than kept inert, so the set and
-    // the offer are the same thing again.
-    let offered: Vec<&str> = KNOWN_KEYS.to_vec();
+/// The front-matter keys offered at the top level (`parent` is `None`) or inside a nested
+/// block (`"execute"`, `"hero.actions"`, …), or `None` for a parent with no vocabulary.
+///
+/// Every known key is offered. There was an exclusion here until 2026-08-20, for the one key
+/// taliesin recognized but ignored (`csl:`) -- completing it would have been the tool
+/// recommending a no-op. That key was withdrawn rather than kept inert, so the set and the
+/// offer are the same thing again.
+pub fn frontmatter_keys(parent: Option<&str>) -> Option<Vec<Named>> {
+    match parent {
+        None => Some(named(KNOWN_KEYS, frontmatter_key_descriptions())),
+        Some(p) => NESTED
+            .iter()
+            .find(|(k, _)| *k == p)
+            .map(|(_, keys)| named(keys, nested_key_descriptions())),
+    }
+}
 
-    let nested_desc = nested_key_descriptions();
-    json!({
-        "frontmatter": {
-            "keys": named(&offered, frontmatter_key_descriptions()),
-            "nested": {
-                "execute": named(EXECUTE_KEYS, nested_desc),
-                "listing": named(LISTING_KEYS, nested_desc),
-                "hero": named(HERO_KEYS, nested_desc),
-                "hero.actions": named(HERO_ACTION_KEYS, nested_desc),
-            }
-        },
-        "cellOptions": named(CELL_OPTION_KEYS, cell_option_descriptions()),
-        "calloutKinds": named(CALLOUT_KINDS, callout_descriptions()),
-        "divClasses": div_classes(),
-        "divAttributes": div_attributes(),
-        "inputTypes": Value::Array(INPUT_TYPES.iter().map(|t| json!(t)).collect()),
-        "xrefPrefixes": xref_prefixes(),
-        // The one vocabulary taliesin does not own the grammar of. It is authoritative
-        // anyway because KaTeX is IN the binary: `math_vocab`'s `every_command_renders`
-        // renders each entry through `crate::math`, so an offered command that KaTeX
-        // cannot parse fails the build instead of shipping a suggestion that renders as a
-        // red error span for the reader.
-        "mathCommands": crate::math_vocab::math_commands(),
-        "cellLanguages": cell_languages(),
-    })
+/// The top-level keys whose immediate children have their own vocabulary (`execute`,
+/// `listing`, `hero`).
+pub fn nested_parents() -> impl Iterator<Item = &'static str> {
+    NESTED.iter().map(|(k, _)| *k).filter(|k| !k.contains('.'))
+}
+
+const ON_OFF: &[Named] = &[("true", "Turn it on."), ("false", "Turn it off.")];
+
+/// The front-matter keys whose value is a closed set, as `(key, values)`. A key is matched
+/// by name at any depth, which is sound because each name here occurs once in the
+/// vocabulary: `cache` only under `execute:`, `type` only under `listing:`, `primary` only in
+/// a `hero.actions` entry.
+const FRONTMATTER_VALUES: &[(&str, &[Named])] = &[
+    ("toc", ON_OFF),
+    ("draft", ON_OFF),
+    ("cache", ON_OFF),
+    ("primary", ON_OFF),
+    (
+        "title-block-style",
+        &[("none", "Hide the visible title header.")],
+    ),
+    ("type", &[("list", "Rows with thumbnails.")]),
+];
+
+/// The closed value set of front-matter key `key`, or `&[]` when its value is free.
+pub fn frontmatter_values(key: &str) -> &'static [Named] {
+    FRONTMATTER_VALUES
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map_or(&[], |(_, v)| *v)
+}
+
+/// The `#|` cell options offered, with their descriptions.
+pub fn cell_options() -> Vec<Named> {
+    named(crate::render::CELL_OPTION_KEYS, cell_option_descriptions())
+}
+
+/// The callout kinds offered (`note`, not `callout-note`), with their descriptions.
+pub fn callout_kinds() -> Vec<Named> {
+    named(crate::render::CALLOUT_KINDS, callout_descriptions())
+}
+
+/// The `{{< input type= >}}` control kinds.
+pub fn input_types() -> &'static [&'static str] {
+    crate::render::INPUT_TYPES
+}
+
+/// The math commands offered inside `$…$`. The one vocabulary taliesin does not own the
+/// grammar of. It is authoritative anyway because KaTeX is IN the binary: `math_vocab`'s
+/// `every_command_renders` renders each entry through `crate::math`, so an offered command
+/// that KaTeX cannot parse fails the build instead of shipping a suggestion that renders as
+/// a red error span for the reader.
+pub fn math_commands() -> &'static [MathCommand] {
+    crate::math_vocab::MATH_COMMANDS
 }
 
 #[cfg(test)]
@@ -366,25 +387,34 @@ mod tests {
     /// author to add doc text here instead of silently shipping a blank tooltip.
     #[test]
     fn descriptions_present() {
-        fn check_named(v: &Value, where_: &str) {
-            for item in v.as_array().unwrap() {
-                let name = item["name"].as_str().unwrap();
-                let desc = item["description"].as_str().unwrap();
+        let mut lists: Vec<(String, Vec<Named>)> = vec![
+            ("frontmatter".into(), frontmatter_keys(None).unwrap()),
+            ("cellOptions".into(), cell_options()),
+            ("calloutKinds".into(), callout_kinds()),
+            ("divClasses".into(), div_classes()),
+            (
+                "divAttributes".into(),
+                div_attributes()
+                    .iter()
+                    .map(|a| (a.name, a.description))
+                    .collect(),
+            ),
+        ];
+        for (parent, _) in NESTED {
+            lists.push((parent.to_string(), frontmatter_keys(Some(parent)).unwrap()));
+        }
+        for (key, values) in FRONTMATTER_VALUES {
+            lists.push((format!("{key}: values"), values.to_vec()));
+        }
+        for (where_, list) in lists {
+            assert!(!list.is_empty(), "{where_} offers nothing");
+            for (name, desc) in list {
                 assert!(
                     !desc.is_empty(),
                     "empty description for `{name}` in {where_}"
                 );
             }
         }
-        let v = vocab();
-        check_named(&v["frontmatter"]["keys"], "frontmatter.keys");
-        for parent in ["execute", "listing", "hero", "hero.actions"] {
-            check_named(&v["frontmatter"]["nested"][parent], parent);
-        }
-        check_named(&v["cellOptions"], "cellOptions");
-        check_named(&v["calloutKinds"], "calloutKinds");
-        check_named(&v["divClasses"], "divClasses");
-        check_named(&v["divAttributes"], "divAttributes");
     }
 
     /// The reverse of `descriptions_present`: every entry in `frontmatter_key_descriptions`
@@ -403,35 +433,73 @@ mod tests {
         }
     }
 
-    /// Every language `executes_to_kernel` accepts must be OFFERED, and must be the only
-    /// ones marked `executes`. That function decides whether a labelled cell can produce a
-    /// numbered float, so a completion that gets the split wrong teaches an author to label
-    /// a `{bash}` cell `fig-…` and wait for a figure that never arrives.
+    /// Every language `executes_to_kernel` accepts must be OFFERED. That function decides
+    /// whether a labelled cell can produce a numbered float, and the completion marks the
+    /// executed languages by asking it, so a kernel language missing from the table would
+    /// never be offered and nothing else could see it.
     #[test]
-    fn kernel_languages_are_marked_as_executed() {
-        use crate::render::executes_to_kernel;
-        let v = cell_languages();
-        for entry in v.as_array().unwrap() {
-            let name = entry["name"].as_str().unwrap();
-            assert_eq!(
-                entry["executes"].as_bool().unwrap(),
-                executes_to_kernel(name),
-                "`{name}`'s `executes` flag disagrees with render::executes_to_kernel"
+    fn kernel_languages_are_offered() {
+        let lang = "python";
+        assert!(
+            crate::render::executes_to_kernel(lang),
+            "`{lang}` is expected to be a kernel language"
+        );
+        assert!(
+            CELL_LANGUAGES.iter().any(|(n, _)| *n == lang),
+            "kernel language `{lang}` is not offered to the editor"
+        );
+    }
+
+    /// Every nested parent is itself an offered top-level key, so a retired block (`about:`,
+    /// `prose-lint:`, both still offered a nested vocabulary on 2026-08-17 while the linter
+    /// squiggled them) cannot keep one.
+    #[test]
+    fn every_nested_parent_is_an_offered_key() {
+        let parents: Vec<&str> = nested_parents().collect();
+        assert_eq!(parents, ["execute", "listing", "hero"]);
+        for p in parents {
+            assert!(
+                KNOWN_KEYS.contains(&p),
+                "nested parent `{p}` is not a known key"
             );
         }
-        // The reverse direction: a kernel language missing from the list would never be
-        // offered, and the loop above could not see it.
-        {
-            let lang = "python";
+    }
+
+    /// Every closed front-matter value set belongs to a live key and holds only values that
+    /// key's reader accepts, so completion cannot offer a value the page then ignores.
+    #[test]
+    fn every_offered_front_matter_value_is_read() {
+        let live =
+            |k: &str| KNOWN_KEYS.contains(&k) || NESTED.iter().any(|(_, ks)| ks.contains(&k));
+        for (key, values) in FRONTMATTER_VALUES {
             assert!(
-                executes_to_kernel(lang),
-                "`{lang}` is expected to be a kernel language"
+                live(key),
+                "`{key}:` offers values but is not a front-matter key"
             );
-            assert!(
-                CELL_LANGUAGES.iter().any(|(n, _)| *n == lang),
-                "kernel language `{lang}` is not offered to the editor"
-            );
+            if *values == ON_OFF {
+                for (v, _) in *values {
+                    let yaml = serde_yaml::Value::String(v.to_string());
+                    assert!(
+                        crate::frontmatter::value_bool(&yaml).is_some(),
+                        "`{key}: {v}` does not read as a boolean"
+                    );
+                }
+            }
         }
+        let types: Vec<&str> = frontmatter_values("type").iter().map(|(v, _)| *v).collect();
+        assert_eq!(
+            types,
+            crate::frontmatter::LISTING_TYPES,
+            "`listing: type:` offers exactly what it reads"
+        );
+        // `title-block-style: none` is the value that hides the title header.
+        let emits = |fm: &str| crate::render::emits_title_block(&format!("title: T\n{fm}"));
+        assert!(emits("") && !emits("title-block-style: none\n"));
+        assert_eq!(
+            frontmatter_values("title"),
+            &[],
+            "a free-text key has no value set"
+        );
     }
 
     /// Render one fenced div and return its HTML with `data-block-id` stripped.

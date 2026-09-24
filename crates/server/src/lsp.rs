@@ -1166,7 +1166,7 @@ fn resolve_completion(
     if matches!(ctx, Ctx::None) {
         return None;
     }
-    let vocab = taliesin_core::vocab::vocab();
+    use taliesin_core::vocab;
 
     let item = |label: String, detail: String, kind: CompletionItemKind| CompletionItem {
         label,
@@ -1174,58 +1174,38 @@ fn resolve_completion(
         detail: (!detail.is_empty()).then_some(detail),
         ..Default::default()
     };
-    // A vocab `[{name, description}]` array → items of the given kind.
-    let from_named = |v: &serde_json::Value, kind: CompletionItemKind| -> Vec<CompletionItem> {
-        v.as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| {
-                        let name = e["name"].as_str()?;
-                        Some(item(
-                            name.to_string(),
-                            e["description"].as_str().unwrap_or("").to_string(),
-                            kind,
-                        ))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+    // `(name, description)` pairs → items of the given kind.
+    let from_named = |v: &[vocab::Named], kind: CompletionItemKind| -> Vec<CompletionItem> {
+        v.iter()
+            .map(|(name, description)| item(name.to_string(), description.to_string(), kind))
+            .collect()
     };
 
     let items: Vec<CompletionItem> = match ctx {
         Ctx::None => return None,
-        Ctx::FrontmatterKey { parent } => {
-            let list = match &parent {
-                Some(p) => &vocab["frontmatter"]["nested"][p],
-                None => &vocab["frontmatter"]["keys"],
-            };
-            from_named(list, CompletionItemKind::PROPERTY)
-        }
+        Ctx::FrontmatterKey { parent } => from_named(
+            &vocab::frontmatter_keys(parent.as_deref()).unwrap_or_default(),
+            CompletionItemKind::PROPERTY,
+        ),
         Ctx::FrontmatterValue { key, typed } => {
-            from_named(&vocab["frontmatterValues"][&key], CompletionItemKind::VALUE)
+            from_named(vocab::frontmatter_values(&key), CompletionItemKind::VALUE)
                 .into_iter()
                 .filter(|it| typed.is_empty() || it.label.starts_with(&typed))
                 .collect()
         }
-        Ctx::CellOption => from_named(&vocab["cellOptions"], CompletionItemKind::PROPERTY),
+        Ctx::CellOption => from_named(&vocab::cell_options(), CompletionItemKind::PROPERTY),
         Ctx::DivClass => {
-            let mut out = Vec::new();
-            if let Some(a) = vocab["calloutKinds"].as_array() {
-                for e in a {
-                    if let Some(name) = e["name"].as_str() {
-                        out.push(item(
-                            format!("callout-{name}"),
-                            e["description"].as_str().unwrap_or("").to_string(),
-                            CompletionItemKind::CLASS,
-                        ));
-                    }
-                }
-            }
-            // No `theoremKinds` here: theorem environments went in wave 8 and `vocab.rs`
-            // has never emitted that key since, so indexing it yielded `Value::Null` and
-            // `from_named` returned an empty list. A silent no-op, because serde_json's
-            // Index returns Null for a missing key rather than panicking.
-            out.extend(from_named(&vocab["divClasses"], CompletionItemKind::CLASS));
+            let mut out: Vec<CompletionItem> = vocab::callout_kinds()
+                .into_iter()
+                .map(|(name, description)| {
+                    item(
+                        format!("callout-{name}"),
+                        description.to_string(),
+                        CompletionItemKind::CLASS,
+                    )
+                })
+                .collect();
+            out.extend(from_named(&vocab::div_classes(), CompletionItemKind::CLASS));
             out
         }
         Ctx::DivAttrKey { classes, typed } => {
@@ -1234,74 +1214,51 @@ fn resolve_completion(
             // tests it second, so on a `.step` or `.panel-tabset` it does not decorate the
             // feature, it silently REPLACES it with a grid. That is a footgun, not a
             // completion.
-            let names_in = |list: &str, c: &str| {
-                vocab[list]
-                    .as_array()
-                    .is_some_and(|a| a.iter().any(|e| e["name"].as_str() == Some(c)))
-            };
             let is_feature_class = |c: &str| {
-                names_in("divClasses", c)
+                vocab::div_classes().iter().any(|(n, _)| *n == c)
                     || c == "columns"
                     || c == "column"
-                    || vocab["calloutKinds"].as_array().is_some_and(|a| {
-                        a.iter()
-                            .filter_map(|e| e["name"].as_str())
-                            .any(|k| format!("callout-{k}") == c)
-                    })
+                    || vocab::callout_kinds()
+                        .iter()
+                        .any(|(k, _)| format!("callout-{k}") == c)
             };
             let generic = !classes.iter().any(|c| is_feature_class(c));
-            vocab["divAttributes"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|e| {
-                            let name = e["name"].as_str()?;
-                            if !typed.is_empty() && !name.starts_with(&typed) {
-                                return None;
-                            }
-                            let allowed = e["classes"].as_array()?;
-                            let offered = if allowed.is_empty() {
-                                generic
-                            } else {
-                                allowed
-                                    .iter()
-                                    .filter_map(|v| v.as_str())
-                                    .any(|c| classes.iter().any(|t| t == c))
-                            };
-                            if !offered {
-                                return None;
-                            }
-                            Some(CompletionItem {
-                                label: name.to_string(),
-                                kind: Some(CompletionItemKind::PROPERTY),
-                                detail: e["description"].as_str().map(str::to_string),
-                                // The snippet carries the `="…"` and, where the value set is
-                                // closed, a choice — so `appearance` completes to a value the
-                                // renderer recognizes rather than to an empty pair of quotes.
-                                insert_text: e["snippet"].as_str().map(str::to_string),
-                                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                                ..Default::default()
-                            })
-                        })
-                        .collect()
+            vocab::div_attributes()
+                .iter()
+                .filter(|a| typed.is_empty() || a.name.starts_with(&typed))
+                .filter(|a| {
+                    let allowed = a.classes();
+                    if allowed.is_empty() {
+                        generic
+                    } else {
+                        allowed.iter().any(|c| classes.contains(c))
+                    }
                 })
-                .unwrap_or_default()
+                .map(|a| CompletionItem {
+                    label: a.name.to_string(),
+                    kind: Some(CompletionItemKind::PROPERTY),
+                    detail: Some(a.description.to_string()),
+                    // The snippet carries the `="…"` and, where the value set is closed, a
+                    // choice — so `collapse` completes to a value the renderer recognizes
+                    // rather than to an empty pair of quotes.
+                    insert_text: Some(a.snippet()),
+                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                    ..Default::default()
+                })
+                .collect()
         }
         Ctx::Xref { typed } => {
-            let mut out = Vec::new();
-            if let Some(a) = vocab["xrefPrefixes"].as_array() {
-                for e in a {
-                    if let (Some(prefix), Some(label)) = (e["prefix"].as_str(), e["label"].as_str())
-                    {
-                        out.push(item(
-                            format!("{prefix}-"),
-                            label.to_string(),
-                            CompletionItemKind::REFERENCE,
-                        ));
-                    }
-                }
-            }
-            for (id, detail) in merged_xref_targets(uri, text, &vocab) {
+            let mut out: Vec<CompletionItem> = vocab::xref_prefixes()
+                .iter()
+                .map(|(prefix, label)| {
+                    item(
+                        format!("{prefix}-"),
+                        label.to_string(),
+                        CompletionItemKind::REFERENCE,
+                    )
+                })
+                .collect();
+            for (id, detail) in merged_xref_targets(uri, text) {
                 if typed.is_empty() || id.starts_with(&typed) {
                     out.push(item(id, detail, CompletionItemKind::REFERENCE));
                 }
@@ -1321,57 +1278,53 @@ fn resolve_completion(
                 ),
                 Position::new(pos.line, pos.character),
             );
-            vocab["mathCommands"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|e| {
-                            let name = e["name"].as_str()?;
-                            let description = e["description"].as_str().unwrap_or("");
-                            // Strip the backslash from BOTH sides, so one rule serves the
-                            // control sequence and the bare token: `\alp` and `alp` are the
-                            // same query. An empty core (a lone `\`) matches everything,
-                            // which is the point of triggering on the backslash.
-                            let core = typed.strip_prefix('\\').unwrap_or(typed.as_str());
-                            let by_name = name.strip_prefix('\\').unwrap_or(name).starts_with(core);
-                            // The vocabulary carries each symbol's glyph as its description,
-                            // so the glyph is a query too. Withheld for a single ASCII
-                            // character, which would match half the list on a substring.
-                            let selective = core.chars().count() >= 2 || !core.is_ascii();
-                            let by_glyph = selective
-                                && description.to_lowercase().contains(&core.to_lowercase());
-                            if !by_name && !by_glyph {
-                                return None;
-                            }
-                            let snippet = e["snippet"].as_str().unwrap_or("");
-                            let insert = if snippet.is_empty() { name } else { snippet };
-                            let category = e["category"].as_str().unwrap_or("");
-                            Some(CompletionItem {
-                                label: name.to_string(),
-                                kind: Some(CompletionItemKind::FUNCTION),
-                                detail: Some(format!("{description}  ·  {category}")),
-                                // The client re-filters this list against the text in the
-                                // edit range, so an item the SERVER matched can still be
-                                // dropped by the EDITOR — which looks exactly like the server
-                                // never answering. Leading with what was actually typed makes
-                                // every returned item a prefix match, and the name and glyph
-                                // that follow keep it matching as more characters arrive.
-                                filter_text: Some(format!("{typed} {name} {description}")),
-                                insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                                text_edit: Some(CompletionTextEdit::Edit(TextEdit {
-                                    range: replace,
-                                    new_text: insert.to_string(),
-                                })),
-                                // Sort by name so the list reads alphabetically rather than
-                                // in the vocabulary's category order, which looks arbitrary
-                                // once it is filtered down to a few matches.
-                                sort_text: Some(name.to_string()),
-                                ..Default::default()
-                            })
-                        })
-                        .collect()
+            // Strip the backslash from BOTH sides, so one rule serves the control sequence and
+            // the bare token: `\alp` and `alp` are the same query. An empty core (a lone `\`)
+            // matches everything, which is the point of triggering on the backslash.
+            let core = typed.strip_prefix('\\').unwrap_or(typed.as_str());
+            // The vocabulary carries each symbol's glyph as its description, so the glyph is a
+            // query too. Withheld for a single ASCII character, which would match half the
+            // list on a substring.
+            let selective = core.chars().count() >= 2 || !core.is_ascii();
+            vocab::math_commands()
+                .iter()
+                .filter(|c| {
+                    c.name
+                        .strip_prefix('\\')
+                        .unwrap_or(c.name)
+                        .starts_with(core)
+                        || selective && c.description.to_lowercase().contains(&core.to_lowercase())
                 })
-                .unwrap_or_default()
+                .map(|c| {
+                    let insert = if c.snippet.is_empty() {
+                        c.name
+                    } else {
+                        c.snippet
+                    };
+                    CompletionItem {
+                        label: c.name.to_string(),
+                        kind: Some(CompletionItemKind::FUNCTION),
+                        detail: Some(format!("{}  ·  {}", c.description, c.category)),
+                        // The client re-filters this list against the text in the edit range,
+                        // so an item the SERVER matched can still be dropped by the EDITOR —
+                        // which looks exactly like the server never answering. Leading with
+                        // what was actually typed makes every returned item a prefix match,
+                        // and the name and glyph that follow keep it matching as more
+                        // characters arrive.
+                        filter_text: Some(format!("{typed} {} {}", c.name, c.description)),
+                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+                        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                            range: replace,
+                            new_text: insert.to_string(),
+                        })),
+                        // Sort by name so the list reads alphabetically rather than in the
+                        // vocabulary's category order, which looks arbitrary once it is
+                        // filtered down to a few matches.
+                        sort_text: Some(c.name.to_string()),
+                        ..Default::default()
+                    }
+                })
+                .collect()
         }
         // `{{< ` then a name. Each item inserts the full `name ` so the path/argument
         // completion that follows opens straight away.
@@ -1388,67 +1341,48 @@ fn resolve_completion(
             .collect(),
         // ` ```{py ` -> the cell languages, with the executed ones marked (a `{bash}` cell
         // labelled `fig-…` never produces a figure, so the split has to be visible here).
-        Ctx::CellLanguage { typed } => vocab["cellLanguages"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| {
-                        let name = e["name"].as_str()?;
-                        if !name.starts_with(typed.as_str()) {
-                            return None;
-                        }
-                        Some(item(
-                            name.to_string(),
-                            e["description"].as_str().unwrap_or("").to_string(),
-                            if e["executes"].as_bool().unwrap_or(false) {
-                                CompletionItemKind::EVENT
-                            } else {
-                                CompletionItemKind::VALUE
-                            },
-                        ))
-                    })
-                    .collect()
+        Ctx::CellLanguage { typed } => vocab::CELL_LANGUAGES
+            .iter()
+            .filter(|(name, _)| name.starts_with(typed.as_str()))
+            .map(|(name, description)| {
+                item(
+                    name.to_string(),
+                    description.to_string(),
+                    if taliesin_core::render::executes_to_kernel(name) {
+                        CompletionItemKind::EVENT
+                    } else {
+                        CompletionItemKind::VALUE
+                    },
+                )
             })
-            .unwrap_or_default(),
+            .collect(),
         // `{#` -> the cross-reference prefixes. Defining an anchor is where the prefix has
         // to be right; `@` already offered them for referencing one.
-        Ctx::AnchorId { typed } => vocab["xrefPrefixes"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| {
-                        let prefix = format!("{}-", e["prefix"].as_str()?);
-                        if !prefix.starts_with(typed.as_str()) {
-                            return None;
-                        }
-                        Some(item(
-                            prefix,
-                            format!("{} anchor", e["label"].as_str().unwrap_or("")),
-                            CompletionItemKind::REFERENCE,
-                        ))
-                    })
-                    .collect()
+        Ctx::AnchorId { typed } => vocab::xref_prefixes()
+            .iter()
+            .map(|(prefix, label)| (format!("{prefix}-"), label))
+            .filter(|(prefix, _)| prefix.starts_with(typed.as_str()))
+            .map(|(prefix, label)| {
+                item(
+                    prefix,
+                    format!("{label} anchor"),
+                    CompletionItemKind::REFERENCE,
+                )
             })
-            .unwrap_or_default(),
+            .collect(),
         // `{{< input type=` -> the control kinds. `inputTypes` has been in the vocabulary
         // since it was written and nothing ever read it.
-        Ctx::InputType { typed } => vocab["inputTypes"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| {
-                        let name = e.as_str()?;
-                        name.starts_with(typed.as_str()).then(|| {
-                            item(
-                                name.to_string(),
-                                "reader-facing control".to_string(),
-                                CompletionItemKind::VALUE,
-                            )
-                        })
-                    })
-                    .collect()
+        Ctx::InputType { typed } => vocab::input_types()
+            .iter()
+            .filter(|name| name.starts_with(typed.as_str()))
+            .map(|name| {
+                item(
+                    name.to_string(),
+                    "reader-facing control".to_string(),
+                    CompletionItemKind::VALUE,
+                )
             })
-            .unwrap_or_default(),
+            .collect(),
         // A `#| echo: ` style option whose value has a closed set.
         Ctx::CellOptionValue { key, typed } => crate::lsp_complete::cell_option_values(&key)
             .iter()
@@ -1583,24 +1517,16 @@ fn resolve_completion(
 /// render's numbered registry (the `#| label:` cell figures a scan can't see, with their
 /// numbers). `detail` is `"{label} {number}"` when known, else `"cross-reference target"`.
 /// The in-process, staleness-free equivalent of the companion's `mergeXrefTargets`.
-fn merged_xref_targets(
-    uri: &lsp_types::Url,
-    text: &str,
-    vocab: &serde_json::Value,
-) -> Vec<(String, String)> {
+fn merged_xref_targets(uri: &lsp_types::Url, text: &str) -> Vec<(String, String)> {
     let mut detail: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
     for id in crate::lsp_complete::harvest_anchor_ids(text) {
         detail.insert(id, "cross-reference target".to_string());
     }
     if let Some(doc) = render_buffer(uri, text) {
-        let labels: std::collections::HashMap<&str, &str> = vocab["xrefPrefixes"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| Some((e["prefix"].as_str()?, e["label"].as_str()?)))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let labels: std::collections::HashMap<&str, &str> = taliesin_core::vocab::xref_prefixes()
+            .iter()
+            .copied()
+            .collect();
         for (id, number) in &doc.xref_numbers {
             if !taliesin_core::cite::is_xref_anchor(id) {
                 continue;
@@ -1638,31 +1564,22 @@ fn xref_number(uri: &lsp_types::Url, text: &str, id: &str) -> Option<String> {
 }
 
 /// The label for `id`'s cross-reference kind (`fig` → `Figure`), from the public vocab
-/// (built from `cite::XREF_LABELS`), or `None` when the prefix names no cross-reference kind.
+/// (`cite::XREF_LABELS`), or `None` when the prefix names no cross-reference kind.
 fn xref_label(id: &str) -> Option<String> {
     let kind = id.split_once('-').map(|(k, _)| k)?;
-    let vocab = taliesin_core::vocab::vocab();
-    vocab["xrefPrefixes"]
-        .as_array()?
+    taliesin_core::vocab::xref_prefixes()
         .iter()
-        .find(|e| e["prefix"].as_str() == Some(kind))
-        .and_then(|e| e["label"].as_str())
-        .map(str::to_string)
+        .find(|(prefix, _)| *prefix == kind)
+        .map(|(_, label)| label.to_string())
 }
 
 /// The one-line documentation for front-matter key `key` (optionally under nested `parent`),
 /// from the public vocab, or `None` when the key is not documented.
 fn frontmatter_key_doc(parent: Option<&str>, key: &str) -> Option<String> {
-    let vocab = taliesin_core::vocab::vocab();
-    let list = match parent {
-        Some(p) => &vocab["frontmatter"]["nested"][p],
-        None => &vocab["frontmatter"]["keys"],
-    };
-    list.as_array()?
-        .iter()
-        .find(|e| e["name"].as_str() == Some(key))
-        .and_then(|e| e["description"].as_str())
-        .map(str::to_string)
+    taliesin_core::vocab::frontmatter_keys(parent)?
+        .into_iter()
+        .find(|(name, _)| *name == key)
+        .map(|(_, description)| description.to_string())
 }
 
 fn document_symbols(
@@ -3419,17 +3336,15 @@ mod tests {
         // The documentation must be THIS key's, quoted from the vocab. A `contains("title")`
         // here was satisfied by the header alone, so a lookup returning any other key's
         // description — or an empty one, or a constant — passed unnoticed.
-        let expected = taliesin_core::vocab::vocab()["frontmatter"]["keys"]
-            .as_array()
+        let expected = taliesin_core::vocab::frontmatter_keys(None)
             .unwrap()
-            .iter()
-            .find(|e| e["name"] == "title")
-            .and_then(|e| e["description"].as_str())
-            .expect("the vocab documents `title:`")
-            .to_string();
+            .into_iter()
+            .find(|(name, _)| *name == "title")
+            .map(|(_, description)| description)
+            .expect("the vocab documents `title:`");
         assert!(!expected.is_empty(), "the vocab entry must carry prose");
         assert!(
-            md.contains(&expected),
+            md.contains(expected),
             "expected `title:`'s own documentation ({expected:?}), got {md:?}"
         );
 
@@ -3546,6 +3461,34 @@ mod tests {
 
         shutdown(&client);
         thread.join().unwrap().unwrap();
+    }
+
+    // A front-matter key with a closed value set completes its values. The table this read
+    // (`frontmatterValues`) had left the vocabulary with `format:` and `theme:`, and a
+    // string-keyed read of a missing JSON key is `Null`, so every value position answered an
+    // empty list (audit 2026-09-24, Part K).
+    #[test]
+    fn a_front_matter_value_position_offers_the_keys_closed_set() {
+        let uri = Url::parse("file:///tmp/tali-lsp-fm-values.tmd").unwrap();
+        let text = "---\ntoc: \ndraft: t\nlisting:\n  type: \n---\n\nBody.\n";
+        let docs = std::collections::HashMap::from([(uri.clone(), text.to_string())]);
+        let values =
+            |line: u32, character: u32| -> Vec<(String, Option<lsp_types::CompletionItemKind>)> {
+                match resolve_completion(&docs, &complete_params(&uri, line, character)) {
+                    Some(lsp_types::CompletionResponse::Array(items)) => {
+                        items.into_iter().map(|i| (i.label, i.kind)).collect()
+                    }
+                    other => panic!("expected a completion list, got {other:?}"),
+                }
+            };
+        let v = |s: &str| (s.to_string(), Some(lsp_types::CompletionItemKind::VALUE));
+        assert_eq!(values(1, 5), [v("true"), v("false")], "`toc: `");
+        assert_eq!(
+            values(2, 8),
+            [v("true")],
+            "`draft: t` narrows to what was typed"
+        );
+        assert_eq!(values(4, 8), [v("list")], "`listing: type: `");
     }
 
     // Stepless math completion. The author who knows the symbol is called "alpha" should not
