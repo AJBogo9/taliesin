@@ -103,7 +103,9 @@ and the [Configuration reference](../reference/frontmatter.tmd) for `execute:`.
 any of them with a matching `#| label: fig-x` / `lst-x` / `tbl-x` and the output is
 cross-referenceable as `@fig-x`, `@lst-x` or `@tbl-x` from anywhere in the book. A
 caption is inline Markdown, so `*emphasis*`, `` `code` `` and `$x^2$` render in it the
-same way whichever kind of cell carries it. The
+same way whichever kind of cell carries it. An executed image is published with an empty
+`alt`, since in a figure the caption describes it, so a cell whose output shows an image
+and has no `fig-cap` draws a warning. The
 [cell-options reference](../reference/cell-options.tmd#every-option) has the
 routing rules.
 

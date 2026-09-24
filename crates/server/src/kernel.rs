@@ -1751,8 +1751,9 @@ fn render_media(media: &Media, metadata: &serde_json::Map<String, serde_json::Va
                 .map(|n| format!(" {k}=\"{n}\""))
                 .unwrap_or_default()
         };
-        // `alt=""`, not `alt="output"` (item 41). An executed cell's image is spliced into
-        // a captioned `<figure>`, so the caption is already the accessible description;
+        // `alt=""`, not `alt="output"` (item 41). In a captioned `<figure>` the caption is
+        // the accessible description (and outside one the executor warns, see
+        // `exec::undescribed_image_warning`);
         // a second one reading "output" is noise a screen reader says out loud before it
         // gets to the sentence that means something. Empty alt marks it presentational,
         // which is the correct role for an image whose description sits beside it. The

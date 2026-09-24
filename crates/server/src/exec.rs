@@ -840,6 +840,15 @@ impl Executor {
                     }
                     continue;
                 }
+                if let Some(w) = undescribed_image_warning(cell, inner) {
+                    crate::log::warn(&w);
+                    let warning = render::Warning::new(w);
+                    self.warnings
+                        .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                            0 => warning,
+                            line => warning.at(cell.source_file.clone(), line),
+                        });
+                }
                 match &cell.out {
                     OutTarget::Sibling => {
                         output_blocks.insert(cell.block_index, output_block(cell, inner));
@@ -1841,6 +1850,35 @@ fn empty_labelled_float_warning(cell: &CellRef, inner: &str) -> Option<String> {
     ))
 }
 
+/// A cell whose output shows an image with no text description, and no caption to give it
+/// one. An executed image is published with `alt=""` (`kernel::render_media`, the
+/// matplotlib hook): right inside a captioned figure, where the caption describes it, and
+/// an image a screen reader cannot see anywhere else (audit images #10). An authored image
+/// with no `alt` is a warning, so this is one too, pointing at the fix: a `fig-cap` wraps
+/// the output in a figure the caption describes. Read with the tag walker, so an image a
+/// cell merely prints as text is not one.
+fn undescribed_image_warning(cell: &CellRef, inner: &str) -> Option<String> {
+    let captioned = cell
+        .figure
+        .as_ref()
+        .and_then(|f| f.caption.as_deref())
+        .is_some_and(|c| !c.trim().is_empty());
+    if captioned {
+        return None;
+    }
+    let undescribed = render::tags(inner).any(|t| {
+        t.name.eq_ignore_ascii_case("img")
+            && render::attrs(&t)
+                .find(|a| a.name.eq_ignore_ascii_case("alt"))
+                .is_none_or(|a| a.value.trim().is_empty())
+    });
+    undescribed.then(|| {
+        "the cell's output shows an image with no text description (it is published with \
+         alt=\"\"), so a screen reader skips it: give the cell a `#| fig-cap:` describing it"
+            .to_string()
+    })
+}
+
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
@@ -2492,6 +2530,55 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Images #10: an executed image is published with `alt=""`, which is right inside a
+    /// captioned figure (the caption describes it) and wrong everywhere else: a plot with no
+    /// `fig-cap` was invisible to assistive technology, and nothing said so. It is now a
+    /// located warning at the cell, as a missing `alt` is for an authored image; a
+    /// captioned figure stays silent.
+    #[test]
+    fn an_executed_image_with_no_caption_is_a_located_warning() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise executed-image alt text; this run did not."
+            );
+            return;
+        }
+        let draw = "import base64\nfrom IPython.display import Image, display\n\
+                    display(Image(data=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), format='png'))";
+        let mut bare = python_cell_block_with("i-1", draw);
+        bare.sourcepos = "9:1-12:3".into();
+        let mut captioned = python_cell_block_with("i-2", draw);
+        if let Some(c) = captioned.cell.as_mut() {
+            c.figure = Some(CellFigure {
+                anchor: None,
+                caption: Some("A single pixel.".into()),
+                number: "1".into(),
+            });
+        }
+        let mut ex = Executor::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let _ = rt.block_on(ex.run(vec![bare, captioned]));
+        if ex.diagnostic().is_some() {
+            return; // no working python kernel here
+        }
+        let warnings = ex.take_warnings();
+        let described: Vec<_> = warnings
+            .iter()
+            .filter(|w| w.message.contains("fig-cap"))
+            .collect();
+        assert_eq!(
+            described.len(),
+            1,
+            "exactly the uncaptioned image cell must warn: {warnings:?}"
+        );
+        assert_eq!(
+            described[0].line,
+            Some(9),
+            "located at the cell: {warnings:?}"
+        );
     }
 
     fn python_cell_block_with(id: &str, code: &str) -> Block {
