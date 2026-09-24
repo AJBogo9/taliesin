@@ -1,14 +1,11 @@
 # Taliesin roadmap
 
-> **⚠ STILL PAUSED. The cut landing is not permission to grow.** The scope reduction
-> completed with wave 13 on 2026-08-09, so the pause banner that read "until the cut
-> lands" now expires into exactly the wrong reading. The standing directive is
-> unchanged and is in `CLAUDE.md`: *"always lean towards cutting. I'd rather have a
+> **Unpaused; the author prioritizes.** The scope reduction completed with wave 13 on
+> 2026-08-09, and `CLAUDE.md` has recorded this file as unpaused since 2026-08-17. The
+> standing directive governs every item: *"always lean towards cutting. I'd rather have a
 > polished lean product, and then add features when I have real users that need them."*
-> **Nothing here is to be worked until real users ask for it.** Several items also
-> presuppose subsystems that were deleted; re-read every one against the smaller
-> surface before believing it (the `print-pdf-track` item is closed as CUT).
-> Only the author unpauses this file.
+> Several items presuppose subsystems that were deleted; re-read every one against the
+> smaller surface before believing it (the `print-pdf-track` item is closed as CUT).
 
 > The successor to `native-rewrite.md` (complete 2026-06-24), which removed
 > every backwards-compat shim and closed every schema. **This roadmap cashes
@@ -35,22 +32,17 @@ generator can copy it, because it is architecture, not a feature.
 **"Wider too" is real but disciplined: wider in web-native capability inside a live
 HTML view**, surfaced through the same block model that makes the moat pay off. It is
 **not** new static output targets bolted onto a second compiler path, and it never
-licenses preview write-back or rewriting the Do-NOT-touch machinery. (One sanctioned
-exception, decided 2026-06-24: a **print/PDF track derived from the built HTML**, see
-Pillar IV + Wave 5, where HTML stays the single source of truth and PDF is a
-paged-media *rendering* of it, not a parallel format.)
+licenses preview write-back or rewriting the Do-NOT-touch machinery. (A print/PDF track
+derived from the built HTML was sanctioned on 2026-06-24 and cut on 2026-08-08; HTML is
+the only output.)
 
-## Operating philosophy: corpus-plus-roadmap
+## Operating philosophy: a test per feature, not a corpus document
 
-"The corpus is the spec" evolves into **corpus-plus-roadmap.** The relaxation is
-precise and the discipline is preserved by one mechanism: **every new feature ships
-pinned by a target corpus document added in the same change.** A proposal that names
-its pin doc (`corpus/diagnostics/typos.tmd`, `corpus/layout/panels.tmd`,
-`corpus/narrate/walkthrough.tmd`, …) is a real roadmap item; a proposal that cannot
-name one is spec-by-wishful-thinking and waits until a document pulls it in. Scope
-grows on purpose; the regression net grows with it, in lockstep. The corpus is still
-the arbiter of "done", it just now includes documents that *lead* implementation as
-well as record it.
+The "corpus-plus-roadmap" rule this section used to state (every new feature ships pinned
+by a target corpus document) was retired as circular evidence. The rule now is the one in
+`CLAUDE.md`: a feature witness belongs in `crates/core/src/render/tests.rs`, and a document
+earns its place in `corpus/` by being something a person wanted to read, or a golden no
+unit test can hold. Items below that name a "pin doc" predate the change.
 
 ## Unchanged guardrails (apply to every item below)
 
@@ -377,8 +369,8 @@ validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
   entry above; print from the browser instead.
 - **Later / demand-driven** (not scheduled): `docs-as-spec` (after validation settles)
   · everything in CUT/DEFER, revived only when a corpus doc or a measured penalty
-  pulls it in. (`{glsl}` shipped 2026-07-29; `build-seo-completeness` is done — see its
-  entry above.)
+  pulls it in. (`{glsl}` shipped 2026-07-29 and was later withdrawn, see
+  `render/client_lang.rs`; `build-seo-completeness` is done, see its entry above.)
 
 **Backlog cross-refs (integrate, don't duplicate):** #1d → Wave 4 (companion LAN
 token). #4 → optional branch of the Wave 2 benchmark + the gate for any crossref-family

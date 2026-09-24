@@ -90,8 +90,8 @@ pub(crate) const BUILD_FLAGS: &[&str] = &[
 /// moment. A denylist, not an allowlist: an extensionless or `.html`/`.htm`/unusual-but-named
 /// target is the author's deliberate choice (HTML content in the file they asked for), not a
 /// format-expectation trap. The CLI analog of `frontmatter::NON_HTML_FORMATS` (format *names*),
-/// here matching output-path *file extensions*. Real PDF is a sanctioned future track (ROADMAP
-/// Pillar IV / Wave 5, derived from the built HTML); this is only the interim guardrail.
+/// here matching output-path *file extensions*. HTML is the only output: the print/PDF track
+/// was cut on 2026-08-08.
 const NON_HTML_OUTPUT_EXTS: &[&str] = &[
     "pdf", "docx", "doc", "odt", "rtf", "tex", "latex", "typ", "epub", "pptx", "ppt", "md",
     "markdown",
@@ -100,8 +100,8 @@ const NON_HTML_OUTPUT_EXTS: &[&str] = &[
 /// The friendly rejection for a `build … <out>` whose extension names a non-HTML format
 /// ([`NON_HTML_OUTPUT_EXTS`]), or `None` when the output path is absent or an acceptable
 /// target. Names the extension, hands over the concrete `.html` fix (the out path with its
-/// extension swapped, so `dist/x.pdf` → `dist/x.html`), offers the browser Print-to-PDF escape
-/// hatch, and points at the planned print track. `error: `-prefixed to match the other
+/// extension swapped, so `dist/x.pdf` → `dist/x.html`) and offers the browser's Print to
+/// PDF. `error: `-prefixed to match the other
 /// `parse_build_args` errors (`cmd_build` prints it verbatim to stderr).
 fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
     let out = out_html?;
@@ -113,9 +113,8 @@ fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
     let html = html.display();
     Some(format!(
         "error: `build` renders HTML only, but the output path `{out}` ends in `.{ext}`. \
-         Write `{html}` instead (or omit it to build `{html}` beside the source). For a rough \
-         PDF, open the built page and use your browser's Print to PDF; a real print/PDF track \
-         is planned (ROADMAP Pillar IV)."
+         Write `{html}` instead (or omit it to build `{html}` beside the source). For a PDF, \
+         open the built page and use your browser's Print to PDF."
     ))
 }
 

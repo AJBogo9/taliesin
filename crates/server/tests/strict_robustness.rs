@@ -336,8 +336,14 @@ fn build_into_pdf_is_rejected() {
         "the error names the extension and states HTML-only: {err}"
     );
     assert!(
-        err.contains("ROADMAP") && err.contains("Print"),
-        "the error points at the planned print track + the browser-Print escape hatch: {err}"
+        err.contains("Print to PDF"),
+        "the error names the browser's Print to PDF: {err}"
+    );
+    // HTML is the only output: the print/PDF track was cut on 2026-08-08, so the error must
+    // not promise one.
+    assert!(
+        !err.contains("planned") && !err.contains("ROADMAP"),
+        "the error promises a print track that was cut: {err}"
     );
 }
 
