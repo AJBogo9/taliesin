@@ -33,13 +33,17 @@ as unknown and left for you to look up.
 
 Run [`taliesin doctor`](cli.tmd#checking-the-environment-doctor) first: it names which
 Python was resolved, which of the five sources chose it, and whether `ipykernel` imports.
-The usual answer is that there is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python
-that has `ipykernel`:
+The usual answer is that there is no Jupyter kernel. Create a virtual environment in the
+project directory and install `ipykernel` into it:
 
 ```sh
-pip install ipykernel
-export TALIESIN_PYTHON="$(which python3)"
+python3 -m venv .venv && .venv/bin/pip install ipykernel
 ```
+
+Taliesin finds a `.venv` in the project directory, or in a parent directory up to the
+repository root, with no configuration. To use a Python somewhere else, set
+`TALIESIN_PYTHON` to it. A plain `pip install ipykernel` into the system Python is refused
+on current Debian, Ubuntu and Homebrew Pythons (`externally-managed-environment`, PEP 668).
 
 The diagnostics note usually quotes the kernel's own error (e.g. *"No module
 named ipykernel"*), so fix that and save: the server respawns the kernel and

@@ -135,8 +135,11 @@ highlighting, and sites render with no kernel; a kernel is needed only
 to *run* `{python}` code cells (without one they render as source), which use one
 warm kernel reused across edits:
 
-- **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/)
-  (`python3 -m pip install ipykernel`).
+- **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/).
+  In your project directory, run `python3 -m venv .venv && .venv/bin/pip install ipykernel`
+  (on Debian and Ubuntu, `python3 -m venv` needs the `python3-venv` package). Taliesin finds
+  a project `.venv` with no configuration; `taliesin doctor` shows which Python it picked. A
+  system `pip install` is refused on current Debian, Ubuntu and Homebrew Pythons (PEP 668).
 
 `{js}` cells run in the browser and need no kernel.
 

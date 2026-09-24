@@ -68,15 +68,23 @@ struct Check {
     executes: Option<bool>,
 }
 
-/// The `pip install` line that installs the missing kernel package into the exact
-/// interpreter that was probed.
+/// The line that installs the missing kernel package. Into the exact interpreter that was
+/// probed when the project chose it; on the bare `python3` fallback, into a new project
+/// `.venv` instead, because a system Python refuses `pip install` under PEP 668 (Ubuntu
+/// 24.04, Debian 12, Homebrew) and the resolver finds a project `.venv` on its own.
 fn kernel_install_fix(r: &Resolved) -> String {
+    if matches!(r.provenance, Provenance::Default) {
+        return VENV_FIX.to_string();
+    }
     format!("{} -m pip install ipykernel", r.path.display())
 }
 
+/// Create a project `.venv` with the kernel package in it.
+const VENV_FIX: &str = "python3 -m venv .venv && .venv/bin/pip install ipykernel";
+
 /// The fix when the *default* interpreter is simply absent (nothing was configured).
-fn absent_default_fix() -> &'static str {
-    "install Python 3, then: python3 -m pip install ipykernel"
+fn absent_default_fix() -> String {
+    format!("install Python 3, then: {VENV_FIX}")
 }
 
 /// The fix when the interpreter *works* but nothing in the project chose it. Names the
@@ -150,7 +158,7 @@ fn interpreter_check(r: &Resolved, p: &Probe) -> Check {
             name,
             status: Status::Warn,
             detail: format!("{where_}\n{err}  ·  {name} cells will render as source{searched}"),
-            fix: Some(absent_default_fix().to_string()),
+            fix: Some(absent_default_fix()),
             executes: Some(false),
         }
     } else {
@@ -452,6 +460,38 @@ mod tests {
         assert_eq!(
             c.fix.as_deref(),
             Some("/proj/.venv/bin/python -m pip install ipykernel")
+        );
+    }
+
+    /// On the bare `python3` fallback, `python3 -m pip install ipykernel` is refused by the
+    /// system Python on Ubuntu 24.04, Debian 12 and Homebrew (PEP 668,
+    /// `externally-managed-environment`). The fix that works everywhere is a project
+    /// `.venv`, which the resolver then finds on its own.
+    #[test]
+    fn missing_kernel_pkg_on_the_bare_fallback_recommends_a_venv() {
+        let p = Probe {
+            runs: true,
+            version: Some("Python 3.12.3".into()),
+            kernel_pkg_ok: false,
+            error: None,
+        };
+        let c = interpreter_check(&resolved("python3", Provenance::Default), &p);
+        assert_eq!(
+            c.fix.as_deref(),
+            Some("python3 -m venv .venv && .venv/bin/pip install ipykernel")
+        );
+        let absent = Probe {
+            runs: false,
+            version: None,
+            kernel_pkg_ok: false,
+            error: Some("interpreter not found".into()),
+        };
+        let c = interpreter_check(&resolved("python3", Provenance::Default), &absent);
+        assert!(
+            c.fix.as_deref().is_some_and(|f| f.contains("python3 -m venv .venv")
+                && !f.contains("-m pip install")),
+            "{:?}",
+            c.fix
         );
     }
 

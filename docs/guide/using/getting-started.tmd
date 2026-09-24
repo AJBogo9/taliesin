@@ -28,13 +28,17 @@ install it on `PATH`.
 ## Set up a kernel (for code execution)
 
 Prose, math, diagrams, and `{js}` cells need no setup. To *execute*
-`{python}` cells you point the server at a Jupyter kernel. A one-time setup:
+`{python}` cells you need a Python with a Jupyter kernel. A one-time setup, in your
+project directory:
 
 ```sh
-python3 -m venv .venv && . .venv/bin/activate
-pip install ipykernel numpy matplotlib   # + whatever your cells import
-export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
+python3 -m venv .venv
+.venv/bin/pip install ipykernel numpy matplotlib   # + whatever your cells import
 ```
+
+Taliesin finds a `.venv` in the project directory, or in a parent directory up to the
+repository root, with no configuration; `taliesin doctor` shows which Python it picked.
+(On Debian and Ubuntu, `python3 -m venv` needs the `python3-venv` package.)
 
 A document's `{python}` cells run against one warm kernel, reused across edits.
 Without a kernel, cells render as highlighted source and the preview shows a
@@ -42,9 +46,9 @@ Without a kernel, cells render as highlighted source and the preview shows a
 a kernel later. Streaming output, caching and the silence cap are in
 [Executable content](code.tmd).
 
-`TALIESIN_PYTHON` is the only environment variable most projects set. Every
-other one the server reads is tabled in the [CLI reference](../reference/cli.tmd),
-and none is required to start; `taliesin help` prints the same list.
+To use a Python outside the project, set `TALIESIN_PYTHON` to it. Every environment
+variable the server reads is tabled in the [CLI reference](../reference/cli.tmd), and
+none is required to start; `taliesin help` prints the same list.
 
 ## Scaffold a project
 
