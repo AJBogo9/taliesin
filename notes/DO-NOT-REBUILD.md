@@ -502,6 +502,24 @@ headings deliberately excluded).
 
 ### Decided against
 
+- **2026-09-24 code-cell DX brainstorm, killed after adversarial review.** Detail, the parked
+  ideas and their revival triggers are in
+  [2026-09-24-code-cell-dx-brainstorm.md](2026-09-24-code-cell-dx-brainstorm.md). Do not re-file:
+  - an inspector for a `{js}` cell's discarded return value: DevTools already does it;
+  - stderr as an author-only channel dropped from builds: it strips truncation markers and real
+    warnings from published pages;
+  - a pre-run check of `{python}` imports against the interpreter: a second interpreter path with
+    known false positives, and `_freeze/` restores upstream cells anyway;
+  - "why did this cell re-run": the warming chip and the per-cell badges already say it;
+  - runtime failures pushed into the editor from TypeScript: a second diagnostics publisher
+    outside Rust;
+  - a `viewof` value that survives editing its own cell: `{{< input >}}` already keeps it;
+  - an ETA and an OS notification for long runs: no post runs longer than 3 s;
+  - defaulting `{js}` cells to `echo: false`: `echo` is inert there (the inert-option warning
+    says so);
+  - keeping auto-import edits from forwarded completions: they are off in Pylance's default;
+  - formatting a cell through the shadow: the author's layout is deliberate, and a reformat
+    re-runs every downstream cell.
 - **`listing: type: grid`** (cut 2026-09-24): its CSS went on 2026-08-15 with the ruled-list
   redesign, after which it rendered exactly like `list` while the guide promised tiled cards.
   The parser no longer reads it (`parse_listing_spec_no_longer_reads_type_grid`); a listing is
