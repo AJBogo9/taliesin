@@ -1736,7 +1736,7 @@ async fn build_page(
         publish_pre_exec_body(project, rel, &page, &pass.doc.blocks);
         // A failed cell is not repeated among the diagnostics: the dev menu lists each one
         // from the page itself, clickable to the cell.
-        let _ = pass.execute(exec).await;
+        pass.execute(exec).await;
     }
     // Finish the executed blocks exactly as the build does (cross-refs + broken-ref
     // warnings, `hero:` and `listing:` expansion, a post's back link). Queries the

@@ -84,3 +84,61 @@ fn an_executed_figure_carries_no_alt_text_beside_its_caption() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The warning a cell image nothing describes draws, as `build` prints it: once, and at the
+/// cell. A site build printed it twice, first bare while the cell ran and again located
+/// when it replayed the page's diagnostics, and `build <file>` printed only the bare line.
+fn undescribed_image_lines(site: bool) -> Option<Vec<String>> {
+    let program = python_program()?;
+    let dir = tmp_dir(if site {
+        "undescribed-site"
+    } else {
+        "undescribed-file"
+    });
+    std::fs::write(dir.join("_site.yml"), "title: Undescribed\n").unwrap();
+    std::fs::write(
+        dir.join("doc.tmd"),
+        "---\ntitle: A raw PNG\n---\n\n\
+         ```{python}\nfrom PIL import Image\nImage.new(\"RGB\", (24, 16), (200, 30, 30))\n```\n",
+    )
+    .unwrap();
+    let target = if site {
+        dir.clone()
+    } else {
+        dir.join("doc.tmd")
+    };
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
+        .args(["build", target.to_str().unwrap()])
+        .env("TALIESIN_PYTHON", &program)
+        .env("TALIESIN_NO_CACHE", "1")
+        .output()
+        .expect("run build");
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(out.status.success(), "build failed: {stderr}");
+    let _ = std::fs::remove_dir_all(&dir);
+    Some(
+        stderr
+            .lines()
+            .filter(|l| l.contains("no text description"))
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
+#[test]
+fn a_site_build_reports_an_undescribed_cell_image_once_at_its_cell() {
+    let Some(lines) = undescribed_image_lines(true) else {
+        return;
+    };
+    assert_eq!(lines.len(), 1, "printed {} times: {lines:#?}", lines.len());
+    assert!(lines[0].contains("doc.tmd:5: "), "not located: {lines:#?}");
+}
+
+#[test]
+fn a_file_build_reports_an_undescribed_cell_image_once_at_its_cell() {
+    let Some(lines) = undescribed_image_lines(false) else {
+        return;
+    };
+    assert_eq!(lines.len(), 1, "printed {} times: {lines:#?}", lines.len());
+    assert!(lines[0].contains("doc.tmd:5: "), "not located: {lines:#?}");
+}

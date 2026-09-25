@@ -810,9 +810,7 @@ fn build_page_executing(
         pass.diags.iter().for_each(log_diag);
         let printed = pass.diags.len();
         let mut exec = page_executor(site, page);
-        // Execution's own findings are already on the console: the executor printed each at
-        // its cell. They ride `--format json` only.
-        let announced = pass.execute(&mut exec).await;
+        pass.execute(&mut exec).await;
         pass.finish(site, page);
         // The links this page carries, judged against the one page it is. This build writes
         // nothing else, so a link to another page of its project, or to a sibling document,
@@ -820,11 +818,9 @@ fn build_page_executing(
         // preview writes, rather than passed as a link to the raw source (audit 2026-09-24,
         // config-seam #15).
         pass.add(&site.validate_cross_page_links_for(&page.rel));
-        for (i, d) in pass.diags.iter().enumerate().skip(printed) {
-            if !announced.contains(&i) {
-                log_diag(d);
-            }
-        }
+        // Then what running the cells and finishing the page found, execution's own findings
+        // at their cells among it.
+        pass.diags.iter().skip(printed).for_each(log_diag);
         // A crashed cell bakes its traceback into the page; name it and count it.
         let cells = cell_error_diagnostics(&pass.failures, label);
         for d in &cells {

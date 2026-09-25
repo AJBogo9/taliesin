@@ -547,26 +547,20 @@ impl PagePass {
 
     /// Run the page's cells and splice their outputs in. What only execution can know is
     /// carried out of it: an exec-phase defect (reported, never counted, like the offline
-    /// nudge), each failed cell (counted), and a kernel that would not start. Returns where
-    /// in [`diags`](Self::diags) the exec-phase defects landed: the executor has already
-    /// printed each one at its cell.
-    pub(crate) async fn execute(
-        &mut self,
-        exec: &mut crate::exec::Executor,
-    ) -> std::ops::Range<usize> {
+    /// nudge), each failed cell (counted), and a kernel that would not start. The defects
+    /// join [`diags`](Self::diags) located, and the executor prints none of them, so the
+    /// caller reports them once, with the rest.
+    pub(crate) async fn execute(&mut self, exec: &mut crate::exec::Executor) {
         let written = self.doc.blocks.clone();
         self.doc.blocks = exec.run(std::mem::take(&mut self.doc.blocks)).await;
         self.kernel_failure = exec.kernel_failure_report();
-        let start = self.diags.len();
         let label = &self.label;
         self.diags
             .extend(exec.take_warnings().iter().map(|w| diag_from(w, label)));
-        let announced = start..self.diags.len();
         self.failures = exec.take_failures();
         self.problems += self.failures.len();
         // After the cells, of the blocks as written: a file a cell wrote now exists.
         self.check_local_assets(&written);
-        announced
     }
 
     /// Finish the page as its project publishes it (chapter numbering, cross-references and
@@ -615,7 +609,7 @@ impl PagePass {
     ) -> PagePass {
         let mut pass = PagePass::begin(&PageRender::of(site, page), page, src, label);
         if let Some(exec) = exec {
-            let _ = pass.execute(exec).await;
+            pass.execute(exec).await;
         }
         pass.finish(site, page);
         pass

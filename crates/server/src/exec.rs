@@ -570,11 +570,25 @@ impl Executor {
         std::mem::take(&mut self.warnings)
     }
 
+    /// Record an execution-only defect at `cell`, for [`Executor::take_warnings`]. Nothing is
+    /// printed here: the caller reports it with the page's other diagnostics, located, and
+    /// a line printed here as well was the same warning twice in a site build, the first
+    /// copy without its file and line. The cell's sourcepos/source_file are the block
+    /// model's own author-file pair, so the location is already mapped; a generated block's
+    /// empty sourcepos (line 0) stays unlocated.
+    fn warn_at(&mut self, cell: &CellRef, warning: render::Warning) {
+        self.warnings
+            .push(match render::sourcepos_start_line(&cell.sourcepos) {
+                None => warning,
+                Some(line) => warning.at(cell.source_file.clone(), line),
+            });
+    }
+
     /// A failed `#| include: false` cell drops its output by design, and with it the only
     /// place the failure showed: the page, the console, `--strict` and the JSON all said
     /// nothing while every later cell ran without its state (audit E4). So it becomes a
-    /// located, error-severity diagnostic at the cell, on the console and in the same
-    /// channel as the other execution-only defects.
+    /// located, error-severity diagnostic at the cell, in the same channel as the other
+    /// execution-only defects.
     fn hidden_failure(&mut self, cell: &CellRef, failure: Failure, raised: Option<&str>) {
         let what = match failure {
             Failure::Raised => format!("raised {}", raised.unwrap_or("an uncaught exception")),
@@ -585,22 +599,10 @@ impl Executor {
             "the `#| include: false` cell {what}; its output is hidden, so the page does not \
              show this, and the cells after it ran without its state"
         );
-        let place = cell
-            .source_file
-            .as_deref()
-            .map(|f| format!("{f} "))
-            .unwrap_or_default();
-        crate::log::warn(&format!(
-            "cell error in {} ({place}@ {}): {message}",
-            self.page.as_deref().unwrap_or("document"),
-            cell.sourcepos
-        ));
-        let warning = render::Warning::new(message).severity(render::Severity::Error);
-        self.warnings
-            .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                None => warning,
-                Some(line) => warning.at(cell.source_file.clone(), line),
-            });
+        self.warn_at(
+            cell,
+            render::Warning::new(message).severity(render::Severity::Error),
+        );
     }
 
     /// Drain the cells the last [`Executor::run`] saw fail (see [`Failure`]), in document
@@ -775,31 +777,12 @@ impl Executor {
                 // dead `@fig-`/`@tbl-` anchor render already committed to — only
                 // knowable now, so warn (it can't be un-burned post-execution).
                 if let Some(w) = empty_labelled_float_warning(cell, inner) {
-                    crate::log::warn(&w);
-                    // Also a located per-page diagnostic (the same channel the
-                    // static validators feed), so the preview panel shows the
-                    // defect at the cell instead of it living only in the
-                    // terminal. The cell's sourcepos/source_file are the block
-                    // model's own author-file pair, so the location is already
-                    // mapped; a generated block's empty sourcepos (line 0) stays
-                    // unlocated.
-                    let warning = render::Warning::new(w);
-                    self.warnings
-                        .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                            None => warning,
-                            Some(line) => warning.at(cell.source_file.clone(), line),
-                        });
+                    self.warn_at(cell, render::Warning::new(w));
                 }
                 continue;
             }
             if let Some(w) = undescribed_image_warning(cell, inner) {
-                crate::log::warn(&w);
-                let warning = render::Warning::new(w);
-                self.warnings
-                    .push(match render::sourcepos_start_line(&cell.sourcepos) {
-                        None => warning,
-                        Some(line) => warning.at(cell.source_file.clone(), line),
-                    });
+                self.warn_at(cell, render::Warning::new(w));
             }
             match &cell.out {
                 OutTarget::Sibling => {
