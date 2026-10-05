@@ -152,7 +152,7 @@ fail, remove it again.
 ## Stage 3: launch presentation (item 149, the pre-gate parts)
 
 - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1. Contact address is
-  `andreas.bogossian9@gmail.com`, which `SECURITY.md:26` already publishes as the fallback
+  the maintainer's Gmail address (redacted 2026-10-05), which `SECURITY.md:26` already publishes as the fallback
   vulnerability-report address, so this reuses a published decision rather than making a
   new disclosure.
 - `.github/ISSUE_TEMPLATE/`: a bug-report form, and a `config.yml` that states feature

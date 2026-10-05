@@ -23,7 +23,7 @@ members = ["crates/core", "crates/server", "tools/live-edit-bench"]
 version = "1.1.0"
 edition = "2024"
 license = "AGPL-3.0-only"
-authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]
+authors = ["Andreas Bogossian"]
 repository = "https://github.com/AJBogo9/taliesin"
 
 [workspace.dependencies]

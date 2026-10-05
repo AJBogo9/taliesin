@@ -18,13 +18,10 @@ receives security fixes. There is no back-porting to older tags.
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities privately, not as a public issue:
-
-1. Preferred: open a private advisory through GitHub's **Report a vulnerability**
-   button on the repository's *Security* tab
-   (<https://github.com/AJBogo9/taliesin/security/advisories/new>).
-2. Fallback: email `andreas.bogossian9@gmail.com` with `[taliesin security]` in
-   the subject.
+Please report suspected vulnerabilities privately, not as a public issue: open a
+private advisory through GitHub's **Report a vulnerability** button on the
+repository's *Security* tab
+(<https://github.com/AJBogo9/taliesin/security/advisories/new>).
 
 A short proof-of-concept or the exact reproduction steps helps a lot. Since this
 is a one-maintainer project, expect an initial acknowledgement within about a

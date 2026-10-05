@@ -566,7 +566,7 @@ semver, and gains the 1.0.0 entry."
 - [ ] **Step 1: Write CODE_OF_CONDUCT.md**
 
 Use Contributor Covenant 2.1 verbatim from https://www.contributor-covenant.org/version/2/1/code_of_conduct/,
-with the enforcement contact filled in as `andreas.bogossian9@gmail.com`. That address is
+with the enforcement contact filled in as the maintainer's Gmail address (redacted 2026-10-05). That address is
 already published at `SECURITY.md:26` as the fallback vulnerability-report address, so this
 reuses a published decision rather than making a new disclosure.
 
