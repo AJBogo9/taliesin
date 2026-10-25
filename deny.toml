@@ -30,6 +30,12 @@ ignore = [
     # `Vec<u8>` identities and the peers are loopback-only, self-spawned kernels, so that path
     # is unreachable. No fixed `scc` is published yet; revisit when one is.
     "RUSTSEC-2026-0205", # scc 3.7.3 double-free (zeromq→scc); panicking-comparator path unreachable
+    # Rides in through `serde_yaml` (front matter and `_site.yml`), a direct dependency of
+    # taliesin-core. Unmaintained, not a vulnerability, and there is no patched version: the
+    # advisory's alternatives (saphyr, serde-saphyr) are a parser swap, which changes how
+    # every document's YAML is read. The input is the author's own files. Revisit if
+    # unsafe-libyaml or serde_yaml gets a real vulnerability.
+    "RUSTSEC-2024-0449", # unsafe-libyaml unmaintained (via serde_yaml); no upgrade available
 ]
 
 [licenses]

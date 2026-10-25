@@ -142,8 +142,9 @@ jobs:
         run: npm test
 
   # Dependency advisory scan, kept off the fmt+test hot path. `serde_yaml` is
-  # deprecated but currently advisory-free; this is the backstop that tells us if
-  # that (or any transitive dep) ever grows a CVE — at which point we migrate.
+  # deprecated and its `unsafe-libyaml` is flagged unmaintained (ignored in deny.toml);
+  # this is the backstop that tells us if either (or any transitive dep) ever grows a
+  # CVE, at which point we migrate.
   audit:
     runs-on: ubuntu-latest
     steps:
