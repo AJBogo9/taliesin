@@ -17,6 +17,12 @@ static HTML, the same niche as Quarto, MyST and Jupyter Book. Where it differs:
    edits, so a save re-runs code from the first changed cell on, not the whole document.
 4. **HTML only.** There is no PDF, LaTeX or Word output.
 
+In the recording below, text typed into a `.tmd` file in VS Code shows up in the preview on
+save, and a Ctrl-click on a paragraph in the preview moves the editor cursor to its source
+line.
+
+https://github.com/user-attachments/assets/5450118f-9de3-4214-8653-f2af0807d8ea
+
 The manual is two books written in `.tmd` and built with Taliesin: the
 [User Guide](https://guide.taliesin.sh/) (how to use it, starting with
 [Getting started](https://guide.taliesin.sh/using/getting-started.html)) and
