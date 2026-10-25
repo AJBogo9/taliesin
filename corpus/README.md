@@ -30,9 +30,9 @@ iterate over whatever exists.
 rather than swept, because 19 near-identical posts do not each earn an eyeball. It is
 human-facing but deliberately not deployed, so no script can derive it; its row says so.
 
-Nothing else is deployed anywhere. Since 2026-08-19 the gallery is a self-contained demo
-site (`gallery/`), and `tarn/`, `descent/` and `analyst/` remain here purely as goldens:
-their pins (`tarn.rs`, `descent.rs`, `analyst.rs`) are what a defect in them breaks.
+Nothing else is deployed anywhere. `tarn/`, `descent/` and `analyst/` are here purely as
+goldens: their pins (`tarn.rs`, `descent.rs`, `analyst.rs`) are what a defect in them
+breaks.
 
 Everything else is checked by machine, and looking at it is wasted effort rather than diligence:
 the diagnostics documents produce a warnings list and not a page, and `native-tmd.tmd`

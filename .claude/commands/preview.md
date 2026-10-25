@@ -1,13 +1,14 @@
 ---
 description: Build, serve a .tmd, and verify it live in the browser
-argument-hint: "[path/to/file.tmd or project dir] (defaults to docs/guide)"
+argument-hint: "[path/to/file.tmd or project dir] (defaults to corpus/tech-blog)"
 ---
 Preview and verify a `.tmd` document end to end. Steps:
 
 1. `cargo build -p taliesin-server` (report any compile error and stop).
-2. Pick the target: `$ARGUMENTS` if given, else `docs/guide` (the User Guide book). A
+2. Pick the target: `$ARGUMENTS` if given, else `corpus/tech-blog` (a complete site). A
    `.tmd` inside a `_site.yml` project opens the whole project; its page is served at the
-   same path with `.html` (for example `docs/guide/using/code.tmd` is `/using/code.html`).
+   same path with `.html` (for example `corpus/tech-blog/posts/em-algorithm/index.tmd` is
+   `/posts/em-algorithm/index.html`).
 3. Free port 4388 if busy (`fuser -k 4388/tcp`), then start the server detached:
    `./target/debug/taliesin preview <target> 4388` (run_in_background). Wait for HTTP 200
    from `http://127.0.0.1:4388/`.

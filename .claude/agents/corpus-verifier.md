@@ -15,9 +15,8 @@ evidence — never claim green without command output to back it.
    hook both run one. If one is running, stop and report that instead of starting another.
 2. **The gate:** `TALIESIN_PYTHON="$PWD/.venv/bin/python" ./tools/gates.sh`. It runs fmt,
    clippy, the whole workspace suite with the live-kernel and Node tests armed, both `tsc`
-   type-checks, the VS Code companion's tests, `cargo audit`, `cargo deny check`, both
-   document gates, `tools/publish.sh --check`, the portability census and the README
-   VERSION-pin check. It exits 2 at preflight without a Python that has `ipykernel`, and
+   type-checks, the VS Code companion's tests, `cargo audit` and `cargo deny check`. It
+   exits 2 at preflight without a Python that has `ipykernel`, and
    it takes minutes, so run it in the background. Quote its verdict line; take the gate
    count from that line, never from prose.
 3. **Only when asked for a quick check** of one area, run the narrower command and say it
@@ -28,8 +27,7 @@ evidence — never claim green without command output to back it.
 
 ## What this does not cover
 - How a page looks and behaves in a browser: use `/preview` and a screenshot.
-- A real deploy (`tools/publish.sh` without `--check`), macOS, Windows, and the VS Code
-  companion running inside an editor.
+- macOS, Windows, and the VS Code companion running inside an editor.
 
 ## Reporting rules
 - Lead with a one-line PASS/FAIL/INCOMPLETE verdict per check.

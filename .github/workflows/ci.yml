@@ -8,14 +8,7 @@ name: CI
 # push, and cache the cargo build to keep each run to ~1-2 min.
 #
 # The local equivalent is `./tools/gates.sh`, which runs these gates in one process and
-# refuses to be green unless every gate ran. It also runs two that CI does not: the
-# portability census and the README VERSION-pin check, which needs the repo's tags.
-# `crates/core/tests/gate_script.rs` checks that the document and publish gates stay in
-# all three of this file, `gates.sh` and `.githooks/pre-push`.
-#
-# Every job runs unconditionally on the triggers below. The repository is public, and
-# `crates/core/tests/stale_docs.rs` fails if a job is made conditional on its visibility
-# again, because the docs say CI checks every push to `main` and every pull request.
+# refuses to be green unless every gate ran.
 on:
   push:
     branches: [main]
@@ -57,18 +50,6 @@ jobs:
         run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      # The document and publish gates are STEPS on this job, not new jobs: they reuse the
-      # debug build `cargo test` just produced, so they cost a link rather than a second
-      # workspace build. `--check-only` renders in memory and writes nothing; `--no-exec`
-      # is what keeps both kernel-free. `.githooks/pre-push` runs the same two, as its
-      # steps 4 and 5.
-      # Both books: wave 9 wired the guide and covered one of two already-separate books.
-      - name: Document gate (the manual is a shipped document)
-        run: |
-          cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
-          cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
-      - name: Publish gate (all four sites build; gallery exhibit links resolve)
-        run: ./tools/publish.sh --check
 
   # Exercise the live execution stack (kernel.rs / exec.rs) against a REAL ipykernel —
   # the `test` job above cannot, because TALIESIN_PYTHON is unset there so every kernel

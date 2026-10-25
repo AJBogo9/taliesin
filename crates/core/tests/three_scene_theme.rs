@@ -16,18 +16,16 @@
 //! * the helper's DOM chrome is token-driven, so it flips instead of shipping a fixed
 //!   dark chip on white.
 //!
-//! `three-scene.tmd` lives in more than one copy, in two variants: an EXTENDED one
-//! (`controls`/`autoRotate`/`rebuild`/`loadGLTF`, used by the marketing site) and a base
-//! one. The copies are **discovered by walking the tree**, not listed. That is the fix for
-//! a real defect: the list used to name four paths while five files existed, and a copy
-//! under a duplicated corpus post drifted unpinned under a gate whose own assertion
-//! claimed it covered every copy. A walk cannot undercount, which is why the duplicate
-//! cull on 2026-08-09 took three of the five copies without leaving a hole here.
+//! The copies of `three-scene.tmd` are **discovered by walking the corpus**, not listed.
+//! That is the fix for a real defect: the list used to name four paths while five files
+//! existed, and a copy under a duplicated corpus post drifted unpinned under a gate whose
+//! own assertion claimed it covered every copy. One copy is left
+//! (`corpus/tech-blog/_includes/`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// The repository root (the workspace dir that holds `corpus/` and `site/`).
+/// The repository root (the workspace dir that holds `corpus/`).
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -49,19 +47,16 @@ fn helper_copies() -> Vec<(String, String)> {
         })
         .collect();
     copies.sort();
-    // A rename must not silently make this file vacuous. Two is the floor because two is
-    // what survives the 2026-08-09 duplicate cull: one copy per variant, which is also the
-    // minimum `same_variant_three_scene_copies_stay_byte_identical` needs to stay honest.
+    // A rename must not silently make this file vacuous.
     assert!(
-        copies.len() >= 2,
-        "expected at least one copy of the helper per variant, found {}: {copies:#?}",
-        copies.len()
+        !copies.is_empty(),
+        "expected at least one copy of the helper, found none"
     );
     copies
 }
 
-/// Every `.tmd` under `corpus/`, `site/`, and `docs/`: the documents that can call the
-/// helper. Skips build output (`_freeze/`, `_site/`, `_book/`) and anything unreadable.
+/// Every `.tmd` under `corpus/`: the documents that can call the helper. Skips build
+/// output (`_freeze/`, `_site/`, `_book/`) and anything unreadable.
 fn all_docs() -> Vec<(String, String)> {
     fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
         let Ok(rd) = fs::read_dir(dir) else { return };
@@ -86,14 +81,11 @@ fn all_docs() -> Vec<(String, String)> {
             }
         }
     }
-    let root = repo_root();
     let mut out = Vec::new();
-    for sub in ["corpus", "site", "docs"] {
-        walk(&root.join(sub), &mut out);
-    }
+    walk(&repo_root().join("corpus"), &mut out);
     assert!(
         out.len() > 40,
-        "expected the corpus/site/docs walk to find the .tmd documents, found {}",
+        "expected the corpus walk to find the .tmd documents, found {}",
         out.len()
     );
     out
@@ -188,60 +180,5 @@ fn the_three_scene_fullscreen_button_is_token_driven() {
             !style.contains('#') && !style.contains("rgba(") && !style.contains("rgb("),
             "{rel}: the Fullscreen button still carries a raw colour literal:\n{style}"
         );
-    }
-}
-
-/// Copies of the SAME variant are hand-kept identical and must stay so, or a theme fix
-/// lands in one and rots the others. Grouped by content rather than by a listed pair,
-/// because the variant a given copy belongs to is a property of the file, not of a name:
-/// the base variant has one copy today (`corpus/tech-blog/_includes/`) and so does the
-/// extended one (`site/_includes/`, carrying `controls`/`autoRotate`/`rebuild`/`loadGLTF`).
-///
-/// The extended variant HAD a second copy under `corpus/graphics3d/` (cut 2026-08-08) and
-/// the base variant had three (`corpus/_includes/` and the loose `corpus/posts/`
-/// pca-geometry copy went with the duplicate cull on 2026-08-09). One copy cannot drift, so
-/// the assertion below simply has nothing to compare, but it still fails loudly if a
-/// future edit merges the two variants, which is the other half of what the old paired pin
-/// was buying, and it fails again the moment a second copy of either variant reappears.
-#[test]
-fn same_variant_three_scene_copies_stay_byte_identical() {
-    let copies = helper_copies();
-
-    let mut extended: Vec<&(String, String)> = Vec::new();
-    let mut base: Vec<&(String, String)> = Vec::new();
-    for c in &copies {
-        // `autoRotate` ALONE, since 2026-08-19. The classifier used to require
-        // `loadGLTF`/`frameObject`/`function rebuild(` as well, and those three were dead in
-        // the only extended copy: no page passed a `ctx` member to them, and the site's one
-        // caller that declares `ctx` never reads it. That made the classifier the sole reason
-        // 43 lines of unreachable WebGL survived, and it inlined them into the search index of
-        // both including pages. A marker list must identify a variant, not pin its contents.
-        // `autoRotate` is the honest discriminator: the extended copy sets it, the base copy
-        // has no such option at all. (`controls` would NOT work as a second marker: the base
-        // copy carries it inside its OrbitControls import URL.)
-        if ["autoRotate"].iter().all(|m| c.1.contains(m)) {
-            extended.push(c);
-        } else {
-            base.push(c);
-        }
-    }
-
-    // Both variants must still exist, or a drive-by "sync" merged them and this test
-    // would pass by having nothing left to compare.
-    assert!(
-        !extended.is_empty() && !base.is_empty(),
-        "the two three-scene variants must not be merged; found extended={:?} base={:?}",
-        extended.iter().map(|c| &c.0).collect::<Vec<_>>(),
-        base.iter().map(|c| &c.0).collect::<Vec<_>>()
-    );
-
-    for group in [&extended, &base] {
-        let (first_path, first_src) = group[0];
-        for (path, src) in group.iter().skip(1) {
-            assert_eq!(
-                src, first_src,
-                "{path} has drifted from {first_path}; a fix landed in one copy only"
-            );
-        }
     }
 }

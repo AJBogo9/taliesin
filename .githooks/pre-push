@@ -2,8 +2,8 @@
 # Pre-push gate. Runs the fast, environment-independent checks LOCALLY before a push
 # reaches origin, so a break is caught here instead of after it has landed on main.
 #
-# `.github/workflows/ci.yml` runs the same fmt, clippy, suite, document and publish
-# gates on every push to main and every pull request, after the push has landed; this hook
+# `.github/workflows/ci.yml` runs the same fmt, clippy and suite gates on every push to
+# main and every pull request, after the push has landed; this hook
 # is the local check before it. Deliberately NOT gated here, because each needs an
 # environment this hook cannot assume (CI and `tools/gates.sh` run them):
 #   - JS typecheck + VS Code grammar  (need node)
@@ -73,19 +73,6 @@ if [ "$pushing_main" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# The README's install block pins VERSION=<tag> and constructs three
-# release-asset URLs from it. A pin with no tag 404s all three, and `shasum -c`
-# then fails against a "Not Found" body: v1.1.0 shipped exactly that way on
-# 2026-09-01, bumped alongside the crate version with no tag cut. Tiny on
-# purpose: grep the pin out of README.md, ask git whether the tag exists.
-# ---------------------------------------------------------------------------
-readme_version=$(sed -n 's/^VERSION=\(v[^ ]*\)$/\1/p' README.md | head -n1)
-if [ -z "$readme_version" ] || [ -z "$(git tag -l "$readme_version")" ]; then
-    echo "pre-push: REFUSED. README.md pins VERSION=${readme_version:-<missing>} but no such git tag exists." >&2
-    exit 1
-fi
-
-# ---------------------------------------------------------------------------
 # Environment preflight for the suite below.
 #
 # WHY. Every live-kernel test gates on `TALIESIN_PYTHON` and *skips* when it is unset
@@ -149,40 +136,11 @@ if ! command -v node >/dev/null 2>&1; then
     echo "pre-push: no node on PATH: the Node-backed test in the suite below will SKIP."
 fi
 
-echo "pre-push: gating main (fmt, clippy, test, docs lint, site compose). Bypass with --no-verify."
-echo "  [1/5] cargo fmt --check"
+echo "pre-push: gating main (fmt, clippy, test). Bypass with --no-verify."
+echo "  [1/3] cargo fmt --check"
 cargo fmt --all -- --check
-echo "  [2/5] cargo clippy --workspace --all-targets -- -D warnings"
+echo "  [2/3] cargo clippy --workspace --all-targets -- -D warnings"
 cargo clippy --workspace --all-targets -- -D warnings
-echo "  [3/5] cargo test --workspace"
+echo "  [3/3] cargo test --workspace"
 cargo test --workspace
-
-# The document gate the `check` verb never had wired anywhere. The two books under `docs/`
-# are this project's own manual, authored in `.tmd`, so a broken cross-reference or a dead
-# link in either ships to a reader the same way a bug ships to a user, and until 2026-08-08
-# nothing automatic looked. `--check-only` renders in memory and writes NOTHING, so the hook
-# leaves no `_site/` behind; `--no-exec` is redundant with it and passed anyway, because a
-# hook that silently gained a kernel dependency would start failing for the wrong reason.
-# `--strict` is deliberately absent: advice must not block a push.
-#
-# BOTH books, because wave 9 wired only the guide and covered one of two. `docs/internals`
-# was built by the composition script (a plain `build … --out`, which exits 0 on any number
-# of errors) and linted by nothing. `gate_script.rs` now derives the book list from the tree
-# and fails if any `_site.yml` project under `docs/` is missing from this file.
-#
-# Built with the same profile the tests just used, so this costs a link and not a rebuild.
-echo "  [4/5] cargo run -q -p taliesin-server -- build docs/{guide,internals} --check-only --no-exec"
-cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
-cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
-
-# The publish gate. FOUR separate projects, four Cloudflare Pages deploys, four domains:
-# the marketing site, the two docs books and the gallery each build alone, and they reach
-# each other by absolute URL rather than by composition (Cloudflare Pages has no subpath
-# deploy, so a composed tree would have to be re-uploaded whole on every change).
-#
-# `--check` lints and builds all four with --no-exec into temp dirs. build.rs recorded
-# that an unrun script had already shipped this project's call-to-action with a 404 once
-# (item 149), which is why this runs here rather than by hand.
-echo "  [5/5] tools/publish.sh --check"
-tools/publish.sh --check
 echo "pre-push: all checks passed."

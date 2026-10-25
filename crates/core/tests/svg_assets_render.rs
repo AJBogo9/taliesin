@@ -1,4 +1,4 @@
-//! Every SVG the corpus and the site ship must actually render in an `img` element.
+//! Every SVG the corpus and the bundled assets ship must actually render in an `img` element.
 //!
 //! Item 74's `logo:` shipped two brand SVGs that returned HTTP 200 and were copied into the
 //! build correctly, and still painted a broken-image glyph on the forward-facing blog: each
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 fn shipped_svgs() -> Vec<PathBuf> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut found = Vec::new();
-    for top in ["corpus", "site", "docs", "crates/core/assets"] {
+    for top in ["corpus", "crates/core/assets"] {
         walk(&root.join(top), &mut found);
     }
     found.sort();

@@ -13,15 +13,8 @@
 # both cut; R + IRkernel and a system Chrome are no longer prerequisites of anything here,
 # and neither is silently optional — there is nothing left for them to gate.
 #
-# **THIRTEEN gates as of 2026-09-01** (the README VERSION-pin check is the thirteenth;
-# the count was written here as eleven while twelve ran until 2026-08-17, which is this
-# same paragraph's own failure mode one more time). It ran eight while
-# claiming ten for two waves: the document gate (wave 9) and the composition gate (wave 11)
-# were wired into `.githooks/pre-push` and never added here, because neither can skip and so
-# neither looked like this script's problem. A gate that is simply ABSENT from the list
-# hollows a "runs every gate" claim out just as completely as a gate that skipped, and it
-# does it more quietly, because there is no SKIPPED line to read. The cross-check that stops
-# the next one lives in `crates/core/tests/gate_script.rs`.
+# **EIGHT gates as of 2026-10-25**, when the two document gates, the publish gate, the
+# portability census and the README VERSION-pin check went with the manual and the sites.
 #
 # **Take this number from the script's own verdict line, never by incrementing this one.**
 #
@@ -48,8 +41,8 @@
 #
 # `crates/core/tests/gate_script.rs` pins this file against the tree: every
 # TALIESIN_REQUIRE_* variable the Rust sources read must be set here, and every canary
-# test named here must still exist, and every command `.githooks/pre-push` runs must appear
-# here too. Renaming a canary breaks that test, not this script silently.
+# test named here must still exist. Renaming a canary breaks that test, not this script
+# silently.
 
 set -u
 set -o pipefail
@@ -315,80 +308,6 @@ if [ "$ALLOW_MISSING" -eq 1 ] && ! have cargo-deny; then
 else
     run_gate "cargo deny check" deny.log cargo deny check
 fi
-
-# ---------------------------------------------------------------------------
-# 9-11. The DOCUMENT gates (both books of this project's own manual) and the publish gate.
-#
-# Neither needs an interpreter, which is the whole reason they went missing here. A
-# gate that cannot skip has nothing to prove to this script, so wave 9 wired the
-# document gate and wave 11 the composition gate straight into `.githooks/pre-push`
-# and neither was added here — after which this script printed PASSED while running
-# 8 of the repo's 10 enforced gates, and CLAUDE.md told every session to trust it.
-# That is the same hollowing-out the header describes, arriving from the opposite
-# direction: not a gate that skipped, but a gate that was never listed.
-# `crates/core/tests/gate_script.rs` now compares the two lists on every run.
-#
-# The hook keeps running both. It runs on its own before a push to main and this script
-# is manual, so the two are a pair, not a move.
-#
-# DEBUG profile on purpose: the clippy and test gates above have already built the
-# workspace, so these cost a link rather than a second full build (the hook records
-# the same reasoning at its step 4). `--check-only` renders in memory and writes
-# nothing; `--no-exec` is what keeps both of them kernel-free.
-# ---------------------------------------------------------------------------
-# BOTH books. Wave 9 wired the guide and covered one of two already-separate books;
-# `gate_script.rs` derives the list from the tree, so a third book cannot slip through.
-run_gate "build docs/guide --check-only" docs-guide.log \
-    cargo run -q -p taliesin-server -- build docs/guide --check-only --no-exec
-
-run_gate "build docs/internals --check-only" docs-internals.log \
-    cargo run -q -p taliesin-server -- build docs/internals --check-only --no-exec
-
-run_gate "tools/publish.sh --check" publish.log ./tools/publish.sh --check
-
-# ---------------------------------------------------------------------------
-# 12. The published census still reproduces.
-#
-# `README.md` ("Before you adopt it") and `docs/guide/using/choosing.tmd` publish the
-# figures and hand the reader the command: `python3 tools/portability-census.py`. That makes a
-# mismatch self-refuting rather than merely stale — the one claim in the read set where the
-# instrument is in the reader's hands.
-#
-# It has now rotted TWICE. The script was committed on 2026-08-03 precisely as the remedy
-# for the first rot, and choosing.tmd still carries the footnote saying so; six days later
-# eight cut waves had removed ~40% of the corpus and every figure was wrong again, by
-# 133/11,534/7.1% published against 82/7157/7.0% measured. A doc-comment is not a control.
-#
-# It is gated where the build times are not because it is the only figure here that is
-# MACHINE-INDEPENDENT: a deterministic sub-second pass over tracked files. Wall clocks and
-# binary sizes vary by machine and are labelled indicative; gating those would gate the box.
-#
-# No new prerequisite: this script already hard-requires Python, so no TALIESIN_REQUIRE_*
-# appears and `gate_script.rs::the_gate_script_arms_every_require_gate_in_the_tree` is
-# untouched. Not added to `.githooks/pre-push` either —
-# `every_pre_push_command_is_also_run_by_the_gate_script` constrains hook ⊆ script, not the
-# reverse.
-# ---------------------------------------------------------------------------
-run_gate "portability census --verify" census.log "$PY" tools/portability-census.py --verify
-
-# ---------------------------------------------------------------------------
-# 13. The README's pinned install VERSION resolves to a git tag that exists.
-#
-# The install block constructs three release-asset URLs from its `VERSION=`
-# line; a pin with no tag 404s all three, and `shasum -c` then fails against a
-# "Not Found" body. v1.1.0 shipped exactly that way on 2026-09-01: the pin was
-# bumped alongside the crate version with no tag cut. `.githooks/pre-push`
-# runs the same check, so the hook stays a subset of this script.
-# ---------------------------------------------------------------------------
-readme_version_pin_has_a_tag() {
-    local v
-    v=$(sed -n 's/^VERSION=\(v[^ ]*\)$/\1/p' README.md | head -n1)
-    if [ -z "$v" ] || [ -z "$(git tag -l "$v")" ]; then
-        echo "README.md pins VERSION=${v:-<missing>} but no such git tag exists" >&2
-        return 1
-    fi
-}
-run_gate "README VERSION pin has a tag" readme-version.log readme_version_pin_has_a_tag
 
 # ---------------------------------------------------------------------------
 # Verdict

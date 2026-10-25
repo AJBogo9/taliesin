@@ -130,7 +130,7 @@ pub fn keys_hint() {
 /// it without touching the filesystem or a terminal.
 fn first_run_notice_body() -> &'static str {
     "first run: previewing a .tmd RUNS it (code cells, {js}, raw HTML) — \
-     `--no-exec` skips the cells; see SECURITY.md"
+     `--no-exec` skips the cells"
 }
 
 /// Where the "already told them" marker lives. A user-level path, not a project one: the
@@ -157,9 +157,8 @@ fn first_run_marker_from(
 
 /// Say once, on this machine, that previewing a document executes it.
 ///
-/// The trust model is stated correctly in `SECURITY.md` and in the CLI reference, and a
-/// first-time user reads neither before their first `taliesin preview` — which is the one
-/// moment the fact is load-bearing. So it is said in the terminal, exactly once ever.
+/// A first-time user reads no trust model before their first `taliesin preview`, which is
+/// the one moment the fact is load-bearing. So it is said in the terminal, exactly once ever.
 ///
 /// TTY-gated like [`keys_hint`] (an agent or CI run keeps its captured log clean) and
 /// marker-gated so the author who lives in this tool sees it on day one and never again.
@@ -303,14 +302,14 @@ mod tests {
     #[test]
     fn first_run_notice_states_what_runs_and_the_way_out() {
         let body = first_run_notice_body();
-        for needle in ["RUNS", "--no-exec", "SECURITY.md"] {
+        for needle in ["RUNS", "--no-exec"] {
             assert!(
                 body.contains(needle),
                 "the first-run notice must carry {needle:?}: {body:?}"
             );
         }
         // One line. A wall of text at startup is scrolled past, which is the same as not
-        // saying it — and the long forms already exist in SECURITY.md and the CLI reference.
+        // saying it.
         assert!(!body.contains('\n'), "one line only: {body:?}");
     }
 

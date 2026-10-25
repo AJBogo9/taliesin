@@ -156,9 +156,8 @@ fn a_genuine_mid_document_skip_is_still_reported() {
 
 #[test]
 fn every_book_in_the_repo_emits_a_contiguous_outline() {
-    // The measurement AP7-1 actually made, turned into a gate. The dogfood books are NOT in
-    // the regression net (the standing "what the test net structurally cannot see" note), so
-    // this walks them explicitly alongside the corpus book that carries the awkward shapes.
+    // The measurement AP7-1 actually made, turned into a gate, over the corpus book that
+    // carries the awkward shapes.
     //
     // The rule used to exempt decks wholesale (item 111), which meant two of these files
     // could not fail the walk however they were written. The slide-deck engine was cut on
@@ -167,7 +166,7 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut pages = 0usize;
     let mut bad: Vec<String> = Vec::new();
-    for book in ["docs/guide", "docs/internals", "corpus/tarn"] {
+    for book in ["corpus/tarn"] {
         let dir = root.join(book);
         let mut stack = vec![dir.clone()];
         while let Some(d) = stack.pop() {
@@ -200,12 +199,9 @@ fn every_book_in_the_repo_emits_a_contiguous_outline() {
     }
     // An anti-vacuity guard against a broken walk, not a content floor: it exists so a
     // `read_dir` that silently returns nothing cannot make the real assertion below it pass
-    // forever. Lowered from 40 on 2026-08-14, when the docs cut removed the dev-server
-    // chapter and started on the guide chapters (`reading.tmd` first); the walk finds 36
-    // today (16 guide + 6 internals + 14 tarn) and further chapter deletions this same cut
-    // will still land above this floor.
+    // forever. The walk finds 14 tarn pages (2026-10-25, after the two docs books went).
     assert!(
-        pages >= 30,
+        pages >= 10,
         "the book walk found only {pages} pages the heading rule applies to"
     );
     assert!(

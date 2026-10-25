@@ -80,12 +80,6 @@ fn main() {
     };
     let projects: Vec<(String, PathBuf, &str)> = vec![
         (
-            "docs/guide".into(),
-            repo.join("docs/guide"),
-            "using/choosing.tmd",
-        ),
-        ("docs/internals".into(), repo.join("docs/internals"), ""),
-        (
             "corpus/tech-blog".into(),
             repo.join("corpus/tech-blog"),
             "posts/em-algorithm/index.tmd",

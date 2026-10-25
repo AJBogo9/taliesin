@@ -7,8 +7,8 @@
 //!
 //! A licensing position is worth exactly as much as its discoverability, and it is the kind
 //! of prose that rots silently: nothing else in the tree fails when a README paragraph is
-//! rewritten. So the position is pinned here in the three places a user actually looks —
-//! the licence file, the README, and the guide — plus the premise it rests on.
+//! rewritten. So the position is pinned here in the licence file, plus the premise it
+//! rests on.
 //!
 //! **The first published page fixes the answer in the wild**, which is why this gate exists
 //! before publication rather than after.
@@ -46,9 +46,9 @@ fn the_output_exception_exists_and_grants_what_it_claims() {
         text.contains("Additional permission under GNU AGPL version 3 section 7"),
         "the exception must invoke AGPL s7, which is what makes it operative"
     );
-    // The four promises the guide and README make on its behalf. Each is load-bearing for a
-    // different anxiety the finding named: copyleft reach, attribution burden, s13 exposure,
-    // and whether the route you used to produce the page matters.
+    // The four promises it makes. Each is load-bearing for a different anxiety the finding
+    // named: copyleft reach, attribution burden, s13 exposure, and whether the route you used
+    // to produce the page matters.
     for needle in [
         "under terms of your choice",
         "No notice is required in your output",
@@ -61,7 +61,7 @@ fn the_output_exception_exists_and_grants_what_it_claims() {
     ] {
         assert!(
             text.contains(needle),
-            "the exception must still promise {needle:?} -- the guide says it does"
+            "the exception must still promise {needle:?}"
         );
     }
     // The limit. An exception that swallowed the AGPL would give away the thing the licence
@@ -73,33 +73,6 @@ fn the_output_exception_exists_and_grants_what_it_claims() {
     assert!(
         text.contains("section 13 included"),
         "running a modified Taliesin as a service must still trigger s13"
-    );
-}
-
-#[test]
-fn the_readme_states_the_position_and_links_the_exception() {
-    let readme = read_unwrapped("README.md");
-    assert!(
-        readme.contains(EXCEPTION),
-        "README's Licence section must link {EXCEPTION}: it is where an evaluator looks first"
-    );
-    assert!(
-        readme.contains("What you build with it is yours"),
-        "the README must answer the question in its own words, not only by link"
-    );
-}
-
-#[test]
-fn the_guide_documents_it_for_users() {
-    let guide = read_unwrapped("docs/guide/reference/licensing.tmd");
-    assert!(
-        guide.contains("under any terms you like, with nothing to attribute"),
-        "the guide must give the plain-language answer"
-    );
-    // A chapter absent from the book's spine is a chapter nobody reads.
-    assert!(
-        read("docs/guide/_site.yml").contains("reference/licensing.tmd"),
-        "the licensing chapter must be in the guide's chapter list"
     );
 }
 

@@ -2087,9 +2087,9 @@ pub(crate) const GENERATOR_BANNER: &str = concat!(
 
   Taliesin v"##,
     env!("CARGO_PKG_VERSION"),
-    r##"  -  https://taliesin.sh
+    r##"  -  https://github.com/AJBogo9/taliesin
   Rendered from .tmd source, not a batch compiler: a warm, source-mapped,
-  block-modeled live HTML process.  https://github.com/AJBogo9/taliesin
+  block-modeled live HTML process.
 -->
 "##,
 );

@@ -91,60 +91,6 @@ fn the_mermaid_version_claim_matches_the_vendored_library() {
     );
 }
 
-/// The release tarball must carry every verbatim notice the binary's own contents oblige
-/// it to, and nothing else in the tree looks at the workflow that builds it.
-///
-/// Wave 1 deleted `crates/core/tests/release_targets.rs`, which held this assertion, and
-/// recorded the loss in as many words as "an AGPL distribution claim, now unguarded …
-/// cheap to restore as ~10 lines if that matters at release time". It is now release time.
-/// The binary embeds d3, Observable Plot and Mermaid via `include_str!` and KaTeX's CSS via
-/// `build.rs`; MIT and ISC both require the **permission notice**, not merely the copyright
-/// line, to accompany a copy, and `THIRD_PARTY.md` gives copyright lines and URLs — which
-/// that file's own standard says is not a notice.
-///
-/// A `v*` tag is one-shot and no `v*` tag has ever run, so a missing `cp` here would first
-/// be observed by whoever downloads the launch tarball.
-#[test]
-fn the_release_tarball_carries_every_notice_it_must() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let wf = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
-        .expect("the release workflow should exist at .github/workflows/release.yml");
-    // Anti-vacuity. Matching filenames anywhere in the YAML would keep passing against a
-    // workflow that had stopped packaging anything, so require the step itself to be there.
-    assert!(
-        wf.contains("name: Package"),
-        "`.github/workflows/release.yml` no longer has a `Package` step -- this gate is \
-         asserting file names against a workflow that may not build a tarball at all"
-    );
-    // Exact shell tokens, not substrings: `LICENSE` is a prefix of
-    // `LICENSE-OUTPUT-EXCEPTION.md`, so a `contains` check would go on reporting the root
-    // AGPL text as packaged after someone deleted it from the `cp`.
-    let packaged: std::collections::BTreeSet<&str> = wf
-        .split_whitespace()
-        .map(|t| t.trim_matches(|c| c == ';' || c == '\\' || c == '"'))
-        .collect();
-    for rel in [
-        "LICENSE",
-        "LICENSE-OUTPUT-EXCEPTION.md",
-        "THIRD_PARTY.md",
-        "crates/core/assets/js/LICENSES.md",
-        "crates/core/assets/katex/LICENSE",
-        "crates/core/assets/fonts/literata-OFL-fontsource.txt",
-        "crates/core/assets/fonts/jetbrains-mono-OFL-fontsource.txt",
-    ] {
-        assert!(
-            root.join(rel).is_file(),
-            "the release Package step names `{rel}`, which does not exist in the tree -- \
-             the tag would fail on `cp`, having already created the release"
-        );
-        assert!(
-            packaged.contains(rel),
-            "the release tarball would ship without `{rel}`. A downloaded binary is a \
-             distribution, and these are the terms and notices it is distributed under."
-        );
-    }
-}
-
 #[test]
 fn removed_deps_are_not_listed() {
     let doc = third_party_md();

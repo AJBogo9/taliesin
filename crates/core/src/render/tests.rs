@@ -4220,12 +4220,10 @@ fn no_vendor_default_colours_remain_anywhere_that_emits_colour() {
     // `_site/` and `_book/` are skipped: committed build output carries the OLD palette by
     // design and is not edited by hand.
     let mut tmd = Vec::new();
-    for d in ["docs", "site", "corpus", "tools/record-demo"] {
-        collect_tmd(&root.join(d), &mut tmd);
-    }
+    collect_tmd(&root.join("corpus"), &mut tmd);
     tmd.sort();
     assert!(
-        tmd.len() > 80,
+        tmd.len() > 60,
         "only {} `.tmd` files found — the document sweep broke, and an empty gate passes \
          forever",
         tmd.len()
@@ -4262,12 +4260,6 @@ fn diagrams_use_mermaids_neutral_theme_with_no_dead_token_bridge() {
     assert!(
         !js.contains("--tali-mermaid"),
         "the unread --tali-mermaid-* bridge is gone"
-    );
-    let doc = std::fs::read_to_string(repo_root().join("docs/guide/using/theming.tmd"))
-        .expect("theming.tmd");
-    assert!(
-        !doc.contains("--tali-mermaid"),
-        "the guide no longer documents the dead knob"
     );
 }
 
@@ -4490,31 +4482,6 @@ fn the_landing_page_is_a_masthead_and_prose() {
             "`.hero-eyebrow` still carries `{banned}` on text the author wrote"
         );
     }
-
-    // And the page itself, not only its stylesheet: §15.2 calls this a rewrite of index.tmd.
-    let index = std::fs::read_to_string(repo_root().join("site/index.tmd")).expect("index.tmd");
-    // EVERY page of the marketing site, not just the landing page. `.feature-grid` is a class
-    // nothing styles, so a page still authoring it renders a bare `<div>` and silently loses the
-    // ruled-section layout. This checked `index.tmd` alone until 2026-08-19, and `features.tmd`
-    // sat on four dead `{.feature-grid}` wrappers the whole time with every gate green.
-    for entry in std::fs::read_dir(repo_root().join("site")).expect("site/") {
-        let path = entry.expect("entry").path();
-        if path.extension().is_some_and(|x| x == "tmd") {
-            let src = std::fs::read_to_string(&path).expect("page");
-            assert!(
-                !src.contains("{.feature-grid}"),
-                "{} still authors the retired `.feature-grid`; it is `.feature-list` that \
-                 carries the ruled-section layout",
-                path.display()
-            );
-        }
-    }
-    assert_eq!(
-        index.matches("{.btn").count(),
-        0,
-        "the repeated bottom CTA and its button ladder go with the centred hero; the \
-         masthead's own actions come from the `hero:` front matter"
-    );
 }
 
 /// The book drawer stops carrying its own type scale and its own clock.
@@ -8731,11 +8698,10 @@ fn every_block_in_every_real_document_has_exactly_one_root() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut files = Vec::new();
     collect_tmd(&repo.join("corpus"), &mut files);
-    collect_tmd(&repo.join("docs"), &mut files);
     files.sort();
     assert!(
-        files.len() >= 100,
-        "expected the corpus + docs documents, found {}",
+        files.len() >= 60,
+        "expected the corpus documents, found {}",
         files.len()
     );
 

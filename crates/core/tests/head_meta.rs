@@ -39,7 +39,8 @@ fn head_carries_the_human_readable_generator_banner() {
     let head = &page[..page.find("</head>").expect("page has </head>")];
     assert!(
         head.contains(&format!("Taliesin v{}", taliesin_core::VERSION))
-            && head.contains("https://taliesin.sh")
+            && head.contains("https://github.com/AJBogo9/taliesin")
+            && !head.contains("taliesin.sh")
             && head.contains("block-modeled live HTML process"),
         "the head must carry the human generator banner (name + version + URL); head:\n{head}"
     );

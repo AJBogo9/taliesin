@@ -79,11 +79,9 @@ document gains its first diagram mid-session.
 Note that **author content can introduce its own CDN dependencies** outside
 Taliesin's control: a `{js}` cell may `import` from a CDN, and a project's `_site.yml`
 may add its own `<link rel="preconnect">` or `<script>`. The `three-scene` include does
-the first of those, importing `three` from esm.sh, and it is not confined to the corpus
-— this repository's own marketing site and guide use it too
-(`site/_includes/three-scene.tmd`, `corpus/tech-blog/_includes/three-scene.tmd`,
-`docs/guide/using/code.tmd`, `docs/guide/using/interactive.tmd`). Those are the author's
-choices, not shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
+the first of those, importing `three` from esm.sh
+(`corpus/tech-blog/_includes/three-scene.tmd`). That is the author's choice, not
+shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
 No three.js bytes are redistributed under `crates/core/assets/`, which is why there is
 no attribution row for it above: nothing here is a copy, so no notice obligation
 attaches.

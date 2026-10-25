@@ -556,8 +556,7 @@ fn elapsed_note(started: std::time::Instant) -> String {
 /// cross-reference or a dead link is `error` severity too, but the tool has always shipped
 /// a page carrying one and left the exit to `--strict`. Widening this to all of severity
 /// `error` also fails `--no-exec`, where an unexecuted `{js}` figure's own `@fig-` ref is
-/// broken *by the flag* rather than by the document -- and `--no-exec` is what the
-/// pre-push gate and `tools/publish.sh --check` run. An unparseable block is different
+/// broken *by the flag* rather than by the document. An unparseable block is different
 /// in kind: nothing in it was read, so the page silently lost its `title:`,
 /// `bibliography:` and `listing:` while reporting success.
 ///
@@ -1835,20 +1834,9 @@ fn build_site(
 /// directory is a deployable static site. `out_override` (the `--out` flag) wins over the
 /// config's `output-dir` (default `_site`).
 ///
-/// One project per call, and since 2026-08-16 that is also one project per DEPLOY: this
-/// repo's four sites (marketing, the two docs books, the gallery) each publish to their own
-/// Cloudflare Pages project and reach each other by absolute URL, because Pages has no
-/// subpath deploy and a composed tree would have to be re-uploaded whole on every change.
-///
-/// Until 2026-08-19 the gallery was the one project that wrote others under its own output
-/// (its three exhibits), one `build … --out <out>/<prefix>` per exhibit, parent first,
-/// because the parent's sweep deletes what it did not write, and `tools/publish.sh` did
-/// that composing. That is gone: the gallery is now a flat, self-contained project of
-/// one-page demos, and nothing this repo publishes composes another project into its own
-/// output any more. Nested builds (`build <dir> --out <parent-out>/<prefix>`) remain a
-/// plain capability of this function for any future consumer; no deploy exercises it
-/// today. The reason `.githooks/pre-push` still runs `tools/publish.sh --check` as a gate
-/// is item 149: a deploy whose call-to-action once 404'd from a script nobody ran.
+/// One project per call. Nested builds (`build <dir> --out <parent-out>/<prefix>`) remain a
+/// plain capability of this function; build the parent first, because its sweep deletes
+/// what it did not write.
 async fn build_site_async(
     root: &Path,
     out_override: Option<&str>,

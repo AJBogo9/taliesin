@@ -64,13 +64,6 @@ carry their own licences, which continue to apply to them on their own terms. Se
 [`crates/core/assets/js/LICENSES.md`](crates/core/assets/js/LICENSES.md). Those
 licences are permissive and impose no copyleft obligation on your document.
 
-## As applied to a contribution
-
-Contributions are accepted under [`CONTRIBUTING.md`](CONTRIBUTING.md) clause 3,
-whose grant is broad enough to cover offering the contributed material under this
-exception. A contributor therefore does not need to sign anything further for this
-exception to remain effective as the project grows.
-
 ---
 
 *If you only wanted to know whether you can publish what you wrote: yes, under any

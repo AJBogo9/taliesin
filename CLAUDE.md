@@ -13,8 +13,12 @@ track would render *from* the built HTML, never as a parallel format).
 > cut. Do not add features, do not "restore parity", and do not defend a feature on the
 > grounds that a corpus document pins it: that pinning is circular.
 >
+> The author is the only user and will stay so (2026-10-25): there is no manual, no
+> project website (the taliesin.sh domain was not renewed), no release and no changelog.
+> Do not rebuild any of them.
+>
 > `notes/DO-NOT-REBUILD.md` is the anti-rot register: read it before re-filing anything
-> that looks obvious. `notes/ROADMAP.md` is the author's to prioritize.
+> that looks obvious. `notes/backlog.md` holds the open tasks.
 
 **"Done" means the documents under `corpus/` render correctly**: the corpus is the
 regression net. But **the corpus records; it does not lead**: a document earns its place
@@ -23,8 +27,8 @@ witness belongs in `crates/core/src/render/tests.rs`. **"Wider" means richer bro
 behavior in a live HTML view**, not new output formats, and never at the cost of the
 invariants below.
 
-> **⚠ ORDERING RULE.** *A pin and its docs page are deleted in the SAME commit as their
-> feature, never before.* A corpus document deleted ahead of the code it guards leaves
+> **⚠ ORDERING RULE.** *A pin is deleted in the SAME commit as its feature, never
+> before.* A corpus document deleted ahead of the code it guards leaves
 > that code unguarded: the sweeps in `crates/core/tests/corpus.rs` iterate over whatever
 > exists. `crates/core/tests/corpus_manifest.rs` lists every corpus document, so a
 > deletion costs one deliberate line, but nothing checks that it lands with its feature.
@@ -32,8 +36,7 @@ invariants below.
 **The one standing freeze is warm-page eviction**: `MAX_WARM_PAGES` plus the
 deterministic LRU order in `serve_site/exec_pool.rs`, which the **preview** relies on
 (`ExecPool` exists nowhere else; `build.rs` gives each page a fresh executor). Its own
-tests pin the cap and the order. The "Do NOT touch" list in `notes/native-rewrite.md` is a
-completed decision, **not** a freeze.
+tests pin the cap and the order.
 
 **The `.tmd` file is the single editing surface; the browser is a read-only view.**
 Click-to-source is the only bridge back, and it *navigates* (preview → editor cursor), it
@@ -97,8 +100,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
                    `fanout::map_ordered`: results in PAGE order (duplicate labels are
                    "first definition wins", so completion order would make a build depend
                    on scheduling), and a panic propagates (`refresh_xrefs`'s all-or-nothing
-                   `catch_unwind` needs it). ONE project per build and per deploy: the four
-                   sites publish separately and link by absolute URL (tools/publish.sh)
+                   `catch_unwind` needs it). ONE project per build
   assets/          bundled offline: css/, js/ (code-enhance/ fragments, mermaid.js,
                    tali-js.js + vendored plot/d3 for `{js}` cells), katex/
 crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
@@ -166,16 +168,11 @@ editor/vscode/   the VS Code companion: NO language features (`src/client.ts` is
                  **Add an editor feature in Rust, not here.**
 web-client/      browser scripts: client.js is the preview client (never ships in a
                  build); search.js (Cmd-K) and toc-spy.js ship in built pages too
-docs/            the manual, TWO sibling book projects in .tmd: docs/guide/ (User Guide)
-                 and docs/internals/ (no _site.yml in docs/ itself)
-gallery/         one-page demos: its own flat, self-contained project + domain
 corpus/          the real .tmd docs (the spec); cargo test renders them all
+notes/           backlog.md (open tasks) and DO-NOT-REBUILD.md, nothing else
+tools/           gates.sh, live-edit-bench/ (a workspace member), subset-fonts.sh
 ```
 
-The two books are siblings because the page walker would otherwise swallow a nested
-book's pages, and **each is its own deploy on its own domain**, so cross-book links are
-ABSOLUTE URLs (`https://guide.taliesin.sh/using/choosing.html`);
-`crates/core/tests/cross_site_links.rs` resolves each against the source tree.
 `corpus/README.md` says what each test document exercises.
 
 ## Commands
@@ -189,7 +186,6 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- build  <file.tmd> --stdout     # the page to stdout (+ --no-exec for a static dump)
 cargo run -p taliesin-server -- build  <dir> --check-only      # THE PRE-PUBLISH GATE: lint, write nothing, exit non-zero
                                                                #   (+ --strict to fail on advice, + --format json for one machine surface)
-./tools/publish.sh [--check] [site|guide|internals|gallery]    # build + deploy the four sites (--check = build all, deploy none)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (// @ts-check, no build step)
 cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (strict)
@@ -247,30 +243,22 @@ absent, so a plain `cargo test` can be green and mean almost nothing. It arms
 interpreter's canary printed `... ok`, treats one ignored test as a failure, and needs
 `TALIESIN_PYTHON="$PWD/.venv/bin/python"` or exits 2 at preflight. It covers the
 live-kernel suite, the Node-backed reactive test, both `tsc` type-checks, the companion's
-tests, `cargo audit`/`cargo deny check`, the two `build docs/<book> --check-only` document
-gates, `tools/publish.sh --check` and the portability census, so reach for it instead of
-running the pieces by hand. **Take the gate count from its own verdict line, never from
-prose, and never call a gate verified without its output.**
+tests and `cargo audit`/`cargo deny check`, so reach for it instead of running the pieces
+by hand. **Take the gate count from its own verdict line, never from prose, and never call
+a gate verified without its output.** `gate_script.rs` checks that it arms every
+`TALIESIN_REQUIRE_*` gate and that its canaries exist.
 
 **CI and the pre-push hook run on their own.** `.github/workflows/ci.yml` runs on every
-push to `main`, every pull request and weekly, visibly to strangers; `stale_docs.rs` fails
-if a job is made conditional on visibility.
-`.githooks/pre-push` runs fmt, clippy, the workspace tests, both document gates and
-`tools/publish.sh --check` before a push that includes `main`. It is wired via
-`core.hooksPath`: invisible in `.git/hooks`, **unset in a fresh clone**, skipped by a
-WIP-branch push and bypassed by `--no-verify`. `gate_script.rs` cross-checks the hook,
-`gates.sh` and `ci.yml` (`every_pre_push_command_is_also_run_by_the_gate_script`,
-`every_docs_book_is_linted_by_every_gate_file`), so a third book cannot inherit a hole.
+push to `main`, every pull request and weekly, visibly to strangers.
+`.githooks/pre-push` runs fmt, clippy and the workspace tests before a push that includes
+`main`. It is wired via `core.hooksPath` (`git config core.hooksPath .githooks`):
+invisible in `.git/hooks`, **unset in a fresh clone**, skipped by a WIP-branch push and
+bypassed by `--no-verify`.
 
 ## Conventions
 
 - Rust edition 2024, workspace resolver 3. Shared deps go in the root
   `[workspace.dependencies]`.
-- **Never publish a number about this tool that has no committed instrument.** A number
-  without one carries its measured-on date and is re-measured before a release tag. The
-  portability census is gated (`tools/portability-census.py --verify`) because the page
-  hands the reader the command, so a mismatch refutes itself. Wall clocks, binary size and
-  crate count are NOT gated: they measure the machine, so they carry a date.
 - Every emitted block carries `data-block-id` (content-hash) + `data-sourcepos`; included
   blocks also carry `data-source-file`. Source mapping, incremental re-render and
   live-state preservation all key off this one block model (`crates/core/tests/corpus.rs`
@@ -311,23 +299,21 @@ WIP-branch push and bypassed by `--no-verify`. `gate_script.rs` cross-checks the
   *read* as well as the vocabulary entry: a key dropped from `KNOWN_KEYS`/`HERO_KEYS`/… is
   only *diagnosed*, and one the parser still honours goes on working. A parser-side pin is
   the only thing that says the read is gone.
-- **A new front-matter key trips THREE drift gates**, all inside `taliesin-core`:
-  `KNOWN_KEYS`, `the_reference_page_documents_every_known_key` (→
-  `docs/guide/reference/frontmatter.tmd`), and `vocab.rs` + its `descriptions_present`.
+- **A new front-matter key trips TWO drift gates**, both inside `taliesin-core`:
+  `KNOWN_KEYS`, and `vocab.rs` + its `descriptions_present`.
   A `_site.yml` key also reaches `crates/core/assets/schema/tali-site.schema.json`, which
   is GENERATED from `site::NATIVE_KEYS` by the bless path in `schema.rs`
   (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib schema`) and golden-locked by
   `site_schema_matches_committed`.
 - **A new subcommand is ONE row in `main.rs`'s `COMMANDS` table** (dispatch, the
-  did-you-mean and both help surfaces derive from it), plus a row in the table in
-  `docs/guide/reference/cli.tmd`, which `every_subcommand_has_a_row_in_the_cli_reference`
-  checks both ways. Every other prose claim here is ungated: grep, do not trust.
+  did-you-mean and both help surfaces derive from it). Every prose claim here is ungated:
+  grep, do not trust.
 - Minimal config: perfect the default before adding a knob, so the user does not *need* to
   configure; this is the deciding lens for any new user-facing control. **A reader-local
   preference is an argument for honouring the answer they already gave their OS** (the
   browser's own zoom outranks a comfort panel), not for asking again per site. Ship no
   reader-facing control without new evidence that the device answer is wrong for someone.
-- **Copy states facts; it does not perform.** On the four sites and in scaffolded text: no
+- **Copy states facts; it does not perform.** In the README and scaffolded text: no
   "No X, no Y, no Z" closers, no "one idea" thesis reveals, no count announced for its own
   sake in a heading ("Three things it gets right"; "Two line coordinate systems" names a
   fact and is fine), no "→" appended to link text. A heading or a link names its subject or

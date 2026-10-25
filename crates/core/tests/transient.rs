@@ -18,7 +18,7 @@ fn try_render(src: &str) -> Result<usize, String> {
     })
 }
 
-/// Every line-prefix of every corpus + docs document: line 1, then lines 1-2, …,
+/// Every line-prefix of every corpus document: line 1, then lines 1-2, …,
 /// the whole file. This is "type the document top to bottom"; each prefix is a
 /// state the live preview actually renders.
 #[test]
@@ -26,7 +26,6 @@ fn line_prefixes_of_every_doc_never_panic() {
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
     let mut tmds = Vec::new();
     collect_tmds(std::path::Path::new(root).join("corpus"), &mut tmds);
-    collect_tmds(std::path::Path::new(root).join("docs"), &mut tmds);
     assert!(
         tmds.len() > 10,
         "expected to find the corpus; got {}",

@@ -2894,11 +2894,11 @@ pub(crate) mod tests {
 
     /// The harvest's render skips typesetting, so it must still agree with the served render
     /// on everything the harvest keeps: every number and every heading title, on every page
-    /// of every project here (the corpus and both books).
+    /// of every project in the corpus.
     #[test]
     fn the_numbers_render_agrees_with_the_full_render_on_every_real_page() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut roots = vec![repo.join("docs/guide"), repo.join("docs/internals")];
+        let mut roots = Vec::new();
         let mut stack = vec![repo.join("corpus")];
         while let Some(dir) = stack.pop() {
             if dir.join("_site.yml").is_file() {
@@ -2939,7 +2939,7 @@ pub(crate) mod tests {
                 pages += 1;
             }
         }
-        assert!(pages > 50, "only {pages} pages compared");
+        assert!(pages > 30, "only {pages} pages compared");
     }
 
     /// A refresh must be all-or-nothing about the numbers. The harvest renders EVERY page, so

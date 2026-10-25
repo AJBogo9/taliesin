@@ -122,12 +122,7 @@ test("vsce packaging rebuilds the bundle first", () => {
 // their first contact with the companion, and the fix that error suggests -- adding
 // `activationEvents` -- would have been a real change made to satisfy dead tooling.
 test("every documented package command names the maintained vsce, not the deprecated one", () => {
-  // BOTH places that teach it. The companion README is one; the other is the published User
-  // Guide, which is the copy an actual reader meets first, and it drifted independently.
-  const pages = [
-    path.join(EXT_ROOT, "README.md"),
-    path.join(REPO_ROOT, "docs/guide/using/preview.tmd"),
-  ];
+  const pages = [path.join(EXT_ROOT, "README.md")];
   let found = 0;
   for (const page of pages) {
     const text = fs.readFileSync(page, "utf8");
@@ -141,7 +136,7 @@ test("every documented package command names the maintained vsce, not the deprec
       );
     }
   }
-  assert.ok(found >= 2, `expected both pages to document packaging, matched ${found}`);
+  assert.ok(found >= 1, `expected the README to document packaging, matched ${found}`);
 });
 
 test("no `qmd-fast` branding survives in the manifest or the extension source", () => {
