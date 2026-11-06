@@ -1343,12 +1343,81 @@ fn normalize_rel(dir: &str, spec: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// Bundle the local files a `{js}` cell imports/fetches via relative specifiers, which the
-/// `src=`/`href=` scan can't see. Resolves against the doc `base`, copies to the same
-/// relative path under `dest`, and follows the chain through copied `.js`/`.mjs` modules
-/// (each specifier resolved against its own dir). Remote (`https://…`) and bare specifiers
-/// are ignored; tree-escaping ones warn. Returns the count copied; a different file already
-/// at a destination is refused into `problems` exactly as [`copy_local_assets`] refuses one.
+/// What [`walk_js_imports`] meets.
+pub(crate) enum JsImport<'a> {
+    /// A local file a cell or a module imports or fetches, as a path relative to the walk's
+    /// `root`. The walk's callback answers whether to follow the file's own imports.
+    File(&'a str),
+    /// A specifier that climbs out of the walk's `root`, with the byte offset in the page's
+    /// html of the cell that names it, or `None` when a module names it.
+    Escapes(&'a str, Option<usize>),
+}
+
+/// THE resolver of what a page's `{js}` cells load from beside it, which the `src=`/`href=`
+/// scan cannot see: every local file a relative specifier (`./`, `../`) in a cell names,
+/// resolved against the page's folder `from` (relative to `root`, `""` for `root` itself),
+/// then through the `.js`/`.mjs` modules among them, each module's specifiers resolved
+/// against its own folder. A specifier that climbs above `root` escapes. Remote
+/// (`https://…`) and bare specifiers are not local, and a relative-looking string that names
+/// no file is skipped. `meet` is called once per file, in the order the walk reaches them,
+/// and for each escaping specifier; for a file it answers whether to follow it.
+///
+/// The folder build copies each file under the page's own folder ([`copy_js_imports`]), so
+/// that folder is its root. The preview serves the whole project, so a cell can import
+/// `../lib/x.js` there: its root is the project, and it reloads a tab when a file the tab's
+/// page loads is saved, since a browser keeps a module for the life of the page that
+/// imported it (`serve_site`'s `reload_for_scripts`).
+pub(crate) fn walk_js_imports(
+    html: &str,
+    root: &Path,
+    from: &str,
+    mut meet: impl FnMut(JsImport) -> bool,
+) {
+    let mut visited = std::collections::HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for body in tali_js_cell_sources(html) {
+        let at = body.as_ptr() as usize - html.as_ptr() as usize;
+        for spec in relative_specifiers(body) {
+            match normalize_rel(from, &spec) {
+                Some(rel) => queue.push(rel),
+                None => {
+                    meet(JsImport::Escapes(&spec, Some(at)));
+                }
+            }
+        }
+    }
+    while let Some(rel) = queue.pop() {
+        if !visited.insert(rel.clone()) {
+            continue;
+        }
+        let file = root.join(&rel);
+        if !file.is_file() || !meet(JsImport::File(&rel)) {
+            continue;
+        }
+        // Follow the chain: a module may import further local files (relative to its OWN
+        // dir).
+        let ext = Path::new(&rel).extension().and_then(|s| s.to_str());
+        if matches!(ext, Some("js") | Some("mjs"))
+            && let Ok(src) = std::fs::read_to_string(&file)
+        {
+            let dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+            for spec in relative_specifiers(&src) {
+                match normalize_rel(dir, &spec) {
+                    Some(rel) => queue.push(rel),
+                    None => {
+                        meet(JsImport::Escapes(&spec, None));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Bundle the local files a `{js}` cell imports/fetches via relative specifiers
+/// ([`walk_js_imports`]), copying each to the same relative path under `dest`. A module
+/// that could not be placed is not followed. Returns the count copied; a different file
+/// already at a destination is refused into `problems` exactly as [`copy_local_assets`]
+/// refuses one.
 fn copy_js_imports(
     html: &str,
     base: &Path,
@@ -1356,70 +1425,42 @@ fn copy_js_imports(
     problems: &mut Vec<taliesin_core::render::Warning>,
 ) -> usize {
     let mut copied = 0usize;
-    let mut visited = std::collections::HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    // An import that climbs out of the folder cannot be copied into it, so the cell fails
-    // to load it: an error `--strict` counts, like every file the copier cannot place. It
-    // was an uncounted notice (audit 2026-09-24, WP1 residual). `at` locates it at the cell
-    // that imports it; a module's own import has no line in this page.
-    let enqueue = |queue: &mut Vec<String>,
-                   problems: &mut Vec<taliesin_core::render::Warning>,
-                   dir: &str,
-                   spec: &str,
-                   at: Option<usize>| {
-        match normalize_rel(dir, spec) {
-            Some(rel) => queue.push(rel),
-            None => {
-                let mut w = taliesin_core::render::Warning::new(format!(
-                    "{{js}} import not bundled: `{spec}` climbs out of the document's folder, \
-                     so the output has no copy of it and the cell cannot load it"
-                ))
-                .severity(taliesin_core::Severity::Error);
-                if let Some(at) = at {
-                    w.file = source_file_before(html, at);
-                    w.line = sourcepos_line_before(html, at);
-                }
-                problems.push(w);
+    walk_js_imports(html, base, "", |found| match found {
+        JsImport::File(rel) => {
+            let (from, to) = (base.join(rel), dest.join(rel));
+            if same_file(&from, &to) {
+                return true;
             }
-        }
-    };
-    for body in tali_js_cell_sources(html) {
-        let at = body.as_ptr() as usize - html.as_ptr() as usize;
-        for spec in relative_specifiers(body) {
-            enqueue(&mut queue, problems, "", &spec, Some(at));
-        }
-    }
-    while let Some(rel) = queue.pop() {
-        if !visited.insert(rel.clone()) {
-            continue;
-        }
-        let from = base.join(&rel);
-        if !from.is_file() {
-            continue; // a relative-looking string that isn't a real local file
-        }
-        let to = dest.join(&rel);
-        if !same_file(&from, &to) {
-            match bundle_file(&from, &to, &rel) {
-                Ok(true) => copied += 1,
-                Ok(false) => continue,
+            match bundle_file(&from, &to, rel) {
+                Ok(true) => {
+                    copied += 1;
+                    true
+                }
+                Ok(false) => false,
                 Err(w) => {
                     problems.push(w);
-                    continue;
+                    false
                 }
             }
         }
-        // Follow the chain: a copied module may import further local files (relative to
-        // its OWN dir).
-        let ext = Path::new(&rel).extension().and_then(|s| s.to_str());
-        if matches!(ext, Some("js") | Some("mjs"))
-            && let Ok(src) = std::fs::read_to_string(&from)
-        {
-            let dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
-            for spec in relative_specifiers(&src) {
-                enqueue(&mut queue, problems, dir, &spec, None);
+        // An import that climbs out of the folder cannot be copied into it, so the cell
+        // fails to load it: an error `--strict` counts, like every file the copier cannot
+        // place. It was an uncounted notice (audit 2026-09-24, WP1 residual). `at` locates
+        // it at the cell that imports it; a module's own import has no line in this page.
+        JsImport::Escapes(spec, at) => {
+            let mut w = taliesin_core::render::Warning::new(format!(
+                "{{js}} import not bundled: `{spec}` climbs out of the document's folder, \
+                 so the output has no copy of it and the cell cannot load it"
+            ))
+            .severity(taliesin_core::Severity::Error);
+            if let Some(at) = at {
+                w.file = source_file_before(html, at);
+                w.line = sourcepos_line_before(html, at);
             }
+            problems.push(w);
+            false
         }
-    }
+    });
     copied
 }
 
@@ -3611,6 +3652,96 @@ mod mirror_tests {
             "remote import must not be fetched/copied"
         );
         assert_eq!(copied, 3, "pic.png + helper.js + util.js, got {copied}");
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    /// A `{js}` import that climbs out of the document's folder has no copy in a folder
+    /// build, so the cell cannot load it there: an error, located at the cell that names it
+    /// (in the included file the cell came from), and one with no line in the page when a
+    /// copied module names it.
+    #[test]
+    fn copy_local_assets_reports_a_js_import_that_climbs_out_as_a_located_error() {
+        let base = tmp("jsclimb");
+        let out = tmp("jsclimb-out");
+        let html = concat!(
+            "<div data-block-id=\"b\" data-sourcepos=\"7:1-9:3\" data-source-file=\"parts/fig.md\" ",
+            "class=\"cell tali-js-cell\"><script type=\"application/tali-js\" data-target=\"c\">\n",
+            "const up = await import(\"../outside.js\");\n",
+            "const lib = await import(\"./helper.js\");\n",
+            "</script></div>"
+        );
+        fs::write(base.join("helper.js"), "import \"../../far.js\";\n").unwrap();
+
+        let bundled = copy_local_assets(html, &base, &out);
+
+        let climbs: Vec<_> = bundled
+            .problems
+            .iter()
+            .filter(|w| w.message.contains("climbs out of the document's folder"))
+            .map(|w| {
+                let spec = if w.message.contains("`../outside.js`") {
+                    "../outside.js"
+                } else if w.message.contains("`../../far.js`") {
+                    "../../far.js"
+                } else {
+                    "?"
+                };
+                (spec, w.severity, w.file.as_deref(), w.line)
+            })
+            .collect();
+        assert_eq!(
+            climbs,
+            [
+                (
+                    "../outside.js",
+                    taliesin_core::Severity::Error,
+                    Some("parts/fig.md"),
+                    Some(7)
+                ),
+                ("../../far.js", taliesin_core::Severity::Error, None, None),
+            ]
+        );
+        assert_eq!(bundled.copied, 1, "the helper is still bundled");
+        assert!(out.join("helper.js").is_file());
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    /// A `{js}` module the folder build cannot place, because a different file already holds
+    /// its destination, is refused with an error, the file there is kept, and the files the
+    /// refused module imports are not bundled.
+    #[test]
+    fn copy_local_assets_does_not_follow_a_js_module_it_could_not_place() {
+        let base = tmp("jsrefused");
+        let out = tmp("jsrefused-out");
+        let html = concat!(
+            "<script type=\"application/tali-js\" data-target=\"c\">\n",
+            "const m = await import(\"./mod.js\");\n",
+            "</script>"
+        );
+        fs::write(base.join("mod.js"), "import \"./dep.js\";\n").unwrap();
+        fs::write(base.join("dep.js"), "export {};\n").unwrap();
+        fs::write(out.join("mod.js"), "someone else's file\n").unwrap();
+
+        let bundled = copy_local_assets(html, &base, &out);
+
+        assert!(
+            bundled.problems.iter().any(|w| {
+                w.message.contains("`mod.js` would replace")
+                    && w.severity == taliesin_core::Severity::Error
+            }),
+            "{:?}",
+            bundled.problems
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("mod.js")).unwrap(),
+            "someone else's file\n"
+        );
+        assert!(!out.join("dep.js").exists(), "the refused module's import");
+        assert_eq!(bundled.copied, 0);
 
         let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_dir_all(&out);

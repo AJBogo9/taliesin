@@ -46,8 +46,6 @@ and each problem was confirmed in the code on 2026-09-24:
   parameters and have zero uses.
 - **A `TaliCell` typedef on `makeApi`**, checked by the assets `tsc` gate and served to the
   shadow, so `tali.` completes members. Today `tali` is a parameter typed `any`.
-- **A sibling `.js` module a `{js}` cell imports becomes a page dependency**, and saving it
-  reloads the tab. Hoist `build.rs`'s `relative_specifiers` into one resolver.
 - **Grammar:** map markdown-basics' embedded languages (Ctrl+/ in a ```` ```sh ```` fence gives
   `#`, not `<!--`), and remove the alias rot (`javascript|ojs` painted as a live `{js}` cell,
   `dot` as mermaid, `\.?`) along with the dotted `{.lang}` read.

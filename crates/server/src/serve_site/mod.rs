@@ -95,6 +95,17 @@ struct Project {
     /// (the cross-reference harvest and the search index), and a body edit, nearly every
     /// save, leaves the digest untouched.
     records: Mutex<HashMap<PathBuf, Option<u64>>>,
+    /// How many batches of saves have changed a script under the project ([`is_script`]),
+    /// moved by [`reload_for_scripts`] under the `pages` lock.
+    ///
+    /// A browser keeps an ES module for the life of the document that imported it, so only
+    /// a reload loads a changed one, and the reload message reaches only the tabs connected
+    /// when it goes out. A tab in the middle of a reload, or reconnecting after a sleep,
+    /// misses it. So a page names the count it was served at in its websocket url, and a
+    /// connection naming another is told to reload instead ([`open_channel`]). That check
+    /// reads the count under the same lock, so a connection either sees the new count or
+    /// was subscribed before the reload went out.
+    scripts: std::sync::atomic::AtomicU64,
 }
 
 /// What a batch of changed files moved of what discovery reads ([`Project::what_moved`]).
@@ -147,6 +158,7 @@ impl Project {
             exec_lane: Mutex::new(ExecLane::default()),
             scope,
             records: Mutex::new(HashMap::new()),
+            scripts: std::sync::atomic::AtomicU64::new(0),
         };
         (project, build_rx, fast_rx)
     }
@@ -981,15 +993,18 @@ fn site_page_html(project: &Arc<Project>, page: &Page) -> String {
     // policy at a second call site is the exact shape of the bug this replaced.
     let live = {
         let pages = project.pages.lock();
-        pages
+        let mut live = pages
             .get(&page.rel)
             .map(|ps| LivePage {
                 tab_title: ps.doc.tab_title.clone(),
                 toc: ps.doc.toc,
                 body: ps.doc.body_html(),
                 generation: ps.doc.generation,
+                ..LivePage::default()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        live.scripts = project.scripts.load(std::sync::atomic::Ordering::SeqCst);
+        live
     };
     let frame = SiteFrame::of(&project.site.lock(), page);
     live_page_html(&frame, &project.dir, page, &live)
@@ -1034,6 +1049,9 @@ struct LivePage {
     toc: bool,
     body: String,
     generation: u64,
+    /// The project's [`Project::scripts`] count as the page is served, named in its
+    /// websocket url.
+    scripts: u64,
 }
 
 /// A digest of what a tab on `page` shows outside its `#tali-root`: the `<body>` of the live
@@ -1064,6 +1082,7 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         toc,
         body,
         generation,
+        scripts,
     } = live;
     let (toc, generation) = (*toc, *generation);
     let chrome = &frame.chrome;
@@ -1097,7 +1116,7 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
         js_str(&base_dir.to_string_lossy()),
         js_str(&dir.to_string_lossy()),
     );
-    let ws_path = format!("/ws?page={}", encode_query(&page.rel));
+    let ws_path = format!("/ws?page={}&scripts={scripts}", encode_query(&page.rel));
     // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
     // (depth-relative, served at the root). Empty for a project with no index.
     let search_cfg = if chrome.search_index.is_empty() {
@@ -1198,12 +1217,51 @@ async fn ws_handler(
             .into_response();
     }
     let rel = q.get("page").cloned().unwrap_or_default();
+    let scripts = q.get("scripts").and_then(|n| n.parse().ok());
     ws.max_message_size(crate::serve::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| client_conn(socket, project, rel))
+        .on_upgrade(move |socket| client_conn(socket, project, rel, scripts))
         .into_response()
 }
 
-async fn client_conn(socket: WebSocket, project: Arc<Project>, page_key: String) {
+/// The opening render of `rel` for a tab connecting to it, and the page's channel it
+/// follows from then on. A client that names no count (not a page this server served) and
+/// finds no state gets one here, and its first build.
+///
+/// `None` when the tab must reload instead. `scripts` is the count its page was served at:
+/// when it is not the project's ([`Project::scripts`]), a script the tab may have loaded
+/// changed after it was served, and when the page has no state, the state the tab was served
+/// from is gone (dropped while the tab was reloading or away), so the tab shows a body no
+/// state holds. Such a tab gets no state and no build, which its reload's own visit makes.
+fn open_channel(
+    project: &Project,
+    rel: &str,
+    scripts: Option<u64>,
+) -> Option<(String, broadcast::Receiver<String>)> {
+    let (snapshot, rx, created) = {
+        let mut pages = project.pages.lock();
+        let now = project.scripts.load(std::sync::atomic::Ordering::SeqCst);
+        if scripts.is_some_and(|served| served != now || !pages.contains_key(rel)) {
+            return None;
+        }
+        let created = !pages.contains_key(rel);
+        let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
+            doc: PageDoc::default(),
+            tx: broadcast::channel(256).0,
+        });
+        (full_render_json(&ps.doc), ps.tx.subscribe(), created)
+    };
+    if created {
+        project.queue_build(rel.to_string());
+    }
+    Some((snapshot, rx))
+}
+
+async fn client_conn(
+    socket: WebSocket,
+    project: Arc<Project>,
+    page_key: String,
+    scripts: Option<u64>,
+) {
     let (mut sink, mut stream) = socket.split();
 
     // Normalise the client's page key to a source rel (the key may be a url).
@@ -1224,18 +1282,10 @@ async fn client_conn(socket: WebSocket, project: Arc<Project>, page_key: String)
         return;
     };
 
-    let (snapshot, mut rx, created) = {
-        let mut pages = project.pages.lock();
-        let created = !pages.contains_key(&rel);
-        let ps = pages.entry(rel.clone()).or_insert_with(|| PageState {
-            doc: PageDoc::default(),
-            tx: broadcast::channel(256).0,
-        });
-        (full_render_json(&ps.doc), ps.tx.subscribe(), created)
+    let Some((snapshot, mut rx)) = open_channel(&project, &rel, scripts) else {
+        let _ = sink.send(Message::Text(protocol::reload().into())).await;
+        return;
     };
-    if created {
-        project.queue_build(rel.clone());
-    }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
     }
@@ -2013,6 +2063,9 @@ fn pages_citing_a_moved_anchor(
 /// moves what discovery reads of a page re-discovers and rebuilds every open page;
 /// otherwise rebuild every *open* page whose source or include set touches a changed file.
 fn rebuild_project(project: &Arc<Project>, changed: &HashSet<PathBuf>) {
+    // First, whatever else the batch holds: a script reaches a tab only as a reload, and the
+    // `_site.yml` arm below returns early.
+    reload_for_scripts(project, changed);
     let config_changed = changed
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
@@ -2272,6 +2325,105 @@ fn reload_tabs(project: &Project, rels: &[String]) {
         }
     }
     crate::log::update(0);
+}
+
+/// Whether `path` names a script, a `.js` or `.mjs` file: what a `{js}` cell imports.
+fn is_script(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("js") || e.eq_ignore_ascii_case("mjs"))
+}
+
+/// The files the `{js}` cells in `html`, a page whose folder is `dir`, load from the
+/// project at `root` ([`crate::build::walk_js_imports`]), keyed as [`record_key`] keys
+/// them. The project bounds the walk because it is what the preview serves: a cell can
+/// import `../lib/x.js`.
+fn loaded_by(html: &str, root: &Path, dir: &Path) -> HashSet<PathBuf> {
+    let (root, dir) = (record_key(root), record_key(dir));
+    // A page outside the project (never discovered so) is bounded by its own folder.
+    let (root, from) = match dir.strip_prefix(&root) {
+        Ok(below) => {
+            let parts: Vec<_> = below.iter().map(|c| c.to_string_lossy()).collect();
+            (root.clone(), parts.join("/"))
+        }
+        Err(_) => (dir.clone(), String::new()),
+    };
+    let mut files = HashSet::new();
+    crate::build::walk_js_imports(html, &root, &from, |found| {
+        if let crate::build::JsImport::File(rel) = found {
+            files.insert(record_key(&root.join(rel)));
+        }
+        true
+    });
+    files
+}
+
+/// Reload each tab whose page loads a script `changed` holds, keeping the page's state, and
+/// move [`Project::scripts`] when `changed` holds any script at all.
+///
+/// What a page loads is what its `{js}` cells import, followed through the modules they
+/// import ([`loaded_by`]), read at the save, so an import the save itself added counts. It
+/// is the build's own answer to which files a page needs beside it, so saving a module no
+/// page imports (a Node test beside the post, a tool's config) reloads nothing, and neither
+/// does a module saved in another post's folder.
+///
+/// The state stays, unlike [`reload_tabs`]: the server never reads a script, so each page's
+/// blocks are still its own, and the reload is served from them with no render and no cell
+/// run. Only a page with a socket on it is asked, since only its tab can be told. A tab
+/// between sockets (reloading, or asleep) is the count's: it moves for every script,
+/// imported or not, because this selection does not look at such a tab's page.
+fn reload_for_scripts(project: &Project, changed: &HashSet<PathBuf>) {
+    let scripts: HashSet<PathBuf> = changed
+        .iter()
+        .filter(|p| is_script(p))
+        .map(|p| record_key(p))
+        .collect();
+    if scripts.is_empty() {
+        return;
+    }
+    // Each page's folder, read from the site before the pages lock is taken to act on it:
+    // the two locks are never held together.
+    let rels: Vec<String> = project.pages.lock().keys().cloned().collect();
+    let dirs: HashMap<String, PathBuf> = {
+        let site = project.site.lock();
+        rels.into_iter()
+            .filter_map(|rel| {
+                let dir = site.page(&rel)?.input.parent()?.to_path_buf();
+                Some((rel, dir))
+            })
+            .collect()
+    };
+    let mut reloaded = Vec::new();
+    {
+        let pages = project.pages.lock();
+        project
+            .scripts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        for (rel, ps) in pages.iter() {
+            if ps.tx.receiver_count() == 0 {
+                continue;
+            }
+            let loads = dirs.get(rel).is_some_and(|dir| {
+                !loaded_by(&ps.doc.body_html(), &project.dir, dir).is_disjoint(&scripts)
+            });
+            if loads && ps.tx.send(protocol::reload()).is_ok() {
+                reloaded.push(rel.clone());
+            }
+        }
+    }
+    if !reloaded.is_empty() {
+        reloaded.sort();
+        let mut names: Vec<String> = scripts
+            .iter()
+            .filter_map(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        crate::log::info(&format!(
+            "{} changed: reloading {}",
+            names.join(", "),
+            reloaded.join(", ")
+        ));
+    }
 }
 
 /// Each watched page's [`shell_digest`] against the site in force. A page the site no
@@ -4171,6 +4323,296 @@ mod project_tests {
             "the listing is rebuilt with the new link, and the vanished page is not"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The `reload` message as the client reads it, written out by hand.
+    const RELOAD: &str = r#"{"type":"reload"}"#;
+
+    /// A project with a tab open on each page: a listing; a post in its own folder whose
+    /// `{js}` cell imports the module beside it (which imports a helper) and a module from a
+    /// shared folder; and a post that imports a module of its own. Beside the first post sits
+    /// a Node test that imports its module, which no page imports.
+    struct WithModules {
+        dir: PathBuf,
+        project: Arc<Project>,
+        build_rx: mpsc::UnboundedReceiver<BuildMsg>,
+        fast_rx: mpsc::UnboundedReceiver<BuildMsg>,
+        /// One per page, in [`WithModules::PAGES`] order.
+        tabs: Vec<broadcast::Receiver<String>>,
+    }
+
+    impl WithModules {
+        const PAGES: [&str; 3] = ["index.tmd", "posts/a/index.tmd", "posts/b.tmd"];
+
+        fn new(name: &str) -> WithModules {
+            let dir = scratch(name);
+            for (path, text) in [
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n---\n\nPosts.\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: A\n---\n\n```{js}\nconst fig = await import(\"./figures.js\");\n\
+                     const lib = await import(\"../../lib/shared.mjs\");\n```\n",
+                ),
+                (
+                    "posts/a/figures.js",
+                    "import { u } from \"./util.js\";\nexport const a = u;\n",
+                ),
+                ("posts/a/util.js", "export const u = 1;\n"),
+                (
+                    "posts/a/_figures.test.mjs",
+                    "import { a } from \"./figures.js\";\n",
+                ),
+                ("lib/shared.mjs", "export const s = 1;\n"),
+                (
+                    "posts/b.tmd",
+                    "---\ntitle: B\n---\n\n```{js}\nconst b = await import(\"./b-helpers.js\");\n```\n",
+                ),
+                ("posts/b-helpers.js", "export const b = 1;\n"),
+            ] {
+                let path = dir.join(path);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, text).unwrap();
+            }
+            let (project, build_rx, fast_rx) = project_and_lanes(&dir);
+            let tabs = Self::PAGES
+                .iter()
+                .map(|rel| open_rendered(&project, rel))
+                .collect();
+            WithModules {
+                dir,
+                project,
+                build_rx,
+                fast_rx,
+                tabs,
+            }
+        }
+
+        /// Write each `(file, text)`, hand the batch to [`rebuild_project`] as the watcher
+        /// would, and return the page of each `reload` a tab was sent: a page named twice is
+        /// a tab told twice.
+        fn save(&mut self, files: &[(&str, &str)]) -> Vec<&'static str> {
+            let paths: HashSet<PathBuf> = files
+                .iter()
+                .map(|(name, text)| {
+                    let path = self.dir.join(name);
+                    std::fs::write(&path, text).unwrap();
+                    path
+                })
+                .collect();
+            rebuild_project(&self.project, &paths);
+            let mut reloads = Vec::new();
+            for (rel, tab) in Self::PAGES.iter().zip(&mut self.tabs) {
+                while let Ok(message) = tab.try_recv() {
+                    if message == RELOAD {
+                        reloads.push(*rel);
+                    }
+                }
+            }
+            reloads
+        }
+    }
+
+    /// A browser keeps an ES module for the life of the document that imported it, so a
+    /// `{js}` cell's `import("./figures.js")` goes on returning the module the tab loaded
+    /// first, whatever the file holds now. A save of the module reached no tab at all: no
+    /// page reads a script, so nothing was rebuilt and nothing was sent, and the open tab
+    /// threw calling the export its new cell needed (tech-blog `posts/cusum`, 2026-11-06).
+    ///
+    /// The tab whose page loads the saved module reloads, once, whether a cell imports the
+    /// module or another module does, from its own folder or another, and no other tab
+    /// does. Every page keeps its state, because the server read nothing that moved: the
+    /// reload is served from it, so nothing is queued, no page renders and no cell runs.
+    #[test]
+    fn a_module_save_reloads_the_tabs_whose_page_loads_it_and_keeps_their_state() {
+        let mut p = WithModules::new("module-save");
+        let a = ["posts/a/index.tmd"];
+        assert_eq!(
+            p.save(&[(
+                "posts/a/figures.js",
+                "import { u } from \"./util.js\";\nexport const a = u + 1;\n"
+            )]),
+            a,
+            "the module a cell imports"
+        );
+        assert_eq!(
+            p.save(&[("posts/a/util.js", "export const u = 2;\n")]),
+            a,
+            "a module that module imports"
+        );
+        assert_eq!(
+            p.save(&[("lib/shared.mjs", "export const s = 2;\n")]),
+            a,
+            "an `.mjs` module in another folder"
+        );
+        assert_eq!(
+            p.save(&[("posts/b-helpers.js", "export const b = 2;\n")]),
+            ["posts/b.tmd"],
+            "the other post's module"
+        );
+        // What a page loads is read at the save, so an import a save adds counts at once.
+        assert!(
+            p.save(&[("posts/a/extra.js", "export const e = 1;\n")])
+                .is_empty(),
+            "a module nothing imports yet"
+        );
+        assert_eq!(
+            p.save(&[(
+                "posts/a/figures.js",
+                "import { u } from \"./util.js\";\nimport \"./extra.js\";\nexport const a = u;\n"
+            )]),
+            a
+        );
+        assert_eq!(
+            p.save(&[("posts/a/extra.js", "export const e = 2;\n")]),
+            a,
+            "the module the save before made it import"
+        );
+
+        let mut kept: Vec<String> = p.project.pages.lock().keys().cloned().collect();
+        kept.sort();
+        assert_eq!(
+            kept,
+            WithModules::PAGES,
+            "every page keeps the state its reload is served from"
+        );
+        assert!(
+            queued(&mut p.build_rx, &mut p.fast_rx).is_empty(),
+            "a module save rebuilds no page"
+        );
+        let _ = std::fs::remove_dir_all(&p.dir);
+    }
+
+    /// The other half of the rule above. A page edit reaches its tab as block ops, which
+    /// keep the live state of its `{js}` cells, and no tab reloads for a script no page
+    /// loads (the Node test beside the post, a module nothing imports), a stylesheet, a
+    /// `.bib`, an image, a data file, or an editor's backup or swap file of a module.
+    #[test]
+    fn a_save_of_anything_no_page_loads_reloads_no_tab() {
+        let mut p = WithModules::new("nothing-loads");
+        let page = std::fs::read_to_string(p.dir.join("posts/a/index.tmd")).unwrap()
+            + "\nA new paragraph.\n";
+        assert!(p.save(&[("posts/a/index.tmd", &page)]).is_empty());
+        assert_eq!(
+            queued(&mut p.build_rx, &mut p.fast_rx),
+            ["posts/a/index.tmd"],
+            "the edited page is rebuilt, to reach its tab as ops"
+        );
+        for name in [
+            "posts/a/_figures.test.mjs",
+            "lib/tool.js",
+            "style.css",
+            "refs.bib",
+            "plot.png",
+            "data.json",
+            "posts/a/figures.js~",
+            "posts/a/figures.js.swp",
+            "posts/a/figures.json",
+        ] {
+            assert!(
+                p.save(&[(name, "x")]).is_empty(),
+                "saving `{name}` reloaded a tab"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&p.dir);
+    }
+
+    /// The `scripts=` count in the websocket url of `rel` as served, read the way the
+    /// browser reads its url: out of `window.TALIESIN_WS_PATH`.
+    fn served_script_count(project: &Arc<Project>, rel: &str) -> Option<u64> {
+        let page = project.site.lock().page(rel).cloned().unwrap();
+        let html = ensure_and_render_page(project, &page);
+        let key = "window.TALIESIN_WS_PATH = \"";
+        let at = html.find(key)? + key.len();
+        let path = &html[at..at + html[at..].find('"')?];
+        let (_, query) = path.split_once('?')?;
+        query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("scripts="))?
+            .parse()
+            .ok()
+    }
+
+    /// The reload a script save sends reaches only the tabs connected when it lands. A tab
+    /// in the middle of a reload (its new page requested, its socket not open yet), or one
+    /// reconnecting after the laptop slept, missed it and went on holding the module it had
+    /// loaded under a green dot: its reconnect render matched what it showed, so nothing was
+    /// even repainted. A page names in its websocket url how many script saves it was served
+    /// after, and a connection naming another count is told to reload instead.
+    #[test]
+    fn a_tab_served_before_a_script_save_reloads_when_it_connects() {
+        let mut p = WithModules::new("script-count");
+        let before = served_script_count(&p.project, "posts/b.tmd");
+        assert!(
+            before.is_some(),
+            "the page names the count in its websocket url"
+        );
+        // A script no page loads moves the count too: the selection asks only pages with a
+        // socket on them, and a tab between sockets has the count alone.
+        p.save(&[("posts/a/_figures.test.mjs", "export {};\n")]);
+        assert!(
+            open_channel(&p.project, "posts/b.tmd", before).is_none(),
+            "a tab served before a script save may hold an old module, so it must reload"
+        );
+
+        let after = served_script_count(&p.project, "posts/b.tmd");
+        assert!(after.is_some() && after != before);
+        let (snapshot, _rx) = open_channel(&p.project, "posts/b.tmd", after)
+            .expect("a tab served after the save follows the page");
+        assert!(snapshot.contains(r#""type":"full_render""#), "{snapshot}");
+        assert!(
+            open_channel(&p.project, "posts/b.tmd", None).is_some(),
+            "a client that names no count is not refused"
+        );
+
+        // A batch that changed `_site.yml` too: its arm of `rebuild_project` drops every
+        // page's state and returns early. The page is served again after it.
+        p.save(&[
+            ("_site.yml", "title: Retitled\n"),
+            ("posts/b-helpers.js", "export const b = 3;\n"),
+        ]);
+        let again = served_script_count(&p.project, "posts/b.tmd");
+        assert!(
+            again.is_some() && again != after,
+            "a script saved alongside `_site.yml` moves the count all the same"
+        );
+        assert!(open_channel(&p.project, "posts/b.tmd", after).is_none());
+        let _ = std::fs::remove_dir_all(&p.dir);
+    }
+
+    /// A reloading tab watches nothing for a moment: its old socket is closed and its new one
+    /// is not open yet. A save landing then drops its page's state (`watched_pages`), though
+    /// the tab was served from it, and the tab's socket found a new empty state: an empty
+    /// render at generation 0, then a first build publishing at the same generation, which
+    /// the client skips, so a page with no kernel cell stayed blank under a green dot. A tab
+    /// that names a count was served by this server from a state, so with the state gone it
+    /// reloads, and the reload's visit renders the state again.
+    #[test]
+    fn a_tab_whose_page_lost_its_state_reloads_when_it_connects() {
+        let mut p = WithModules::new("lost-state");
+        let served = served_script_count(&p.project, "posts/b.tmd");
+        // The tab on `posts/b` went away to reload, and a save of another page landed.
+        p.tabs.remove(2);
+        let page = std::fs::read_to_string(p.dir.join("posts/a/index.tmd")).unwrap() + "\nMore.\n";
+        p.save(&[("posts/a/index.tmd", &page)]);
+        assert!(
+            !p.project.pages.lock().contains_key("posts/b.tmd"),
+            "the save dropped the state of the page no tab watched"
+        );
+
+        assert!(
+            open_channel(&p.project, "posts/b.tmd", served).is_none(),
+            "the tab must reload, not open on an empty page"
+        );
+        assert!(!p.project.pages.lock().contains_key("posts/b.tmd"));
+        // A client that names no count was served nothing by this server: it gets a state,
+        // and the state its first build.
+        assert!(open_channel(&p.project, "posts/b.tmd", None).is_some());
+        assert!(p.project.pages.lock().contains_key("posts/b.tmd"));
+        let _ = std::fs::remove_dir_all(&p.dir);
     }
 
     /// A live preview of a project with no HTTP in front of it: the real watcher and both
