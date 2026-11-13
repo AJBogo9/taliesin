@@ -357,14 +357,23 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             (style_block, katex_block, js_head_html, framework_scripts)
         }
     };
+    // `no-referrer` came in with the 2026-07-02 hardening (281d5b89), against the PREVIEW
+    // server's session token leaking through `Referer`. A built page has no token, and the
+    // tag made every site it links to, the owner's own repositories included, count its
+    // visitors as direct traffic. So the preview keeps it and a build leaves the policy to
+    // the host's `Referrer-Policy` header, else the browser default
+    // (strict-origin-when-cross-origin: the origin only, never the path, to another site).
+    let referrer = match p.mode {
+        OutputMode::Preview => "<meta name=\"referrer\" content=\"no-referrer\" />\n",
+        OutputMode::Build => "",
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="{PAGE_LANG}">
 <head>
 {GENERATOR_BANNER}<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="referrer" content="no-referrer" />
-<meta name="generator" content="Taliesin" />
+{referrer}<meta name="generator" content="Taliesin" />
 <title>{title}</title>
 {favicon}
 {theme_init}

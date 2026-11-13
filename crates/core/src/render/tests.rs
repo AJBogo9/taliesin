@@ -6208,6 +6208,64 @@ fn js_cell_error_hides_the_stack_trace_in_built_output() {
     );
 }
 
+/// The `content` of the page's `<meta name="referrer">`, read through the tag walker;
+/// `None` when the page has none.
+fn referrer_meta(html: &str) -> Option<String> {
+    tags(html)
+        .filter(|t| t.name.eq_ignore_ascii_case("meta"))
+        .find_map(|t| {
+            let a: Vec<Attr> = attrs(&t).collect();
+            a.iter()
+                .any(|x| x.name == "name" && x.value == "referrer")
+                .then(|| {
+                    a.iter()
+                        .find(|x| x.name == "content")
+                        .map_or(String::new(), |x| x.value.to_string())
+                })
+        })
+}
+
+/// `no-referrer` guards the PREVIEW (281d5b89: its session token must not leak through
+/// `Referer`) and nothing else. A built page leaves the policy to its host: with the tag,
+/// every site the blog links to, the owner's own repositories included, counted its
+/// readers as direct traffic. Both directions are pinned, on both build assemblers.
+#[test]
+fn only_the_preview_sends_no_referrer() {
+    let preview = assemble_html_page(&PageParts {
+        mode: OutputMode::Preview,
+        body: "<p>x</p>",
+        ..PageParts::defaults()
+    });
+    assert_eq!(referrer_meta(&preview).as_deref(), Some("no-referrer"));
+
+    let build = assemble_html_page(&PageParts {
+        mode: OutputMode::Build,
+        body: "<p>x</p>",
+        ..PageParts::defaults()
+    });
+    assert_eq!(referrer_meta(&build), None, "{build}");
+
+    // `build <file.tmd>`: the one assembler every built page goes through.
+    let single = render_html_page("---\ntitle: T\ndate: 2026-05-15\n---\n\nx\n", "T");
+    assert_eq!(referrer_meta(&single), None, "{single}");
+
+    // `build <dir>`: a site page in its chrome, linking `_assets/`.
+    let root = crate::site::tests::write_site(
+        "referrerbuild",
+        &[
+            ("_site.yml", "title: J\nurl: https://ex.com\n"),
+            (
+                "p.tmd",
+                "---\ntitle: P\n---\n\n[out](https://github.com/)\n",
+            ),
+        ],
+    );
+    let site = crate::site::Site::discover(&root);
+    let page = site.render_page("p.tmd").unwrap();
+    assert_eq!(referrer_meta(&page), None, "{page}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A `{js}` cell added mid-session gets its libraries (audit finding 04).
 ///
 /// `assemble_html_page` gated the vendored d3 + Observable Plot on `has_js_cells(p.body)`
