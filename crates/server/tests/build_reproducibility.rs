@@ -6,7 +6,7 @@
 //! Why this is wider than `parallel_build_determinism.rs`. That suite proves the
 //! `--jobs 1` vs `--jobs N` *scheduling* invariant, but it only compares `.html` files.
 //! The outputs most exposed to a future ordering regression are the *aggregate* assets a
-//! single page never contains: `search-index.js`, the Atom feed (`index.xml`),
+//! single page never contains: the Atom feed (`index.xml`),
 //! `sitemap.xml` and `robots.txt`. Each is assembled by
 //! walking a collection (pages, xref targets, categories, discovered files) — so an
 //! accidental switch from a sorted structure to an unsorted `HashMap`/`HashSet`, or a
@@ -45,8 +45,6 @@ fn tmp_dir(name: &str) -> PathBuf {
 /// Write a feature-rich, **kernel-free** multi-page website that populates every
 /// aggregate output path at once:
 /// - a `listing:` index over `posts/` → listing cards + the Atom feed (`index.xml`);
-/// - anchored headings + prose on every page → the full-text search index
-///   (`search-index.js`);
 /// - two content pages defining eight figure/table xref targets, cross-page `@fig-…`/`@tbl-…`
 ///   references → the xref registry resolved (and NUMBERED, via the render-harvest) into each
 ///   linking page. These were `.theorem`/`.definition` divs and `@thm-`/`@def-` refs until
@@ -260,11 +258,10 @@ fn the_repro_site_populates_every_guarded_aggregate() {
         .unwrap_or_else(|_| panic!("`{name}` is not UTF-8"))
     };
 
-    // Full-text search index: one entry per page + per anchored heading.
-    let search = text("search-index.js");
+    // A website has no search (owner ruling 2026-11-13), so no index is written.
     assert!(
-        search.contains("window.TALIESIN_SEARCH_INDEX=[") && search.contains("Concepts"),
-        "search-index.js is not a populated index"
+        !out.contains_key("search-index.js"),
+        "a website build wrote a search-index.js"
     );
 
     // Listing → Atom feed; site url → sitemap + robots. (`llms.txt` and the `og/*.png`

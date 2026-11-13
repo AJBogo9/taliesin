@@ -9,7 +9,6 @@ fn built_page(doc: &RenderedDoc, fallback_title: &str) -> String {
         doc,
         fallback_title,
         None,
-        "",
         AssetMode::Inline { mermaid_src: "" },
     )
 }
@@ -1140,7 +1139,6 @@ fn a_named_mermaid_file_is_linked_instead_of_inlined() {
         &doc,
         "stem",
         None,
-        "",
         AssetMode::Inline {
             mermaid_src: "mermaid.min.js",
         },
@@ -3491,7 +3489,6 @@ fn site_build_path_content_gates_enhancers() {
             &doc,
             "chapter",
             Some(&SiteCtx::default()),
-            "",
             AssetMode::External(assets),
         )
     };
@@ -6201,7 +6198,7 @@ fn shared_site_css_bundles_the_framework_sheets() {
 
 #[test]
 fn core_enhance_js_has_our_scripts_not_the_big_libs() {
-    let js = core_enhance_js();
+    let js = core_enhance_js(true);
     assert!(js.contains("function taliCopyText"), "code-enhance missing");
     assert!(js.contains("function buildIndex"), "search.js missing");
     // The big vendored libs must NOT be in the always-on core bundle.
@@ -6621,49 +6618,6 @@ fn the_stacked_toc_takes_no_space_on_a_page_whose_script_will_move_it() {
             .count(),
         "the stacked TOC is hidden somewhere without the script's mark"
     );
-}
-
-/// The burger owns `margin-left: auto`, which is what pins it to the right end of the bar.
-/// Drop the search control in beside it and that single auto margin now sits on the WRONG
-/// item: the free space lands between brand and search, stranding search next to the
-/// wordmark while the burger floats off to the right. The margin has to move with the
-/// control, and only while the control is actually there.
-#[test]
-fn the_bar_hands_its_auto_margin_to_search_once_search_is_in_it() {
-    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
-    assert!(
-        wide.contains("html.tali-search-in-bar .tali-nav-burger { margin-left: 0"),
-        "the burger keeps the auto margin, so search is stranded beside the wordmark while \
-         the burger sits alone at the right edge:\n{wide}"
-    );
-    assert!(
-        wide.contains("html.tali-search-in-bar .tali-nav-inner > .tali-search-btn"),
-        "nothing gives the relocated search control the auto margin the burger gave up, so \
-         the whole cluster collapses to the left:\n{wide}"
-    );
-}
-
-/// In the panel the search control was a full-width stretched row; lifted into the bar it
-/// measured 35x27 px, under the 44 px target the burger beside it is built to (WCAG 2.5.5,
-/// the same floor `.tali-nav-icon` and `.tali-nav-link::before` are there to reach). It can
-/// take the plain `min-width`/`min-height` those two had to avoid, because the burger is
-/// ALREADY 44 px tall in this bar: matching it cannot grow a row the burger's own height
-/// sets, which is the exact cost MOB-7 rejected the property for.
-#[test]
-fn the_relocated_search_control_is_a_full_size_tap_target() {
-    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
-    let rule = wide
-        .split("html.tali-search-in-bar .tali-nav-inner > .tali-search-btn")
-        .nth(1)
-        .and_then(|r| r.split('}').next())
-        .expect("no relocated-search rule");
-    for prop in ["min-width: 44px", "min-height: 44px"] {
-        assert!(
-            rule.contains(prop),
-            "the search control keeps a sub-44px `{prop}` target in the bar, beside a \
-             burger built to exactly that floor:\n{rule}"
-        );
-    }
 }
 
 /// `title_with_site_suffix` goes bare on FOUR independent conditions, and two of them are

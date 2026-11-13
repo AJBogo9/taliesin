@@ -174,22 +174,6 @@
       width: 44px; height: 44px; padding: 0; }
     .tali-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
       background: var(--tali-fg); transition: transform var(--tali-dur) ease, opacity var(--tali-dur) ease; }
-    /* `.tali-nav-burger`'s `margin-left: auto` above is what pins the right-hand cluster to
-       the end of the bar, and it only works on the item that comes FIRST in that cluster.
-       Once the nav script has lifted the search control in beside the burger, that item is
-       search: leave the margin where it is and the free space opens between the wordmark
-       and search instead, stranding the two controls apart. Gated on the script's mark, not
-       a width, because with JS off search never leaves the panel and the burger is still
-       the only thing out here. */
-    html.tali-search-in-bar .tali-nav-burger { margin-left: 0; }
-    /* ≥44px square, to match the burger it now sits beside (WCAG 2.5.5). In the panel this
-       control was a full-width stretched row; out here it measured 35x27. Plain
-       `min-width`/`min-height` are safe in this one spot, where MOB-7 had to reach for a
-       centred `::before` overlay instead: that trick exists to avoid GROWING the bar, and
-       the burger already holds this row open to 44px, so matching it costs no height. */
-    html.tali-search-in-bar .tali-nav-inner > .tali-search-btn { margin-left: auto;
-      min-width: 44px; min-height: 44px; justify-content: center; }
-
     /* The panel can now hold a whole table of contents, so it gets its own scroll: it is
        `position: absolute`, so anything past the viewport is simply unreachable without
        one. `overscroll-behavior: contain` is the same fix the book drawer's panel carries

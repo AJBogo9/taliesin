@@ -429,7 +429,6 @@ fn the_client_apis_that_survived_the_minimalism_passes_still_ship() {
         &doc,
         "t",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     for needle in ["taliSetTheme", "tali-theme"] {

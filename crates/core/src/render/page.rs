@@ -25,9 +25,8 @@ pub struct SiteCtx {
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
     /// none configured), emitted as `<link rel="icon">`.
     pub favicon: String,
-    /// JS that sets `window.TALIESIN_SEARCH_INDEX` (+ `TALIESIN_SITE_ROOT`/`TALIESIN_PAGE_URL`)
-    /// for the whole-project Cmd-K search; empty for a single doc. Injected next to
-    /// the search script on TOC pages.
+    /// JS that sets the `TALIESIN_SITE_ROOT`/`TALIESIN_PAGE_URL`/`TALIESIN_SEARCH_URL`
+    /// globals for a book's Cmd-K search; empty for a website and for a single doc.
     pub search_index: String,
     /// The site's own name (`_site.yml` `title:`), for the `<title>` suffix; `""` if
     /// unset. Every inner page's `<title>` becomes "{page} · {site}" so a browser tab /
@@ -487,10 +486,6 @@ pub(crate) fn site_page_title(
 ///
 /// - `site`: the page's chrome inside a project (`Site::page_chrome`), or `None` for a
 ///   standalone document: the single-file build and both 404 pages.
-/// - `search_index`: a standalone page's own Cmd-K index, the script body
-///   `Site::inline_search_index` returns, the index `preview <file.tmd>` serves. A
-///   single-file page has no `search-index.js` beside it to load one from. A site page's
-///   index comes from `site.search_index` instead, so a site caller passes `""`.
 /// - `assets`: [`AssetMode::Inline`] bakes the framework into the page (the single-file
 ///   build, the preview's 404); [`AssetMode::External`] links the shared `_assets/` files
 ///   (the site build, the build's 404, whose caller must hand it **root-absolute** hrefs:
@@ -507,7 +502,6 @@ pub fn render_doc_to_page(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: Option<&SiteCtx>,
-    search_index: &str,
     assets: AssetMode,
 ) -> String {
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
@@ -554,25 +548,26 @@ pub fn render_doc_to_page(
             AssetMode::External(_) => String::new(),
         }
     };
-    // Cmd-K is deliberately NOT gated on this page's TOC. Its button is part of the site
-    // chrome and renders on every page, so gating the runtime + index on `toc` left any
+    // Cmd-K is deliberately NOT gated on this page's TOC. In a book its button is part of
+    // the chrome and renders on every page, so gating the runtime + index on `toc` left any
     // chapter under `MIN_TOC_HEADINGS` advertising a palette that opened with nothing in
-    // it — invisible to the author, because the preview injects both unconditionally.
-    // Ship it wherever the trigger exists: a site page (chrome button, TOC or not) or a
-    // standalone page with a TOC (which is where a bare doc gets its ⌘K hint).
-    let search_script = if toc.is_empty() && site.is_none() {
-        String::new()
-    } else {
-        let index = match site.map_or(search_index, |s| s.search_index.as_str()) {
-            "" => String::new(),
-            idx => format!("<script>{idx}</script>\n"),
-        };
-        match &assets {
-            // Inline: the per-page index (if any) followed by the palette runtime.
-            AssetMode::Inline { .. } => format!("{index}{}", search_scripts()),
-            // External: the palette runtime is in app.js; keep only the per-page index.
-            AssetMode::External(_) => index,
+    // it. A book's only: a website page and a standalone document ship none (owner ruling
+    // 2026-11-13); the book's chrome is `book_chrome`.
+    let search_script = match site {
+        Some(s) if s.book_chrome.is_some() => {
+            let index = match s.search_index.as_str() {
+                "" => String::new(),
+                idx => format!("<script>{idx}</script>\n"),
+            };
+            match &assets {
+                // Inline: the per-page index (if any) followed by the palette runtime.
+                AssetMode::Inline { .. } => format!("{index}{}", search_scripts()),
+                // External: the palette runtime is in app.js; keep only the per-page index.
+                AssetMode::External(_) => index,
+            }
         }
+        // A website page and a standalone document ship none (owner ruling 2026-11-13).
+        _ => String::new(),
     };
     let toc_script = format!("{search_script}{spy_script}");
     // The reading region is always a focusable `<main id="tali-main">`, emitted

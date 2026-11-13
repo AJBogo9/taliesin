@@ -498,6 +498,12 @@ impl Site {
     /// renumbered figure stale in the fragments of pages nobody has open, which is the
     /// exact snippet-contradicts-its-target defect this index ordering exists to prevent.
     pub fn rebuild_search_index(&mut self) {
+        // Search lives in books only (owner ruling 2026-11-13): a website has no index, so
+        // the build writes no `search-index.js` and its pages carry no search URL.
+        if !self.is_book() {
+            self.search_index_json = String::new();
+            return;
+        }
         // The fragments are dropped once assembled. They were kept on `Site` for a per-page
         // refresh nothing calls, and holding them kept each rebuild's strings alive in the
         // allocator arenas of the threads that built them.
@@ -674,7 +680,6 @@ impl Site {
             doc,
             fallback,
             Some(&ctx),
-            "",
             render::AssetMode::External(assets),
         );
         let html = rewrite_tmd_links(&html);
@@ -1111,7 +1116,6 @@ impl Site {
             &self.not_found_doc(),
             "Page not found",
             None,
-            "",
             render::AssetMode::Inline { mermaid_src: "" },
         )
     }
@@ -1132,7 +1136,6 @@ impl Site {
             &self.not_found_doc(),
             "Page not found",
             None,
-            "",
             render::AssetMode::External(assets),
         )
     }
@@ -2555,7 +2558,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn author_404_is_honored_and_excluded_from_search() {
+    fn author_404_is_honored() {
         use std::fs;
         let root = std::env::temp_dir().join(format!("tali-404-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -2573,16 +2576,10 @@ pub(crate) mod tests {
             site.has_author_404(),
             "a root 404.tmd is detected as the author's own 404 page"
         );
-        // The author's 404 must never leak into the Cmd-K full-text index.
+        // A website has no search index at all, so nothing of the 404 can leak into one.
         assert!(
-            !site.search_index_json.contains("\"u\":\"404.html\""),
-            "404.html excluded from search: {}",
-            site.search_index_json
-        );
-        // The real content page is still indexed.
-        assert!(
-            site.search_index_json.contains("\"u\":\"index.html\""),
-            "index.html still indexed: {}",
+            site.search_index_json.is_empty(),
+            "a website carries no search index: {}",
             site.search_index_json
         );
 
@@ -2687,18 +2684,17 @@ pub(crate) mod tests {
                 urls(&not_found)
             );
         }
-        // Cmd-K resolves a result against the site root it is handed, not an attribute.
+        // A website has no search, so its 404 carries no search globals either.
         assert!(
-            not_found.contains("window.TALIESIN_SITE_ROOT=\"/\"")
-                && not_found.contains("window.TALIESIN_SEARCH_URL=\"/search-index.js\""),
-            "the 404's search globals must be root-absolute"
+            !not_found.contains("TALIESIN_SEARCH_URL"),
+            "a website's 404 must carry no search URL"
         );
 
         // Any other page is untouched: still relative, so the build opens from disk.
         let home = built("index.tmd");
         assert!(urls(&home).iter().any(|v| v == "_assets/app.1.css"));
         assert!(urls(&home).iter().any(|v| v == "blog.html"));
-        assert!(home.contains("window.TALIESIN_SITE_ROOT=\"\""));
+        assert!(!home.contains("TALIESIN_SEARCH_URL"));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -3103,7 +3099,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn external_site_render_keeps_search_index_inline_drops_shared_toc_js() {
+    fn external_site_render_drops_shared_toc_js() {
         // A literal from web-client/toc-spy.js: stable + unique enough that its
         // presence proves the shared scrollspy code got re-inlined.
         const MARKER_TOC_SPY: &str = "taliInitTocSpy";
@@ -3131,7 +3127,7 @@ pub(crate) mod tests {
             font_preload: "",
         };
         let (html, _w) = site.finish_page(page, doc, ext);
-        // app.js is linked (carries the toc/search code now).
+        // app.js is linked (carries the shared toc code now).
         assert!(
             html.contains("src=\"_assets/app.c.js\" defer"),
             "app.js should be linked: {html}"
@@ -3141,10 +3137,10 @@ pub(crate) mod tests {
             !html.contains(MARKER_TOC_SPY),
             "toc-spy code must not be re-inlined: {html}"
         );
-        // The per-page search index (inline bootstrap) is still present.
+        // A website carries no search bootstrap.
         assert!(
-            html.contains("TALIESIN_SEARCH_URL"),
-            "the per-page search index bootstrap should stay inline: {html}"
+            !html.contains("TALIESIN_SEARCH_URL"),
+            "a website page must carry no search URL: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

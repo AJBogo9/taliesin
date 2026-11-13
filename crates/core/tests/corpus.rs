@@ -298,7 +298,6 @@ fn no_built_page_fetches_anything_off_origin() {
             &doc,
             stem,
             None,
-            "",
             taliesin_core::AssetMode::Inline { mermaid_src: "" },
         );
         let previewed = taliesin_core::assemble_html_page(&taliesin_core::PageParts {
@@ -710,7 +709,6 @@ fn a11y_chrome_emits_landmarks_and_a_skip_link() {
         ),
         "fallback",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     ));
     // Skip-to-content link is the first thing in the body, before JS runs.
@@ -750,7 +748,6 @@ fn a11y_chrome_emits_landmarks_and_a_skip_link() {
         &taliesin_core::render_document("---\ntitle: \"T\"\n---\n\nbody only\n"),
         "fallback",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     ));
     assert!(
@@ -775,7 +772,6 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
         &doc,
         "report",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
 
@@ -1159,7 +1155,6 @@ fn standalone_doc_carries_opengraph_seo_meta() {
         &doc,
         "fallback",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(
@@ -1188,7 +1183,6 @@ fn standalone_doc_carries_opengraph_seo_meta() {
         &dated,
         "fallback",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(
@@ -1201,7 +1195,6 @@ fn standalone_doc_carries_opengraph_seo_meta() {
         &taliesin_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
         "fb",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(bare.contains("property=\"og:title\" content=\"Only\""));

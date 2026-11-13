@@ -37,16 +37,6 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 ///   re-add" from that cut is specifically the bare 42x5 px grip, which has nothing to
 ///   attach to here.
 ///
-/// It **also lifts the search control out of the panel and into the bar** below the same
-/// width (2026-09-11). On desktop that button already sits in the navbar, so mobile was the
-/// only place it hid behind a tap — and the only place with no Cmd-K, which makes it the
-/// sole way into search there. It is a DOM move for the same reason the TOC is: the panel
-/// is `display: none` while closed, so a child cannot escape it. The move is placed BEFORE
-/// `toc()`'s early return on purpose, because search exists on the many pages that have no
-/// `#TOC` at all. `.tali-nav-burger` owns `margin-left: auto` — the thing that pins the
-/// cluster right — so the `tali-search-in-bar` mark hands that margin to whichever control
-/// now comes first; without it the free space lands between the wordmark and search.
-///
 /// Two ordering constraints, both load-bearing. The TOC lookup sits AFTER all three
 /// handlers are attached, because most pages (every listing, every hero page, every short
 /// one) have no `#TOC` and a `return` above the wiring would leave all of them with a dead
@@ -68,7 +58,7 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 /// site.css keeps the stacked block out of the flow under that mark. The mark means
 /// "this script will place the TOC", so a page with no navbar (a book, a standalone
 /// document) or with JS off never gets it, and its stacked block stays.
-const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';document.documentElement.classList.add('tali-nav-wired');function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});var q=window.matchMedia('(max-width: 60rem)');var inner=b.parentNode,sb=m.querySelector('[data-tali-search]'),sHome=sb&&sb.parentNode,sAfter=sb&&sb.nextSibling;if(sb)sb.addEventListener('click',function(){set(false);});function sPlace(){if(!sb)return;if(q.matches!==(sb.parentNode===inner)){if(q.matches){inner.insertBefore(sb,b);}else{sHome.insertBefore(sb,sAfter);}}document.documentElement.classList.toggle('tali-search-in-bar',q.matches);}sPlace();q.addEventListener('change',sPlace);function toc(){var t=document.getElementById('TOC');if(!t)return;var home=t.parentNode,after=t.nextSibling,lab=document.createElement('p');lab.className='tali-nav-toc-label';lab.textContent='On this page';function place(){if(q.matches===(t.parentNode===m))return;if(q.matches){m.appendChild(lab);m.appendChild(t);}else{if(lab.parentNode)lab.parentNode.removeChild(lab);home.insertBefore(t,after);}document.documentElement.classList.toggle('tali-toc-in-nav',q.matches);}place();q.addEventListener('change',place);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',toc);}else{toc();}})();</script>";
+const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';document.documentElement.classList.add('tali-nav-wired');function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});var q=window.matchMedia('(max-width: 60rem)');function toc(){var t=document.getElementById('TOC');if(!t)return;var home=t.parentNode,after=t.nextSibling,lab=document.createElement('p');lab.className='tali-nav-toc-label';lab.textContent='On this page';function place(){if(q.matches===(t.parentNode===m))return;if(q.matches){m.appendChild(lab);m.appendChild(t);}else{if(lab.parentNode)lab.parentNode.removeChild(lab);home.insertBefore(t,after);}document.documentElement.classList.toggle('tali-toc-in-nav',q.matches);}place();q.addEventListener('change',place);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',toc);}else{toc();}})();</script>";
 
 /// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter drawer. A book is laid out
 /// as one centred reading column (the same measure as a blog post); the chapter list is
@@ -93,8 +83,8 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 
 /// A search control that opens the Cmd-K palette. It carries `data-tali-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
-/// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
-/// book topbar.
+/// palette the keyboard shortcut does. Rendered in the book topbar only: a website has no
+/// search (owner ruling 2026-11-13).
 fn search_button() -> String {
     // WCAG 2.5.3 Label-in-Name is about VISIBLE text: a voice-control user says what they
     // see, so the accessible name must CONTAIN the kbd hint. `aria-hidden` on the kbd never
@@ -206,9 +196,6 @@ impl Site {
         for it in &self.config.nav.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
-        // A visible search control (opens the Cmd-K palette); search + social links collapse
-        // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
-        s.push_str(&search_button());
         s.push_str("</div>");
         s.push_str("</nav></header>");
         // Wire the burger button: toggle `aria-expanded` + a `.tali-nav-open` class
@@ -892,10 +879,6 @@ mod tests {
             links.iter().any(|l| l == "../blog%22&.html"),
             "back link: {links:?}"
         );
-        assert!(
-            post.contains("window.TALIESIN_PAGE_URL=\"posts/a%22b&c.html\""),
-            "the page url is a JS string literal"
-        );
 
         let feeds = site.atom_feeds();
         let (_, xml) = feeds.first().expect("the listing's feed");
@@ -958,14 +941,6 @@ mod tests {
             links.iter().any(|l| l == "../the%20blog.html"),
             "back link: {links:?}"
         );
-        assert!(
-            post.contains("window.TALIESIN_PAGE_URL=\"posts/p%231.html\""),
-            "the page-url global the palette compares a result's url with"
-        );
-        assert!(
-            site.search_index_json.contains("\"posts/p%231.html\""),
-            "the search index's page url, which the palette navigates to"
-        );
 
         let book = write_site(
             "href-encode-book",
@@ -994,6 +969,14 @@ mod tests {
         assert!(
             links.iter().any(|l| l == "i%23x.html"),
             "the pager: {links:?}"
+        );
+        assert!(
+            first.contains("window.TALIESIN_PAGE_URL=\"i%23x.html\""),
+            "the page-url global the palette compares a result's url with"
+        );
+        assert!(
+            site.search_index_json.contains("\"i%23x.html\""),
+            "the search index's page url, which the palette navigates to"
         );
 
         let _ = std::fs::remove_dir_all(&root);
@@ -1630,73 +1613,6 @@ mod tests {
             js.contains("toggle('tali-toc-in-nav',q.matches)"),
             "the mark is set independently of the move, so the two can drift out of \
              agreement:\n{js}"
-        );
-    }
-
-    #[test]
-    fn the_search_control_leaves_the_panel_for_the_bar_at_narrow_widths() {
-        // On DESKTOP the search button is already sitting in the navbar (`.tali-nav-links`
-        // is a flex row up there), so mobile was the only place it hid behind a tap. Mobile
-        // is also the only place with no Cmd-K, which makes that button the sole entry point
-        // to search there — the weakest possible thing to bury.
-        //
-        // It has to be a DOM move for the same reason the TOC did: the panel is
-        // `display: none` while closed, and a child cannot escape that.
-        let js = NAV_TOGGLE_SCRIPT;
-        assert!(
-            js.contains("[data-tali-search]"),
-            "the script never finds the search control:\n{js}"
-        );
-        // Placed BEFORE the burger, so the reader's thumb finds the same order the desktop
-        // bar reads in (content, then search, then menu).
-        assert!(
-            js.contains("inner.insertBefore(sb,b)"),
-            "the search control is not inserted ahead of the burger, so the bar reads \
-             menu-then-search:\n{js}"
-        );
-        // Desktop must be byte-identical to before, which means an actual restore rather
-        // than leaving it in the bar once narrowed.
-        assert!(
-            js.contains("sHome.insertBefore(sb,sAfter)"),
-            "nothing puts the search control back inside the panel when the window widens, \
-             so the desktop bar keeps a second, differently-spaced copy of it:\n{js}"
-        );
-        assert!(
-            js.contains("classList.toggle('tali-search-in-bar'"),
-            "nothing marks the document while search is in the bar, so the CSS cannot hand \
-             it the auto margin that keeps it beside the burger:\n{js}"
-        );
-    }
-
-    #[test]
-    fn the_search_move_does_not_sit_behind_the_toc_early_return() {
-        // `toc()` returns early on the many pages that have no `#TOC` (every listing, every
-        // hero page, every short one). Search exists on ALL of them, so its placement must
-        // be reached before that return — otherwise the control simply vanishes on a phone
-        // for exactly the pages a reader is most likely to be searching FROM.
-        let js = NAV_TOGGLE_SCRIPT;
-        let search_at = js.find("[data-tali-search]").expect("no search lookup");
-        let toc_at = js.find("getElementById('TOC')").expect("no TOC lookup");
-        assert!(
-            search_at < toc_at,
-            "the search relocation is downstream of the TOC lookup, so a page without a \
-             TOC loses its search button on mobile:\n{js}"
-        );
-    }
-
-    #[test]
-    fn tapping_search_closes_an_open_menu() {
-        // Once search is in the BAR, it is reachable while the panel is open — the bar stays
-        // visible above it. Without this the Cmd-K palette opens on top of an open menu and
-        // dismissing the palette returns the reader to it.
-        //
-        // The panel's own close-on-click handler cannot cover this: it is bound to `m` and
-        // matches `closest('a')`, and the search control is a `<button>` that no longer
-        // lives inside `m` at all.
-        let js = NAV_TOGGLE_SCRIPT;
-        assert!(
-            js.contains("sb.addEventListener('click'"),
-            "tapping search leaves the burger menu open underneath the palette:\n{js}"
         );
     }
 

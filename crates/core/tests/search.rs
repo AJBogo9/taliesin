@@ -18,7 +18,7 @@ fn cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
-        "title: S\nnav:\n  - { text: Home, href: index.tmd }\n  - { text: Two, href: two.tmd }\n",
+        "title: S\nchapters:\n  - index.tmd\n  - two.tmd\n",
     );
     // `toc: true` forces the TOC (and the search palette rides with it), so the search
     // wiring is emitted regardless of heading count.
@@ -78,10 +78,7 @@ fn a_books_index_carries_the_chapter_scoped_numbers_its_pages_show() {
 #[test]
 fn index_captures_page_title_heading_and_section_body_prose() {
     let d = TempProj::new();
-    d.file(
-        "_site.yml",
-        "title: S\nnav:\n  - { text: Home, href: index.tmd }\n",
-    );
+    d.file("_site.yml", "title: S\nchapters:\n  - index.tmd\n");
     d.file(
         "index.tmd",
         "---\ntitle: Welcome\n---\n\nIntro paragraph about kangaroos.\n\n\
@@ -129,7 +126,7 @@ fn index_captures_page_title_heading_and_section_body_prose() {
 #[test]
 fn an_executed_figure_or_table_caption_is_indexed() {
     let d = TempProj::new();
-    d.file("_site.yml", "title: S\n");
+    d.file("_site.yml", "title: S\nchapters:\n  - index.tmd\n");
     d.file(
         "index.tmd",
         "---\ntitle: Cells\n---\n\n## Results {#sec-results}\n\nProse.\n\n\

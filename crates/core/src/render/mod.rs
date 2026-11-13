@@ -2354,8 +2354,13 @@ pub fn site_css() -> &'static str {
 /// cell's `import("./helper.js")` would wrongly resolve against `/_assets/` (a 404), so the
 /// External page keeps that runtime INLINE instead (see `assemble_html_page`), anchoring
 /// the resolution base to the page itself.
-pub fn core_enhance_js() -> String {
-    [CODE_ENHANCE_JS, TOC_SPY_JS, SEARCH_JS].join("\n;\n")
+pub fn core_enhance_js(with_search: bool) -> String {
+    let mut parts = vec![CODE_ENHANCE_JS, TOC_SPY_JS];
+    // Cmd-K is a book's: a website bundle carries no palette and no Cmd-K binding.
+    if with_search {
+        parts.push(SEARCH_JS);
+    }
+    parts.join("\n;\n")
 }
 
 /// The vendored mermaid library plus its loader (CDN placeholder already resolved), for

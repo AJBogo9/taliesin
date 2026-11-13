@@ -218,7 +218,6 @@ fn js_page_ships_libs_when_cells_present() {
         &doc,
         "post",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(
@@ -245,7 +244,6 @@ fn js_page_ships_libs_when_cells_present() {
         &doc,
         "p",
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     );
     assert!(

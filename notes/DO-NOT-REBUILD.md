@@ -197,6 +197,18 @@ resources and prompts (cut wave 2, 2026-08-08), `taliesin features` and `feature
 wave 2), debug mode (cut wave 3, 2026-08-08), the `TAL-*` diagnostic codes (cut wave 9,
 2026-08-08) and `taliesin new` (cut 2026-08-17).
 
+- **2026-11-13 search stays in books and goes from websites** (owner ruling). A `_site.yml`
+  project without `chapters:` has no search button, no `search-index.js`, no
+  `TALIESIN_SEARCH_URL` and no Cmd-K binding, in `build` and the preview alike, and a standalone
+  document ships no palette either. The owner: "It is more important in books, but I feel like my
+  website has good enough navigation and so little content that you don't need the search bar."
+  The blog has 19 pages and readers reach them through the nav and listings. Books keep all of it.
+  **Do not re-add a search button or index to websites**, and do not let a corpus document pin one.
+- **2026-11-13 chronological "read next" links for listing members were rebuilt and dropped the
+  same day** (branch `fix/reading-layout`, commit 05156670; the owner reaffirmed the 2026-07-12
+  ruling in 3c5f2d29). Date order between topic-diverse posts is meaningless and over-promises,
+  and it also attached arbitrary links to project pages. Onward links are written by hand in a
+  post's own text where a real connection exists. **Do not cherry-pick or build 05156670.**
 - **2026-11-13 the Scholar block returned in minimal form, and `no-referrer` became preview-only**
   (owner request, on new evidence). The owner's analytics show Google Scholar sending readers to
   `/posts/Kruskal-Wallis-test/`, which Scholar indexed while the blog was built with Quarto; after

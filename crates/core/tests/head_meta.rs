@@ -10,7 +10,6 @@ fn render_html_page(src: &str, fallback_title: &str) -> String {
         &doc,
         fallback_title,
         None,
-        "",
         taliesin_core::AssetMode::Inline { mermaid_src: "" },
     )
 }

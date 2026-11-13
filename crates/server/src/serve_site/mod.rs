@@ -834,8 +834,16 @@ async fn mermaid_lib_js() -> impl IntoResponse {
 /// `window.TALIESIN_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
 /// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
 /// under file:// for a built book opened from disk.
-async fn search_index_js(State(project): State<Arc<Project>>) -> impl IntoResponse {
-    let json = { project.site.lock().search_index_json.clone() };
+async fn search_index_js(State(project): State<Arc<Project>>) -> axum::response::Response {
+    let (is_book, json) = {
+        let site = project.site.lock();
+        (site.is_book(), site.search_index_json.clone())
+    };
+    // A website has no search (owner ruling 2026-11-13), so the preview has no index to
+    // serve, matching the build that writes none.
+    if !is_book {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
     let json = if json.is_empty() {
         "[]".to_string()
     } else {
@@ -1152,11 +1160,16 @@ fn live_page_html(frame: &SiteFrame, dir: &Path, page: &Page, live: &LivePage) -
     let scripts_pre = format!(
         "<script>{doc_global} {toc_flag} {search_cfg} {drafts_global} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
-    // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
+    // The cross-page TOC scrollspy + Cmd-K search (a book's only: the build ships no palette
+    // on a website, and the preview matches it), then the websocket client.
+    let search_script = if chrome.book_chrome.is_some() {
+        format!("<script>{}</script>\n", taliesin_core::SEARCH_JS)
+    } else {
+        String::new()
+    };
     let scripts_post = format!(
-        "<script>{toc_spy}</script>\n<script>{search_js}</script>\n<script>\n{CLIENT_JS}\n</script>",
+        "<script>{toc_spy}</script>\n{search_script}<script>\n{CLIENT_JS}\n</script>",
         toc_spy = taliesin_core::TOC_SPY_JS,
-        search_js = taliesin_core::SEARCH_JS,
     );
     taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
@@ -4040,11 +4053,6 @@ mod project_tests {
             queued(&mut build_rx, &mut fast_rx),
             vec!["index.tmd".to_string()],
             "the page citing the renumbered figure is rebuilt"
-        );
-        let index = project.site.lock().search_index_json.clone();
-        assert!(
-            index.contains("Figure 1") && !index.contains("Figure 2"),
-            "and the search index says what the page now says: {index}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

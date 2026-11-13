@@ -832,13 +832,8 @@ fn build_page_executing(
         unparseable += pass.unparseable;
         diagnostics.append(&mut pass.diags);
         diagnostics.extend(cells);
-        // The Cmd-K index is this same `Site`'s, inlined, because one file has no
-        // `search-index.js` beside it. It is the index `preview <file.tmd>` serves; the
-        // palette used to build its own from the DOM here, and searched raw TeX and
-        // `<script>` bodies the preview's index does not.
-        let search_index = site.inline_search_index(page);
         BuiltPage {
-            html: single_doc_page(&pass.doc, stem, mermaid_src, &search_index),
+            html: single_doc_page(&pass.doc, stem, mermaid_src),
             problems,
             unparseable,
             diagnostics,
@@ -853,17 +848,11 @@ fn build_page_executing(
 /// The one page `build <file>` writes, from its finished document: self-contained, the
 /// mermaid library inline unless `mermaid_src` names the sibling file a `--out` folder
 /// carries, and its `.tmd` links written as the `.html` URLs the preview writes.
-fn single_doc_page(
-    doc: &taliesin_core::RenderedDoc,
-    stem: &str,
-    mermaid_src: &str,
-    search_index: &str,
-) -> String {
+fn single_doc_page(doc: &taliesin_core::RenderedDoc, stem: &str, mermaid_src: &str) -> String {
     let html = taliesin_core::render_doc_to_page(
         doc,
         stem,
         None,
-        search_index,
         taliesin_core::AssetMode::Inline { mermaid_src },
     );
     taliesin_core::site::rewrite_tmd_links(&html)
@@ -1736,7 +1725,7 @@ impl AssetBundle {
 /// * The three conditional blobs are hashed here but **not** written, so a page has an
 ///   href to link; [`AssetBundle::write_conditional`] then writes whichever ones a page
 ///   actually did link (item 137).
-fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
+fn write_asset_bundle(out: &Path, with_search: bool) -> std::io::Result<AssetBundle> {
     use taliesin_core::hash::{fnv1a, fnv1a_bytes};
     let dir = out.join("_assets");
     let _ = std::fs::remove_dir_all(&dir); // own the lifecycle; clear stale hashes
@@ -1777,7 +1766,7 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
         "css",
         &taliesin_core::minify_css(&taliesin_core::shared_site_css_linked_fonts(&font_hrefs)),
     )?;
-    let app_js = named("app", "js", &taliesin_core::core_enhance_js())?;
+    let app_js = named("app", "js", &taliesin_core::core_enhance_js(with_search))?;
     // The KaTeX faces (T6, the math sibling of item 150): NAMED here because the math
     // sheet references them by hashed sibling name, but not written; they land beside
     // katex.css in `write_conditional`, so a prose-only project still ships no math
@@ -2031,7 +2020,7 @@ async fn build_site_async(
     // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
     // (dedups what would otherwise be a copy inlined into every page); every page below
     // links to it instead of shipping its own inline blob.
-    let bundle = match write_asset_bundle(&out) {
+    let bundle = match write_asset_bundle(&out, site.is_book()) {
         Ok(b) => b,
         Err(e) => {
             let msg = format!("cannot write {}/_assets: {e}", out.display());
@@ -4111,7 +4100,7 @@ mod asset_bundle_tests {
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let bundle = write_asset_bundle(&dir).expect("write bundle");
+        let bundle = write_asset_bundle(&dir, true).expect("write bundle");
         // The vendored pair is conditional (item 137): named by `write_asset_bundle`, written
         // only for a build whose pages link them. This test is about the BYTES, so ask for
         // both and then read them.
@@ -4138,7 +4127,7 @@ mod asset_bundle_tests {
             "the {{js}}-cell libs were rewritten on the way to disk"
         );
         assert!(
-            read(&bundle.app_js) == taliesin_core::core_enhance_js(),
+            read(&bundle.app_js) == taliesin_core::core_enhance_js(true),
             "app.js should ship verbatim now that minify_js is gone"
         );
         // Control: CSS IS still minified, or the assertions above would pass just as well
