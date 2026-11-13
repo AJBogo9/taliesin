@@ -209,6 +209,14 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<Warning>) -> 
     parse_native(&value, warnings, ConfigSource(Some(&text)))
 }
 
+/// The `_site.yml` `author:` for a document invoked on its own (`build post.tmd`), so its
+/// byline is the one the project build gives it. Empty with no `_site.yml`. The config's
+/// own diagnostics are dropped, as `bibliography::shared_for_single_doc` drops its own:
+/// they belong to the project, not to whichever page is open.
+pub(crate) fn authors_for_single_doc(root: &Path) -> Vec<crate::author::Author> {
+    load_config(root, &mut Vec::new()).authors
+}
+
 /// Whether a discovery warning is the malformed-`_site.yml` marker: nothing in the file
 /// was read. Shared by the server's build (which fails on it with no `--strict`) and its
 /// watcher (which keeps the last-good site).

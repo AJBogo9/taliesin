@@ -197,6 +197,21 @@ resources and prompts (cut wave 2, 2026-08-08), `taliesin features` and `feature
 wave 2), debug mode (cut wave 3, 2026-08-08), the `TAL-*` diagnostic codes (cut wave 9,
 2026-08-08) and `taliesin new` (cut 2026-08-17).
 
+- **2026-11-13 the Scholar block returned in minimal form, and `no-referrer` became preview-only**
+  (owner request, on new evidence). The owner's analytics show Google Scholar sending readers to
+  `/posts/Kruskal-Wallis-test/`, which Scholar indexed while the blog was built with Quarto; after
+  wave 3 (758341d8) the live page carried no `citation_*` tags. A page with a title, a calendar
+  `date:` and an author now carries five: `citation_title`, `citation_author`,
+  `citation_publication_date` (`YYYY/MM/DD`), `citation_fulltext_html_url` (the `og:url`, only
+  with `url:`) and `citation_language`. The author follows the 2026-08-02 page→site chain and never
+  reaches the site title, and a dated page's byline falls back to the site author as well, because
+  Scholar wants the name visible near the title. **Not restored, and not to be rebuilt on this
+  evidence:** the Cite-this box, `doi:`/`venue:` (and the journal, institution and arXiv tags), the
+  JSON-LD and `<link rel="canonical">`. `<meta name="referrer" content="no-referrer">` now ships in
+  the preview only: its threat (281d5b89) was the preview's session token leaking through
+  `Referer`, a built page has no token, and the tag made every linked site, the owner's GitHub
+  included, count the blog's readers as direct traffic. A build leaves the policy to the host's
+  header. (The `--host` token was cut on 2026-08-09, so the preview's tag guards no token today.)
 - **2026-08-07 the devtooling frontier round, tiers 1-2 in one batch** (owner instruction: implement
   216, 217, 220, 222-226 rather than drop them). Detail in
   [2026-08-07-devtooling-frontier-audit.md](2026-08-07-devtooling-frontier-audit.md), which now

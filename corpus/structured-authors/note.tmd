@@ -3,7 +3,7 @@ title: "A field note"
 date: 2026-05-01
 ---
 
-This page sets a `title:` and a `date:` but no `author:` of its own, so it renders **no
-byline at all**: the byline is built from the page's own front matter and nothing else.
-The site-level `author:` in `_site.yml` is not a fallback for it — that key is read only
-when a dated listing writes its Atom feed, where RFC 4287 requires an author element.
+This page sets a `title:` and a `date:` but no `author:` of its own, so its byline names
+the site author from `_site.yml`. The fallback applies to a dated page only, and its
+Scholar `citation_author` tag names the same person. An undated page with no `author:`
+of its own shows no byline.

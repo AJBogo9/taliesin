@@ -557,6 +557,7 @@ mod tests {
                 title: None,
                 date: None,
                 description: None,
+                authors: Vec::new(),
                 card_image: None,
                 card_image_alt: None,
                 categories: Vec::new(),

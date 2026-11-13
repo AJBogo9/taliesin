@@ -3496,6 +3496,53 @@ mod project_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The live preview's shell keeps `no-referrer` (its threat, 281d5b89, was the
+    /// preview's session token leaking through `Referer`); the same page as `build <dir>`
+    /// writes it carries none, so the host's own `Referrer-Policy` applies.
+    #[test]
+    fn the_preview_sends_no_referrer_and_the_build_leaves_it_to_the_host() {
+        let referrer = |html: &str| {
+            taliesin_core::render::tags(html)
+                .filter(|t| t.name.eq_ignore_ascii_case("meta"))
+                .any(|t| {
+                    taliesin_core::render::attrs(&t)
+                        .any(|a| a.name == "name" && a.value == "referrer")
+                })
+        };
+        let dir = std::env::temp_dir().join(format!("tali-referrer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("_site.yml"), "title: R\n").unwrap();
+        std::fs::write(dir.join("index.tmd"), "---\ntitle: R\n---\n\nx\n").unwrap();
+
+        let site = taliesin_core::site::Site::discover(&dir);
+        let page = site.page("index.tmd").expect("the page").clone();
+        let doc = render_markdown_only(&site, &page);
+        let mut pages = HashMap::new();
+        pages.insert(
+            page.rel.clone(),
+            PageState {
+                doc,
+                tx: tokio::sync::broadcast::channel(4).0,
+            },
+        );
+        let project = Arc::new(Project::new(dir.clone(), site, None).0);
+        *project.pages.lock() = pages;
+        let preview = site_page_html(&project, &page);
+        assert!(
+            preview.contains(r#"<meta name="referrer" content="no-referrer" />"#),
+            "the preview keeps no-referrer: {}",
+            &preview[..preview.len().min(600)]
+        );
+        let built = built_site_page(&project.site.lock(), &page, &dir);
+        assert!(
+            !referrer(&built),
+            "a built page sets no referrer policy: {}",
+            &built[..built.len().min(600)]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn an_unbuilt_page_routes_to_the_safe_lane() {
         // The routing flag is read from the LAST COMPLETED build, so its default decides

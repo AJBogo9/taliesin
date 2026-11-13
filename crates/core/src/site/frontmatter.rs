@@ -9,6 +9,8 @@ pub(crate) struct FrontInfo {
     pub(crate) title: Option<String>,
     pub(crate) date: Option<String>,
     pub(crate) description: Option<String>,
+    /// Front-matter `author:`, for the Scholar `citation_author` tags (`meta.rs`).
+    pub(crate) authors: Vec<crate::author::Author>,
     pub(crate) image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image.
     pub(crate) image_alt: Option<String>,
@@ -59,6 +61,8 @@ pub(crate) fn parse_front_matter(
         title: scalar(val.get("title")),
         date: scalar(val.get("date")),
         description: scalar(val.get("description")),
+        // The parse's warnings are dropped: the page's own render reports them, located.
+        authors: crate::author::parse(val.get("author")).0,
         image: scalar(val.get("image")),
         image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),

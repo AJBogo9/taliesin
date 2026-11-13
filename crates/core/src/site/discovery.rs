@@ -96,6 +96,7 @@ pub(super) fn website_page(root: &Path, input: PathBuf, warnings: &mut Vec<Warni
         title,
         date: fm.date,
         description: fm.description,
+        authors: fm.authors,
         card_image,
         card_image_alt: fm.image_alt,
         categories: fm.categories,

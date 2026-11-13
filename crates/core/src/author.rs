@@ -3,9 +3,9 @@
 //! One declaration feeds every consumer that has to say something about a person: the
 //! visible byline (`render/mod.rs`), JSON-LD `Person`/`affiliation` (`site/meta.rs`), and
 //! the Atom feed's `<author>` (`site/feed.rs`). Before this existed each of those read a
-//! flat `Vec<String>`, so an affiliation had nowhere to live at all. (Two further
-//! consumers, the Scholar `citation_author` tags and the cite-this box, were retired with
-//! the academic-publishing cluster on 2026-08-03.)
+//! flat `Vec<String>`, so an affiliation had nowhere to live at all. (The Scholar
+//! `citation_author` tags and the cite-this box were retired with the academic-publishing
+//! cluster on 2026-08-03; the tags came back on 2026-11-13, in `site/meta.rs`.)
 //!
 //! **Every older spelling stays valid**, which is not politeness — `author:` is a scalar
 //! in every document in the corpus, and a parse that broke them would take the byline off

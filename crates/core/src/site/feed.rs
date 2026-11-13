@@ -140,31 +140,33 @@ impl Site {
 
     /// `(relative feed path, feed title)` for each feed the build writes, for
     /// `<link rel="alternate">` head autodiscovery. Same gating as `atom_feeds`, so
-    /// every advertised feed exists on disk. Title = the listing host's own title
-    /// (its `<title>` in the feed), falling back to the site title. Empty without `url:`.
+    /// every advertised feed exists on disk. Title = [`Self::feed_title`], the same one the
+    /// feed's own `<title>` carries. Empty without `url:`.
     pub(crate) fn feed_index(&self) -> Vec<(String, String)> {
         self.feed_hosts()
             .into_iter()
-            .map(|(host, path, _)| {
-                let title = host
-                    .title
-                    .as_deref()
-                    .or(self.config.title.as_deref())
-                    .unwrap_or("Feed")
-                    .to_string();
-                (path, title)
-            })
+            .map(|(host, path, _)| (path, self.feed_title(host)))
             .collect()
+    }
+
+    /// A feed's title: its listing page's title with the site name, composed like that
+    /// page's `<title>` ([`crate::render::title_with_site_suffix`]), so a reader subscribed
+    /// to several blogs sees "Blog · Ada Lovelace" rather than a bare "Blog". The page
+    /// title falls back to the site title, then to "Feed".
+    fn feed_title(&self, host: &Page) -> String {
+        let site = self.config.title.as_deref().unwrap_or("");
+        let page = host
+            .title
+            .as_deref()
+            .or(self.config.title.as_deref())
+            .unwrap_or("Feed");
+        crate::render::title_with_site_suffix(page, site, self.is_home(host))
     }
 
     /// Build the Atom XML for one listing's dated items (already newest-first).
     fn build_atom(&self, host: &Page, items: &[&Page], feed_path: &str, base: &str) -> String {
         let feed_url = format!("{base}/{feed_path}");
-        let title = esc(host
-            .title
-            .as_deref()
-            .or(self.config.title.as_deref())
-            .unwrap_or("Feed"));
+        let title = esc(&self.feed_title(host));
         // RFC 4287 requires an author at feed or entry level; fall back to the site title
         // and then the origin so the feed always carries a non-empty one. The fallback is
         // for an authorless site only: a declared `author:` (scalar or list) is published
@@ -431,6 +433,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A feed reader lists subscriptions by feed title, and "Blog" alone names no one. The
+    /// feed is titled the way its listing page's `<title>` is ("Blog · Ada Lovelace"), and
+    /// the head's autodiscovery link carries the same string. A site with no title keeps
+    /// the bare page title, as that page's `<title>` does.
+    #[test]
+    fn the_feed_title_names_the_site_as_the_listing_pages_title_does() {
+        let files: [(&str, &str); 3] = [
+            ("_site.yml", "title: Ada Lovelace\nurl: https://ex.com/\n"),
+            (
+                "blog.tmd",
+                "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\nx\n",
+            ),
+            (
+                "posts/a/index.tmd",
+                "---\ntitle: First Post\ndate: 2026-05-15\n---\n\nBody.\n",
+            ),
+        ];
+        let root = write_site("feedtitlesite", &files);
+        let site = Site::discover(&root);
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        assert!(
+            xml.contains("  <title>Blog · Ada Lovelace</title>\n"),
+            "the feed names the site: {xml}"
+        );
+        let page = site.render_page("blog.tmd").unwrap();
+        assert!(
+            page.contains("<title>Blog · Ada Lovelace</title>"),
+            "the listing page's own <title> composes the same way: {page}"
+        );
+        assert!(
+            page.contains(r#"type="application/atom+xml" title="Blog · Ada Lovelace""#),
+            "the autodiscovery link carries the feed's title: {page}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+
+        let mut untitled = files;
+        untitled[0].1 = "url: https://ex.com/\n";
+        let root = write_site("feedtitlenosite", &untitled);
+        let site = Site::discover(&root);
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        assert!(xml.contains("  <title>Blog</title>\n"), "{xml}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn rfc3339_normalizes_a_date_only_string() {
         assert_eq!(
@@ -579,10 +627,13 @@ mod tests {
         );
         let site = Site::discover(&root);
         let index = site.feed_index();
-        // The uncapped listing earns a feed carrying its own title (not the nav label);
-        // the capped teaser does not — the index mirrors `atom_feeds` exactly.
+        // The uncapped listing earns a feed carrying its own title (not the nav label),
+        // with the site name, as the feed's own `<title>` does; the capped teaser does
+        // not — the index mirrors `atom_feeds` exactly.
         assert!(
-            index.iter().any(|(p, t)| p == "blog.xml" && t == "Writing"),
+            index
+                .iter()
+                .any(|(p, t)| p == "blog.xml" && t == "Writing · Blog"),
             "blog feed in index: {index:?}"
         );
         assert!(

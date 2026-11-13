@@ -131,15 +131,16 @@ fn declared_at(root: &Path) -> Vec<String> {
 
 impl Site {
     /// What every page of this project inherits from `_site.yml`: the project-wide
-    /// `bibliography:`. One value, so a render call site names the project once instead of
-    /// listing its policies (and so the next project-wide key does not widen six signatures
-    /// again).
+    /// `bibliography:` and the `author:` a dated page's byline falls back to. One value, so
+    /// a render call site names the project once instead of listing its policies (and so
+    /// the next project-wide key does not widen six signatures again).
     ///
     /// Cheap but not free (it clones the resolved paths), so a loop over pages should bind
     /// it once rather than call it per page.
     pub fn render_defaults(&self) -> crate::render::SiteDefaults {
         crate::render::SiteDefaults {
             bibliography: self.bibliography.clone(),
+            authors: self.config.authors.clone(),
         }
     }
 

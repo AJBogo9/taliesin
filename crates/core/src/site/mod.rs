@@ -46,6 +46,9 @@ pub struct Page {
     pub date: Option<String>,
     /// Front-matter `description` (shown on a listing card).
     pub description: Option<String>,
+    /// Front-matter `author:`, for the Scholar `citation_author` tags (`meta.rs`). The
+    /// page's own only; the fallback to `_site.yml`'s is the reader's job.
+    pub(crate) authors: Vec<crate::author::Author>,
     /// Front-matter `image`, resolved to a site-root-relative path (for cards).
     pub card_image: Option<String>,
     /// Front-matter `image-alt`: alt text for the listing card image (a11y). `None`

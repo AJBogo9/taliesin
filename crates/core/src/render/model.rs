@@ -412,16 +412,17 @@ pub struct ExternalAssets<'a> {
 /// is merged on top of it, so a post can cite a shared key and still add or correct entries
 /// locally (`cite::Bibliography::overlay`).
 ///
-/// It is the only member since the book-wide `theorems:` policy was retired on 2026-08-02
-/// (`shared:` is a per-chapter statement and needs no project-level fallback). The struct
-/// stays rather than collapsing to a bare `Vec<PathBuf>` for the reason above: the next
-/// project-wide key is then one field, not six widened signatures.
+/// `authors` IS a fallback: a dated page that names no `author:` of its own shows the
+/// site's in its byline (2026-11-13), the same page -> site chain the Scholar
+/// `citation_author` tags follow, so the head and the visible page agree on who wrote it.
 #[derive(Debug, Clone, Default)]
 pub struct SiteDefaults {
     /// Readable absolute paths to the project-wide `.bib` file(s), already resolved
     /// against the site root by `Site::discover` — so the render pass neither re-derives
     /// "relative to what?" nor repeats a bad-path diagnostic once per page.
     pub bibliography: Vec<std::path::PathBuf>,
+    /// The `_site.yml` `author:`, for the byline of a dated page with none of its own.
+    pub(crate) authors: Vec<crate::author::Author>,
 }
 
 impl RenderedDoc {
