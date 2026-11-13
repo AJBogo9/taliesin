@@ -310,6 +310,7 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<Warning>) 
                 title: Some(c.title.clone()),
                 date: fm.date,
                 description: fm.description,
+                authors: fm.authors,
                 card_image: super::discovery::card_image(&c.rel, fm.image),
                 card_image_alt: fm.image_alt,
                 categories: fm.categories,

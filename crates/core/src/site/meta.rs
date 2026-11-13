@@ -12,7 +12,8 @@
 //! set. Nothing here is generated, so nothing here can drift from a file on disk.
 //!
 //! Everything is `url:`-gated: an absolute `og:url` and an absolute `og:image` are the
-//! whole point, and a site with no `url:` cannot form either.
+//! whole point, and a site with no `url:` cannot form either. The exception is the
+//! Scholar `citation_*` block ([`scholar_head`]), which only drops its URL tag.
 
 use super::{Page, Site};
 use crate::escape_attr as esc;
@@ -87,6 +88,58 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         } else {
             "summary"
         },
+    ));
+    h.push_str(&scholar_head(site, page, page_url.as_deref()));
+    h
+}
+
+/// The Google Scholar (Highwire Press) `citation_*` tags, for a page with a title, a real
+/// calendar date and an author; empty otherwise. Scholar treats a page missing any of
+/// those three as if it had no tags at all, so the block is all or nothing.
+///
+/// The author is the page's own, else `_site.yml`'s, and the chain stops there: it never
+/// reaches the site TITLE, which would publish a blog's name as a person. The title is the
+/// page's own (the text its `<h1>` shows), never the site title `og:title` falls back to.
+///
+/// Cut on 2026-08-03 as a surface with no user and restored on 2026-11-13, when the
+/// owner's analytics showed Scholar sending readers to a post it indexed under Quarto.
+/// Deliberately the five tags that need no new key: no DOI, venue, journal or institution.
+fn scholar_head(site: &Site, page: &Page, page_url: Option<&str>) -> String {
+    let authors = if page.authors.is_empty() {
+        &site.config.authors
+    } else {
+        &page.authors
+    };
+    let names: Vec<&str> = authors
+        .iter()
+        .map(|a| a.name.trim())
+        .filter(|n| !n.is_empty())
+        .collect();
+    let (Some(title), Some((y, m, d))) = (
+        page.title.as_deref().filter(|t| !t.trim().is_empty()),
+        page.day(),
+    ) else {
+        return String::new();
+    };
+    if names.is_empty() {
+        return String::new();
+    }
+    let mut h = meta("name", "citation_title", title);
+    for name in names {
+        h.push_str(&meta("name", "citation_author", name));
+    }
+    h.push_str(&meta(
+        "name",
+        "citation_publication_date",
+        &format!("{y:04}/{m:02}/{d:02}"),
+    ));
+    if let Some(u) = page_url {
+        h.push_str(&meta("name", "citation_fulltext_html_url", u));
+    }
+    h.push_str(&meta(
+        "name",
+        "citation_language",
+        crate::render::page::PAGE_LANG,
     ));
     h
 }
@@ -354,6 +407,170 @@ Body.
         assert!(
             !html.contains("og:image"),
             "the 404 page advertises no image: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Every `<meta name="citation_…">` in the page, in order, as `(key, raw content)`.
+    /// Read through the tag walker; `raw` is the content still escaped, as written.
+    fn citation_tags(html: &str) -> Vec<(String, String)> {
+        use crate::render::{attrs, tags};
+        tags(html)
+            .filter(|t| t.name.eq_ignore_ascii_case("meta"))
+            .filter_map(|t| {
+                let a: Vec<_> = attrs(&t).collect();
+                let name = a.iter().find(|x| x.name == "name")?.value.to_string();
+                let content = a.iter().find(|x| x.name == "content")?.raw.to_string();
+                name.starts_with("citation_").then_some((name, content))
+            })
+            .collect()
+    }
+
+    fn tag(key: &str, val: &str) -> (String, String) {
+        (key.to_string(), val.to_string())
+    }
+
+    /// A blog post whose `author:` is set only in `_site.yml`, the tech blog's shape. Scholar
+    /// needs title, author and date together, so all three are here, with the full-text URL
+    /// in the same form `og:url` publishes and the date in Scholar's `YYYY/MM/DD`.
+    #[test]
+    fn a_dated_post_carries_the_scholar_tags_with_the_site_author() {
+        let root = write_site(
+            "scholarpost",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal\nurl: https://ex.com\nauthor: Ada Lovelace\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: On Gradients\ndate: 2026-5-7\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert_eq!(
+            citation_tags(&html),
+            vec![
+                tag("citation_title", "On Gradients"),
+                tag("citation_author", "Ada Lovelace"),
+                tag("citation_publication_date", "2026/05/07"),
+                tag("citation_fulltext_html_url", "https://ex.com/posts/a/"),
+                tag("citation_language", "en"),
+            ]
+        );
+        assert!(
+            html.contains(r#"<meta property="og:url" content="https://ex.com/posts/a/">"#),
+            "the full-text URL is the og:url: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The page's own authors replace the site's, one tag each; and with no `url:` the block
+    /// keeps every tag but the URL, since title, author and date are what Scholar requires.
+    #[test]
+    fn a_page_author_replaces_the_site_author_and_no_url_drops_only_the_url_tag() {
+        let root = write_site(
+            "scholarown",
+            &[
+                ("_site.yml", "title: Journal\nauthor: Ada Lovelace\n"),
+                (
+                    "p.tmd",
+                    "---\ntitle: P\ndate: 2026-05-15\nauthor: [Grace Hopper, Alan Turing]\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("p.tmd").unwrap();
+        assert_eq!(
+            citation_tags(&html),
+            vec![
+                tag("citation_title", "P"),
+                tag("citation_author", "Grace Hopper"),
+                tag("citation_author", "Alan Turing"),
+                tag("citation_publication_date", "2026/05/15"),
+                tag("citation_language", "en"),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// No date, no block: the home page, a listing and the privacy page are not articles,
+    /// and a partial block is worth nothing to Scholar. A `date:` that names no calendar day
+    /// cannot be written as `YYYY/MM/DD`, so it counts as none.
+    #[test]
+    fn an_undated_page_carries_no_scholar_tags() {
+        let root = write_site(
+            "scholarundated",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal\nurl: https://ex.com\nauthor: Ada Lovelace\n",
+                ),
+                ("privacy.tmd", "---\ntitle: Privacy\n---\n\nx\n"),
+                (
+                    "spring.tmd",
+                    "---\ntitle: Spring\ndate: Spring 2026\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        for rel in ["privacy.tmd", "spring.tmd"] {
+            let html = site.render_page(rel).unwrap();
+            assert!(citation_tags(&html).is_empty(), "{rel}: {html}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// With no `author:` on the page or the site, the chain ends and there is no block. It
+    /// must not reach the site title, which would publish the journal's name as a person.
+    #[test]
+    fn no_author_anywhere_means_no_scholar_tags() {
+        let root = write_site(
+            "scholarnoauthor",
+            &[
+                ("_site.yml", "title: Journal\nurl: https://ex.com\n"),
+                ("p.tmd", "---\ntitle: P\ndate: 2026-05-15\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("p.tmd").unwrap();
+        assert!(citation_tags(&html).is_empty(), "{html}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `citation_title` is the text the page's `<h1>` shows, escaped by the same escaper,
+    /// so a title with quotes, `&` and `<` reads the same in both and cannot break out of
+    /// the attribute.
+    #[test]
+    fn citation_title_is_the_h1_text_and_quotes_are_escaped() {
+        let root = write_site(
+            "scholarescape",
+            &[
+                (
+                    "_site.yml",
+                    "title: Journal\nauthor: 'Ada \"Countess\" L.'\n",
+                ),
+                (
+                    "p.tmd",
+                    "---\ntitle: 'Is \"p < 0.05\" & enough?'\ndate: 2026-05-15\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("p.tmd").unwrap();
+        let tags = citation_tags(&html);
+        let title = &tags.iter().find(|(k, _)| k == "citation_title").unwrap().1;
+        assert_eq!(title, "Is &quot;p &lt; 0.05&quot; &amp; enough?");
+        let h1 = crate::render::tags(&html)
+            .find(|t| t.name.eq_ignore_ascii_case("h1"))
+            .expect("the page has an h1");
+        let rest = &html[h1.at + h1.text.len()..];
+        assert_eq!(&rest[..rest.find("</h1>").unwrap()], title, "{html}");
+        assert!(
+            tags.contains(&tag("citation_author", "Ada &quot;Countess&quot; L.")),
+            "{tags:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

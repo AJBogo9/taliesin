@@ -106,6 +106,10 @@ pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> St
     }
 }
 
+/// Every page's language: `<html lang>`, and the Scholar `citation_language` tag
+/// (`site/meta.rs`). One value since the `lang:` key was cut on 2026-08-20.
+pub(crate) const PAGE_LANG: &str = "en";
+
 /// The pieces a caller supplies to [`assemble_html_page`]. Everything that
 /// differs between the two HTML shells (the static build and the live preview) lives
 /// here; the page skeleton + `<head>` ordering live once in [`assemble_html_page`],
@@ -355,7 +359,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     };
     format!(
         r#"<!DOCTYPE html>
-<html lang="en">
+<html lang="{PAGE_LANG}">
 <head>
 {GENERATOR_BANNER}<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
