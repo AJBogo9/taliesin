@@ -100,6 +100,8 @@ use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // can reach a `base_dir`.
 mod image_meta;
 use image_meta::ImageAnnotator;
+// The executor sizes a cell's embedded figures as it wraps the output (`exec.rs`).
+pub use image_meta::size_embedded_pngs;
 // Text projection: a plain-text VIEW of the block model, not an output format. Named for
 // the `read` verb until wave 9 cut it, and documented as reached via a
 // `RenderedDoc::body_text()` that no longer exists anywhere in the tree. Its live
