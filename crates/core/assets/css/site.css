@@ -144,6 +144,13 @@
     .tali-site-main.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
       border-bottom: 1px solid var(--tali-border);
       margin-bottom: var(--tali-u); padding-bottom: calc(.5 * var(--tali-u)); }
+    /* When the nav script runs, the stacked block never takes space. The script moves
+       `#TOC` into the panel at DOMContentLoaded, after the deferred scripts, so on a slow
+       phone the block was painted above the article first and the article then jumped
+       back up (a layout shift of 0.23 at 390px, 2026-11-13). The script sets
+       `tali-nav-wired` the moment it runs, in the header and before `#TOC` is parsed. With
+       JS off, or with no navbar to carry the TOC, there is no mark and the block stays. */
+    html.tali-nav-wired .tali-site-main.has-toc > #TOC { display: none; }
     /* One column again and no rail in the way. The escapes need no hand-back rule: they
        are tracks of the reading grid inside <main>, which neither knows nor cares what the
        outer grid did — and for the same reason the container needs no narrowing back to

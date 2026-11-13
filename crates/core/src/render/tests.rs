@@ -6419,6 +6419,32 @@ fn the_skip_to_toc_link_is_withdrawn_only_when_the_toc_actually_moved() {
     );
 }
 
+/// The nav script moves `#TOC` into the panel at DOMContentLoaded, and until then the
+/// stacked block was laid out above the article: on a throttled 390px phone the article
+/// moved from y=93 to y=307 and back, a layout shift of 0.23 (2026-11-13). The stacked
+/// block takes no space while the mark the script sets is present, and only then: the
+/// mark is absent with JS off and on a page with no navbar, and the stacked rule
+/// (`site_toc_gets_the_same_narrow_width_order_lift_…`) is their fallback.
+#[test]
+fn the_stacked_toc_takes_no_space_on_a_page_whose_script_will_move_it() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        wide.contains("html.tali-nav-wired .tali-site-main.has-toc > #TOC { display: none; }"),
+        "the stacked TOC is painted above the article until the script moves it, and the \
+         article jumps back up when it does:\n{wide}"
+    );
+    // Hidden by WIDTH alone, the TOC would vanish for a narrow reader with JS off and on a
+    // standalone page, where nothing will ever move it into a panel.
+    let hidden = ".tali-site-main.has-toc > #TOC { display: none";
+    assert_eq!(
+        SITE_CSS.matches(hidden).count(),
+        SITE_CSS
+            .matches(&format!("html.tali-nav-wired {hidden}"))
+            .count(),
+        "the stacked TOC is hidden somewhere without the script's mark"
+    );
+}
+
 /// The burger owns `margin-left: auto`, which is what pins it to the right end of the bar.
 /// Drop the search control in beside it and that single auto margin now sits on the WRONG
 /// item: the free space lands between brand and search, stranding search next to the
