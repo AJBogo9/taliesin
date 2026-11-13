@@ -201,7 +201,8 @@ pub fn cell_label<'a>(info: &str, literal: &'a str) -> Option<&'a str> {
 /// cross-references against the doc's bibliography. `chapter` is a numbered book chapter's
 /// number, so it renders "Figure 2.3" / "Table 2.1" (`None`: continuous numbering). `site`
 /// carries what the page inherits from its project's `_site.yml` ([`SiteDefaults`]): the
-/// project-wide `bibliography:` laid under the page's own (`None`: no project). What the
+/// project-wide `bibliography:` laid under the page's own, and the `author:` a dated
+/// page's byline falls back to (`None`: no project). What the
 /// site build, the live preview and the project's passes render each page with.
 pub fn render_document_scoped_with_site(
     src: &str,
@@ -245,12 +246,13 @@ pub(crate) fn render_numbers_scoped_with_site(
 /// answer the question. Route a new single-document command through here.
 pub fn render_single_doc(src: &str, base_dir: &Path) -> RenderedDoc {
     let root = crate::includes::single_doc_root(base_dir);
-    // A page of a project inherits its project-wide `bibliography:` even when invoked on its
-    // own, so `preview post.tmd` and `preview <dir>` render the same document (see
-    // `site::shared_for_single_doc`). It is the only thing a page inherits from its
+    // A page of a project inherits its project-wide `bibliography:` and `author:` even when
+    // invoked on its own, so `build post.tmd` and `build <dir>` render the same document
+    // (see `site::shared_for_single_doc`). Those two are all a page inherits from its
     // project, so there is no other project state to reproduce here.
     let site = SiteDefaults {
         bibliography: crate::site::shared_for_single_doc(&root),
+        authors: crate::site::authors_for_single_doc(&root),
     };
     render_doc_with_includes_impl(src, base_dir, None, Some(&root), Some(&site), false)
 }
@@ -1349,11 +1351,18 @@ fn render_internal_impl(
     // reading code is slower than reading prose, so a minutes label is wrong twice over in
     // the same direction on exactly the documents this tool exists for.
     let is_article = date.as_deref().is_some_and(|d| !d.is_empty());
+    // The byline names the page's own authors, else, on a dated page, the site's: the
+    // page -> site chain the Scholar `citation_author` tags follow, which also needs the
+    // name visible near the title. An undated page (home, a listing) shows no site author.
+    let byline = match site {
+        Some(s) if authors.is_empty() && is_article => s.authors.as_slice(),
+        _ => authors.as_slice(),
+    };
     if !hide_title_block
         && let Some(tb) = title_block_html(
             title.as_deref(),
             subtitle.as_deref(),
-            &authors,
+            byline,
             date.as_deref(),
             description.as_deref(),
             chapter,

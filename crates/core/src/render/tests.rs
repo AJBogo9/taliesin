@@ -309,6 +309,94 @@ fn a_structured_author_still_reaches_the_byline_at_all() {
     );
 }
 
+/// The title block of `src` rendered as a page of a project whose `_site.yml` says
+/// `author: Ada Lovelace`.
+fn title_block_in_site_by_ada(src: &str) -> String {
+    let site = SiteDefaults {
+        authors: vec![crate::author::Author::named("Ada Lovelace")],
+        ..SiteDefaults::default()
+    };
+    let doc = render_document_scoped_with_site(src, &std::env::temp_dir(), None, Some(&site));
+    doc.blocks
+        .iter()
+        .find(|b| b.id == "tali-title-block")
+        .map(|b| b.html.clone())
+        .unwrap_or_default()
+}
+
+/// A post on the tech blog sets `date:` and no `author:`; the site sets the author. Google
+/// Scholar wants the author's name visible near the title, and the head's
+/// `citation_author` already follows the page -> site chain, so the dated title block
+/// shows the site author in the same byline slot a page's own `author:` fills.
+#[test]
+fn a_dated_page_with_no_author_shows_the_site_author_in_its_byline() {
+    let h = title_block_in_site_by_ada("---\ntitle: T\ndate: 2026-05-15\n---\n\nx\n");
+    assert!(
+        h.contains(
+            "<div class=\"tali-title-meta\"><span class=\"tali-byline\">\
+             <span class=\"tali-author\">Ada Lovelace</span></span>\
+             <time datetime=\"2026-05-15\">15 May 2026</time></div>"
+        ),
+        "the site author fills the byline beside the date: {h}"
+    );
+}
+
+/// The fallback is for dated pages only. The home page, a listing and the privacy page
+/// carry no date, and a byline there would read as an article credit on a page that is not
+/// an article.
+#[test]
+fn an_undated_page_does_not_borrow_the_site_author() {
+    let h = title_block_in_site_by_ada("---\ntitle: Privacy\n---\n\nx\n");
+    assert!(h.contains("Privacy"), "the title block is there: {h}");
+    assert!(
+        !h.contains("tali-byline"),
+        "no byline on an undated page: {h}"
+    );
+}
+
+/// A page's own `author:` replaces the site's, dated or not, exactly as before the fallback.
+#[test]
+fn a_page_author_replaces_the_site_author_in_the_byline() {
+    for src in [
+        "---\ntitle: T\ndate: 2026-05-15\nauthor: Grace Hopper\n---\n\nx\n",
+        "---\ntitle: T\nauthor: Grace Hopper\n---\n\nx\n",
+    ] {
+        let h = title_block_in_site_by_ada(src);
+        assert!(h.contains("Grace Hopper"), "{h}");
+        assert!(
+            !h.contains("Ada Lovelace"),
+            "the site author stays out: {h}"
+        );
+    }
+}
+
+/// `build post.tmd` renders the same title block as `build <dir>`: the single-document
+/// path reads the project's `author:` as it reads the project's `bibliography:`.
+#[test]
+fn a_project_post_built_on_its_own_shows_the_site_author_too() {
+    let root = crate::site::tests::write_site(
+        "bylinesingle",
+        &[
+            ("_site.yml", "title: J\nauthor: Ada Lovelace\n"),
+            (
+                "posts/p/index.tmd",
+                "---\ntitle: P\ndate: 2026-05-15\n---\n\nx\n",
+            ),
+        ],
+    );
+    let base = root.join("posts/p");
+    let src = std::fs::read_to_string(base.join("index.tmd")).unwrap();
+    let doc = render_single_doc(&src, &base);
+    assert!(
+        doc.blocks[0]
+            .html
+            .contains("<span class=\"tali-author\">Ada Lovelace</span>"),
+        "{}",
+        doc.blocks[0].html
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The page renderer reads its front matter as YAML, the same parse the site layer uses
 /// for og:title, the listing card and the feed. It used to read `title`, `subtitle`,
 /// `date` and `description` with a line scan that trimmed every quote character from both
