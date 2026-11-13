@@ -317,3 +317,46 @@ fn a_figure_drawn_without_naming_matplotlib_still_follows_the_theme() {
         "a figure from an indirect matplotlib import was not rendered for both themes"
     );
 }
+
+/// The pair the theme hook emits states its pixel size, so the page reserves the figure's
+/// box before the browser decodes it. Unsized, the text under a figure jumped when it
+/// appeared: a layout shift of 0.188 on a phone, from the Kruskal-Wallis post's figure
+/// (2026-11-13). Both variants are the same figure drawn twice, so they state one size.
+#[test]
+fn the_figure_pair_states_its_size_before_it_decodes() {
+    let Some(py) = python_or_skip() else {
+        return;
+    };
+    if !matplotlib_or_skip(&py) {
+        return;
+    }
+    let html = run_probe(
+        "sized",
+        "import matplotlib.pyplot as plt\nplt.plot([1, 2, 3])",
+        &py,
+    );
+    let size = |class: &str| {
+        let open = format!("<img class=\"tali-fig {class}\"");
+        let at = html
+            .find(&open)
+            .unwrap_or_else(|| panic!("no {class} image"));
+        let tag = &html[at..at + html[at..].find('>').unwrap()];
+        let attr = |name: &str| -> u32 {
+            let key = format!(" {name}=\"");
+            let from = tag
+                .find(&key)
+                .unwrap_or_else(|| panic!("the {class} image states no {name}"))
+                + key.len();
+            tag[from..from + tag[from..].find('"').unwrap()]
+                .parse()
+                .unwrap()
+        };
+        (attr("width"), attr("height"))
+    };
+    let (light, dark) = (size("tali-fig-light"), size("tali-fig-dark"));
+    assert!(light.0 > 0 && light.1 > 0, "an empty box: {light:?}");
+    assert_eq!(
+        light, dark,
+        "the two variants of one figure state different sizes"
+    );
+}

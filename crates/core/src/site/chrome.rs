@@ -59,7 +59,16 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 ///
 /// The no-JS path needs no branch here — site.css's stacked-block rule is scoped
 /// `.tali-site-main.has-toc > #TOC`, so it stops matching on its own once the node moves.
-const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});var q=window.matchMedia('(max-width: 60rem)');var inner=b.parentNode,sb=m.querySelector('[data-tali-search]'),sHome=sb&&sb.parentNode,sAfter=sb&&sb.nextSibling;if(sb)sb.addEventListener('click',function(){set(false);});function sPlace(){if(!sb)return;if(q.matches!==(sb.parentNode===inner)){if(q.matches){inner.insertBefore(sb,b);}else{sHome.insertBefore(sb,sAfter);}}document.documentElement.classList.toggle('tali-search-in-bar',q.matches);}sPlace();q.addEventListener('change',sPlace);function toc(){var t=document.getElementById('TOC');if(!t)return;var home=t.parentNode,after=t.nextSibling,lab=document.createElement('p');lab.className='tali-nav-toc-label';lab.textContent='On this page';function place(){if(q.matches===(t.parentNode===m))return;if(q.matches){m.appendChild(lab);m.appendChild(t);}else{if(lab.parentNode)lab.parentNode.removeChild(lab);home.insertBefore(t,after);}document.documentElement.classList.toggle('tali-toc-in-nav',q.matches);}place();q.addEventListener('change',place);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',toc);}else{toc();}})();</script>";
+///
+/// The wait has a cost the move alone does not cover: until `DOMContentLoaded`, which on
+/// a slow phone waits for the deferred scripts to download, the stacked block is laid
+/// out and painted above the article, and the move then pulls the article back up. That
+/// was a layout shift of 0.23 on a 390px phone (2026-11-13). So the script marks `<html>`
+/// with `tali-nav-wired` as soon as it runs, which is before `#TOC` is parsed, and
+/// site.css keeps the stacked block out of the flow under that mark. The mark means
+/// "this script will place the TOC", so a page with no navbar (a book, a standalone
+/// document) or with JS off never gets it, and its stacked block stays.
+const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';document.documentElement.classList.add('tali-nav-wired');function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});var q=window.matchMedia('(max-width: 60rem)');var inner=b.parentNode,sb=m.querySelector('[data-tali-search]'),sHome=sb&&sb.parentNode,sAfter=sb&&sb.nextSibling;if(sb)sb.addEventListener('click',function(){set(false);});function sPlace(){if(!sb)return;if(q.matches!==(sb.parentNode===inner)){if(q.matches){inner.insertBefore(sb,b);}else{sHome.insertBefore(sb,sAfter);}}document.documentElement.classList.toggle('tali-search-in-bar',q.matches);}sPlace();q.addEventListener('change',sPlace);function toc(){var t=document.getElementById('TOC');if(!t)return;var home=t.parentNode,after=t.nextSibling,lab=document.createElement('p');lab.className='tali-nav-toc-label';lab.textContent='On this page';function place(){if(q.matches===(t.parentNode===m))return;if(q.matches){m.appendChild(lab);m.appendChild(t);}else{if(lab.parentNode)lab.parentNode.removeChild(lab);home.insertBefore(t,after);}document.documentElement.classList.toggle('tali-toc-in-nav',q.matches);}place();q.addEventListener('change',place);}if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',toc);}else{toc();}})();</script>";
 
 /// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter drawer. A book is laid out
 /// as one centred reading column (the same measure as a blog post); the chapter list is
@@ -1719,6 +1728,26 @@ mod tests {
             js.contains("else{toc();}"),
             "the lookup only ever runs from the DOMContentLoaded branch, so a script \
              evaluated after parsing (a hot-reload re-inject) never places the TOC:\n{js}"
+        );
+    }
+
+    #[test]
+    fn the_page_is_marked_before_the_toc_is_parsed() {
+        // site.css keeps the stacked TOC out of the flow under `tali-nav-wired`, so the
+        // mark has to exist before `#TOC` is first laid out. Set inside `toc()`, which waits
+        // for DOMContentLoaded, it would arrive with the move and the article would still
+        // jump (CLS 0.23 on a 390px phone, 2026-11-13). Set ahead of the wiring guard, it
+        // would mark a page whose burger is missing, and the TOC there would never be
+        // placed anywhere.
+        let js = NAV_TOGGLE_SCRIPT;
+        let mark = js
+            .find("documentElement.classList.add('tali-nav-wired')")
+            .expect("the script never marks the page, so the stacked TOC is painted first");
+        let guard = js.find("b.dataset.navWired='1'").expect("no wiring guard");
+        let toc = js.find("function toc()").expect("no toc()");
+        assert!(
+            guard < mark && mark < toc,
+            "the mark is set outside the synchronous wiring, between the guard and toc():\n{js}"
         );
     }
 

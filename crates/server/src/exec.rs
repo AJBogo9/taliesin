@@ -1740,13 +1740,20 @@ fn undescribed_image_warning(cell: &CellRef, inner: &str) -> Option<String> {
 /// [`output_block`] because a cell a `:::` container folded away has no output block of
 /// its own — its output is written into the container's slot — and must still be wrapped
 /// the same way, or a `#| label: fig-x` inside a callout would lose its number.
+///
+/// An embedded figure gets its `width`/`height` here ([`render::size_embedded_pngs`]),
+/// so the page reserves its box before the browser decodes it. Here, and not in the
+/// kernel, because an output replayed from `_freeze` comes through here too: the cache
+/// keeps what the kernel returned, and an entry written before the sizes existed is
+/// sized on replay with no `FORMAT_VERSION` bump.
 fn output_inner(cell: &CellRef, inner: &str) -> String {
+    let inner = render::size_embedded_pngs(inner);
     if let Some(fig) = &cell.figure {
-        figure_wrap(fig, inner)
+        figure_wrap(fig, &inner)
     } else if let Some(tbl) = &cell.table {
-        table_wrap(tbl, inner)
+        table_wrap(tbl, &inner)
     } else {
-        inner.to_string()
+        inner
     }
 }
 
@@ -4029,5 +4036,27 @@ mod tests {
             "{}",
             b.html
         );
+    }
+
+    /// A `_freeze` entry holds the kernel's output as it was returned, and every entry
+    /// written before executed figures were sized has none. It must come out sized all the
+    /// same, in its own block and in a `:::` container's slot, or a published page keeps
+    /// the layout shift until each of its cells is edited.
+    #[test]
+    fn a_figure_replayed_from_the_cache_is_sized_like_a_fresh_one() {
+        let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAFUlEQVR4nGM8ISfHwMDAwMDAxAADABMuAQhqwGVhAAAAAElFTkSuQmCC";
+        let cached = format!("<img class=\"tali-fig tali-fig-light\" alt=\"\" src=\"{png}\">");
+        let c = cell("fig");
+        let replayed = CellOut::restored(&c, cached.clone());
+        let sized = format!(
+            "<img class=\"tali-fig tali-fig-light\" alt=\"\" src=\"{png}\" width=\"3\" height=\"2\">"
+        );
+        assert!(
+            output_block(&c, &replayed.html).html.contains(&sized),
+            "a replayed figure kept no box"
+        );
+        assert_eq!(output_inner(&c, &replayed.html), sized, "slot path");
+        // What is stored stays what the kernel returned: the sizes are added on the way out.
+        assert_eq!(replayed.stored(&c), cached);
     }
 }

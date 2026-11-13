@@ -6149,6 +6149,38 @@ fn katex_font_files_match_the_vendored_sheet_and_rewrite_cleanly() {
     );
 }
 
+/// Upstream KaTeX declares no `font-display`, which means `auto`: the browser hides
+/// math text until its face arrives. A throttled trace of a site page held it invisible
+/// for up to 1.38 s (2026-11-13). The body faces in `fonts.css` already swap. The rule
+/// is an edit to the vendored `katex.min.css`, so this is what notices an upgrade that
+/// drops it, in both the linked sheet a site ships and the inlined one.
+#[test]
+fn every_katex_face_swaps_in_rather_than_hiding_the_math() {
+    let hrefs: Vec<(&str, String)> = KATEX_FONT_FILES
+        .iter()
+        .map(|(n, _)| (*n, n.to_string()))
+        .collect();
+    for (sheet, css) in [
+        ("linked", katex_css_linked_fonts(&hrefs)),
+        ("inlined", KATEX_CSS.to_string()),
+    ] {
+        let faces: Vec<&str> = css.split("@font-face{").skip(1).collect();
+        assert_eq!(
+            faces.len(),
+            KATEX_FONT_FILES.len(),
+            "{sheet}: one face per font"
+        );
+        for face in faces {
+            let rule = &face[..face.find('}').expect("an unclosed @font-face")];
+            assert!(
+                rule.contains("font-display:swap"),
+                "{sheet}: a KaTeX face hides the math until it loads: {}",
+                &rule[..rule.len().min(120)]
+            );
+        }
+    }
+}
+
 // Marker literals below are each confirmed present via grep before use (see the Task 1
 // report): base.css -> ".tali-title-block", dark.css -> the dark-theme syntax comment
 // selector, site.css -> ".tali-book-topbar" (site-only chrome), the code-enhance bundle
@@ -6562,6 +6594,32 @@ fn the_skip_to_toc_link_is_withdrawn_only_when_the_toc_actually_moved() {
         !wide.contains(".tali-skip-toc"),
         "the skip link is hidden by WIDTH, so a narrow reader with JS off loses it while \
          the TOC is still stranded after the article:\n{wide}"
+    );
+}
+
+/// The nav script moves `#TOC` into the panel at DOMContentLoaded, and until then the
+/// stacked block was laid out above the article: on a throttled 390px phone the article
+/// moved from y=93 to y=307 and back, a layout shift of 0.23 (2026-11-13). The stacked
+/// block takes no space while the mark the script sets is present, and only then: the
+/// mark is absent with JS off and on a page with no navbar, and the stacked rule
+/// (`site_toc_gets_the_same_narrow_width_order_lift_…`) is their fallback.
+#[test]
+fn the_stacked_toc_takes_no_space_on_a_page_whose_script_will_move_it() {
+    let wide = media_block(SITE_CSS, "(max-width: 60rem)").expect("no 60rem block");
+    assert!(
+        wide.contains("html.tali-nav-wired .tali-site-main.has-toc > #TOC { display: none; }"),
+        "the stacked TOC is painted above the article until the script moves it, and the \
+         article jumps back up when it does:\n{wide}"
+    );
+    // Hidden by WIDTH alone, the TOC would vanish for a narrow reader with JS off and on a
+    // standalone page, where nothing will ever move it into a panel.
+    let hidden = ".tali-site-main.has-toc > #TOC { display: none";
+    assert_eq!(
+        SITE_CSS.matches(hidden).count(),
+        SITE_CSS
+            .matches(&format!("html.tali-nav-wired {hidden}"))
+            .count(),
+        "the stacked TOC is hidden somewhere without the script's mark"
     );
 }
 

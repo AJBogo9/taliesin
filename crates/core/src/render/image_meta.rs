@@ -1,4 +1,5 @@
-//! Intrinsic dimensions and loading hints for local raster images.
+//! Intrinsic dimensions and loading hints for local raster images, and dimensions for the
+//! PNGs an executed cell embeds as data URIs ([`size_embedded_pngs`]).
 //!
 //! **Why this is a post-emission pass and not part of the emitters.** Two places emit an
 //! `<img>`: [`super::emit`]'s inline-image arm and [`super::figure`]'s `<figure>`. Neither is
@@ -45,35 +46,7 @@ impl ImageAnnotator {
     /// improving it, so a blanket `loading="lazy"` would be a regression dressed as an
     /// optimization.
     pub(super) fn annotate(&mut self, html: &str, base: &Path) -> String {
-        let mut out = String::with_capacity(html.len());
-        let mut cursor = 0;
-        for tag in super::tags(html) {
-            if !tag.name.eq_ignore_ascii_case("img") {
-                continue;
-            }
-            let Some(extra) = self.attrs_for(&tag, base) else {
-                continue;
-            };
-            // `tag.text` is `<` through the `>` that closes it. Split off any self-closing
-            // slash so `<img … />` stays `… />`. Both the head and the slash are re-spaced
-            // from scratch rather than preserved: the two emitters differ in their trailing
-            // whitespace (figure.rs leaves one before `/>`, and an empty `{style}` leaves
-            // two), so splicing at the raw offset produced `alt="x"  width="1"` and
-            // `"high"/>`.
-            let inner = &tag.text[..tag.text.len() - 1];
-            let (head, tail) = match inner.trim_end().strip_suffix('/') {
-                Some(h) => (h.trim_end(), " /"),
-                None => (inner.trim_end(), ""),
-            };
-            out.push_str(&html[cursor..tag.at]);
-            out.push_str(head);
-            out.push_str(&extra);
-            out.push_str(tail);
-            out.push('>');
-            cursor = tag.at + tag.text.len();
-        }
-        out.push_str(&html[cursor..]);
-        out
+        splice_img_attrs(html, |tag| self.attrs_for(tag, base))
     }
 
     /// The attribute string to splice into `tag`, or `None` to leave it alone.
@@ -95,14 +68,114 @@ impl ImageAnnotator {
     }
 }
 
+/// `width`/`height` for each `data:image/png` `<img>` in an executed cell's output, read
+/// from the PNG's own header.
+///
+/// An executed figure is a data URI, so [`ImageAnnotator`], which measures files, never
+/// sees it. Its bytes are in the page, but the browser decodes them after the first
+/// layout, and without a box the text below jumped when the figure appeared: a layout
+/// shift of 0.188 on a phone, from the matplotlib figure of the Kruskal-Wallis post
+/// (2026-11-13). The size stated is the PNG's pixel size, which is the size the browser
+/// shows a data URI at anyway; `img { height: auto }` and `max-width: 100%` still scale
+/// it down, so the attributes only fix the box's aspect ratio before the decode.
+///
+/// The executor runs this as it wraps a cell's output, not where the kernel makes it, so
+/// an output replayed from `_freeze` is sized too and the cache format does not move. An
+/// image that already states a `width` or `height` (`Image(width=)`'s metadata) keeps it.
+pub fn size_embedded_pngs(html: &str) -> String {
+    splice_img_attrs(html, |tag| {
+        if super::attr_value(tag, "width").is_some() || super::attr_value(tag, "height").is_some() {
+            return None;
+        }
+        let (w, h) = png_data_uri_size(&super::attr_value(tag, "src")?)?;
+        Some(format!(" width=\"{w}\" height=\"{h}\""))
+    })
+}
+
+/// Splice the attributes `extra` returns into each `<img>` in `html`, leaving every other
+/// byte as it was. The one splice both passes share.
+fn splice_img_attrs(
+    html: &str,
+    mut extra: impl FnMut(&super::Tag<'_>) -> Option<String>,
+) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0;
+    for tag in super::tags(html) {
+        if !tag.name.eq_ignore_ascii_case("img") {
+            continue;
+        }
+        let Some(extra) = extra(&tag) else {
+            continue;
+        };
+        // `tag.text` is `<` through the `>` that closes it. Split off any self-closing
+        // slash so `<img … />` stays `… />`. Both the head and the slash are re-spaced
+        // from scratch rather than preserved: the two emitters differ in their trailing
+        // whitespace (figure.rs leaves one before `/>`, and an empty `{style}` leaves
+        // two), so splicing at the raw offset produced `alt="x"  width="1"` and
+        // `"high"/>`.
+        let inner = &tag.text[..tag.text.len() - 1];
+        let (head, tail) = match inner.trim_end().strip_suffix('/') {
+            Some(h) => (h.trim_end(), " /"),
+            None => (inner.trim_end(), ""),
+        };
+        out.push_str(&html[cursor..tag.at]);
+        out.push_str(head);
+        out.push_str(&extra);
+        out.push_str(tail);
+        out.push('>');
+        cursor = tag.at + tag.text.len();
+    }
+    out.push_str(&html[cursor..]);
+    out
+}
+
+/// The pixel size a `data:image/png;base64,` URI states in its IHDR chunk, which a PNG
+/// must open with: the 8-byte signature, the chunk's length and type, then width and
+/// height as big-endian `u32`s. Those 24 bytes are the first 32 base64 characters, so
+/// nothing past them is decoded.
+fn png_data_uri_size(src: &str) -> Option<(u32, u32)> {
+    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'];
+    let b64 = src.strip_prefix("data:image/png;base64,")?;
+    let head = base64_prefix(b64.get(..32)?.as_bytes())?;
+    if head[..8] != SIGNATURE || &head[12..16] != b"IHDR" {
+        return None;
+    }
+    let w = u32::from_be_bytes([head[16], head[17], head[18], head[19]]);
+    let h = u32::from_be_bytes([head[20], head[21], head[22], head[23]]);
+    (w > 0 && h > 0).then_some((w, h))
+}
+
+/// Standard-alphabet base64 to bytes, four characters to three; `None` on any other
+/// character, padding included (the 32 characters read above never reach the padding).
+fn base64_prefix(chars: &[u8]) -> Option<Vec<u8>> {
+    let sextet = |c: u8| -> Option<u32> {
+        Some(u32::from(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        }))
+    };
+    let mut out = Vec::with_capacity(chars.len() / 4 * 3);
+    for quad in chars.as_chunks::<4>().0 {
+        let n = quad
+            .iter()
+            .try_fold(0u32, |n, &c| Some((n << 6) | sextet(c)?))?;
+        out.extend_from_slice(&n.to_be_bytes()[1..]);
+    }
+    Some(out)
+}
+
 /// Intrinsic pixel size of a local relative raster `src`, or `None` if it is not one we
 /// handle or does not resolve to a readable image under `base`.
 ///
 /// Skipped, each for its own reason: an absolute URL and a protocol-relative `//host/x` are
-/// not ours; a `data:` URI is what an executed `{python}` figure is, and it already
-/// carries its pixels; a root-absolute `/x.png` has no meaning relative to `base` (the
-/// build's asset scanner skips it for the same reason); a non-raster extension has no
-/// intrinsic pixel size to state.
+/// not ours; a `data:` URI is what an executed `{python}` figure is, and the executor
+/// sizes it from its own header ([`size_embedded_pngs`]); a root-absolute `/x.png` has no
+/// meaning relative to `base` (the build's asset scanner skips it for the same reason); a
+/// non-raster extension has no intrinsic pixel size to state.
 fn intrinsic_size(src: &str, base: &Path) -> Option<(u32, u32)> {
     use image::ImageDecoder;
     use image::metadata::Orientation::{Rotate90, Rotate90FlipH, Rotate270, Rotate270FlipH};
@@ -366,5 +439,59 @@ mod tests {
             "a JPEG named .png is measured from its bytes: {}",
             size("misnamed.png")
         );
+    }
+
+    /// A whole 3x2 PNG, as PIL writes one.
+    const PNG_3X2: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAIAAAASFvFNAAAAFUlEQVR4nGM8ISfHwMDAwMDAxAADABMuAQhqwGVhAAAAAElFTkSuQmCC";
+    /// The first 40 characters of an 800x300 one: the size is read from the header alone,
+    /// and two-byte values that differ catch a width and height read the wrong way round.
+    const PNG_800X300_HEAD: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAyAAAAEsCAIAAAC0";
+
+    #[test]
+    fn an_embedded_png_is_sized_from_its_own_header() {
+        assert_eq!(png_data_uri_size(PNG_3X2), Some((3, 2)));
+        assert_eq!(png_data_uri_size(PNG_800X300_HEAD), Some((800, 300)));
+    }
+
+    /// Both spellings an executed image arrives in, pinned as whole tags: the matplotlib
+    /// pair from the kernel's theme hook, and `render_media`'s self-closing `<img … />`.
+    #[test]
+    fn both_executed_image_shapes_get_their_box_and_keep_their_shape() {
+        let pair = format!(
+            "<img class=\"tali-fig tali-fig-light\" alt=\"\" src=\"{PNG_3X2}\">\
+             <img class=\"tali-fig tali-fig-dark\" alt=\"\" src=\"{PNG_800X300_HEAD}\">"
+        );
+        assert_eq!(
+            size_embedded_pngs(&pair),
+            format!(
+                "<img class=\"tali-fig tali-fig-light\" alt=\"\" src=\"{PNG_3X2}\" \
+                 width=\"3\" height=\"2\">\
+                 <img class=\"tali-fig tali-fig-dark\" alt=\"\" src=\"{PNG_800X300_HEAD}\" \
+                 width=\"800\" height=\"300\">"
+            )
+        );
+        assert_eq!(
+            size_embedded_pngs(&format!("<img alt=\"\" src=\"{PNG_3X2}\" />")),
+            format!("<img alt=\"\" src=\"{PNG_3X2}\" width=\"3\" height=\"2\" />")
+        );
+    }
+
+    #[test]
+    fn an_embedded_image_the_pass_cannot_vouch_for_is_left_alone() {
+        for html in [
+            // `Image(width=, height=)` already sized it, at the size the author asked for.
+            format!("<img alt=\"\" width=\"200\" height=\"120\" src=\"{PNG_3X2}\" />"),
+            format!("<img alt=\"\" height=\"120\" src=\"{PNG_3X2}\" />"),
+            // Not a PNG, a PNG cut short, and bytes that only claim to be one.
+            "<img src=\"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD\">".to_string(),
+            "<img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUg\">".to_string(),
+            "<img src=\"data:image/png;base64,R0lGODlhAQABAIAAAAAAAP8AAAAAAAAAAAAAAAAAAAA\">"
+                .to_string(),
+            // A file is ImageAnnotator's to measure, and a printed tag is text.
+            "<img src=\"plot.png\">".to_string(),
+            format!("<pre>&lt;img src=\"{PNG_3X2}\"&gt;</pre>"),
+        ] {
+            assert_eq!(size_embedded_pngs(&html), html, "must not size: {html}");
+        }
     }
 }
