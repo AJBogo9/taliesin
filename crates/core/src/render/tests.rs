@@ -6061,6 +6061,38 @@ fn katex_font_files_match_the_vendored_sheet_and_rewrite_cleanly() {
     );
 }
 
+/// Upstream KaTeX declares no `font-display`, which means `auto`: the browser hides
+/// math text until its face arrives. A throttled trace of a site page held it invisible
+/// for up to 1.38 s (2026-11-13). The body faces in `fonts.css` already swap. The rule
+/// is an edit to the vendored `katex.min.css`, so this is what notices an upgrade that
+/// drops it, in both the linked sheet a site ships and the inlined one.
+#[test]
+fn every_katex_face_swaps_in_rather_than_hiding_the_math() {
+    let hrefs: Vec<(&str, String)> = KATEX_FONT_FILES
+        .iter()
+        .map(|(n, _)| (*n, n.to_string()))
+        .collect();
+    for (sheet, css) in [
+        ("linked", katex_css_linked_fonts(&hrefs)),
+        ("inlined", KATEX_CSS.to_string()),
+    ] {
+        let faces: Vec<&str> = css.split("@font-face{").skip(1).collect();
+        assert_eq!(
+            faces.len(),
+            KATEX_FONT_FILES.len(),
+            "{sheet}: one face per font"
+        );
+        for face in faces {
+            let rule = &face[..face.find('}').expect("an unclosed @font-face")];
+            assert!(
+                rule.contains("font-display:swap"),
+                "{sheet}: a KaTeX face hides the math until it loads: {}",
+                &rule[..rule.len().min(120)]
+            );
+        }
+    }
+}
+
 // Marker literals below are each confirmed present via grep before use (see the Task 1
 // report): base.css -> ".tali-title-block", dark.css -> the dark-theme syntax comment
 // selector, site.css -> ".tali-book-topbar" (site-only chrome), the code-enhance bundle
