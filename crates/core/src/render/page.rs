@@ -408,18 +408,22 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     )
 }
 
-/// Prefetch a sibling page once the reader hovers its link (or starts a tap), so the click
-/// finds the HTML already fetched. Measured on the tech blog 2026-09-23: a click spent
-/// 340 to 400 ms waiting on the document and its Cloudflare `.html` redirect, against 83 to
-/// 150 ms of rendering.
+/// Prefetch a sibling page once the reader presses its link (pointer or touch down), so the
+/// HTML is on its way before the click completes. Measured on the tech blog 2026-09-23: a
+/// click spent 340 to 400 ms waiting on the document and its Cloudflare `.html` redirect,
+/// against 83 to 150 ms of rendering.
+///
+/// `conservative`, not `moderate` (2026-11-16): moderate fetched a page after a 200 ms hover,
+/// so pages the reader never opened were requested anyway, and a site that counts page
+/// requests at the edge counted each of them as a view.
 ///
 /// Only [`AssetMode::External`] ships it, which is the multi-page site build and nothing
 /// else. A single-file page has no sibling pages, and the live preview must never carry it:
-/// there every prefetch would make the dev server render the hovered page. Prefetch, not
-/// prerender, because prerendering runs a page's `{js}` cells for a hover that may never
+/// there every prefetch would make the dev server render the pressed page. Prefetch, not
+/// prerender, because prerendering runs a page's `{js}` cells for a press that may never
 /// become a click. `/*.html` keeps it to same-origin pages, so feeds, assets and external
 /// links are never fetched. Browsers without speculation rules ignore the tag.
-const SPECULATION_RULES: &str = r#"<script type="speculationrules">{"prefetch":[{"where":{"href_matches":"/*.html"},"eagerness":"moderate"}]}</script>"#;
+const SPECULATION_RULES: &str = r#"<script type="speculationrules">{"prefetch":[{"where":{"href_matches":"/*.html"},"eagerness":"conservative"}]}</script>"#;
 
 /// Run the client enhancers once on load (the static page has no websocket client
 /// to call them after a mount).
@@ -867,16 +871,17 @@ mod tests {
     }
 
     /// A multi-page site build asks the browser to PREFETCH a sibling page once the reader
-    /// hovers its link, so the click finds the HTML already there. Prefetch and not
-    /// prerender: prerendering would run a page's `{js}` cells for a hover that may never
+    /// presses its link, so the HTML is on its way before the click completes. On press and
+    /// not on hover: a hover fetches pages the reader never opens. Prefetch and not
+    /// prerender: prerendering would run a page's `{js}` cells for a press that may never
     /// become a click. Same-origin `.html` only, so no feed, asset or external link is
     /// fetched.
     ///
     /// Nothing else ships it. A single-file page has no sibling pages to fetch, and a live
     /// preview must never: there a prefetch would make the dev server render every page the
-    /// author hovers.
+    /// author presses.
     #[test]
-    fn only_a_site_build_prefetches_sibling_pages_on_hover() {
+    fn only_a_site_build_prefetches_sibling_pages_on_press() {
         let ext = ExternalAssets {
             app_css: "a.css",
             katex_css: "k.css",
@@ -897,7 +902,7 @@ mod tests {
         assert_eq!(
             rules[0],
             serde_json::json!({
-                "prefetch": [{ "where": { "href_matches": "/*.html" }, "eagerness": "moderate" }]
+                "prefetch": [{ "where": { "href_matches": "/*.html" }, "eagerness": "conservative" }]
             })
         );
 
